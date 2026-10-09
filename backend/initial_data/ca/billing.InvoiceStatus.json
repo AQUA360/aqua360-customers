@@ -1,0 +1,170 @@
+[
+    {
+        "model": "billing.invoicestatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Pre-factura",
+            "color": null,
+            "position": 0,
+            "description": "Quan una factura es troba en edició / pre-factura",
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Pagada",
+            "color": "green",
+            "position": 4,
+            "description": "Ha acabat el procés de facturació i la factura es dona per acabada (confirmada)",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Vençuda",
+            "color": "purple",
+            "position": 5,
+            "description": "S’ha finalitzat el seu període de venciment i no s’ha cobrat",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "2",
+            "name": "Confirmada",
+            "color": "blue",
+            "position": 1,
+            "description": "Ha acabat el procés de facturació i la factura es dona per acabada (confirmada)",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-3",
+            "name": "Morositat",
+            "color": "yellow",
+            "description": "S’ha reclamat el seu pagament però, segons criteri de cada operadora, difícilment s’acabarà cobrant",
+            "position": 6,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 7,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "4",
+            "name": "En compromís",
+            "color": "purple",
+            "description": "La factura ha entrat en un Compromís de pagament (s’ha dividit o sumat a unes altres) i està a l’espera que es liquidi el seu/s pagament/s",
+            "position": 3,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 8,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "3",
+            "name": "Enviada",
+            "color": "blue",
+            "description": "La factura està enviada en qualsevol de les seves formes (Carta, E-mail i/o Factura electrònica)",
+            "position": 2,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 9,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-5",
+            "name": "Irrecuperable",
+            "color": "red",
+            "description": "",
+            "position": 7,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 10,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-6",
+            "name": "Abonada",
+            "color": null,
+            "description": "S’ha fet per error i s'ha generat un abonament",
+            "position": 9,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 11,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-4",
+            "name": "Parcialment Irrecuperable",
+            "color": null,
+            "description": "Dins del Compromís del pagament, parcialment ha quedat Irrecuperable",
+            "position": 8,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 12,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-2",
+            "name": "Abonament",
+            "color": "green",
+            "description": "Abonament de factura",
+            "position": 9,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 13,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-7",
+            "name": "Anul·lada",
+            "color": null,
+            "description": "Factura anul·lada, sense cap moviment registrat",
+            "position": 10,
+            "is_default": false
+        }
+    }
+]

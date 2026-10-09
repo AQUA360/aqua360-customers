@@ -1,0 +1,98 @@
+[
+  {
+      "model": "service.supplycutcause",
+      "pk": 1,
+      "fields": {
+          "created_at": null,
+          "updated_at": "2026-09-25T07:18:08.295Z",
+          "token": "1",
+          "name": "Impagament de Factures",
+          "color": "red",
+          "is_temporary": false
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 2,
+      "fields": {
+          "created_at": null,
+          "updated_at": "2026-09-25T07:18:08.296Z",
+          "token": "2",
+          "name": "Ús no autoritzat",
+          "color": "red",
+          "is_temporary": false
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 3,
+      "fields": {
+          "created_at": null,
+          "updated_at": "2026-09-25T07:18:08.297Z",
+          "token": "3",
+          "name": "Problemes de seguretat",
+          "color": "yellow",
+          "is_temporary": false
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 4,
+      "fields": {
+          "created_at": null,
+          "updated_at": "2026-09-25T07:18:08.298Z",
+          "token": "4",
+          "name": "Manteniment o obres",
+          "color": "blue",
+          "is_temporary": true
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 5,
+      "fields": {
+          "created_at": null,
+          "updated_at": "2026-09-25T07:18:08.299Z",
+          "token": "5",
+          "name": "Baixa de contracte",
+          "color": "yellow",
+          "is_temporary": false
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 6,
+      "fields": {
+          "created_at": null,
+          "updated_at": "2026-09-25T07:18:08.294Z",
+          "token": "0",
+          "name": "Altres",
+          "color": null,
+          "is_temporary": false
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 8,
+      "fields": {
+          "created_at": "2026-09-25T07:18:08.309Z",
+          "updated_at": "2026-09-25T07:18:08.309Z",
+          "token": "Accidental",
+          "name": "Accidental",
+          "color": null,
+          "is_temporary": true
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 9,
+      "fields": {
+          "created_at": "2026-09-25T07:18:08.312Z",
+          "updated_at": "2026-09-25T07:18:08.312Z",
+          "token": "Planificada",
+          "name": "Planificada",
+          "color": null,
+          "is_temporary": true
+      }
+  }
+]

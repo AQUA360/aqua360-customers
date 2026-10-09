@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body, p, h1, h2, h3, h4, h5, h6, table, td {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, serif;
+            line-height: 1.6;
+        }
+        
+        .email-container {
+            max-width: auto;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        
+        .header {
+            border-bottom: 2px solid #f0f0f0;
+            margin-bottom: 30px;
+        }
+        
+        .content {
+            color: #333333;
+            margin: 0;
+        }
+        
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 22px;
+            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+        }
+        
+        .message-body {
+            margin-bottom: 30px;
+            font-size: 13px;
+            line-height: 1.8;
+            color: #2c3e50;
+            font-family: Arial, serif;
+        }
+        
+        .signature {
+            border-top: 1px solid #f0f0f0;
+            color: #666666;
+            font-size: 14px;
+            margin: 20px 5px 0;
+        }
+        
+        .footer {
+            background-color: #f8f9fa;
+            margin: 30px 5px 0;
+        }
+        
+        .footer p {
+            color: #666666;
+            font-size: 13px;
+            margin: 0 0 10px 0;
+        }
+        
+        .company-info {
+            margin: 20px 5px 0;
+        }
+        
+        .company-info p {
+            margin: 0 0 5px 0;
+        }
+        
+        .contact-info {
+            color: none;
+            margin: 15px 5px 0;
+            border-top: 1px solid #eeeeee;
+        }
+        
+        .logo img {
+            max-width: 120px;
+            height: auto;
+            margin: 0;
+        }
+        
+        @media screen and (max-width: 600px) {
+            .email-container {
+                width: 100% !important;
+                margin: 0 !important;
+            }
+            
+            .message-body, .signature, .footer, .company-info, .contact-info {
+                margin-left: 3px !important;
+                margin-right: 3px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="content">
+            <div class="message-body">
+                {{ body|safe }}
+            </div>
+        </div>
+
+        {% comment %} <div class="signature">
+            <p>{{ company.name }}</p>
+            <p>{{ company.address.address_complete }}</p>
+            <p>{{ company.address.postal_code }} {{ company.address.city.name }}</p>
+        </div> {% endcomment %}
+
+        <div class="footer">
+            <p>Aquest missatge és un email automatitzat. Si us plau, no respongueu directament a aquest missatge.</p>
+            {% if company %}
+            <p>© {{ now_date|date:"Y" }} {{ company.name }}. Tots els drets reservats.</p>
+            {% endif %}
+            
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    {% if logo %}
+                    <td class="logo" style="padding-right: 20px; vertical-align: top;">
+                        <img src="{{ logo }}" alt="{{ company.name }}" style="max-width: 120px; height: auto;">
+                    </td>
+                    {% endif %}
+                    <td class="company-info">
+                        <p style="font-weight: bold; color: #2c3e50;">{{ company.name }}</p>
+                        <p>{{ company.address.address_complete }}</p>
+                        <p>{{ company.address.postal_code }} {{ company.address.city.name }}</p>
+                        {% if company.website %}<p><a href="{{ company.website|default_if_none:"" }}" style="color: #3498db; text-decoration: none;">{{ company.website|default_if_none:"" }}</a></p>{% endif %}
+                        <div class="contact-info">
+                            <p><strong>TELÈFON D'ATENCIÓ AL CLIENT:</strong> {{ company.phone }}</p>
+                            {% if company.phone2 %}<p><strong>TELÈFON D'AVERIES:</strong> {{ company.phone2 }}</p>{% endif %}
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</body>
+</html> 

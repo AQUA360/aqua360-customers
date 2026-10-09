@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+docker-data/
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.log
+*.sqlite
+*.sqlite3
+SECURITY.md

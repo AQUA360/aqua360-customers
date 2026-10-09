@@ -1,0 +1,218 @@
+[
+  {
+      "model": "service.connectiondiameter",
+      "pk": 1,
+      "fields": {
+          "token": "15",
+          "name": "15",
+          "position": null,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 2,
+      "fields": {
+          "token": "20",
+          "name": "20",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 3,
+      "fields": {
+          "token": "25",
+          "name": "25",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 4,
+      "fields": {
+          "token": "30",
+          "name": "30",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 5,
+      "fields": {
+          "token": "32",
+          "name": "32",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 6,
+      "fields": {
+          "token": "40",
+          "name": "40",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 7,
+      "fields": {
+          "token": "50",
+          "name": "50",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 8,
+      "fields": {
+          "token": "63",
+          "name": "63",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 9,
+      "fields": {
+          "token": "65",
+          "name": "65",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 10,
+      "fields": {
+          "token": "80",
+          "name": "80",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 11,
+      "fields": {
+          "token": "100",
+          "name": "100",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 12,
+      "fields": {
+          "token": "125",
+          "name": "125",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 13,
+      "fields": {
+          "token": "150",
+          "name": "150",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 14,
+      "fields": {
+          "token": "200",
+          "name": "200",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 15,
+      "fields": {
+          "token": "250",
+          "name": "250",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 16,
+      "fields": {
+          "token": "300",
+          "name": "300",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 17,
+      "fields": {
+          "token": "400",
+          "name": "400",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiondiameter",
+      "pk": 18,
+      "fields": {
+          "token": "500",
+          "name": "500",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

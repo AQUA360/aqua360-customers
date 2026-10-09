@@ -1,0 +1,232 @@
+{%load billing_filters%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LETTER OF SUSPENSION</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 1cm;
+            @frame footer_frame {
+                /* Another static Frame */
+                -pdf-frame-content: footer_frame_cif;
+                left: 5pt;
+                width: 100%;
+                top: 820pt;
+                height: 80pt
+            }
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Regular.ttf');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Italic.ttf');
+            font-weight: normal;
+            font-style: italic;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Bold.ttf');
+            font-weight: bold;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-SemiBold.ttf');
+            font-weight: semi-bold;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-BoldItalic.ttf');
+            font-weight: bold;
+            font-style: italic;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            margin-bottom: 15px;
+        }
+
+        .data-table th {
+            font-weight: bold;
+            padding: 5px;
+            border-top: 1px solid #000000;
+            border-bottom: 1px solid #000000;
+            font-size: 10px;
+        }
+
+        .data-table td {
+            padding: 5px;
+            font-size: 10.5px;
+        }
+
+        body {
+            font-family: 'STIXTwoText', serif;
+            font-size: 12px;
+        }
+        .footer, .signatures {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .header img {
+            width: 120px;
+            height: auto;
+        }
+
+        .header .company-table td {
+            font-size: 9px;
+            margin-x: 1px;
+        }
+
+        .holder-info td {
+            width: 50%;
+            text-align: left;
+        }
+
+
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <table width="100%" style="border-collapse: collapse;">
+            <tr>
+                {% if logo %}
+                <td width="35%" style="vertical-align: top; padding-right: 20px;">
+                    <img src="{{ logo }}" alt="{{ company.name }}">
+                </td>
+                {% else %}
+                <td width="35%" class="company-info" style="vertical-align: top;">
+                    <p style="margin-top: 5px;">{{ company.name }}</p>
+                </td>
+                {% endif %}
+                <td width="30%" style="vertical-align: top;"></td>
+                {% if exploitation_image %}
+                <td width="35%">
+                    <img src="{{ exploitation_image }}">
+                </td>
+                {% endif %}
+            </tr>
+
+            <tr>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td colspan="2" style="font-size: 12px;">
+                    <span style=" margin-top: 2px;">{{ company.address.address_complete }} {{ company.address.postal_code }}</span></br>
+                    <span><strong>TELÈFON D'ATENCIÓ AL CLIENT</strong> {{ company.phone }}</span></br>
+                    {% if company.phone2 %}<span><strong>TELÈFON D'AVERIES</strong> {{ company.phone2 }}</span></br> {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <table style="margin-top: 10px;">
+        <tr>
+            <td></td>
+            <td></td>
+            <td>
+                <table>
+                    <tr style="padding-left:5px; text-align: justify;"><td> {{ holder.name }} {{ holder.surname }} </td></tr>
+                    <tr style="padding-left:5px; text-align: justify;"><td>
+                         {{ holder_address.address_complete }} 
+                         </td></tr>
+                    <tr style="padding-left:5px; text-align: justify;"><td>
+                         {{ holder_address.postal_code }}  {{ holder_address.city_name }} 
+                         </td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    <table width="50%" class="holder-info" style="vertical-align: top;">
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>Titular</span></td>
+            <td style="text-align: right;" ><span> {{ holder.surname }}, {{ holder.name }} </span></td>
+        </tr>
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>NIF</span></td>
+            <td style="text-align: right;" ><span> {{ holder.token }} </span></td>
+        </tr>
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>Adreça subministrament</span></td>
+            <td style="text-align: right;" ><span> {{ sp_address.address_complete }} </span></td>
+        </tr>
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>Núm. contracte</span></td>
+            <td style="text-align: right;" ><span> {{ contract.token }} </span></td>
+        </tr>
+    </table>
+
+    <p style="font-size: 12px; text-align: justify"> {{ company.address.city.name }}, {{ now_date|date:"j F Y" }} </p>
+    <p style="font-size: 12px; text-align: justify">Benvolgut Client/Benvolguda Clienta</p>
+    <p style="font-size: 12px; text-align: justify">Us comuniquem que, amb data d'aquest escrit, ens consten les factures pendents de pagament que es detallen a
+        peu de pàgina, relacionades amb el subministrament que s'indica més amunt.</p>
+    <p style="font-size: 12px; text-align: justify">Un cop complerts els preceptes legals i reglamentaris establerts, ens veurem obligats a efectuar la suspensió del
+        subministrament a partir del segon dia d’haver rebut aquest notificació, en cas de no satisfer el pagament de les
+        esmentades factures. Si no esteu dacord amb la suspensió, podeu formular-hi les al·legacions en contra que
+        cregueu pertinents, les quals podeu presentar a l'organisme corresponent. Ara bé, cal que aviseu en tot cas
+        aquesta empresa.</p>
+    <p style="font-size: 12px; text-align: justify">Per abonar els imports reclamats. Us podeu adreçar a les oficines que es detallen més avall en horari de 8 a 14h,
+        presentant aquest documenti mitjançant targeta de crèdit.</p>
+    <p style="font-size: 12px; text-align: justify">D'acord amb el que estableix el reglament aplicable, una vegada efectuada la suspensió, i en cas que el titular no
+        hagi iniciat les accions per contrarestar les causes que l'han provocat, es procedirà a extingir el contracte en 15
+        dies a comptar des de la suspensió.</p>
+    <p style="font-size: 12px; text-align: justify">Disculpeu-nos si, en el moment de rebre aquesta notificació, ja heu fet efectiu l'import reclamat.</p>
+    <p style="font-size: 12px; text-align: justify">Aprofitem l'avinentesa per saludar-vos atentament i restem a la vostra disposició per a qualsevol aclariment o
+        dubte que cregueu pertinent.
+        </p>
+
+    <table class="info-table" width="100%" style="margin-top: 10px;">
+        <tr>
+            <td style="font-size: 12px; text-align: right; font-weight: bold;"> {{ company.name }} </td>
+        </tr>
+        <tr>
+            <td style="padding-top: 10px;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th align="center" class="border-r" style="width: 25%;">Número de factura</th>
+                            <th align="center" class="border-r" style="width: 20%;">Període / Data de factura</th>
+                            <th align="center" class="border-r" style="width: 27%;">Import</th>
+                            <th align="center" class="border-r" style="width: 26%;">Total a pagar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invoice in invoices %}
+                        <tr>
+                            <td align="center" class="border-r border-b" style="width: 25%;">{{invoice.serie_final }}</td>
+                            <td align="center" class="border-r border-b" style="width: 25%;">{{ invoice.issue_date|date:"d/m/Y" }}</td>
+                            <td align="center" class="border-r border-b" style="width: 27%;">{{ invoice.total_final | format_eu:2 }} €</td>
+                            <td align="right" class="border-b" style="width: 26%;">{{ invoice.left_to_pay | format_eu:2 }} €</td>
+                        </tr>
+                        {% endfor %}
+                        <!-- Total Row -->
+                        <tr style="border-top: 1px solid #000000;">
+                            <td colspan="3" align="right" style="font-weight: bold; padding-top: 6px;"></td>
+                            <td align="right" style="font-weight: bold; padding-top: 6px;">{{ invoice_total | format_eu:2 }} €</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </td>
+        </tr>
+    </table>
+        
+</body>
+</html>

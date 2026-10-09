@@ -1,0 +1,23 @@
+{
+  "status": "Accepted",
+  "body": {
+    "data": {
+      "fields": [
+        {
+          "connec_id": 12547,
+          "connec_type": "ESCO",
+          "customer_code": "3410103",
+          "lat": 41.48061398054251,
+          "long": 2.32357789570044
+        },
+        {
+          "connec_id": 12546,
+          "connec_type": "ESCO",
+          "customer_code": "3373640",
+          "lat": 41.4787431321871,
+          "long": 2.2987969706680644
+        }
+      ]
+    }
+  }
+}

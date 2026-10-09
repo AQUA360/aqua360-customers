@@ -1,0 +1,399 @@
+{% load svg_converter %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Document de pagament</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 1cm;
+            margin-right: 1cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+
+            @frame footer_frame {
+                /* Another static Frame */
+                -pdf-frame-content: footer_content;
+                left: 50pt;
+                width: 512pt;
+                bottom: 12pt;
+                height: 100pt;
+            }
+
+            ;
+
+            @frame footer_frame_cif {
+                /* Another static Frame */
+                -pdf-frame-content: footer_frame_cif;
+                left: 5pt;
+                width: 100%;
+                top: 825pt;
+                height: 80pt;
+            }
+
+            ;
+        }
+
+        @font-face {
+            font-family: 'Montserrat';
+            src: url('config/fonts/Montserrat-Regular.ttf');
+        }
+
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('config/fonts/OpenSans-Regular.ttf');
+            font-weight: normal;
+        }
+
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('contract/fonts/OpenSans-SemiBold.ttf');
+            font-weight: bold;
+        }
+
+        @font-face {
+            font-family: 'OpenSansBold';
+            src: url('config/fonts/OpenSans-ExtraBold.ttf');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'OpenSans', sans-serif;
+            font-size: 11px;
+        }
+
+        .header img {
+            width: auto;
+            height: 50px;
+        }
+    </style>
+</head>
+
+<body>
+
+    {% load i18n %}
+    {% language 'ca' %}
+
+    <div class="header">
+        {% if exploitation_image %}
+        <img src="{{ exploitation_image }}" alt="Exploitation Image" style="width: 100%;" />
+        {% endif %}
+    </div>
+
+    </br>
+
+    <div style="display: flex; width: 100%;">
+        <table style="display: flex; justify-content: space-around; width: 100%;">
+            <tr>
+
+                <td style="width: 47%; vertical-align: top; ">
+                    <div style="">
+                        <table style="font-size: 10px; ">
+                            <tr style="color:{{ main_color }};font-weight: bold; font-family: 'OpenSansBold';">
+                                <td colspan="2">
+                                    <span>DADES DE CONTRACTE</span>
+                                </td>
+                            </tr>
+                            {% if contract %}
+                            <tr style="border-bottom: 0.01em solid rgba(0, 0, 0, 0.5);">
+                                <td style="color: rgb(107, 107, 109);">
+                                    <span>Núm. contracte</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ contract.token }} </span>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr style="border-bottom: 0.01em solid rgba(0, 0, 0, 0.5);">
+                                <td style="color: rgb(107, 107, 109);">
+                                    <span>Client</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.customer_final }} </span>
+                                </td>
+                            </tr>
+                            <tr style="border-bottom: 0.01em solid rgba(0, 0, 0, 0.5);">
+                                <td style="color: rgb(107, 107, 109);">
+                                    <span>NIF</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.customer_token_final }} </span>
+                                </td>
+                            </tr>
+                            <tr style="border-bottom: 0.01em solid rgba(0, 0, 0, 0.5);">
+                                <td style="color: rgb(107, 107, 109);">
+                                    <span>Adreça</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.address_final }} </span>
+                                </td>
+                            </tr>
+                            <tr style="">
+                                <td style="color: rgb(107, 107, 109);">
+                                    <span>Municipi</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.location_final }} </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </td>
+                <td style="width: 6%; vertical-align: top;  ">
+                </td>
+                <td style="width: 36%; vertical-align:top;">
+
+                    <div style="">
+                        <table style="font-size: 10px; ">
+                            <tr
+                                style="text-align: right; color:{{ main_color }}; font-weight: bold; font-family: 'OpenSansBold';">
+                                <td colspan="2">
+                                    <span>DOCUMENT DE PAGAMENT</span>
+                                </td>
+                            </tr>
+
+
+                        </table>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    </br>
+
+    <div class="body-data" style="margin: 15px 0 0 0;">
+        <table style="width: 100%;">
+            <tr style="background-color: {{ main_color }}; color: {{ secondary_color }};">
+                <td style="width: 100%; font-weight: bold; font-family: 'OpenSansBold'; padding-left: 10px;">
+                    Factures pendents de pagament
+                </td>
+            </tr>
+        </table>
+        <table style="width: 100%;">
+            <tr style="background-color: {{ main_color }}; color: {{ secondary_color }};">
+                <td style="width: 25%; padding-left: 10px;">
+                    Número Factura
+                </td>
+                <td style="width: 25%; padding-left: 10px;">
+                    Concepte
+                </td>
+                <td style="width: 25%; padding-left: 10px;">
+                    Data
+                </td>
+                <td style="width: 25%; padding-left: 10px;">
+                    Import
+                </td>
+            </tr>
+            <tr>
+                <td style="width: 25%; padding-left: 10px;">
+                    {% if invoice.serie_final %}
+                    {{ invoice.serie_final }}
+                    {% else %}
+                    {{ invoice.token }}
+                    {% endif %}
+                </td>
+                <td style="width: 25%; padding-left: 10px;">
+                    {% if invoice.title_final %}
+                    {{ invoice.title_final }}
+                    {% else %}
+                    {{ invoice.token }}
+                    {% endif %}
+                </td>
+                <td style="width: 25%; padding-left: 10px;">
+                    {% if payment_date %}
+                    {{ payment_date|date:"d/m/Y" }}
+                    {% else %}
+                    {{ invoice.issue_date|date:"d/m/Y" }}
+                    {% endif %}
+                </td>
+                <td style="width: 25%; padding-left: 10px;">
+                    {% if payment_amount %}
+                    {{ payment_amount | floatformat:2 }}
+                    {% else %}
+                    {{ invoice.left_to_pay | floatformat:2 }}
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+
+        <table style="width: 100%; font-size: 15px; padding: 5px;">
+            <tr style="background-color: rgb(240, 240, 240); color: {{ main_color }};">
+                <td style="width: 50%; padding-left: 15px; text-align: center;">
+                    Data límit pagament
+                    <span style="font-weight: bold; font-family: 'OpenSansBold'; ">
+                        {% if now_date %}
+                        {{ now_date|date:"d/m/Y" }}
+                        {% elif due_date %}
+                        {{ due_date|date:"d/m/Y" }}
+                        {% else %}
+                        {{ invoice.due_date|date:"d/m/Y" }}
+                        {% endif %}
+                        <span>
+                </td>
+                <td style="width: 50%; padding-left: 15px; text-align: center;">
+                    TOTAL A PAGAR
+                    <span style="font-weight: bold; font-family: 'OpenSansBold'; ">
+                        {% if payment_amount %}
+                        {{ payment_amount | floatformat:2 }}
+                        {% else %}
+                        {{ invoice.left_to_pay | floatformat:2 }}
+                        {% endif %}
+                        <span>
+                </td>
+            </tr>
+        </table>
+        </br>
+        <table style="width: 100%;">
+            <tr style="background-color: {{ main_color }}; color: {{ secondary_color }}; font-size: 12px;">
+                <td
+                    style="width: 20%; border-right: 1px solid {{ secondary_color }}; font-size: 12px; font-weight: bold; font-family: 'OpenSansBold'; padding-left: 10px;">
+                    Dades pagament
+                </td>
+                <td style="width: 80%; border: none; font-weight: bold; padding-left: 15px;">
+                    {% if payment_type_token == 'BANK_TRANSFER' %}
+                    TRANSFERÈNCIA BANCÀRIA
+                    {% elif payment_type_token == 'DIRECT_DEBIT' %}
+                    DOMICILIACIÓ BANCÀRIA - SEPA
+                    {% else %}
+                    CPR: {{ barcode_values.format_type }}
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+
+        <table style="width: 100%; margin-top: 0; padding-top:2px;">
+            <tr>
+                <td style="width: 35%; padding: 1px; border: none;">
+                    <p style="font-size: 10px;">
+                        {% if payment_type_token == 'BANK_TRANSFER' %}
+                        <span style="font-weight: bold; color:{{ main_color }}">
+                            Si us plau, realitzi una transferència al següent número de compte:
+                        </span>
+                        <br /><br />
+                        <span>Beneficiari: {{ company.name }}</span><br />
+                        {% if company_bank.bank.name %}<span>Entitat: <b>{{ company_bank.bank.name }}</b></span><br />{% endif %}
+                        <span>IBAN: <b>{{ company_iban }}</b></span><br />
+                        {% if company_swift %}<span>SWIFT/BIC: <b>{{ company_swift }}</b></span><br />{% endif %}
+                        <br />
+                        <span>Concepte/Ref: <b>{{ reference }}</b></span>
+                        <br /><br />
+                        <span>El rebut bancari acredita el pagament d'aquest document.</span>
+                        {% elif payment_type_token == 'DIRECT_DEBIT' %}
+                        <span style="font-weight: bold; color:{{ main_color }}">
+                            Aquest rebut serà carregat al següent número de compte:
+                        </span>
+                        <br /><br />
+                        <span>IBAN: <b>{{ client_iban }}</b></span><br />
+                        <br />
+                        <span>No cal que faci cap accion per realitzi el pagament.</span>
+                        <br /><br />
+                        <span>El rebut bancari acredita el pagament d'aquest document.</span>
+                        {% else %}
+                        <span style="font-weight: bold; color:{{ main_color }}">
+                            Opcions disponibles per a realitzar el pagament de la seva factura:
+                        </span>
+                        <br />
+                        <span>
+                            Efectiu a la finestreta:
+                        </span>
+                        &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                        &nbsp;
+                        <span>CORREOS</span>
+                        <br />
+                        <span>
+                            Targeta als caixers:
+                        </span>
+                        &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                        &nbsp; &nbsp; &nbsp;
+                        <span>CAIXABANK</span>
+                        </span>
+                        <br />
+                        <br />
+                        <span>
+                            El rebut acredita el pagament d'aquest document.
+                        </span>
+                        {% endif %}
+                    </p>
+                </td>
+                <td style="width: 65%; padding-left: 10px; border: none;">
+                    <table style="width: 100%;">
+                        <tr>
+                            <td style="width: 100%; border: none;">
+                                <div style="display: flex; justify-content: flex-end;">
+                                    {% if payment_type_token == 'BANK_TRANSFER' or payment_type_token == 'DIRECT_DEBIT' %}
+                                        <div style="text-align: right; margin-top: 10px;">
+                                            <span style="font-size: 14px; font-weight: bold; color: {{ main_color }}">IMPORT A PAGAR: {{ payment_amount | floatformat:2 }} €</span>
+                                            <br />
+                                            <span style="font-size: 12px; font-weight: bold;">Referència: {{ reference }}</span>
+                                        </div>
+                                    {% else %}
+                                        <img src="data:image/png;base64,{{ barcode }}" alt="Barcode for {{ invoice.token }}"
+                                            style="width: 100%; height: auto; margin-bottom: 0px;">
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="width: 100%; border: none; margin-top: 5px;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr
+                                        style="background-color: rgb(240, 240, 240); font-size: 10px; text-align: center;">
+                                        <td style="width: 25%; border: 1px solid #ccc; padding: 3px;">
+                                            Emissora
+                                        </td>
+                                        <td style="width: 25%; border: 1px solid #ccc; padding: 3px;">
+                                            Referència
+                                        </td>
+                                        <td style="width: 20%; border: 1px solid #ccc; padding: 3px;">
+                                            Identificació
+                                        </td>
+                                        <td style="width: 15%; border: 1px solid #ccc; padding: 3px;">
+                                            Data Límit
+                                        </td>
+                                        <td style="width: 15%; border: 1px solid #ccc; padding: 3px;">
+                                            Import
+                                        </td>
+                                    </tr>
+                                    <tr style="text-align: center; font-size: 10px;">
+                                        <td style="width: 25%; border: 1px solid #ccc; padding: 3px;">
+                                            {% if payment_type_token == 'BANK_TRANSFER' %}Identificació{% else %}{{ barcode_values.transmitter }}{{ barcode_values.suffix }}{% endif %}
+                                        </td>
+                                        <td style="width: 25%; border: 1px solid #ccc; padding: 3px;">
+                                            {{ barcode_values.display_reference }}
+                                        </td>
+                                        <td style="width: 20%; border: 1px solid #ccc; padding: 3px;">
+                                            {{ barcode_values.ident }}
+                                        </td>
+                                        <td style="width: 15%; border: 1px solid #ccc; padding: 3px;">
+                                            {% if now_date %}
+                                            {{ now_date|date:"d/m/Y" }}
+                                            {% elif due_date %}
+                                            {{ due_date|date:"d/m/Y" }}
+                                            {% else %}
+                                            {{ invoice.due_date|date:"d/m/Y" }}
+                                            {% endif %}
+                                        </td>
+                                        <td style="width: 15%; border: 1px solid #ccc; padding: 3px;">
+                                            {% if payment_amount %}
+                                            {{ payment_amount | floatformat:2 }} €
+                                            {% else %}
+                                            {{ invoice.left_to_pay | floatformat:2 }} €
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    {% endlanguage %}
+
+</body>

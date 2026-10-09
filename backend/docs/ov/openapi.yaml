@@ -1,0 +1,2159 @@
+openapi: 3.0.3
+info:
+  title: Programa de Abonados — API Oficina Virtual (OV)
+  description: |
+    API de consulta y modificación de datos de abonados para Oficinas Virtuales (OV)
+    y otras aplicaciones de terceros integradas con Aqua360 — Customers (Programa de Abonados).
+
+    ## Resumen de endpoints
+
+    | Endpoint | Método | Descripción |
+    |---|---|---|
+    | `/auth/login/` | POST | Obtención del token (usuario del grupo `ov`) |
+    | `/ov/contract-detail/` | GET | Detalle del contrato |
+    | `/ov/billing-data/` | GET / POST | Consulta y actualización de datos de facturación |
+    | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN |
+    | `/ov/invoices/` | GET | Listado de facturas (excluye pre-facturas) |
+    | `/ov/invoice/` | GET | Detalle de una factura |
+    | `/ov/invoice/{token}/detail/` | GET | Detalle completo de una factura (tarifas y desglose fiscal) |
+    | `/ov/invoice/paid/` | POST | Marcar factura como pagada (TPV online) |
+    | `/ov/unpayed-invoices/` | GET | Facturas impagadas filtradas por estado |
+    | `/ov/billed-consumptions/` | GET | Consumos facturados |
+    | `/ov/consumptions/` | GET | Historial de consumos paginado con filtro por fechas |
+    | `/ov/consumption/{id}/download/` | GET | Descargar fichero de un consumo individual (PDF/CSV) |
+    | `/ov/consumptions/download/` | POST | Descargar historial de consumos en lote (selección o todos filtrados) |
+    | `/ov/billing-periods/` | GET | Periodos de facturación disponibles del contrato |
+    | `/ov/invoice-pdf/` | GET | PDF de factura en Base64 |
+    | `/ov/create-reading/` | POST | Registrar lectura de contador |
+    | `/ov/contracts/` | GET | Listado de contratos por titular o pagador (DNI) |
+    | `/ov/contract/{token}/` | GET | Detalle del contrato por token (incluye datos de la cuenta) |
+    | `/ov/meter/{token}/` | GET | Detalle del contador del contrato por token |
+
+    ## Autenticación
+
+    1. Obtener un token con `POST /auth/login/` (usuario Django del grupo `ov`, creado por el administrador del PA).
+    2. Incluir el token en cada llamada: `Authorization: Token <token>`.
+
+    El usuario OV solo puede acceder a rutas bajo el prefijo `/ov/`. Cualquier otra ruta devuelve `403 Forbidden`.
+
+    ## Prefijo de URL
+
+    Si el despliegue tiene `API_URL_PREFIX=True`, añadir el prefijo `/api` a todas las rutas
+    (p. ej. `/api/ov/contract-detail/`).
+
+    ## Identificadores
+
+    La mayoría de endpoints requieren el parámetro de consulta `contract_token`, que corresponde
+    al campo `Contract.token` del contrato en el PA.
+
+    ## Notas generales
+
+    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` devuelve el IBAN sin enmascarar cuando `es_titular_cuenta` es `true`.
+    - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
+    - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
+  version: 1.0.0
+  contact:
+    name: Aqua360 — Programa de Abonados
+
+servers:
+  - url: https://customers.example.com
+    description: Entorno de producción (sustituir por el dominio real)
+  - url: http://localhost:8000
+    description: Entorno local de desarrollo
+
+tags:
+  - name: Autenticación
+    description: Obtención del token de acceso
+  - name: Contrato
+    description: Consulta de datos del contrato
+  - name: Contador
+    description: Consulta de los datos del contador del contrato
+  - name: Datos de facturación
+    description: Consulta y actualización de datos de facturación del abonado
+  - name: Facturas
+    description: Consulta, pago y descarga de facturas
+  - name: Consumos
+    description: Consulta de consumos facturados
+  - name: Lecturas
+    description: Registro de lecturas de contador
+
+paths:
+  /auth/login/:
+    post:
+      tags:
+        - Autenticación
+      summary: Obtener token de acceso
+      description: |
+        Autentica un usuario Django y devuelve el token para las llamadas siguientes.
+        El usuario debe pertenecer al grupo `ov` y ser creado previamente por el administrador del PA.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: ov_user
+              password: "********"
+      responses:
+        "200":
+          description: Autenticación correcta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              example:
+                username: ov_user
+                token: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+        "400":
+          description: Datos de login inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrors"
+
+  /ov/contract-detail/:
+    get:
+      tags:
+        - Contrato
+      summary: Detalle del contrato
+      description: |
+        Devuelve los datos principales de un contrato identificado por `contract_token`.
+      operationId: getContractDetail
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      responses:
+        "200":
+          description: Datos del contrato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractDetail"
+              example:
+                token: CTR-001
+                status_token: "1"
+                status_name: Activo
+                holder_token: "12345678A"
+                payment_type: DOM
+                use_type: Doméstico
+                last_invoice_date: "2026-01-15T10:30:00Z"
+                iban: "ES123456********56789012"
+                supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                meter_serial_number: MTR-001
+                meter_caliber: "15"
+                smart_metering: "false"
+                registration_date: "15/03/2020"
+                termination_date: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/billing-data/:
+    get:
+      tags:
+        - Datos de facturación
+      summary: Consultar datos de facturación
+      description: |
+        Devuelve los datos de facturación y contacto del titular asociados al contrato.
+      operationId: getBillingData
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      responses:
+        "200":
+          description: Datos de facturación del contrato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingData"
+              example:
+                nif: "12345678A"
+                tenant_name: Anna Garcia
+                supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                city: Barcelona
+                postal_code: "08110"
+                paper_invoice: "false"
+                email: anna.garcia@example.com
+                invoice_language: es
+                phone1: "600123456"
+                phone2: ""
+                payment_type: DOM
+                iban: "ES123456********56789012"
+                holder_name: Anna Garcia
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags:
+        - Datos de facturación
+      summary: Actualizar datos de facturación
+      description: |
+        Actualiza los datos de contacto y el tipo de comunicación (factura en papel o digital)
+        del contrato. Los cambios quedan registrados en el historial del contrato.
+
+        El campo `paper_invoice` es obligatorio. Los demás campos son opcionales;
+        solo se actualizan si se envían en el cuerpo de la petición.
+      operationId: updateBillingData
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBillingDataRequest"
+            example:
+              email: anna.garcia@example.com
+              phone1: "600123456"
+              phone2: "600654321"
+              paper_invoice: false
+      responses:
+        "200":
+          description: Datos actualizados correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateBillingDataResponse"
+              example:
+                message: Billing data updated successfully
+                data:
+                  nif: "12345678A"
+                  tenant_name: Anna Garcia
+                  supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                  city: Barcelona
+                  postal_code: "08110"
+                  paper_invoice: "false"
+                  email: anna.garcia@example.com
+                  invoice_language: es
+                  phone1: "600123456"
+                  phone2: "600654321"
+                  payment_type: DOM
+                  iban: "ES123456********56789012"
+                  holder_name: Anna Garcia
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /ov/billing-data/update-iban/:
+    post:
+      tags:
+        - Datos de facturación
+      summary: Actualizar IBAN
+      description: |
+        Actualiza la cuenta bancaria (IBAN) asociada al método de pago del contrato.
+
+        El `nif` enviado debe coincidir con el NIF del titular del contrato (`holder.token`).
+        El IBAN se normaliza eliminando espacios y convirtiéndolo a mayúsculas.
+      operationId: updateIban
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIbanRequest"
+            example:
+              iban: ES1234567890123456789012
+              nif: "12345678A"
+              iban_holder_name: Anna Garcia
+              iban_holder_dni: "12345678A"
+      responses:
+        "200":
+          description: IBAN actualizado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateIbanResponse"
+              example:
+                message: "IBAN updated successfully "
+                data:
+                  nif: "12345678A"
+                  tenant_name: Anna Garcia
+                  supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                  city: Barcelona
+                  postal_code: "08110"
+                  paper_invoice: "false"
+                  email: anna.garcia@example.com
+                  invoice_language: es
+                  phone1: "600123456"
+                  phone2: ""
+                  payment_type: DOM
+                  iban: "ES123456********56789012"
+                  holder_name: Anna Garcia
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /ov/invoices/:
+    get:
+      tags:
+        - Facturas
+      summary: Listar facturas del contrato
+      description: |
+        Devuelve todas las facturas del contrato excepto las pre-facturas
+        (facturas con estado token `1`).
+
+        El importe devuelto en `invoice_amount` corresponde al pendiente de pago (`left_to_pay`).
+      operationId: listInvoices
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      responses:
+        "200":
+          description: Lista de facturas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InvoiceSummary"
+              example:
+                - contract_number: CTR-001
+                  invoice_number: F-2026-0001
+                  invoice_token: INV-001
+                  invoice_date: "2026-01-15"
+                  invoice_amount: 45.50
+                  invoice_status: Enviada
+                  pdf_available: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/invoice/:
+    get:
+      tags:
+        - Facturas
+      summary: Detalle de una factura
+      description: |
+        Devuelve el detalle de una factura concreta del contrato.
+      operationId: getInvoice
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/invoiceToken"
+      responses:
+        "200":
+          description: Detalle de la factura
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceSummary"
+              example:
+                contract_number: CTR-001
+                invoice_number: F-2026-0001
+                invoice_token: INV-001
+                invoice_date: "2026-01-15"
+                invoice_amount: 45.50
+                invoice_status: Enviada
+                pdf_available: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/invoice/{token}/detail/:
+    get:
+      tags:
+        - Facturas
+      summary: Detalle completo de una factura
+      description: |
+        Devuelve el detalle ampliado de una factura identificada por su token, ampliando
+        el listado básico (`/ov/invoices/`) con el periodo de facturación, la referencia
+        de la vivienda, la dirección tributaria, las tarifas aplicadas con su normativa
+        y el desglose fiscal del recibo.
+
+        Solo devuelve facturas definitivas (tipo `invoice_type_invoice_token`); las
+        proformas, pre-facturas y presupuestos se excluyen, igual que en `/ov/invoice-pdf/`.
+
+        La dirección tributaria (`direccion_tributaria`) es condicional:
+
+        - Si la factura **no** está domiciliada (el tipo de pago no es `DIRECT_DEBIT`),
+          el campo `direccion_tributaria` **no aparece** en la respuesta.
+        - Si está domiciliada y el pagador es el propio titular del contrato
+          (`payer_token_final` coincide con `customer_token_final`), el campo aparece
+          con `anonimizada: false` y la dirección completa.
+        - Si está domiciliada pero el pagador es un tercero, el campo aparece con
+          `anonimizada: true`, se omite `direccion` y solo se exponen `codigo_postal`,
+          `ciudad`, `provincia` y `pais`.
+      operationId: getInvoiceDetailByToken
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/invoiceTokenPath"
+      responses:
+        "200":
+          description: Detalle completo de la factura
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceFullDetail"
+              example:
+                contract_number: CTR-001
+                invoice_token: INV-001
+                invoice_number: F-2026-0001
+                invoice_date: "2026-03-05"
+                invoice_status: Enviada
+                due_date: "2026-03-25"
+                invoice_amount: 45.50
+                total_amount: 48.19
+                subtotal_amount: 45.50
+                payment_method: Domiciliació Bancària - SEPA
+                pdf_available: true
+                billing_period:
+                  year: 2026
+                  month: 3
+                  days: 31
+                dwelling_code: VIV-000123
+                direccion_tributaria:
+                  anonimizada: false
+                  direccion: "C/ Barcelona, 31"
+                  codigo_postal: "08110"
+                  ciudad: Barcelona
+                  provincia: Barcelona
+                  pais: España
+                tariffs:
+                  - name: Subministrament d'aigua
+                    description: Canalización y consumo de agua
+                    units: 14
+                    unit_price: 2.20
+                    tax_percent: 10
+                    total: 30.80
+                    normativa:
+                      reference: "BOE-A-2020-12345"
+                      name: Tarifa del ciclo integral del agua
+                fiscal_breakdown:
+                  - organization: Empresa gestora
+                    amount: 14.50
+                  - organization: Ayuntamiento
+                    amount: 8.00
+                  - organization: EDAR
+                    amount: 3.10
+                  - organization: Consorcio
+                    amount: 4.20
+                  - organization: Agencia del agua
+                    amount: 9.85
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Factura no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Invoice not found
+
+  /ov/invoice/paid/:
+    post:
+      tags:
+        - Facturas
+      summary: Marcar factura como pagada
+      description: |
+        Marca como pagados todos los pagos pendientes de una factura tras un cobro
+        por TPV online. Solo aplica a facturas de tipo factura (no presupuestos).
+
+        Los pagos se actualizan con tipo de pago `TPV_ONLINE` y fecha de pago actual.
+      operationId: markInvoicePaid
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoicePaidRequest"
+            example:
+              contract_token: CTR-001
+              invoice_token: INV-001
+      responses:
+        "200":
+          description: Factura marcada como pagada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoicePaidResponse"
+              example:
+                success: true
+                message: Invoice marked as paid successfully
+                invoice_token: INV-001
+                new_status: Pagada
+        "400":
+          description: Datos inválidos o factura no encontrada
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationErrors"
+                  - $ref: "#/components/schemas/ErrorMessage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/unpayed-invoices/:
+    get:
+      tags:
+        - Facturas
+      summary: Listar facturas impagadas
+      description: |
+        Devuelve las facturas del contrato filtradas por uno o más estados de factura.
+
+        El parámetro `statuses` es obligatorio y acepta tokens de `InvoiceStatus` separados por comas.
+        Ejemplo: `statuses=-3,2` devuelve facturas en morosidad o confirmadas.
+
+        Tokens de estado habituales (pueden variar según la configuración del despliegue):
+        - `0`: Pagada
+        - `2`: Confirmada
+        - `3`: Enviada
+        - `-1`: Vencida
+        - `-3`: Morosidad
+        - `4`: En compromiso
+
+        Parámetro opcional `exc_payment_type_token`: excluye facturas cuyo tipo de pago final
+        coincida con alguno de los tokens indicados (separados por comas).
+      operationId: listUnpaidInvoices
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+        - name: statuses
+          in: query
+          required: true
+          description: Tokens de estado de factura (`InvoiceStatus.token`), separados por comas
+          schema:
+            type: string
+          example: "-3,2"
+        - name: exc_payment_type_token
+          in: query
+          required: false
+          description: Tokens de tipo de pago a excluir (`PaymentType.token`), separados por comas
+          schema:
+            type: string
+          example: DOM
+      responses:
+        "200":
+          description: Lista de facturas filtradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InvoiceSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ov/billed-consumptions/:
+    get:
+      tags:
+        - Consumos
+      summary: Consumos facturados
+      description: |
+        Devuelve el historial de consumos facturados del contrato, agrupados por fecha de emisión
+        de cada factura.
+      operationId: listBilledConsumptions
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      responses:
+        "200":
+          description: Lista de consumos facturados por factura
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BilledConsumption"
+              example:
+                - timestamp: "2026-01-15"
+                  consumptions:
+                    - meter: MTR-001
+                      reading: 1250.5
+                      consumption: 12.0
+                      origin: ""
+                      contract_number: CTR-001
+                      is_estimated: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/consumptions/:
+    get:
+      tags:
+        - Consumos
+      summary: Historial de consumos del contrato
+      description: |
+        Devuelve el historial de consumos del contrato en nomenclatura HF
+        (p. ej. `2025-3T`), una fila por periodo con la lectura actual, la
+        lectura anterior, el consumo, la fecha de lectura y el indicador de
+        lectura estimada.
+
+        A diferencia de `/ov/billed-consumptions/`, que agrupa por la fecha de
+        emisión de la factura, la lectura anterior se resuelve en el backend
+        (cadena `Reading.previous_reading`), insensible a lecturas estimadas y
+        cambios de contador que romperían el orden de la serie en el BFF.
+
+        Paginación de servidor: `count` es el total de filas que cumplen los
+        filtros y `next`/`previous` son las URLs de las páginas contiguas
+        (`null` en los extremos). `date_from` y `date_to` filtran por la fecha
+        de lectura (`reading_date`, ambos inclusive); si `date_from` es
+        posterior a `date_to` responde `400`. Un `contract_token` desconocido
+        responde `404`.
+      operationId: listConsumptionHistory
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/dateFrom"
+        - $ref: "#/components/parameters/dateTo"
+        - $ref: "#/components/parameters/pageParam"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Página del historial de consumos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsumptionHistoryResponse"
+              example:
+                count: 100
+                next: http://localhost:8000/ov/consumptions/?contract_token=CTR-001&page=2
+                previous: null
+                results:
+                  - id: 42
+                    period: "2025-3T"
+                    reading: 1250.5
+                    previous_reading: 1238.5
+                    consumption: 12.0
+                    reading_date: "2025-09-15"
+                    is_estimated: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ov/consumption/{id}/download/:
+    get:
+      tags:
+        - Consumos
+      summary: Descargar consumo individual
+      description: |
+        Devuelve el fichero de un único consumo del historial. El `id` es el
+        `Reading.id` expuesto por `GET /ov/consumptions/` y `contract_token` el
+        token del contrato al que pertenece la lectura.
+
+        El formato se elige con `?format=` (`pdf` por defecto o `csv`).
+        Responde `404` si el contrato no existe o si la lectura no existe o no
+        pertenece al contador del contrato.
+      operationId: downloadConsumption
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/consumptionIdPath"
+        - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/downloadFormat"
+      responses:
+        "200":
+          description: Fichero del consumo
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ov/consumptions/download/:
+    post:
+      tags:
+        - Consumos
+      summary: Descargar historial de consumos (selección o todos los filtrados)
+      description: |
+        Genera el fichero del historial de consumos. Si se pasan `reading_ids`,
+        se descargan únicamente esas lecturas (filas marcadas manualmente). Si
+        no, se aplican `date_from`/`date_to` y se devuelve el conjunto completo
+        filtrado, sin límite de página, pensado para «Seleccionar todo».
+
+        El formato se elige con `format` en el cuerpo (`pdf` por defecto,
+        `csv` o `zip`). Responde `404` si el contrato no existe y `400` con
+        errores de validación por campo si `date_from` es posterior a
+        `date_to`, hay un `reading_id` desconocido o el cuerpo es inválido.
+      operationId: downloadConsumptions
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsumptionDownloadRequest"
+            example:
+              contract_token: CTR-001
+              reading_ids: [42, 43, 44]
+              date_from: "2025-01-01"
+              date_to: "2025-12-31"
+              format: pdf
+      responses:
+        "200":
+          description: Fichero con el historial solicitado
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/ValidationErrors"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ov/billing-periods/:
+    get:
+      tags:
+        - Datos de facturación
+      summary: Periodos de facturación disponibles del contrato
+      description: |
+        Devuelve los periodos de facturación disponibles para el contrato.
+        Los ciclos de facturación (trimestral, bimestral, etc.) los define el
+        sistema central (PA) y varían según el contrato, por lo que el frontal
+        no puede hardcodearlos: este endpoint los expone tal cual los genera el
+        PA para que el selector de «Primera domiciliación» del formulario de
+        medio de pago se rellene dinámicamente.
+      operationId: listBillingPeriods
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      responses:
+        "200":
+          description: Periodos de facturación disponibles del contrato
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BillingPeriodItem"
+              example:
+                - year: 2026
+                  period_code: "1T"
+                  months_label: "enero-marzo"
+                  is_current: false
+                - year: 2026
+                  period_code: "2T"
+                  months_label: "abril-junio"
+                  is_current: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ov/invoice-pdf/:
+    get:
+      tags:
+        - Facturas
+      summary: Obtener PDF de factura
+      description: |
+        Genera y devuelve el PDF de una factura en formato Base64.
+
+        La factura se identifica por `invoice_token` (campo `Invoice.token`) o, en su defecto,
+        por `serie_final` si no se encuentra por token. Solo se consideran facturas de tipo factura
+        (según la configuración `invoice_type_invoice_token` del proyecto).
+      operationId: getInvoicePdf
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/invoiceToken"
+      responses:
+        "200":
+          description: PDF de la factura codificado en Base64
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoicePdfResponse"
+              example:
+                pdf: JVBERi0xLjQKJeLjz9MK...
+                filename: invoice_F-2026-0001_42.pdf
+                document_name: F-2026-0001.pdf
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /ov/create-reading/:
+    post:
+      tags:
+        - Lecturas
+      summary: Registrar lectura de contador
+      description: |
+        Crea una nueva lectura de contador asociada al contrato.
+
+        El contador (`meter`) debe coincidir con el contador del punto de suministro
+        por defecto del contrato (`supply_point_default`).
+
+        La lectura se crea con origen `OV`. Si la fecha no está dentro del periodo de facturación
+        permitido, la lectura se marca como lectura de control (`is_control=true`).
+      operationId: createReading
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReadingRequest"
+            example:
+              reading_at: "2026-01-15"
+              contract: CTR-001
+              meter: MTR-001
+              reading: 1250.5
+      responses:
+        "201":
+          description: Lectura creada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateReadingResponse"
+              example:
+                success: true
+                message: Reading created successfully
+                reading_token: OV-123
+                reading_value: "1250.5"
+                reading_date: "2026-01-15"
+                contract_token: CTR-001
+                meter_token: MTR-001
+                supply_point_token: SP-001
+        "400":
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrors"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/contracts/:
+    get:
+      tags:
+        - Contrato
+      summary: Listar contratos por DNI
+      description: |
+        Devuelve los contratos en los que el DNI indicado actúa como titular del contrato
+        (`holder.token`) o como titular de la cuenta de domiciliación
+        (`payment.IBAN.person.token` / `payment.IBAN.dni`).
+
+        El DNI es obligatorio y se compara tras normalizarlo (sin espacios y en mayúsculas).
+        Si el DNI coincide en ambos roles, el contrato aparece una sola vez.
+
+        `acciones_permitidas` se calcula por contrato según su estado y su tipo de pago,
+        por lo que su contenido puede variar entre elementos de una misma respuesta.
+      operationId: listContractsByDni
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/dni"
+        - $ref: "#/components/parameters/contractStatus"
+        - $ref: "#/components/parameters/pageParam"
+        - $ref: "#/components/parameters/limitParam"
+      responses:
+        "200":
+          description: Lista paginada de contratos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractListResponse"
+              example:
+                count: 2
+                page: 1
+                limit: 20
+                total_pages: 1
+                results:
+                  - token: CTR-001
+                    status_token: "1"
+                    status_name: Alta
+                    payment_type: DOM
+                    titular_contrato:
+                      dni: "12345678A"
+                      nombre: Anna Garcia
+                    titular_domiciliacion:
+                      dni: "12345678A"
+                      nombre: Anna Garcia
+                      iban: "ES912345********45678901"
+                    acciones_permitidas:
+                      - consultar_datos_facturacion
+                      - actualizar_iban
+                      - registrar_lectura
+                  - token: CTR-002
+                    status_token: "-1"
+                    status_name: Baixa
+                    payment_type: DOM
+                    titular_contrato:
+                      dni: "12345678A"
+                      nombre: Anna Garcia
+                    titular_domiciliacion: null
+                    acciones_permitidas:
+                      - consultar_datos_facturacion
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /ov/contract/{token}/:
+    get:
+      tags:
+        - Contrato
+      summary: Detalle del contrato por token
+      description: |
+        Devuelve los datos del contrato identificado por el `token` incluido en la
+        propia ruta, a diferencia de `/ov/contract-detail/`, que recibe el
+        identificador como parámetro de consulta `contract_token`.
+
+        Expande las estructuras de `/ov/contract-detail/` y `/ov/billing-data/`
+        añadiendo los datos de la cuenta de domiciliación: el DNI de su titular,
+        la dirección postal del titular y la bandera que indica si el titular del
+        contrato es también el titular de la cuenta.
+
+        Excepción a la nota general sobre IBAN: en este endpoint el campo `iban`
+        se devuelve sin enmascarar cuando `es_titular_cuenta` es `true`; si es
+        `false` aparece enmascarado (8 primeros caracteres + asteriscos + 8 últimos).
+      operationId: getContractDetailByToken
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractTokenPath"
+      responses:
+        "200":
+          description: Datos del contrato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractFullDetail"
+              example:
+                token: CTR-001
+                status_token: "1"
+                status_name: Activo
+                holder_token: "12345678A"
+                payment_type: DOM
+                use_type: Doméstico
+                last_invoice_date: "2026-01-15T10:30:00Z"
+                supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                meter_serial_number: MTR-001
+                meter_caliber: "15"
+                smart_metering: "false"
+                registration_date: "15/03/2020"
+                termination_date: null
+                nif: "12345678A"
+                tenant_name: Anna Garcia
+                holder_name: Anna Garcia
+                city: Barcelona
+                postal_code: "08110"
+                paper_invoice: "false"
+                email: anna.garcia@example.com
+                invoice_language: es
+                phone1: "600000000"
+                phone2: "600000001"
+                dni_titular_cuenta: "12345678A"
+                es_titular_cuenta: true
+                direccion_titular: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
+                iban: "ES12345678901234567890"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ov/meter/{token}/:
+    get:
+      tags:
+        - Contador
+      summary: Detalle del contador por token de contrato
+      description: |
+        Devuelve los cinco datos del contador que la Oficina Virtual muestra en
+        su bloque fijo de lectura: número de serie, calibre, cifras, año de
+        fabricación y fecha de instalación.
+
+        El `token` de la ruta es el del contrato; el contador se resuelve desde
+        su punto de suministro por defecto (`supply_point_default.meter`), el
+        mismo origen que `meter_serial_number` y `meter_caliber` de
+        `/ov/contract/{token}/`. Este endpoint añade los tres metadatos del
+        dispositivo (cifras, fabricación e instalación) que no se exponen en el
+        detalle del contrato.
+
+        Si el contrato existe pero no tiene contador, responde `200` con los
+        cinco campos a `null`.
+      operationId: getMeterDetailByToken
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractTokenPath"
+      responses:
+        "200":
+          description: Datos del contador
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeterDetail"
+              example:
+                meter_serial_number: MTR-001
+                meter_caliber: "15"
+                digits: 5
+                manufacture_year: 2019
+                installation_date: "2020-03-15"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Token obtenido vía `POST /auth/login/`.
+        Formato de la cabecera: `Authorization: Token <token>`
+
+  parameters:
+    contractToken:
+      name: contract_token
+      in: query
+      required: true
+      description: Token del contrato (`Contract.token`)
+      schema:
+        type: string
+      example: CTR-001
+
+    invoiceToken:
+      name: invoice_token
+      in: query
+      required: true
+      description: Token de la factura (`Invoice.token`) o, en PDF, también `serie_final`
+      schema:
+        type: string
+      example: INV-001
+
+    dni:
+      name: dni
+      in: query
+      required: true
+      description: |
+        DNI/NIF del titular del contrato (`Contract.holder.token`) o del titular de la
+        cuenta de domiciliación (`PersonBank.dni` / `PersonBank.person.token`).
+      schema:
+        type: string
+      example: "12345678A"
+
+    contractStatus:
+      name: estado
+      in: query
+      required: false
+      description: |
+        Token de estado de contrato (`ContractStatus.token`) por el que filtrar.
+        Tokens habituales en los fixtures de referencia: `1` (Alta) y `-1` (Baixa).
+        Los tokens reales dependen de la configuración del despliegue.
+      schema:
+        type: string
+      example: "1"
+
+    pageParam:
+      name: page
+      in: query
+      required: false
+      description: Número de página (base 1).
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+
+    limitParam:
+      name: limit
+      in: query
+      required: false
+      description: |
+        Número máximo de contratos por página. El servidor acota el valor al máximo
+        configurado aunque se solicite uno mayor.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+
+    dateFrom:
+      name: date_from
+      in: query
+      required: false
+      description: Fecha mínima de lectura (inclusive), formato `YYYY-MM-DD`.
+      schema:
+        type: string
+        format: date
+      example: "2025-01-01"
+
+    dateTo:
+      name: date_to
+      in: query
+      required: false
+      description: Fecha máxima de lectura (inclusive), formato `YYYY-MM-DD`.
+      schema:
+        type: string
+        format: date
+      example: "2025-12-31"
+
+    pageSize:
+      name: page_size
+      in: query
+      required: false
+      description: Tamaño de página. El servidor acota el valor al máximo indicado aunque se solicite uno mayor.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+      example: 50
+
+    contractTokenPath:
+      name: token
+      in: path
+      required: true
+      description: Token del contrato (`Contract.token`)
+      schema:
+        type: string
+      example: CTR-001
+
+    invoiceTokenPath:
+      name: token
+      in: path
+      required: true
+      description: Token de la factura (`Invoice.token`)
+      schema:
+        type: string
+      example: INV-001
+
+    consumptionIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID de la lectura (`Reading.id`)
+      schema:
+        type: integer
+      example: 42
+
+    downloadFormat:
+      name: format
+      in: query
+      required: false
+      description: |
+        Formato del fichero para `GET /ov/consumption/{id}/download/`
+        (`pdf` por defecto o `csv`).
+      schema:
+        type: string
+        enum: [pdf, csv]
+        default: pdf
+      example: pdf
+
+  responses:
+    Unauthorized:
+      description: Falta o es incorrecto el token de autenticación
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: Las credenciales de autenticación no se proveyeron.
+
+    BadRequest:
+      description: Parámetros o datos de entrada inválidos
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+          examples:
+            missingToken:
+              summary: Falta contract_token
+              value:
+                error: Contract token is required
+            notFound:
+              summary: Contrato no encontrado
+              value:
+                error: Contract not found
+
+    ValidationErrors:
+      description: Errores de validación del cuerpo JSON (formato Django REST Framework)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrors"
+          example:
+            date_from:
+              - La fecha de inicio no puede ser posterior a la final
+            reading_ids:
+              - ID de lectura desconocido: 999
+
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+          example:
+            error: Contract not found
+
+    InternalError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMessage"
+          example:
+            error: "Failed to update billing data: ..."
+
+    TooManyRequests:
+      description: Se ha superado el límite de consultas por DNI para esta cuenta
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: Solicitud fue regulada (throttled). Expected available in 60 seconds.
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: ov_user
+        password:
+          type: string
+          format: password
+          example: "********"
+
+    LoginResponse:
+      type: object
+      required:
+        - username
+        - token
+      properties:
+        username:
+          type: string
+          example: ov_user
+        token:
+          type: string
+          description: Token para la cabecera Authorization
+          example: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+
+    ErrorDetail:
+      type: object
+      properties:
+        detail:
+          type: string
+
+    ErrorMessage:
+      type: object
+      properties:
+        error:
+          type: string
+
+    ValidationErrors:
+      type: object
+      additionalProperties: true
+      description: Errores de validación por campo (formato Django REST Framework)
+
+    ContractDetail:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Token del contrato
+        status_token:
+          type: string
+          nullable: true
+          description: Token del estado del contrato
+        status_name:
+          type: string
+          nullable: true
+          description: Nombre del estado del contrato
+        holder_token:
+          type: string
+          nullable: true
+          description: NIF/documento del titular
+        payment_type:
+          type: string
+          nullable: true
+          description: Token del tipo de pago
+        use_type:
+          type: string
+          nullable: true
+          description: Tipo de uso del contrato
+        last_invoice_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: Fecha de creación de la última factura
+        iban:
+          type: string
+          description: IBAN enmascarado
+        supply_point_address:
+          type: string
+          nullable: true
+          description: Dirección del punto de suministro por defecto
+        meter_serial_number:
+          type: string
+          nullable: true
+          description: Token del contador
+        meter_caliber:
+          type: string
+          nullable: true
+          description: Calibre del contador
+        smart_metering:
+          type: string
+          enum: ["true", "false"]
+          description: Indica si el contador tiene telelectura
+        registration_date:
+          type: string
+          nullable: true
+          description: Fecha de alta en formato dd/mm/aaaa
+        termination_date:
+          type: string
+          nullable: true
+          description: Fecha de baja en formato dd/mm/aaaa (si el contrato está dado de baja)
+
+    BillingData:
+      type: object
+      properties:
+        nif:
+          type: string
+          description: NIF del titular
+        tenant_name:
+          type: string
+          description: Nombre completo del titular
+        supply_point_address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        postal_code:
+          type: string
+          nullable: true
+        paper_invoice:
+          type: string
+          enum: ["true", "false"]
+          description: "`true` si recibe factura en papel, `false` si es digital"
+        email:
+          type: string
+        invoice_language:
+          type: string
+          description: Idioma de factura (configuración del despliegue)
+        phone1:
+          type: string
+        phone2:
+          type: string
+        payment_type:
+          type: string
+          nullable: true
+          description: Token del tipo de pago
+        iban:
+          type: string
+          description: IBAN enmascarado
+        holder_name:
+          type: string
+          description: Nombre completo del titular
+
+    UpdateBillingDataRequest:
+      type: object
+      required:
+        - paper_invoice
+      properties:
+        email:
+          type: string
+          format: email
+          nullable: true
+        phone1:
+          type: string
+        phone2:
+          type: string
+        paper_invoice:
+          type: boolean
+          description: "`true` para factura en papel, `false` para factura digital"
+
+    UpdateBillingDataResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/BillingData"
+
+    UpdateIbanRequest:
+      type: object
+      required:
+        - iban
+        - nif
+        - iban_holder_name
+        - iban_holder_dni
+      properties:
+        iban:
+          type: string
+          description: IBAN completo (se normaliza sin espacios y en mayúsculas)
+        nif:
+          type: string
+          description: NIF del titular del contrato (debe coincidir con `holder.token`)
+        iban_holder_name:
+          type: string
+          description: Nombre del titular de la cuenta bancaria
+        iban_holder_dni:
+          type: string
+          description: DNI/NIF del titular de la cuenta bancaria
+
+    UpdateIbanResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/BillingData"
+
+    InvoiceSummary:
+      type: object
+      properties:
+        contract_number:
+          type: string
+          description: Token del contrato
+        invoice_number:
+          type: string
+          description: Serie/número de factura (`serie_final`)
+        invoice_token:
+          type: string
+          description: Token de la factura
+        invoice_date:
+          type: string
+          format: date
+          description: Fecha de emisión
+        invoice_amount:
+          type: number
+          format: double
+          description: Importe pendiente de pago (`left_to_pay`)
+        invoice_status:
+          type: string
+          description: Nombre del estado de la factura
+        pdf_available:
+          type: boolean
+          description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
+
+    InvoicePaidRequest:
+      type: object
+      required:
+        - contract_token
+        - invoice_token
+      properties:
+        contract_token:
+          type: string
+        invoice_token:
+          type: string
+
+    InvoicePaidResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        invoice_token:
+          type: string
+        new_status:
+          type: string
+          nullable: true
+          description: Nombre del nuevo estado de la factura
+
+    BilledConsumption:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date
+          description: Fecha de emisión de la factura
+        consumptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceConsumption"
+
+    InvoiceConsumption:
+      type: object
+      properties:
+        meter:
+          type: string
+          description: Token del contador
+        reading:
+          oneOf:
+            - type: number
+              format: double
+            - type: string
+          description: Valor de lectura (vacío si no hay lectura asociada)
+        consumption:
+          type: number
+          format: double
+          nullable: true
+        origin:
+          type: string
+        contract_number:
+          type: string
+        is_estimated:
+          type: boolean
+
+    InvoicePdfResponse:
+      type: object
+      properties:
+        pdf:
+          type: string
+          format: byte
+          description: Contenido del PDF codificado en Base64
+        filename:
+          type: string
+          description: Nombre de archivo sugerido para la descarga
+        document_name:
+          type: string
+          description: Nombre del documento en el gestor documental
+
+    CreateReadingRequest:
+      type: object
+      required:
+        - reading_at
+        - contract
+        - meter
+        - reading
+      properties:
+        reading_at:
+          type: string
+          format: date
+          description: Fecha de la lectura (formato YYYY-MM-DD)
+        contract:
+          type: string
+          description: Token del contrato
+        meter:
+          type: string
+          description: Token del contador
+        reading:
+          type: number
+          format: double
+          description: Valor de la lectura del contador
+
+    CreateReadingResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        reading_token:
+          type: string
+        reading_value:
+          type: string
+        reading_date:
+          type: string
+          format: date
+        contract_token:
+          type: string
+          nullable: true
+        meter_token:
+          type: string
+          nullable: true
+        supply_point_token:
+          type: string
+          nullable: true
+
+    ContractListResponse:
+      type: object
+      description: Envoltorio paginado de la lista de contratos.
+      required:
+        - count
+        - page
+        - limit
+        - total_pages
+        - results
+      properties:
+        count:
+          type: integer
+          description: Número total de contratos que cumplen los filtros
+        page:
+          type: integer
+          description: Página actual
+        limit:
+          type: integer
+          description: Tamaño de página aplicado
+        total_pages:
+          type: integer
+          description: Número total de páginas
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContractListItem"
+
+    ContractListItem:
+      type: object
+      required:
+        - token
+        - status_token
+        - payment_type
+        - titular_contrato
+        - acciones_permitidas
+      properties:
+        token:
+          type: string
+          nullable: true
+          description: Token del contrato, utilizable como `contract_token` en el resto de endpoints `/ov/`
+        status_token:
+          type: string
+          nullable: true
+          description: Token del estado del contrato (`ContractStatus.token`)
+        status_name:
+          type: string
+          nullable: true
+          description: Nombre del estado del contrato
+        payment_type:
+          type: string
+          nullable: true
+          description: Token del tipo de pago (`PaymentType.token`)
+        titular_contrato:
+          allOf:
+            - $ref: "#/components/schemas/ContractHolder"
+          nullable: true
+          description: Titular del contrato; `null` si el contrato no tiene titular asignado
+        titular_domiciliacion:
+          allOf:
+            - $ref: "#/components/schemas/ContractDebitHolder"
+          nullable: true
+          description: Titular de la domiciliación; `null` si el contrato no tiene IBAN asociado
+        acciones_permitidas:
+          type: array
+          description: |
+            Acciones habilitadas para este contrato concreto, calculadas según su estado
+            y su tipo de pago. Lista vacía si no hay ninguna acción disponible.
+          items:
+            type: string
+          example:
+            - consultar_datos_facturacion
+            - actualizar_iban
+            - registrar_lectura
+
+    ContractHolder:
+      type: object
+      required:
+        - dni
+      properties:
+        dni:
+          type: string
+          nullable: true
+          description: DNI/NIF del titular (`Person.token`)
+        nombre:
+          type: string
+          nullable: true
+          description: Nombre y apellidos del titular
+
+    ContractDebitHolder:
+      type: object
+      required:
+        - dni
+      properties:
+        dni:
+          type: string
+          nullable: true
+          description: DNI/NIF del titular de la cuenta bancaria (`PersonBank.dni`)
+        nombre:
+          type: string
+          nullable: true
+          description: Nombre del titular de la cuenta bancaria (`PersonBank.name`)
+        iban:
+          type: string
+          description: IBAN enmascarado (8 primeros caracteres + asteriscos + 8 últimos)
+
+    ContractFullDetail:
+      description: |
+        Detalle completo de un contrato: los campos de `ContractDetail` y
+        `BillingData` en un único objeto, más los datos de la cuenta de
+        domiciliación. Se define como esquema propio en lugar de componerse con
+        `allOf` porque `iban` debe describirse de forma condicional y `allOf`
+        no permite sobrescribir la descripción heredada de sus esquemas base.
+      type: object
+      properties:
+        token:
+          type: string
+          description: Token del contrato
+        status_token:
+          type: string
+          nullable: true
+          description: Token del estado del contrato
+        status_name:
+          type: string
+          nullable: true
+          description: Nombre del estado del contrato
+        holder_token:
+          type: string
+          nullable: true
+          description: NIF/documento del titular
+        payment_type:
+          type: string
+          nullable: true
+          description: Token del tipo de pago
+        use_type:
+          type: string
+          nullable: true
+          description: Tipo de uso del contrato
+        last_invoice_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: Fecha de creación de la última factura
+        supply_point_address:
+          type: string
+          nullable: true
+          description: Dirección del punto de suministro por defecto
+        meter_serial_number:
+          type: string
+          nullable: true
+          description: Token del contador
+        meter_caliber:
+          type: string
+          nullable: true
+          description: Calibre del contador
+        smart_metering:
+          type: string
+          enum: ["true", "false"]
+          description: Indica si el contador tiene telelectura
+        registration_date:
+          type: string
+          nullable: true
+          description: Fecha de alta en formato dd/mm/aaaa
+        termination_date:
+          type: string
+          nullable: true
+          description: Fecha de baja en formato dd/mm/aaaa (si el contrato está dado de baja)
+        nif:
+          type: string
+          description: NIF del titular
+        tenant_name:
+          type: string
+          description: Nombre completo del titular
+        holder_name:
+          type: string
+          description: Nombre completo del titular
+        city:
+          type: string
+          nullable: true
+        postal_code:
+          type: string
+          nullable: true
+        paper_invoice:
+          type: string
+          enum: ["true", "false"]
+          description: "`true` si recibe factura en papel, `false` si es digital"
+        email:
+          type: string
+        invoice_language:
+          type: string
+          description: Idioma de factura (configuración del despliegue)
+        phone1:
+          type: string
+        phone2:
+          type: string
+        dni_titular_cuenta:
+          type: string
+          nullable: true
+          description: DNI/NIF del titular de la cuenta de domiciliación (`PersonBank.dni`); `null` si el contrato no tiene IBAN asociado o la cuenta no almacena DNI
+        es_titular_cuenta:
+          type: boolean
+          description: "`true` si el titular del contrato es también el titular de la cuenta de domiciliación (`holder_token` coincide con `dni_titular_cuenta`). El frontend utiliza esta bandera para aplicar la lógica de anonimización; si es `false`, el titular del contrato está viendo la cuenta de otra persona"
+        direccion_titular:
+          type: string
+          nullable: true
+          description: Dirección postal del titular del contrato (`PersonAddress` con `is_billing` activo); no confundir con `supply_point_address`, que es la dirección del punto de suministro
+        iban:
+          type: string
+          description: IBAN de la cuenta de domiciliación. Se devuelve sin enmascarar cuando `es_titular_cuenta` es `true` (el titular del contrato es el titular de la cuenta); en caso contrario aparece enmascarado (8 primeros caracteres + asteriscos + 8 últimos)
+
+    InvoiceFullDetail:
+      type: object
+      description: |
+        Detalle completo de una factura: campos básicos más periodo de facturación,
+        referencia de vivienda, dirección tributaria (condicional), tarifas y desglose fiscal.
+
+        Estados condicionales de `direccion_tributaria`:
+
+        - Factura **no domiciliada** (tipo de pago distinto de `DIRECT_DEBIT`): el campo
+          `direccion_tributaria` no aparece en la respuesta.
+        - Domiciliada y pagador = titular del contrato: `anonimizada: false` y dirección
+          completa (`direccion`, `codigo_postal`, `ciudad`, `provincia`, `pais`).
+        - Domiciliada y pagador tercero: `anonimizada: true`; se omite `direccion` y solo
+          se exponen `codigo_postal`, `ciudad`, `provincia` y `pais`.
+      properties:
+        contract_number:
+          type: string
+          description: Token del contrato
+        invoice_token:
+          type: string
+          description: Token de la factura
+        invoice_number:
+          type: string
+          description: Serie/número de factura (`serie_final`)
+        invoice_date:
+          type: string
+          format: date
+          description: Fecha de emisión (`issue_date`)
+        invoice_status:
+          type: string
+          description: Nombre del estado de la factura
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de vencimiento (`due_date`); `null` si no está definida
+        invoice_amount:
+          type: number
+          format: double
+          description: Importe pendiente de pago (`left_to_pay`)
+        total_amount:
+          type: number
+          format: double
+          description: Importe total de la factura (`total_final`)
+        subtotal_amount:
+          type: number
+          format: double
+          description: Base imponible (`subtotal_final`)
+        payment_method:
+          type: string
+          nullable: true
+          description: Método de pago (`payment_type_final`)
+        pdf_available:
+          type: boolean
+          description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
+        billing_period:
+          type: object
+          description: Periodo de facturación de la factura
+          properties:
+            year:
+              type: integer
+              nullable: true
+            month:
+              type: integer
+              nullable: true
+            days:
+              type: integer
+              nullable: true
+        dwelling_code:
+          type: string
+          nullable: true
+          description: Referencia del código de vivienda del punto de suministro; `null` si no está disponible
+        direccion_tributaria:
+          type: object
+          nullable: true
+          description: |
+            Dirección tributaria del pagador. Su presencia y contenido dependen del tipo
+            de pago y del pagador (ver las notas condicionales de `InvoiceFullDetail`).
+            Solo se expone si la factura está domiciliada; se anonimiza si el pagador es
+            un tercero.
+          properties:
+            anonimizada:
+              type: boolean
+              description: "`true` cuando el pagador es un tercero (no titular del contrato); en ese caso `direccion` se omite"
+            direccion:
+              type: string
+              nullable: true
+              description: Dirección de la calle; solo se expone cuando `anonimizada` es `false`
+            codigo_postal:
+              type: string
+            ciudad:
+              type: string
+            provincia:
+              type: string
+              nullable: true
+            pais:
+              type: string
+              nullable: true
+        tariffs:
+          type: array
+          description: Tarifas aplicadas en la factura (líneas de factura)
+          items:
+            $ref: "#/components/schemas/TariffDetail"
+        fiscal_breakdown:
+          type: array
+          description: |
+            Desglose fiscal del recibo por organización (p. ej.:
+            empresa gestora, ayuntamiento, EDAR, consorcio y agencia del agua). Calculado
+            íntegramente por el backend a partir de la distribución fiscal de las líneas.
+            Las organizaciones dependen del despliegue.
+          items:
+            $ref: "#/components/schemas/FiscalBreakdownItem"
+
+    TariffDetail:
+      type: object
+      description: Tarifa aplicada en una línea de factura, con su normativa de referencia
+      properties:
+        name:
+          type: string
+          description: Nombre de la tarifa/línea (`price_rate_name`)
+        description:
+          type: string
+          nullable: true
+          description: Descripción de la línea
+        units:
+          type: number
+          nullable: true
+          description: Número de unidades facturadas
+        unit_price:
+          type: number
+          nullable: true
+          description: Precio unitario
+        tax_percent:
+          type: number
+          nullable: true
+          description: Porcentaje de impuesto aplicado
+        total:
+          type: number
+          description: Importe total de la línea (base + impuesto)
+        normativa:
+          type: object
+          nullable: true
+          description: Normativa (publicación oficial) en la que se basa la tarifa
+          properties:
+            reference:
+              type: string
+              description: Referencia de la normativa (p. ej. referencia BOE)
+            name:
+              type: string
+              nullable: true
+              description: Nombre de la normativa
+
+    FiscalBreakdownItem:
+      type: object
+      description: Desglose fiscal del recibo para una organización
+      properties:
+        organization:
+          type: string
+          description: Nombre de la organización receptora
+        amount:
+          type: number
+          format: double
+          description: Importe de la distribución fiscal para la organización
+
+    MeterDetail:
+      type: object
+      description: >
+        Detalle del contador del contrato para el bloque de cinco campos de la
+        Oficina Virtual. El contador procede del punto de suministro por
+        defecto (`supply_point_default.meter`).
+      properties:
+        meter_serial_number:
+          type: string
+          nullable: true
+          description: Número de serie del contador (token del contador)
+        meter_caliber:
+          type: string
+          nullable: true
+          description: Calibre del contador
+        digits:
+          type: integer
+          nullable: true
+          description: Cifras del contador
+        manufacture_year:
+          type: integer
+          nullable: true
+          description: Año de fabricación del contador (`manufacturing_year`)
+        installation_date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de instalación (`installation_at`)
+
+    ConsumptionHistoryResponse:
+      type: object
+      description: Envoltorio paginado estándar del historial de consumos.
+      required:
+        - count
+        - next
+        - previous
+        - results
+      properties:
+        count:
+          type: integer
+          description: Número total de consumos que cumplen los filtros
+        next:
+          type: string
+          format: uri
+          nullable: true
+          description: URL de la página siguiente (`null` en la última página)
+        previous:
+          type: string
+          format: uri
+          nullable: true
+          description: URL de la página anterior (`null` en la primera página)
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsumptionHistoryItem"
+
+    ConsumptionHistoryItem:
+      type: object
+      description: Consumo de un periodo del contrato en nomenclatura HF.
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          description: ID primario de la lectura (`Reading.id`), para vincular las filas a los checkboxes y solicitar descargas
+          example: 42
+        period:
+          type: string
+          description: Periodo de facturación en nomenclatura HF (`<año>-<trimestre>T`)
+          example: "2025-3T"
+        reading:
+          type: number
+          format: double
+          nullable: true
+          description: Lectura actual del periodo
+        previous_reading:
+          type: number
+          format: double
+          nullable: true
+          description: Lectura anterior, resuelta en el backend (`Reading.previous_reading`)
+        consumption:
+          type: number
+          format: double
+          nullable: true
+          description: Consumo del periodo
+        reading_date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de la lectura del periodo
+        is_estimated:
+          type: boolean
+          description: Indica si la lectura del periodo es estimada
+
+    ConsumptionDownloadRequest:
+      type: object
+      description: |
+        Solicitud de descarga del historial de consumos. `reading_ids` y los
+        filtros de fecha son mutuamente excluyentes en la práctica: si se pasan
+        `reading_ids` se ignoran `date_from`/`date_to`; si no, se usan los
+        filtros para generar el conjunto completo.
+      required:
+        - contract_token
+      properties:
+        contract_token:
+          type: string
+          description: Token del contrato (`Contract.token`)
+          example: CTR-001
+        reading_ids:
+          type: array
+          description: ID de lecturas seleccionadas manualmente (`Reading.id`)
+          items:
+            type: integer
+          example: [42, 43, 44]
+        date_from:
+          type: string
+          format: date
+          description: Fecha mínima de lectura (inclusive), `YYYY-MM-DD`
+          example: "2025-01-01"
+        date_to:
+          type: string
+          format: date
+          description: Fecha máxima de lectura (inclusive), `YYYY-MM-DD`
+          example: "2025-12-31"
+        format:
+          type: string
+          enum: [pdf, csv, zip]
+          default: pdf
+          description: Formato del fichero generado
+          example: pdf
+
+    BillingPeriodItem:
+      type: object
+      description: |
+        Periodo de facturación disponible para el contrato, definido por el PA.
+        `period_code` es el código de periodo (p. ej. `3T`) y `months_label` los
+        meses naturales que incluye, para mostrarlos al usuario sin deducirlos
+        en el frontal.
+      required:
+        - year
+        - period_code
+        - months_label
+        - is_current
+      properties:
+        year:
+          type: integer
+          description: Año del periodo de facturación
+          example: 2026
+        period_code:
+          type: string
+          description: Código del periodo según el PA (p. ej. `1T`, `2T`, `3T`, `4T`)
+          example: "3T"
+        months_label:
+          type: string
+          description: Meses naturales incluidos en el periodo, legibles
+          example: "julio-septiembre"
+        is_current:
+          type: boolean
+          description: |
+            Indica si es el periodo de facturación en curso; el frontal lo usa
+            para los avisos al configurar el medio de pago.
+          example: false

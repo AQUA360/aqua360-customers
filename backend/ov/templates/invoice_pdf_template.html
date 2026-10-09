@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Invoice PDF</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f8fb;
+            color: #222;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,50,0.08);
+            margin: 30px auto;
+            padding: 30px 40px;
+            max-width: 600px;
+        }
+        .header {
+            background: linear-gradient(90deg, #1976d2 0%, #64b5f6 100%);
+            color: #fff;
+            padding: 20px 0;
+            border-radius: 10px 10px 0 0;
+            text-align: center;
+        }
+        .title {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .section {
+            margin: 25px 0;
+        }
+        .label {
+            color: #1976d2;
+            font-weight: bold;
+            width: 160px;
+            display: inline-block;
+        }
+        .value {
+            color: #222;
+            font-weight: normal;
+        }
+        .footer {
+            text-align: center;
+            color: #64b5f6;
+            font-size: 0.9em;
+            margin-top: 30px;
+        }
+        .amount {
+            font-size: 1.5em;
+            color: #1976d2;
+            font-weight: bold;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid #e3eaf2;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">Invoice</div>
+            <div>Invoice Number: <strong>{{ invoice.invoice_number }}</strong></div>
+        </div>
+        <div class="section">
+            <span class="label">Contract Number:</span>
+            <span class="value">{{ invoice.contract_number }}</span><br>
+            <span class="label">Invoice Date:</span>
+            <span class="value">{{ invoice.invoice_date }}</span><br>
+            <span class="label">Status:</span>
+            <span class="value">{{ invoice.invoice_status }}</span>
+        </div>
+        <hr>
+        <div class="section">
+            <span class="label">Amount Due:</span>
+            <span class="amount">{{ invoice.invoice_amount }} €</span>
+        </div>
+        <hr>
+        <div class="footer">
+            Thank you for your business.<br>
+            <span style="color:#1976d2;">Aventec TIC</span>
+        </div>
+    </div>
+</body>
+</html>

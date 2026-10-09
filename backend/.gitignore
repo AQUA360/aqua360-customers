@@ -1,0 +1,85 @@
+# Customers — eines i dades de càrrega de clients: només en local, mai al repositori.
+# `importexport` s'activa amb LOCAL_OWN_APPS=importexport al .env (vegeu customers/settings.py).
+# Els catàlegs que necessita qualsevol instal·lació són a initial_data/.
+prometeo/
+importexport/
+
+*.csv
+*.xlsx
+
+# Logs
+logs/*.log
+logs/*.log.*
+logs/
+
+# Python
+__pycache__/
+*.py[co]
+requirements.txt
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+.env
+env/
+build/
+dist/
+lib/
+*.egg
+
+# Unit test / coverage report
+htmlcov/
+.tox/
+.coverage
+.cache
+
+# Translations
+*.mo
+*.pot
+
+# Django
+*.log
+*.pyc
+
+# Database files
+*.sqlite
+*.sqlite3
+
+# Mac OS X
+.DS_Store
+
+# Media files
+static/
+media/
+
+# Project
+.env
+uploads/*
+
+
+# Python
+*.pyo
+.venv/
+venv/
+venv_*/
+myenv
+
+# Zone.Identifier
+*:Zone.Identifier
+
+# Scripts results
+scripts/*.csv
+
+# Configuracions privades de deploy (tot excepte stubs *.example.rb)
+config/private/**
+!config/private/**/
+!config/private/**/*.example.rb
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws

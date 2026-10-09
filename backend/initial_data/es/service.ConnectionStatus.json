@@ -1,0 +1,41 @@
+[
+  {
+      "model": "service.connectionstatus",
+      "pk": 1,
+      "fields": {
+          "token": "1",
+          "name": "En ejecución",
+          "color": "yellow",
+          "position": 1,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionstatus",
+      "pk": 2,
+      "fields": {
+          "token": "2",
+          "name": "Ejecutada",
+          "color": "green",
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionstatus",
+      "pk": 3,
+      "fields": {
+          "token": "3",
+          "name": "Tapada",
+          "color": "red",
+          "position": 3,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

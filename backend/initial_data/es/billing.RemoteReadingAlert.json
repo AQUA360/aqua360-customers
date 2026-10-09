@@ -1,0 +1,434 @@
+[
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-15T11:53:07.859Z",
+            "updated_at": "2025-01-15T12:20:52.544Z",
+            "token": "AA",
+            "name": "APUNTE AUTOMÁTICO",
+            "position": 1,
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "AC",
+            "name": "AGUA CORTADA",
+            "position": 2,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "AL",
+            "name": "ARRASTRE DE LECTURA",
+            "position": 3,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "BG",
+            "name": "BIEN GASTAN",
+            "position": 4,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "BJ",
+            "name": "LIQUIDACION BAJA",
+            "position": 5,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "CC",
+            "name": "CAMBIO DE CALIBRE",
+            "position": 6,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 7,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "CD",
+            "name": "CERRADO",
+            "position": 7,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 8,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "CE",
+            "name": "CONSUMO EXCESIVO",
+            "position": 8,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 9,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "CF",
+            "name": "CAMBIO POR FATIGA DE CONTADOR",
+            "position": 9,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 10,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "CN",
+            "name": "CAMBIO DE NOMBRE",
+            "position": 10,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 11,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "DC",
+            "name": "DISTINTO CONTADOR",
+            "position": 11,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 12,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "DH",
+            "name": "DESHABITADO",
+            "position": 12,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 13,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "DS",
+            "name": "DESHABITADOS SIN LECTURA",
+            "position": 13,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 14,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "ED",
+            "name": "CAMBIO POR EDAD",
+            "position": 14,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 15,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "FI",
+            "name": "FUGA INSTALACION PARTICULAR",
+            "position": 15,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 16,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "FM",
+            "name": "FUERA MARGEN",
+            "position": 16,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 17,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "IA",
+            "name": "INFORME ACTA- USUARIOS",
+            "position": 17,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 18,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "MA",
+            "name": "MARCHA",
+            "position": 18,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 19,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "MR",
+            "name": "MARCHA AL REVES",
+            "position": 19,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 20,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "NC",
+            "name": "NO COMPROBABLE",
+            "position": 20,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 21,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "ND",
+            "name": "NO DEJAN LEER",
+            "position": 21,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 22,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "NL",
+            "name": "NO LEIDO",
+            "position": 22,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 23,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "NV",
+            "name": "NO VISIBLE",
+            "position": 23,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 24,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "NY",
+            "name": "NO LLAVE",
+            "position": 24,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 25,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "OT",
+            "name": "OTROS",
+            "position": 25,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 26,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "PC",
+            "name": "PETICION CLIENTE",
+            "position": 26,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 27,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "PF",
+            "name": "POSIBLE FUGA",
+            "position": 27,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 28,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "PP",
+            "name": "POSIBLE PARADO",
+            "position": 28,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 29,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "RE",
+            "name": "REVISIÓ",
+            "position": 29,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 30,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "RI",
+            "name": "REPOSICION ILEGAL",
+            "position": 30,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 31,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "RO",
+            "name": "CONTADOR ROTO",
+            "position": 31,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 32,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "SC",
+            "name": "SIN CONTADOR",
+            "position": 32,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 33,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "SP",
+            "name": "Saltar Periodo",
+            "position": 33,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 34,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "VA",
+            "name": "NO ACCESIBLE-VALLADO",
+            "position": 34,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 35,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "VR",
+            "name": "VERIFICACION O RECLAMACION",
+            "position": 35,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.remotereadingalert",
+        "pk": 36,
+        "fields": {
+            "created_at": "2025-01-15T11:53:09.142Z",
+            "updated_at": "2025-01-15T12:23:42.775Z",
+            "token": "VT",
+            "name": "VUELTA DE CONTADOR",
+            "position": 36,
+            "is_default": false
+        }
+    }
+]

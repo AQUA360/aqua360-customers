@@ -1,0 +1,50 @@
+[
+    {
+        "model": "pricing.tax",
+        "pk": 1,
+        "fields": {
+            "token": "IvA",
+            "name": "I.V.A. Alto",
+            "percent": 21,
+            "start": "2024-01-01",
+            "end": null,
+            "position":3
+        }
+    },
+    {
+        "model": "pricing.tax",
+        "pk": 2,
+        "fields": {
+            "token": "IvE",
+            "name": "I.V.A. Exento",
+            "percent": 0,
+            "start": "2024-01-01",
+            "end": null,
+            "position":2
+        }
+    },
+    {
+        "model": "pricing.tax",
+        "pk": 3,
+        "fields": {
+            "token": "IvM",
+            "name": "I.V.A. Medio",
+            "percent": 10,
+            "start": "2024-01-01",
+            "end": null,
+            "position":1
+        }
+    },
+    {
+        "model": "pricing.tax",
+        "pk": 4,
+        "fields": {
+            "token": "IvB",
+            "name": "I.V.A. Bajo",
+            "percent": 4,
+            "start": "2024-01-01",
+            "end": null,
+            "position":4
+        }
+    }
+]

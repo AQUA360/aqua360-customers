@@ -1,0 +1,75 @@
+[
+  {
+    "model": "billing.invoiceclass",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.549Z",
+      "token": "OO",
+      "name": "Original",
+      "position": 0,
+      "is_default": true
+    }
+  },
+  {
+    "model": "billing.invoiceclass",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "token": "OR",
+      "name": "Original rectificativa",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.invoiceclass",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "token": "OC",
+      "name": "Original recapitulativa",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.invoiceclass",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "token": "CO",
+      "name": "Duplicat original",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.invoiceclass",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "token": "CR",
+      "name": "Duplicat rectificativa",
+      "position": 4,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.invoiceclass",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "token": "CC",
+      "name": "Duplicat recapitulativa",
+      "position": 5,
+      "is_default": false
+    }
+  }
+  
+]

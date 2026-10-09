@@ -1,0 +1,182 @@
+[
+  {
+      "model": "service.supplypointtype",
+      "pk": 1,
+      "fields": {
+          "token": "SENSE SUBMINISTRAMENT DOMÈSTIC",
+          "name": "SENSE SUBMINISTRAMENT DOMÈSTIC",
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 2,
+      "fields": {
+          "token": "GENERAL",
+          "name": "GENERAL",
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 3,
+      "fields": {
+          "token": "HABITATGE",
+          "name": "HABITATGE",
+          "position": 3,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 4,
+      "fields": {
+          "token": "COMUNITAT PROPIETARIS",
+          "name": "COMUNITAT PROPIETARIS",
+          "position": 5,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 5,
+      "fields": {
+          "token": "HABITATGE PROTECCIÓ OFICIAL",
+          "name": "HABITATGE PROTECCIÓ OFICIAL",
+          "position": 4,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 6,
+      "fields": {
+          "token": "PIME",
+          "name": "PIME",
+          "position": 6,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 7,
+      "fields": {
+          "token": "INDUSTRIAL",
+          "name": "INDUSTRIAL",
+          "position": 7,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 8,
+      "fields": {
+          "token": "AGRICOLA",
+          "name": "AGRÍCOLA",
+          "position": 8,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 9,
+      "fields": {
+          "token": "AIGUA EN ALTA",
+          "name": "AIGUA EN ALTA",
+          "position": 9,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 10,
+      "fields": {
+          "token": "OBRA",
+          "name": "OBRA",
+          "position": 10,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 11,
+      "fields": {
+          "token": "PISCINES",
+          "name": "PISCINES",
+          "position": 11,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 12,
+      "fields": {
+          "token": "SENSE SUBMINISTRAMENT INDUSTRIAL",
+          "name": "SENSE SUBMINISTRAMENT INDUSTRIAL",
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 13,
+      "fields": {
+          "token": "BOCA INCENDIS",
+          "name": "BOCA INCENDIS",
+          "position": 12,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 14,
+      "fields": {
+          "token": "MUNICIPAL",
+          "name": "MUNICIPAL",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointtype",
+      "pk": 15,
+      "fields": {
+          "token": "COMERCIAL",
+          "name": "COMERCIAL",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

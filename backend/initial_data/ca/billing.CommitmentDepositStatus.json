@@ -1,0 +1,58 @@
+[
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Pendent",
+            "color": null,
+            "position": 1,
+            "description": "S’ha generat i està a l’espera de liquidar-se",
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Parcialment cobrat",
+            "color": "blue",
+            "position": 2,
+            "description": "El compromís ha estat parcialment liquidat",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "2",
+            "name": "Cobrat",
+            "color": "green",
+            "position": 3,
+            "description": "El compromís ha estat liquidat per complet",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Anul·lat",
+            "color": "red",
+            "position": 4,
+            "description": "Compromís no complert",
+            "is_default": false
+        }
+    }
+]

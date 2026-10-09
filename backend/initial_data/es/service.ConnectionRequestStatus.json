@@ -1,0 +1,67 @@
+[
+  {
+      "model": "service.connectionrequeststatus",
+      "pk": 1,
+      "fields": {
+          "token": "draft",
+          "name": "Borrador",
+          "color": null,
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionrequeststatus",
+      "pk": 2,
+      "fields": {
+          "token": "pending",
+          "name": "Pendiente",
+          "color": "yellow",
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionrequeststatus",
+      "pk": 3,
+      "fields": {
+          "token": "approved",
+          "name": "Aprobada",
+          "color": "green",
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionrequeststatus",
+      "pk": 4,
+      "fields": {
+          "token": "1",
+          "name": "Instalada",
+          "color": "blue",
+          "position": 3,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionrequeststatus",
+      "pk": 5,
+      "fields": {
+          "token": "-1",
+          "name": "Rechazada",
+          "color": "red",
+          "position": 4,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

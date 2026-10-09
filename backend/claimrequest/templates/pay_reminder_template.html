@@ -1,0 +1,291 @@
+{%load billing_filters%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SUSPENSION WARNING</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 1cm;
+            @frame footer_frame {
+                /* Another static Frame */
+                -pdf-frame-content: footer_frame_cif;
+                left: 5pt;
+                width: 100%;
+                top: 820pt;
+                height: 80pt
+            }
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Regular.ttf');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Italic.ttf');
+            font-weight: normal;
+            font-style: italic;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Bold.ttf');
+            font-weight: bold;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-SemiBold.ttf');
+            font-weight: semi-bold;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-BoldItalic.ttf');
+            font-weight: bold;
+            font-style: italic;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            margin-bottom: 15px;
+        }
+
+        .data-table th {
+            font-weight: bold;
+            padding: 5px;
+            border-top: 1px solid #000000;
+            border-bottom: 1px solid #000000;
+            font-size: 10px;
+        }
+
+        .data-table td {
+            padding: 5px;
+            font-size: 10.5px;
+        }
+
+        body {
+            font-family: 'STIXTwoText', serif;
+            font-size: 12px;
+        }
+        .footer, .signatures {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .header img {
+            width: 120px;
+            height: auto;
+        }
+
+        .header .company-table td {
+            font-size: 9px;
+            margin-x: 1px;
+        }
+
+        .holder-info td {
+            width: 50%;
+            text-align: left;
+        }
+
+
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <table width="100%" style="border-collapse: collapse;">
+            <tr>
+                {% if logo %}
+                <td width="35%" style="vertical-align: top; padding-right: 20px;">
+                    <img src="{{ logo }}" alt="{{ company.name }}">
+                </td>
+                {% else %}
+                <td width="35%" class="company-info" style="vertical-align: top;">
+                    <p style="margin-top: 5px;">{{ company.name }}</p>
+                </td>
+                {% endif %}
+                <td width="30%" style="vertical-align: top;"></td>
+                {% if exploitation_image %}
+                <td width="35%">
+                    <img src="{{ exploitation_image }}">
+                </td>
+                {% endif %}
+            </tr>
+
+            <tr>
+                <td></td>
+            </tr>
+
+            <tr>
+                <td colspan="2" style="font-size: 12px;">
+                    <span style=" margin-top: 2px;">{{ company.address.address_complete }} {{ company.address.postal_code }}</span></br>
+                    <span><strong>TELÈFON D'ATENCIÓ AL CLIENT</strong> {{ company.phone }}</span></br>
+                    {% if company.phone2 %}<span><strong>TELÈFON D'AVERIES</strong> {{ company.phone2 }}</span></br> {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <table style="margin-top: 10px;">
+        <tr>
+            <td></td>
+            <td></td>
+            <td>
+                <table>
+                    <tr style="padding-left:5px; text-align: justify;"><td> {{ holder.name }} {{ holder.surname }} </td></tr>
+                    <tr style="padding-left:5px; text-align: justify;"><td>
+                         {{ holder_address.address_complete }} 
+                         </td></tr>
+                    <tr style="padding-left:5px; text-align: justify;"><td>
+                         {{ holder_address.postal_code }}  {{ holder_address.city_name }} 
+                         </td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    <table width="50%" class="holder-info" style="vertical-align: top;">
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>Titular</span></td>
+            <td style="text-align: right;" ><span> {{ holder.surname }}, {{ holder.name }} </span></td>
+        </tr>
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>NIF</span></td>
+            <td style="text-align: right;" ><span> {{ holder.token }} </span></td>
+        </tr>
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>Adreça subministrament</span></td>
+            <td style="text-align: right;" ><span> {{ sp_address.address_complete }} </span></td>
+        </tr>
+        <tr>
+            <td width="150px" style="color: rgb(107, 107, 109);" ><span>Núm. contracte</span></td>
+            <td style="text-align: right;" ><span> {{ contract.token }} </span></td>
+        </tr>
+    </table>
+
+    <p style="font-size: 12px; text-align: justify"> {{ company.address.city.name }}, {{ now_date|date:"j F Y" }} </p>
+    <p style="font-size: 12px; text-align: justify">Benvolgut abonat / Benvolguda Abonada</p>
+    <p style="font-size: 12px; text-align: justify">Mitjançant aquesta carta us comuniquem que, amb data d'avui, ens consten pendents de pagament
+        les factures que es detallen a peu de pàgina, relacionades amb el subministrament indicat més
+        amunt.</p>
+    <p style="font-size: 12px; text-align: justify">A fi de regularitzar aquesta situació, podeu abonar els imports reclamats a les nostres oficines
+        d'atenció al client amb targeta bancària o a qualsevol caixer automàtic de CaixaBank mitjançant els codis
+        de barres facilitats. Els informem que, les persones que presenten mancança de recursos
+        econòmics d'acord amb els criteris que fixa la LLei 22/10 tenen garantit el dret d'accés als
+        subministrament d'aigua potable. Per tal d'evitar el tall del subministrament, si no us oposeu,
+        procedirem a cedir les vostres dades als serveis socials bàsics de la vostra demarcació per tal que
+        ens emetin un informe per determinar si us trobeu en una situació de risc d'exclusió residencial.</p>
+    <p style="font-size: 12px; text-align: justify">Us preguem que efectueu l’abonament abans del dia <strong>{{ limit_date|date:"j F Y" }}</strong> o ens veurem obligats a continuar
+        el procediment de gestió d’impagats, amb els inconvenients que això us pugui suposar.</p>
+    <p style="font-size: 12px; text-align: justify">Perquè us sigui més còmode i evitar-vos inconvenients, us recomanem la domiciliació bancària de
+        les pròximes factures a qualsevol entitat bancària, si encara no ho heu fet</p>
+    <p style="font-size: 12px; text-align: justify">Disculpeu-nos si, en el moment de rebre aquesta notificació, ja heu fet efectiu l'import reclamat.</p>
+
+    <table class="info-table" width="100%" style="margin-top: 10px;">
+        <tr>
+            <td style="font-size: 12px; text-align: right; font-weight: bold;"> {{ company.name }} </td>
+        </tr>
+        <tr>
+            <td style="padding-top: 10px;">
+                {% comment %} <table style="margin-top: 10px; width: 100%;">
+                    <tr style="background-color: {{secondary_color}}; color: {{ main_color }};">
+                        <td style="text-align: left; width: 40%; padding-left: 2px;">
+                            <span style="font-weight: bold;">Número de factura</span>
+                        </td>
+                        <td style="text-align: left; padding-left: 2px;">
+                            <span style="font-weight: bold;">Període / Data de factura</span>
+                        </td>
+                        <td style="text-align: right;">
+                            <span style="font-weight: bold;">Import (€)</span>
+                        </td>
+                        <td style="text-align: right; width: 1%;"></td>
+                    </tr>
+
+                    {% if holder.debt_amount %}
+                    <tr style="font-weight: bold; color: rgb(80, 80, 80); background-color: rgb(240, 240, 240);">
+                        <td style="text-align: left; vertical-align: top; padding-left: 2px;">
+                            <span style="font-weight: bold;">Anterior acumulado</span>
+                        </td>
+                        <td style="text-align: left; vertical-align: top; padding-left: 2px;"></td>
+                        <td style="text-align: right; vertical-align: top;">{{ holder.debt_amount }}</td>
+                        <td style="text-align: right; width: 2%;"></td>
+                    </tr>
+                    {% endif %}
+                    {% for invoice in invoices.all %}
+                    {% if holder.debt_amount %}
+                        {% if forloop.counter0|divisibleby:2 %}
+                    <tr style="font-weight: bold; color: rgb(80, 80, 80); background-color: white;">
+                        {% else %}
+                    <tr style="font-weight: bold; color: rgb(80, 80, 80); background-color: rgb(240, 240, 240);">
+                        {% endif %}
+                    {% else %}
+                        {% if forloop.counter0|divisibleby:2 %}
+                    <tr style="font-weight: bold; color: rgb(80, 80, 80); background-color: rgb(240, 240, 240);">
+                        {% else %}
+                    <tr style="font-weight: bold; color: rgb(80, 80, 80); background-color: white;">
+                        {% endif %}
+                    {% endif %}
+                        <td style="text-align: left; vertical-align: top; padding-left: 2px;">
+                            <span style="font-weight: bold;">{{ invoice.serie_final }}</span>
+                        </td>
+                        <td style="text-align: left; vertical-align: top; padding-left: 2px;">{{ invoice.due_date }}</td>
+                        <td style="text-align: right; vertical-align: top;">{{ invoice.total_final | format_eu:2 }} €</td>
+                        <td style="text-align: right; width: 2%;"></td>
+                    </tr>
+                    {% endfor %}
+
+                    <tr style="padding-top: 2px; background-color: {{secondary_color}}; color: {{main_color}}; border-top: 1px solid white;">
+                        <td colspan="2" style="padding-left: 2px;">
+                            <p style="font-weight: bold; color: rgb(80, 80, 80); margin: 0;">
+                                <span style="font-weight: bold;">Import total</span>
+                            </p>
+                        </td>
+                        <td style="text-align: right;">
+                            <p style="font-weight: bold; margin: 0;">
+                                <span style="font-weight: bold;">{{ invoice_total | format_eu:2 }} €</span>
+                            </p>
+                        </td>
+                    </tr>
+                </table> {% endcomment %}
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th align="center" class="border-r" style="width: 25%;">Número de factura</th>
+                            <th align="center" class="border-r" style="width: 20%;">Període / Data de factura</th>
+                            <th align="center" class="border-r" style="width: 27%;">Import</th>
+                            <th align="center" class="border-r" style="width: 26%;">Total a pagar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invoice in invoices %}
+                        <tr>
+                            <td align="center" class="border-r border-b" style="width: 25%;">{{invoice.serie_final }}</td>
+                            <td align="center" class="border-r border-b" style="width: 25%;">{{ invoice.issue_date|date:"d/m/Y" }}</td>
+                            <td align="center" class="border-r border-b" style="width: 27%;">{{ invoice.total_final | format_eu:2 }} €</td>
+                            <td align="right" class="border-b" style="width: 26%;">{{ invoice.left_to_pay | format_eu:2 }} €</td>
+                        </tr>
+                        {% endfor %}
+                        <!-- Total Row -->
+                        <tr style="border-top: 1px solid #000000;">
+                            <td colspan="3" align="right" style="font-weight: bold; padding-top: 6px;"></td>
+                            <td align="right" style="font-weight: bold; padding-top: 6px;">{{ invoice_total | format_eu:2 }} €</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </td>
+        </tr>
+    </table>
+        
+</body>
+</html>

@@ -1,0 +1,86 @@
+[
+  {
+    "model": "contract.contractdocumentationtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-05T09:05:33.485Z",
+      "updated_at": "2024-11-05T09:05:41.334Z",
+      "token": "active",
+      "name": "Alta",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractdocumentationtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-05T09:05:47.376Z",
+      "updated_at": "2024-11-05T09:06:25.915Z",
+      "token": "authorization",
+      "name": "Autorización",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractdocumentationtype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-05T09:20:29.233Z",
+      "updated_at": "2024-11-05T09:20:29.233Z",
+      "token": "cust_warn",
+      "name": "Aviso de abonado",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractdocumentationtype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-05T09:20:35.167Z",
+      "updated_at": "2024-11-05T09:20:43.096Z",
+      "token": "data_update",
+      "name": "Actualización de datos",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractdocumentationtype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-05T09:20:35.167Z",
+      "updated_at": "2024-11-05T09:20:43.096Z",
+      "token": "termination",
+      "name": "Baja",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractdocumentationtype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-11-05T09:20:35.167Z",
+      "updated_at": "2024-11-05T09:20:43.096Z",
+      "token": "bol_inst",
+      "name": "Bol. Insta.",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractdocumentationtype",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-11-05T09:20:35.167Z",
+      "updated_at": "2024-11-05T09:20:43.096Z",
+      "token": "bonif",
+      "name": "Bonificaciones",
+      "position": null,
+      "is_default": false
+    }
+  }
+]

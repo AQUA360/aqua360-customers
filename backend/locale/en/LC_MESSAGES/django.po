@@ -1,0 +1,3755 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: avsis-customers-backend\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-22 09:35+0100\n"
+"PO-Revision-Date: 2026-01-22 09:35+0100\n"
+"Last-Translator: \n"
+"Language-Team: English\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: order/signals.py
+msgid "Order status updated"
+msgstr "Order status updated"
+
+#: order/signals.py
+msgid "Order %(token)s has been updated to status: %(status)s"
+msgstr "Order %(token)s has been updated to status: %(status)s"
+
+#: billing/tasks.py
+msgid "Expired invoices"
+msgstr "Expired invoices"
+
+#: billing/tasks.py
+msgid "Invoices declared as expired on %(date)s"
+msgstr "Invoices declared as expired on %(date)s"
+
+#: billing/tasks.py
+msgid "Billing finished"
+msgstr "Billing finished"
+
+#: billing/tasks.py
+msgid "Invoices generated for billing %(name)s"
+msgstr "Invoices generated for billing %(name)s"
+
+#: billing/tasks.py
+msgid "Pending task today"
+msgstr "Pending task today"
+
+#: billing/tasks.py
+msgid "Task: '%(name)s' pending completion"
+msgstr "Task: '%(name)s' pending completion"
+
+#: communication/tasks.py
+msgid "Communications sent"
+msgstr "Communications sent"
+
+#: communication/tasks.py
+msgid "All communications (%(count)s) have been sent successfully"
+msgstr "All communications (%(count)s) have been sent successfully"
+
+#: communication/tasks.py
+msgid "Documents generated"
+msgstr "Documents generated"
+
+#: communication/tasks.py
+msgid "Communication process completed"
+msgstr "Communication process completed"
+
+#: communication/tasks.py
+msgid "No communications to process"
+msgstr "No communications to process"
+
+#: communication/tasks.py
+msgid "Finishing process"
+msgstr "Finishing process"
+
+#: communication/tasks.py
+msgid "Communication process %(token)s completed successfully"
+msgstr "Communication process %(token)s completed successfully"
+
+#: communication/tasks.py
+msgid "Process finished"
+msgstr "Process finished"
+
+#: billing/signals.py
+msgid "Invoice %(token)s cancelled with pending balance"
+msgstr "Invoice %(token)s cancelled with pending balance"
+
+#: billing/signals.py
+msgid "Invoice %(token)s cancelled with payment collected of %(amount)s€"
+msgstr "Invoice %(token)s cancelled with payment collected of %(amount)s€"
+
+#: billing/utils/invoice_service.py
+msgid "%(invoice_type)s Contract termination"
+msgstr "%(invoice_type)s Contract termination"
+
+#: billing/views/billing_batch_generate_view.py
+msgid "Billing pending confirmation"
+msgstr "Billing pending confirmation"
+
+#: billing/views/billing_batch_generate_view.py
+msgid "Billing %(name)s pending confirmation"
+msgstr "Billing %(name)s pending confirmation"
+
+#: contract/views/contract_view.py
+msgid "Manually added Balance"
+msgstr "Manually added Balance"
+
+#: billing/views/generate_invoice_budget_view.py
+msgid "ALTA CONTRACTE"
+msgstr "Contract registration"
+
+#: statistics/utils/report_billing_service.py
+msgid "Facturació"
+msgstr "Billing"
+
+#: statistics/utils/report_billing_service.py
+msgid "Facturació ACA"
+msgstr "ACA Billing"
+
+#: statistics/utils/report_billing_service.py
+msgid "Factures"
+msgstr "Invoices"
+
+#: statistics/utils/report_billing_service.py
+msgid "Sense dades"
+msgstr "No data"
+
+#: statistics/utils/report_billing_service.py
+msgid "RESUM IVA"
+msgstr "VAT SUMMARY"
+
+#: statistics/utils/report_billing_service.py
+msgid "FACTURES"
+msgstr "INVOICES"
+
+#: statistics/utils/report_billing_service.py
+msgid "Informe import total"
+msgstr "Total amount report"
+
+#: statistics/utils/report_billing_service.py
+msgid "Nom"
+msgstr "Name"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA %"
+msgstr "VAT %"
+
+#: statistics/utils/report_billing_service.py
+msgid " Num. Factures"
+msgstr " No. of Invoices"
+
+#: statistics/utils/report_billing_service.py
+msgid "Base"
+msgstr "Base"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA"
+msgstr "VAT"
+
+#: statistics/utils/report_billing_service.py
+msgid "Totals"
+msgstr "Totals"
+
+#: statistics/utils/report_billing_service.py
+msgid "Població/Explotació"
+msgstr "Town/Exploitation"
+
+#: statistics/utils/report_billing_service.py
+msgid "Codi ent. Subministradora"
+msgstr "Supplier entity code"
+
+#: statistics/utils/report_billing_service.py
+msgid "Codi INE"
+msgstr "INE code"
+
+#: statistics/utils/report_billing_service.py
+msgid "Soc. emissora"
+msgstr "Issuing company"
+
+#: statistics/utils/report_billing_service.py
+msgid "Soc. propietària"
+msgstr "Owner company"
+
+#: statistics/utils/report_billing_service.py
+msgid "Règim"
+msgstr "Regime"
+
+#: statistics/utils/report_billing_service.py
+msgid "Periode inicial"
+msgstr "Start period"
+
+#: statistics/utils/report_billing_service.py
+msgid "Periode final"
+msgstr "End period"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import part fixa"
+msgstr "Fixed part amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import part variable"
+msgstr "Variable part amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import total"
+msgstr "Total amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús domèstic"
+msgstr "Domestic use consumed vol."
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús industrial gen/esp"
+msgstr "Industrial use consumed vol. gen/spec"
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús industrial només general"
+msgstr "Industrial use consumed vol. general only"
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús ramader"
+msgstr "Livestock use consumed vol."
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. facturat d'ús domèstic"
+msgstr "Domestic use billed vol."
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. facturat d'ús industrial gen/esp"
+msgstr "Industrial use billed vol. gen/spec"
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. facturat d'ús industrial només general"
+msgstr "Industrial use billed vol. general only"
+
+#: statistics/utils/report_billing_service.py
+msgid "Vol. facturat d'ús ramader"
+msgstr "Livestock use billed vol."
+
+#: statistics/utils/report_billing_service.py
+msgid "Mesurament directe"
+msgstr "Direct measurement"
+
+#: statistics/utils/report_billing_service.py
+msgid "Exempt"
+msgstr "Exempt"
+
+#: statistics/utils/report_billing_service.py
+msgid "Ramader quota 0"
+msgstr "Livestock fee 0"
+
+#: statistics/utils/report_billing_service.py
+msgid "Explotació"
+msgstr "Exploitation"
+
+#: statistics/utils/report_billing_service.py
+msgid "Factura"
+msgstr "Invoice"
+
+#: statistics/utils/report_billing_service.py
+msgid "Abonat"
+msgstr "Customer"
+
+#: statistics/utils/report_billing_service.py
+msgid "Dies"
+msgstr "Days"
+
+#: statistics/utils/report_billing_service.py
+msgid "Total"
+msgstr "Total"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tipus"
+msgstr "Type"
+
+#: statistics/utils/report_billing_service.py
+msgid "usuaris reals"
+msgstr "actual users"
+
+#: statistics/utils/report_billing_service.py
+msgid "m3 facturats"
+msgstr "billed m3"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import %(name)s"
+msgstr "%(name)s amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Unknown"
+msgstr "Unknown"
+
+#: statistics/utils/report_billing_service.py
+msgid "PRODUCTE"
+msgstr "PRODUCT"
+
+#: statistics/utils/report_billing_service.py
+msgid "TARIFA"
+msgstr "RATE"
+
+#: statistics/utils/report_billing_service.py
+msgid "CONCEPTE"
+msgstr "CONCEPT"
+
+#: statistics/utils/report_billing_service.py
+msgid "ÉS PERSONALITZADA"
+msgstr "IS CUSTOM"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA0"
+msgstr "VAT0"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA10"
+msgstr "VAT10"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA21"
+msgstr "VAT21"
+
+#: statistics/utils/report_billing_service.py
+msgid "TOTAL"
+msgstr "TOTAL"
+
+#: statistics/utils/report_billing_service.py
+msgid "CODI FACTURA"
+msgstr "INVOICE CODE"
+
+#: statistics/utils/report_billing_service.py
+msgid "CONTRACTE"
+msgstr "CONTRACT"
+
+#: statistics/utils/report_billing_service.py
+msgid "TIPUS FACTURA"
+msgstr "INVOICE TYPE"
+
+#: statistics/utils/report_billing_service.py
+msgid "SUBTOTAL"
+msgstr "SUBTOTAL"
+
+#: statistics/utils/report_billing_service.py
+msgid "BASE IMPOSABLE 0"
+msgstr "TAXABLE BASE 0"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA 0"
+msgstr "VAT 0"
+
+#: statistics/utils/report_billing_service.py
+msgid "TOTAL IVA 0"
+msgstr "TOTAL VAT 0"
+
+#: statistics/utils/report_billing_service.py
+msgid "BASE IMPOSABLE 10"
+msgstr "TAXABLE BASE 10"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA 10"
+msgstr "VAT 10"
+
+#: statistics/utils/report_billing_service.py
+msgid "TOTAL IVA 10"
+msgstr "TOTAL VAT 10"
+
+#: statistics/utils/report_billing_service.py
+msgid "BASE IMPOSABLE 21"
+msgstr "TAXABLE BASE 21"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA 21"
+msgstr "VAT 21"
+
+#: statistics/utils/report_billing_service.py
+msgid "TOTAL IVA 21"
+msgstr "TOTAL VAT 21"
+
+#: statistics/utils/report_billing_service.py
+msgid "Explotación"
+msgstr "Exploitation"
+
+#: statistics/utils/report_billing_service.py
+msgid "Emisora"
+msgstr "Issuer"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tipo Factura"
+msgstr "Invoice Type"
+
+#: statistics/utils/report_billing_service.py
+msgid "Nº Factura"
+msgstr "Invoice No."
+
+#: statistics/utils/report_billing_service.py
+msgid "Nº Factura corregida"
+msgstr "Corrected Invoice No."
+
+#: statistics/utils/report_billing_service.py
+msgid "Fecha factura"
+msgstr "Invoice date"
+
+#: statistics/utils/report_billing_service.py
+msgid "CIF"
+msgstr "Tax ID"
+
+#: statistics/utils/report_billing_service.py
+msgid "Razón Social"
+msgstr "Company Name"
+
+#: statistics/utils/report_billing_service.py
+msgid "Dirección"
+msgstr "Address"
+
+#: statistics/utils/report_billing_service.py
+msgid "Población"
+msgstr "Town"
+
+#: statistics/utils/report_billing_service.py
+msgid "Provincia"
+msgstr "Province"
+
+#: statistics/utils/report_billing_service.py
+msgid "Código Postal"
+msgstr "Postal Code"
+
+#: statistics/utils/report_billing_service.py
+msgid "País"
+msgstr "Country"
+
+#: statistics/utils/report_billing_service.py
+msgid "Nº Proyecto"
+msgstr "Project No."
+
+#: statistics/utils/report_billing_service.py
+msgid "Forma de pago"
+msgstr "Payment method"
+
+#: statistics/utils/report_billing_service.py
+msgid "Base factura"
+msgstr "Invoice base"
+
+#: statistics/utils/report_billing_service.py
+msgid "Importe total factura"
+msgstr "Invoice total amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA %(product)s %(line_item)s"
+msgstr "VAT %(product)s %(line_item)s"
+
+#: statistics/utils/report_billing_service.py
+msgid "CIF %(product)s %(line_item)s"
+msgstr "Tax ID %(product)s %(line_item)s"
+
+#: statistics/utils/report_billing_service.py
+msgid "Línea personalizada"
+msgstr "Custom line"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA %(line)s"
+msgstr "VAT %(line)s"
+
+#: statistics/utils/report_billing_service.py
+msgid "CIF %(line)s"
+msgstr "Tax ID %(line)s"
+
+#: statistics/utils/report_billing_service.py
+msgid "ABONO"
+msgstr "CREDIT NOTE"
+
+#: statistics/utils/report_billing_service.py
+msgid "Ident."
+msgstr "ID"
+
+#: statistics/utils/report_billing_service.py
+msgid "Adreça"
+msgstr "Address"
+
+#: statistics/utils/report_billing_service.py
+msgid "Nº comptador"
+msgstr "Meter No."
+
+#: statistics/utils/report_billing_service.py
+msgid "Calibre"
+msgstr "Caliber"
+
+#: statistics/utils/report_billing_service.py
+msgid "Bateria"
+msgstr "Battery"
+
+#: statistics/utils/report_billing_service.py
+msgid "Ubicació"
+msgstr "Location"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tipus de subministrament"
+msgstr "Supply type"
+
+#: statistics/utils/report_billing_service.py
+msgid "Valor lectura"
+msgstr "Reading value"
+
+#: statistics/utils/report_billing_service.py
+msgid "Data lectura"
+msgstr "Reading date"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tipus lectura"
+msgstr "Reading type"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tipus telelectura"
+msgstr "Remote reading type"
+
+#: statistics/utils/report_billing_service.py
+msgid "Total m3 facturats"
+msgstr "Total billed m3"
+
+#: statistics/utils/report_billing_service.py
+msgid "NIF Client"
+msgstr "Customer Tax ID"
+
+#: statistics/utils/report_billing_service.py
+msgid "Nom Client"
+msgstr "Customer Name"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import facturat"
+msgstr "Billed amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import base"
+msgstr "Base amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import IVA"
+msgstr "VAT amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Total pendent"
+msgstr "Total pending"
+
+#: statistics/utils/report_billing_service.py
+msgid "CLIENT"
+msgstr "CUSTOMER"
+
+#: statistics/utils/report_billing_service.py
+msgid "DOCS"
+msgstr "DOCS"
+
+#: billing/utils/billing_service.py
+msgid "No reading"
+msgstr "No reading"
+
+#: billing/utils/billing_service.py
+msgid "No price rates"
+msgstr "No price rates"
+
+#: billing/utils/billing_service.py
+msgid "Contract"
+msgstr "Contract"
+
+#: billing/utils/billing_service.py
+msgid "Creation date"
+msgstr "Creation date"
+
+#: billing/utils/billing_service.py
+msgid "Status"
+msgstr "Status"
+
+#: billing/utils/billing_service.py
+msgid "Termination date"
+msgstr "Termination date"
+
+#: billing/utils/billing_service.py
+msgid "CIF Client"
+msgstr "Client Tax ID"
+
+#: billing/utils/billing_service.py
+msgid "Client Name"
+msgstr "Client Name"
+
+#: billing/utils/billing_service.py
+msgid "Billable"
+msgstr "Billable"
+
+#: billing/utils/billing_service.py
+msgid "Exploitation"
+msgstr "Exploitation"
+
+#: billing/utils/billing_service.py
+msgid "Route"
+msgstr "Route"
+
+#: billing/utils/billing_service.py
+msgid "Reading date"
+msgstr "Reading date"
+
+#: billing/utils/billing_service.py
+msgid "Reading value"
+msgstr "Reading value"
+
+#: billing/utils/billing_service.py
+msgid "Consumption"
+msgstr "Consumption"
+
+#: billing/utils/billing_service.py
+msgid "Meter"
+msgstr "Meter"
+
+#: billing/utils/billing_service.py
+msgid "Last invoice"
+msgstr "Last invoice"
+
+#: billing/utils/billing_service.py
+msgid "Last reading date"
+msgstr "Last reading date"
+
+#: billing/utils/billing_service.py
+msgid "Last reading consumption"
+msgstr "Last reading consumption"
+
+msgid "Old rate: %(old)s"
+msgstr "Old rate: %(old)s"
+
+msgid "New rate: %(new)s"
+msgstr "New rate: %(new)s"
+
+msgid "None"
+msgstr "None"
+
+#: statistics/utils/report_service.py
+msgid "NIF/CIF"
+msgstr "Tax ID"
+
+#: statistics/utils/report_service.py
+msgid "Dom. del subministre"
+msgstr "Supply address"
+
+#: statistics/utils/report_service.py
+msgid "Adreça fiscal"
+msgstr "Fiscal address"
+
+#: statistics/utils/report_service.py
+msgid "Sector"
+msgstr "Sector"
+
+#: statistics/utils/report_service.py
+msgid "Població"
+msgstr "City"
+
+#: statistics/utils/report_service.py
+msgid "Identificador"
+msgstr "Identifier"
+
+#: statistics/utils/report_service.py
+msgid "Any factura"
+msgstr "Invoice year"
+
+#: statistics/utils/report_service.py
+msgid "Data emissió"
+msgstr "Issue date"
+
+#: statistics/utils/report_service.py
+msgid "Tipus pagament"
+msgstr "Payment type"
+
+#: statistics/utils/report_service.py
+msgid "Núm. factura"
+msgstr "Invoice number"
+
+#: statistics/utils/report_service.py
+msgid "Tipus factura"
+msgstr "Invoice type"
+
+#: statistics/utils/report_service.py
+msgid "Periodicitat"
+msgstr "Periodicity"
+
+#: statistics/utils/report_service.py
+msgid "Lect. anterior"
+msgstr "Previous reading"
+
+#: statistics/utils/report_service.py
+msgid "Data lec. anterior"
+msgstr "Previous reading date"
+
+#: statistics/utils/report_service.py
+msgid "Lect. actual"
+msgstr "Current reading"
+
+#: statistics/utils/report_service.py
+msgid "Data lec. actual"
+msgstr "Current reading date"
+
+#: statistics/utils/report_service.py
+msgid "Dies periode"
+msgstr "Period days"
+
+#: statistics/utils/report_service.py
+msgid "Estimada"
+msgstr "Estimated"
+
+#: billing/utils/reading_service.py
+msgid "última lectura"
+msgstr "last reading"
+
+#: billing/utils/reading_service.py
+msgid "últim any"
+msgstr "last year"
+
+#: billing/utils/reading_service.py
+msgid "mateix període any anterior"
+msgstr "same period previous year"
+
+#: billing/utils/reading_service.py
+msgid "històric multianual"
+msgstr "multi-year historic"
+
+#: billing/utils/reading_service.py
+msgid "mitjana"
+msgstr "mean"
+
+#: billing/utils/reading_service.py
+msgid "mediana"
+msgstr "median"
+
+#: billing/utils/reading_service.py
+msgid "mitjana multianual"
+msgstr "multi-year average"
+
+#: billing/utils/reading_service.py
+msgid "alternativa a"
+msgstr "fallback for"
+
+#: billing/utils/reading_service.py
+msgid "consum mínim"
+msgstr "minimum consumption"
+
+#: statistics/utils/report_service.py
+msgid "Observ. actual"
+msgstr "Current notes"
+
+#: statistics/utils/report_service.py
+msgid "Consum (m3)"
+msgstr "Consumption (m3)"
+
+#: statistics/utils/report_service.py
+msgid "Import IVA %(percent)s"
+msgstr "VAT amount %(percent)s"
+
+#: statistics/utils/report_service.py
+msgid "Import IVA Total"
+msgstr "Total VAT amount"
+
+#: statistics/utils/report_service.py
+msgid "TipusCobrament"
+msgstr "PaymentType"
+
+#: statistics/utils/report_service.py
+msgid "AnyConveni"
+msgstr "AgreementYear"
+
+#: statistics/utils/report_service.py
+msgid "NumeroConveni"
+msgstr "AgreementNumber"
+
+#: statistics/utils/report_service.py
+msgid "FormaPagament"
+msgstr "PaymentMethod"
+
+#: statistics/utils/report_service.py
+msgid "TerminiConveni"
+msgstr "AgreementTerm"
+
+#: statistics/utils/report_service.py
+msgid "IdRemesa"
+msgstr "RemittanceId"
+
+#: statistics/utils/report_service.py
+msgid "DataRemesa"
+msgstr "RemittanceDate"
+
+#: statistics/utils/report_service.py
+msgid "IBANEmpresaRemesa"
+msgstr "CompanyRemittanceIBAN"
+
+#: statistics/utils/report_service.py
+msgid "DataCobrament"
+msgstr "CollectionDate"
+
+#: statistics/utils/report_service.py
+msgid "Import"
+msgstr "Amount"
+
+#: statistics/utils/report_service.py
+msgid "IBANClient"
+msgstr "ClientIBAN"
+
+#: statistics/utils/report_service.py
+msgid "FacturaClient"
+msgstr "ClientInvoice"
+
+#: statistics/utils/report_service.py
+msgid "Abonament"
+msgstr "CreditNote"
+
+#: statistics/utils/report_service.py
+msgid "Total sense IVA"
+msgstr "Total without VAT"
+
+#: statistics/utils/report_service.py
+msgid "Producte"
+msgstr "Product"
+
+#: statistics/utils/report_service.py
+msgid "Concepte"
+msgstr "Concept"
+
+#: statistics/utils/report_service.py
+msgid "Quantitat"
+msgstr "Quantity"
+
+#: statistics/utils/report_service.py
+msgid "Preu Ut."
+msgstr "Unit price"
+
+#: statistics/utils/report_service.py
+msgid "Total IVA"
+msgstr "VAT total"
+
+#: statistics/utils/report_service.py
+msgid "Subtotal"
+msgstr "Subtotal"
+
+#: statistics/utils/report_service.py
+msgid "Limit"
+msgstr "Limit"
+
+#: statistics/utils/report_service.py
+msgid "Corrector"
+msgstr "Adjustment"
+
+#: statistics/utils/report_service.py
+msgid "Cantidad corrector"
+msgstr "Adjustment amount"
+
+#: statistics/utils/report_service.py
+msgid "Propietari"
+msgstr "Owner"
+
+#: statistics/utils/report_service.py
+msgid "Comptador"
+msgstr "Meter"
+
+#: statistics/utils/report_service.py
+msgid "Ús submministre"
+msgstr "Supply use"
+
+#: statistics/utils/report_service.py
+msgid "Descripció tipus subm."
+msgstr "Supply type description"
+
+#: statistics/utils/report_service.py
+msgid "Núm. persones"
+msgstr "Number of people"
+
+#: statistics/utils/report_service.py
+msgid "Domicili alternatiu"
+msgstr "Alternative address"
+
+#: statistics/utils/report_service.py
+msgid "Codi postal alternatiu"
+msgstr "Alternative postal code"
+
+#: statistics/utils/report_service.py
+msgid "A l'atenció de"
+msgstr "Attention to"
+
+#: statistics/utils/report_service.py
+msgid "Codi ruta"
+msgstr "Route code"
+
+#: statistics/utils/report_service.py
+msgid "Zona"
+msgstr "Zone"
+
+#: statistics/utils/report_service.py
+msgid "Variable"
+msgstr "Variable"
+
+#: statistics/utils/report_service.py
+msgid "Valor"
+msgstr "Value"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL M3"
+msgstr "TOTAL M3"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL €"
+msgstr "TOTAL €"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL SENSE IVA €"
+msgstr "TOTAL WITHOUT VAT €"
+
+#: statistics/utils/report_service.py
+msgid "%(label)s M3"
+msgstr "%(label)s M3"
+
+#: statistics/utils/report_service.py
+msgid "%(label)s TOTAL €"
+msgstr "%(label)s TOTAL €"
+
+#: contract/utils/contract_csv_export.py
+msgid "Token"
+msgstr "Token"
+
+#: contract/utils/contract_csv_export.py
+msgid "Titular"
+msgstr "Holder"
+
+#: contract/utils/contract_csv_export.py
+msgid "Titular token"
+msgstr "Holder token"
+
+#: contract/utils/contract_csv_export.py
+msgid "Document PersonBank.dni (GeneralPayment)"
+msgstr "PersonBank.dni document (GeneralPayment)"
+
+#: contract/utils/contract_csv_export.py
+msgid "Propietari token"
+msgstr "Owner token"
+
+#: contract/utils/contract_csv_export.py
+msgid "Inquilí"
+msgstr "Tenant"
+
+#: contract/utils/contract_csv_export.py
+msgid "Inquilí token"
+msgstr "Tenant token"
+
+#: contract/utils/contract_csv_export.py
+msgid "Estat"
+msgstr "Status"
+
+#: contract/utils/contract_csv_export.py
+msgid "Ús"
+msgstr "Use"
+
+#: contract/utils/contract_csv_export.py
+msgid "Categoria"
+msgstr "Category"
+
+#: contract/utils/contract_csv_export.py
+msgid "Tipus client"
+msgstr "Client type"
+
+#: contract/utils/contract_csv_export.py
+msgid "Gestió del deute"
+msgstr "Debt management"
+
+#: contract/utils/contract_csv_export.py
+msgid "ID explotació"
+msgstr "Exploitation ID"
+
+#: contract/utils/contract_csv_export.py
+msgid "Token explotació"
+msgstr "Exploitation token"
+
+#: contract/utils/contract_csv_export.py
+msgid "Nom explotació"
+msgstr "Exploitation name"
+
+#: contract/utils/contract_csv_export.py
+msgid "Punt subministrament (codi)"
+msgstr "Supply point (code)"
+
+#: contract/utils/contract_csv_export.py
+msgid "Punt subministrament (adreça)"
+msgstr "Supply point (address)"
+
+#: contract/utils/contract_csv_export.py
+msgid "Adreça contacte"
+msgstr "Contact address"
+
+#: contract/utils/contract_csv_export.py
+msgid "Comunicació"
+msgstr "Communication"
+
+#: contract/utils/contract_csv_export.py
+msgid "E-mail comunicació"
+msgstr "Communication email"
+
+#: contract/utils/contract_csv_export.py
+msgid "Tipus de pagament"
+msgstr "Payment type"
+
+#: contract/utils/contract_csv_export.py
+msgid "PersonBank IBAN (SEPA)"
+msgstr "PersonBank IBAN (SEPA)"
+
+#: contract/utils/contract_csv_export.py
+msgid "PersonBank titular (SEPA)"
+msgstr "PersonBank holder (SEPA)"
+
+#: contract/utils/contract_csv_export.py
+msgid "PersonBank DNI (SEPA)"
+msgstr "PersonBank DNI (SEPA)"
+
+#: contract/utils/contract_csv_export.py
+msgid "Facturable"
+msgstr "Billable"
+
+#: contract/utils/contract_csv_export.py
+msgid "Saldo contracte"
+msgstr "Contract balance"
+
+#: contract/utils/contract_csv_export.py
+msgid "Deute contracte"
+msgstr "Contract debt"
+
+#: contract/utils/contract_csv_export.py
+msgid "Nombre persones habitatge"
+msgstr "Number of people in home"
+
+#: contract/utils/contract_csv_export.py
+msgid "Data creació"
+msgstr "Creation date"
+
+#: contract/utils/contract_csv_export.py
+msgid "Sí"
+msgstr "Yes"
+
+#: contract/utils/contract_csv_export.py
+msgid "No"
+msgstr "No"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Cartera"
+msgstr "Wallet"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Rebuts %(start)s - %(end)s"
+msgstr "Receipts %(start)s - %(end)s"
+
+#: statistics/utils/report_wallet_service.py
+msgid "POBLE"
+msgstr "TOWN"
+
+#: statistics/utils/report_wallet_service.py
+msgid "REBUT"
+msgstr "RECEIPT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "ABONAT"
+msgstr "CUSTOMER"
+
+#: statistics/utils/report_wallet_service.py
+msgid "NOM ABONAT"
+msgstr "CUSTOMER NAME"
+
+#: statistics/utils/report_wallet_service.py
+msgid "IMPORT"
+msgstr "AMOUNT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "DATA COBR."
+msgstr "PAYMENT DATE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "DATA F."
+msgstr "CREATION DATE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "PAGAMENT"
+msgstr "PAYMENT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Total abonats: %(count)s"
+msgstr "Total customers: %(count)s"
+
+#: statistics/utils/report_wallet_service.py
+msgid "TOTALS S/ TIPUS DE PAGAMENT"
+msgstr "TOTALS BY PAYMENT TYPE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Altres"
+msgstr "Others"
+
+#: statistics/utils/report_wallet_service.py
+msgid "%(count)s Rebuts"
+msgstr "%(count)s Receipts"
+
+#: statistics/utils/report_wallet_service.py
+msgid "SENSE_BANC"
+msgstr "NO_BANK"
+
+#: statistics/utils/report_wallet_service.py
+msgid "BANC: %(bank_token)s"
+msgstr "BANK: %(bank_token)s"
+
+#: statistics/utils/report_wallet_service.py
+msgid "DOMICILI"
+msgstr "ADDRESS"
+
+#: statistics/utils/report_wallet_service.py
+msgid "COMPTE DOMICILIADA"
+msgstr "DIRECT DEBIT ACCOUNT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "TOTAL REBUTS: %(count)s"
+msgstr "TOTAL RECEIPTS: %(count)s"
+
+#: statistics/utils/report_wallet_service.py
+msgid "TOTAL EUROS: %(amount)s €"
+msgstr "TOTAL EUROS: %(amount)s €"
+
+#: statistics/utils/report_wallet_service.py
+msgid "all_unpaid"
+msgstr "all_unpaid"
+
+#: statistics/utils/report_wallet_service.py:1175
+msgid "retorn_sepa"
+msgstr "sepa_return"
+
+#: statistics/utils/report_wallet_service.py
+msgid "RESUM"
+msgstr "SUMMARY"
+
+#: statistics/utils/report_wallet_service.py
+msgid "BANC"
+msgstr "BANK"
+
+#: statistics/utils/report_wallet_service.py
+msgid "NOM"
+msgstr "NAME"
+
+#: statistics/utils/report_wallet_service.py
+msgid "REBUTS"
+msgstr "RECEIPTS"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Resum rebuts"
+msgstr "Receipts summary"
+
+#: statistics/utils/report_wallet_service.py
+msgid "REMESA"
+msgstr "REMITTANCE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "FECHA REGISTRO"
+msgstr "REGISTRATION DATE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "BANCO"
+msgstr "BANK"
+
+#: statistics/utils/report_wallet_service.py
+msgid "FACTURA"
+msgstr "INVOICE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "FECHA VENCIMIENTO"
+msgstr "DUE DATE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "IMPORTE FACTURA"
+msgstr "INVOICE AMOUNT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "IMPORTE TOTAL REMESA"
+msgstr "TOTAL REMITTANCE AMOUNT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Resumen cobros"
+msgstr "Payments summary"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Cobros %(start)s - %(end)s"
+msgstr "Payments %(start)s - %(end)s"
+
+#: statistics/utils/report_wallet_service.py
+msgid "FECHA COBRO"
+msgstr "PAYMENT DATE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "IMPORTE COBRADO"
+msgstr "COLLECTED AMOUNT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "TOTALES"
+msgstr "TOTALS"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Resumen recibos"
+msgstr "Receipts summary"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Detalle recibos"
+msgstr "Receipts details"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Recibos %(start)s - %(end)s"
+msgstr "Receipts %(start)s - %(end)s"
+
+#: statistics/utils/report_wallet_service.py
+msgid "FECHA IMPAGADO"
+msgstr "UNPAID DATE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "FECHA DEVOLUCIÓN"
+msgstr "RETURN DATE"
+
+#: statistics/utils/report_wallet_service.py
+msgid "MOTIVO DEVOLUCIÓN"
+msgstr "RETURN REASON"
+
+#: statistics/utils/report_wallet_service.py
+msgid "BANCO CLIENTE"
+msgstr "CLIENT BANK"
+
+#: statistics/utils/report_wallet_service.py
+msgid "BANCO EMPRESA"
+msgstr "COMPANY BANK"
+
+#: statistics/utils/report_wallet_service.py
+msgid "CONTRATO"
+msgstr "CONTRACT"
+
+#: statistics/utils/report_wallet_service.py
+msgid "CONTADOR"
+msgstr "METER"
+
+#: statistics/utils/report_wallet_service.py
+msgid "DIRECCIÓN SUMINISTRO"
+msgstr "SUPPLY ADDRESS"
+
+#: statistics/utils/report_wallet_service.py
+msgid "TOTALS"
+msgstr "TOTALS"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Núm factura"
+msgstr "Invoice no."
+
+#: statistics/utils/report_wallet_service.py
+msgid "Contracte"
+msgstr "Contract"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Adreça subm."
+msgstr "Supply address"
+
+#: billing/tasks.py
+msgid "Posició"
+msgstr "Position"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Total factura"
+msgstr "Total invoice"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Data factura"
+msgstr "Invoice date"
+
+#: coredata/views/person_piggy_bank_view.py
+msgid "RETURN BALANCE"
+msgstr "RETURN BALANCE"
+
+#: billing/serializers/joined_payment_serializer.py
+msgid "Joined payment created"
+msgstr "Joined payment created"
+
+# Dynamic AvailableReport translations
+msgid "Cobraments"
+msgstr "Payments"
+
+msgid "Contractes"
+msgstr "Contracts"
+
+msgid "Ordres de Treball"
+msgstr "Work Orders"
+
+msgid "Estadístiques"
+msgstr "Statistics"
+
+msgid "Resum de facturació"
+msgstr "Billing summary"
+
+msgid "Resum comptable"
+msgstr "Accounting summary"
+
+msgid "Resum comptable (Factures)"
+msgstr "Accounting summary (Invoices)"
+
+msgid "Resum comptable (Compromís de pagament)"
+msgstr "Accounting summary (Payment commitment)"
+
+msgid "Remeses Aqua"
+msgstr "Aqua remittances"
+
+msgid "Declaració ACA"
+msgstr "ACA declaration"
+
+msgid "Padró de facturació"
+msgstr "Billing register"
+
+msgid "Resum de facturació detallat"
+msgstr "Detailed billing summary"
+
+msgid "Resum de facturació per tipus de punt de subministrament"
+msgstr "Billing summary by supply point type"
+
+msgid "Resum d'abonats per tarifa"
+msgstr "Subscribers summary by rate"
+
+msgid "Resum de facturació IVA"
+msgstr "Billing VAT summary"
+
+msgid "Resum de facturació per integració NAVISION"
+msgstr "Billing summary for NAVISION integration"
+
+msgid "Resum de consum"
+msgstr "Consumption summary"
+
+msgid "Padró de facturació reduït"
+msgstr "Reduced billing register"
+
+msgid "Informe de Clavegueram"
+msgstr "Sewerage report"
+
+msgid "Resum de pagaments cobrats"
+msgstr "Collected payments summary"
+
+msgid "Informe de Recaptació per Conceptes"
+msgstr "Collection report by concepts"
+
+msgid "Resum per Productes"
+msgstr "Summary by Products"
+
+msgid "Detall Moviments"
+msgstr "Movement Details"
+
+msgid "Data Cobrament"
+msgstr "Collection Date"
+
+msgid "Periode Liquidat"
+msgstr "Billed Period"
+
+msgid "Base IVA (€)"
+msgstr "VAT Base (€)"
+
+msgid "IVA (€)"
+msgstr "VAT (€)"
+
+msgid "Total Recaptat (€)"
+msgstr "Total Collected (€)"
+
+msgid "Forma Pagament"
+msgstr "Payment Method"
+
+msgid "Origen Pagament"
+msgstr "Payment Origin"
+
+msgid "TOTAL RECAPTAT"
+msgstr "TOTAL COLLECTED"
+
+msgid "Resum per Empresa"
+msgstr "Summary by Company"
+
+msgid "Sense Empresa"
+msgstr "No Company"
+
+msgid "Empresa"
+msgstr "Company"
+
+msgid "Facturat (€)"
+msgstr "Billed (€)"
+
+msgid "Cobrat (€)"
+msgstr "Collected (€)"
+
+msgid "Pendent (€)"
+msgstr "Pending (€)"
+
+msgid "collection_by_concepts"
+msgstr "collection_by_concepts"
+
+msgid "Fiances INCASOL"
+msgstr "INCASOL deposits"
+
+msgid "Resum de facturació per persona"
+msgstr "Billing summary by person"
+
+msgid "Model 347"
+msgstr "Model 347"
+
+msgid "Resum de rebuts domiciliats"
+msgstr "Direct debit receipts summary"
+
+msgid "Llistat de rebuts domiciliats"
+msgstr "Direct debit receipts list"
+
+msgid "Llistat de rebuts domiciliats detallat"
+msgstr "Detailed direct debit receipts list"
+
+msgid "Resum de pagaments cobrats en efectiu"
+msgstr "Cash payments summary"
+
+msgid "Informe retorn SEPA"
+msgstr "SEPA return report"
+
+msgid "Informe de tots els impagats (Global)"
+msgstr "All unpaid report (Global)"
+
+msgid "Exportació de contractes"
+msgstr "Contracts export"
+
+msgid "Resum de lectures i factures per contracte"
+msgstr "Readings and invoices summary by contract"
+
+msgid "Exportació de tarifes"
+msgstr "Rates export"
+
+msgid "Exportació de baixes"
+msgstr "Terminations export"
+
+msgid "Resum temps destinat a ordres de treball"
+msgstr "Work order time summary"
+
+msgid "Ingrés per tipologia i periodicitat"
+msgstr "Income by typology and periodicity"
+
+msgid "Ingrés detallat per tipologia i periodicitat"
+msgstr "Detailed income by typology and periodicity"
+
+msgid "Ingrés detallat per concepte"
+msgstr "Detailed income by concept"
+
+msgid "Detall ingressos no tarifaris"
+msgstr "Non-tariff income details"
+
+msgid "Evolució d'abonats, altes i baixes"
+msgstr "Subscribers, activations and terminations evolution"
+
+msgid "Evolució de tarifa social i vulnerables"
+msgstr "Social rates and vulnerable evolution"
+
+msgid "Temps de resposta a reclamacions"
+msgstr "Claims response time"
+
+msgid "Volum i estadístiques de gestions"
+msgstr "Management volume and statistics"
+
+msgid "Descarregar Excel"
+msgstr "Download Excel"
+
+msgid "Generar Cànon ACA"
+msgstr "Generate ACA Canon"
+
+msgid "Descarregar Padró"
+msgstr "Download Register"
+
+msgid "Descarregar Model 347"
+msgstr "Download Model 347"
+
+msgid "Resum global de facturació amb imports agregats per explotació i període."
+msgstr "Global billing summary with aggregated amounts per exploitation and period."
+
+msgid "Resum d'assentaments i conceptes comptables facturats."
+msgstr "Summary of active entries and billed accounting concepts."
+
+msgid "Resum d'assentaments i conceptes comptables facturats (Factures)."
+msgstr "Summary of active entries and billed accounting concepts (Invoices)."
+
+msgid "Resum d'assentaments i conceptes comptables facturats (Compromisos de pagament)."
+msgstr "Summary of active entries and billed accounting concepts (Payment commitments)."
+
+msgid "Detall resumit de les remeses bancàries enviades per al cobrament."
+msgstr "Summarized detail of bank remittances sent for collection."
+
+msgid "Declaració oficial del cànon de l'aigua d'acord amb la normativa de l'ACA."
+msgstr "Official water tax declaration in accordance with ACA regulations."
+
+msgid "Registre unificat de factures emeses."
+msgstr "Unified register of issued invoices."
+
+msgid "Detall minuciós línia per línia del registre de facturació."
+msgstr "Detailed line-by-line detail of the billing register."
+
+msgid "Detall d'imports facturats agregats per modalitat o tipus de subministrament."
+msgstr "Detail of billed amounts aggregated by modality or supply type."
+
+msgid "Distribució dels imports facturats segmentats per les diferents tarifes actives."
+msgstr "Distribution of billed amounts segmented by active rates."
+
+msgid "Agregació de bases imposables i quotes d'impostos aplicats (IVA)."
+msgstr "Aggregation of taxable bases and applied tax quotes (VAT)."
+
+msgid "Detall línia per línia d'impostos aplicats en el període."
+msgstr "Line-by-line detail of taxes applied during the period."
+
+msgid "Detall de consums registrats i mitjanes del període liquidat."
+msgstr "Detail of registered consumption and averages of the settled period."
+
+msgid "Versió compacta i resumida del registre de factures."
+msgstr "Compact and summarized version of the invoice register."
+
+msgid "Resum de taxes de clavegueram facturades segons el moviment de cartera."
+msgstr "Summary of billed sewerage taxes according to portfolio movements."
+
+msgid "Informe de cobraments i devolucions amb prorrateig conceptual de costos."
+msgstr "Collected payments and returns report with conceptual cost distribution."
+
+msgid "Informe de recaptació agregada per cadascun dels conceptes dinàmics."
+msgstr "Aggregated revenue report for each dynamic concept."
+
+msgid "Llistat de fiances gestionades, actives, retornades o cancel·lades."
+msgstr "List of managed, active, returned or cancelled bails."
+
+msgid "Resum de facturació acumulat i desglossat per persona/titular."
+msgstr "Accumulated and detailed billing summary per person/holder."
+
+msgid "Declaració anual d'operacions amb terceres persones que superin el límit legal (Model 347)."
+msgstr "Annual declaration of operations with third parties exceeding the legal limit (Model 347)."
+
+msgid "Situació i balances balances globals dels rebuts de cartera."
+msgstr "Global status and balances of portfolio receipts."
+
+msgid "Distribució i relació detallada per entitat bancària."
+msgstr "Detailed distribution and listing by banking entity."
+
+msgid "Detall individual de moviments bancaris per entitat."
+msgstr "Individual detail of bank movements per entity."
+
+msgid "Registre dels moviments comptabilitzats per la caixa física/manual."
+msgstr "Register of movements logged by physical/manual cash desk."
+
+msgid "Llistat general de deutes vençuts i pendents de cobrament."
+msgstr "General list of expired and pending debts."
+
+msgid "Informe global de tots els rebuts en estat impagat o vençut sense importar el mètode de pagament."
+msgstr "Global report of all receipts in unpaid or expired status regardless of payment method."
+
+msgid "Llistat complet de contractes amb les seves dades tècniques i d'abonats."
+msgstr "Complete list of contracts with technical and subscriber data."
+
+msgid "Traçabilitat històrica de lectures i factures associades a cada contracte."
+msgstr "Historical traceability of readings and invoices associated with each contract."
+
+msgid "Relació de tarifes actives assignades als contractes."
+msgstr "List of active rates assigned to contracts."
+
+msgid "Resum històric dels contractes que han sol·licitat la baixa del servei."
+msgstr "Historical summary of contracts requesting service termination."
+
+msgid "Estadístiques de resolució i temps de resposta d'ordres de treball de camp."
+msgstr "Resolution statistics and response time for field work orders."
+
+msgid "Estadística del nombre d'abonats classificats per tipus d'ús i freqüència de lectura."
+msgstr "Subscriber count statistics classified by use type and reading frequency."
+
+msgid "Ingressos de facturació segregats per concepte tarifari i període."
+msgstr "Billing income segregated by tariff concept and period."
+
+msgid "Relació d'ingressos especials o derivats d'actuacions no periòdiques."
+msgstr "List of special or non-periodic income."
+
+msgid "Gràfics i ràtios històrics de noves altes i baixes netes."
+msgstr "Historical charts and ratios of net activations and terminations."
+
+msgid "Estadístiques dels abonats beneficiaris de bonificacions i cànons socials."
+msgstr "Statistics of subscribers benefiting from social rates and subsidies."
+
+msgid "Informe d'auditoria sobre reclamacions rebudes i la seva data de tancament."
+msgstr "Audit report of received claims and their closing date."
+
+msgid "Mètriques agregades de l'activitat diària de l'oficina comercial."
+msgstr "Aggregated metrics of daily commercial office activity."
+
+
+
+msgid "Informe de Recaptació"
+msgstr "Collection Report"
+
+msgid "Resum de cobraments de factures i taxes segons el moviment de cartera."
+msgstr "Summary of payments for invoices and taxes according to wallet movements."
+
+msgid "Sense producte (Històric/Altres)"
+msgstr "No product (Historical/Others)"
+
+msgid "Box Office"
+msgstr "Box Office"
+
+msgid "Post Office"
+msgstr "Post Office"
+
+msgid "Rec"
+msgstr "Irrigation"
+
+msgid "Quota servei rec"
+msgstr "Irrigation service fee"
+
+msgid "Consum rec (€)"
+msgstr "Irrigation consumption (€)"
+
+msgid "Consum i Quotes per Ruta"
+msgstr "Consumption and Fees by Route"
+
+msgid "Ruta"
+msgstr "Route"
+
+msgid "Nom de la ruta"
+msgstr "Route name"
+
+msgid "Aigua"
+msgstr "Water"
+
+msgid "Clavegueram"
+msgstr "Sewerage"
+
+msgid "Escomeses"
+msgstr "Service connections"
+
+msgid "Comptadors"
+msgstr "Meters"
+
+msgid "nº de Factures"
+msgstr "No. of Invoices"
+
+msgid "Quota servei aigua"
+msgstr "Water service fee"
+
+msgid "Consum aigua (€)"
+msgstr "Water consumption (€)"
+
+msgid "Quota servei clavegueram"
+msgstr "Sewerage service fee"
+
+msgid "Consum clavegueram (€)"
+msgstr "Sewerage consumption (€)"
+
+msgid "Conservació escomeses"
+msgstr "Service connection maintenance"
+
+msgid "Conservació comptadors"
+msgstr "Meter maintenance"
+
+msgid "Sense ruta"
+msgstr "No route"
+
+msgid "Sense nom de ruta"
+msgstr "No route name"
+
+msgid "Tipus d'ús"
+msgstr "Usage type"
+
+msgid "Sense tipus d'ús"
+msgstr "No usage type"
+
+msgid "Reading"
+msgstr "Reading"
+
+msgid "Leak value"
+msgstr "Leak value"
+
+msgid "Deute Pendent"
+msgstr "Pending Debt"
+
+msgid "Data pagament"
+msgstr "Payment date"
+
+#: statistics/utils/report_billing_service.py
+msgid "Pagaments rebuts"
+msgstr "Received payments"
+
+#: statistics/utils/report_billing_service.py
+msgid "Data cobrament"
+msgstr "Payment date"
+
+#: statistics/utils/report_billing_service.py
+msgid "Token cobrament"
+msgstr "Payment token"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import cobrat (€)"
+msgstr "Collected amount (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "Forma de pagament"
+msgstr "Payment method"
+
+#: statistics/utils/report_billing_service.py
+msgid "Raó social"
+msgstr "Company name"
+
+#: statistics/utils/report_billing_service.py
+msgid "EFECTIVO"
+msgstr "CASH"
+
+msgid "Pre-invoice Generation"
+msgstr "Pre-invoice Generation"
+
+msgid "Definitive Invoice Generation"
+msgstr "Definitive Invoice Generation"
+
+msgid "Canvi comptador"
+msgstr "Meter change"
+
+msgid "Affected"
+msgstr "Affected"
+
+msgid "Last vuln data"
+msgstr "Last vulnerability request date"
+
+#: contract/views/contract_request_view.py:147
+msgid "MeterCaliber not found"
+msgstr "MeterCaliber not found"
+
+#: contract/views/contract_request_view.py:155
+msgid "Invalid meter_mode"
+msgstr "Invalid meter_mode"
+
+#: billing/views/reading_view.py:209
+msgid "Meter not found"
+msgstr "Meter not found"
+
+#: billing/views/reading_view.py:216
+msgid "Supply point not found"
+msgstr "Supply point not found"
+
+#: contract/utils/contract_request_service.py:466
+msgid "Falta assignar un comptador al punt de subministrament de la sol·licitud."
+msgstr "A meter must be assigned to the request's supply point."
+
+#: billing/utils/sepa_file_service.py
+msgid "Return xml msg"
+msgstr "BALANCE SETTLEMENT"
+
+msgid "Consum registrat"
+msgstr "Registered consumption"
+
+msgid "Altres consums"
+msgstr "Other consumption"
+
+msgid "Consum facturat"
+msgstr "Billed consumption"
+
+#: billing/templatetags/billing_filters.py:179
+msgid "Puntual"
+msgstr "One-off"
+
+#: billing/templatetags/billing_filters.py:195
+msgid "%(month)s de %(year)s"
+msgstr "%(month)s %(year)s"
+
+#: billing/templatetags/billing_filters.py:199
+msgid "%(start)s a %(end)s de %(year)s"
+msgstr "%(start)s to %(end)s %(year)s"
+
+#: billing/templatetags/billing_filters.py:203
+msgid "%(start)s de %(start_year)s a %(end)s de %(end_year)s"
+msgstr "%(start)s %(start_year)s to %(end)s %(end_year)s"
+
+
+msgid "Expenses"
+msgstr "Expenses"
+
+msgid "Expired daily documents"
+msgstr "Expired daily documents"
+
+
+msgid "Daily documents declared as expired on %(date)s"
+msgstr "Daily documents declared as expired on %(date)s"
+
+#: statistics/utils/report_billing_service.py
+msgid ""
+"El període de la declaració ACA ha de ser un mes o un "
+"trimestre natural complet (T1 gen-mar, T2 abr-jun, "
+"T3 jul-set, T4 oct-des). El rang seleccionat no ho és."
+msgstr ""
+"The ACA declaration period must be a month or a full "
+"calendar quarter (T1 Jan-Mar, T2 Apr-Jun, T3 Jul-Sep, "
+"T4 Oct-Dec). The selected range is not."
+
+#: billing/tasks.py
+msgid "readings"
+msgstr "readings"
+
+#: billing/tasks.py
+msgid "Readings"
+msgstr "Readings"
+
+#: billing/tasks.py
+msgid "Data de lectura"
+msgstr "Reading date"
+
+#: billing/tasks.py importexport/utils/export_registry.py
+msgid "Punt de subministrament"
+msgstr "Supply point"
+
+#: billing/tasks.py
+msgid "Codi comptador"
+msgstr "Meter code"
+
+#: billing/tasks.py
+msgid "Codi posició ruta"
+msgstr "Route position code"
+
+#: billing/tasks.py statistics/utils/report_service.py
+msgid "Lectura"
+msgstr "Reading"
+
+#: billing/tasks.py
+msgid "Consum"
+msgstr "Consumption"
+
+#: billing/tasks.py importexport/utils/export_registry.py
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Origen"
+msgstr "Origin"
+
+#: billing/tasks.py
+msgid "Consum anterior 1"
+msgstr "Previous consumption 1"
+
+#: billing/tasks.py
+msgid "Consum anterior 2"
+msgstr "Previous consumption 2"
+
+#: billing/tasks.py
+msgid "Consum anterior 3"
+msgstr "Previous consumption 3"
+
+#: billing/tasks.py
+msgid "Consum anterior 4"
+msgstr "Previous consumption 4"
+
+#: billing/utils/billing_service.py
+msgid "REMESA AQUA"
+msgstr "AQUA REMITTANCE"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Payment Types"
+msgstr "Payment Types"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Invoices / Line items"
+msgstr "Invoices / Line items"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Use types"
+msgstr "Use types"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Line items"
+msgstr "Line items"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Taxes"
+msgstr "Taxes"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Bonifications"
+msgstr "Bonifications"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Variables"
+msgstr "Variables"
+
+#: billing/views/billing_preinvoices_summary_xls_view.py
+msgid "Messages"
+msgstr "Messages"
+
+#: billing/views/invoice_clavegueram_export_view.py
+msgid "Informe Clavegueram"
+msgstr "Sewerage Report"
+
+#: billing/views/invoice_clavegueram_export_view.py
+#: claimrequest/views/claim_request_excel_generate_view.py
+#: statistics/utils/report_billing_service.py
+#: statistics/utils/report_service.py
+msgid "NIF"
+msgstr "Tax ID"
+
+#: billing/views/invoice_clavegueram_export_view.py
+#: statistics/utils/report_billing_service.py
+msgid "Adreça Subministrament"
+msgstr "Supply Address"
+
+#: billing/views/invoice_clavegueram_export_view.py
+#: statistics/utils/report_billing_service.py
+msgid "Número Factura"
+msgstr "Invoice Number"
+
+#: billing/views/invoice_clavegueram_export_view.py
+#: statistics/utils/report_billing_service.py
+#: statistics/utils/report_wallet_service.py
+msgid "Data Factura"
+msgstr "Invoice Date"
+
+#: billing/views/invoice_clavegueram_export_view.py
+msgid "Període Liquidat"
+msgstr "Settled Period"
+
+#: billing/views/invoice_clavegueram_export_view.py
+#: statistics/utils/report_billing_service.py
+msgid "Consum anual"
+msgstr "Annual consumption"
+
+#: billing/views/invoice_clavegueram_export_view.py
+#: statistics/utils/report_billing_service.py
+msgid "Tipologia de client"
+msgstr "Customer type"
+
+#: billing/views/invoice_clavegueram_export_view.py
+msgid "Quota Fixa €"
+msgstr "Fixed Fee €"
+
+#: billing/views/invoice_clavegueram_export_view.py
+msgid "Quota Variable €"
+msgstr "Variable Fee €"
+
+#: billing/views/invoice_clavegueram_export_view.py
+msgid "Total Clavegueram €"
+msgstr "Total Sewerage €"
+
+#: billing/views/invoice_clavegueram_export_view.py
+#: statistics/utils/report_service.py
+msgid "Observacions"
+msgstr "Remarks"
+
+#: billing/views/payment_remittance_view.py
+msgid "Invoice"
+msgstr "Invoice"
+
+#: billing/views/payment_remittance_view.py
+msgid "Amount"
+msgstr "Amount"
+
+#: billing/views/payment_remittance_view.py
+msgid "Payment Date"
+msgstr "Payment Date"
+
+#: billing/views/payment_remittance_view.py
+msgid "Due Date"
+msgstr "Due Date"
+
+#: contract/utils/contract_csv_export.py
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "RoutePosition"
+msgstr "Route position"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "ID contracte"
+msgstr "Contract ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "Token contracte"
+msgstr "Contract token"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Data creació contracte"
+msgstr "Contract creation date"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "NoFacturable"
+msgstr "NotBillable"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID titular"
+msgstr "Holder ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Token titular"
+msgstr "Holder token"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Nom titular"
+msgstr "Holder name"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID tipus ús"
+msgstr "Use type ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Token tipus ús"
+msgstr "Use type token"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Nom tipus ús"
+msgstr "Use type name"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID tipus client"
+msgstr "Client type ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Token tipus client"
+msgstr "Client type token"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Nom tipus client"
+msgstr "Client type name"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID categoria"
+msgstr "Category ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Token categoria"
+msgstr "Category token"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Nom categoria"
+msgstr "Category name"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID zona ruta"
+msgstr "Route zone ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Token zona ruta"
+msgstr "Route zone token"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Nom zona ruta"
+msgstr "Route zone name"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID ruta"
+msgstr "Route ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Token ruta"
+msgstr "Route token"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Nom ruta"
+msgstr "Route name"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID comptador"
+msgstr "Meter ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ComptadorGeneral"
+msgstr "GeneralMeter"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ComptadorPare"
+msgstr "ParentMeter"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID última factura"
+msgstr "Last invoice ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Codi última factura"
+msgstr "Last invoice code"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Data última factura"
+msgstr "Last invoice date"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID última lectura"
+msgstr "Last reading ID"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Data última lectura"
+msgstr "Last reading date"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Valor última lectura"
+msgstr "Last reading value"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID lectura anterior (FK)"
+msgstr "Previous reading ID (FK)"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Data lectura anterior"
+msgstr "Previous reading date"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Valor lectura anterior"
+msgstr "Previous reading value"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID lectura anterior² (FK)"
+msgstr "Previous reading² ID (FK)"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Data lectura anterior²"
+msgstr "Previous reading² date"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Valor lectura anterior²"
+msgstr "Previous reading² value"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "ID lectura anterior³ (FK)"
+msgstr "Previous reading³ ID (FK)"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Data lectura anterior³"
+msgstr "Previous reading³ date"
+
+#: contract/utils/contract_invoice_reading_summary_export.py
+msgid "Valor lectura anterior³"
+msgstr "Previous reading³ value"
+
+#: notification/utils/incident_csv_export.py
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Detall Registres"
+msgstr "Record details"
+
+#: notification/utils/incident_csv_export.py
+#: statistics/utils/daily_activity_service.py
+msgid "Referència"
+msgstr "Reference"
+
+#: notification/utils/incident_csv_export.py
+msgid "Nom / Títol"
+msgstr "Name / Title"
+
+#: notification/utils/incident_csv_export.py
+msgid "Tipus d'Incidència"
+msgstr "Incident Type"
+
+#: notification/utils/incident_csv_export.py
+msgid "Referència Contracte"
+msgstr "Contract Reference"
+
+#: notification/utils/incident_csv_export.py
+msgid "Referència Factura"
+msgstr "Invoice Reference"
+
+#: notification/utils/incident_csv_export.py
+msgid "Referència Ordre"
+msgstr "Order Reference"
+
+#: notification/utils/incident_csv_export.py
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Data Creació"
+msgstr "Creation Date"
+
+#: notification/utils/incident_csv_export.py
+msgid "Data Actualització"
+msgstr "Update Date"
+
+#: notification/utils/incident_csv_export.py
+#: statistics/utils/report_advanced_billing_service.py
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Descripció"
+msgstr "Description"
+
+#: service/utils/route_export_csv.py got/views.py
+#: statistics/utils/report_service.py
+msgid "Ordre"
+msgstr "Order"
+
+#: service/utils/route_export_csv.py
+msgid "Codi de posició"
+msgstr "Position code"
+
+#: service/utils/route_export_csv.py
+msgid "Finques"
+msgstr "Properties"
+
+#: service/utils/route_export_csv.py
+msgid "Punts de subministrament"
+msgstr "Supply points"
+
+#: service/utils/route_export_csv.py
+msgid "Observació"
+msgstr "Remark"
+
+#: communication/tasks.py importexport/utils/export_registry.py
+msgid "ID"
+msgstr "ID"
+
+#: communication/tasks.py
+msgid "Process Token"
+msgstr "Process Token"
+
+#: communication/tasks.py
+msgid "Person Name"
+msgstr "Person Name"
+
+#: communication/tasks.py
+msgid "Person Token"
+msgstr "Person Token"
+
+#: communication/tasks.py
+msgid "Used Email"
+msgstr "Used Email"
+
+#: communication/tasks.py
+msgid "Used Phones"
+msgstr "Used Phones"
+
+#: communication/tasks.py
+msgid "Created At"
+msgstr "Created At"
+
+#: communication/tasks.py
+msgid "Sent At"
+msgstr "Sent At"
+
+#: communication/tasks.py
+msgid "Type Names"
+msgstr "Type Names"
+
+#: communication/tasks.py
+msgid "Use Type"
+msgstr "Use Type"
+
+#: got/views.py statistics/utils/report_advanced_billing_service.py
+msgid "Data"
+msgstr "Date"
+
+#: got/views.py
+msgid "Finalització"
+msgstr "Completion"
+
+#: got/views.py
+msgid "Operaris"
+msgstr "Operators"
+
+#: importexport/utils/export_registry.py
+msgid "Actiu"
+msgstr "Active"
+
+#: importexport/utils/export_registry.py
+msgid "Any fabricació"
+msgstr "Manufacturing year"
+
+#: importexport/utils/export_registry.py
+msgid "Banc de pagament"
+msgstr "Payment bank"
+
+#: importexport/utils/export_registry.py
+msgid "Broquet"
+msgstr "Nozzle"
+
+#: importexport/utils/export_registry.py
+msgid "Cadastral"
+msgstr "Cadastral reference"
+
+#: importexport/utils/export_registry.py
+msgid "Client"
+msgstr "Customer"
+
+#: importexport/utils/export_registry.py
+msgid "Codi"
+msgstr "Code"
+
+#: importexport/utils/export_registry.py
+msgid "Codi subministrament"
+msgstr "Supply code"
+
+#: importexport/utils/export_registry.py
+msgid "Cognoms"
+msgstr "Surnames"
+
+#: importexport/utils/export_registry.py
+msgid "Compte bancari"
+msgstr "Bank account"
+
+#: importexport/utils/export_registry.py
+msgid "Creat per"
+msgstr "Created by"
+
+#: importexport/utils/export_registry.py
+msgid "Data alta"
+msgstr "Registration date"
+
+#: importexport/utils/export_registry.py
+msgid "Data aprovació"
+msgstr "Approval date"
+
+#: importexport/utils/export_registry.py
+msgid "Data completat"
+msgstr "Completion date"
+
+#: importexport/utils/export_registry.py
+msgid "Data desinstal·lació"
+msgstr "Uninstallation date"
+
+#: importexport/utils/export_registry.py
+msgid "Data devolució"
+msgstr "Return date"
+
+#: importexport/utils/export_registry.py
+msgid "Data enviament"
+msgstr "Sending date"
+
+#: importexport/utils/export_registry.py
+msgid "Data fi"
+msgstr "End date"
+
+#: importexport/utils/export_registry.py
+msgid "Data inici"
+msgstr "Start date"
+
+#: importexport/utils/export_registry.py
+msgid "Data instal·lació"
+msgstr "Installation date"
+
+#: importexport/utils/export_registry.py
+msgid "Data límit"
+msgstr "Due date"
+
+#: importexport/utils/export_registry.py
+msgid "Data prevista"
+msgstr "Scheduled date"
+
+#: importexport/utils/export_registry.py
+msgid "Data procés"
+msgstr "Processing date"
+
+#: importexport/utils/export_registry.py
+msgid "Data sol·licitud"
+msgstr "Request date"
+
+#: importexport/utils/export_registry.py
+msgid "Data venciment"
+msgstr "Due date"
+
+#: importexport/utils/export_registry.py
+msgid "Diàmetre"
+msgstr "Diameter"
+
+#: importexport/utils/export_registry.py
+msgid "Email"
+msgstr "Email"
+
+#: importexport/utils/export_registry.py
+msgid "Enviat per"
+msgstr "Sent by"
+
+#: importexport/utils/export_registry.py
+msgid "Escomesa"
+msgstr "Connection"
+
+#: importexport/utils/export_registry.py
+msgid "És despeses de devolució"
+msgstr "Is return fees"
+
+#: importexport/utils/export_registry.py
+msgid "És devolució"
+msgstr "Is return"
+
+#: importexport/utils/export_registry.py
+msgid "És fiança"
+msgstr "Is deposit"
+
+#: importexport/utils/export_registry.py
+msgid "Estat resposta"
+msgstr "Response status"
+
+#: importexport/utils/export_registry.py
+msgid "Exclosa"
+msgstr "Excluded"
+
+#: importexport/utils/export_registry.py
+msgid "Fabricant"
+msgstr "Manufacturer"
+
+#: importexport/utils/export_registry.py
+msgid "Facturada"
+msgstr "Billed"
+
+#: importexport/utils/export_registry.py
+msgid "Facturador"
+msgstr "Biller"
+
+#: importexport/utils/export_registry.py
+msgid "Grups"
+msgstr "Groups"
+
+#: importexport/utils/export_registry.py
+msgid "Hash"
+msgstr "Hash"
+
+#: importexport/utils/export_registry.py
+msgid "Impost"
+msgstr "Tax"
+
+#: importexport/utils/export_registry.py
+msgid "Jurídica"
+msgstr "Legal entity"
+
+#: importexport/utils/export_registry.py
+msgid "Lot"
+msgstr "Batch"
+
+#: importexport/utils/export_registry.py
+msgid "Mes inicial"
+msgstr "Initial month"
+
+#: importexport/utils/export_registry.py statistics/utils/report_service.py
+msgid "Motiu"
+msgstr "Reason"
+
+#: importexport/utils/export_registry.py
+msgid "Municipi"
+msgstr "Municipality"
+
+#: importexport/utils/export_registry.py
+msgid "Nivell vulnerabilitat"
+msgstr "Vulnerability level"
+
+#: importexport/utils/export_registry.py
+msgid "Nom 2"
+msgstr "Name 2"
+
+#: importexport/utils/export_registry.py
+msgid "Núm. broquets"
+msgstr "No. of nozzles"
+
+#: importexport/utils/export_registry.py
+msgid "Número"
+msgstr "Number"
+
+#: importexport/utils/export_registry.py
+msgid "Núm. pagaments"
+msgstr "No. of payments"
+
+#: importexport/utils/export_registry.py
+msgid "Núm. permisos"
+msgstr "No. of permissions"
+
+#: importexport/utils/export_registry.py
+msgid "Núm. Punts de Subministrament"
+msgstr "No. of Supply Points"
+
+#: importexport/utils/export_registry.py
+msgid "Pas actual"
+msgstr "Current step"
+
+#: importexport/utils/export_registry.py statistics/utils/report_service.py
+msgid "Pendent"
+msgstr "Pending"
+
+#: importexport/utils/export_registry.py
+msgid "Per defecte"
+msgstr "Default"
+
+#: importexport/utils/export_registry.py
+msgid "Persona"
+msgstr "Person"
+
+#: importexport/utils/export_registry.py
+msgid "Plantilla"
+msgstr "Template"
+
+#: importexport/utils/export_registry.py
+msgid "Positiu"
+msgstr "Positive"
+
+#: importexport/utils/export_registry.py
+msgid "Potable"
+msgstr "Drinkable"
+
+#: importexport/utils/export_registry.py
+msgid "Preu"
+msgstr "Price"
+
+#: importexport/utils/export_registry.py
+msgid "Prioritat"
+msgstr "Priority"
+
+#: importexport/utils/export_registry.py
+msgid "Processat"
+msgstr "Processed"
+
+#: importexport/utils/export_registry.py
+msgid "Publicació"
+msgstr "Publication"
+
+#: importexport/utils/export_registry.py
+msgid "Punt de Subministrament"
+msgstr "Supply Point"
+
+#: importexport/utils/export_registry.py
+msgid "Retornat per"
+msgstr "Returned by"
+
+#: importexport/utils/export_registry.py
+msgid "Ruta - Posició"
+msgstr "Route - Position"
+
+#: importexport/utils/export_registry.py
+msgid "Sèrie"
+msgstr "Series"
+
+#: importexport/utils/export_registry.py
+msgid "Superusuari"
+msgstr "Superuser"
+
+#: importexport/utils/export_registry.py
+#: statistics/utils/report_billing_service.py
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Tarifa"
+msgstr "Rate"
+
+#: importexport/utils/export_registry.py
+msgid "Tecnologia comunicació"
+msgstr "Communication technology"
+
+#: importexport/utils/export_registry.py
+msgid "Telelectura"
+msgstr "Remote reading"
+
+#: importexport/utils/export_registry.py
+msgid "Tipus identificació"
+msgstr "ID type"
+
+#: importexport/utils/export_registry.py
+msgid "Tipus missatge"
+msgstr "Message type"
+
+#: importexport/utils/export_registry.py
+msgid "Títol"
+msgstr "Title"
+
+#: importexport/utils/export_registry.py
+msgid "Token client"
+msgstr "Customer token"
+
+#: importexport/utils/export_registry.py
+msgid "Tram actiu"
+msgstr "Active billing range"
+
+#: importexport/utils/export_registry.py
+msgid "Tram de facturació"
+msgstr "Billing range"
+
+#: importexport/utils/export_registry.py
+msgid "Últim accés"
+msgstr "Last login"
+
+#: importexport/utils/export_registry.py
+#: statistics/utils/daily_activity_service.py
+msgid "Usuari"
+msgstr "User"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Facturació %(date)s"
+msgstr "Billing %(date)s"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Facturacions %(start)s - %(end)s"
+msgstr "Billings %(start)s - %(end)s"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Facturació ACA %(date)s"
+msgstr "ACA Billing %(date)s"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Facturacions ACA %(start)s - %(end)s"
+msgstr "ACA Billings %(start)s - %(end)s"
+
+#: statistics/utils/report_billing_service.py
+msgid "Número de factura"
+msgstr "Invoice number"
+
+#: statistics/utils/report_billing_service.py
+msgid "Consum factura"
+msgstr "Invoice consumption"
+
+#: statistics/utils/report_billing_service.py
+msgid "Consum aca variable"
+msgstr "ACA variable consumption"
+
+#: statistics/utils/report_billing_service.py
+msgid "Consum aca fixa"
+msgstr "ACA fixed consumption"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import factura"
+msgstr "Invoice amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import aca variable"
+msgstr "ACA variable amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "Import aca fixa"
+msgstr "ACA fixed amount"
+
+#: statistics/utils/report_billing_service.py
+msgid "ACA Token"
+msgstr "ACA Token"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Sense tarifa social TRAM %(num)s"
+msgstr "No social tariff TIER %(num)s"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Tarifa social 50%% TRAM %(num)s"
+msgstr "Social tariff 50%% TIER %(num)s"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tarifa social 0"
+msgstr "Social tariff 0"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "%(name)s IVA %%"
+msgstr "%(name)s VAT %%"
+
+#: statistics/utils/report_billing_service.py
+msgid "No s'han trobat productes per a aquest període"
+msgstr "No products found for this period"
+
+#: statistics/utils/report_billing_service.py
+msgid "Abonats"
+msgstr "Subscribers"
+
+#: statistics/utils/report_billing_service.py
+msgid "Sense nom"
+msgstr "No name"
+
+#: statistics/utils/report_billing_service.py
+msgid "T1"
+msgstr "Q1"
+
+#: statistics/utils/report_billing_service.py
+msgid "T2"
+msgstr "Q2"
+
+#: statistics/utils/report_billing_service.py
+msgid "T3"
+msgstr "Q3"
+
+#: statistics/utils/report_billing_service.py
+msgid "T4"
+msgstr "Q4"
+
+#: statistics/utils/report_billing_service.py
+msgid "N. Factura"
+msgstr "Invoice No."
+
+#: statistics/utils/report_billing_service.py
+msgid "Periode"
+msgstr "Period"
+
+#: statistics/utils/report_billing_service.py
+msgid "C. Client"
+msgstr "Customer Code"
+
+#: statistics/utils/report_billing_service.py
+msgid "Nif"
+msgstr "Tax ID"
+
+#: statistics/utils/report_billing_service.py
+msgid "Quota servei (€)"
+msgstr "Service fee (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA QUOTA SERVEI AIGUA (€) 10%"
+msgstr "WATER SERVICE FEE VAT (€) 10%"
+
+#: statistics/utils/report_billing_service.py
+msgid "Aigua (€)"
+msgstr "Water (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA AIGUA (€) 10%"
+msgstr "WATER VAT (€) 10%"
+
+#: statistics/utils/report_billing_service.py
+msgid "Clavegueram (€)"
+msgstr "Sewerage (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA CLAVEGUERAM (€) 10%"
+msgstr "SEWERAGE VAT (€) 10%"
+
+#: statistics/utils/report_billing_service.py
+msgid "Canon (€)"
+msgstr "Levy (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "Ensobrat (€)"
+msgstr "Enveloping (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA ENSOBRAT (€) 21%"
+msgstr "ENVELOPING VAT (€) 21%"
+
+#: statistics/utils/report_billing_service.py
+msgid "IVA Aigua (€)"
+msgstr "Water VAT (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "Subtotal sense IVA (€)"
+msgstr "Subtotal excl. VAT (€)"
+
+#: statistics/utils/report_billing_service.py
+#: statistics/utils/report_wallet_service.py
+msgid "Total Factura"
+msgstr "Invoice Total"
+
+#: statistics/utils/report_billing_service.py
+msgid "Total Cobrat"
+msgstr "Total Collected"
+
+#: statistics/utils/report_billing_service.py
+msgid "forma de pagament"
+msgstr "payment method"
+
+#: statistics/utils/report_billing_service.py
+msgid "origen de pagament"
+msgstr "payment origin"
+
+#: statistics/utils/report_billing_service.py
+msgid "Conceptes personalitzats"
+msgstr "Custom concepts"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tipus Moviment"
+msgstr "Movement Type"
+
+#: statistics/utils/report_billing_service.py
+msgid "Cobrament"
+msgstr "Collection"
+
+#: statistics/utils/report_billing_service.py
+msgid "Devolució/Anul·lació"
+msgstr "Return/Cancellation"
+
+#: statistics/utils/report_billing_service.py
+msgid "Desconegut"
+msgstr "Unknown"
+
+#: statistics/utils/report_billing_service.py
+msgid "Empresa ID 2"
+msgstr "Company ID 2"
+
+#: statistics/utils/report_billing_service.py
+msgid "Informe de clavegueram facturat"
+msgstr "Billed sewerage report"
+
+#: statistics/utils/report_billing_service.py
+#: statistics/utils/daily_activity_service.py
+#: statistics/utils/report_service.py
+msgid "Resum"
+msgstr "Summary"
+
+#: statistics/utils/report_billing_service.py
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Detall Factures"
+msgstr "Invoice Details"
+
+#: statistics/utils/report_billing_service.py
+msgid "període liquidat (1T, 2T, 3T, 4T)"
+msgstr "billed period (Q1, Q2, Q3, Q4)"
+
+#: statistics/utils/report_billing_service.py
+msgid "consum m3 utilitzat per al càlcul (Valor Variable)"
+msgstr "m3 consumption used for calculation (Variable Value)"
+
+#: statistics/utils/report_billing_service.py
+msgid "tipologia de client (industrial/domèstic)"
+msgstr "customer type (industrial/domestic)"
+
+#: statistics/utils/report_billing_service.py
+msgid "Quota Fixa"
+msgstr "Fixed Fee"
+
+#: statistics/utils/report_billing_service.py
+msgid "Quota Variable"
+msgstr "Variable Fee"
+
+#: statistics/utils/report_billing_service.py
+msgid "Tipus Quota"
+msgstr "Fee Type"
+
+#: statistics/utils/report_billing_service.py
+msgid "Total Facturat (€)"
+msgstr "Total Billed (€)"
+
+#: statistics/utils/report_billing_service.py
+msgid "TOTAL CLAVEGUERAM"
+msgstr "TOTAL SEWERAGE"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Facturació sense ACA %(date)s"
+msgstr "Billing without ACA %(date)s"
+
+#: statistics/utils/report_billing_service.py
+#, python-format
+msgid "Facturacions sense ACA %(start)s - %(end)s"
+msgstr "Billings without ACA %(start)s - %(end)s"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Tipologia i Periodicitat"
+msgstr "Typology and Periodicity"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Num. Factures"
+msgstr "No. of Invoices"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Total (€)"
+msgstr "Total (€)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Num. Factura"
+msgstr "Invoice No."
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Data Moviment Cartera"
+msgstr "Portfolio Movement Date"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Import (€)"
+msgstr "Amount (€)"
+
+#: statistics/utils/report_advanced_billing_service.py
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Sense producte"
+msgstr "No product"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Sense tarifa"
+msgstr "No rate"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Sense periodicitat"
+msgstr "No periodicity"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Factura sense línies desglossades"
+msgstr "Invoice without itemised lines"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Manual / Directa"
+msgstr "Manual / Direct"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "TOTAL FACTURACIÓ"
+msgstr "TOTAL BILLING"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Conceptes"
+msgstr "Concepts"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Subconcepte (Tram/Quota)"
+msgstr "Sub-concept (Tier/Fee)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Núm. Línies"
+msgstr "No. of Lines"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Unitats/m³"
+msgstr "Units/m³"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Base (€)"
+msgstr "Base (€)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Subconcepte"
+msgstr "Sub-concept"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "No Tarifaris"
+msgstr "Non-tariff"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Línies"
+msgstr "Lines"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Total Base"
+msgstr "Total Base"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Evolució Abonats"
+msgstr "Subscriber Evolution"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Mes"
+msgstr "Month"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Total Abonats (actius)"
+msgstr "Total Subscribers (active)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Altes"
+msgstr "Registrations"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Baixes"
+msgstr "Terminations"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Token Contracte"
+msgstr "Contract Token"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Data Alta"
+msgstr "Registration Date"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Data Baixa"
+msgstr "Termination Date"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Tarifa Social"
+msgstr "Social Tariff"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Contractes amb Tarifa Social"
+msgstr "Contracts with Social Tariff"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Bonificació"
+msgstr "Discount"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Data Inici"
+msgstr "Start Date"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Data Fi"
+msgstr "End Date"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Sense Estat"
+msgstr "No Status"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Temps Resposta"
+msgstr "Response Time"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Tipus Reclamació"
+msgstr "Claim Type"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Promig (dies)"
+msgstr "Average (days)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Mediana (P50)"
+msgstr "Median (P50)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Màxim"
+msgstr "Maximum"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Mínim"
+msgstr "Minimum"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "P75"
+msgstr "P75"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "P90"
+msgstr "P90"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "P95"
+msgstr "P95"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "P99"
+msgstr "P99"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Data Resolució"
+msgstr "Resolution Date"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Volum Gestions"
+msgstr "Management Volume"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Tipologia de Gestió"
+msgstr "Management Type"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Canvis de nom / Titular"
+msgstr "Name / Holder changes"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Reclamacions"
+msgstr "Claims"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Actualitzacions de dades"
+msgstr "Data updates"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Ampliacions de tram"
+msgstr "Tier extensions"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Sol·licitud tarifes social"
+msgstr "Social tariff requests"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Consultes"
+msgstr "Enquiries"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Resum per Rutes"
+msgstr "Summary by Route"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "REC"
+msgstr "IRRIGATION"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "CONTADORS"
+msgstr "METERS"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "ESCOMESES"
+msgstr "SERVICE CONNECTIONS"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "m³ Facturats"
+msgstr "m³ Billed"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Quota Servei (€)"
+msgstr "Service Fee (€)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Consum (€)"
+msgstr "Consumption (€)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Conservació (€)"
+msgstr "Maintenance (€)"
+
+#: statistics/utils/report_advanced_billing_service.py
+msgid "Total Factura (€)"
+msgstr "Invoice Total (€)"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Resum de la facturació general"
+msgstr "General billing summary"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Resum Facturació General"
+msgstr "General Billing Summary"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "RESUM DE LA FACTURACIÓ GENERAL"
+msgstr "GENERAL BILLING SUMMARY"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Del núm. de factura"
+msgstr "From invoice no."
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "a la"
+msgstr "to"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Prefix"
+msgstr "Prefix"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Núm. de factures"
+msgstr "No. of invoices"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "m³"
+msgstr "m³"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Base IVA"
+msgstr "VAT Base"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Quota IVA"
+msgstr "VAT Amount"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Sense ús"
+msgstr "No use"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "Sense descripció"
+msgstr "No description"
+
+#: statistics/utils/report_general_billing_summary_service.py
+msgid "% IVA"
+msgstr "% VAT"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Cobraments i devolucions"
+msgstr "Collections and returns"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Ordres de treball"
+msgstr "Work orders"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Gestions de contracte"
+msgstr "Contract operations"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Lectures i comptadors"
+msgstr "Readings and meters"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Comunicacions i atenció"
+msgstr "Communications and support"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Impagats, incidències i fraus"
+msgstr "Unpaid, incidents and fraud"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Servei i infraestructura"
+msgstr "Service and infrastructure"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Productes i tarifes"
+msgstr "Products and rates"
+
+#: statistics/utils/daily_activity_service.py
+#, python-format
+msgid "%(count)d cobrats"
+msgstr "%(count)d collected"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Cobraments registrats"
+msgstr "Recorded collections"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Devolucions de rebuts"
+msgstr "Receipt returns"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Remeses enviades a cobrament"
+msgstr "Remittances sent for collection"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Fitxers de devolucions carregats"
+msgstr "Return files uploaded"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Altres canvis d'estat de rebuts"
+msgstr "Other receipt status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Pagaments agrupats creats"
+msgstr "Grouped payments created"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de pagaments agrupats"
+msgstr "Grouped payment status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Moviments de compromís de pagament"
+msgstr "Payment commitment movements"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Moviments de guardiola"
+msgstr "Piggy bank movements"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de compromisos de pagament"
+msgstr "Payment commitment notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de pagaments agrupats"
+msgstr "Grouped payment notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Ordres de treball noves"
+msgstr "New work orders"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat d'ordres"
+msgstr "Order status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions d'ordres"
+msgstr "Order notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Sol·licituds de contracte gestionades"
+msgstr "Contract requests handled"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de dades de contracte"
+msgstr "Contract data changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Altes, baixes i canvis de contracte"
+msgstr "Contract registrations, terminations and changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Modificacions de contracte"
+msgstr "Contract modifications"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de contracte"
+msgstr "Contract notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de sol·licituds de contracte"
+msgstr "Contract request notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de baixes de contracte"
+msgstr "Contract termination notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de membres de convivència"
+msgstr "Household member changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de telèfon de contracte"
+msgstr "Contract phone changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de bonificacions i variables"
+msgstr "Discount and variable changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de factures"
+msgstr "Invoice status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de dades de factures"
+msgstr "Invoice data changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Modificacions de factures"
+msgstr "Invoice modifications"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de fiances"
+msgstr "Deposit status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de lectura"
+msgstr "Reading changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Modificacions de comptadors"
+msgstr "Meter modifications"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Trucades registrades"
+msgstr "Recorded calls"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Comunicacions creades"
+msgstr "Communications created"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Processos de comunicació creats"
+msgstr "Communication processes created"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de comunicacions"
+msgstr "Communication status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de processos de comunicació"
+msgstr "Communication process status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de canal de comunicacions"
+msgstr "Communication channel changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de comunicacions"
+msgstr "Communication notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de processos de comunicació"
+msgstr "Communication process notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Gestions d'impagats creades"
+msgstr "Unpaid cases created"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Moviments de gestions d'impagats"
+msgstr "Unpaid case movements"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de sol·licituds de vulnerabilitat"
+msgstr "Vulnerability request notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat d'incidències"
+msgstr "Incident status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Informes d'incidència"
+msgstr "Incident reports"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions d'incidències"
+msgstr "Incident notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de fraus"
+msgstr "Fraud status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Informes de frau"
+msgstr "Fraud reports"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de fraus"
+msgstr "Fraud notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de punt de subministrament"
+msgstr "Supply point changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de punts de subministrament"
+msgstr "Supply point notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat d'escomeses"
+msgstr "Service connection status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de sol·licituds d'escomesa"
+msgstr "Service connection request status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions d'escomeses"
+msgstr "Service connection notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de sol·licituds d'escomesa"
+msgstr "Service connection request notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de bateries"
+msgstr "Battery status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de boquilles"
+msgstr "Nozzle status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de bateries"
+msgstr "Battery notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis d'estat de talls de subministrament"
+msgstr "Supply cut status changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Observacions de talls de subministrament"
+msgstr "Supply cut notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de productes"
+msgstr "Product changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Canvis de tarifes"
+msgstr "Rate changes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Notes generals"
+msgstr "General notes"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Resum d'activitat diària"
+msgstr "Daily activity summary"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Període"
+msgstr "Period"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Usuaris"
+msgstr "Users"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Accions registrades"
+msgstr "Recorded actions"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Cobraments manuals"
+msgstr "Manual collections"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Devolucions"
+msgstr "Returns"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Import remès al banc"
+msgstr "Amount remitted to the bank"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Import cobrat (manual + remesa)"
+msgstr "Amount collected (manual + remittance)"
+
+#: statistics/utils/daily_activity_service.py
+msgid "  del qual, cobrat per remesa"
+msgstr "  of which, collected by remittance"
+
+#: statistics/utils/daily_activity_service.py
+msgid "  del qual, cobrat manualment"
+msgstr "  of which, collected manually"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Import retornat"
+msgstr "Amount returned"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Import net (cobrat + retornat)"
+msgstr "Net amount (collected + returned)"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Acció"
+msgstr "Action"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Nombre"
+msgstr "Count"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Detall"
+msgstr "Detail"
+
+#: statistics/utils/daily_activity_service.py
+msgid "Data i hora"
+msgstr "Date and time"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "ID sol. baixa"
+msgstr "Termination request ID"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "Token estat sol. baixa"
+msgstr "Termination request status token"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "Data creacio baixa"
+msgstr "Termination creation date"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "ID darrera lectura"
+msgstr "Last reading ID"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "Data darrera lectura"
+msgstr "Last reading date"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "Origen darrera lectura"
+msgstr "Last reading origin"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "ID darrera factura"
+msgstr "Last invoice ID"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "Token darrera factura"
+msgstr "Last invoice token"
+
+#: statistics/utils/report_contract_termination_export_service.py
+msgid "Data darrera factura"
+msgstr "Last invoice date"
+
+#: statistics/utils/report_service.py
+msgid "Núm. Factura"
+msgstr "Invoice No."
+
+#: statistics/utils/report_service.py
+msgid "Compromisos"
+msgstr "Commitments"
+
+#: statistics/utils/report_service.py
+msgid "Facturació detallada"
+msgstr "Detailed billing"
+
+#: statistics/utils/report_service.py
+msgid "Tipus d'ús contracte"
+msgstr "Contract use type"
+
+#: statistics/utils/report_service.py
+msgid "Ús ACA"
+msgstr "ACA use"
+
+#: statistics/utils/report_service.py
+msgid "Sense explotació"
+msgstr "No exploitation"
+
+#: statistics/utils/report_service.py
+msgid "Full"
+msgstr "Sheet"
+
+#: statistics/utils/report_service.py
+msgid "Resum per producte"
+msgstr "Summary by product"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "%(product)s TRAM %(interval)s"
+msgstr "%(product)s BLOCK %(interval)s"
+
+#: statistics/utils/report_service.py
+msgid "(Sense tipus)"
+msgstr "(No type)"
+
+#: statistics/utils/report_service.py
+msgid "Facturació resumida"
+msgstr "Summarised billing"
+
+#: statistics/utils/report_service.py
+msgid "DOMESTIC"
+msgstr "DOMESTIC"
+
+#: statistics/utils/report_service.py
+msgid "INDUSTRIAL"
+msgstr "INDUSTRIAL"
+
+#: statistics/utils/report_service.py
+msgid "MUNICIPAL"
+msgstr "MUNICIPAL"
+
+#: statistics/utils/report_service.py
+msgid "AGRICOLA"
+msgstr "AGRICULTURAL"
+
+#: statistics/utils/report_service.py
+msgid "ALTRES"
+msgstr "OTHERS"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL GENERAL"
+msgstr "GRAND TOTAL"
+
+#: statistics/utils/report_service.py
+msgid "USE TYPE"
+msgstr "USE TYPE"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL M3 (Consum Brut)"
+msgstr "TOTAL M3 (Gross Consumption)"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL M3 FACTURAT ALS TRAMS (AIGUA)"
+msgstr "TOTAL M3 BILLED IN BLOCKS (WATER)"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL ESTIMAT RESTAT M3"
+msgstr "TOTAL ESTIMATED DEDUCTED M3"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL M3 POU PROPI / SENSE PRODUCTE AIGUA"
+msgstr "TOTAL M3 OWN WELL / NO WATER PRODUCT"
+
+#: statistics/utils/report_service.py
+msgid "M3 POU PROPI (Net)"
+msgstr "M3 OWN WELL (Net)"
+
+#: statistics/utils/report_service.py
+msgid "M3 POU PROPI (Estimat)"
+msgstr "M3 OWN WELL (Estimated)"
+
+#: statistics/utils/report_service.py
+msgid "M3 AIGUA FACTURADA SENSE TRAM (Interval 0)"
+msgstr "M3 WATER BILLED WITHOUT BLOCK (Interval 0)"
+
+#: statistics/utils/report_service.py
+msgid "M3 DESVIAMENTS / ARRODONIMENTS"
+msgstr "M3 DEVIATIONS / ROUNDING"
+
+#: statistics/utils/report_service.py
+msgid "TOTAL SENSE IVA"
+msgstr "TOTAL EXCL. VAT"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "%(product)s M3"
+msgstr "%(product)s M3"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "%(product)s QUOTES/UNITATS"
+msgstr "%(product)s FEES/UNITS"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "%(product)s TOTAL"
+msgstr "%(product)s TOTAL"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "%(product)s TOTAL SENSE IVA"
+msgstr "%(product)s TOTAL EXCL. VAT"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "%(product)s ESTIMAT RESTAT M3"
+msgstr "%(product)s ESTIMATED DEDUCTED M3"
+
+#: statistics/utils/report_service.py
+msgid "Resum temps ordres"
+msgstr "Work order time summary"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "Ordres de treball %(start)s - %(end)s"
+msgstr "Work orders %(start)s - %(end)s"
+
+#: statistics/utils/report_service.py
+#, python-format
+msgid "Ordre de treball %(token)s"
+msgstr "Work order %(token)s"
+
+#: statistics/utils/report_service.py
+msgid "Data finalització"
+msgstr "Completion date"
+
+#: statistics/utils/report_service.py
+msgid "Temps dedicat (min)"
+msgstr "Time spent (min)"
+
+#: statistics/utils/report_service.py
+msgid "Tècnic"
+msgstr "Technician"
+
+#: statistics/utils/report_wallet_service.py
+msgid "NOM TITULAR"
+msgstr "HOLDER NAME"
+
+#: statistics/utils/report_wallet_service.py
+msgid "VIA DE COMUNICACIÓ"
+msgstr "COMMUNICATION CHANNEL"
+
+#: statistics/utils/report_wallet_service.py
+msgid "VALOR VIA DE COMUNICACIÓ"
+msgstr "COMMUNICATION CHANNEL VALUE"
+
+#: statistics/utils/report_wallet_service.py
+#, python-format
+msgid "Factures pendents de %(name)s %(surname)s"
+msgstr "Pending invoices of %(name)s %(surname)s"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Contractes amb deute"
+msgstr "Contracts with debt"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Factures pendents"
+msgstr "Pending invoices"
+
+#: statistics/utils/report_wallet_service.py
+msgid "NIF Abonat"
+msgstr "Customer tax ID"
+
+#: statistics/utils/report_wallet_service.py
+msgid "Núm Factura"
+msgstr "Invoice No."
+
+#: statistics/utils/report_wallet_service.py
+msgid "Total Pendent"
+msgstr "Total pending"
+
+#: billing/views/commitment_deposit_pdf_view.py
+#, python-format
+msgid "%(weekday)s, %(day)s %(month)s %(year)s"
+msgstr "%(weekday)s, %(day)s %(month)s %(year)s"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of January"
+msgstr "January"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of February"
+msgstr "February"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of March"
+msgstr "March"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of April"
+msgstr "April"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of May"
+msgstr "May"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of June"
+msgstr "June"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of July"
+msgstr "July"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of August"
+msgstr "August"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of September"
+msgstr "September"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of October"
+msgstr "October"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of November"
+msgstr "November"
+
+#: billing/views/commitment_deposit_pdf_view.py
+msgctxt "date month with preposition"
+msgid "of December"
+msgstr "December"

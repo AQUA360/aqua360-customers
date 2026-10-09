@@ -1,0 +1,50 @@
+[
+    {
+        "model": "statistics.DailyDocumentStatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Pendiente",
+            "color": null,
+            "position": 0
+        }
+    },
+    {
+        "model": "statistics.DailyDocumentStatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Completado",
+            "color": "green",
+            "position": 2
+        }
+    },
+    {
+        "model": "statistics.DailyDocumentStatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Expirado",
+            "color": "purple",
+            "position": 4
+        }
+    },
+    {
+        "model": "statistics.DailyDocumentStatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-2",
+            "name": "Cancelado",
+            "color": "red",
+            "position": 3
+        }
+    }
+]

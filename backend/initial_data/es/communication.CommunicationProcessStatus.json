@@ -1,0 +1,100 @@
+[
+    {
+        "model": "communication.communicationprocessstatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2024-10-29T10:29:48.855Z",
+            "updated_at": "2024-11-20T09:38:14.797Z",
+            "token": "0",
+            "name": "Pendiente",
+            "color": "yellow",
+            "description": "Proceso con comunicaciones pendientes de crear y enviar",
+            "position": 1,
+            "is_default": true
+        }
+    },
+    {
+        "model": "communication.communicationprocessstatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2024-10-29T10:30:05.297Z",
+            "updated_at": "2024-11-20T09:37:54.316Z",
+            "token": "1",
+            "name": "Coms. creadas",
+            "color": "orange",
+            "description": "Proceso con comunicaciones y archivos creados",
+            "position": 2,
+            "is_default": false
+        }
+    },
+    {
+        "model": "communication.communicationprocessstatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2024-11-20T09:37:44.877Z",
+            "updated_at": "2024-11-20T09:38:17.489Z",
+            "token": "2",
+            "name": "En curso",
+            "color": "blue",
+            "description": "Proceso con comunicaciones en proceso de envío, retornadas o inacabadas",
+            "position": 3,
+            "is_default": false
+        }
+    },
+    {
+        "model": "communication.communicationprocessstatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2024-11-20T09:37:44.877Z",
+            "updated_at": "2024-11-20T09:38:17.489Z",
+            "token": "3",
+            "name": "Finalizado",
+            "color": "green",
+            "description": "Proceso con comunicaciones enviadas",
+            "position": 4,
+            "is_default": false
+        }
+    },
+    {
+        "model": "communication.communicationprocessstatus",
+        "pk": 5,
+        "fields": {
+            "created_at": "2024-11-20T09:37:44.877Z",
+            "updated_at": "2024-11-20T09:38:17.489Z",
+            "token": "-1",
+            "name": "Anulado",
+            "color": null,
+            "description": "Se ha hecho un error y queda el proceso anulado del sistema",
+            "position": 5,
+            "is_default": false
+        }
+    },
+    {
+        "model": "communication.communicationprocessstatus",
+        "pk": 6,
+        "fields": {
+            "created_at": "2024-11-20T09:37:44.877Z",
+            "updated_at": "2024-11-20T09:38:17.489Z",
+            "token": "-2",
+            "name": "Procesando",
+            "color": "purple",
+            "description": "Las comunicaciones están en proceso de creación",
+            "position": 6,
+            "is_default": false
+        }
+    },
+    {
+        "model": "communication.communicationprocessstatus",
+        "pk": 7,
+        "fields": {
+            "created_at": "2024-11-20T09:37:44.877Z",
+            "updated_at": "2024-11-20T09:38:17.489Z",
+            "token": "4",
+            "name": "Borrador",
+            "color": null,
+            "description": "Proceso de comunicación en borrador",
+            "position": 7,
+            "is_default": false
+        }
+    }
+]

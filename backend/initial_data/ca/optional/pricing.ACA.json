@@ -1,0 +1,3869 @@
+[
+  {
+    "model": "pricing.publication",
+    "pk": 9000201,
+    "fields": {
+      "token": "ACA-L2-2015",
+      "name": "LLEI 2/2015, DE L'11 DE MARÇ",
+      "boe_number": null,
+      "boe_date": "2015-03-01",
+      "reference": "ACA-L2-2015",
+      "content": "Llei 2/2015, de l'11 de març — cànon agrícola/ramader a quota 0",
+      "amount": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.publication",
+    "pk": 9000202,
+    "fields": {
+      "token": "ACA-L2-2023",
+      "name": "LLEI 2/2023, DEL 16 DE MARÇ",
+      "boe_number": null,
+      "boe_date": "2023-03-16",
+      "reference": "ACA-L2-2023",
+      "content": "Llei 2/2023, del 16 de març, de pressupostos de la Generalitat de Catalunya per al 2023 (prorrogats pel Decret 478/2024, de 17 de desembre)",
+      "amount": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.publication",
+    "pk": 9000203,
+    "fields": {
+      "token": "ACA-DL5-2025",
+      "name": "DECRET LLEI 5/2025, DE 25 DE MARÇ",
+      "boe_number": null,
+      "boe_date": "2025-03-25",
+      "reference": "ACA-DL5-2025",
+      "content": "Decret llei 5/2025, de 25 de març, pel qual s'adopten mesures urgents en matèria fiscal, de despeses de personal i altres administratives",
+      "amount": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.publication",
+    "pk": 9000204,
+    "fields": {
+      "token": "ACA-DL3-2026",
+      "name": "DECRET LLEI 3/2026, DE 25 DE MARÇ",
+      "boe_number": null,
+      "boe_date": "2026-03-25",
+      "reference": "ACA-DL3-2026",
+      "content": "Decret llei 3/2026 — tarifes del cànon de l'aigua vigents des del 26/03/2026",
+      "amount": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.product",
+    "pk": 9000001,
+    "fields": {
+      "token": "ACA-CANON",
+      "name": "CÀNON DE L'AIGUA (ACA)",
+      "origin": 1,
+      "product_related": null,
+      "company": null,
+      "exploitation": null,
+      "position": 2,
+      "billing_active": true,
+      "billing_inactive": true,
+      "order_priority": 4,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.pricerate",
+    "pk": 9000101,
+    "fields": {
+      "token": "ACA-AGR0",
+      "name": "AGRICOLA 0",
+      "product": 9000001,
+      "billing_range_active": 9000301,
+      "is_bail": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.pricerate",
+    "pk": 9000102,
+    "fields": {
+      "token": "ACA-DOM",
+      "name": "DOMESTICA",
+      "product": 9000001,
+      "billing_range_active": 9000304,
+      "is_bail": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.pricerate",
+    "pk": 9000103,
+    "fields": {
+      "token": "ACA-HOT",
+      "name": "CAMPINGS I HOTELS",
+      "product": 9000001,
+      "billing_range_active": 9000307,
+      "is_bail": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.pricerate",
+    "pk": 9000104,
+    "fields": {
+      "token": "ACA-IND",
+      "name": "INDUSTRIAL",
+      "product": 9000001,
+      "billing_range_active": 9000310,
+      "is_bail": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.pricerate",
+    "pk": 9000105,
+    "fields": {
+      "token": "ACA-MUN",
+      "name": "MUNICIPAL REDUIDA",
+      "product": 9000001,
+      "billing_range_active": 9000313,
+      "is_bail": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000301,
+    "fields": {
+      "token": "ACA-AGR0/L2-2015",
+      "name": "ACA-AGR0 · LLEI 2/2015, DE L'11 DE MARÇ",
+      "publication": 9000201,
+      "price_rate": 9000101,
+      "start": "2015-03-01",
+      "end": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000302,
+    "fields": {
+      "token": "ACA-DOM/L2-2023",
+      "name": "ACA-DOM · LLEI 2/2023, DEL 16 DE MARÇ",
+      "publication": 9000202,
+      "price_rate": 9000102,
+      "start": "2023-03-16",
+      "end": "2025-12-31",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000303,
+    "fields": {
+      "token": "ACA-DOM/DL5-2025",
+      "name": "ACA-DOM · DECRET LLEI 5/2025, DE 25 DE MARÇ",
+      "publication": 9000203,
+      "price_rate": 9000102,
+      "start": "2026-01-01",
+      "end": "2026-03-25",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000304,
+    "fields": {
+      "token": "ACA-DOM/DL3-2026",
+      "name": "ACA-DOM · DECRET LLEI 3/2026, DE 25 DE MARÇ",
+      "publication": 9000204,
+      "price_rate": 9000102,
+      "start": "2026-03-26",
+      "end": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000305,
+    "fields": {
+      "token": "ACA-HOT/L2-2023",
+      "name": "ACA-HOT · LLEI 2/2023, DEL 16 DE MARÇ",
+      "publication": 9000202,
+      "price_rate": 9000103,
+      "start": "2023-03-16",
+      "end": "2025-12-31",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000306,
+    "fields": {
+      "token": "ACA-HOT/DL5-2025",
+      "name": "ACA-HOT · DECRET LLEI 5/2025, DE 25 DE MARÇ",
+      "publication": 9000203,
+      "price_rate": 9000103,
+      "start": "2026-01-01",
+      "end": "2026-03-25",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000307,
+    "fields": {
+      "token": "ACA-HOT/DL3-2026",
+      "name": "ACA-HOT · DECRET LLEI 3/2026, DE 25 DE MARÇ",
+      "publication": 9000204,
+      "price_rate": 9000103,
+      "start": "2026-03-26",
+      "end": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000308,
+    "fields": {
+      "token": "ACA-IND/L2-2023",
+      "name": "ACA-IND · LLEI 2/2023, DEL 16 DE MARÇ",
+      "publication": 9000202,
+      "price_rate": 9000104,
+      "start": "2023-03-16",
+      "end": "2025-12-31",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000309,
+    "fields": {
+      "token": "ACA-IND/DL5-2025",
+      "name": "ACA-IND · DECRET LLEI 5/2025, DE 25 DE MARÇ",
+      "publication": 9000203,
+      "price_rate": 9000104,
+      "start": "2026-01-01",
+      "end": "2026-03-25",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000310,
+    "fields": {
+      "token": "ACA-IND/DL3-2026",
+      "name": "ACA-IND · DECRET LLEI 3/2026, DE 25 DE MARÇ",
+      "publication": 9000204,
+      "price_rate": 9000104,
+      "start": "2026-03-26",
+      "end": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000311,
+    "fields": {
+      "token": "ACA-MUN/L2-2023",
+      "name": "ACA-MUN · LLEI 2/2023, DEL 16 DE MARÇ",
+      "publication": 9000202,
+      "price_rate": 9000105,
+      "start": "2023-03-16",
+      "end": "2025-12-31",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000312,
+    "fields": {
+      "token": "ACA-MUN/DL5-2025",
+      "name": "ACA-MUN · DECRET LLEI 5/2025, DE 25 DE MARÇ",
+      "publication": 9000203,
+      "price_rate": 9000105,
+      "start": "2026-01-01",
+      "end": "2026-03-25",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.billingrange",
+    "pk": 9000313,
+    "fields": {
+      "token": "ACA-MUN/DL3-2026",
+      "name": "ACA-MUN · DECRET LLEI 3/2026, DE 25 DE MARÇ",
+      "publication": 9000204,
+      "price_rate": 9000105,
+      "start": "2026-03-26",
+      "end": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceinterval",
+    "pk": 9000401,
+    "fields": {
+      "token": "ACA/D/TRAMS/L2-2023",
+      "units": "m3",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000501,
+    "fields": {
+      "token": "ACA/D/TRAMS/L2-2023/T1",
+      "name_stretch": "1R TRAM",
+      "price_interval": 9000401,
+      "price": null,
+      "proportional_price": 0.3268,
+      "stretch": 1,
+      "end_stretch": 27,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000502,
+    "fields": {
+      "token": "ACA/D/TRAMS/L2-2023/T2",
+      "name_stretch": "2È TRAM",
+      "price_interval": 9000401,
+      "price": null,
+      "proportional_price": 0.7526,
+      "stretch": 2,
+      "end_stretch": 45,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000503,
+    "fields": {
+      "token": "ACA/D/TRAMS/L2-2023/T3",
+      "name_stretch": "3È TRAM",
+      "price_interval": 9000401,
+      "price": null,
+      "proportional_price": 2.2578,
+      "stretch": 3,
+      "end_stretch": 54,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000504,
+    "fields": {
+      "token": "ACA/D/TRAMS/L2-2023/T4",
+      "name_stretch": "4È TRAM",
+      "price_interval": 9000401,
+      "price": null,
+      "proportional_price": 3.0104,
+      "stretch": 4,
+      "end_stretch": 999999,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceinterval",
+    "pk": 9000402,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL5-2025",
+      "units": "m3",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000505,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL5-2025/T1",
+      "name_stretch": "1R TRAM",
+      "price_interval": 9000402,
+      "price": null,
+      "proportional_price": 0.4043,
+      "stretch": 1,
+      "end_stretch": 27,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000506,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL5-2025/T2",
+      "name_stretch": "2È TRAM",
+      "price_interval": 9000402,
+      "price": null,
+      "proportional_price": 0.9312,
+      "stretch": 2,
+      "end_stretch": 45,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000507,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL5-2025/T3",
+      "name_stretch": "3È TRAM",
+      "price_interval": 9000402,
+      "price": null,
+      "proportional_price": 2.7936,
+      "stretch": 3,
+      "end_stretch": 54,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000508,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL5-2025/T4",
+      "name_stretch": "4È TRAM",
+      "price_interval": 9000402,
+      "price": null,
+      "proportional_price": 3.7248,
+      "stretch": 4,
+      "end_stretch": 999999,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceinterval",
+    "pk": 9000403,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL3-2026",
+      "units": "m3",
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000509,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL3-2026/T1",
+      "name_stretch": "1R TRAM",
+      "price_interval": 9000403,
+      "price": null,
+      "proportional_price": 0.5232,
+      "stretch": 1,
+      "end_stretch": 27,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000510,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL3-2026/T2",
+      "name_stretch": "2È TRAM",
+      "price_interval": 9000403,
+      "price": null,
+      "proportional_price": 1.2052,
+      "stretch": 2,
+      "end_stretch": 45,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000511,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL3-2026/T3",
+      "name_stretch": "3È TRAM",
+      "price_interval": 9000403,
+      "price": null,
+      "proportional_price": 3.6156,
+      "stretch": 3,
+      "end_stretch": 54,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.priceintervalstretch",
+    "pk": 9000512,
+    "fields": {
+      "token": "ACA/D/TRAMS/DL3-2026/T4",
+      "name_stretch": "4È TRAM",
+      "price_interval": 9000403,
+      "price": null,
+      "proportional_price": 4.8208,
+      "stretch": 4,
+      "end_stretch": 999999,
+      "article": 3,
+      "code": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001001,
+    "fields": {
+      "token": "C/D/PV/L2-2023",
+      "name": "CÀNON DOMÈSTIC — PART VARIABLE",
+      "billing_range": 9000302,
+      "formula": null,
+      "price": null,
+      "proportional_price": null,
+      "quantity": 1,
+      "price_interval": 9000401,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001002,
+    "fields": {
+      "token": "C/D/CF/L2-2023",
+      "name": "CÀNON DOMÈSTIC — CONSUM FUITA",
+      "billing_range": 9000302,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.3763,
+      "quantity": 3,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001003,
+    "fields": {
+      "token": "C/I/CF/L2-2023",
+      "name": "CÀNON INDUSTRIAL — CONSUM FUITA",
+      "billing_range": 9000308,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 3,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001004,
+    "fields": {
+      "token": "C/I/PVG/L2-2023",
+      "name": "CÀNON INDUSTRIAL — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000308,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 6,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001005,
+    "fields": {
+      "token": "C/I/PVE/L2-2023",
+      "name": "CÀNON INDUSTRIAL — PART VARIABLE TIPUS ESPECÍFIC",
+      "billing_range": 9000308,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.681,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001006,
+    "fields": {
+      "token": "C/M/PVG/L2-2023",
+      "name": "CÀNON MUNICIPAL — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000311,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001007,
+    "fields": {
+      "token": "C/H/PVG/L2-2023",
+      "name": "CÀNON HOTELS I CÀMPINGS — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000305,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001008,
+    "fields": {
+      "token": "C/H/PVE/L2-2023",
+      "name": "CÀNON HOTELS I CÀMPINGS — PART VARIABLE TIPUS ESPECÍFIC",
+      "billing_range": 9000305,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.681,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001009,
+    "fields": {
+      "token": "C/D/PV/DL5-2025",
+      "name": "CÀNON DOMÈSTIC — PART VARIABLE",
+      "billing_range": 9000303,
+      "formula": null,
+      "price": null,
+      "proportional_price": null,
+      "quantity": 1,
+      "price_interval": 9000402,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001010,
+    "fields": {
+      "token": "C/D/CF/DL5-2025",
+      "name": "CÀNON DOMÈSTIC — CONSUM FUITA",
+      "billing_range": 9000303,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.4656,
+      "quantity": 3,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "NOADJ",
+      "inactive_choice": "NOADJ",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001011,
+    "fields": {
+      "token": "C/D/PF/DL5-2025",
+      "name": "CÀNON DOMÈSTIC — PART FIXA",
+      "billing_range": 9000303,
+      "formula": null,
+      "price": 1,
+      "proportional_price": null,
+      "quantity": null,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 1,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001012,
+    "fields": {
+      "token": "C/I/CF/DL5-2025",
+      "name": "CÀNON INDUSTRIAL — CONSUM FUITA",
+      "billing_range": 9000309,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 3,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "NOADJ",
+      "inactive_choice": "NOADJ",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001013,
+    "fields": {
+      "token": "C/I/PVG/DL5-2025",
+      "name": "CÀNON INDUSTRIAL — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000309,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 6,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001014,
+    "fields": {
+      "token": "C/I/PVE/DL5-2025",
+      "name": "CÀNON INDUSTRIAL — PART VARIABLE TIPUS ESPECÍFIC",
+      "billing_range": 9000309,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.6486,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001015,
+    "fields": {
+      "token": "C/I/PF/DL5-2025",
+      "name": "CÀNON INDUSTRIAL — PART FIXA",
+      "billing_range": 9000309,
+      "formula": null,
+      "price": 3,
+      "proportional_price": null,
+      "quantity": null,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 1,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001016,
+    "fields": {
+      "token": "C/M/PVG/DL5-2025",
+      "name": "CÀNON MUNICIPAL — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000312,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001017,
+    "fields": {
+      "token": "C/M/PF/DL5-2025",
+      "name": "CÀNON MUNICIPAL — PART FIXA",
+      "billing_range": 9000312,
+      "formula": null,
+      "price": 3,
+      "proportional_price": null,
+      "quantity": null,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 1,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001018,
+    "fields": {
+      "token": "C/H/PVG/DL5-2025",
+      "name": "CÀNON HOTELS I CÀMPINGS — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000306,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1654,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001019,
+    "fields": {
+      "token": "C/H/PVE/DL5-2025",
+      "name": "CÀNON HOTELS I CÀMPINGS — PART VARIABLE TIPUS ESPECÍFIC",
+      "billing_range": 9000306,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.681,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001020,
+    "fields": {
+      "token": "C/A/Q0/L2-2015",
+      "name": "CÀNON AGRÍCOLA — QUOTA 0",
+      "billing_range": 9000301,
+      "formula": null,
+      "price": 0,
+      "proportional_price": null,
+      "quantity": 6,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 5,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001021,
+    "fields": {
+      "token": "C/M/PVG/DL3-2026",
+      "name": "CÀNON MUNICIPAL — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000313,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1753,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001022,
+    "fields": {
+      "token": "C/M/PF/DL3-2026",
+      "name": "CÀNON MUNICIPAL — PART FIXA",
+      "billing_range": 9000313,
+      "formula": null,
+      "price": 3,
+      "proportional_price": null,
+      "quantity": null,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 1,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001023,
+    "fields": {
+      "token": "C/D/PV/DL3-2026",
+      "name": "CÀNON DOMÈSTIC — PART VARIABLE",
+      "billing_range": 9000304,
+      "formula": null,
+      "price": null,
+      "proportional_price": null,
+      "quantity": 1,
+      "price_interval": 9000403,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001024,
+    "fields": {
+      "token": "C/D/CF/DL3-2026",
+      "name": "CÀNON DOMÈSTIC — CONSUM FUITA",
+      "billing_range": 9000304,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.6026,
+      "quantity": 3,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "NOADJ",
+      "inactive_choice": "NOADJ",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001025,
+    "fields": {
+      "token": "C/D/PF/DL3-2026",
+      "name": "CÀNON DOMÈSTIC — PART FIXA",
+      "billing_range": 9000304,
+      "formula": null,
+      "price": 1,
+      "proportional_price": null,
+      "quantity": null,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 1,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001026,
+    "fields": {
+      "token": "C/I/CF/DL3-2026",
+      "name": "CÀNON INDUSTRIAL — CONSUM FUITA",
+      "billing_range": 9000310,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.36095,
+      "quantity": 3,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "NOADJ",
+      "inactive_choice": "NOADJ",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": false,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001027,
+    "fields": {
+      "token": "C/I/PVG/DL3-2026",
+      "name": "CÀNON INDUSTRIAL — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000310,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1753,
+      "quantity": 6,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001028,
+    "fields": {
+      "token": "C/I/PVE/DL3-2026",
+      "name": "CÀNON INDUSTRIAL — PART VARIABLE TIPUS ESPECÍFIC",
+      "billing_range": 9000310,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.7219,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 4,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001029,
+    "fields": {
+      "token": "C/I/PF/DL3-2026",
+      "name": "CÀNON INDUSTRIAL — PART FIXA",
+      "billing_range": 9000310,
+      "formula": null,
+      "price": 3,
+      "proportional_price": null,
+      "quantity": null,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 1,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001030,
+    "fields": {
+      "token": "C/H/PVG/DL3-2026",
+      "name": "CÀNON HOTELS I CÀMPINGS — PART VARIABLE TIPUS GENERAL",
+      "billing_range": 9000307,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.1753,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.lineitemtype",
+    "pk": 9001031,
+    "fields": {
+      "token": "C/H/PVE/DL3-2026",
+      "name": "CÀNON HOTELS I CÀMPINGS — PART VARIABLE TIPUS ESPECÍFIC",
+      "billing_range": 9000307,
+      "formula": null,
+      "price": null,
+      "proportional_price": 0.7219,
+      "quantity": 1,
+      "price_interval": null,
+      "price_variable": null,
+      "operation": null,
+      "active_choice": "DAYS",
+      "inactive_choice": "DAYS",
+      "is_positive": true,
+      "is_prorated": true,
+      "billing_period": 6,
+      "tax": 2,
+      "article": 3,
+      "code": null,
+      "always_show": true,
+      "is_active": true
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 9005001,
+    "fields": {
+      "token": "DOM-SIN-MIN",
+      "name": "Doméstica sin mínimo ACA",
+      "data_type": "int",
+      "application": "CT",
+      "is_vulnerable": false,
+      "position": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 9005002,
+    "fields": {
+      "token": "Factura-ACA",
+      "name": "Factura ACA",
+      "data_type": "int",
+      "application": "CT",
+      "is_vulnerable": false,
+      "position": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 9005003,
+    "fields": {
+      "token": "IND-SIN-MIN-ACA",
+      "name": "Industriales sin Mínimo ACA",
+      "data_type": "int",
+      "application": "CT",
+      "is_vulnerable": false,
+      "position": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 9005004,
+    "fields": {
+      "token": "MIN-ACA",
+      "name": "Mínimo asignado ACA",
+      "data_type": "int",
+      "application": "CT",
+      "is_vulnerable": false,
+      "position": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 9005005,
+    "fields": {
+      "token": "general",
+      "name": "General",
+      "data_type": "int",
+      "application": "CT",
+      "is_vulnerable": false,
+      "position": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 9005006,
+    "fields": {
+      "token": "tarifa-social",
+      "name": "Tarifa Social",
+      "data_type": "bool",
+      "application": "CT",
+      "is_vulnerable": false,
+      "position": null,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002001,
+    "fields": {
+      "token": "ACA/D/PV/FACTURA-ACA-DIRECTAMENT/L2-2023",
+      "name": "FACTURA ACA DIRECTAMENT",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": 0,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002002,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/L2-2023",
+      "name": "AMPLIACIÓ DE TRAMS",
+      "start_at": null,
+      "end_at": null,
+      "operation": 4,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 4,
+      "formula": null,
+      "position": 4,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002003,
+    "fields": {
+      "token": "ACA/D/PV/CONSUM-MINIM-18/L2-2023",
+      "name": "CONSUM MÍNIM 18",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": 18,
+      "formula": null,
+      "position": 7,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002004,
+    "fields": {
+      "token": "ACA/I/PVG/TARIFA-GENERAL-MINIM-18/L2-2023",
+      "name": "TARIFA GENERAL - MÍNIM 18",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": 18,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001004,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002005,
+    "fields": {
+      "token": "ACA/I/PVE/TARIFA-ESPECIFICA-MINIM-18/L2-2023",
+      "name": "TARIFA ESPECÍFICA - MÍNIM 18",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": 18,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001005,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002006,
+    "fields": {
+      "token": "ACA/M/PVG/MINIM-18/L2-2023",
+      "name": "MÍNIM 18",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": 18,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001006,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002007,
+    "fields": {
+      "token": "ACA/D/PV/FACTURA-ACA-EXEMPT/L2-2023",
+      "name": "FACTURA ACA (EXEMPT)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 0,
+      "formula": null,
+      "position": 9,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002008,
+    "fields": {
+      "token": "ACA/I/PVG/TARIFA-GENERAL-FACTURA-ACA-DIRECTAMENT/L2-2023",
+      "name": "TARIFA GENERAL - FACTURA ACA DIRECTAMENT",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 0,
+      "formula": null,
+      "position": 2,
+      "line_item_type": 9001004,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002009,
+    "fields": {
+      "token": "ACA/I/PVE/TARIFA-ESPECIFICA-FACTURA-ACA-DIRECTAMENT/L2-2023",
+      "name": "TARIFA ESPECÍFICA - FACTURA ACA DIRECTAMENT",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 0,
+      "formula": null,
+      "position": 2,
+      "line_item_type": 9001005,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002010,
+    "fields": {
+      "token": "ACA/H/PVG/MINIM-HOTELS-CAMPINGS/L2-2023",
+      "name": "MINIM HOTELS-CAMPINGS",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": 9,
+      "formula": "%variable.MIN-ACA",
+      "position": 1,
+      "line_item_type": 9001007,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002011,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/L2-2023",
+      "name": "1r TRAM - TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 10,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002012,
+    "fields": {
+      "token": "ACA/D/PV/TARIFA-SOCIAL/L2-2023",
+      "name": "TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 11,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002013,
+    "fields": {
+      "token": "ACA/I/PVG/MINIMO-ASIGNADO-ACA-VARIABLE/L2-2023",
+      "name": "MINIMO ASIGNADO ACA (VARIABLE)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": 54,
+      "formula": null,
+      "position": 3,
+      "line_item_type": 9001004,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002014,
+    "fields": {
+      "token": "ACA/I/PVE/MINIMO-ASIGNADO-ACA/L2-2023",
+      "name": "MINIMO ASIGNADO ACA",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 54,
+      "formula": null,
+      "position": 3,
+      "line_item_type": 9001005,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002015,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/L2-2023",
+      "name": "COMPTADOR GENERAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 4,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 12,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002016,
+    "fields": {
+      "token": "ACA/D/PV/MINIM-COMPTADOR-GENERAL/L2-2023",
+      "name": "MÍNIM COMPTADOR GENERAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "18 * %variable.general",
+      "position": 13,
+      "line_item_type": 9001001,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002017,
+    "fields": {
+      "token": "ACA/H/PVE/MINIM-HOTELS-CAMPINGS/L2-2023",
+      "name": "MÍNIM HOTELS-CAMPINGS",
+      "start_at": null,
+      "end_at": null,
+      "operation": 1,
+      "variable_calculation": 1,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "%variable.MIN-ACA",
+      "position": 1,
+      "line_item_type": 9001008,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002018,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL5-2025",
+      "name": "PART VARIABLE TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 11,
+      "line_item_type": 9001009,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002019,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL5-2025",
+      "name": "AMPLIACIÓ DE TRAMS",
+      "start_at": null,
+      "end_at": null,
+      "operation": 4,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 4,
+      "formula": null,
+      "position": 4,
+      "line_item_type": 9001009,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002020,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL5-2025",
+      "name": "COMPTADOR GENERAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 4,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 12,
+      "line_item_type": 9001009,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002021,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL5-2025",
+      "name": "1r TRAM - TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 10,
+      "line_item_type": 9001009,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002022,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-SENSE-CONSUM/DL5-2025",
+      "name": "PART FIXA (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 3,
+      "formula": "3",
+      "position": 1,
+      "line_item_type": 9001011,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002023,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-TARIFA-SOCIAL-SENSE-CONSUM/DL5-2025",
+      "name": "PART FIXA - TARIFA SOCIAL (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 6,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 0,
+      "formula": null,
+      "position": 2,
+      "line_item_type": 9001011,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002024,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-TARIFA-SOCIAL-1R-TRAM/DL5-2025",
+      "name": "PART FIXA - TARIFA SOCIAL 1R TRAM",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "0",
+      "position": 3,
+      "line_item_type": 9001011,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002025,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-TARIFA-SOCIAL/DL5-2025",
+      "name": "PART FIXA - TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 0.5,
+      "formula": "0.5",
+      "position": 4,
+      "line_item_type": 9001011,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002026,
+    "fields": {
+      "token": "ACA/I/PVG/TARIFA-GENERAL-FACTURA-ACA-DIRECTAMENT/DL5-2025",
+      "name": "TARIFA GENERAL - FACTURA ACA DIRECTAMENT",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 2,
+      "line_item_type": 9001013,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002027,
+    "fields": {
+      "token": "ACA/I/PVE/TARIFA-ESPECIFICA-FACTURA-ACA-DIRECTAMENT/DL5-2025",
+      "name": "TARIFA ESPECÍFICA - FACTURA ACA DIRECTAMENT",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 2,
+      "line_item_type": 9001014,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002028,
+    "fields": {
+      "token": "ACA/I/PF/PART-FIXA-SENSE-CONSUM/DL5-2025",
+      "name": "PART FIXA - SENSE CONSUM",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 3.3333,
+      "formula": "0",
+      "position": 1,
+      "line_item_type": 9001015,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002029,
+    "fields": {
+      "token": "ACA/I/PF/PART-FIXA-FACTURA-DIRECTE-ACA/DL5-2025",
+      "name": "PART FIXA - FACTURA DIRECTE ACA",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "0",
+      "position": 2,
+      "line_item_type": 9001015,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002030,
+    "fields": {
+      "token": "ACA/M/PF/PART-FIXA-SENSE-CONSUM/DL5-2025",
+      "name": "PART FIXA  (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 3.33333,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001017,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002031,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-COMPTADOR-GENERAL/DL5-2025",
+      "name": "PART FIXA - COMPTADOR GENERAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "%variable.general",
+      "position": 5,
+      "line_item_type": 9001011,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002032,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-COMPTADOR-GENERAL-SENSE-CONSUM/DL5-2025",
+      "name": "PART FIXA - COMPTADOR GENERAL (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "3 * %variable.general",
+      "position": 6,
+      "line_item_type": 9001011,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002033,
+    "fields": {
+      "token": "ACA/M/PF/PART-FIXA-SENSE-CONSUM/DL3-2026",
+      "name": "PART FIXA  (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 3.33333,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001022,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002034,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL3-2026",
+      "name": "PART VARIABLE TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 11,
+      "line_item_type": 9001023,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002035,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL3-2026",
+      "name": "AMPLIACIÓ DE TRAMS",
+      "start_at": null,
+      "end_at": null,
+      "operation": 4,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 4,
+      "formula": null,
+      "position": 4,
+      "line_item_type": 9001023,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002036,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL3-2026",
+      "name": "COMPTADOR GENERAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 4,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 12,
+      "line_item_type": 9001023,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002037,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL3-2026",
+      "name": "1r TRAM - TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": null,
+      "position": 10,
+      "line_item_type": 9001023,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002038,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-SENSE-CONSUM/DL3-2026",
+      "name": "PART FIXA (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 6,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 3,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001025,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002039,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-TARIFA-SOCIAL-SENSE-CONSUM/DL3-2026",
+      "name": "PART FIXA - TARIFA SOCIAL (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 6,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 0,
+      "formula": null,
+      "position": 2,
+      "line_item_type": 9001025,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002040,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-TARIFA-SOCIAL/DL3-2026",
+      "name": "PART FIXA - TARIFA SOCIAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 0.5,
+      "formula": "0.5",
+      "position": 4,
+      "line_item_type": 9001025,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002041,
+    "fields": {
+      "token": "ACA/I/PVG/TARIFA-GENERAL-FACTURA-ACA-DIRECTAMENT/DL3-2026",
+      "name": "TARIFA GENERAL - FACTURA ACA DIRECTAMENT",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "0",
+      "position": 2,
+      "line_item_type": 9001027,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002042,
+    "fields": {
+      "token": "ACA/I/PVE/TARIFA-ESPECIFICA-FACTURA-ACA-DIRECTAMENT/DL3-2026",
+      "name": "TARIFA ESPECÍFICA - FACTURA ACA DIRECTAMENT",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "0",
+      "position": 2,
+      "line_item_type": 9001028,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002043,
+    "fields": {
+      "token": "ACA/I/PF/PART-FIXA-SENSE-CONSUM/DL3-2026",
+      "name": "PART FIXA - SENSE CONSUM",
+      "start_at": null,
+      "end_at": null,
+      "operation": 6,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": 10,
+      "formula": null,
+      "position": 1,
+      "line_item_type": 9001029,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002044,
+    "fields": {
+      "token": "ACA/I/PF/PART-FIXA-FACTURA-DIRECTE-ACA/DL3-2026",
+      "name": "PART FIXA - FACTURA DIRECTE ACA",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "0",
+      "position": 2,
+      "line_item_type": 9001029,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002045,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-TARIFA-SOCIAL-1R-TRAM/DL3-2026",
+      "name": "PART FIXA - TARIFA SOCIAL 1R TRAM",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "0",
+      "position": 5,
+      "line_item_type": 9001025,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002046,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-COMPTADOR-GENERAL/DL3-2026",
+      "name": "PART FIXA - COMPTADOR GENERAL",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "%variable.general",
+      "position": 6,
+      "line_item_type": 9001025,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustment",
+    "pk": 9002047,
+    "fields": {
+      "token": "ACA/D/PF/PART-FIXA-COMPTADOR-GENERAL-SENSE-CONSUM/DL3-2026",
+      "name": "PART FIXA - COMPTADOR GENERAL (SENSE CONSUM)",
+      "start_at": null,
+      "end_at": null,
+      "operation": 3,
+      "variable_calculation": null,
+      "variable_type": null,
+      "quantity": null,
+      "formula": "3 * %variable.general",
+      "position": 7,
+      "line_item_type": 9001025,
+      "is_active": true
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003001,
+    "fields": {
+      "adjustment": 9002001,
+      "name": "FACTURA ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (char)",
+        "value": "variable.ACA-TRAM"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003002,
+    "fields": {
+      "adjustment": 9002002,
+      "name": "Persones per habitatge > 3",
+      "quantity": {
+        "url": "",
+        "label": "Contracte: Total de persones",
+        "value": "contract.total_persons"
+      },
+      "operation": "gt",
+      "formula": "3",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003003,
+    "fields": {
+      "adjustment": 9002007,
+      "name": "FACTURA ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "is_not_null",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003004,
+    "fields": {
+      "adjustment": 9002004,
+      "name": "NO - Industriales sin Mínimo ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Industriales sin Mínimo ACA (int)",
+        "value": "variable.IND-SIN-MIN-ACA"
+      },
+      "operation": "is_null",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003005,
+    "fields": {
+      "adjustment": 9002005,
+      "name": "NO Industriales sin Mínimo ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Industriales sin Mínimo ACA (int)",
+        "value": "variable.IND-SIN-MIN-ACA"
+      },
+      "operation": "is_null",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003006,
+    "fields": {
+      "adjustment": 9002008,
+      "name": "FACTURA ACA (Variable activa)",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003007,
+    "fields": {
+      "adjustment": 9002009,
+      "name": "FACTURA ACA (VARIABLE ACTIVA)",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003008,
+    "fields": {
+      "adjustment": 9002010,
+      "name": "MINIM HOTELS-CAMPINGS",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Mínimo asignado ACA (int)",
+        "value": "variable.MIN-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003009,
+    "fields": {
+      "adjustment": 9002003,
+      "name": "NO minim ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Doméstica sin mínimo ACA (int)",
+        "value": "variable.DOM-SIN-MIN"
+      },
+      "operation": "is_null",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003010,
+    "fields": {
+      "adjustment": 9002011,
+      "name": "Tarifa Social",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Tarifa Social (bool)",
+        "value": "variable.tarifa-social"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003011,
+    "fields": {
+      "adjustment": 9002011,
+      "name": "1r TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "le",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003012,
+    "fields": {
+      "adjustment": 9002012,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Tarifa Social (bool)",
+        "value": "variable.tarifa-social"
+      },
+      "operation": "is_true",
+      "formula": "",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003013,
+    "fields": {
+      "adjustment": 9002012,
+      "name": "2,3,4t TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "gt",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003014,
+    "fields": {
+      "adjustment": 9002013,
+      "name": "MINIMO ASIGNADO ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Mínimo asignado ACA (int)",
+        "value": "variable.MIN-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003015,
+    "fields": {
+      "adjustment": 9002014,
+      "name": "MINIMO ASIGNADO ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Mínimo asignado ACA (int)",
+        "value": "variable.MIN-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003016,
+    "fields": {
+      "adjustment": 9002015,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003017,
+    "fields": {
+      "adjustment": 9002016,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003018,
+    "fields": {
+      "adjustment": 9002003,
+      "name": "NO COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "is_null",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003019,
+    "fields": {
+      "adjustment": 9002017,
+      "name": "MÍNIM HOTELS-CAMPINGS",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Mínimo asignado ACA (int)",
+        "value": "variable.MIN-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003020,
+    "fields": {
+      "adjustment": 9002021,
+      "name": "1R TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "le",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003021,
+    "fields": {
+      "adjustment": 9002021,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003022,
+    "fields": {
+      "adjustment": 9002018,
+      "name": "2N, 3R, 4T TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "gt",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003023,
+    "fields": {
+      "adjustment": 9002018,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003024,
+    "fields": {
+      "adjustment": 9002019,
+      "name": "PERSONES HABITATGES > 3",
+      "quantity": {
+        "url": "",
+        "label": "Contracte: Total de persones",
+        "value": "contract.total_persons"
+      },
+      "operation": "gt",
+      "formula": "3",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003025,
+    "fields": {
+      "adjustment": 9002020,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003026,
+    "fields": {
+      "adjustment": 9002022,
+      "name": "SENSE CONSUM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003027,
+    "fields": {
+      "adjustment": 9002022,
+      "name": "SENSE TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_null",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003028,
+    "fields": {
+      "adjustment": 9002023,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003029,
+    "fields": {
+      "adjustment": 9002023,
+      "name": "CONSUM 0",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003030,
+    "fields": {
+      "adjustment": 9002024,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003031,
+    "fields": {
+      "adjustment": 9002024,
+      "name": "1R TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "le",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003032,
+    "fields": {
+      "adjustment": 9002025,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003033,
+    "fields": {
+      "adjustment": 9002025,
+      "name": "2N, 3R, 4T TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "gt",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003034,
+    "fields": {
+      "adjustment": 9002028,
+      "name": "CONSUM 0",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003035,
+    "fields": {
+      "adjustment": 9002029,
+      "name": "FACTURA DIRECTE ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003036,
+    "fields": {
+      "adjustment": 9002026,
+      "name": "FACTURA ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003037,
+    "fields": {
+      "adjustment": 9002027,
+      "name": "FACTURA ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003038,
+    "fields": {
+      "adjustment": 9002030,
+      "name": "CONSUM 0",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003039,
+    "fields": {
+      "adjustment": 9002031,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003040,
+    "fields": {
+      "adjustment": 9002031,
+      "name": "AMB CONSUM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "gt",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003041,
+    "fields": {
+      "adjustment": 9002032,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003042,
+    "fields": {
+      "adjustment": 9002032,
+      "name": "SENSE CONSUM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003043,
+    "fields": {
+      "adjustment": 9002033,
+      "name": "CONSUM 0",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003044,
+    "fields": {
+      "adjustment": 9002034,
+      "name": "2N, 3R, 4T TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "gt",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003045,
+    "fields": {
+      "adjustment": 9002034,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003046,
+    "fields": {
+      "adjustment": 9002035,
+      "name": "PERSONES HABITATGES > 3",
+      "quantity": {
+        "url": "",
+        "label": "Contracte: Total de persones",
+        "value": "contract.total_persons"
+      },
+      "operation": "gt",
+      "formula": "3",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003047,
+    "fields": {
+      "adjustment": 9002036,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003048,
+    "fields": {
+      "adjustment": 9002037,
+      "name": "1R TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "le",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003049,
+    "fields": {
+      "adjustment": 9002037,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003050,
+    "fields": {
+      "adjustment": 9002038,
+      "name": "SENSE CONSUM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003051,
+    "fields": {
+      "adjustment": 9002038,
+      "name": "SENSE TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_null",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003052,
+    "fields": {
+      "adjustment": 9002039,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003053,
+    "fields": {
+      "adjustment": 9002039,
+      "name": "CONSUM 0",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003054,
+    "fields": {
+      "adjustment": 9002040,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003055,
+    "fields": {
+      "adjustment": 9002040,
+      "name": "2N, 3R, 4T TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "gt",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003056,
+    "fields": {
+      "adjustment": 9002041,
+      "name": "FACTURA ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003057,
+    "fields": {
+      "adjustment": 9002042,
+      "name": "FACTURA ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003058,
+    "fields": {
+      "adjustment": 9002043,
+      "name": "CONSUM 0",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003059,
+    "fields": {
+      "adjustment": 9002044,
+      "name": "FACTURA DIRECTE ACA",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003060,
+    "fields": {
+      "adjustment": 9002045,
+      "name": "TARIFA SOCIAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: Cànon social de l'aigua (ACA) (bool)",
+        "value": "variable.ACA-CANON"
+      },
+      "operation": "is_true",
+      "formula": null,
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003061,
+    "fields": {
+      "adjustment": 9002045,
+      "name": "1R TRAM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "le",
+      "formula": "( 9 * %contract.persons )  * %consumption_days / 90",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003062,
+    "fields": {
+      "adjustment": 9002046,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003063,
+    "fields": {
+      "adjustment": 9002046,
+      "name": "AMB CONSUM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "gt",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003064,
+    "fields": {
+      "adjustment": 9002047,
+      "name": "COMPTADOR GENERAL",
+      "quantity": {
+        "url": "",
+        "label": "Variable: General (int)",
+        "value": "variable.general"
+      },
+      "operation": "ge",
+      "formula": "1",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentcondition",
+    "pk": 9003065,
+    "fields": {
+      "adjustment": 9002047,
+      "name": "SENSE CONSUM",
+      "quantity": {
+        "url": "",
+        "label": "Consum",
+        "value": "consumption"
+      },
+      "operation": "eq",
+      "formula": "0",
+      "position": null
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004001,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/L2-2023/3R-TRAM",
+      "adjustment": 9002002,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000503,
+      "coefficient": 0,
+      "formula": "18 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004002,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/L2-2023/4T-TRAM",
+      "adjustment": 9002002,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000504,
+      "coefficient": 0,
+      "formula": "999999"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004003,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/L2-2023/2N-TRAM",
+      "adjustment": 9002002,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000502,
+      "coefficient": 0,
+      "formula": "15 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004004,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/L2-2023/1R-TRAM",
+      "adjustment": 9002002,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000501,
+      "coefficient": 0,
+      "formula": "9 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004005,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/L2-2023/1R-TRAM",
+      "adjustment": 9002011,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000501,
+      "coefficient": 0,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004006,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/L2-2023/2N-TRAM",
+      "adjustment": 9002011,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000502,
+      "coefficient": 0,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004007,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/L2-2023/3R-TRAM",
+      "adjustment": 9002011,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000503,
+      "coefficient": 0,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004008,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/L2-2023/4T-TRAM",
+      "adjustment": 9002011,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000504,
+      "coefficient": 0,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004009,
+    "fields": {
+      "token": "ACA/D/PV/TARIFA-SOCIAL/L2-2023/2N-TRAM",
+      "adjustment": 9002012,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000502,
+      "coefficient": 0.5,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004010,
+    "fields": {
+      "token": "ACA/D/PV/TARIFA-SOCIAL/L2-2023/1R-TRAM",
+      "adjustment": 9002012,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000501,
+      "coefficient": 0.5,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004011,
+    "fields": {
+      "token": "ACA/D/PV/TARIFA-SOCIAL/L2-2023/3R-TRAM",
+      "adjustment": 9002012,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000503,
+      "coefficient": 0.5,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004012,
+    "fields": {
+      "token": "ACA/D/PV/TARIFA-SOCIAL/L2-2023/4T-TRAM",
+      "adjustment": 9002012,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000504,
+      "coefficient": 0.5,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004013,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/L2-2023/3R-TRAM",
+      "adjustment": 9002015,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000503,
+      "coefficient": 0,
+      "formula": "54 * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004014,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/L2-2023/2N-TRAM",
+      "adjustment": 9002015,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000502,
+      "coefficient": 0,
+      "formula": "45 * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004015,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/L2-2023/1R-TRAM",
+      "adjustment": 9002015,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000501,
+      "coefficient": 0,
+      "formula": "27  * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004016,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/L2-2023/4T-TRAM",
+      "adjustment": 9002015,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000504,
+      "coefficient": 0,
+      "formula": "999999"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004017,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL5-2025/1R-TRAM",
+      "adjustment": 9002021,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000505,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004018,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL5-2025/2N-TRAM",
+      "adjustment": 9002021,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000506,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004019,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL5-2025/3R-TRAM",
+      "adjustment": 9002021,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000507,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004020,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL5-2025/4T-TRAM",
+      "adjustment": 9002021,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000508,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004021,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL5-2025/4T-TRAM",
+      "adjustment": 9002018,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000508,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004022,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL5-2025/3R-TRAM",
+      "adjustment": 9002018,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000507,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004023,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL5-2025/1R-TRAM",
+      "adjustment": 9002018,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000505,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004024,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL5-2025/2N-TRAM",
+      "adjustment": 9002018,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000506,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004025,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL5-2025/2N-TRAM",
+      "adjustment": 9002020,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000506,
+      "coefficient": 0,
+      "formula": "45 * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004026,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL5-2025/4T-TRAM",
+      "adjustment": 9002020,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000508,
+      "coefficient": 0,
+      "formula": "999999"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004027,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL5-2025/3R-TRAM",
+      "adjustment": 9002020,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000507,
+      "coefficient": 0,
+      "formula": "54 * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004028,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL5-2025/1R-TRAM",
+      "adjustment": 9002020,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000505,
+      "coefficient": 0,
+      "formula": "27  * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004029,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL5-2025/1R-TRAM",
+      "adjustment": 9002019,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000505,
+      "coefficient": 0,
+      "formula": "9 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004030,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL5-2025/3R-TRAM",
+      "adjustment": 9002019,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000507,
+      "coefficient": 0,
+      "formula": "18 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004031,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL5-2025/2N-TRAM",
+      "adjustment": 9002019,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000506,
+      "coefficient": 0,
+      "formula": "15 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004032,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL5-2025/4T-TRAM",
+      "adjustment": 9002019,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000508,
+      "coefficient": 0,
+      "formula": "999999"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004033,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL3-2026/4T-TRAM",
+      "adjustment": 9002034,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000512,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004034,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL3-2026/3R-TRAM",
+      "adjustment": 9002034,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000511,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004035,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL3-2026/1R-TRAM",
+      "adjustment": 9002034,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000509,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004036,
+    "fields": {
+      "token": "ACA/D/PV/PART-VARIABLE-TARIFA-SOCIAL/DL3-2026/2N-TRAM",
+      "adjustment": 9002034,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000510,
+      "coefficient": 1,
+      "formula": "0.5"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004037,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL3-2026/1R-TRAM",
+      "adjustment": 9002035,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000509,
+      "coefficient": 0,
+      "formula": "9 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004038,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL3-2026/3R-TRAM",
+      "adjustment": 9002035,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000511,
+      "coefficient": 0,
+      "formula": "18 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004039,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL3-2026/2N-TRAM",
+      "adjustment": 9002035,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000510,
+      "coefficient": 0,
+      "formula": "15 * %contract.persons"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004040,
+    "fields": {
+      "token": "ACA/D/PV/AMPLIACIO-DE-TRAMS/DL3-2026/4T-TRAM",
+      "adjustment": 9002035,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000512,
+      "coefficient": 0,
+      "formula": "999999"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004041,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL3-2026/2N-TRAM",
+      "adjustment": 9002036,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000510,
+      "coefficient": 0,
+      "formula": "45 * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004042,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL3-2026/4T-TRAM",
+      "adjustment": 9002036,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000512,
+      "coefficient": 0,
+      "formula": "999999"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004043,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL3-2026/3R-TRAM",
+      "adjustment": 9002036,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000511,
+      "coefficient": 0,
+      "formula": "54 * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004044,
+    "fields": {
+      "token": "ACA/D/PV/COMPTADOR-GENERAL/DL3-2026/1R-TRAM",
+      "adjustment": 9002036,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000509,
+      "coefficient": 0,
+      "formula": "27  * %variable.general"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004045,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL3-2026/1R-TRAM",
+      "adjustment": 9002037,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000509,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004046,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL3-2026/2N-TRAM",
+      "adjustment": 9002037,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000510,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004047,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL3-2026/3R-TRAM",
+      "adjustment": 9002037,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000511,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  },
+  {
+    "model": "pricing.adjustmentintervalstretch",
+    "pk": 9004048,
+    "fields": {
+      "token": "ACA/D/PV/1R-TRAM-TARIFA-SOCIAL/DL3-2026/4T-TRAM",
+      "adjustment": 9002037,
+      "price_variable_stretch": null,
+      "price_interval_stretch": 9000512,
+      "coefficient": 1,
+      "formula": "0"
+    }
+  }
+]

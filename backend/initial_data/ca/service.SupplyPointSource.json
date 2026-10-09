@@ -1,0 +1,110 @@
+[
+  {
+      "model": "service.supplypointsource",
+      "pk": 1,
+      "fields": {
+          "token": "diposit_pressio",
+          "name": "DIPÒSIT DE PRESSIÓ",
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 2,
+      "fields": {
+          "token": "diposit_elevat",
+          "name": "DIPÒSIT ELEVAT",
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 3,
+      "fields": {
+          "token": "mixta",
+          "name": "MIXTA (PRESA DIRECTE I DIPÒSIT ELEVAT)",
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 4,
+      "fields": {
+          "token": "mixta_bateries",
+          "name": "MIXTA BATERIES (FINS A CERTA PLANTA, DIRECTE. RESTA, AMB GRUP DE PRESSIÓ)",
+          "position": 3,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 5,
+      "fields": {
+          "token": "presa_directa",
+          "name": "PRESA DIRECTA (AMB GRUP DE PRESSIÓ)",
+          "position": 4,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 6,
+      "fields": {
+          "token": "presa_directa_descalcificador",
+          "name": "PRESA DIRECTA (DESCALCIFICADOR)",
+          "position": 5,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 7,
+      "fields": {
+          "token": "presa_directa_sense_grup",
+          "name": "PRESA DIRECTA (SENSE GRUP DE PRESSIÓ)",
+          "position": 6,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 8,
+      "fields": {
+          "token": "aliena",
+          "name": "PROCEDÈNCIA ALIENA A LA XARXA (POU, Etc.)",
+          "position": 7,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 9,
+      "fields": {
+          "token": "sense_subministrament",
+          "name": "SENSE SUBMINISTRAMENT (ESCOMBRARIES, Etc.)",
+          "position": 8,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

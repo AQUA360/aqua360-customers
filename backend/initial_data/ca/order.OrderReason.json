@@ -1,0 +1,131 @@
+[
+  {
+    "model": "order.orderreason",
+    "pk": 1,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "canvi_titular",
+      "name": "CANVI DE TITULAR",
+      "position": 0,
+      "type": [
+        2,
+        9,
+        13
+      ]
+    }
+  },
+  {
+    "model": "order.orderreason",
+    "pk": 2,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "fraud_detection_resolution",
+      "name": "DETECCIÓ O RESOLUCIÓ DE FRAU",
+      "position": 1,
+      "type": [
+        1,
+        8,
+        11,
+        12,
+        13,
+        16,
+        17
+      ]
+    }
+  },
+  {
+    "model": "order.orderreason",
+    "pk": 3,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "network_maintenance",
+      "name": "MANTENIMENT DE XARXA",
+      "position": 2,
+      "type": [
+        10,
+        14
+      ]
+    }
+  },
+  {
+    "model": "order.orderreason",
+    "pk": 4,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "non_payment",
+      "name": "IMPAGAMENT",
+      "position": 3,
+      "type": [
+        1,
+        11,
+        12,
+        16,
+        17
+      ]
+    }
+  },
+  {
+    "model": "order.orderreason",
+    "pk": 5,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "contracting",
+      "name": "CONTRACTACIÓ",
+      "position": 4,
+      "type": [
+        2
+      ]
+    }
+  },
+  {
+    "model": "order.orderreason",
+    "pk": 6,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "contract_termination",
+      "name": "BAIXA DE CONTRACTE",
+      "position": 5,
+      "type": [
+        1,
+        16,
+        17
+      ]
+    }
+  },
+  {
+    "model": "order.orderreason",
+    "pk": 7,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "town_hall_request",
+      "name": "PETICIÓ AJUNTAMENT",
+      "position": 6,
+      "type": [
+        1,
+        17
+      ]
+    }
+  },
+  {
+    "model": "order.orderreason",
+    "pk": 8,
+    "fields": {
+      "created_at": "2025-11-05T15:28:06.571Z",
+      "updated_at": "2025-11-05T15:28:06.571Z",
+      "token": "general",
+      "name": "GENERAL",
+      "position": 7,
+      "type": [
+        1,
+        17
+      ]
+    }
+  }
+]

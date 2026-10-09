@@ -1,0 +1,110 @@
+[
+  {
+      "model": "service.connectionmaterial",
+      "pk": 1,
+      "fields": {
+          "token": "Polietilè",
+          "name": "Polietileno",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 2,
+      "fields": {
+          "token": "Fosa dúctil",
+          "name": "Fundición dúctil",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 3,
+      "fields": {
+          "token": "Acer",
+          "name": "Acero",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 4,
+      "fields": {
+          "token": "Coure",
+          "name": "Cobre",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 5,
+      "fields": {
+          "token": "Fibrociment",
+          "name": "Fibrocemento",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 6,
+      "fields": {
+          "token": "Plom",
+          "name": "Plomo",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 7,
+      "fields": {
+          "token": "PVC",
+          "name": "PVC",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 8,
+      "fields": {
+          "token": "Altres",
+          "name": "Otros",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionmaterial",
+      "pk": 9,
+      "fields": {
+          "token": "PEAD",
+          "name": "Polietileno de alta densidad",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

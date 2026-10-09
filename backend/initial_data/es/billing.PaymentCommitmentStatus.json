@@ -1,0 +1,86 @@
+[
+    {
+        "model": "billing.paymentcommitmentstatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Pendiente",
+            "color": null,
+            "position": 1,
+            "description": "Se ha generado y está a la espera de liquidarse",
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.paymentcommitmentstatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Parcialmente cobrado",
+            "color": "blue",
+            "position": 2,
+            "description": "El pago ha sido liquidado parcialmente",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentcommitmentstatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "2",
+            "name": "Cobrado",
+            "color": "green",
+            "position": 3,
+            "description": "El pago ha sido liquidado por completo",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentcommitmentstatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Vencido",
+            "color": "red",
+            "position": 4,
+            "description": "Se ha finalizado su período de vencimiento y no se ha liquidado",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentcommitmentstatus",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-2",
+            "name": "Anulado",
+            "color": "red",
+            "position": 5,
+            "description": "Compromiso de pago anulado",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentcommitmentstatus",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "3",
+            "name": "Confirmado",
+            "color": "blue",
+            "position": 6,
+            "description": "Compromiso de pago confirmado y a la espera de liquidarse",
+            "is_default": false
+        }
+    }
+]

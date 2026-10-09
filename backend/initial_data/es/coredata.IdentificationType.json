@@ -1,0 +1,62 @@
+[
+    {
+        "model": "coredata.identificationtype",
+        "pk": 1,
+        "fields": {
+            "name": "DNI",
+            "token": "dni",
+            "position": 1,
+            "is_default": true,
+            "created_at": "2024-10-09T12:24:14.798Z",
+            "updated_at": "2024-10-09T12:24:31.543Z"
+        }
+    },
+    {
+        "model": "coredata.identificationtype",
+        "pk": 2,
+        "fields": {
+            "name": "NIE",
+            "token": "nie",
+            "position": 2,
+            "is_default": false,
+            "created_at": "2024-10-09T12:24:14.798Z",
+            "updated_at": "2024-10-09T12:24:31.543Z"
+        }
+    },
+    {
+        "model": "coredata.identificationtype",
+        "pk": 3,
+        "fields": {
+            "name": "CIF",
+            "token": "cif",
+            "position": 3,
+            "is_default": false,
+            "created_at": "2024-10-09T12:24:14.798Z",
+            "updated_at": "2024-10-09T12:24:31.543Z"
+        }
+    },
+    {
+        "model": "coredata.identificationtype",
+        "pk": 4,
+        "fields": {
+            "name": "Pasaporte",
+            "token": "passport",
+            "position": 4,
+            "is_default": false,
+            "created_at": "2024-10-09T12:24:14.798Z",
+            "updated_at": "2024-10-09T12:24:31.543Z"
+        }
+    },
+    {
+        "model": "coredata.identificationtype",
+        "pk": 5,
+        "fields": {
+            "name": "Otros",
+            "token": "other",
+            "position": 5,
+            "is_default": false,
+            "created_at": "2024-10-09T12:24:14.798Z",
+            "updated_at": "2024-10-09T12:24:31.543Z"
+        }
+    }
+]

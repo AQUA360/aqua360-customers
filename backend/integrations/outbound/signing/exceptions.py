@@ -1,0 +1,2 @@
+class SigningApiError(Exception):
+    pass

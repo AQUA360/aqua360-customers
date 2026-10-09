@@ -1,0 +1,72 @@
+[
+    {
+        "model": "pricing.billingperiod",
+        "pk": 1,
+        "fields": {
+            "token": "anual",
+            "name": "Anual (360 dies)",
+            "days": 360,
+            "is_default": false
+        }
+    },
+    {
+        "model": "pricing.billingperiod",
+        "pk": 2,
+        "fields": {
+            "token": "semestral",
+            "name": "Semestral (180 dies)",
+            "days": 180,
+            "is_default": false
+        }
+    },
+    {
+        "model": "pricing.billingperiod",
+        "pk": 3,
+        "fields": {
+            "token": "bimestral",
+            "name": "Bimestral (60 dies)",
+            "days": 60,
+            "is_default": false
+        }
+    },
+    {
+        "model": "pricing.billingperiod",
+        "pk": 4,
+        "fields": {
+            "token": "trimestral",
+            "name": "Trimestral (90 dies)",
+            "days": 90,
+            "is_default": false
+        }
+    },
+    {
+        "model": "pricing.billingperiod",
+        "pk": 5,
+        "fields": {
+            "token": "quadrimestral",
+            "name": "Quadrimestral (120 dies)",
+            "days": 120,
+            "is_default": false
+        }
+    },
+    {
+        "model": "pricing.billingperiod",
+        "pk": 6,
+        "fields": {
+            "token": "mensual",
+            "name": "Mensual (30 dies)",
+            "days": 30,
+            "is_default": true
+        }
+    },
+    {
+        "model": "pricing.billingperiod",
+        "pk": 7,
+        "fields": {
+            "token": "diaria",
+            "name": "Diaria (1 dia)",
+            "days": 1,
+            "is_default": false
+        }
+    }
+]

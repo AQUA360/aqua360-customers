@@ -1,0 +1,317 @@
+{% load svg_converter %}
+<!DOCTYPE html>
+<html lang="ca">
+
+<head>
+    <meta charset="UTF-8">
+    <title>RECONEIXEMENT DEL DEUTE</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 2cm;
+            margin-right: 2cm;
+            margin-top: 1.5cm;
+            margin-bottom: 2cm;
+
+            @frame footer_frame {
+                -pdf-frame-content: footer_content;
+                left: 57pt;
+                width: 480pt;
+                top: 780pt;
+                height: 35pt;
+            }
+        }
+
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            font-size: 10px;
+            color: #1a1a1a;
+            line-height: 1.5;
+        }
+
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+            border-bottom: 2px solid {{ secondary_color|default:"#00a8e8" }};
+            padding-bottom: 8px;
+            margin-bottom: 20px;
+        }
+
+        .header-table td {
+            vertical-align: top;
+        }
+
+        .footer_content_table {
+            border-top: 1px solid {{ secondary_color|default:"#00a8e8" }};
+        }
+
+        .title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 10px;
+            margin-bottom: 15px;
+            color: #000000;
+        }
+
+        p {
+            margin-top: 0;
+            margin-bottom: 12px;
+            text-align: justify;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th {
+            font-weight: bold;
+            border-top: 1px solid #000000;
+            border-bottom: 1px solid #000000;
+            font-size: 10px;
+        }
+
+        .data-table td {
+            font-size: 9.5px;
+        }
+
+        .border-r {
+            border-right: 1px solid #000000;
+        }
+
+        .border-b {
+            border-bottom: 1px solid #dddddd;
+        }
+
+        .payment-plan-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            margin-bottom: 20px;
+        }
+
+        .signatures-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+        }
+
+        .signatures-table td {
+            vertical-align: top;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Capçalera -->
+    <table class="header-table">
+        <tr>
+            {% if logo %}
+            <td width="33%" valign="top">
+                <img src="{{ logo }}" alt="Company Logo" style="width: 60%; height: auto;">
+                <div style="font-size: 8px; padding-top: 2px; text-align: center;">
+                    {%get_website_icon_base64 secondary_color as website_icon%}
+                    <img src="{{ website_icon }}" alt="Website"
+                        style="width: 10px; height: 10px; vertical-align: middle; text-align: center;">
+                    &nbsp; &nbsp; &nbsp;{{ company.website|default:"" }}
+                    <br />
+                    {%get_email_icon_base64 secondary_color as email_icon%}
+                    <img src="{{ email_icon }}" alt="Email"
+                        style="width: 10px; height: 10px; vertical-align: middle;">
+                    &nbsp; &nbsp; &nbsp;{{ company.email }}
+                </div>
+            </td>
+            {% endif %}
+            <td width="33%" align="center">
+            </td>
+            <td width="33%" align="right" style="text-align: right;">
+                {% if exploitation_image %}
+                <img src="{{ exploitation_image }}" style="height: 40px; width: auto;" alt="Exploitation Logo">
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <!-- Títol -->
+    <div class="title">RECONEIXEMENT DEL DEUTE</div>
+
+    <!-- Text d'introducció -->
+    <p>
+        El Sr./la Sra. <strong>{{ deposit.customer_final }}</strong>, amb DNI/CIF/NIF número 
+        <strong>{{ deposit.customer_token_final }}</strong>, reconeix que pel subministrament efectuat a l'immoble situat al domicili
+        <strong>{{ supply_point_address_complete|default:address_complete }}</strong>, en virtut del contracte
+        d'abonament <strong>{{ contract.token }}</strong>, hi ha un deute a favor de 
+        <strong>{{ company.name }}</strong>, gestor del servei municipal d'aigües d'aquesta població, per les 
+        factures corresponents als períodes i els imports que s'indiquen:
+    </p>
+
+    <!-- Taula de Factures -->
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th align="center" class="border-r" style="width: 25%; padding-top: 2px;">Període</th>
+                <th align="center" class="border-r" style="width: 25%; padding-top: 2px;">Data factura</th>
+                <th align="center" class="border-r" style="width: 30%; padding-top: 2px;">Número de factura</th>
+                <th align="right" style="width: 20%; padding-top: 2px;">Import (€)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for invoice in invoices %}
+            <tr>
+                <td align="center" class="border-r border-b" style="width: 25%; padding-top: 2px;">{{invoice.reading.reading_date|date:"Y/m" }}</td>
+                <td align="center" class="border-r border-b" style="width: 25%; padding-top: 2px;">{{ invoice.created_at|date:"d/m/Y" }}</td>
+                <td align="center" class="border-r border-b" style="width: 30%; padding-top: 2px;">{{ invoice.token }}</td>
+                <td align="right" class="border-b" style="width: 20%; padding-top: 2px;">{{ invoice.total_final }} &euro;</td>
+            </tr>
+            {% endfor %}
+            <!-- Total Row -->
+            <tr style="border-top: 1px solid #000000;">
+                <td colspan="3" align="right" style="font-weight: bold; padding-top: 6px;"></td>
+                <td align="right" style="font-weight: bold; padding-top: 6px;">{{ deposit.total }} &euro;</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Text compromís de pagament -->
+    <p>
+        Igualment, com que no ha pogut satisfer el deute d'una sola vegada, tot i haver estat reclamat per l'entitat
+        prestadora del servei, es compromet a fer efectius els imports indicats, en les quotes i en les dates de
+        venciment que es detallen a continuació:
+    </p>
+
+    <p style="font-weight: bold; margin-bottom: 5px;">
+        Número del pla de pagaments a terminis {{ deposit.token }}:
+    </p>
+
+    <!-- Taula de quotes (Fraccionada en dues columnes) -->
+    <table class="payment-plan-table">
+        <tr>
+            <!-- Columna 1 -->
+            <td width="47%" style="vertical-align: top;">
+                <table width="100%" style="border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #000000;">
+                            <th align="left"
+                                style="font-weight: bold; font-size: 9.5px; width: 60%;">Data
+                                venciment</th>
+                            <th align="right"
+                                style="font-weight: bold; font-size: 9.5px; width: 40%;">Import
+                                quota (€)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments_col1 %}
+                        <tr>
+                            <td align="left" style="font-size: 9px; padding-top: 2px;">{{ payment.due_date|date:"d/m/Y" }}
+                            <td align="right" style="font-size: 9px; padding-top: 2px;">{{ payment.amount }} &euro;</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </td>
+            <!-- Separador vertical -->
+            <td width="6%" style="border-right: 1px solid #000000; vertical-align: top;"></td>
+            <td width="6%"></td>
+            <!-- Columna 2 -->
+            <td width="41%" style="vertical-align: top;">
+                {% if payments_col2 %}
+                <table width="100%" style="border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #000000;">
+                            <th align="left"
+                                style="font-weight: bold; padding-bottom: 3px; font-size: 9.5px; width: 60%;">Data
+                                venciment</th>
+                            <th align="right"
+                                style="font-weight: bold; padding-bottom: 3px; font-size: 9.5px; width: 40%;">Import
+                                quota (€)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments_col2 %}
+                        <tr>
+                            <td align="left" style="padding: 4px 0; font-size: 9px;">{{ payment.due_date|date:"d/m/Y" }}
+                            </td>
+                            <td align="right" style="padding: 4px 0; font-size: 9px;">{{ payment.amount }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <!-- Clàusules legals -->
+    <p>
+        Aquestes quotes es faran efectives en les oficines de {{ company.alias }}, en l'horari de cobrament establert, a
+        les dates indicades, o bé el dia hàbil posterior si cauen en dissabte o festiu, o bé mitjançant Transferència
+        bancària. Al pagament de la quota, l'Entitat Subministradora emetrà el corresponent justificant.
+    </p>
+    <p>
+        L'incompliment de qualsevol dels venciments anteriors suposarà, sense que calgui una denúncia expressa, la
+        rescissió d'aquest acord. Els imports que s'hagin satisfet fins a la data d'incompliment es consideraran com a
+        saldo a favor del client. També facultarà l'entitat prestadora del servei perquè procedeixi a suspendre el
+        subministrament, així com a emprendre altres accions que consideri legítimes.
+    </p>
+    <p>
+        Totes dues parts se sotmeten al fur i a la jurisdicció dels jutjats i els tribunals competents del lloc del
+        subministrament.
+    </p>
+    <p>
+        I per tal que consti, el compareixent, juntament amb el representant de l'entitat prestadora dels serveis
+        indicats, signen aquest acord, en prova de conformitat de totes dues parts i perquè tingui els efectes
+        pertinents.
+    </p>
+
+    <!-- Data de signatura -->
+    <p style="margin-top: 20px; margin-bottom: 20px;">
+        A {{ company.address.city.name|upper }}, {{ now_date_ca|lower }}
+    </p>
+
+    <!-- Signatures -->
+    <table class="signatures-table">
+        <tr>
+            <td width="50%" align="left">
+                <div style="font-weight: bold; margin-bottom: 20px;">Signat. Sr/Sra.</div>
+                <div style="font-weight: bold; margin-bottom: 20px;">{{ deposit.customer_final|upper }}
+                </div>
+                <div><strong>DNI/CIF/NIF:</strong> {{ deposit.customer_token_final }}</div>
+            </td>
+            <td width="50%" align="right" style="text-align: right;">
+                <div style="font-weight: bold; margin-bottom: 40px;">{{ company.alias|upper }}</div>
+                {% if company.vat %}
+                <div><strong>CIF/NIF:</strong> {{ company.vat }}</div>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <!-- Peu de pàgina (Estàtic per a totes les pàgines) -->
+    <div id="footer_content"
+        style="font-family: 'Helvetica', 'Arial', sans-serif; font-size: 8px; border-top: 1px solid {{ secondary_color|default:'#00a8e8' }}; padding-top: 6px;">
+        <table class="footer_content_table" width="100%">
+            <tr>
+                <td width="50%" align="left" style="vertical-align: middle; color: {{ secondary_color|default:'#00a8e8' }};">
+                    {% get_user_icon_base64 secondary_color as user_icon %}
+                    {% if user_icon %}
+                    <img src="{{ user_icon }}" alt="User" style="width: 12px; height: 12px; vertical-align: middle; margin-right: 5px;">
+                    {% endif %}
+                    <span style="font-weight: bold; vertical-align: middle;">Atenció al client:</span>
+                    <span style="color: #333333; font-weight: normal; vertical-align: middle;">{{ company.phone }}</span>
+                </td>
+                <td width="50%" align="right" style="text-align: right; vertical-align: middle; color: {{ secondary_color|default:'#00a8e8' }};">
+                    {% get_hydrant_icon_base64 secondary_color as hydrant_icon %}
+                    {% if hydrant_icon %}
+                    <img src="{{ hydrant_icon }}" alt="Hydrant" style="width: 12px; height: 12px; vertical-align: middle; margin-right: 5px;">
+                    {% endif %}
+                    <span style="font-weight: bold; vertical-align: middle;">Avaries i incidències:</span>
+                    <span style="color: #333333; font-weight: normal; vertical-align: middle;">{{ company.phone2 }}</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+</body>
+
+</html>

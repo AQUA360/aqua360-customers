@@ -1,0 +1,72 @@
+[
+  {
+      "model": "statistics.reporttype",
+      "pk": 1,
+      "fields": {
+          "token": "billing",
+          "name": "Facturación",
+          "position": 0,
+          "is_default": false
+      }
+  },
+  {
+      "model": "statistics.reporttype",
+      "pk": 2,
+      "fields": {
+          "token": "payment",
+          "name": "Cartera",
+          "position": 1,
+          "is_default": false
+      }
+  },
+  {
+      "model": "statistics.reporttype",
+      "pk": 3,
+      "fields": {
+          "token": "order",
+          "name": "Orden de trabajo",
+          "position": 2,
+          "is_default": false
+      }
+  },
+  {
+      "model": "statistics.reporttype",
+      "pk": 4,
+      "fields": {
+          "token": "wallet",
+          "name": "Cobros",
+          "position": 2,
+          "is_default": false
+      }
+  },
+  {
+      "model": "statistics.reporttype",
+      "pk": 5,
+      "fields": {
+          "token": "contracts",
+          "name": "Contratos",
+          "position": 3,
+          "is_default": false
+      }
+  },
+  {
+      "model": "statistics.reporttype",
+      "pk": 6,
+      "fields": {
+          "token": "orders",
+          "name": "Órdenes de trabajo",
+          "position": 4,
+          "is_default": false
+      }
+  },
+  {
+      "model": "statistics.reporttype",
+      "pk": 7,
+      "fields": {
+          "token": "statistics",
+          "name": "Estadísticas",
+          "position": 5,
+          "is_default": false
+      }
+  }
+]

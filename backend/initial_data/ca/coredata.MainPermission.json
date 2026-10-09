@@ -1,0 +1,127 @@
+[
+  {
+    "model": "coredata.mainpermission",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.549Z",
+      "name": "contracting",
+      "view_key": "view_contract",
+      "change_key": "change_contract",
+      "affected_models": "contract.contract,contract.contractrequest,contract.contractterminationrequest,coredata.person"
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "customer_service",
+      "view_key": "view_customer_service",
+      "change_key": "change_customer_service",
+      "affected_models": "communication.communication,fraud.fraud,notification.incident"
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "billing",
+      "view_key": "view_billing",
+      "change_key": "change_billing",
+      "affected_models": "billing.invoice,billing.payment,billing.billing,billing.commitmentdeposit,claimrequest.claimrequest,claimrequest.vulnerabilityrequest,contract.bail"
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "readings",
+      "view_key": "view_reading",
+      "change_key": "change_reading",
+      "affected_models": "billing.reading"
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "work_orders",
+      "view_key": "view_order",
+      "change_key": "change_order",
+      "affected_models": "order.order,order.operator"
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "service",
+      "view_key": "view_service",
+      "change_key": "change_service",
+      "affected_models": "service.supplypoint,service.meter,service.connection,service.property,service.route,service.cluster,service.connectionrequest,service.supplycut,fraud.fraud,service.company,service.exploitation",
+      "all_recommended": true
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "pricing",
+      "view_key": "view_pricing",
+      "change_key": "change_pricing",
+      "affected_models": "pricing.pricerate,pricing.product",
+      "all_recommended": true
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 8,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "users",
+      "view_key": "view_user",
+      "change_key": "change_user",
+      "affected_models": "auth.user,auth.group,auth.permission",
+      "all_recommended": true
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 9,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.550Z",
+      "name": "default",
+      "view_key": "view_default",
+      "change_key": "change_default",
+      "affected_models": "notification.notification,notification.calendartask,notification.generalnote,notification.incident,search.history",
+      "is_default": true
+    }
+  },
+  {
+    "model": "coredata.mainpermission",
+    "pk": 10,
+    "fields": {
+      "created_at": "2026-06-01T14:50:00Z",
+      "updated_at": "2026-06-01T14:50:00Z",
+      "name": "piggy_bank",
+      "view_key": "view_piggy_bank",
+      "change_key": "change_piggy_bank",
+      "affected_models": "contract.piggybank,coredata.personpiggybank",
+      "is_default": false
+    }
+  }
+]

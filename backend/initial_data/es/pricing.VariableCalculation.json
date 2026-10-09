@@ -1,0 +1,58 @@
+[
+    {
+        "model": "pricing.variablecalculation",
+        "pk": 1,
+        "fields": {
+            "token": "consum",
+            "name": "Consumo"
+        }
+    },
+    {
+        "model": "pricing.variablecalculation",
+        "pk": 2,
+        "fields": {
+            "token": "dies_consum",
+            "name": "Días Consumo"
+        }
+    },
+    {
+        "model": "pricing.variablecalculation",
+        "pk": 3,
+        "fields": {
+            "token": "diferencia_fuita",
+            "name": "Diferencia de Fuga"
+        }
+    },
+    {
+        "model": "pricing.variablecalculation",
+        "pk": 4,
+        "fields": {
+            "token": "price",
+            "name": "Precio"
+        }
+    },
+    {
+        "model": "pricing.variablecalculation",
+        "pk": 5,
+        "fields": {
+            "token": "prev_consum",
+            "name": "Consumo Anterior"
+        }
+    },
+    {
+        "model": "pricing.variablecalculation",
+        "pk": 6,
+        "fields": {
+            "token": "diferencia_fuita_consum",
+            "name": "Diferencia de fuga y consumo"
+        }
+    },
+    {
+        "model": "pricing.variablecalculation",
+        "pk": 7,
+        "fields": {
+            "token": "units",
+            "name": "Unidades"
+        }
+    }
+]

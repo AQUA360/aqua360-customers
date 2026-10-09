@@ -1,0 +1,156 @@
+[
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-18T08:19:29.652Z",
+      "updated_at": "2024-10-18T08:19:29.652Z",
+      "token": "admn",
+      "name": "Ayuntamientos",
+      "position": 0
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "client_no_residue",
+      "name": "Clientes agua sin residuo",
+      "position": 1
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "client_no_supply",
+      "name": "Clientes sin suministro",
+      "position": 2
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "client_special",
+      "name": "Clientes especiales",
+      "position": 3
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "employee",
+      "name": "Empleados",
+      "position": 4
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "no_claim",
+      "name": "Exento reclamación",
+      "position": 5
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "disabled_property",
+      "name": "Inmueble deshabilitado",
+      "position": 6
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 8,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "inaccessible",
+      "name": "Inaccesible",
+      "position": 7
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 9,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "insolvent",
+      "name": "Insolvente",
+      "position": 8
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 10,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "pending_com_insp",
+      "name": "Inspección comercial pendiente",
+      "position": 9
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 11,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "negative",
+      "name": "Negativo",
+      "position": 10
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 12,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "unknown",
+      "name": "No conocidos",
+      "position": 11
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 13,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "undefined",
+      "name": "Sin definir",
+      "position": 12
+    }
+  },
+  {
+    "model": "contract.contractdebtmanagement",
+    "pk": 14,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "vulnerable",
+      "name": "Vulnerables",
+      "position": 13
+    }
+  }
+]

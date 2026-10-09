@@ -1,0 +1,80 @@
+[
+    {
+        "model": "billing.invoiceserie",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "FC",
+            "name": "Factura Ordinària",
+            "color": "#007bff",
+            "position": 1,
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.invoiceserie",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:10:00.000Z",
+            "updated_at": "2025-01-31T09:00:00.000Z",
+            "token": "FA",
+            "name": "Factura Simplificada",
+            "color": "#28a745",
+            "position": 2,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoiceserie",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:10:00.000Z",
+            "updated_at": "2025-01-31T09:00:00.000Z",
+            "token": "PF",
+            "name": "Prefactura",
+            "color": null,
+            "position": 4,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoiceserie",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:10:00.000Z",
+            "updated_at": "2025-01-31T09:00:00.000Z",
+            "token": "FR",
+            "name": "Factura Abonada",
+            "color": null,
+            "position": 3,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoiceserie",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-01-27T12:10:00.000Z",
+            "updated_at": "2025-01-31T09:00:00.000Z",
+            "token": "FG",
+            "name": "Factura General",
+            "color": null,
+            "position": 5,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoiceserie",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-01-27T12:10:00.000Z",
+            "updated_at": "2025-01-31T09:00:00.000Z",
+            "token": "FF",
+            "name": "Factura Refacturada",
+            "color": null,
+            "position": 6,
+            "is_default": false
+        }
+    }
+]

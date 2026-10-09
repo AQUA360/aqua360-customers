@@ -1,0 +1,164 @@
+[
+    {
+        "model": "billing.invoicestatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Pre-factura",
+            "color": null,
+            "position": 0,
+            "description": "Cuando una factura se encuentra en edición / pre-factura",
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Pagada",
+            "color": "green",
+            "position": 4,
+            "description": "Ha acabado el proceso de facturación y la factura se da por acabada (confirmada)",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Vencida",
+            "color": "purple",
+            "position": 5,
+            "description": "Se ha finalizado su período de vencimiento y no se ha cobrado",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "2",
+            "name": "Confirmada",
+            "color": "blue",
+            "position": 1,
+            "description": "Ha acabado el proceso de facturación y la factura se da por acabada (confirmada)",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-3",
+            "name": "Morosidad",
+            "color": "yellow",
+            "description": "Se ha reclamado su pago pero, según criterio de cada operadora, difícilmente se acabará cobrando",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 7,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "4",
+            "name": "En compromiso",
+            "color": "purple",
+            "description": "La factura ha entrado en un Compromiso de pago (se ha dividido o sumado a otras) y está a la espera que se liquide su/s pago/s",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 8,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "3",
+            "name": "Enviada",
+            "color": "blue",
+            "description": "La factura está enviada en cualquiera de sus formas (Carta, E-mail y/o Factura electrónica)",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 9,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-5",
+            "name": "Irrecuperable",
+            "color": "red",
+            "description": "",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 10,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-6",
+            "name": "Abonada",
+            "color": null,
+            "description": "Se ha hecho por error y se ha generado un abono",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 11,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-4",
+            "name": "Parcialmente Irrecuperable",
+            "color": null,
+            "description": "Dentro del Compromiso del pago, parcialmente ha quedado Irrecuperable",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 12,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-2",
+            "name": "Abono",
+            "color": "green",
+            "description": "Abono de factura",
+            "position": 9,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicestatus",
+        "pk": 13,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-7",
+            "name": "Anulada",
+            "color": null,
+            "description": "Factura anulada, sin ningún movimiento registrado",
+            "position": 10,
+            "is_default": false
+        }
+    }
+]

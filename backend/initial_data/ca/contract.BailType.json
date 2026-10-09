@@ -1,0 +1,26 @@
+[
+  {
+    "model": "contract.bailtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-18T08:19:29.652Z",
+      "updated_at": "2024-10-18T08:19:29.652Z",
+      "token": "aca",
+      "name": "Fiança ACA",
+      "position": null,
+      "default_import": 12.06
+    }
+  },
+  {
+    "model": "contract.bailtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "municipal",
+      "name": "Fiança Municipal",
+      "position": null,
+      "default_import": 15.00
+    }
+  }
+]

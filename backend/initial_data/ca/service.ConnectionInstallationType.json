@@ -1,0 +1,26 @@
+[
+  {
+    "model": "service.connectioninstallationtype",
+    "pk": 2,
+    "fields": {
+      "created_at": null,
+      "updated_at": null,
+      "token": "cluster",
+      "name": "Connexió de servei amb bateria",
+      "position": null,
+      "is_default": true
+    }
+  },
+  {
+    "model": "service.connectioninstallationtype",
+    "pk": 3,
+    "fields": {
+      "created_at": null,
+      "updated_at": null,
+      "token": "individual",
+      "name": "Connexió de servei individual",
+      "position": null,
+      "is_default": false
+    }
+  }
+]

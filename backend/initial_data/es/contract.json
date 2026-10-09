@@ -1,0 +1,1402 @@
+[
+  {
+    "model": "contract.contractstatus",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-08T10:11:05.817Z",
+      "updated_at": "2024-10-31T12:04:41.707Z",
+      "token": "-1",
+      "name": "Baixa",
+      "color": "yellow",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractstatus",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-08T10:11:26.030Z",
+      "updated_at": "2024-10-31T11:21:23.130Z",
+      "token": "1",
+      "name": "Alta",
+      "color": "green",
+      "position": 2,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-08T10:11:05.817Z",
+      "updated_at": "2024-10-10T08:00:50.631Z",
+      "token": "2",
+      "name": "Agua Regenerada",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-08T10:11:26.030Z",
+      "updated_at": "2024-10-10T08:00:45.139Z",
+      "token": "1",
+      "name": "Agrícola",
+      "position": 0,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-10T07:58:43.887Z",
+      "updated_at": "2024-10-10T08:01:00.699Z",
+      "token": "3",
+      "name": "Agua en Alta",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-10T07:58:45.088Z",
+      "updated_at": "2024-10-10T08:01:12.651Z",
+      "token": "4",
+      "name": "Comercial",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-10-10T07:58:46.679Z",
+      "updated_at": "2024-10-10T08:02:18.364Z",
+      "token": "5",
+      "name": "Complejo Turístico",
+      "position": 4,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-10-10T07:58:48.579Z",
+      "updated_at": "2024-10-10T08:02:38.206Z",
+      "token": "6",
+      "name": "Comunidad de Propietarios",
+      "position": 5,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-10-10T07:58:50.381Z",
+      "updated_at": "2024-10-10T08:02:48.466Z",
+      "token": "7",
+      "name": "Control de Red",
+      "position": 6,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 8,
+    "fields": {
+      "created_at": "2024-10-10T07:58:52.324Z",
+      "updated_at": "2024-10-10T08:02:59.126Z",
+      "token": "8",
+      "name": "Cubas",
+      "position": 7,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 9,
+    "fields": {
+      "created_at": "2024-10-10T07:58:53.892Z",
+      "updated_at": "2024-10-10T08:06:56.775Z",
+      "token": "9",
+      "name": "Domèstic",
+      "position": 8,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 10,
+    "fields": {
+      "created_at": "2024-10-10T07:58:56.651Z",
+      "updated_at": "2024-10-10T08:03:08.629Z",
+      "token": "10",
+      "name": "Eventual",
+      "position": 9,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 11,
+    "fields": {
+      "created_at": "2024-10-10T07:58:59.215Z",
+      "updated_at": "2024-10-10T08:03:19.030Z",
+      "token": "11",
+      "name": "Familiar",
+      "position": 10,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 12,
+    "fields": {
+      "created_at": "2024-10-10T07:59:01.159Z",
+      "updated_at": "2024-10-10T08:03:37.029Z",
+      "token": "12",
+      "name": "Fuentes",
+      "position": 11,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 13,
+    "fields": {
+      "created_at": "2024-10-10T07:59:02.902Z",
+      "updated_at": "2024-10-10T08:03:40.890Z",
+      "token": "13",
+      "name": "Garaje",
+      "position": 12,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 14,
+    "fields": {
+      "created_at": "2024-10-10T07:59:04.340Z",
+      "updated_at": "2024-10-10T08:03:54.188Z",
+      "token": "14",
+      "name": "Huerto",
+      "position": 13,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 15,
+    "fields": {
+      "created_at": "2024-10-10T07:59:06.013Z",
+      "updated_at": "2024-10-10T08:04:08.093Z",
+      "token": "15",
+      "name": "Industrial",
+      "position": 14,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 16,
+    "fields": {
+      "created_at": "2024-10-10T07:59:08.539Z",
+      "updated_at": "2024-10-10T08:04:12.804Z",
+      "token": "16",
+      "name": "Jubilado",
+      "position": 15,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 17,
+    "fields": {
+      "created_at": "2024-10-10T07:59:10.387Z",
+      "updated_at": "2024-10-10T08:04:37.939Z",
+      "token": "17",
+      "name": "Municipal",
+      "position": 16,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 18,
+    "fields": {
+      "created_at": "2024-10-10T07:59:12.002Z",
+      "updated_at": "2024-10-10T08:04:53.731Z",
+      "token": "18",
+      "name": "No doméstico",
+      "position": 17,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 19,
+    "fields": {
+      "created_at": "2024-10-10T07:59:14.763Z",
+      "updated_at": "2024-10-10T08:05:15.635Z",
+      "token": "19",
+      "name": "No residentes",
+      "position": 18,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 20,
+    "fields": {
+      "created_at": "2024-10-10T07:59:17.100Z",
+      "updated_at": "2024-10-10T08:05:23.196Z",
+      "token": "20",
+      "name": "Obras",
+      "position": 19,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 21,
+    "fields": {
+      "created_at": "2024-10-10T07:59:21.447Z",
+      "updated_at": "2024-10-10T08:05:33.494Z",
+      "token": "21",
+      "name": "PIME",
+      "position": 20,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 22,
+    "fields": {
+      "created_at": "2024-10-10T07:59:24.564Z",
+      "updated_at": "2024-10-10T08:05:48.544Z",
+      "token": "22",
+      "name": "Piscinas",
+      "position": 21,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 23,
+    "fields": {
+      "created_at": "2024-10-10T07:59:26.983Z",
+      "updated_at": "2024-10-10T08:05:58.849Z",
+      "token": "23",
+      "name": "Ganadero",
+      "position": 22,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 24,
+    "fields": {
+      "created_at": "2024-10-10T07:59:29.966Z",
+      "updated_at": "2024-10-10T08:06:07.294Z",
+      "token": "24",
+      "name": "Reg",
+      "position": 23,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 25,
+    "fields": {
+      "created_at": "2024-10-10T07:59:32.774Z",
+      "updated_at": "2024-10-10T08:06:15.781Z",
+      "token": "25",
+      "name": "Residentes",
+      "position": 24,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 26,
+    "fields": {
+      "created_at": "2024-10-10T07:59:35.790Z",
+      "updated_at": "2024-10-10T08:06:32.278Z",
+      "token": "26",
+      "name": "Servicio contra incendios",
+      "position": 25,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 27,
+    "fields": {
+      "created_at": "2024-10-10T07:59:38.367Z",
+      "updated_at": "2024-10-10T08:06:50.498Z",
+      "token": "27",
+      "name": "Sin consumo",
+      "position": 26,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-08T10:53:20.723Z",
+      "updated_at": "2024-10-10T06:36:22.905Z",
+      "token": "1",
+      "name": "Sensible",
+      "position": 0,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-10T06:34:48.840Z",
+      "updated_at": "2024-10-10T06:36:22.908Z",
+      "token": "2",
+      "name": "Multicontrato",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-10T06:35:04.249Z",
+      "updated_at": "2024-10-10T06:36:22.914Z",
+      "token": "3",
+      "name": "Impacto Social",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-10T06:35:17.820Z",
+      "updated_at": "2024-10-10T06:36:22.918Z",
+      "token": "4",
+      "name": "Gran Consumidor",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-10-10T06:35:34.288Z",
+      "updated_at": "2024-10-10T06:37:03.998Z",
+      "token": "5",
+      "name": "Centros Atención Primaria",
+      "position": 4,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-10-10T06:35:36.685Z",
+      "updated_at": "2024-10-10T06:37:30.746Z",
+      "token": "6",
+      "name": "Hospitales y clínicas",
+      "position": 5,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-10-10T06:35:38.678Z",
+      "updated_at": "2024-10-10T06:38:46.508Z",
+      "token": "15",
+      "name": "PFI",
+      "position": 10,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 8,
+    "fields": {
+      "created_at": "2024-10-10T06:35:40.187Z",
+      "updated_at": "2024-10-10T06:37:44.453Z",
+      "token": "8",
+      "name": "Otros servicios sanitarios",
+      "position": 6,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 9,
+    "fields": {
+      "created_at": "2024-10-10T06:35:41.946Z",
+      "updated_at": "2024-10-10T06:38:40.530Z",
+      "token": "14",
+      "name": "Universidad",
+      "position": 9,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 10,
+    "fields": {
+      "created_at": "2024-10-10T06:35:46.812Z",
+      "updated_at": "2024-10-10T06:38:07.924Z",
+      "token": "10",
+      "name": "Educación infantil/primaria",
+      "position": 7,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 11,
+    "fields": {
+      "created_at": "2024-10-10T06:35:50.184Z",
+      "updated_at": "2024-10-10T06:38:26.907Z",
+      "token": "11",
+      "name": "Educación secundaria",
+      "position": 8,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 12,
+    "fields": {
+      "created_at": "2024-10-10T06:36:00.758Z",
+      "updated_at": "2024-10-10T06:38:55.775Z",
+      "token": "16",
+      "name": "Escuela infantil",
+      "position": 11,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 13,
+    "fields": {
+      "created_at": "2024-10-10T06:42:08.134Z",
+      "updated_at": "2024-10-10T06:42:59.197Z",
+      "token": "17",
+      "name": "Recursos o servicios",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 14,
+    "fields": {
+      "created_at": "2024-10-10T06:42:12.771Z",
+      "updated_at": "2024-10-10T06:43:08.103Z",
+      "token": "18",
+      "name": "Equipamientos Sociales",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 15,
+    "fields": {
+      "created_at": "2024-10-10T06:42:15.462Z",
+      "updated_at": "2024-10-10T06:43:24.482Z",
+      "token": "19",
+      "name": "Casales de gente mayor",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 16,
+    "fields": {
+      "created_at": "2024-10-10T06:42:18.843Z",
+      "updated_at": "2024-10-10T06:43:47.397Z",
+      "token": "20",
+      "name": "Residencias de gente mayor",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 17,
+    "fields": {
+      "created_at": "2024-10-10T06:42:25.184Z",
+      "updated_at": "2024-10-10T06:44:33.857Z",
+      "token": "21",
+      "name": "Otros equipamientos sociales",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 18,
+    "fields": {
+      "created_at": "2024-10-10T06:42:29.112Z",
+      "updated_at": "2024-10-10T06:44:56.895Z",
+      "token": "22",
+      "name": "Servicios funerarios",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 19,
+    "fields": {
+      "created_at": "2024-10-10T06:42:39.908Z",
+      "updated_at": "2024-10-10T06:44:50.584Z",
+      "token": "25",
+      "name": "Otros",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractcategory",
+    "pk": 20,
+    "fields": {
+      "created_at": "2024-10-10T06:42:39.908Z",
+      "updated_at": "2024-10-10T06:44:50.584Z",
+      "token": "25",
+      "name": "Particular",
+      "position": 0,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractrequeststatus",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-10T08:41:11.132Z",
+      "updated_at": "2024-10-10T08:47:16.753Z",
+      "token": "2",
+      "name": "Pendiente",
+      "color": "yellow",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractrequeststatus",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-10T08:41:33.833Z",
+      "updated_at": "2024-10-10T08:47:31.296Z",
+      "token": "1",
+      "name": "Borrador",
+      "color": null,
+      "position": 0,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractrequeststatus",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-10T08:41:57.906Z",
+      "updated_at": "2024-10-10T08:47:19.832Z",
+      "token": "3",
+      "name": "Finalizado",
+      "color": "green",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractrequeststatus",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-10T08:42:05.001Z",
+      "updated_at": "2024-10-10T08:47:22.026Z",
+      "token": "-1",
+      "name": "Cancelado",
+      "color": "red",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractrequestdocumentationtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-05T09:05:33.485Z",
+      "updated_at": "2024-11-05T09:05:41.334Z",
+      "token": "dni",
+      "name": "DNI/NIE/CIF",
+      "position": null,
+      "is_mandatory": false,
+      "is_default": false,
+      "is_active": true,
+      "contract_request_type": 1
+    }
+  },
+  {
+    "model": "contract.contractrequestdocumentationtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-05T09:05:47.376Z",
+      "updated_at": "2024-11-05T09:06:25.915Z",
+      "token": "cedula",
+      "name": "Cédula de habitabilidad",
+      "position": null,
+      "is_mandatory": false,
+      "is_default": false,
+      "is_active": true,
+      "contract_request_type": 1
+    }
+  },
+  {
+    "model": "contract.contractrequestdocumentationtype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-05T09:20:29.233Z",
+      "updated_at": "2024-11-05T09:20:29.233Z",
+      "token": "CIF",
+      "name": "CIF",
+      "position": null,
+      "is_mandatory": false,
+      "is_default": false,
+      "is_active": true,
+      "contract_request_type": 2
+    }
+  },
+  {
+    "model": "contract.contractrequestdocumentationtype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-05T09:20:35.167Z",
+      "updated_at": "2024-11-05T09:20:43.096Z",
+      "token": "m136",
+      "name": "Modelo 136",
+      "position": null,
+      "is_mandatory": false,
+      "is_default": false,
+      "is_active": true,
+      "contract_request_type": 2
+    }
+  },
+  {
+    "model": "contract.bailtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-18T08:19:29.652Z",
+      "updated_at": "2024-10-18T08:19:29.652Z",
+      "token": "aca",
+      "name": "Fianza ACA",
+      "position": null,
+      "default_import": 12.06
+    }
+  },
+  {
+    "model": "contract.bailtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-18T08:19:55.180Z",
+      "updated_at": "2024-10-18T08:19:55.180Z",
+      "token": "municipal",
+      "name": "Fianza Municipal",
+      "position": null,
+      "default_import": 15.0
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-09T12:24:04.825Z",
+      "updated_at": "2024-10-09T12:24:04.825Z",
+      "token": "DIRECT_DEBIT",
+      "name": "Domiciliación Bancaria - SEPA",
+      "position": 1,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-09T12:24:14.798Z",
+      "updated_at": "2024-10-09T12:24:31.543Z",
+      "token": "ELECRONIC_INVOICE",
+      "name": "Factura Electrónica",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-10-09T12:24:26.173Z",
+      "updated_at": "2024-10-09T12:24:26.173Z",
+      "token": "CASH",
+      "name": "Efectivo",
+      "position": 4,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-10-09T12:24:39.656Z",
+      "updated_at": "2024-10-09T12:24:39.656Z",
+      "token": "CARD",
+      "name": "Transferencia Bancaria",
+      "position": 5,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractsurrogationtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-15T11:36:51.796Z",
+      "updated_at": "2024-10-15T11:41:59.842Z",
+      "token": "1",
+      "name": "Subrogación varios",
+      "position": null,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractsurrogationtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-15T11:41:42.578Z",
+      "updated_at": "2024-10-15T11:42:06.216Z",
+      "token": "2",
+      "name": "Defunción",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractsurrogationtype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-15T11:41:43.871Z",
+      "updated_at": "2024-10-15T11:42:11.135Z",
+      "token": "3",
+      "name": "Separación",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractsurrogationtype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-15T11:41:45.483Z",
+      "updated_at": "2024-10-15T11:42:19.755Z",
+      "token": "4",
+      "name": "Fusión de empresas",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractterminationtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-18T07:32:42.578Z",
+      "updated_at": "2024-10-18T07:34:05.234Z",
+      "token": "1",
+      "name": "Petición del cliente",
+      "position": null,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractterminationtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-18T07:32:43.833Z",
+      "updated_at": "2024-10-18T07:34:11.550Z",
+      "token": "2",
+      "name": "Baja de oficio",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractterminationtype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-18T07:32:44.958Z",
+      "updated_at": "2024-10-18T07:34:21.106Z",
+      "token": "3",
+      "name": "Baja Ayuntamiento",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractterminationtype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-18T07:32:46.411Z",
+      "updated_at": "2024-10-18T07:34:30.535Z",
+      "token": "4",
+      "name": "Baja por cambio de titular",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractterminationtype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-10-18T07:32:46.411Z",
+      "updated_at": "2024-10-18T07:34:30.535Z",
+      "token": "5",
+      "name": "Baja por impago",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractterminationstatus",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-08T10:11:05.817Z",
+      "updated_at": "2024-10-10T08:00:50.631Z",
+      "token": "2",
+      "name": "Pendiente",
+      "color": "yellow",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractterminationstatus",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-08T10:11:26.030Z",
+      "updated_at": "2024-10-10T08:00:45.139Z",
+      "token": "1",
+      "name": "Borrador",
+      "color": null,
+      "position": 2,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractterminationstatus",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-10T07:58:43.887Z",
+      "updated_at": "2024-10-10T08:01:00.699Z",
+      "token": "3",
+      "name": "Finalizado",
+      "color": "green",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractterminationstatus",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-10T07:58:45.088Z",
+      "updated_at": "2024-10-10T08:01:12.651Z",
+      "token": "-1",
+      "name": "Cancelado",
+      "color": "red",
+      "position": 4,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-05T10:03:57.670Z",
+      "updated_at": "2024-11-05T10:04:11.395Z",
+      "token": "informe-social",
+      "name": "Informe de vulnerabilidad de los servicios sociales",
+      "position": null,
+      "is_mandatory": true,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 2
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-05T10:04:34.861Z",
+      "updated_at": "2024-11-05T10:04:42.700Z",
+      "token": "informe-social",
+      "name": "Informe de vulnerabilidad de los servicios sociales",
+      "position": null,
+      "is_mandatory": true,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 3
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-05T10:04:53.938Z",
+      "updated_at": "2024-11-05T10:05:07.536Z",
+      "token": "informe-discapacitat",
+      "name": "Informe de discapacidad 75%",
+      "position": null,
+      "is_mandatory": true,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 3
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-05T11:08:23.785Z",
+      "updated_at": "2024-11-05T11:08:23.785Z",
+      "token": "Informe ACA",
+      "name": "Informe ACA",
+      "position": null,
+      "is_mandatory": false,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 4
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-05T11:15:14.621Z",
+      "updated_at": "2024-11-05T11:15:19.062Z",
+      "token": "informe ACA",
+      "name": "Informe ACA",
+      "position": null,
+      "is_mandatory": false,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 7
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-11-05T11:36:30.123Z",
+      "updated_at": "2024-11-05T11:36:38.126Z",
+      "token": "informe-aca",
+      "name": "Informe de la ACA",
+      "position": null,
+      "is_mandatory": true,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 1
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-11-05T11:38:09.241Z",
+      "updated_at": "2024-11-05T11:38:15.333Z",
+      "token": "informe-ACA",
+      "name": "Informe ACA",
+      "position": null,
+      "is_mandatory": true,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 6
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 8,
+    "fields": {
+      "created_at": "2024-11-05T11:38:27.212Z",
+      "updated_at": "2024-11-05T11:38:32.570Z",
+      "token": "informe ACA",
+      "name": "Informe ACA",
+      "position": null,
+      "is_mandatory": true,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 5
+    }
+  },
+  {
+    "model": "contract.bonificationtypedocumentationtype",
+    "pk": 9,
+    "fields": {
+      "created_at": "2024-11-05T11:42:11.452Z",
+      "updated_at": "2024-11-05T11:42:14.419Z",
+      "token": "carnet",
+      "name": "Carnet de familia numerosa",
+      "position": null,
+      "is_mandatory": true,
+      "is_default": false,
+      "is_active": true,
+      "bonification_type": 8
+    }
+  },
+  {
+    "model": "contract.contractrepresentativetype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-18T08:14:13.846Z",
+      "updated_at": "2024-10-18T08:15:06.393Z",
+      "token": "tutor",
+      "name": "Tutor (Asistente social)",
+      "color": null,
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractrepresentativetype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-18T08:14:30.267Z",
+      "updated_at": "2024-10-18T08:15:06.395Z",
+      "token": "altre",
+      "name": "Otro",
+      "color": null,
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractrepresentativetype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-18T08:14:59.941Z",
+      "updated_at": "2024-10-18T08:15:06.389Z",
+      "token": "administrador",
+      "name": "Administrador",
+      "color": null,
+      "position": 0,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-05T09:58:34.767Z",
+      "updated_at": "2024-11-05T09:59:41.940Z",
+      "token": "ACA-CANON",
+      "name": "Canon social del agua (ACA)",
+      "data_type": "bool",
+      "application": "CT",
+      "position": null
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-05T09:58:49.482Z",
+      "updated_at": "2024-11-05T11:34:59.821Z",
+      "token": "ACA-TRAM-75",
+      "name": "Canon social del agua con 75% de discapacidad (ACA)",
+      "data_type": "bool",
+      "application": "CT",
+      "position": null
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-05T09:59:12.695Z",
+      "updated_at": "2024-11-05T10:00:09.657Z",
+      "token": "ACA-TRAM",
+      "name": "Ampliación de tramo (ACA)",
+      "data_type": "bool",
+      "application": "CT",
+      "position": null
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-05T11:31:59.716Z",
+      "updated_at": "2024-11-05T11:33:26.869Z",
+      "token": "ACA-TRAM-MEMBRES",
+      "name": "Miembros de ampliación de tramo (ACA)",
+      "data_type": "int",
+      "application": "CT",
+      "position": null
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-05T11:42:21.718Z",
+      "updated_at": "2024-11-05T11:42:47.238Z",
+      "token": "familia-nombrosa",
+      "name": "Familia numerosa (municipal)",
+      "data_type": "bool",
+      "application": "CT",
+      "position": null
+    }
+  },
+  {
+    "model": "contract.variabletype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-11-05T11:42:21.718Z",
+      "updated_at": "2024-11-05T11:42:47.238Z",
+      "token": "vulnerability",
+      "name": "Persona vulnerable",
+      "data_type": "bool",
+      "application": "CT",
+      "position": null
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-05T09:35:41.161Z",
+      "updated_at": "2024-11-05T11:36:54.091Z",
+      "start_at": "2024-11-05",
+      "token": "ACA-TRAM",
+      "name": "Ampliación de los tramos del canon del agua por unidades de convivencia de 4 o más miembros (ACA)",
+      "is_active": true,
+      "variable_types": [
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-05T09:36:56.310Z",
+      "updated_at": "2024-11-05T11:03:07.515Z",
+      "start_at": "2024-11-05",
+      "token": "ACA-CANON-PENSIONS",
+      "name": "Tarifa social del canon del agua para personas perceptoras de pensiones mínimas contributivas",
+      "is_active": true,
+      "variable_types": [
+        1
+      ]
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-05T09:58:05.960Z",
+      "updated_at": "2024-11-05T11:37:17.583Z",
+      "start_at": "2024-11-05",
+      "token": "ACA-TRAM-75",
+      "name": "Ampliación para viviendas con personas con un grado de discapacidad del 75% o superior",
+      "is_active": true,
+      "variable_types": [
+        4,
+        3
+      ]
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-05T11:04:31.488Z",
+      "updated_at": "2024-11-05T11:08:09.747Z",
+      "start_at": "2024-11-05",
+      "token": "ACA-CANON-ATUR",
+      "name": "Tarifa social del canon de agua para familias con todos los miembros en situación de desempleo",
+      "is_active": true,
+      "variable_types": [
+        1
+      ]
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-05T11:05:09.052Z",
+      "updated_at": "2024-11-05T11:38:22.049Z",
+      "start_at": "2024-11-05",
+      "token": "ACA-CANON-PROTECCIO",
+      "name": "Tarifa social del canon de agua para colectivos de especial protección",
+      "is_active": true,
+      "variable_types": [
+        1
+      ]
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-11-05T11:06:54.396Z",
+      "updated_at": "2024-11-05T11:38:03.890Z",
+      "start_at": "2024-11-05",
+      "token": "ACA-CANON-EXCLUSIO",
+      "name": "Tarifa social del canon de agua para vulnerabilidad o riesgo de exclusión residencial",
+      "is_active": true,
+      "variable_types": [
+        1,
+        6
+      ]
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-11-05T11:07:46.260Z",
+      "updated_at": "2024-11-05T11:14:49.851Z",
+      "start_at": "2024-11-05",
+      "token": "ACA-CANON-ENTITATS",
+      "name": "Tarifa social del canon del agua para entidades sociales adscritas a la Red de Viviendas de Inserción Social que coordina la Agencia de la Vivienda de la Generalitat de Cataluña",
+      "is_active": true,
+      "variable_types": [
+        1
+      ]
+    }
+  },
+  {
+    "model": "contract.bonificationtype",
+    "pk": 8,
+    "fields": {
+      "created_at": "2024-11-05T11:41:59.686Z",
+      "updated_at": "2024-11-05T11:42:25.081Z",
+      "start_at": "2024-11-05",
+      "token": "familia-nombrosa",
+      "name": "Familia Numerosa (municipal)",
+      "is_active": true,
+      "variable_types": [
+        5
+      ]
+    }
+  },
+  {
+    "model": "contract.contractrequesttype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-05T09:03:40.992Z",
+      "updated_at": "2024-11-05T09:20:17.853Z",
+      "token": "domestic",
+      "name": "Doméstico",
+      "is_active": true,
+      "has_persons": true,
+      "is_default": false,
+      "variable_types": [],
+      "order_types": [
+        4,
+        3,
+        2
+      ]
+    }
+  },
+  {
+    "model": "contract.contractrequesttype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-05T09:04:10.430Z",
+      "updated_at": "2024-11-05T09:20:51.577Z",
+      "token": "industrial",
+      "name": "Industrial",
+      "is_active": true,
+      "is_default": false,
+      "variable_types": [],
+      "order_types": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "model": "contract.contractrequesttype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-05T09:04:10.430Z",
+      "updated_at": "2024-11-05T09:20:51.577Z",
+      "token": "municipal",
+      "name": "Municipal",
+      "is_active": true,
+      "is_default": false,
+      "variable_types": [],
+      "order_types": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "model": "contract.contractrequesttype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-05T09:04:10.430Z",
+      "updated_at": "2024-11-05T09:20:51.577Z",
+      "token": "comercial",
+      "name": "Comercial",
+      "is_active": true,
+      "is_default": false,
+      "variable_types": [],
+      "order_types": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "model": "contract.contractrequesttype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-05T09:04:10.430Z",
+      "updated_at": "2024-11-05T09:20:51.577Z",
+      "token": "agricola",
+      "name": "Agrícola",
+      "is_active": true,
+      "is_default": false,
+      "variable_types": [],
+      "order_types": [
+        2,
+        3,
+        4
+      ]
+    }
+  }
+]

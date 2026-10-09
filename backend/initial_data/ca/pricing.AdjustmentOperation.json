@@ -1,0 +1,50 @@
+[
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 1,
+        "fields": {
+            "token": "min",
+            "name": "Minim"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 2,
+        "fields": {
+            "token": "max",
+            "name": "Màxim"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 3,
+        "fields": {
+            "token": "ptg",
+            "name": "Percentatge"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 4,
+        "fields": {
+            "token": "ext",
+            "name": "Amplicació de Tram"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 5,
+        "fields": {
+            "token": "var",
+            "name": "Variable"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 6,
+        "fields": {
+            "token": "set",
+            "name": "Assignar"
+        }
+    }
+]

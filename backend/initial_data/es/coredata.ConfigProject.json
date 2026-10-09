@@ -1,0 +1,1130 @@
+[
+    {
+        "model": "coredata.configproject",
+        "pk": 1,
+        "fields": {
+            "created_at": "2024-09-30T14:45:53.960Z",
+            "updated_at": "2024-10-01T07:07:04.157Z",
+            "token": "supply_point_status_activate_token",
+            "name": "Estat del Punt de Subministrament quan està actiu",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 2,
+        "fields": {
+            "created_at": "2024-09-30T14:47:28.794Z",
+            "updated_at": "2024-10-01T07:06:59.495Z",
+            "token": "supply_point_status_deactivate_token",
+            "name": "Estat del Punt de Subministrament quan està de baixa",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 3,
+        "fields": {
+            "created_at": "2024-10-01T14:25:18.605Z",
+            "updated_at": "2024-10-01T14:26:22.502Z",
+            "token": "connection_has_cluster_token",
+            "name": "A connection has a cluster attached",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 4,
+        "fields": {
+            "created_at": "2024-10-01T14:26:09.666Z",
+            "updated_at": "2024-10-01T14:26:09.666Z",
+            "token": "connection_has_supply_point_token",
+            "name": "Connection is a supply point directly",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 5,
+        "fields": {
+            "created_at": "2024-10-21T13:46:07.342Z",
+            "updated_at": "2024-10-21T13:46:07.342Z",
+            "token": "contract_terminated_status",
+            "name": "Contract status terminated",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 6,
+        "fields": {
+            "created_at": "2024-10-24T07:29:13.223Z",
+            "updated_at": "2024-10-30T15:08:10.678Z",
+            "token": "supply_point_status_not_contractable_token",
+            "name": "Estat de punt de subministrament no contractable",
+            "value": "-2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 7,
+        "fields": {
+            "created_at": "2024-10-28T10:43:06.577Z",
+            "updated_at": "2024-10-28T10:43:06.577Z",
+            "token": "contract_active_token",
+            "name": "Token de contracte actiu",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 8,
+        "fields": {
+            "created_at": "2024-10-29T07:48:42.869Z",
+            "updated_at": "2024-10-29T07:48:42.869Z",
+            "token": "termination_type_holder_change",
+            "name": "Baixa de contracte per canvi de titular",
+            "value": "4",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 9,
+        "fields": {
+            "created_at": "2024-10-31T09:25:35.043Z",
+            "updated_at": "2024-10-31T09:25:35.043Z",
+            "token": "supply_point_pending_contract",
+            "name": "Pendent de contractació",
+            "value": "0",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 10,
+        "fields": {
+            "created_at": "2024-11-07T09:43:25.376Z",
+            "updated_at": "2024-11-07T09:43:25.376Z",
+            "token": "contract_request_pending_token",
+            "name": "Token estat _pending_ del ContractRequest",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 11,
+        "fields": {
+            "created_at": "2024-11-11T15:22:47.212Z",
+            "updated_at": "2024-11-11T15:22:47.212Z",
+            "token": "order_status_pending_token",
+            "name": "Order Status - Pending (token)",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 12,
+        "fields": {
+            "created_at": "2024-11-11T15:26:45.844Z",
+            "updated_at": "2024-11-11T15:26:45.844Z",
+            "token": "order_status_completed_token",
+            "name": "Order Status - Completed (token)",
+            "value": "10",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 13,
+        "fields": {
+            "created_at": "2024-11-11T15:47:21.508Z",
+            "updated_at": "2024-11-11T15:47:21.508Z",
+            "token": "contract_request_finalize_token",
+            "name": "Token estat _finalitzat_ del ContractRequest",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 14,
+        "fields": {
+            "created_at": "2024-11-07T09:43:25.376Z",
+            "updated_at": "2024-11-07T09:43:25.376Z",
+            "token": "contract_request_cancel_token",
+            "name": "Token estat _cancellat_ del ContractRequest",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 15,
+        "fields": {
+            "created_at": "2024-11-07T09:43:25.376Z",
+            "updated_at": "2024-11-07T09:43:25.376Z",
+            "token": "order_type_read_meter_token",
+            "name": "Token de OrderType de Lectura de Comptador",
+            "value": "read_meter",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 16,
+        "fields": {
+            "created_at": "2024-11-29T08:52:42.799Z",
+            "updated_at": "2024-11-29T08:56:54.566Z",
+            "token": "aca_bonification_processed",
+            "name": "Aca bonification succesfully processed",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 17,
+        "fields": {
+            "created_at": "2024-12-02T10:21:40.179Z",
+            "updated_at": "2024-12-02T10:21:40.179Z",
+            "token": "aca_at_token",
+            "name": "ACA ampliació de trams",
+            "value": "ACA-TRAM",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 18,
+        "fields": {
+            "created_at": "2024-12-02T10:22:11.523Z",
+            "updated_at": "2024-12-02T10:22:11.523Z",
+            "token": "aca_cs_token",
+            "name": "ACA Cànon Social",
+            "value": "ACA-CANON",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 19,
+        "fields": {
+            "created_at": "2024-12-02T10:22:11.523Z",
+            "updated_at": "2024-12-02T10:22:11.523Z",
+            "token": "demographic_coefficient_token",
+            "name": "Coeficient Demogràfic",
+            "value": "0.5",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 20,
+        "fields": {
+            "created_at": "2025-01-15T12:22:59.941Z",
+            "updated_at": "2025-01-15T12:23:22.100Z",
+            "token": "reading_alert_meter_cycle",
+            "name": "Volta de comptador",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 21,
+        "fields": {
+            "created_at": "2025-01-15T12:23:53.795Z",
+            "updated_at": "2025-01-15T12:23:53.795Z",
+            "token": "reading_alert_zero",
+            "name": "Lectura 0",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 22,
+        "fields": {
+            "created_at": "2025-01-15T12:24:12.207Z",
+            "updated_at": "2025-01-15T12:24:12.207Z",
+            "token": "reading_alert_negative",
+            "name": "Lectura negativa",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 23,
+        "fields": {
+            "created_at": "2025-01-15T12:24:34.539Z",
+            "updated_at": "2025-01-15T12:24:34.539Z",
+            "token": "reading_alert_estimated",
+            "name": "Lectura estimada",
+            "value": "4",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 24,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "reading_alert_unusual_consumption",
+            "name": "Lectura inusual",
+            "value": "5",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 25,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "contract_termination_pending_status",
+            "name": "Baixa de contracte pendent",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 26,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "invoice_return_title",
+            "name": "RETORN DE FIANÇA",
+            "value": null,
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 27,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "order_type_remove_meter_token",
+            "name": "Token de OrderType de Retirada de Comptador",
+            "value": "remove_meter",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 28,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "order_type_install_connection_token",
+            "name": "Token de OrderType d'Instal·lació d'Escomesa",
+            "value": "install_connection",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 29,
+        "fields": {
+            "created_at": "2025-01-27T13:50:43.310Z",
+            "updated_at": "2025-01-27T13:50:43.310Z",
+            "token": "batch_status_finish_token",
+            "name": "Reading batch finished",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 30,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "batch_status_cancel_token",
+            "name": "Reading batch cancelled",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 31,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_type_invoice_token",
+            "name": "Token Invoice Type Invoice",
+            "value": "F",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 32,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_type_budget_token",
+            "name": "Token Invoice Type Invoice",
+            "value": "P",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 33,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-04-03T06:14:36.409Z",
+            "token": "invoice_status_commitment_token",
+            "name": "Token Invoice Status Commitment",
+            "value": "4",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 34,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_sent_token",
+            "name": "Token Invoice Status Sent",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 35,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_irrecoverable_token",
+            "name": "Token Invoice Status Irrecoverable",
+            "value": "-5",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 36,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "payment_status_returned_token",
+            "name": "Token Payment Status Returned",
+            "value": "-2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 37,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "origin_reading_token",
+            "name": "Origin Reading Returned",
+            "value": "aigua",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 38,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "origin_contract_token",
+            "name": "Origin Contract Returned",
+            "value": "contracte",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 39,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "contract_termination_pending_token",
+            "name": "Contract Termination Pending Returned",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 40,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "contract_termination_completed_token",
+            "name": "Contract Termination Completed Returned",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 41,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_pending_token",
+            "name": "Token Invoice Status Pending",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 42,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_paid_token",
+            "name": "Token Invoice Status Paid",
+            "value": "0",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 43,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_confirmed_token",
+            "name": "Token Invoice Status Confirmed",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 44,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "direct_debit_token",
+            "name": "Token DIRECT DEBIT",
+            "value": "DIRECT_DEBIT",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 45,
+        "fields": {
+            "created_at": "2025-02-07T07:59:28.801Z",
+            "updated_at": "2025-02-26T08:31:10.118Z",
+            "token": "billing_batch_pending",
+            "name": "Lot de facturació pendent de facturació",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 46,
+        "fields": {
+            "created_at": "2025-02-07T08:01:04.513Z",
+            "updated_at": "2025-02-26T08:31:45.064Z",
+            "token": "billing_batch_processed",
+            "name": "Lot de facturació processat i acabat",
+            "value": "4",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 47,
+        "fields": {
+            "created_at": "2025-02-07T08:01:44.175Z",
+            "updated_at": "2025-02-26T08:31:39.667Z",
+            "token": "billing_batch_processing_documents",
+            "name": "Processant documents lor de facturació",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 48,
+        "fields": {
+            "created_at": "2025-02-07T08:02:12.095Z",
+            "updated_at": "2025-02-07T08:02:12.095Z",
+            "token": "billing_batch_cancelled",
+            "name": "Lot de facturació cancelat",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 49,
+        "fields": {
+            "created_at": "2025-02-07T08:09:07.170Z",
+            "updated_at": "2025-02-26T08:31:29.292Z",
+            "token": "billing_batch_processing",
+            "name": "Processant factures",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 50,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_expired_token",
+            "name": "Token Invoice Status Expired",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 51,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "supply_cut_status_pending_token",
+            "name": "Token Supply Cut Status Pending",
+            "value": "pendent",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 52,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "supply_cut_status_active_token",
+            "name": "Token Supply Cut Status Active",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 53,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "supply_cut_status_innactive_token",
+            "name": "Token Supply Cut Status Innactive",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 54,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "supply_point_status_cut_token",
+            "name": "Token Supply Point Status Cut",
+            "value": "tallat",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 55,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_return_price_rate_token",
+            "name": "Token Price Rate Invoice Return",
+            "value": "DR",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 56,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-04-03T07:42:34.124Z",
+            "token": "invoice_status_part_irrecoverable_token",
+            "name": "Token Invoice Status Part Irrecoverable",
+            "value": "-4",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 57,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-04-03T06:21:13.624Z",
+            "token": "payment_status_paid_token",
+            "name": "Token Payment Status Paid",
+            "value": "0",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 58,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_endowment_token",
+            "name": "Token Invoice Status Endowment",
+            "value": "-3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 59,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "product_connection_token",
+            "name": "Token Product Connection",
+            "value": "E",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 60,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "origin_connection_token",
+            "name": "Origin Connection Returned",
+            "value": "escomesa",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 61,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "e_invoice_token",
+            "name": "Token Electronic Invoice",
+            "value": "ELECTRONIC_INVOICE",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 62,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "claim_request_status_pending_token",
+            "name": "Claim Request Status Pending",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 63,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "claim_request_status_accepted_token",
+            "name": "Claim Request Status Accepted",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 64,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "claim_request_status_finalized_token",
+            "name": "Claim Request Status Finalized",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 65,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "claim_request_status_cancelled_token",
+            "name": "Claim Request Status Cancelled",
+            "value": "4",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 66,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "meter_default_status_filter_token",
+            "name": "Default Status Filter Token",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 67,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "product_claim_token",
+            "name": "Token Product Claim",
+            "value": "DR",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 68,
+        "fields": {
+            "created_at": "2024-11-07T09:43:25.376Z",
+            "updated_at": "2024-11-07T09:43:25.376Z",
+            "token": "order_type_supply_cut_token",
+            "name": "Token de OrderType de Tall de Subministrament",
+            "value": "cut_supply",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 69,
+        "fields": {
+            "created_at": "2024-11-07T09:43:25.376Z",
+            "updated_at": "2024-11-07T09:43:25.376Z",
+            "token": "reading_estimated",
+            "name": "Tractar Lectures Estimades",
+            "value": "True",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 70,
+        "fields": {
+            "created_at": "2024-11-07T09:43:25.376Z",
+            "updated_at": "2024-11-07T09:43:25.376Z",
+            "token": "token_water_water_consumption",
+            "name": "Token Product Water Consumption",
+            "value": "A",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 71,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "contract_termination_draft",
+            "name": "Baixa de contracte borrador",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 72,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "deliquency_request_status_pending_token",
+            "name": "Token Deliquency Request Status Pending",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 73,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "deliquency_request_status_temporary_token",
+            "name": "Token Deliquency Request Status Temporary",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 74,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "deliquency_request_status_accepted_token",
+            "name": "Token Deliquency Request Status Accepted",
+            "value": "0",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 75,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "deliquency_request_status_cancelled_token",
+            "name": "Token Deliquency Request Status Cancelled",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 76,
+        "fields": {
+            "created_at": "2025-01-16T10:13:08.862Z",
+            "updated_at": "2025-01-16T10:13:08.862Z",
+            "token": "debt_vulnerable_token",
+            "name": "Token Debt Management Vulnerable",
+            "value": "vulnerable",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 81,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "origin_other_token",
+            "name": "Origin Other Returned",
+            "value": "altres",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 82,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_surcharge_days",
+            "name": "Days Added To Surcharge Invoice",
+            "value": "15",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 83,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "connection_rights_price_rate_token",
+            "name": "Token Connection Rights Price Rate",
+            "value": "DCG",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 84,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "contract_domestic_use_type_token",
+            "name": "Token Contract Domestic Use Type",
+            "value": "9",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 85,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "contract_industrial_use_type_token",
+            "name": "Token Contract Industrial Use Type",
+            "value": "15",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 86,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "contract_municipal_use_type_token",
+            "name": "Token Contract Municipal Use Type",
+            "value": "17",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 87,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "contract_keeper_use_type_token",
+            "name": "Token Contract Keeper Use Type",
+            "value": "23",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 88,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "manual_invoice_line",
+            "name": "Línia de factura afegida manualment",
+            "value": "LM57937487",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 89,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "product_canon_token",
+            "name": "Token Product Canon",
+            "value": "N",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 90,
+        "fields": {
+            "created_at": "2025-01-27T13:51:11.717Z",
+            "updated_at": "2025-01-28T08:46:33.381Z",
+            "token": "invoice_status_cancelled_token",
+            "name": "Token Invoice Status Cancelled",
+            "value": "-6",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 91,
+        "fields": {
+            "created_at": "2025-04-03T06:20:29.576Z",
+            "updated_at": "2025-04-03T06:20:29.576Z",
+            "token": "payment_status_pending_token",
+            "name": "Payment Status Pending Token",
+            "value": "1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 92,
+        "fields": {
+            "created_at": "2025-04-03T06:21:41.940Z",
+            "updated_at": "2025-04-03T06:21:41.940Z",
+            "token": "payment_status_expired_token",
+            "name": "Payment Status Expired Token",
+            "value": "-1",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 93,
+        "fields": {
+            "created_at": "2025-04-03T06:22:20.941Z",
+            "updated_at": "2025-04-03T06:22:20.941Z",
+            "token": "payment_status_endowment_token",
+            "name": "Payment Status Endowment Token",
+            "value": "-3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 94,
+        "fields": {
+            "created_at": "2025-04-03T06:22:55.335Z",
+            "updated_at": "2025-04-03T06:22:55.335Z",
+            "token": "payment_status_commitment_token",
+            "name": "Payment Status Commitment Token",
+            "value": "4",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 95,
+        "fields": {
+            "created_at": "2025-04-03T06:23:25.024Z",
+            "updated_at": "2025-04-03T07:44:38.382Z",
+            "token": "payment_status_sent_token",
+            "name": "Payment Status Sent Token",
+            "value": "2",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 96,
+        "fields": {
+            "created_at": "2025-04-03T06:24:07.354Z",
+            "updated_at": "2025-04-03T06:24:07.354Z",
+            "token": "payment_status_irrecoverable_token",
+            "name": "Payment Status Irrecoverable Token",
+            "value": "-5",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 97,
+        "fields": {
+            "created_at": "2026-09-24T00:00:00.000Z",
+            "updated_at": "2026-09-24T00:00:00.000Z",
+            "token": "change_meter_field_mapping",
+            "name": "Change Meter Field Mapping",
+            "value": "[{\"customers_field\": \"meter_old\", \"form_field\": \"codi_comptador_anterior\"}, {\"customers_field\": \"reading_old\", \"form_field\": \"lectura_anterior\"}, {\"customers_field\": \"meter_new\", \"form_field\": \"codi_comptador_instal_lat\"}, {\"customers_field\": \"reading_new\", \"form_field\": \"lectura_actual\"}]",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 98,
+        "fields": {
+            "created_at": "2026-09-24T00:00:00.000Z",
+            "updated_at": "2026-09-24T00:00:00.000Z",
+            "token": "change_meter_quick_fields",
+            "name": "Change Meter Quick Fields",
+            "value": "[{\"name\": \"Tipo de instalaci\\u00f3n\", \"type\": \"options\", \"token\": \"tipus_dinstallacio\", \"required\": true}, {\"name\": \"Material del contador\", \"type\": \"options\", \"token\": \"material_del_comptador\", \"required\": true}, {\"name\": \"Tipo de lectura\", \"type\": \"options\", \"token\": \"tipus_lectura\", \"required\": true}, {\"name\": \"Di\\u00e1metro contador (mm)\", \"type\": \"options\", \"token\": \"diametre_comptador_mm\", \"required\": true}, {\"name\": \"N\\u00famero de contador (saliente)\", \"type\": \"text\", \"token\": \"numero_de_comptador_sortint\", \"required\": true}, {\"name\": \"Lectura contador (saliente)\", \"type\": \"text\", \"token\": \"lectura_de_comptador_sortint\", \"required\": true}, {\"name\": \"Foto contador (saliente)\", \"type\": \"photo\", \"token\": \"foto_de_comptador_sortint\", \"required\": false}, {\"name\": \"N\\u00famero de contador\", \"type\": \"text\", \"token\": \"numero_de_comptador\", \"required\": true}, {\"name\": \"Lectura inicial\", \"type\": \"numeric\", \"token\": \"lectura_inicial\", \"required\": true}, {\"name\": \"Foto del contador\", \"type\": \"photo\", \"token\": \"foto_de_comptador\", \"required\": false}]",
+            "file": null
+        }
+    }
+]

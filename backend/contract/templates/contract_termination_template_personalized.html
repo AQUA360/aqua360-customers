@@ -1,0 +1,137 @@
+{% load svg_converter %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Baixa de Contracte</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+            @frame footer_frame {           /* Another static Frame */
+                -pdf-frame-content: footer_content;
+                left: 74pt; width: 450pt; top: 772pt; height: 80pt;
+            }
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Regular.ttf');
+            font-weight: normal;
+            font-style: normal;
+        }
+        
+        @font-face {
+            font-family: 'OpenSansBold';
+            src: url('config/fonts/OpenSans-ExtraBold.ttf');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'STIXTwoText', serif;
+            font-size: 12px;
+        }
+        .footer, .signatures {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .header img {
+            height: 64px;
+        }
+
+        .header .company-table td {
+            font-size: 9px;
+            margin-x: 1px;
+        }
+        
+    </style>
+</head>
+<body>
+
+    {% load i18n %}
+    {% language 'ca' %}
+    <!-- Header with Company Logo and Contact Information -->
+    <div class="header">
+        {% if exploitation_image %}
+        <img src="{{ exploitation_image }}" alt="Exploitation Image" style="width: 100%;" />
+        {% endif %}
+    </div>
+    <br/>
+    <div>
+        <table width="100%" style="margin-top: 10px;">
+            <tr><td width="50%">
+            </td>
+            <td width="50%">
+                <table style="text-align: right;">
+                    <tr><td>{{ holder.full_name }}</td></tr>
+                    <tr><td>{{ supply_address.street_complete }}</td></tr>
+                    <tr><td>{{ supply_address.postal_code }} - {{ supply_address.city.name }}</td></tr>
+                </table>
+            </td>
+            </tr>
+        </table>
+    </div>
+
+    </div>
+    <br />
+    <br />
+    <div>
+        <table style="">
+            <tr>
+            <td><p style="font-weight: bold; font-size: 16px; font-family: 'OpenSansBold'; text-decoration: underline;">DOCUMENT DE BAIXA DE SUBMINISTRAMENT</p></td>
+            </tr>
+            <tr style="padding-top: 4px;"><td>{{company.address.city.name}}, {{today|date:"d F Y"}}</td></tr>
+            <tr style="padding-top: 4px;"><td>
+            Titular: {{holder.full_name}}<br />
+            NIF/NIE: {{holder.token}}<br />
+            Adreça de subministrament: {{supply_address.address_complete}}<br />
+            Contracte: {{request.contract.token}}<br />
+            </td></tr>
+            <tr style="padding-top: 4px;"><td>
+            El Sr./la Sra. {{person.full_name}} amb NIF/NIE {{person.token}}, en representació del titular del subminitrament, 
+            sol·licita la rescissió del domicili indicat més amunt.<br /><br />
+            
+            {% if request.contract.price_rates.all %}
+            Aquesta baixa engloba els conceptes següents:
+            </td></tr>
+            <tr style="padding-top: 4px;"><td>
+            {%for price_rate in request.contract.price_rates.all%}
+                {{price_rate.price_rate.product.name}}<br />
+            {%endfor%}
+            </td></tr>
+            {% endif %}
+            
+        </table>
+    </div>
+    <br />
+    <br />
+    <div>
+        <table>
+            <tr>
+                <td></td>
+                <td style="text-align: center;"><p>
+                        Signatura
+                    </p></td>
+                </tr>
+        </table>
+    </div>
+    
+
+    {% endlanguage %}
+    {% comment %} <div>
+        <pdf:nextpage /> 
+    </div>  {% endcomment %}
+    
+    <!-- Signature Section -->
+    <div id="footer_content">
+        <p style="text-align: justify;">
+        Nota: L'efectivitat d'aquesta baixa queda condicionada al fet que el client faciliti l'accés als nostres empleats per poder retirar
+        el comptador i liquidar definitivament el consum que registri. <br />
+        Per a qualsevol assumpte relacionat amb aquesta baixa, cal que l'acompanyin d'aquest resguard.
+        </p>
+    </div>
+</body>
+</html>

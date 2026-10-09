@@ -1,0 +1,117 @@
+{% load billing_filters %}
+<!DOCTYPE html>
+<html lang="ca">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Resum de factures agrupades</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 1.5cm 1cm;
+        }
+
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('config/fonts/OpenSans-Regular.ttf');
+            font-weight: normal;
+        }
+
+        @font-face {
+            font-family: 'OpenSansBold';
+            src: url('config/fonts/OpenSans-ExtraBold.ttf');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'OpenSans', sans-serif;
+            font-size: 10px;
+            color: rgb(60, 60, 60);
+        }
+
+        .header img {
+            height: 50px;
+        }
+
+        .title {
+            font-family: 'OpenSansBold';
+            font-size: 15px;
+            color: {{ secondary_color }};
+        }
+
+        table.summary {
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        table.summary th {
+            background-color: {{ main_color }};
+            color: {{ secondary_color }};
+            font-family: 'OpenSansBold';
+            text-align: left;
+            padding: 5px 6px 3px 6px;
+        }
+
+        table.summary td {
+            padding: 4px 6px 2px 6px;
+            border-bottom: 1px solid rgb(225, 225, 225);
+        }
+
+        .num {
+            text-align: right;
+        }
+
+        tr.total td {
+            font-family: 'OpenSansBold';
+            font-size: 12px;
+            background-color: rgb(240, 240, 240);
+            border-bottom: none;
+        }
+    </style>
+</head>
+
+<body>
+    <table class="header" width="100%">
+        <tr>
+            <td width="60%" style="vertical-align: bottom;">
+                <div class="title">RESUM DE FACTURES AGRUPADES</div>
+                {% if title %}<div>{{ title }}</div>{% endif %}
+                {% if payer %}<div>Pagador: {{ payer }}</div>{% endif %}
+                {% if issue_date %}<div>Data d'emissió: {{ issue_date|date:"d/m/Y" }}</div>{% endif %}
+            </td>
+            <td width="40%" style="vertical-align: top; text-align: right;">
+                {% if logo %}<img src="{{ logo }}" alt="Logo">{% elif company %}{{ company.name }}{% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <table class="summary" repeat="1">
+        <thead>
+            <tr>
+                <th width="15%">Contracte</th>
+                <th width="17%">Factura</th>
+                <th width="38%">Adreça de subministrament</th>
+                <th width="15%" class="num">Subtotal (€)</th>
+                <th width="15%" class="num">Total (€)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.contract_token }}</td>
+                <td>{{ row.serie }}</td>
+                <td>{{ row.supply_address }}</td>
+                <td class="num">{{ row.subtotal|format_eu:2 }}</td>
+                <td class="num">{{ row.total|format_eu:2 }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="total">
+                <td colspan="3">TOTAL ({{ rows|length }} factures)</td>
+                <td class="num">{{ subtotal_sum|format_eu:2 }}</td>
+                <td class="num">{{ total_sum|format_eu:2 }}</td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+
+</html>

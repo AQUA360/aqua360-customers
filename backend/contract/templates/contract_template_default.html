@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Contracte de Subministrament</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+            @frame footer_frame {           /* Another static Frame */
+                -pdf-frame-content: footer_content;
+                left: 50pt; width: 512pt; top: 772pt; height: 80pt;
+            }
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Regular.ttf');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('contract/fonts/STIXTwoText-Italic.ttf');
+            font-weight: normal;
+            font-style: italic;
+        }
+        
+        body {
+            font-family: 'STIXTwoText', serif;
+            font-size: 12px;
+        }
+        .footer, .signatures {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .header img {
+            width: 120px;
+            height: auto;
+        }
+
+        .header .company-table td {
+            font-size: 9px;
+            margin-x: 1px;
+        }
+
+        table.info-table {
+            border: 1px solid #000;
+        }
+        .info-table tr {
+            border: none;
+        }
+        .info-table td {
+            font-size: 12px;
+            padding-top: 5px;
+        }
+
+        .contact-info {
+            width: 100%;
+            margin-top: 10px;
+            display: table;
+        }
+        .contact-info div {
+            display: table-cell;
+            width: 50%;
+            padding: 5px;
+        }
+        .legal-text {
+            margin-top: 15px;
+            line-height: 1.5;
+            text-align: justify;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header with Company Logo and Contact Information -->
+    <div class="header">
+        <img src="{{ company.logo }}" alt="Company Logo">
+        <table width="100%" style="margin-top: 10px;">
+            <tr><td width="50%">
+                <table class="company-table">
+                    <tr><td> {{ company.name }} </td></tr>
+                    <tr><td> {{ company.address.address_complete }} </td></tr>
+                    <tr><td> {{ company.address.postal_code }} {{ company.address.city.name }} </td></tr>
+                    <tr><td> {{ company.website|default_if_none:"" }}</td></tr>
+                    <tr><td> <br/> TELÈFON D'ATENCIÓ AL CLIENT: {{ company.phone }} </td></tr>
+                    {%if company.phone2%}<tr><td> TELÈFON D'AVERIES: {{ company.phone2 }} </td></tr> {%endif%}
+                </table>
+            </td>
+            <td width="50%">
+                <table class="info-table" >
+                    <tr style="padding-left:5px"><td> CONTRACTE DE SUBMINISTRAMENT </td></tr>
+                    <tr style="padding-left:5px"><td> Contracte: {{ request.token }} </td></tr>
+                </table>
+            </td></tr>
+        </table>
+    </div>
+
+    <!-- Agreement Section -->
+    <div style="margin-top: 25px">Entre els signants, d’una part el Client:</div>
+    <p>NOM: {{ holder.full_name }}<br>
+       NIF/CIF/NIE: {{ holder.token }}</p>
+       
+    <table width="100%" style="margin-top: 10px;">
+        <tr>
+            <td width="50%">
+                Correu electrònic: {{ holder.email }}
+            </td>
+            <td width="50%">
+                Telèfon: {{ holder.phone }}
+            </td>
+        </tr>
+    </table>
+
+    <p>I d'una altra part, l’Empresa: {{ company.name }}, gestora del Servei a {{ city }} amb NIF {{ company.vat }}<br>
+       Situada a {{ company.address_complete }}, {{company.address.postal_code}} - {{company.address.city.name}} </p>
+
+    <p>Manifesten que el Client convé a contractar amb l’Empresa el servei per l’immoble situat a: <br/>
+        {{supply_address.address_complete}} <br/>
+        {{supply_address.postal_code}} {{supply_address.city.name}} - {{supply_address.province.name}} <br/>
+    </p>
+
+    <div class="legal-text">
+        <p>
+            Per a l’ús {{ use_type_name|default_if_none:""|upper }}, i mitjançant un comptador de diàmetre {{ caliber|default_if_none:"" }}mm, obligant-se ambdues parts per temps indefinit, al compliment de les condicions annexades d’acord amb les prescripcions legals vigents.
+        </p>
+        <p>
+            L’entrada en vigor del contracte s’efectuarà un cop satisfets els drets econòmics que corresponguin, i la seva efectivitat quedarà supeditada a que les instal·lacions interiors s’ajustin a la informació facilitada, a les solucions tècniques de la connexió de servei i a les normes i prescripcions que siguin d’aplicació
+        </p>
+        <p>
+            El contractant, que declara sota la seva responsabilitat que les dades indicades són certes i exactes, i l’Empresa/Servei Municipal se sotmeten al fur i jurisdicció dels Jutjats i Tribunals competents al IIoc on es troba la connexió de servei en tot el relacionat amb el compliment de qualsevol qüestió derivada dels serveis que es tracta. I per que consti, en prova de conformitat, se signa aquest contracte, en exemplar duplicat i a un sol efecte, un dels quals s’entrega al contractant al IIoc i data indicats.
+        </p>
+    </div>
+
+    {% load i18n %}
+    {% language 'ca' %}
+    <div>
+        <p>{{ company.address.province.name }}, {{ company.address.city.name }}, {{ request.created_at|date:"d F Y" }}</p>
+    </div>
+    {% endlanguage %}
+    <div>
+        <pdf:nextpage /> 
+    </div> 
+    
+    <!-- Legal Clauses Section -->
+    <div class="section-title">
+        ANNEX AL CONTRACTE {{ request.token }} <br>
+        CLÀUSULES CONTRACTUALS
+    </div>
+    {% comment %} <div class="legal-text">
+        En compliment del Reglament (UE) 2016/679 del Parlament Europeu i del Consell de 27 d’abril de 2016 relatiu a la
+        Protecció de les Persones Físiques respecte al tractament de dades personals, informem que les dades personals
+        facilitades estan incorporades al nostre fitxer titularitat de {{ company.name }} amb domicili a {{ company.address_complete }}.<br><br>
+        Les dades personals no seran lliurades a terceres empreses, excepte en els supòsits d’impagament o d’obligació legal.
+        En cas de disconformitat pot presentar una reclamació davant l’Agència Espanyola de Protecció de Dades.
+    </div> {% endcomment %}
+    {% if clauses != null%}
+    <div class="legal-text">
+        {% for clause in clauses %}
+            <p  style="white-space: pre-line;">{{ clause.clause|linebreaks|safe }}</p>
+        {% endfor %}
+    </div>
+    {% endif%}
+
+    <!-- Signature Section -->
+    <div id="footer_content">
+        <table width="100%" style="table-layout: fixed;">
+            <tr>
+                <td width="50%" style="margin-left:40px; text-align: left;">
+                    <span>Pel client</span>
+                </td>
+                <td width="50%" style="margin-right:40px; text-align: right;">
+                    <span>{{ company.name }}</span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2" style="height: 30px;"></td>
+            </tr>
+        </table>
+        <table width="100%" style="table-layout: fixed;">
+            <tr>
+                <td width="70%" style="text-align: left; font-size: 9px; font-style: italic;">
+                    Registre Mercantil Barcelona, 125, 10504, FullB 29265-, N.I.F. A-08076218
+                </td>
+                <td width="30%" style="text-align: right;font-size: 9px;">
+                    pàgina <pdf:pagenumber> de <pdf:pagecount>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

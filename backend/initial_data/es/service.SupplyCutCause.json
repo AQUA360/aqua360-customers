@@ -1,0 +1,69 @@
+[
+  {
+      "model": "service.supplycutcause",
+      "pk": 1,
+      "fields": {
+          "token": "1",
+          "name": "Impagos de Facturas",
+          "color": "red",
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 2,
+      "fields": {
+          "token": "2",
+          "name": "Uso no autorizado",
+          "color": "red",
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 3,
+      "fields": {
+          "token": "3",
+          "name": "Problemas de seguridad",
+          "color": "yellow",
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 4,
+      "fields": {
+          "token": "4",
+          "name": "Mantenimiento u obras",
+          "color": "blue",
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 5,
+      "fields": {
+          "token": "5",
+          "name": "Baja de contrato",
+          "color": "yellow",
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplycutcause",
+      "pk": 6,
+      "fields": {
+          "token": "0",
+          "name": "Otros",
+          "color": null,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+  
+]

@@ -1,0 +1,41 @@
+[
+  {
+    "model": "contract.bailstatus",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-18T08:19:29.652Z",
+      "updated_at": "2024-10-18T08:19:29.652Z",
+      "token": "0",
+      "name": "No Retornat",
+      "color": null,
+      "position": 3,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.bailstatus",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-18T08:19:29.652Z",
+      "updated_at": "2024-10-18T08:19:29.652Z",
+      "token": "1",
+      "name": "Pendent de Retornar",
+      "color": "yellow",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.bailstatus",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-18T08:19:29.652Z",
+      "updated_at": "2024-10-18T08:19:29.652Z",
+      "token": "2",
+      "name": "Retornat",
+      "color": "green",
+      "position": 2,
+      "is_default": false
+    }
+  }
+]

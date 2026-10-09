@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+  <!-- well frame: posts, crossbars and crank -->
+  <line x1="46" y1="10" x2="46" y2="50" />
+  <line x1="72" y1="10" x2="72" y2="50" />
+  <line x1="46" y1="20" x2="72" y2="20" />
+  <line x1="46" y1="32" x2="72" y2="32" />
+  <path d="M72 16 h9 a5 5 0 0 1 0 10 h-6 a5 5 0 0 0 0 10 h7" />
+
+  <!-- well tank/base -->
+  <path d="M40 50 h38 a7 7 0 0 1 0 14 h-38 a7 7 0 0 1 0 -14 z" />
+  <path d="M38 64 v22 a4 4 0 0 0 4 4 h34 a4 4 0 0 0 4 -4 v-22" />
+  <rect x="55" y="78" width="12" height="6" />
+  <rect x="61" y="84" width="12" height="6" />
+
+  <!-- water droplet -->
+  <path d="M22 26
+           C27 34, 35 45, 35 54
+           a13 13 0 1 1 -26 0
+           C9 45, 17 34, 22 26 Z"
+        fill="white" />
+  <path d="M15 58 a6 6 0 0 0 6 6" />
+</svg>

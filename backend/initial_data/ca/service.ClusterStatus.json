@@ -1,0 +1,28 @@
+[
+  {
+      "model": "service.clusterstatus",
+      "pk": 1,
+      "fields": {
+          "token": "1",
+          "name": "Active",
+          "color": "green",
+          "position": null,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.clusterstatus",
+      "pk": 2,
+      "fields": {
+          "token": "-1",
+          "name": "Inactiu",
+          "color": "red",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

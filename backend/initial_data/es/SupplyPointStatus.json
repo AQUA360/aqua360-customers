@@ -1,0 +1,80 @@
+[
+    {
+        "model": "service.supplypointstatus",
+        "pk": 1,
+        "fields": {
+            "created_at": null,
+            "updated_at": null,
+            "token": "1",
+            "name": "Activo",
+            "color": "green",
+            "position": 0,
+            "is_default": false
+        }
+    },
+    {
+        "model": "service.supplypointstatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2024-10-03T14:14:17.017Z",
+            "updated_at": "2024-10-03T14:14:17.021Z",
+            "token": "tallat",
+            "name": "Cortado",
+            "color": "red",
+            "position": 2,
+            "is_default": false
+        }
+    },
+    {
+        "model": "service.supplypointstatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2024-10-03T14:14:17.017Z",
+            "updated_at": "2024-10-03T14:14:17.021Z",
+            "token": "innactive",
+            "name": "Desactivado",
+            "color": "orange",
+            "position": 3,
+            "is_default": false
+        }
+    },
+    {
+        "model": "service.supplypointstatus",
+        "pk": 14,
+        "fields": {
+            "created_at": null,
+            "updated_at": null,
+            "token": "0",
+            "name": "Pendiente de contratación",
+            "color": null,
+            "position": 1,
+            "is_default": true
+        }
+    },
+    {
+        "model": "service.supplypointstatus",
+        "pk": 15,
+        "fields": {
+            "created_at": null,
+            "updated_at": null,
+            "token": "-1",
+            "name": "Baja",
+            "color": "orange",
+            "position": 4,
+            "is_default": false
+        }
+    },
+    {
+        "model": "service.supplypointstatus",
+        "pk": 16,
+        "fields": {
+            "created_at": "2024-10-24T07:21:55.146Z",
+            "updated_at": "2024-10-24T07:22:06.915Z",
+            "token": "-2",
+            "name": "No contratable",
+            "color": "purple",
+            "position": null,
+            "is_default": false
+        }
+    }
+]

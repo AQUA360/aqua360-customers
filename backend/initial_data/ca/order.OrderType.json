@@ -1,0 +1,275 @@
+[
+    {
+        "model": "order.ordertype",
+        "pk": 1,
+        "fields": {
+            "created_at": "2024-10-09T12:50:38.039Z",
+            "updated_at": "2025-12-19T09:40:11.961Z",
+            "token": "cut_supply",
+            "name": "TALL DE SUBMINISTRAMENT",
+            "position": 1,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 2,
+        "fields": {
+            "created_at": "2024-10-09T12:50:53.883Z",
+            "updated_at": "2025-12-23T15:39:25.907Z",
+            "token": "install_meter",
+            "name": "INSTAL·LACIÓ DE COMPTADOR",
+            "position": 2,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 3,
+        "fields": {
+            "created_at": "2024-10-09T12:51:16.280Z",
+            "updated_at": "2026-02-12T09:02:09.166Z",
+            "token": "inspect_supply",
+            "name": "INSPECCIÓ PUNT DE SUBMINISTRAMENT",
+            "position": 3,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 4,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2026-01-28T10:22:52.297Z",
+            "token": "read_meter",
+            "name": "LECTURA DE COMPTADOR",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 5,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2026-03-16T10:06:44.727Z",
+            "token": "remove_meter",
+            "name": "RETIRADA DE COMPTADOR",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 6,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-23T15:39:30.723Z",
+            "token": "install_connection",
+            "name": "INSTAL·LACIÓ D'ESCOMESA",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 7,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2026-02-11T09:07:00.246Z",
+            "token": "land_inspection",
+            "name": "INSPECCIÓ DE TERRENY",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 8,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-19T09:39:57.617Z",
+            "token": "annul_fraud",
+            "name": "ANUL·LACIÓ DE FRAU",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 9,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-19T09:40:03.365Z",
+            "token": "change_meter",
+            "name": "CANVIAR COMPTADOR",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 10,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-19T09:40:06.847Z",
+            "token": "change_telemetry_equipment",
+            "name": "CANVIAR EQUIP TELELECTURA",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 11,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-19T09:41:01.968Z",
+            "token": "seal_meter",
+            "name": "PRESCINTAR COMPTADOR",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 12,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2024-10-10T05:58:45.986Z",
+            "token": "unseal_meter",
+            "name": "DESPRESCINTAR COMPTADOR",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 13,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2026-03-03T13:27:35.037Z",
+            "token": "Avaria",
+            "name": "AVARIA",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 14,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-23T15:39:29.575Z",
+            "token": "install_lockbox",
+            "name": "INSTAL·LAR CLAVAGUERAM",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 16,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-19T09:40:55.989Z",
+            "token": "restore_meter",
+            "name": "REPOSAR COMPTADOR",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 17,
+        "fields": {
+            "created_at": "2024-10-10T05:57:29.865Z",
+            "updated_at": "2025-12-19T09:40:58.829Z",
+            "token": "restore_supply",
+            "name": "REPOSAR SUBMINISTRAMENT",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 18,
+        "fields": {
+            "created_at": "2026-02-04T14:33:26.823Z",
+            "updated_at": "2026-09-21T10:52:37.273Z",
+            "token": "install_battery",
+            "name": "INSTAL·LACIÓ BATERIA",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 19,
+        "fields": {
+            "created_at": "2026-02-18T07:51:09.226Z",
+            "updated_at": "2026-09-21T10:53:06.941Z",
+            "token": "generic_work",
+            "name": "TREBALLS GENÈRICS",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 20,
+        "fields": {
+            "created_at": "2026-02-18T07:51:09.226Z",
+            "updated_at": "2026-09-21T10:53:06.941Z",
+            "token": "remote_maintenance_battery",
+            "name": "MANTENIMENT TELELECTURA - BATERIA",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 21,
+        "fields": {
+            "created_at": "2026-02-18T07:51:09.226Z",
+            "updated_at": "2026-09-21T10:53:06.941Z",
+            "token": "remote_maintenance_individual",
+            "name": "MANTENIMENT TELELECTURA - INDIVIDUAL",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    },
+    {
+        "model": "order.ordertype",
+        "pk": 22,
+        "fields": {
+            "created_at": "2026-02-18T07:51:09.226Z",
+            "updated_at": "2026-09-21T10:53:06.941Z",
+            "token": "check_meter",
+            "name": "COMPROVACIÓ DE COMPTADOR",
+            "position": null,
+            "is_default": false,
+            "gmao_department_token": null
+        }
+    }
+]

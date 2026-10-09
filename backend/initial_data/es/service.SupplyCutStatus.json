@@ -1,0 +1,41 @@
+[
+  {
+      "model": "service.supplycutstatus",
+      "pk": 1,
+      "fields": {
+          "token": "1",
+          "name": "Activo",
+          "color": "red",
+          "position": null,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplycutstatus",
+      "pk": 2,
+      "fields": {
+          "token": "pendent",
+          "name": "Pendiente",
+          "color": null,
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplycutstatus",
+      "pk": 3,
+      "fields": {
+          "token": "-1",
+          "name": "Inactivo",
+          "color": null,
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

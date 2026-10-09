@@ -1,0 +1,41 @@
+[
+  {
+      "model": "service.meterstatus",
+      "pk": 1,
+      "fields": {
+          "token": "1",
+          "name": "Actiu / Instal·lat",
+          "color": "green",
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.meterstatus",
+      "pk": 2,
+      "fields": {
+          "token": "-1",
+          "name": "Deshabilitat / No instal·lat",
+          "color": null,
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.meterstatus",
+      "pk": 3,
+      "fields": {
+          "token": "0",
+          "name": "Aforament",
+          "color": null,
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

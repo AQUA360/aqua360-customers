@@ -1,0 +1,23 @@
+{
+  "aqua_id": "MOV-0007-000123",
+  "payment_type": "inbound",
+  "partner_id": {
+    "aqua_id": "CTR-004521",
+    "name": "Joan Puig Vidal",
+    "vat": "ABON-004521"
+  },
+  "amount": 27.50,
+  "date": "2026-07-20",
+  "memo": "Cobrament rebut FA2026/000123 - remesa REM-2026-0007",
+  "payment_mode_id": {
+    "id": "DIRECT_DEBIT",
+    "name": "Domiciliació bancària (SEPA)"
+  },
+  "journal_id": {
+    "aqua_id": "BANC-SABADELL",
+    "name": "Banc Sabadell"
+  },
+  "reconcile": {
+    "invoice_aqua_id": "2026Q3-000123"
+  }
+}

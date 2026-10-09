@@ -1,0 +1,158 @@
+[
+  {
+      "model": "service.supplypointplacement",
+      "pk": 1,
+      "fields": {
+          "token": "APARELL",
+          "name": "APARELL",
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 2,
+      "fields": {
+          "token": "ARQ. ESCALA",
+          "name": "ARQ. ESCALERA",
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 4,
+      "fields": {
+          "token": "ARQ. INTERIOR",
+          "name": "ARQ. INTERIOR",
+          "position": 4,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 5,
+      "fields": {
+          "token": "ARQ. PARET",
+          "name": "ARQ. PARED",
+          "position": 5,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 6,
+      "fields": {
+          "token": "ARQ. TERRA",
+          "name": "ARQ. SUELO",
+          "position": 6,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 7,
+      "fields": {
+          "token": "ARQUETA",
+          "name": "ARQUETA",
+          "position": 3,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 8,
+      "fields": {
+          "token": "TERRASSA",
+          "name": "TERRAZA",
+          "position": 7,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 9,
+      "fields": {
+          "token": "CASETA",
+          "name": "CASETA",
+          "position": 8,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 10,
+      "fields": {
+          "token": "DARRERA HABITATGE",
+          "name": "DETRÁS VIVIENDA",
+          "position": 9,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 11,
+      "fields": {
+          "token": "CUINA",
+          "name": "COCINA",
+          "position": 10,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 12,
+      "fields": {
+          "token": "DESCONEGUT",
+          "name": "DESCONOCIDO",
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 13,
+      "fields": {
+          "token": "INTERIOR",
+          "name": "INTERIOR",
+          "position": 11,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointplacement",
+      "pk": 14,
+      "fields": {
+          "token": "EXTERIOR",
+          "name": "EXTERIOR",
+          "position": 12,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

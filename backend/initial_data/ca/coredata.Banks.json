@@ -1,0 +1,6173 @@
+[
+    {
+        "model": "coredata.Bank",
+        "pk": 1,
+        "fields": {
+            "token": "2074",
+            "name": "CAIXA D'ESTALVIS DE TERRASSA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 2,
+        "fields": {
+            "token": "2075",
+            "name": "CAP TOLEDO",
+            "bic": "CECAESMM105",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 3,
+        "fields": {
+            "token": "2077",
+            "name": "C.A. VALENCIA,CASTELLON Y ALIC",
+            "bic": "CAHM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 4,
+        "fields": {
+            "token": "2080",
+            "name": "NCG BANCO",
+            "bic": "CAGLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 5,
+        "fields": {
+            "token": "2081",
+            "name": "CAIXA D'ESTALVIS DEL PENEDES",
+            "bic": "BSAB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 6,
+        "fields": {
+            "token": "2085",
+            "name": "IBERCAJA BANCO",
+            "bic": "CAZRES2Z",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 7,
+        "fields": {
+            "token": "2086",
+            "name": "BANCO GRUPO CAJATRES",
+            "bic": "CAZRES2Z",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 8,
+        "fields": {
+            "token": "2090",
+            "name": "BANCO CAM",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 9,
+        "fields": {
+            "token": "2091",
+            "name": "CAJA DE AHORROS DE GALICIA",
+            "bic": "CAGLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 10,
+        "fields": {
+            "token": "2092",
+            "name": "C.PROVINCIAL DE A. DE JAEN",
+            "bic": "UCJAES2M",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 11,
+        "fields": {
+            "token": "2093",
+            "name": "CAP VALENCIA",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 12,
+        "fields": {
+            "token": "2094",
+            "name": "C.A. Y M.P. DE AVILA",
+            "bic": "CAHMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 13,
+        "fields": {
+            "token": "2095",
+            "name": "KUTXABANK",
+            "bic": "BASKES2B",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 14,
+        "fields": {
+            "token": "2096",
+            "name": "CAJA ESPAÑA INV.SALAMANCA SORI",
+            "bic": "CSPA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 15,
+        "fields": {
+            "token": "2097",
+            "name": "C.A. DE VITORIA Y ALAVA",
+            "bic": "BASK",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 16,
+        "fields": {
+            "token": "2098",
+            "name": "M.P. Y C.A. DE HUELVA Y SEVILL",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 17,
+        "fields": {
+            "token": "2099",
+            "name": "CAJA DE AHORROS DE EXTREMADURA",
+            "bic": "CECA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 18,
+        "fields": {
+            "token": "2100",
+            "name": "CAIXABANK",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 19,
+        "fields": {
+            "token": "2101",
+            "name": "C.A. Y M.P. GIPUZKOA Y SAN SEB",
+            "bic": "BASK",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 20,
+        "fields": {
+            "token": "2103",
+            "name": "UNICAJA BANCO",
+            "bic": "UCJAES2M",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 21,
+        "fields": {
+            "token": "2104",
+            "name": "CAJA ESPAÑA INV.SALAMANCA SORI",
+            "bic": "CSSOES2S",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 22,
+        "fields": {
+            "token": "2105",
+            "name": "BANCO DE CASTILLA-LA MANCHA",
+            "bic": "CECAESMM105",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 23,
+        "fields": {
+            "token": "3005",
+            "name": "CAJA RURAL CENTRAL",
+            "bic": "BCOEESMM005",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 24,
+        "fields": {
+            "token": "3007",
+            "name": "CAJA RURAL DE GIJON",
+            "bic": "BCOEESMM007",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 25,
+        "fields": {
+            "token": "3008",
+            "name": "CAJA RURAL DE NAVARRA",
+            "bic": "BCOEESMM008",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 26,
+        "fields": {
+            "token": "3009",
+            "name": "C.R.DE EXTREMADURA GRUP.COOP.I",
+            "bic": "BCOEESMM009",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 27,
+        "fields": {
+            "token": "3016",
+            "name": "CAJA RURAL DE SALAMANCA",
+            "bic": "BCOEESMM016",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 28,
+        "fields": {
+            "token": "3017",
+            "name": "CAJA RURAL DE SORIA",
+            "bic": "BCOEESMM017",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 29,
+        "fields": {
+            "token": "3066",
+            "name": "CAJA RURAL DE HUESCA SDAD.COOP",
+            "bic": "BCOEESMM191",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 30,
+        "fields": {
+            "token": "3021",
+            "name": "CAJA RURAL DE ARAGON",
+            "bic": "BCOEESMM191",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 31,
+        "fields": {
+            "token": "9000",
+            "name": "BANCO DE ESPAÑA",
+            "bic": "ESPB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 32,
+        "fields": {
+            "token": "2107",
+            "name": "UNNIM BANC",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": "BBVA"
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 33,
+        "fields": {
+            "token": "2076",
+            "name": "CAJA GRAL AHORROS M.PIEDAD",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 34,
+        "fields": {
+            "token": "3057",
+            "name": "CAJA RURAL DE ALICANTE",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 35,
+        "fields": {
+            "token": "3058",
+            "name": "CAJAS RURALES UNIDAS,SDAD.COOP",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 36,
+        "fields": {
+            "token": "3059",
+            "name": "CAJA RURAL DE ASTURIAS",
+            "bic": "BCOEESMM059",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 37,
+        "fields": {
+            "token": "3060",
+            "name": "C.R.BURGOS,FUENTEP.,SEGOVIA Y",
+            "bic": "BCOEESMM060",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 38,
+        "fields": {
+            "token": "3061",
+            "name": "CAJA RURAL CEDRICOOP SDAD.COOP",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 39,
+        "fields": {
+            "token": "3062",
+            "name": "CAJA RURAL DE CIUDAD REAL",
+            "bic": "BCOEESMM190",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 40,
+        "fields": {
+            "token": "3064",
+            "name": "CAJA RURAL DE CUENCA",
+            "bic": "BCOEESMM190",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 41,
+        "fields": {
+            "token": "3065",
+            "name": "CAJA RURAL DE HUELVA",
+            "bic": "BCOEESMM187",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 42,
+        "fields": {
+            "token": "3067",
+            "name": "C.R. DE JAEN, BARCELONA Y MADR",
+            "bic": "BCOEESMM067",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 43,
+        "fields": {
+            "token": "3070",
+            "name": "CAIXA RURAL GALEGA",
+            "bic": "BCOEESMM070",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 44,
+        "fields": {
+            "token": "3072",
+            "name": "CAJA RURAL DE MALAGA SDAD.COOP",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 45,
+        "fields": {
+            "token": "3078",
+            "name": "CAJA RURAL DE SEGOVIA",
+            "bic": "BCOEESMM060",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 46,
+        "fields": {
+            "token": "3080",
+            "name": "CAJA RURAL DE TERUEL",
+            "bic": "BCOEESMM080",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 47,
+        "fields": {
+            "token": "3081",
+            "name": "CAJA RURAL DE CASTILLA-LA MANC",
+            "bic": "BCOEESMM081",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 48,
+        "fields": {
+            "token": "3082",
+            "name": "C.R.DEL MEDITERRANEO,RURALCAJA",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 49,
+        "fields": {
+            "token": "3083",
+            "name": "CAJA RURAL DEL DUERO",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 50,
+        "fields": {
+            "token": "3084",
+            "name": "IPAR KUTXA RURAL",
+            "bic": "CLPEES2M",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 51,
+        "fields": {
+            "token": "3085",
+            "name": "CAJA RURAL DE ZAMORA",
+            "bic": "BCOEESMM085",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 52,
+        "fields": {
+            "token": "3094",
+            "name": "CAJA CAMPO CAJA RURAL S.COOP.C",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 53,
+        "fields": {
+            "token": "3095",
+            "name": "C.R. SAN ROQUE DE ALMENARA COO",
+            "bic": "CCRIES2A095",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 54,
+        "fields": {
+            "token": "3105",
+            "name": "CAIXA RURAL DE CALLOSA D'EN SA",
+            "bic": "CCRIES2A105",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 55,
+        "fields": {
+            "token": "3112",
+            "name": "C.R. SAN JOSE DE BURRIANA",
+            "bic": "CCRIES2A112",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 56,
+        "fields": {
+            "token": "3114",
+            "name": "CAJA RURAL CASTELLON",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 57,
+        "fields": {
+            "token": "3117",
+            "name": "CAIXA RURAL D'ALGEMESI",
+            "bic": "BCOEESMM117",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 58,
+        "fields": {
+            "token": "3118",
+            "name": "CAIXA RURAL TORRENT",
+            "bic": "CCRIES2A118",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 59,
+        "fields": {
+            "token": "3121",
+            "name": "CAJA RURAL DE CHESTE",
+            "bic": "CCRIES2A121",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 60,
+        "fields": {
+            "token": "3128",
+            "name": "CAJA RURAL DE LA RODA",
+            "bic": "BCOEESMM190",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 61,
+        "fields": {
+            "token": "3134",
+            "name": "C.R. NTRA. SRA. DE LA ESPERANZ",
+            "bic": "BCOEESMM134",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 62,
+        "fields": {
+            "token": "3137",
+            "name": "CAJA RURAL DE CASINOS",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 63,
+        "fields": {
+            "token": "3138",
+            "name": "CAJA RURAL DE BETXI",
+            "bic": "BCOEESMM138",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 64,
+        "fields": {
+            "token": "3157",
+            "name": "C.R. DE LA JUNQUERA DE CHILCHE",
+            "bic": "CCRIES2A157",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 65,
+        "fields": {
+            "token": "3159",
+            "name": "CAIXA POPULAR-CAIXA RURAL",
+            "bic": "BCOEESMM159",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 66,
+        "fields": {
+            "token": "3162",
+            "name": "CAIXA RURAL BENICARLO",
+            "bic": "BCOEESMM162",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 67,
+        "fields": {
+            "token": "3171",
+            "name": "CAIXA DELS ADVOCATS S.COOP.CTO",
+            "bic": "BCOEESMM191",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 68,
+        "fields": {
+            "token": "3172",
+            "name": "CAJA CREDITO COLEGIO DE CAMINO",
+            "bic": "CCOCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 69,
+        "fields": {
+            "token": "3174",
+            "name": "CAIXA RURAL VINAROS COOP.C.V..",
+            "bic": "BCOEESMM174",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 70,
+        "fields": {
+            "token": "3177",
+            "name": "CAJA RURAL DE CANARIAS",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 71,
+        "fields": {
+            "token": "3181",
+            "name": "CAJA DE ELCHE",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 72,
+        "fields": {
+            "token": "3183",
+            "name": "CAJA DE ARQUITECTOS S.COOP.CTO",
+            "bic": "CASDESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 73,
+        "fields": {
+            "token": "3187",
+            "name": "CAJA RURAL DEL SUR",
+            "bic": "BCOEESMM187",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 74,
+        "fields": {
+            "token": "3188",
+            "name": "CREDIT VALENCIA CAJA RURAL",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 75,
+        "fields": {
+            "token": "3079",
+            "name": "CAJA RURAL DE SEVILLA SDAD.COO",
+            "bic": "BCOEESMM187",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 76,
+        "fields": {
+            "token": "3089",
+            "name": "C.R.DE BAENA NTRA.SRA.DE GUADA",
+            "bic": "BCOEESMM089",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 77,
+        "fields": {
+            "token": "3092",
+            "name": "CAJA RURAL DE ZARAGOZA",
+            "bic": "BCOEESMM191",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 78,
+        "fields": {
+            "token": "8970",
+            "name": "CORREOS",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 79,
+        "fields": {
+            "token": "3111",
+            "name": "C.R. LA VALL SAN ISIDRO",
+            "bic": "BCOEESMM111",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 80,
+        "fields": {
+            "token": "31",
+            "name": "BANCO ETCHEVERRIA",
+            "bic": "CAGLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 81,
+        "fields": {
+            "token": "1491",
+            "name": "TRIODOS BANK N.V.",
+            "bic": "TRIOESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 82,
+        "fields": {
+            "token": "185",
+            "name": "BANCO URQUIJO SABADELL BANCA P",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 83,
+        "fields": {
+            "token": "3076",
+            "name": "CAJASIETE,CAJA RURAL SDAD.COOP",
+            "bic": "BCOEESMM076",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 84,
+        "fields": {
+            "token": "234",
+            "name": "BANCO CAMINOS",
+            "bic": "CCOCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 85,
+        "fields": {
+            "token": "2106",
+            "name": "CAJASOL - C.A. Y M.P. SAN FERN",
+            "bic": "CAIX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 86,
+        "fields": {
+            "token": "235",
+            "name": "BANCO PICHINCHA ESPAÑA",
+            "bic": "PICHESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 87,
+        "fields": {
+            "token": "3",
+            "name": "CREDIT ANDORRA",
+            "bic": "BDEPESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 88,
+        "fields": {
+            "token": "490",
+            "name": "BANCA CIVICA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 89,
+        "fields": {
+            "token": "1533",
+            "name": "BMW BANK GMBH SUCURSAL EN ESPA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 90,
+        "fields": {
+            "token": "1534",
+            "name": "KBL EUROPEAN PRIVATE BANKERS",
+            "bic": "KBLXESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 91,
+        "fields": {
+            "token": "1535",
+            "name": "AKF BANK GMBH & CO KG",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 92,
+        "fields": {
+            "token": "11",
+            "name": "ALLFUNDS BANK",
+            "bic": "ALLFESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 93,
+        "fields": {
+            "token": "1536",
+            "name": "OREY FINANCIAL-INSTITUIÇÃO FIN",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 94,
+        "fields": {
+            "token": "2492",
+            "name": "BANCO VALENCIA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 95,
+        "fields": {
+            "token": "21",
+            "name": "BANCO CONDAL",
+            "bic": "BCNDESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 96,
+        "fields": {
+            "token": "27",
+            "name": "BANCO HALIFAX",
+            "bic": "LOYD",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 97,
+        "fields": {
+            "token": "57",
+            "name": "BANCO DEPOSITARIO BBVA",
+            "bic": "BVADESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 98,
+        "fields": {
+            "token": "74",
+            "name": "BANCO CONSOLIDADO ESPAÑA S.A.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 99,
+        "fields": {
+            "token": "77",
+            "name": "BANCO DE BARCELONA S.A.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 100,
+        "fields": {
+            "token": "79",
+            "name": "BANCO INVERSION",
+            "bic": "BESMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 101,
+        "fields": {
+            "token": "87",
+            "name": "SINDICATO DE BANQUEROS DE BARC",
+            "bic": "CAHMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 102,
+        "fields": {
+            "token": "88",
+            "name": "BANK OF AMERICA S.A.",
+            "bic": "BOFA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 103,
+        "fields": {
+            "token": "89",
+            "name": "BANCO DE EXTREMADURA S.A.",
+            "bic": "CGDIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 104,
+        "fields": {
+            "token": "96",
+            "name": "PROBANCA SERVICIOS FINANCIEROS",
+            "bic": "PROAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 105,
+        "fields": {
+            "token": "109",
+            "name": "BANCO DESARROLLO ECONOMICO ESP",
+            "bic": "ESPCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 106,
+        "fields": {
+            "token": "113",
+            "name": "BANCO INDUSTRIAL DE BILBAO",
+            "bic": "INBBESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 107,
+        "fields": {
+            "token": "115",
+            "name": "BANCO DE CASTILLA-LA MANCHA",
+            "bic": "CECA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 108,
+        "fields": {
+            "token": "121",
+            "name": "BANCO OCCIDENTAL S.A.",
+            "bic": "OCBAESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 109,
+        "fields": {
+            "token": "129",
+            "name": "BBVA BANCO DE FINANCIACION",
+            "bic": "INALESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 110,
+        "fields": {
+            "token": "132",
+            "name": "BANCO DE PROMOCION DE NEGOCIOS",
+            "bic": "PRNEESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 111,
+        "fields": {
+            "token": "136",
+            "name": "ARESBANK",
+            "bic": "AREBESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 112,
+        "fields": {
+            "token": "141",
+            "name": "BANQUE INDOSUEZ ESPAÑA S.A.",
+            "bic": "CAICESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 113,
+        "fields": {
+            "token": "143",
+            "name": "DRESDNER BANK",
+            "bic": "COBAESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 114,
+        "fields": {
+            "token": "144",
+            "name": "BNP PARIBAS SECURITIES SERVICE",
+            "bic": "PARBESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 115,
+        "fields": {
+            "token": "145",
+            "name": "DEUTSCHE BANK, A.G.",
+            "bic": "DEUTESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 116,
+        "fields": {
+            "token": "146",
+            "name": "CITIBANK N.A.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 117,
+        "fields": {
+            "token": "147",
+            "name": "MORGAN GUARANTY TRUST COMPANY",
+            "bic": "CHASESM3",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 118,
+        "fields": {
+            "token": "148",
+            "name": "THE CHASE MANHATTAN BANK N.A.",
+            "bic": "CHAS",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 119,
+        "fields": {
+            "token": "150",
+            "name": "NATIONAL WESTMINSTER BANK P.L.",
+            "bic": "ABNAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 120,
+        "fields": {
+            "token": "151",
+            "name": "JPMORGAN CHASE BANK N. ASSOCIA",
+            "bic": "CHASESM3",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 121,
+        "fields": {
+            "token": "152",
+            "name": "BARCLAYS BANK, P.L.C.",
+            "bic": "BPLCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 122,
+        "fields": {
+            "token": "154",
+            "name": "CREDIT AGRICOLE CORPORATE",
+            "bic": "BSUIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 123,
+        "fields": {
+            "token": "155",
+            "name": "BANCO DO BRASIL",
+            "bic": "BRASESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 124,
+        "fields": {
+            "token": "160",
+            "name": "THE BANK OF TOKYO-MITSUBISHI U",
+            "bic": "BOTKESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 125,
+        "fields": {
+            "token": "161",
+            "name": "DEUTSCHE BANK TRUST COMPANY AM",
+            "bic": "BOTKESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 126,
+        "fields": {
+            "token": "162",
+            "name": "HSBC BANK P.L.C.",
+            "bic": "MIDLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 127,
+        "fields": {
+            "token": "163",
+            "name": "UNICREDIT, S.P.A.",
+            "bic": "UNCR",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 128,
+        "fields": {
+            "token": "166",
+            "name": "BANCO DO ESTADO DE SAO PAULO S",
+            "bic": "BESP",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 129,
+        "fields": {
+            "token": "167",
+            "name": "BNP PARIBAS FORTIS",
+            "bic": "GEBAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 130,
+        "fields": {
+            "token": "169",
+            "name": "BANCO DE LA NACION ARGENTINA",
+            "bic": "NACNESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 131,
+        "fields": {
+            "token": "170",
+            "name": "BANCO REAL S.A.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 132,
+        "fields": {
+            "token": "171",
+            "name": "THE SUMITOMO BANK LTD.",
+            "bic": "SMIT",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 133,
+        "fields": {
+            "token": "172",
+            "name": "CREDIT COMMERCIAL DE FRANCE S.",
+            "bic": "CCFR",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 134,
+        "fields": {
+            "token": "174",
+            "name": "BANCA INTESA BCI S.P.A. SUCURS",
+            "bic": "BCIT",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 135,
+        "fields": {
+            "token": "178",
+            "name": "THE ROYAL BANK OF CANADA",
+            "bic": "ROYC",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 136,
+        "fields": {
+            "token": "179",
+            "name": "CAISSE NATIONALE DE CREDITO AG",
+            "bic": "AGRIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 137,
+        "fields": {
+            "token": "180",
+            "name": "BANCO PORTUGUES DO ATLANTICO S",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 138,
+        "fields": {
+            "token": "181",
+            "name": "CREDITO ITALIANO S.A.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 139,
+        "fields": {
+            "token": "187",
+            "name": "BANCO UNIVERSAL S.A.",
+            "bic": "ALCLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 140,
+        "fields": {
+            "token": "188",
+            "name": "BANCO ALCALA",
+            "bic": "ALCLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 141,
+        "fields": {
+            "token": "189",
+            "name": "THE INDUSTRIAL BANK OF JAPAN L",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 142,
+        "fields": {
+            "token": "190",
+            "name": "BANCO BPI",
+            "bic": "BBPIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 143,
+        "fields": {
+            "token": "195",
+            "name": "THE SANWA BANK LIMITED",
+            "bic": "SANW",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 144,
+        "fields": {
+            "token": "196",
+            "name": "PORTIGON AG SUCURCAL EN ESPAÑA",
+            "bic": "WELAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 145,
+        "fields": {
+            "token": "197",
+            "name": "BANCO ESPIRITO SANTO S.A.SUC.E",
+            "bic": "BESC",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 146,
+        "fields": {
+            "token": "199",
+            "name": "CREDIT SUISSE FIRST BOSTON",
+            "bic": "CRES",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 147,
+        "fields": {
+            "token": "200",
+            "name": "PRIVAT BANK DEGROOF",
+            "bic": "PRVBESB1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 148,
+        "fields": {
+            "token": "201",
+            "name": "BANCO DI NAPOLI S.P.A.",
+            "bic": "BCITESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 149,
+        "fields": {
+            "token": "202",
+            "name": "BANCO DE NEGOCIOS ARGENTARIA S",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 150,
+        "fields": {
+            "token": "203",
+            "name": "THE FUJI BANK LIMITED",
+            "bic": "FUJI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 151,
+        "fields": {
+            "token": "207",
+            "name": "THE TOKAI BANK LTD.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 152,
+        "fields": {
+            "token": "212",
+            "name": "COMPAGNIE BANCARIE S.A.",
+            "bic": "COBF",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 153,
+        "fields": {
+            "token": "213",
+            "name": "CASSA RISPARMIO DELLE PROVINCI",
+            "bic": "CARI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 154,
+        "fields": {
+            "token": "214",
+            "name": "ARAB BANK",
+            "bic": "ARABESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 155,
+        "fields": {
+            "token": "215",
+            "name": "DEXIA BANCO LOCAL S.A.",
+            "bic": "DBOL",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 156,
+        "fields": {
+            "token": "216",
+            "name": "TARGOBANK",
+            "bic": "CMCIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 157,
+        "fields": {
+            "token": "8824",
+            "name": "CAMGE FINANCIERA E.F.C., S.A.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 158,
+        "fields": {
+            "token": "218",
+            "name": "FCE BANK P.L.C.",
+            "bic": "FCEFESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 159,
+        "fields": {
+            "token": "219",
+            "name": "BANQUE MAROCAINE COMMERCE EXTE",
+            "bic": "BMCEESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 160,
+        "fields": {
+            "token": "3093",
+            "name": "C.R.DEL CAMPO DE CARI$ENA SDAD",
+            "bic": "BCOEESMM191",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 161,
+        "fields": {
+            "token": "221",
+            "name": "POPULAR RABOBANK S.A.",
+            "bic": "PRAB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 162,
+        "fields": {
+            "token": "1493",
+            "name": "CAIXA BANCO DE INVESTIMENTO",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 163,
+        "fields": {
+            "token": "223",
+            "name": "GENERAL ELECTRIC CAPITAL BANK",
+            "bic": "GEECESB1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 164,
+        "fields": {
+            "token": "1494",
+            "name": "INTESA SANPAOLO, S.P.A.",
+            "bic": "BCITESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 165,
+        "fields": {
+            "token": "225",
+            "name": "BANCO CETELEM",
+            "bic": "FIEIESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 166,
+        "fields": {
+            "token": "1495",
+            "name": "CIT GROUP (NORDIC) AB",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 167,
+        "fields": {
+            "token": "228",
+            "name": "BANCO CDC URQUIJO",
+            "bic": "IXIUESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 168,
+        "fields": {
+            "token": "1496",
+            "name": "GENEFIM SUCURSAL EN ESPAÑA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 169,
+        "fields": {
+            "token": "230",
+            "name": "ACTIVOBANK S.A.",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 170,
+        "fields": {
+            "token": "231",
+            "name": "DEXIA SABADELL",
+            "bic": "DSBLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 171,
+        "fields": {
+            "token": "1497",
+            "name": "BANCO ESPIRITO SANTO DE INVEST",
+            "bic": "ESSIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 172,
+        "fields": {
+            "token": "1498",
+            "name": "UNICREDIT BANK AG SUCURSAL EN",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 173,
+        "fields": {
+            "token": "1499",
+            "name": "CLAAS FINANCAL SERVICES, S.A.S",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 174,
+        "fields": {
+            "token": "1500",
+            "name": "NATIXIS LEASE SUCURSAL EN ESPA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 175,
+        "fields": {
+            "token": "1501",
+            "name": "DEUTSCHE PFANDBRIEFBANK, AG",
+            "bic": "DPBBESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 176,
+        "fields": {
+            "token": "1502",
+            "name": "IKB DEUTSCHE INDUSTRIEBANK AG.",
+            "bic": "IKBDESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 177,
+        "fields": {
+            "token": "1504",
+            "name": "HONDA BANK GMBH",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 178,
+        "fields": {
+            "token": "1505",
+            "name": "EUROPE ARAB BANK PLC",
+            "bic": "ARABESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 179,
+        "fields": {
+            "token": "1506",
+            "name": "MERRILL LYNCH INTERNATIONAL BA",
+            "bic": "MLCBESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 180,
+        "fields": {
+            "token": "1507",
+            "name": "ING BANK N.V. SUCURSAL EN ESPA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 181,
+        "fields": {
+            "token": "1508",
+            "name": "RCI BANQUE SUCURSAL EN ESPAÑA",
+            "bic": "RCIN",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 182,
+        "fields": {
+            "token": "1509",
+            "name": "BANCO PRIMUS SUCURSAL EN ESPAÑ",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 183,
+        "fields": {
+            "token": "1510",
+            "name": "SAXO BANK A/S SUCURSAL EN ESPA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 184,
+        "fields": {
+            "token": "1511",
+            "name": "KBC BANK NV SUCURSAL EN ESPAÑA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 185,
+        "fields": {
+            "token": "1512",
+            "name": "ELAVON FINANCIAL SERVICES LTD",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 186,
+        "fields": {
+            "token": "1513",
+            "name": "CAIXA GERAL DE DEPOSITOS",
+            "bic": "CGDIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 187,
+        "fields": {
+            "token": "1514",
+            "name": "CNH FINANCIAL SERVICES",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 188,
+        "fields": {
+            "token": "1515",
+            "name": "CITIBANK, N.A. SUCURSAL EN ESP",
+            "bic": "CITI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 189,
+        "fields": {
+            "token": "1516",
+            "name": "J.P. MORGAN INTERNATIONAL BANK",
+            "bic": "JPMV",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 190,
+        "fields": {
+            "token": "1518",
+            "name": "DEPFA BANK PLC",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 191,
+        "fields": {
+            "token": "1519",
+            "name": "SVENSKA HANDELSBANKEN AB",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 192,
+        "fields": {
+            "token": "1520",
+            "name": "MEDIOBANCA SUCURSAL EN ESPAÑA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 193,
+        "fields": {
+            "token": "1521",
+            "name": "BINCKBANK NV, SUCURSAL EN ESPA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 194,
+        "fields": {
+            "token": "1522",
+            "name": "EFG BANK SUCURSAL EN ESPAÑA",
+            "bic": "EFGBESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 195,
+        "fields": {
+            "token": "1523",
+            "name": "MERCEDES-BENZ BANK AG",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 196,
+        "fields": {
+            "token": "3189",
+            "name": "C.R. ARAGONESA Y DE LOS PIRINE",
+            "bic": "BCOEESMM191",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 197,
+        "fields": {
+            "token": "83",
+            "name": "RENTA 4 BANCO",
+            "bic": "RENBESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 198,
+        "fields": {
+            "token": "325",
+            "name": "CAJA LABORAL",
+            "bic": "CLPE",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 199,
+        "fields": {
+            "token": "3004",
+            "name": "CAJA RURAL DEL MEDITERRANEO,S.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 200,
+        "fields": {
+            "token": "347",
+            "name": "BANCAJA",
+            "bic": "CCRI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 201,
+        "fields": {
+            "token": "2005",
+            "name": "CAJA AHORROS PROVINCIAL ALICAN",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 202,
+        "fields": {
+            "token": "2062",
+            "name": "CAJA A.MONTE PIEDAD S,SEBASTIA",
+            "bic": "BASKES2B",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 203,
+        "fields": {
+            "token": "102",
+            "name": "BANCO DE VIZCAYA,S.A.",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 204,
+        "fields": {
+            "token": "402",
+            "name": "HALIFAX-LOS ALCAZARES",
+            "bic": "HLFX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 205,
+        "fields": {
+            "token": "2012",
+            "name": "C.P.VEJEZ CATALUÑA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 206,
+        "fields": {
+            "token": "2088",
+            "name": "C.POSTAL AHORROS",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 207,
+        "fields": {
+            "token": "10",
+            "name": "BANCO DE BILBAO,S.A.",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 208,
+        "fields": {
+            "token": "2015",
+            "name": "C.A.MUNICP.BILBAO",
+            "bic": "BASKES2B",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 209,
+        "fields": {
+            "token": "2016",
+            "name": "C.A.VIZCAINA",
+            "bic": "BASKES2B",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 210,
+        "fields": {
+            "token": "2063",
+            "name": "CAP GUIPUZCOA",
+            "bic": "BASKES2B",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 211,
+        "fields": {
+            "token": "444",
+            "name": "SISTEMA 4B",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 212,
+        "fields": {
+            "token": "1459",
+            "name": "RABOBANK INTERNATIONAL",
+            "bic": "PRABESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 213,
+        "fields": {
+            "token": "1460",
+            "name": "CREDIT SUISSE AG",
+            "bic": "CRESESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 214,
+        "fields": {
+            "token": "1461",
+            "name": "A/S JYSKE BANK SUCURSAL EN ESP",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 215,
+        "fields": {
+            "token": "1462",
+            "name": "ASSOCIATES CAPITAL CORPORATION",
+            "bic": "ASSCESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 216,
+        "fields": {
+            "token": "1463",
+            "name": "BANQUE PSA FINANCE",
+            "bic": "PSABESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 217,
+        "fields": {
+            "token": "1464",
+            "name": "NEWCOURT FINANCE FRANCE S.N.C.",
+            "bic": "NFFSESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 218,
+        "fields": {
+            "token": "2079",
+            "name": "C.A PROVINCIAL DE VALLADOLID",
+            "bic": "CSPAES2L",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 219,
+        "fields": {
+            "token": "1466",
+            "name": "FRANFINANCE SUCURSAL EN ESPAÑA",
+            "bic": "FRAN",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 220,
+        "fields": {
+            "token": "1467",
+            "name": "HYPOTHEKENBANK FRANKFURT AG",
+            "bic": "EHYPESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 221,
+        "fields": {
+            "token": "1468",
+            "name": "EUROHYPO A.G.EUROPAISCHE H.DER",
+            "bic": "EEHD",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 222,
+        "fields": {
+            "token": "1469",
+            "name": "BANCO SYGMA HISPANIA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 223,
+        "fields": {
+            "token": "1470",
+            "name": "BANCO PORTUGUES DE INVESTIMENT",
+            "bic": "BPIPESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 224,
+        "fields": {
+            "token": "1471",
+            "name": "ROYAL BANK OF CANADA EUROPE LI",
+            "bic": "ROYC",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 225,
+        "fields": {
+            "token": "1472",
+            "name": "CREDIT AGRICOLE LEASING & FACT",
+            "bic": "UCSSESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 226,
+        "fields": {
+            "token": "1473",
+            "name": "BANQUE PRIVEE EDMOND DE ROTHSC",
+            "bic": "PRIBESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 227,
+        "fields": {
+            "token": "2082",
+            "name": "C.A. Y MONTE PIEDAD DE VITORIA",
+            "bic": "BASKES2B",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 228,
+        "fields": {
+            "token": "1475",
+            "name": "CORTAL CONSORS",
+            "bic": "CCSEESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 229,
+        "fields": {
+            "token": "1477",
+            "name": "THE ROYAL BANK OF SCOTLAND N.V",
+            "bic": "ABNA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 230,
+        "fields": {
+            "token": "1478",
+            "name": "MERRILL LYNCH INTERNATIONAL BA",
+            "bic": "MLCE",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 231,
+        "fields": {
+            "token": "1479",
+            "name": "NATIXIS SUCURSAL EN ESPAÑA",
+            "bic": "NATXESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 232,
+        "fields": {
+            "token": "1480",
+            "name": "VOLKSWAGEN BANK GMBH",
+            "bic": "VOWAES21",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 233,
+        "fields": {
+            "token": "1481",
+            "name": "BANCO MAIS",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 234,
+        "fields": {
+            "token": "1482",
+            "name": "JOHN DEERE BANK",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 235,
+        "fields": {
+            "token": "1483",
+            "name": "BANK OF SCOTLAND",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 236,
+        "fields": {
+            "token": "1484",
+            "name": "MBNA EUROPE BANK LTD",
+            "bic": "ESPCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 237,
+        "fields": {
+            "token": "1485",
+            "name": "BANK OF AMERICA N.A.",
+            "bic": "BOFAES2X",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 238,
+        "fields": {
+            "token": "1486",
+            "name": "BANCO PRIVADO PORTUGUES",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 239,
+        "fields": {
+            "token": "1487",
+            "name": "TOYOTA KREDITBANK GMBH",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 240,
+        "fields": {
+            "token": "1488",
+            "name": "PICTET & CIE (EUROPE)",
+            "bic": "PICTESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 241,
+        "fields": {
+            "token": "1489",
+            "name": "HYPO REAL ESTATE BANK INTERNAT",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 242,
+        "fields": {
+            "token": "1490",
+            "name": "SELF TRADE BANK",
+            "bic": "SELFESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 243,
+        "fields": {
+            "token": "2055",
+            "name": "C.A Y MONTE PIEDAD PLASENCIA",
+            "bic": "CECAESMM099",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 244,
+        "fields": {
+            "token": "1492",
+            "name": "BNP PARIBAS LEASE GROUP",
+            "bic": "BNPA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 245,
+        "fields": {
+            "token": "2083",
+            "name": "C. PROV. DE AHORROS DE ALAVA",
+            "bic": "BASKES2B",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 246,
+        "fields": {
+            "token": "2035",
+            "name": "C.A Y MONTE DE PIEDAD DE LEON",
+            "bic": "CSPAES2L",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 247,
+        "fields": {
+            "token": "1532",
+            "name": "BNP PARIBAS FACTOR SUCURSAL ES",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 248,
+        "fields": {
+            "token": "3096",
+            "name": "CAIXA RURAL DE L'ALCUDIA",
+            "bic": "BCOEESMM096",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 249,
+        "fields": {
+            "token": "3098",
+            "name": "C.R. NUESTRA SRA. DEL ROSARIO",
+            "bic": "BCOEESMM098",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 250,
+        "fields": {
+            "token": "1524",
+            "name": "UBI BANCA INTERNATIONAL",
+            "bic": "UBIBESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 251,
+        "fields": {
+            "token": "1525",
+            "name": "BANQUE CHAABI DU MAROC",
+            "bic": "BCDMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 252,
+        "fields": {
+            "token": "1526",
+            "name": "CLOSE BROTHERS LTD",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 253,
+        "fields": {
+            "token": "1528",
+            "name": "JCB FINANCE,S.A.S SUCURSAL EN",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 254,
+        "fields": {
+            "token": "182",
+            "name": "BBVA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 255,
+        "fields": {
+            "token": "184",
+            "name": "BANCO EUROPEO DE FINANZAS",
+            "bic": "BEDFESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 256,
+        "fields": {
+            "token": "186",
+            "name": "BANCO DE MEDIOLANUM",
+            "bic": "BFIVESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 257,
+        "fields": {
+            "token": "191",
+            "name": "EUROBANK DEL MEDITERRANEO S.A",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 258,
+        "fields": {
+            "token": "192",
+            "name": "BANCO CREDIPAS",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 259,
+        "fields": {
+            "token": "198",
+            "name": "BANCO COOPERATIVO ESPAÑOL",
+            "bic": "BCOEESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 260,
+        "fields": {
+            "token": "205",
+            "name": "DEUTSCHE BANK CREDIT",
+            "bic": "DEUTESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 261,
+        "fields": {
+            "token": "208",
+            "name": "CREDIT LYONNAIS ESPAÑA",
+            "bic": "CSSOES2S",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 262,
+        "fields": {
+            "token": "209",
+            "name": "ABBEY NATIONAL BANK",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 263,
+        "fields": {
+            "token": "1529",
+            "name": "MCE BANK GMBH SUCURSAL EN ESPA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 264,
+        "fields": {
+            "token": "1530",
+            "name": "SOFINLOC INSTITUIÇAO FINANCEIR",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 265,
+        "fields": {
+            "token": "1531",
+            "name": "CREDIT SUISSE INTERNATIONAL",
+            "bic": "CSRO",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 266,
+        "fields": {
+            "token": "220",
+            "name": "BANCO FINANTIA SOFINLOC",
+            "bic": "FIOFESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 267,
+        "fields": {
+            "token": "226",
+            "name": "UBS BANK",
+            "bic": "UBSWESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 268,
+        "fields": {
+            "token": "3018",
+            "name": "C.R. REGIONAL SAN AGUSTIN",
+            "bic": "BCOEESMM018",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 269,
+        "fields": {
+            "token": "2021",
+            "name": "C.A.Y PRESTAMOS DE CARLET",
+            "bic": "CAHMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 270,
+        "fields": {
+            "token": "2056",
+            "name": "COLONYA-CAIXA D'ESTALVIS DE PO",
+            "bic": "CECAESMM056",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 271,
+        "fields": {
+            "token": "3001",
+            "name": "CAJA RURAL DE ALMENDRALEJO",
+            "bic": "BCOEESMM001",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 272,
+        "fields": {
+            "token": "3020",
+            "name": "C.R. DE UTRERA S. COOP.",
+            "bic": "BCOEESMM020",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 273,
+        "fields": {
+            "token": "3022",
+            "name": "CAJA RURAL DE FUENTEPELAYO",
+            "bic": "BCOEESMM060",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 274,
+        "fields": {
+            "token": "3102",
+            "name": "CAIXA RURAL SANT VICENT FERRER",
+            "bic": "CCRIES2A102",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 275,
+        "fields": {
+            "token": "3104",
+            "name": "C.R. DE CAÑETE DE LAS TORRES",
+            "bic": "BCOEESMM104",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 276,
+        "fields": {
+            "token": "3110",
+            "name": "CAJA RURAL CATOLICO AGRARIA",
+            "bic": "CCRIES2A110",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 277,
+        "fields": {
+            "token": "3113",
+            "name": "C.R. SAN JOSE DE ALCORA COOP.C",
+            "bic": "BCOEESMM113",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 278,
+        "fields": {
+            "token": "3115",
+            "name": "C.R. NUESTRA SRA. MADRE SOL",
+            "bic": "BCOEESMM115",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 279,
+        "fields": {
+            "token": "3116",
+            "name": "C.R. COMARCAL DE MOTA DEL CUER",
+            "bic": "BCOEESMM190",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 280,
+        "fields": {
+            "token": "3119",
+            "name": "C.R. SAN JAIME COOP.CTO.V.",
+            "bic": "CCRIES2A119",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 281,
+        "fields": {
+            "token": "3123",
+            "name": "CAIXA RURAL DE TURIS",
+            "bic": "CCRIES2A123",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 282,
+        "fields": {
+            "token": "3127",
+            "name": "CAJA RURAL DE CASAS IBAÑEZ",
+            "bic": "BCOEESMM127",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 283,
+        "fields": {
+            "token": "3130",
+            "name": "C.R. SAN JOSE DE ALMASSORA",
+            "bic": "BCOEESMM130",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 284,
+        "fields": {
+            "token": "3135",
+            "name": "C.R. SAN JOSE DE NULES",
+            "bic": "CCRIES2A135",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 285,
+        "fields": {
+            "token": "3140",
+            "name": "CAJA RURAL DE GUISSONA",
+            "bic": "BCOEESMM140",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 286,
+        "fields": {
+            "token": "3144",
+            "name": "CAJA RURAL DE VILLAMALEA",
+            "bic": "BCOEESMM144",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 287,
+        "fields": {
+            "token": "3146",
+            "name": "CAJA DE CREDITO COOPERATIVO,S.",
+            "bic": "CCCVESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 288,
+        "fields": {
+            "token": "3147",
+            "name": "CAIXA RURAL DE BALEARS",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 289,
+        "fields": {
+            "token": "3150",
+            "name": "CAJA RURAL DE ALBAL",
+            "bic": "BCOEESMM150",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 290,
+        "fields": {
+            "token": "3152",
+            "name": "CAJA RURAL DE VILLAR",
+            "bic": "CCRIES2A152",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 291,
+        "fields": {
+            "token": "3160",
+            "name": "C.R. SANT JOSEP DE VILAVELLA",
+            "bic": "CCRIES2A160",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 292,
+        "fields": {
+            "token": "3161",
+            "name": "CAIXA RURAL SANT FORTUNAT",
+            "bic": "BCOEESMM060",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 293,
+        "fields": {
+            "token": "3165",
+            "name": "C.R. SAN ISIDRO DE VILAFAMES",
+            "bic": "CCRIES2A165",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 294,
+        "fields": {
+            "token": "3166",
+            "name": "CAIXA RURAL LES COVES DE VINRO",
+            "bic": "BCOEESMM166",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 295,
+        "fields": {
+            "token": "3169",
+            "name": "COOPERATIVA CREDITO COBANEXPO",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 296,
+        "fields": {
+            "token": "2028",
+            "name": "C.A. CASTILLA LA MANCHA",
+            "bic": "CECAESMM105",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 297,
+        "fields": {
+            "token": "2025",
+            "name": "C.A. Y M.P. DE CORDOBA",
+            "bic": "CSURES2C",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 298,
+        "fields": {
+            "token": "2024",
+            "name": "C.A. Y M.P. DE CORDOBA",
+            "bic": "CSURES2C",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 299,
+        "fields": {
+            "token": "3179",
+            "name": "CAJA RURAL DE ALGINET",
+            "bic": "CCRIES2A179",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 300,
+        "fields": {
+            "token": "2018",
+            "name": "C.A. MUNICIPAL DE BURGOS",
+            "bic": "CAIX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 301,
+        "fields": {
+            "token": "2017",
+            "name": "C.A. Y M.P. CIRC. CAT. DE OBRE",
+            "bic": "CECA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 302,
+        "fields": {
+            "token": "3186",
+            "name": "CAIXA RURAL ALBALAT DELS SOREL",
+            "bic": "CCRIES2A186",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 303,
+        "fields": {
+            "token": "2013",
+            "name": "CATALUNYA CAIXA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": "BBVA"
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 304,
+        "fields": {
+            "token": "2010",
+            "name": "M.P. Y C. GRAL. DE A. DE BADAJ",
+            "bic": "CECA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 305,
+        "fields": {
+            "token": "2001",
+            "name": "CAP ALBACETE",
+            "bic": "CECAESMM105",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 306,
+        "fields": {
+            "token": "2000",
+            "name": "CECABANK",
+            "bic": "CECAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 307,
+        "fields": {
+            "token": "3056",
+            "name": "CAJA RURAL DE ALBACETE",
+            "bic": "BCOEESMM190",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 308,
+        "fields": {
+            "token": "3054",
+            "name": "GRUMECO COOP DE CREDITO",
+            "bic": "CCRIES2A",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 309,
+        "fields": {
+            "token": "3045",
+            "name": "CAIXA RURAL ALTEA",
+            "bic": "CCRIES2A045",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 310,
+        "fields": {
+            "token": "3035",
+            "name": "CAJA LABORAL POPULAR",
+            "bic": "CLPEES2M",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 311,
+        "fields": {
+            "token": "3029",
+            "name": "CAJA DE CREDITO DE PETREL",
+            "bic": "CCRIES2A029",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 312,
+        "fields": {
+            "token": "3025",
+            "name": "CAIXA DE C. DELS ENGINYERS",
+            "bic": "CDENESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 313,
+        "fields": {
+            "token": "3024",
+            "name": "ALCOFAR COOP. DE CREDITO",
+            "bic": "BAOFESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 314,
+        "fields": {
+            "token": "3023",
+            "name": "CAJA RURAL DE GRANADA",
+            "bic": "BCOEESMM023",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 315,
+        "fields": {
+            "token": "1458",
+            "name": "HSBC INVESTMENT BANK PLC SUCUR",
+            "bic": "MIDL",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 316,
+        "fields": {
+            "token": "1457",
+            "name": "DE LAGE LANDEN INTERNATIONAL B",
+            "bic": "LLISESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 317,
+        "fields": {
+            "token": "1456",
+            "name": "CAISSE REGIONALE C.AGR.MUTUEL",
+            "bic": "CRCG",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 318,
+        "fields": {
+            "token": "1454",
+            "name": "NEWEDGE GROUP SUCURSAL EN ESPA",
+            "bic": "NEWGESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 319,
+        "fields": {
+            "token": "1453",
+            "name": "BANCA MONTE PASCHI DI SIENA S.",
+            "bic": "PASC",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 320,
+        "fields": {
+            "token": "1451",
+            "name": "CAISSE REGIONALE C.AGR.MUT.SUD",
+            "bic": "AGRIESB1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 321,
+        "fields": {
+            "token": "1000",
+            "name": "INSTITUTO DE CREDITO OFICIAL",
+            "bic": "ICRO",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 322,
+        "fields": {
+            "token": "639",
+            "name": "BANKINTER BANK",
+            "bic": "BKBK",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 323,
+        "fields": {
+            "token": "91",
+            "name": "BANCO DE ALBACETE",
+            "bic": "ALACESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 324,
+        "fields": {
+            "token": "482",
+            "name": "UNNIM BANC",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 325,
+        "fields": {
+            "token": "483",
+            "name": "KUTXABANK",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 326,
+        "fields": {
+            "token": "484",
+            "name": "CATALUNYA BANC",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 327,
+        "fields": {
+            "token": "486",
+            "name": "BANCO GRUPO CAJATRES",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 328,
+        "fields": {
+            "token": "487",
+            "name": "BANCO MARE NOSTRUM",
+            "bic": "GBMNESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 329,
+        "fields": {
+            "token": "488",
+            "name": "BANCO FINANCIERO Y DE AHORROS",
+            "bic": "BFASESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 330,
+        "fields": {
+            "token": "1538",
+            "name": "INDUSTRIAL &COMMERCIAL BANK OF",
+            "bic": "ICBKESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 331,
+        "fields": {
+            "token": "1539",
+            "name": "BIGBANK AS CONSUMER FINANCE",
+            "bic": "BIGKESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 332,
+        "fields": {
+            "token": "1540",
+            "name": "WALSER PRIVATBANK AG",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 333,
+        "fields": {
+            "token": "1541",
+            "name": "ATTIJARIWAFA BANK EUROPE",
+            "bic": "BCMAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 334,
+        "fields": {
+            "token": "1542",
+            "name": "J.P. MORGAN SECURITIES PLC",
+            "bic": "JPMS",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 335,
+        "fields": {
+            "token": "3191",
+            "name": "CAJA RURAL DE ARAGON S.COOP.CT",
+            "bic": "BCOEESMM191",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 336,
+        "fields": {
+            "token": "3190",
+            "name": "C.R.DE ALBACETE,CIUDAD REAL Y",
+            "bic": "BCOEESMM190",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 337,
+        "fields": {
+            "token": "1543",
+            "name": "COFIDIS SUCURSAL EN ESPAÑA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 338,
+        "fields": {
+            "token": "1544",
+            "name": "ANDBANK ESPAÑA",
+            "bic": "BACAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 339,
+        "fields": {
+            "token": "1545",
+            "name": "CREDIT AGRICOLE LUXEMBOURG",
+            "bic": "AGRIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 340,
+        "fields": {
+            "token": "2131",
+            "name": "C.R.DEL MEDITERRANEO,RURALCAJA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 341,
+        "fields": {
+            "token": "238",
+            "name": "BANCO PASTOR",
+            "bic": "PSTRESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 342,
+        "fields": {
+            "token": "1546",
+            "name": "CNH CAPITAL EUROPE S.A.S.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 343,
+        "fields": {
+            "token": "2420",
+            "name": "IBERCAJA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 344,
+        "fields": {
+            "token": "3100",
+            "name": "CAIXABANK",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 345,
+        "fields": {
+            "token": "5",
+            "name": "BANCO DE ARAGON",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 346,
+        "fields": {
+            "token": "18",
+            "name": "BANCO COCA, S.A.",
+            "bic": "BSCH",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 347,
+        "fields": {
+            "token": "32",
+            "name": "BANCO DE EXPANSION COMERCIAL",
+            "bic": "BBVA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 348,
+        "fields": {
+            "token": "37",
+            "name": "BANCO GARRIGA NOGUES, S.A.",
+            "bic": "BSCH",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 349,
+        "fields": {
+            "token": "44",
+            "name": "BANCO MERIDIONAL, S.A.",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 350,
+        "fields": {
+            "token": "45",
+            "name": "BANCO CREDITO CANARIO, S.A.",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 351,
+        "fields": {
+            "token": "47",
+            "name": "HIJOS DE SATURNINO ULARGUI",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 352,
+        "fields": {
+            "token": "51",
+            "name": "BANCO IBERICO, S.A.",
+            "bic": "BSCH",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 353,
+        "fields": {
+            "token": "52",
+            "name": "BANCA INDUSTRIAL DE BARCELONA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 354,
+        "fields": {
+            "token": "55",
+            "name": "BANCO JAUDENES BARCENA, S.A.",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 355,
+        "fields": {
+            "token": "62",
+            "name": "BANCA MAS SARDA, S.A.",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 356,
+        "fields": {
+            "token": "84",
+            "name": "BANCO DE SAN SEBASTIAN, S.A.",
+            "bic": "BSCH",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 357,
+        "fields": {
+            "token": "268",
+            "name": "SANGONERA LA SECA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 358,
+        "fields": {
+            "token": "276",
+            "name": "CAJA GRANADA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 359,
+        "fields": {
+            "token": "485",
+            "name": "EFFIBANK",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 360,
+        "fields": {
+            "token": "489",
+            "name": "BANCO BASE",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 361,
+        "fields": {
+            "token": "494",
+            "name": "AV. COSTA AZUL",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 362,
+        "fields": {
+            "token": "541",
+            "name": "MARE NOSTRUM",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 363,
+        "fields": {
+            "token": "604",
+            "name": "CAJA RURAL DE CASTILLA LA MANC",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 364,
+        "fields": {
+            "token": "608",
+            "name": "AGENCIA FINANC. ATLAS, CL PARQ",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 365,
+        "fields": {
+            "token": "626",
+            "name": "CAJA RURAL",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 366,
+        "fields": {
+            "token": "751",
+            "name": "C/ANGEL GUIMERA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 367,
+        "fields": {
+            "token": "1176",
+            "name": "SANT PERE 1",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 368,
+        "fields": {
+            "token": "1282",
+            "name": "BANCO SABADELL",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 369,
+        "fields": {
+            "token": "1310",
+            "name": "CREDIT AGRICOLE TOULOUSE 31",
+            "bic": "AGRI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 370,
+        "fields": {
+            "token": "1332",
+            "name": "1332-CAJA DE AHORROS DE MURCIA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 371,
+        "fields": {
+            "token": "1365",
+            "name": "SANT CUGAT VALLES",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 372,
+        "fields": {
+            "token": "1395",
+            "name": "BANC SABADELL",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 373,
+        "fields": {
+            "token": "1416",
+            "name": "VILADECANS",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 374,
+        "fields": {
+            "token": "1434",
+            "name": "TRITON 1",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 375,
+        "fields": {
+            "token": "1645",
+            "name": "ING DIRECT",
+            "bic": "INGD",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 376,
+        "fields": {
+            "token": "1902",
+            "name": "DEUTSCHE BANCK",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 377,
+        "fields": {
+            "token": "2011",
+            "name": "CAJA DE AHORROS MONTE PIEDAD B",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 378,
+        "fields": {
+            "token": "2014",
+            "name": "CAJACIRCULO",
+            "bic": "CECA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 379,
+        "fields": {
+            "token": "2058",
+            "name": "CAJA MAR",
+            "bic": "UCJAES2M",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 380,
+        "fields": {
+            "token": "2070",
+            "name": "BANCAJA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 381,
+        "fields": {
+            "token": "2078",
+            "name": "CAJA AHORROS POPULAR DE VALLAD",
+            "bic": "CSPAES2L",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 382,
+        "fields": {
+            "token": "2127",
+            "name": "VOLSKSWAGEN BANK DIRECT",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 383,
+        "fields": {
+            "token": "2271",
+            "name": "GRUPO CRM RURALCAJA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 384,
+        "fields": {
+            "token": "2540",
+            "name": "FUENTEPELAYO",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 385,
+        "fields": {
+            "token": "2588",
+            "name": "VIRGEN DEL PILAR, 5",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 386,
+        "fields": {
+            "token": "2702",
+            "name": "VOLSKSWAGEN BANK DIRECT",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 387,
+        "fields": {
+            "token": "4270",
+            "name": "CAJA ESPAÑA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 388,
+        "fields": {
+            "token": "5057",
+            "name": "PONTE CALDELAS",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 389,
+        "fields": {
+            "token": "5167",
+            "name": "NOVACIXAGALICIA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 390,
+        "fields": {
+            "token": "5345",
+            "name": "NOVACAIXAGALICIA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 391,
+        "fields": {
+            "token": "5844",
+            "name": "POSTBANK",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 392,
+        "fields": {
+            "token": "6502",
+            "name": "AVDA RAMON Y CAJAL 21 EDF BERR",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 393,
+        "fields": {
+            "token": "7785",
+            "name": "BBVA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 394,
+        "fields": {
+            "token": "8069",
+            "name": "GLOBALCAJA",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 395,
+        "fields": {
+            "token": "8700",
+            "name": "DEUTSCHE BANCK",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 396,
+        "fields": {
+            "token": "8755",
+            "name": "AVDA. 1º MAYO, 14",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 397,
+        "fields": {
+            "token": "6917",
+            "name": "NUEVO MICRO BANK",
+            "bic": "MIKB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 398,
+        "fields": {
+            "token": "239",
+            "name": "EVO BANCO",
+            "bic": "EVOBESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 399,
+        "fields": {
+            "token": "1547",
+            "name": "LOMBARD ODIER (EUROPE)",
+            "bic": "LOCY",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 400,
+        "fields": {
+            "token": "1548",
+            "name": "DELL BANK INTERNATIONAL LTD",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 401,
+        "fields": {
+            "token": "210",
+            "name": "BANCO GALLEGO S.A.",
+            "bic": "GALE",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 402,
+        "fields": {
+            "token": "211",
+            "name": "EBN BANCO DE NEGOCIOS",
+            "bic": "PROAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 403,
+        "fields": {
+            "token": "217",
+            "name": "BANCO HALIFAX HISPANIA",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 404,
+        "fields": {
+            "token": "222",
+            "name": "THE CHASE MANHATTAN BANK",
+            "bic": "CHASESM3",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 405,
+        "fields": {
+            "token": "224",
+            "name": "SANTANDER CONSUMER FINANCE",
+            "bic": "SCFBESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 406,
+        "fields": {
+            "token": "227",
+            "name": "UNOE BANK",
+            "bic": "UNOEESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 407,
+        "fields": {
+            "token": "229",
+            "name": "BANCOPOPULAR-E",
+            "bic": "POPLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 408,
+        "fields": {
+            "token": "232",
+            "name": "BANCO INVERSIS",
+            "bic": "INVLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 409,
+        "fields": {
+            "token": "233",
+            "name": "POPULAR BANCA PRIVADA",
+            "bic": "POPIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 410,
+        "fields": {
+            "token": "411",
+            "name": "CAJA RURAL VALENCIÀ",
+            "bic": "CCRI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 411,
+        "fields": {
+            "token": "493",
+            "name": "CAIXA CATALUNYA",
+            "bic": "CESC",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 412,
+        "fields": {
+            "token": "1001",
+            "name": "BANCO DE CREDITO AGRICOLA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 413,
+        "fields": {
+            "token": "1004",
+            "name": "BANCO DE CREDITO LOCAL",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 414,
+        "fields": {
+            "token": "1005",
+            "name": "BANCO HIPOTECARIO",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 415,
+        "fields": {
+            "token": "1301",
+            "name": "CORPORACION BANCARIA DE ESPAÑA",
+            "bic": "BBVA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 416,
+        "fields": {
+            "token": "1302",
+            "name": "CAJA POSTAL",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 417,
+        "fields": {
+            "token": "1465",
+            "name": "ING DIRECT N.V.",
+            "bic": "INGDESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 418,
+        "fields": {
+            "token": "1474",
+            "name": "CITIBANK INTERNATIONAL PLC",
+            "bic": "CITIESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 419,
+        "fields": {
+            "token": "3055",
+            "name": "CAJA LABORAL",
+            "bic": "",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 420,
+        "fields": {
+            "token": "3063",
+            "name": "CAJA RURAL DE CORDOBA",
+            "bic": "BCOEESMM187",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 421,
+        "fields": {
+            "token": "2030",
+            "name": "CAIXA D'ESTALVIS DE GIRONA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 422,
+        "fields": {
+            "token": "2031",
+            "name": "C. GRAL. DE A. DE GRANADA",
+            "bic": "GBMN",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 423,
+        "fields": {
+            "token": "2032",
+            "name": "C.A. PROV. DE GUADALAJARA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 424,
+        "fields": {
+            "token": "2034",
+            "name": "C.A.DE JEREZ DE LA FRONTERA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 425,
+        "fields": {
+            "token": "2037",
+            "name": "CAJA DE AHORROS DE LA RIOJA",
+            "bic": "CAHM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 426,
+        "fields": {
+            "token": "2038",
+            "name": "BANKIA",
+            "bic": "CAHMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 427,
+        "fields": {
+            "token": "2040",
+            "name": "CAIXA D'ESTALVIS COMARCAL DE M",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": "BBVA"
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 428,
+        "fields": {
+            "token": "2041",
+            "name": "CAIXA MANRESA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 429,
+        "fields": {
+            "token": "2042",
+            "name": "CAIXA D'ESTALVIS LAIETANA",
+            "bic": "CAHM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 430,
+        "fields": {
+            "token": "2043",
+            "name": "CAJA DE AHORROS DE MURCIA",
+            "bic": "GBMN",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 431,
+        "fields": {
+            "token": "2045",
+            "name": "CAIXA D'ESTALVIS DE ONTINYENT",
+            "bic": "CECAESMM045",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 432,
+        "fields": {
+            "token": "2046",
+            "name": "CAP DE ORENSE",
+            "bic": "CAGLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 433,
+        "fields": {
+            "token": "2048",
+            "name": "LIBERBANK",
+            "bic": "CECAESMM048",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 434,
+        "fields": {
+            "token": "2051",
+            "name": "C.A. Y M.P. DE BALEARES",
+            "bic": "GBMN",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 435,
+        "fields": {
+            "token": "2052",
+            "name": "C.INSULAR DE A. DE CANARIAS",
+            "bic": "CAHM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 436,
+        "fields": {
+            "token": "2053",
+            "name": "C AH MUNICIPAL PAMPLONA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 437,
+        "fields": {
+            "token": "2054",
+            "name": "C.A. Y M.P. DE NAVARRA",
+            "bic": "CAIX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 438,
+        "fields": {
+            "token": "2057",
+            "name": "C.A. PROVINCIAL DE PONTEVEDRA",
+            "bic": "CAGLESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 439,
+        "fields": {
+            "token": "2059",
+            "name": "CAIXA D'ESTALVIS DE SABADELL",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": "BBVA"
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 440,
+        "fields": {
+            "token": "2060",
+            "name": "C AH Y SOCORROS DE SAGUNTO",
+            "bic": "CAHMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 441,
+        "fields": {
+            "token": "2061",
+            "name": "C AH M PIEDAD SALAMANCA",
+            "bic": "CSSOES2S",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 442,
+        "fields": {
+            "token": "2065",
+            "name": "C. GENERAL DE A. DE CANARIAS",
+            "bic": "CAIX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 443,
+        "fields": {
+            "token": "2066",
+            "name": "C.A. DE SANTANDER Y CANTABRIA",
+            "bic": "UCJAES2MXXX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 444,
+        "fields": {
+            "token": "2069",
+            "name": "C.A. Y M.P. DE SEGOVIA",
+            "bic": "CAHM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 445,
+        "fields": {
+            "token": "2071",
+            "name": "C. SAN FERNANDO DE SEVILLA Y J",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 446,
+        "fields": {
+            "token": "2073",
+            "name": "CAIXA D'ESTALVIS DE TARRAGONA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 447,
+        "fields": {
+            "token": "0001",
+            "name": "BANCO SANPAOLO",
+            "bic": "BCIT",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 448,
+        "fields": {
+            "token": "0004",
+            "name": "BANCO DE ANDALUCIA",
+            "bic": "POPUESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 449,
+        "fields": {
+            "token": "0008",
+            "name": "BANCO ATLANTICO",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 450,
+        "fields": {
+            "token": "9",
+            "name": "FINANZIA, BANCO DE CREDITO",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 451,
+        "fields": {
+            "token": "0013",
+            "name": "SOLBANK S.A.",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 452,
+        "fields": {
+            "token": "0015",
+            "name": "BANCA CATALANA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 453,
+        "fields": {
+            "token": "0016",
+            "name": "BANCO CENTRAL",
+            "bic": "BSCHESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 454,
+        "fields": {
+            "token": "0019",
+            "name": "DEUTSCHE BANK, S.A.E.",
+            "bic": "DEUTESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 455,
+        "fields": {
+            "token": "0024",
+            "name": "BANCO DE CREDITO BALEAR",
+            "bic": "POPUESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 456,
+        "fields": {
+            "token": "0029",
+            "name": "CREDIT LYONNAIS ESPAÑA",
+            "bic": "CSSOES2S",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 457,
+        "fields": {
+            "token": "0030",
+            "name": "BANCO ESPAÑOL DE CREDITO",
+            "bic": "ESPCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 458,
+        "fields": {
+            "token": "0035",
+            "name": "PRIVANZA,BANCO PERSONAL",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 459,
+        "fields": {
+            "token": "0036",
+            "name": "SANTANDER INVESTMENT",
+            "bic": "SABNESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 460,
+        "fields": {
+            "token": "0038",
+            "name": "SANTANDER BANCO DE EMISIONES",
+            "bic": "TOTAPTPL",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 461,
+        "fields": {
+            "token": "0041",
+            "name": "BANCO DE JEREZ",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 462,
+        "fields": {
+            "token": "0042",
+            "name": "BANCO GUIPUZCOANO",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 463,
+        "fields": {
+            "token": "0043",
+            "name": "BANCO HERRERO",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 464,
+        "fields": {
+            "token": "0046",
+            "name": "BANCO GALLEGO",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 465,
+        "fields": {
+            "token": "0048",
+            "name": "BANCO SIMEON",
+            "bic": "CGDIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 466,
+        "fields": {
+            "token": "0049",
+            "name": "BANCO SANTANDER",
+            "bic": "BSCHESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 467,
+        "fields": {
+            "token": "0050",
+            "name": "BANCO DEL COMERCIO",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 468,
+        "fields": {
+            "token": "0053",
+            "name": "BANCO INTERNACIONAL COMERCIO",
+            "bic": "BSCHESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 469,
+        "fields": {
+            "token": "0056",
+            "name": "BANCA JOVER",
+            "bic": "CAHMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 470,
+        "fields": {
+            "token": "58",
+            "name": "BNP PARIBAS ESPAÑA",
+            "bic": "BNPAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 471,
+        "fields": {
+            "token": "0059",
+            "name": "BANCO DE MADRID",
+            "bic": "MADRESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 472,
+        "fields": {
+            "token": "0061",
+            "name": "BANCA MARCH",
+            "bic": "BMARES2M",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 473,
+        "fields": {
+            "token": "0063",
+            "name": "BANCO SERV.FINANC.CAJA MADRID-",
+            "bic": "CAHM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 474,
+        "fields": {
+            "token": "0065",
+            "name": "BARCLAYS BANK",
+            "bic": "BARCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 475,
+        "fields": {
+            "token": "0067",
+            "name": "BANCO MERCANTIL TARRAGONA",
+            "bic": "BSCHESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 476,
+        "fields": {
+            "token": "0068",
+            "name": "BANCO GESTION E INVERSION FINA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 477,
+        "fields": {
+            "token": "0069",
+            "name": "BANCO DE MURCIA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 478,
+        "fields": {
+            "token": "0072",
+            "name": "BANCO PASTOR, S.A.",
+            "bic": "PSTR",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 479,
+        "fields": {
+            "token": "0073",
+            "name": "OPEN BANK",
+            "bic": "OPENESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 480,
+        "fields": {
+            "token": "0075",
+            "name": "BANCO SANTANDER",
+            "bic": "POPUESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 481,
+        "fields": {
+            "token": "0076",
+            "name": "BANCO DE PROGRESO",
+            "bic": "BSAB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 482,
+        "fields": {
+            "token": "0078",
+            "name": "BANCA PUEYO",
+            "bic": "BAPUES22",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 483,
+        "fields": {
+            "token": "0081",
+            "name": "BANCO DE SABADELL",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 484,
+        "fields": {
+            "token": "0082",
+            "name": "BANCO DE CASTILLA",
+            "bic": "POPUESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 485,
+        "fields": {
+            "token": "85",
+            "name": "BANCO DE SANTANDER",
+            "bic": "BSCHESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 486,
+        "fields": {
+            "token": "236",
+            "name": "SABADELL SOLBANK",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 487,
+        "fields": {
+            "token": "0237",
+            "name": "CAJASUR BANCO",
+            "bic": "CSURES2C",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 488,
+        "fields": {
+            "token": "1537",
+            "name": "LLOYDS BANK, PLC SUCURSAL EN E",
+            "bic": "LOYD",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 489,
+        "fields": {
+            "token": "2108",
+            "name": "BANCO DE C.ESPAÑA IN.SALAMANCA",
+            "bic": "CSPAES2L108",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 490,
+        "fields": {
+            "token": "0086",
+            "name": "BANCO BANIF",
+            "bic": "NORTESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 491,
+        "fields": {
+            "token": "0093",
+            "name": "BANCO DE VALENCIA",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 492,
+        "fields": {
+            "token": "0094",
+            "name": "RBC INVESTOR SERVICES ESPAÑA",
+            "bic": "BVALESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 493,
+        "fields": {
+            "token": "0095",
+            "name": "BANCO DE VASCONIA",
+            "bic": "POPUESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 494,
+        "fields": {
+            "token": "0097",
+            "name": "BANCO DE GALICIA",
+            "bic": "POPUESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 495,
+        "fields": {
+            "token": "0099",
+            "name": "BANKIA BANCA PRIVADA",
+            "bic": "CAHMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 496,
+        "fields": {
+            "token": "0100",
+            "name": "BANCO DE VITORIA",
+            "bic": "ESPCESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 497,
+        "fields": {
+            "token": "0101",
+            "name": "ISBANC, BANCO PRIVADO DE NEGOC",
+            "bic": "CAIX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 498,
+        "fields": {
+            "token": "0103",
+            "name": "BANCO ZARAGOZANO",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 499,
+        "fields": {
+            "token": "0104",
+            "name": "BANCO EXTERIOR DE ESPAÑA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 500,
+        "fields": {
+            "token": "0105",
+            "name": "CREDIT LYONAIS",
+            "bic": "BSUIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 501,
+        "fields": {
+            "token": "0106",
+            "name": "LLOYDS TSB BANK P.L.C.",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 502,
+        "fields": {
+            "token": "0107",
+            "name": "BANCA NAZIONALE DEL LAVORO",
+            "bic": "BNLIESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 503,
+        "fields": {
+            "token": "0108",
+            "name": "SOCIETE GENERALE",
+            "bic": "SOGEESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 504,
+        "fields": {
+            "token": "0111",
+            "name": "BANCO DE FOMENTO",
+            "bic": "SCFBESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 505,
+        "fields": {
+            "token": "0112",
+            "name": "BANCO URQUIJO UNION",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 506,
+        "fields": {
+            "token": "0114",
+            "name": "BANCO GRANADA JEREZ",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 507,
+        "fields": {
+            "token": "0118",
+            "name": "BANCO DE ASTURIAS",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 508,
+        "fields": {
+            "token": "0119",
+            "name": "BANCO SANPAOLO",
+            "bic": "BSABESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 509,
+        "fields": {
+            "token": "0122",
+            "name": "CITIBANK ESPAÑA",
+            "bic": "CITIES2X",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 510,
+        "fields": {
+            "token": "0124",
+            "name": "BANCO DE LA EXPORTACION",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 511,
+        "fields": {
+            "token": "0125",
+            "name": "BANCOFAR",
+            "bic": "BAOFESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 512,
+        "fields": {
+            "token": "0127",
+            "name": "BANCO DE ALICANTE",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 513,
+        "fields": {
+            "token": "0128",
+            "name": "BANKINTER",
+            "bic": "BKBKESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 514,
+        "fields": {
+            "token": "0130",
+            "name": "BANCO CAIXA GERAL",
+            "bic": "CGDIESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 515,
+        "fields": {
+            "token": "0131",
+            "name": "BANCO ESPIRITO SANTO SUCURSAL",
+            "bic": "BESMESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 516,
+        "fields": {
+            "token": "0133",
+            "name": "NUEVO MICRO BANK",
+            "bic": "MIKBESB1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 517,
+        "fields": {
+            "token": "0137",
+            "name": "BANCO DIRECTO ARGENTARIA",
+            "bic": "BBVAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 518,
+        "fields": {
+            "token": "0138",
+            "name": "BANKOA",
+            "bic": "BKOAES22",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 519,
+        "fields": {
+            "token": "0142",
+            "name": "BANCO PEQUEÑA Y MEDIANA EMPRES",
+            "bic": "CAIXESBB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 520,
+        "fields": {
+            "token": "0149",
+            "name": "BNP PARIBAS SUCURSAL EN ESPAÑA",
+            "bic": "BNPAESMS",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 521,
+        "fields": {
+            "token": "0156",
+            "name": "THE ROYAL BANK OF SCOTLAND PLC",
+            "bic": "ABNAESMM",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 522,
+        "fields": {
+            "token": "0159",
+            "name": "COMMERZBANK",
+            "bic": "COBAESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 523,
+        "fields": {
+            "token": "0168",
+            "name": "ING BELGIUM",
+            "bic": "BBRUESMX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 524,
+        "fields": {
+            "token": "30056",
+            "name": "HSBC",
+            "bic": "CCFR",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 525,
+        "fields": {
+            "token": "20041",
+            "name": "LA BANQUE POSTALE",
+            "bic": "PSST",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 526,
+        "fields": {
+            "token": "10107",
+            "name": "BRED BANQUE POPULAIRE",
+            "bic": "BRED",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 527,
+        "fields": {
+            "token": "2711",
+            "name": "-",
+            "bic": "MMXX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 528,
+        "fields": {
+            "token": "5338",
+            "name": "IBERCAJA",
+            "bic": "MMXX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 529,
+        "fields": {
+            "token": "1090",
+            "name": "BP AQUITAINE CENTRE ATLANTIQUE",
+            "bic": "BANC",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 530,
+        "fields": {
+            "token": "1313",
+            "name": "CAISSE D'EPARGNE",
+            "bic": "BPCE",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 531,
+        "fields": {
+            "token": "5158",
+            "name": "MADRID",
+            "bic": "BSAB",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 532,
+        "fields": {
+            "token": "10278",
+            "name": "-",
+            "bic": "CMCI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 533,
+        "fields": {
+            "token": "4061",
+            "name": "BOURSORAMA BANQUE",
+            "bic": "SOGE",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 534,
+        "fields": {
+            "token": "1832",
+            "name": "REVOLUT BANK UAB",
+            "bic": "REVO",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 535,
+        "fields": {
+            "token": "4775",
+            "name": "-",
+            "bic": "MMXX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 536,
+        "fields": {
+            "token": "6888",
+            "name": "QONTO",
+            "bic": "QNTO",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 537,
+        "fields": {
+            "token": "6713",
+            "name": "PREPAID FINANCIAL SERVICES LIM",
+            "bic": "PFSS",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 538,
+        "fields": {
+            "token": "30004",
+            "name": "BNP PARIBAS",
+            "bic": "FRPP",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 539,
+        "fields": {
+            "token": "30002",
+            "name": "LCL BANQUE ET ASSURANCE",
+            "bic": "CRLY",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 540,
+        "fields": {
+            "token": "15135",
+            "name": "CAISSE D'EPARGNE",
+            "bic": "CEPA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 541,
+        "fields": {
+            "token": "1550",
+            "name": "BANCA ÉTICA FIARE",
+            "bic": "ETICES21",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 542,
+        "fields": {
+            "token": "1130",
+            "name": "L'EUROPEENNE DE BANQUE",
+            "bic": "PREU",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 543,
+        "fields": {
+            "token": "1660",
+            "name": "BANC POPULAR DU SUD",
+            "bic": "FRXX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 544,
+        "fields": {
+            "token": "1009",
+            "name": "BANCO CIC",
+            "bic": "CMCI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 545,
+        "fields": {
+            "token": "17807",
+            "name": "BANQUE POPULAIRE",
+            "bic": "CCBP",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 546,
+        "fields": {
+            "token": "900",
+            "name": "BANC ESLOVAQUIA",
+            "bic": "BANC",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 547,
+        "fields": {
+            "token": "1563",
+            "name": "N26",
+            "bic": "NTSBESM1",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 548,
+        "fields": {
+            "token": "30077",
+            "name": "SOCIETE MARSEILLAISE DE CREDIT",
+            "bic": "SMCT",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 549,
+        "fields": {
+            "token": "17106",
+            "name": "CREDIT AGRICOLE SUD M.",
+            "bic": "AGRI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 550,
+        "fields": {
+            "token": "1027",
+            "name": "-",
+            "bic": "CMCI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 551,
+        "fields": {
+            "token": "1350",
+            "name": "AGRI BANC",
+            "bic": "AGRI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 552,
+        "fields": {
+            "token": "1131",
+            "name": "CAISSE D'EPARGNE CEPAC",
+            "bic": "CEPA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 553,
+        "fields": {
+            "token": "3000",
+            "name": "-",
+            "bic": "BNPA",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 554,
+        "fields": {
+            "token": "1583",
+            "name": "REVOLUT BANK UAB",
+            "bic": "REVOESM2XXX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 555,
+        "fields": {
+            "token": "1348",
+            "name": "CAISSE D'EPARGNE",
+            "bic": "BPCE",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 556,
+        "fields": {
+            "token": "6308",
+            "name": "-",
+            "bic": "MMXX",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 557,
+        "fields": {
+            "token": "1680",
+            "name": "BANQUE POPULAIRE",
+            "bic": "CCBP",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 558,
+        "fields": {
+            "token": "30003",
+            "name": "RELEVE D'IDENTITE BANCAIRE",
+            "bic": "SOGE",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 559,
+        "fields": {
+            "token": "30066",
+            "name": "RELEVE D'IDENTITE BANCAIRE",
+            "bic": "CMCI",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 560,
+        "fields": {
+            "token": "15589",
+            "name": "CREDIT MUTUEL DE BRETAGNE",
+            "bic": "CMBR",
+            "active": "S",
+            "taken_by": ""
+        }
+    },
+    {
+        "model": "coredata.Bank",
+        "pk": 561,
+        "fields": {
+            "token": "6893",
+            "name": "NICKEL",
+            "bic": "FPES",
+            "active": "S",
+            "taken_by": ""
+        }
+    }
+]

@@ -1,0 +1,32 @@
+[
+  {
+      "model": "service.companytype",
+      "pk": 1,
+      "fields": {
+          "token": "arr",
+          "name": "Arrendament",
+          "position": 0,
+          "is_default": false
+      }
+  },
+  {
+      "model": "service.companytype",
+      "pk": 2,
+      "fields": {
+          "token": "con",
+          "name": "Concessió",
+          "position": 1,
+          "is_default": false
+      }
+  },
+  {
+      "model": "service.companytype",
+      "pk": 3,
+      "fields": {
+          "token": "mix",
+          "name": "Empresa mixta",
+          "position": 2,
+          "is_default": false
+      }
+  }
+]

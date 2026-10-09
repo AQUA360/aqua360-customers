@@ -1,0 +1,170 @@
+[
+    {
+        "model": "billing.paymentstatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Pendent",
+            "color": null,
+            "position": 0,
+            "description": "S’ha generat i està a l’espera de passar per remesa o a l’espera de liquidar-se (per transferència, targeta, efectiu, etc.)",
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Pagat",
+            "color": "green",
+            "position": 2,
+            "description": "El pagament ha estat liquidat per complet",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Vençut",
+            "color": "purple",
+            "position": 4,
+            "description": "S’ha finalitzat el seu període de venciment i no s’ha liquidat",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-2",
+            "name": "Retornat",
+            "color": "purple",
+            "position": 3,
+            "description": "(Només per SEPA) El rebut és retornat",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "2",
+            "name": "Processat",
+            "color": "blue",
+            "position": 1,
+            "description": "El pagament ha estat girat per SEPA o registrat a factura-e",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-3",
+            "name": "Morositat",
+            "color": "yellow",
+            "description": "S’ha reclamat el seu pagament però, segons criteri de cada operadora, difícilment s’acabarà cobrant",
+            "position": 6,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 7,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "4",
+            "name": "En compromís",
+            "color": "purple",
+            "description": "El pagament ha passat a formar part d’un Compromís de pagament (junt amb la factura) i està a l’espera que es liquidi",
+            "position": 5,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 8,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-5",
+            "name": "Irrecuperable",
+            "color": "red",
+            "description": "A afectes comptables quedaria a dotació per insolvències (694)",
+            "position": 7,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 9,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-6",
+            "name": "Abonat",
+            "color": null,
+            "description": "El pagament ha estat abonat",
+            "position": 8,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 10,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "5",
+            "name": "En saldo",
+            "color": "blue",
+            "description": "L'import del pagament es troba a la cartera del contracte",
+            "position": 8,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 11,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-4",
+            "name": "Abonament",
+            "color": "green",
+            "description": "Abonament de factura",
+            "position": 9,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.paymentstatus",
+        "pk": 12,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-7",
+            "name": "Anul·lat",
+            "color": null,
+            "description": "Pagament anul·lat, sense cap moviment registrat",
+            "position": 10,
+            "is_default": false
+        }
+    }
+]

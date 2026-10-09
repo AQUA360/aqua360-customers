@@ -1,0 +1,256 @@
+{% load svg_converter %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Modificació Ús Contracte</title>
+    <style>
+        *,
+        ::after,
+        ::before {
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+
+        }
+
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+
+            @frame footer_frame_cif {
+                /* Another static Frame */
+                -pdf-frame-content: footer_frame_cif;
+                left: 5pt;
+                width: 100%;
+                top: 825pt;
+                height: 80pt;
+            }
+        }
+
+        @font-face {
+            font-family: "STIXTwoTextBold";
+            src: url('config/fonts/STIXTwoTextBold.ttf');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'OpenSansBold';
+            src: url('config/fonts/OpenSans-Bold.ttf');
+            font-weight: bold;
+        }
+
+
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('config/fonts/OpenSans-Regular.ttf');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 14px;
+        }
+
+        table {
+            border-collapse: collapse;
+            margin: 0px;
+            padding: 0px;
+        }
+
+        table td {
+            padding: 0px;
+            margin: 0px;
+        }
+
+        .title {
+            font-family: 'Times New Roman', serif;
+            font-size: 18px;
+            font-weight: bold;
+            color: #444444;
+            line-height: 18px;
+        }
+
+        .text p {
+            line-height: 15px;
+        }
+
+        .footer,
+        .signatures {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    {% load i18n %}
+    {% language 'ca' %}
+    <!-- Header with Company Logo and Contact Information -->
+    <div class="header">
+        <table width="100%" style="margin-top: 10px;">
+            <tr>
+                {% if company.logo %}
+                <td width="50%">
+                    <img src="{{ company.logo }}" alt="Company Logo">
+                </td>
+                {% endif %}
+                <td width="50%" style="vertical-align: top; text-align: right;">
+                    <img src="{{ exploitation_image }}" alt="Expoitation Image">
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <br />
+
+    <br />
+    <div>
+        <div style="padding-bottom: 5px;">
+            <table style="width: 100%; margin-bottom: 10px; border-bottom: 1px solid #282828;">
+                <tr style="vertical-align: bottom;">
+                    <td class="title">
+                        Comunicat de Modificació de Contracte
+                    </td>
+                    <td
+                        style="line-height: 14px; text-align: left; font-weight: bold;  width: 30%; font-size: 14px; color: #444444; font-family: 'Times New Roman', serif; padding: 0;">
+                        {{ contract.token }}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <div style="line-height: 18px;">{{ holder.full_name}}
+        </div>
+        <div style="line-height: 18px;">{{ supply_address.address_complete }} ({{ contract.supply_point_default.token }})
+        </div>
+        <table style="width: 100%; margin-top: 2px;">
+            <tr style="padding-top: 4px;">
+                <td style="width:20%; color: rgb(107, 107, 109);">Referència: </td>
+                <td style="width:auto"> {{ contract.token }} </td>
+                <td style="width:20%; color: rgb(107, 107, 109);">Tipus subministre:</td>
+                {% if contract.supply_point_default.type %}
+                <td style="width:auto">{{ contract.supply_point_default.type.name }} </td>
+                {% else %}
+                <td style="width:auto"> - </td>
+                {% endif %}
+            </tr>
+            <tr>
+                <td style="color: rgb(107, 107, 109);">R. Cadastral:</td>
+                {% if request.supply_point_default.cadastral %}
+                <td> {{request.supply_point_default.cadastral}}</td>
+                {% else %}
+                <td> - </td>
+                {% endif %}
+            </tr>
+        </table>
+    </div>
+    <br />
+    {% comment %} <div>
+        <table style="margin-bottom: 10px;border-bottom: 1px solid #282828;">
+            <tr>
+                <td class="title">
+                    Dades del titular
+                </td>
+                <td class="title">
+                </td>
+            </tr>
+        </table>
+        <table style="">
+            <tr style="padding-top: 4px;">
+                <td style="line-height: 15px;">{{ holder.full_name}}<br />
+                    {{billing_address.address_complete}}<br />
+                    {{billing_address.postal_code}} ({{billing_address.province.name}})
+                </td>
+            </tr>
+        </table>
+    </div>
+    <br /> {% endcomment %}
+    {% comment %} <div>
+        <div class="title" style="border-bottom: 1px solid #282828; margin-bottom: 10px;">
+            Canvi Tipus d'Ús
+        </div>
+
+        <table cellspacing="0" cellpadding="0">
+            <tr>
+                <td style="color: rgb(107, 107, 109);">    
+                De:        
+                    {{request.use_type.name}}
+                </td>
+                <td>
+                    <span style="color: rgb(107, 107, 109);">A:</span> 
+                    {{new_use_type.name}}
+                </td>
+            </tr>
+        </table>
+    </div> {% endcomment %}
+    <hr style="line-height: 1px; border-top: 1px solid #282828; margin: 0px;" />
+    <div class="text">
+        <p style="padding-top: 5px;">
+            D'acord amb la vostra sol·licitud, i després d'analitzar la documentació aportada, hem procedit a modificar les condicions del contracte esmentat en el termes següents:
+        </p>
+        <p style="padding-left: 30px;">
+            Canvi de tipus d'ús de {{contract.use_type.name}} a {{use_type.name}}
+        </p>
+        <p style="padding-top: 5px;">
+            Així com qualsevol altra dada no contractual que s'hagi comunicat adequadament en forma i temps a la companyia.
+            <br/>
+            Aquestes condicions contractuals substitueixen les anteriors pel que fa als mateixos conceptes, i formen part del contracte subscrit amb la companyia, amb efectes des de {{ today|date:"j F Y" }}.
+            <br/>
+            El titular manifesta que coneix i accepta la situació del subministrament, tant pel que fa als seus aspectes tècnics com econòmics, comprometent-se a abonar el deute pendent en concepte de subministraments efectuats.
+        </p>
+
+        <p style="text-decoration: underline;">
+        Cal signar el present comunicat i retornar-lo, juntament amb la documentació pendent a la nostra oficina.
+        </p>
+
+    </div>
+    <br />
+    <div>
+        <table style="border-top: 1px solid #282828; padding-top: 5px; line-height: 15px;">
+            <tr>
+                <td class="title" style="font-size: 14px; line-height: 15px; padding-top: 5px;">
+                    L'Empresa
+
+                </td>
+                <td class="title" style="font-size: 14px; line-height: 15px; padding-top: 5px;">
+                    El Titular
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <img src="{{ signed_image }}" alt="Signed Image" style="height: 80px;">
+                </td>
+                <td>
+                </td>
+            </tr>
+        </table>
+
+        <p style="text-align: left; font-size: 14px; line-height: 15px;">{{ today|date:"l, j F Y" }}</p>
+    </div>
+
+    {% endlanguage %}
+    {% comment %} <div>
+        <pdf:nextpage />
+    </div> {% endcomment %}
+
+    <!-- Signature Section -->
+    {% if company.data_protection_law_text %}
+    <div id="footer_frame_cif">
+        <p style="text-align: left; color: DodgerBlue; line-height: 15px; font-size: 10px;">{{ company.data_protection_law_text }}</p>
+    </div>
+    {% endif %}
+</body>
+
+</html>

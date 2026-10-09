@@ -1,0 +1,1323 @@
+[
+    {
+        "model": "coredata.country",
+        "pk": 2,
+        "fields": {
+            "name": "Alemania",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "DE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 3,
+        "fields": {
+            "name": "Argelia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "DZ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 4,
+        "fields": {
+            "name": "Andorra",
+            "in_europe": true,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "AD"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 5,
+        "fields": {
+            "name": "Angola",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "AO"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 6,
+        "fields": {
+            "name": "Antártida",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "AQ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 7,
+        "fields": {
+            "name": "Antigua y Barbuda",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "AG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 8,
+        "fields": {
+            "name": "Arabia Saudí",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "SA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 9,
+        "fields": {
+            "name": "Armenia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "AM"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 10,
+        "fields": {
+            "name": "Australia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "AU"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 11,
+        "fields": {
+            "name": "Austria",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "AT"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 12,
+        "fields": {
+            "name": "Azerbaiyán",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "AZ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 13,
+        "fields": {
+            "name": "Bahamas",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "BS"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 14,
+        "fields": {
+            "name": "Baréin",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "BH"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 15,
+        "fields": {
+            "name": "Bangladés",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "BD"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 16,
+        "fields": {
+            "name": "Barbados",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "BB"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 17,
+        "fields": {
+            "name": "Bélgica",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "BE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 19,
+        "fields": {
+            "name": "Benín",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "BJ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 20,
+        "fields": {
+            "name": "Bosnia y Herzegovina",
+            "in_europe": true,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "BA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 21,
+        "fields": {
+            "name": "Botsuana",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "BW"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 22,
+        "fields": {
+            "name": "Brasil",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "BR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 23,
+        "fields": {
+            "name": "Brunéi",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "BN"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 24,
+        "fields": {
+            "name": "Bulgaria",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "BG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 25,
+        "fields": {
+            "name": "Burkina Faso",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "BF"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 26,
+        "fields": {
+            "name": "Burundi",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "BI"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 27,
+        "fields": {
+            "name": "Cabo Verde",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "CV"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 28,
+        "fields": {
+            "name": "Camboya",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "KH"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 29,
+        "fields": {
+            "name": "Camerún",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "CM"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 30,
+        "fields": {
+            "name": "Canadá",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "CA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 32,
+        "fields": {
+            "name": "China",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "CN"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 33,
+        "fields": {
+            "name": "Colombia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "CO"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 34,
+        "fields": {
+            "name": "Comoras",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "KM"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 35,
+        "fields": {
+            "name": "Congo",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "CG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 36,
+        "fields": {
+            "name": "República Democrática del Congo",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "CD"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 37,
+        "fields": {
+            "name": "Costa Rica",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "CR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 38,
+        "fields": {
+            "name": "Croacia",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "HR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 39,
+        "fields": {
+            "name": "Cuba",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "CU"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 40,
+        "fields": {
+            "name": "Dinamarca",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "DK"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 41,
+        "fields": {
+            "name": "Dominica",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "DM"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 42,
+        "fields": {
+            "name": "República Dominicana",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "DO"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 43,
+        "fields": {
+            "name": "Ecuador",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "EC"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 44,
+        "fields": {
+            "name": "Egipto",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "EG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 45,
+        "fields": {
+            "name": "El Salvador",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "SV"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 46,
+        "fields": {
+            "name": "Emiratos Árabes Unidos",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "AE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 47,
+        "fields": {
+            "name": "Reino Unido",
+            "in_europe": true,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "GB"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 48,
+        "fields": {
+            "name": "España",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "is_default": true,
+            "iso_code": "ES"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 49,
+        "fields": {
+            "name": "Estados Unidos",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "US"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 50,
+        "fields": {
+            "name": "Estonia",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "EE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 51,
+        "fields": {
+            "name": "Etiopía",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "ET"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 52,
+        "fields": {
+            "name": "Filipinas",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "PH"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 53,
+        "fields": {
+            "name": "Finlandia",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "FI"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 54,
+        "fields": {
+            "name": "Francia",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "FR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 55,
+        "fields": {
+            "name": "Gambia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "GM"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 56,
+        "fields": {
+            "name": "Ghana",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "GH"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 57,
+        "fields": {
+            "name": "Grecia",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "GR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 58,
+        "fields": {
+            "name": "Groenlandia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "GL"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 59,
+        "fields": {
+            "name": "Guatemala",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "GT"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 60,
+        "fields": {
+            "name": "Guinea",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "GN"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 61,
+        "fields": {
+            "name": "Guinea Ecuatorial",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "GQ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 62,
+        "fields": {
+            "name": "Guyana",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "GY"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 63,
+        "fields": {
+            "name": "Haití",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "HT"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 64,
+        "fields": {
+            "name": "Países Bajos",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "NL"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 65,
+        "fields": {
+            "name": "Hungría",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "HU"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 66,
+        "fields": {
+            "name": "India",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "IN"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 67,
+        "fields": {
+            "name": "Indonesia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "ID"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 68,
+        "fields": {
+            "name": "Irán",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "IR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 69,
+        "fields": {
+            "name": "Irlanda",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "IE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 70,
+        "fields": {
+            "name": "Islandia",
+            "in_europe": true,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "IS"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 71,
+        "fields": {
+            "name": "Italia",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "IT"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 72,
+        "fields": {
+            "name": "Jamaica",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "JM"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 73,
+        "fields": {
+            "name": "Japón",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "JP"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 74,
+        "fields": {
+            "name": "Jordania",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "JO"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 75,
+        "fields": {
+            "name": "Kazajistán",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "KZ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 76,
+        "fields": {
+            "name": "Kenia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "KE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 77,
+        "fields": {
+            "name": "Kirguistán",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "KG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 78,
+        "fields": {
+            "name": "Kiribati",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "KI"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 79,
+        "fields": {
+            "name": "Laos",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "LA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 80,
+        "fields": {
+            "name": "Lesoto",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "LS"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 81,
+        "fields": {
+            "name": "Lituania",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "LT"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 82,
+        "fields": {
+            "name": "Luxemburgo",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "LU"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 83,
+        "fields": {
+            "name": "Malasia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "MY"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 84,
+        "fields": {
+            "name": "Malaui",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "MW"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 85,
+        "fields": {
+            "name": "Malta",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "MT"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 86,
+        "fields": {
+            "name": "Marruecos",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "MA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 87,
+        "fields": {
+            "name": "Mauricio",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "MU"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 88,
+        "fields": {
+            "name": "Mauritania",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "MR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 89,
+        "fields": {
+            "name": "México",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "MX"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 90,
+        "fields": {
+            "name": "Moldavia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "MD"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 91,
+        "fields": {
+            "name": "Mongolia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "MN"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 92,
+        "fields": {
+            "name": "Montenegro",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "ME"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 93,
+        "fields": {
+            "name": "Namibia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "NA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 94,
+        "fields": {
+            "name": "Nauru",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "NR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 95,
+        "fields": {
+            "name": "Neerlandes",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "AN"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 96,
+        "fields": {
+            "name": "Nueva Zelanda",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "NZ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 97,
+        "fields": {
+            "name": "Níger",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "NE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 98,
+        "fields": {
+            "name": "Nigeria",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "NG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 99,
+        "fields": {
+            "name": "Noruega",
+            "in_europe": true,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "NO"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 100,
+        "fields": {
+            "name": "Panamá",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "PA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 101,
+        "fields": {
+            "name": "Papúa Nueva Guinea",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "PG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 102,
+        "fields": {
+            "name": "Paraguay",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "PY"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 104,
+        "fields": {
+            "name": "Rumanía",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "RO"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 105,
+        "fields": {
+            "name": "Rusia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "RU"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 107,
+        "fields": {
+            "name": "Serbia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "RS"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 108,
+        "fields": {
+            "name": "Sierra Leona",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "SL"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 109,
+        "fields": {
+            "name": "Singapur",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "SG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 110,
+        "fields": {
+            "name": "Sudáfrica",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "ZA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 111,
+        "fields": {
+            "name": "Sudán",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": false,
+            "iso_code": "SD"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 112,
+        "fields": {
+            "name": "Suecia",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "SE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 113,
+        "fields": {
+            "name": "Suiza",
+            "in_europe": true,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "CH"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 114,
+        "fields": {
+            "name": "Tanzania",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "TZ"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 115,
+        "fields": {
+            "name": "Tailandia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "TH"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 117,
+        "fields": {
+            "name": "Trinidad y Tobago",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "TT"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 118,
+        "fields": {
+            "name": "Turquía",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "TR"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 119,
+        "fields": {
+            "name": "Uganda",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "UG"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 120,
+        "fields": {
+            "name": "Ucrania",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "UA"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 121,
+        "fields": {
+            "name": "Uruguay",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "UY"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 122,
+        "fields": {
+            "name": "Venezuela",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "VE"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 123,
+        "fields": {
+            "name": "Vietnam",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "VN"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 124,
+        "fields": {
+            "name": "Zambia",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "ZM"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 125,
+        "fields": {
+            "name": "Zimbabue",
+            "in_europe": false,
+            "is_sepa": false,
+            "has_iban": true,
+            "iso_code": "ZW"
+        }
+    },
+    {
+        "model": "coredata.country",
+        "pk": 126,
+        "fields": {
+            "name": "Inglaterra",
+            "in_europe": false,
+            "is_sepa": true,
+            "has_iban": true,
+            "iso_code": "GBR"
+        }
+    }
+]

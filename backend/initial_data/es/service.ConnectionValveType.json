@@ -1,0 +1,74 @@
+[
+  {
+      "model": "service.connectionvalvetype",
+      "pk": 1,
+      "fields": {
+          "token": "composta-volant",
+          "name": "Compuerta - Volante",
+          "position": null,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionvalvetype",
+      "pk": 2,
+      "fields": {
+          "token": "composta-caputxo",
+          "name": "Compuerta - Capuchón",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionvalvetype",
+      "pk": 3,
+      "fields": {
+          "token": "esfera-caputxo",
+          "name": "Esfera - Capuchón",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionvalvetype",
+      "pk": 4,
+      "fields": {
+          "token": "esfera-maneta",
+          "name": "Esfera - Maneta",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionvalvetype",
+      "pk": 5,
+      "fields": {
+          "token": "globus",
+          "name": "Globus",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionvalvetype",
+      "pk": 6,
+      "fields": {
+          "token": "papallona",
+          "name": "Mariposa",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

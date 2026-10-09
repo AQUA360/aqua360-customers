@@ -1,0 +1,47 @@
+[
+    {
+        "model": "pricing.articlecode",
+        "pk": 1,
+        "fields": {
+            "token": "part_fixa",
+            "name": "ACA Part fixa",
+            "position": 0
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 3,
+        "fields": {
+            "token": "part_variable",
+            "name": "ACA Part variable",
+            "position": 1
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 4,
+        "fields": {
+            "token": "exempt",
+            "name": "ACA Exempt",
+            "position": 2
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 5,
+        "fields": {
+            "token": "ramader_0",
+            "name": "ACA Ramader 0",
+            "position": 3
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 6,
+        "fields": {
+            "token": "mes_dir",
+            "name": "ACA Mesurament directe",
+            "position": 4
+        }
+    }
+]

@@ -1,0 +1,41 @@
+[
+  {
+      "model": "service.supplypointstatus",
+      "pk": 1,
+      "fields": {
+          "token": "1",
+          "name": "Activo",
+          "color": "green",
+          "position": 0,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointstatus",
+      "pk": 14,
+      "fields": {
+          "token": "0",
+          "name": "Pendiente de contratación",
+          "color": null,
+          "position": 1,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointstatus",
+      "pk": 15,
+      "fields": {
+          "token": "-1",
+          "name": "Baja",
+          "color": "orange",
+          "position": 4,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

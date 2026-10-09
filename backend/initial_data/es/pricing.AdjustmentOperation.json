@@ -1,0 +1,34 @@
+[
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 1,
+        "fields": {
+            "token": "min",
+            "name": "Mínimo"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 2,
+        "fields": {
+            "token": "max",
+            "name": "Máximo"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 3,
+        "fields": {
+            "token": "ptg",
+            "name": "Porcentaje"
+        }
+    },
+    {
+        "model": "pricing.adjustmentoperation",
+        "pk": 4,
+        "fields": {
+            "token": "ext",
+            "name": "Ampliación de Tramo"
+        }
+    }
+]

@@ -1,0 +1,42 @@
+[
+    {
+        "model": "pricing.productorigin",
+        "pk": 1,
+        "fields": {
+            "token": "aigua",
+            "name": "Agua"
+        }
+    },
+    {
+        "model": "pricing.productorigin",
+        "pk": 2,
+        "fields": {
+            "token": "contracte",
+            "name": "Contrato"
+        }
+    },
+    {
+        "model": "pricing.productorigin",
+        "pk": 3,
+        "fields": {
+            "token": "altres",
+            "name": "Otros"
+        }
+    },
+    {
+        "model": "pricing.productorigin",
+        "pk": 4,
+        "fields": {
+            "token": "escomesa",
+            "name": "Acometida"
+        }
+    },
+    {
+        "model": "pricing.productorigin",
+        "pk": 5,
+        "fields": {
+            "token": "subministrament",
+            "name": "Suministro"
+        }
+    }
+]

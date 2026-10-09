@@ -1,0 +1,110 @@
+[
+  {
+      "model": "service.supplypointsource",
+      "pk": 1,
+      "fields": {
+          "token": "diposit_pressio",
+          "name": "DEPÓSITO DE PRESIÓN",
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 2,
+      "fields": {
+          "token": "diposit_elevat",
+          "name": "DEPÓSITO ELEVADO",
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 3,
+      "fields": {
+          "token": "mixta",
+          "name": "MIXTA (PRESA DIRECTA Y DEPÓSITO ELEVADO)",
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 4,
+      "fields": {
+          "token": "mixta_bateries",
+          "name": "MIXTA BATERÍAS (HASTA CIERTA PLANTA, DIRECTA. RESTO, CON GRUPO DE PRESIÓN)",
+          "position": 3,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 5,
+      "fields": {
+          "token": "presa_directa",
+          "name": "PRESA DIRECTA (CON GRUPO DE PRESIÓN)",
+          "position": 4,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 6,
+      "fields": {
+          "token": "presa_directa_descalcificador",
+          "name": "PRESA DIRECTA (DESCALCIFICADOR)",
+          "position": 5,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 7,
+      "fields": {
+          "token": "presa_directa_sense_grup",
+          "name": "PRESA DIRECTA (SIN GRUPO DE PRESIÓN)",
+          "position": 6,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 8,
+      "fields": {
+          "token": "aliena",
+          "name": "PROCEDENCIA AJENA A LA RED (POZO, ETC.)",
+          "position": 7,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsource",
+      "pk": 9,
+      "fields": {
+          "token": "sense_subministrament",
+          "name": "SIN SUMINISTRO (ESCOMBRERAS, ETC.)",
+          "position": 8,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

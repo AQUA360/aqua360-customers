@@ -1,0 +1,8 @@
+[
+  {"model": "billing.readingalert", "pk": 1, "fields": {"created_at": "2025-01-15T11:53:07.859Z", "updated_at": "2025-01-15T12:20:52.544Z", "token": "1", "name": "reading_alert_turn", "color": "yellow", "position": 1, "is_default": false}},
+  {"model": "billing.readingalert", "pk": 2, "fields": {"created_at": "2025-01-15T11:53:09.142Z", "updated_at": "2025-01-15T12:23:42.775Z", "token": "2", "name": "reading_alert_zero", "color": "orange", "position": 2, "is_default": false}},
+  {"model": "billing.readingalert", "pk": 3, "fields": {"created_at": "2025-01-15T11:53:10.076Z", "updated_at": "2025-01-15T12:21:04.657Z", "token": "3", "name": "reading_alert_negative", "color": "red", "position": 3, "is_default": false}},
+  {"model": "billing.readingalert", "pk": 4, "fields": {"created_at": "2025-01-15T11:53:10.945Z", "updated_at": "2025-01-15T12:21:10.607Z", "token": "4", "name": "reading_alert_estimated", "color": "blue", "position": 4, "is_default": false}},
+  {"model": "billing.readingalert", "pk": 5, "fields": {"created_at": "2025-01-16T10:11:48.836Z", "updated_at": "2025-01-16T10:11:59.793Z", "token": "5", "name": "reading_alert_unusual", "color": "purple", "position": 5, "is_default": false}},
+  {"model": "billing.readingalert", "pk": 6, "fields": {"created_at": "2026-05-13T10:00:00.000Z", "updated_at": "2026-05-13T10:00:00.000Z", "token": "6", "name": "reading_alert_low_consumption", "color": "cyan", "position": 6, "is_default": false}}
+]

@@ -1,0 +1,23 @@
+{
+  "aqua_id": "260725001",
+  "payment_type": "inbound",
+  "partner_id": {
+    "aqua_id": "B2345678C",
+    "name": "ABC Corporation ",
+    "vat": "P08008000"
+  },
+  "amount": 780.82,
+  "date": "2026-07-25",
+  "memo": "Cobrament rebut FC/202607/000002 - remesa P0800800020260725131",
+  "payment_mode_id": {
+    "id": "DIRECT_DEBIT",
+    "name": "Domiciliación Bancaria - SEPA"
+  },
+  "reconcile": {
+    "invoice_aqua_id": "01000000194"
+  },
+  "journal_id": {
+    "aqua_id": "P08008000",
+    "name": "CAIXA D'ESTALVIS DE TERRASSA"
+  }
+}

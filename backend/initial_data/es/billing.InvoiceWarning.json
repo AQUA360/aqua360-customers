@@ -1,0 +1,86 @@
+[
+    {
+        "model": "billing.invoicewarning",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-04-15T08:33:38.284Z",
+            "updated_at": "2025-04-15T08:37:37.866Z",
+            "token": "1",
+            "name": "Importe negativo",
+            "color": null,
+            "description": null,
+            "position": null,
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-04-15T08:33:40.716Z",
+            "updated_at": "2025-04-15T08:37:15.926Z",
+            "token": "2",
+            "name": "Importe Cero",
+            "color": null,
+            "description": null,
+            "position": null,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-04-15T08:33:54.923Z",
+            "updated_at": "2025-04-15T08:37:24.811Z",
+            "token": "3",
+            "name": "Faltan datos de cobro",
+            "color": null,
+            "description": null,
+            "position": null,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-04-15T08:33:56.918Z",
+            "updated_at": "2025-04-15T08:37:33.435Z",
+            "token": "4",
+            "name": "Sin pago configurado",
+            "color": null,
+            "description": null,
+            "position": null,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-04-25T08:55:51.001Z",
+            "updated_at": "2025-04-25T08:56:19.446Z",
+            "token": "5",
+            "name": "Factura simplificada de más de 400 €",
+            "color": null,
+            "description": null,
+            "position": null,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-03-10T08:55:51.001Z",
+            "updated_at": "2025-03-10T08:56:19.446Z",
+            "token": "6",
+            "name": "Importe de facturació muy alto",
+            "color": "#ff9800",
+            "description": "El importe total de la factura supera el 150% de la media del contrato",
+            "position": 6,
+            "is_default": false
+        }
+    }
+]

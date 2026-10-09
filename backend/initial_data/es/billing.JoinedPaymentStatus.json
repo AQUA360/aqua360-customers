@@ -1,0 +1,54 @@
+[
+    {
+        "model": "billing.joinedpaymentstatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Pendiente",
+            "color": null,
+            "position": 0,
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.joinedpaymentstatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Pagado",
+            "color": "green",
+            "position": 2,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.joinedpaymentstatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Vencido",
+            "color": "purple",
+            "position": 4,
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.joinedpaymentstatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-2",
+            "name": "Anulado",
+            "color": "red",
+            "position": 3,
+            "is_default": false
+        }
+    }
+]

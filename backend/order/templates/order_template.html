@@ -1,0 +1,214 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Ordre</title>
+
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 1cm;
+            margin-right: 1cm;
+            margin-top: 0.75cm;
+            margin-bottom: 1cm;
+            @frame footer_frame {
+                -pdf-frame-content: footer_content;
+                left: 50pt; width: 512pt; bottom: 12pt; height: 50pt;
+            }
+        }
+
+        @font-face {
+            font-family: 'Montserrat';
+            src: url('config/fonts/Montserrat-Regular.ttf');
+        }
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('config/fonts/OpenSans-Regular.ttf');
+        }
+        @font-face {
+            font-family: 'OpenSansBold';
+            src: url('config/fonts/OpenSans-ExtraBold.ttf');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'OpenSans', sans-serif;
+            font-size: 11px;
+        }
+
+        .header img {
+            width: 120px;
+            height: auto;
+        }
+    </style>
+</head>
+
+<body>
+    {% language 'ca' %}
+
+<!-- ========================= -->
+<!-- ENCABEZADO / LOGO EMPRESA -->
+<!-- ========================= -->
+
+<div class="header">
+    <table width="100%">
+        <tr>
+            <td width="60%" valign="top">
+                <table width="100%">
+                    <tr>
+                        <td style="font-size: 14px; font-family: 'OpenSans';">Ordre de treball: {{ order.token }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-size: 14px; font-family: 'OpenSansBold';">{{ order_type.name }}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-size: 14px; font-family: 'OpenSansBold';">{{ supply_point.address }}</td>
+                    </tr>
+                </table>
+            </td>
+            
+
+            <td width="40%" valign="top" style="text-align: right;">
+                <table width="100%">
+                    <tr>
+                        <td >
+                            <span style="font-size: 14px; font-family: 'OpenSansBold';">
+                            {% if logo %}
+                            <img src="{{ logo }}" alt="Company Logo" style="width: 70%; height: auto;">
+                            {% else %}
+                            {{ company.name }}
+                            {% endif %}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="font-size: 10px;">
+                            {{ company.address_complete }}  {{ company.address.postal_code }} {{ company.address.province.name }}<br>
+                            Tel: {{ company.phone }} -- Email: {{ company.email }}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<br><br>
+
+<!-- ========================= -->
+<!-- DATOS PRINCIPALES DE ORDEN -->
+<!-- ========================= -->
+
+<table width="100%" style="font-size: 11px; border-spacing: 15pt;">
+    <tr>
+        <td width="100%" valign="top">
+            <table width="100%">
+                <tr style="font-family: 'OpenSansBold'; font-size: 12px;">
+                    <td colspan="2">DADES DE L'ORDRE</td>
+                </tr>
+                
+                <tr>
+                    <td width="50%" valign="top">
+                        <table width="100%">
+                            <tr>
+                                <td style="color: #666;">Estat</td>
+                                <td style="text-align: right;">{{ order_status.name }}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #666;">Data d'acció</td>
+                                <td style="text-align: right;">{{ order.action_date|date:"d/m/Y" }}</td>
+                            </tr>
+                            <tr>
+                                <td width="75%" style="color: #666;">Punt de subministrament</td>
+                                <td width="25%" style="text-align: right;">{{ supply_point }}</td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td width="5%" valign="top"></td>
+                    <td width="45%" valign="top">
+                        <table width="100%">
+                            {% if supply_point %}
+                            <tr>
+                                <td style="color: #666;">Comptador</td>
+                                <td style="text-align: right;">{{ supply_point.meter.code }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if contract %}
+                            <tr>
+                                <td style="color: #666;">Contract</td>
+                                <td style="text-align: right;">{{ contract.token }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </td>
+                </tr>
+            </table>
+    </tr>
+</table>
+
+<br><br>
+{% if order_operators %}
+<table width="100%" style="font-size: 11px; table-layout: auto;">
+    <tr style="font-family: 'OpenSansBold'; font-size: 12px;">
+        <td colspan="2">OPERARIS DE L'ORDRE</td>
+    </tr>
+    {% for operator in order_operators %}
+    <tr>
+        <td  style="white-space: nowrap;"><span style="color: #666;">Operari: </span> {{ operator.name }} {{ operator.surname }} </td>
+        <td style="white-space: nowrap;"><span style="color: #666;">Telefon: </span> {{ operator.phone }}</td>
+        <td style="white-space: nowrap;"><span style="color: #666;">Email: </span> {{ operator.email }}</td>
+    </tr>
+    {% endfor %}
+</table>
+<br><br>
+{% endif %}
+
+
+
+<div style="font-family: 'OpenSansBold'; font-size: 12px; margin-bottom: 5px;">
+    DESCRIPCIÓ DE L'ORDRE
+</div>
+
+<div style="font-size: 11px; line-height: 16px; background-color: #f5f5f5; padding: 10px;">
+    {% if order.description %}
+        {{ order.description }}
+    {% else %}
+        <i>No consta descripció per aquesta ordre.</i>
+    {% endif %}
+</div>
+
+<br><br>
+
+<!-- ========================= -->
+<!-- OBSERVACIONES -->
+<!-- ========================= -->
+
+<div style="font-family: 'OpenSansBold'; font-size: 12px; margin-bottom: 5px;">
+    OBSERVACIONS
+</div>
+
+<div style="font-size: 11px; line-height: 16px; background-color: #f5f5f5; padding: 10px;">
+    {% if order.observations.all %}
+        {% for observation in order.observations.all %}
+            <div style="font-size: 11px; line-height: 16px;">
+                {{ observation.observation }}
+            </div>
+        {% endfor %}
+    {% else %}
+        <i>No hi ha observacions addicionals.</i>
+    {% endif %}
+</div>
+
+<br><br>
+{% endlanguage %}
+<!-- ========================= -->
+<!-- PIE DE PÁGINA -->
+<!-- ========================= -->
+
+<div id="footer_content" style="font-size: 8px; text-align: center; color: #777;">
+    Document generat automàticament — {{ now|date:"d/m/Y H:i" }}
+</div>
+
+</body>
+</html>

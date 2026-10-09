@@ -1,0 +1,28 @@
+[
+  {
+      "model": "service.clusternozzlestatus",
+      "pk": 1,
+      "fields": {
+          "token": "1",
+          "name": "Actiu",
+          "color": null,
+          "position": null,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.clusternozzlestatus",
+      "pk": 2,
+      "fields": {
+          "token": "-1",
+          "name": "Inactiu",
+          "color": null,
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

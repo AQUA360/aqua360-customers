@@ -1,0 +1,74 @@
+[
+  {
+      "model": "service.clusternozzletype",
+      "pk": 2,
+      "fields": {
+          "token": "A",
+          "name": "A",
+          "position": null,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.clusternozzletype",
+      "pk": 3,
+      "fields": {
+          "token": "B",
+          "name": "B",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.clusternozzletype",
+      "pk": 4,
+      "fields": {
+          "token": "C",
+          "name": "C",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.clusternozzletype",
+      "pk": 5,
+      "fields": {
+          "token": "D",
+          "name": "D",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.clusternozzletype",
+      "pk": 6,
+      "fields": {
+          "token": "E",
+          "name": "E",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.clusternozzletype",
+      "pk": 7,
+      "fields": {
+          "token": "F",
+          "name": "F",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

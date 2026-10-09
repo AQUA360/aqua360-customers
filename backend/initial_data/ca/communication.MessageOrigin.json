@@ -1,0 +1,38 @@
+[
+    {
+        "model": "communication.messageorigin",
+        "pk": 1,
+        "fields": {
+            "token": "contract",
+            "name": "Contracte",
+            "position": 1
+        }
+    },
+    {
+        "model": "communication.messageorigin",
+        "pk": 2,
+        "fields": {
+            "token": "claim",
+            "name": "Gestió d'impagats",
+            "position": 2
+        }
+    },
+    {
+        "model": "communication.messageorigin",
+        "pk": 3,
+        "fields": {
+            "token": "billing",
+            "name": "Facturació",
+            "position": 3
+        }
+    },
+    {
+        "model": "communication.messageorigin",
+        "pk": 4,
+        "fields": {
+            "token": "other",
+            "name": "Altres",
+            "position": 4
+        }
+    }
+]

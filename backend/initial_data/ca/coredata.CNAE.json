@@ -1,0 +1,6130 @@
+[
+  {
+      "model": "coredata.CNAE",
+      "pk": 1,
+      "fields": {
+          "token": "1110",
+          "description": "Cultiu de cereals i altres cultius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 2,
+      "fields": {
+          "token": "1121",
+          "description": "Cultiu d'hortalisses"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 3,
+      "fields": {
+          "token": "1122",
+          "description": "Cultiu de flors i plantes ornamentals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 4,
+      "fields": {
+          "token": "1131",
+          "description": "Conreo de la vinya"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 5,
+      "fields": {
+          "token": "1132",
+          "description": "Cultiu d'agres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 6,
+      "fields": {
+          "token": "1133",
+          "description": "Conreo de l'olivera"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 7,
+      "fields": {
+          "token": "1134",
+          "description": "Conreo d'altres fruites, fruita seca, espècies i cultius per a begudes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 8,
+      "fields": {
+          "token": "1210",
+          "description": "Explotació de bestiar boví i producció de llet crua"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 9,
+      "fields": {
+          "token": "1221",
+          "description": "Explotació de bestiar oví i caprí"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 10,
+      "fields": {
+          "token": "1222",
+          "description": "Explotació de bestiar equí"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 11,
+      "fields": {
+          "token": "1231",
+          "description": "Explotació de bestiar porcí intensiu"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 12,
+      "fields": {
+          "token": "1232",
+          "description": "Explotació de bestiar porcí extensiu"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 13,
+      "fields": {
+          "token": "1240",
+          "description": "Avicultura"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 14,
+      "fields": {
+          "token": "1250",
+          "description": "Altres explotacions de bestiar"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 15,
+      "fields": {
+          "token": "1300",
+          "description": "Producció agrària combinada amb la producció ramadera"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 16,
+      "fields": {
+          "token": "1410",
+          "description": "Activitats de serveis relacionats amb l'agricultura; manteniment de jardins"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 17,
+      "fields": {
+          "token": "1420",
+          "description": "Activitats de serveis relacionats amb la ramaderia, excepte activitats veterinàries"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 18,
+      "fields": {
+          "token": "1501",
+          "description": "Caça i captura d'animals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 19,
+      "fields": {
+          "token": "1502",
+          "description": "Repoblació cinegética"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 20,
+      "fields": {
+          "token": "1503",
+          "description": "Activitats dels serveis relacionats amb la caça"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 21,
+      "fields": {
+          "token": "2011",
+          "description": "Selvicultura"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 22,
+      "fields": {
+          "token": "2012",
+          "description": "Explotació forestal"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 23,
+      "fields": {
+          "token": "2020",
+          "description": "Activitats dels serveis relacionats amb la selvicultura i explotació forestal"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 24,
+      "fields": {
+          "token": "5010",
+          "description": "Pesca"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 25,
+      "fields": {
+          "token": "5021",
+          "description": "Aqüicultura d'aigües continentals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 26,
+      "fields": {
+          "token": "5022",
+          "description": "Aqüicultura d'aigües marines"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 27,
+      "fields": {
+          "token": "10101",
+          "description": "Extracció i aglomeració de antracita"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 28,
+      "fields": {
+          "token": "10102",
+          "description": "Extracció i aglomeració de hulla"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 29,
+      "fields": {
+          "token": "10103",
+          "description": "Extracció i aglomeració de hulla subituminosa"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 30,
+      "fields": {
+          "token": "10200",
+          "description": "Extracció i aglomeració de lignit marró"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 31,
+      "fields": {
+          "token": "10300",
+          "description": "Extracció i aglomeració de torba"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 32,
+      "fields": {
+          "token": "11100",
+          "description": "Extracció de crus de petroli i gas natural"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 33,
+      "fields": {
+          "token": "11200",
+          "description": "Activitats dels serveis relacionats amb les explotacions petrolíferes i de gas, excepte activitats de prospecció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 34,
+      "fields": {
+          "token": "12000",
+          "description": "Extracció de minerals d'urani i tori"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 35,
+      "fields": {
+          "token": "13100",
+          "description": "Extracció de minerals de ferro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 36,
+      "fields": {
+          "token": "13201",
+          "description": "Extracció de coure, plom i cinc"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 37,
+      "fields": {
+          "token": "13202",
+          "description": "Extracció de metalls preciosos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 38,
+      "fields": {
+          "token": "13203",
+          "description": "Extracció d'altres minerals metàl·lics no ferris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 39,
+      "fields": {
+          "token": "14111",
+          "description": "Extracció de marbre"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 40,
+      "fields": {
+          "token": "14112",
+          "description": "Extracció de granit"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 41,
+      "fields": {
+          "token": "14113",
+          "description": "Extracció d'altres tipus de pedra"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 42,
+      "fields": {
+          "token": "14121",
+          "description": "Extracció de guix"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 43,
+      "fields": {
+          "token": "14122",
+          "description": "Extracció de creta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 44,
+      "fields": {
+          "token": "14123",
+          "description": "Extracció d'altres pedres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 45,
+      "fields": {
+          "token": "14130",
+          "description": "Extracció de pissarres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 46,
+      "fields": {
+          "token": "14210",
+          "description": "Extracció de graves i sorres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 47,
+      "fields": {
+          "token": "14221",
+          "description": "Extracció de caolín"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 48,
+      "fields": {
+          "token": "14222",
+          "description": "Extracció d'argila"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 49,
+      "fields": {
+          "token": "14301",
+          "description": "Extracció de fosfats i nitrats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 50,
+      "fields": {
+          "token": "14302",
+          "description": "Extracció de sals potásiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 51,
+      "fields": {
+          "token": "14303",
+          "description": "Extracció de pirites i sofre"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 52,
+      "fields": {
+          "token": "14304",
+          "description": "Extracció de fluorita"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 53,
+      "fields": {
+          "token": "14305",
+          "description": "Extracció d'altres minerals no metàl·lics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 54,
+      "fields": {
+          "token": "14401",
+          "description": "Extracció de sal marina"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 55,
+      "fields": {
+          "token": "14402",
+          "description": "Extracció de sal deu i sal gema"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 56,
+      "fields": {
+          "token": "14501",
+          "description": "Extracció de feldspats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 57,
+      "fields": {
+          "token": "14502",
+          "description": "Extracció d'altres minerals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 58,
+      "fields": {
+          "token": "15110",
+          "description": "Sacrifici de bestiar i conservació de carn"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 59,
+      "fields": {
+          "token": "15120",
+          "description": "Sacrifici i conservació de volateria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 60,
+      "fields": {
+          "token": "15130",
+          "description": "Fabricació de productes càrnics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 61,
+      "fields": {
+          "token": "15201",
+          "description": "Elaboració de productes congelats o refrigerats de peixos i altres productes marins"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 62,
+      "fields": {
+          "token": "15202",
+          "description": "Fabricació de conserves de peix"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 63,
+      "fields": {
+          "token": "15203",
+          "description": "Elaboració de productes de la pesca fumats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 64,
+      "fields": {
+          "token": "15310",
+          "description": "Preparació i conservació de patates"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 65,
+      "fields": {
+          "token": "15321",
+          "description": "Fabricació de suc de raïm"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 66,
+      "fields": {
+          "token": "15322",
+          "description": "Fabricació d'altres sucs de fruites i hortalisses"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 67,
+      "fields": {
+          "token": "15331",
+          "description": "Preparació d'hortalisses congelades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 68,
+      "fields": {
+          "token": "15332",
+          "description": "Preparació i conservació d'hortalisses no congelades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 69,
+      "fields": {
+          "token": "15333",
+          "description": "Preparació i conservació d'olives"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 70,
+      "fields": {
+          "token": "15334",
+          "description": "Fabricació de conserves de fruites"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 71,
+      "fields": {
+          "token": "15411",
+          "description": "Obtenció d'oli d'oliva sense refinar"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 72,
+      "fields": {
+          "token": "15412",
+          "description": "Obtenció d'altres greixos i olis vegetals sense refinar"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 73,
+      "fields": {
+          "token": "15413",
+          "description": "Obtenció d'altres greixos i olis animals no comestibles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 74,
+      "fields": {
+          "token": "15420",
+          "description": "Fabricació d'olis i greixos refinats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 75,
+      "fields": {
+          "token": "15430",
+          "description": "Fabricació de margarina i greixos comestibles similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 76,
+      "fields": {
+          "token": "15511",
+          "description": "Preparació de llet, fabricació de mantega i altres productes làctics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 77,
+      "fields": {
+          "token": "15512",
+          "description": "Fabricació de formatges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 78,
+      "fields": {
+          "token": "15520",
+          "description": "Elaboració de gelats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 79,
+      "fields": {
+          "token": "15611",
+          "description": "Molturació de blat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 80,
+      "fields": {
+          "token": "15612",
+          "description": "Molturació d'altres grans"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 81,
+      "fields": {
+          "token": "15613",
+          "description": "Fabricació d'altres productes de molinería"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 82,
+      "fields": {
+          "token": "15620",
+          "description": "Fabricació de midons i productes amilácis"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 83,
+      "fields": {
+          "token": "15710",
+          "description": "Fabricació de productes per a l'alimentació d'animals de granja"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 84,
+      "fields": {
+          "token": "15720",
+          "description": "Fabricació de productes per a l'alimentació d'animals de companyia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 85,
+      "fields": {
+          "token": "15811",
+          "description": "Fabricació de pa i altres productes de fleca frescos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 86,
+      "fields": {
+          "token": "15812",
+          "description": "Fabricació de productes de pastisseria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 87,
+      "fields": {
+          "token": "15821",
+          "description": "Fabricació de galetes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 88,
+      "fields": {
+          "token": "15822",
+          "description": "Fabricació de productes de fleca i pastisseria de llarga durada"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 89,
+      "fields": {
+          "token": "15830",
+          "description": "Indústria del sucre"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 90,
+      "fields": {
+          "token": "15841",
+          "description": "Fabricació de cacao i xocolata"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 91,
+      "fields": {
+          "token": "15842",
+          "description": "Fabricació de productes de confiteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 92,
+      "fields": {
+          "token": "15850",
+          "description": "Fabricació de pastes alimentàries"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 93,
+      "fields": {
+          "token": "15860",
+          "description": "Elaboració de cafè, te i infusions"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 94,
+      "fields": {
+          "token": "15870",
+          "description": "Elaboració d'espècies, salses i condiments"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 95,
+      "fields": {
+          "token": "15881",
+          "description": "Elaboració de preparats per a l'alimentació infantil"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 96,
+      "fields": {
+          "token": "15882",
+          "description": "Elaboració d'altres preparats dietètics."
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 97,
+      "fields": {
+          "token": "15890",
+          "description": "Elaboració d'altres productes alimentaris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 98,
+      "fields": {
+          "token": "15911",
+          "description": "Obtenció de aguardientes naturals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 99,
+      "fields": {
+          "token": "15912",
+          "description": "Obtenció d'altres begudes alcohòliques destil·lades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 100,
+      "fields": {
+          "token": "15920",
+          "description": "Destil·lació d'alcohol etílic procedent de fermentació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 101,
+      "fields": {
+          "token": "15931",
+          "description": "Elaboració de caves i vins espumossos naturals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 102,
+      "fields": {
+          "token": "15932",
+          "description": "Elaboració i criança de vins"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 103,
+      "fields": {
+          "token": "15940",
+          "description": "Elaboració de sidra i altres begudes fermentades a partir de fruites"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 104,
+      "fields": {
+          "token": "15950",
+          "description": "Elaboració d'altres begudes no destil·lades, procedents de fermentació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 105,
+      "fields": {
+          "token": "15960",
+          "description": "Fabricació de cervesa"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 106,
+      "fields": {
+          "token": "15970",
+          "description": "Fabricació de malt"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 107,
+      "fields": {
+          "token": "15981",
+          "description": "Envasat d'aigua mineral natural, de font i potable preparada"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 108,
+      "fields": {
+          "token": "15982",
+          "description": "Producció de begudes refrescants sense alcohol"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 109,
+      "fields": {
+          "token": "16000",
+          "description": "Indústria del tabac"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 110,
+      "fields": {
+          "token": "17110",
+          "description": "Preparació i filat de fibres de cotó i les seves barreges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 111,
+      "fields": {
+          "token": "17120",
+          "description": "Preparació i filat de fibres de llana cardada i les seves barreges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 112,
+      "fields": {
+          "token": "17130",
+          "description": "Preparació i filat de fibres de llana pentinada i les seves barreges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 113,
+      "fields": {
+          "token": "17140",
+          "description": "Preparació i filat de fibres de lli i les seves barreges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 114,
+      "fields": {
+          "token": "17150",
+          "description": "Tort i preparació de la seda; tort i textura de filaments sintètics i artificials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 115,
+      "fields": {
+          "token": "17160",
+          "description": "Fabricació de fil de cosir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 116,
+      "fields": {
+          "token": "17170",
+          "description": "Preparació i filat d'altres fibres tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 117,
+      "fields": {
+          "token": "17210",
+          "description": "Fabricació de teixits de cotó i les seves barreges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 118,
+      "fields": {
+          "token": "17220",
+          "description": "Fabricació de teixits de llana cardada i les seves barreges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 119,
+      "fields": {
+          "token": "17230",
+          "description": "Fabricació de teixits de llana pentinada i les seves barreges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 120,
+      "fields": {
+          "token": "17240",
+          "description": "Fabricació de teixits de seda"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 121,
+      "fields": {
+          "token": "17250",
+          "description": "Fabricació d'altres teixits tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 122,
+      "fields": {
+          "token": "17301",
+          "description": "Tenyit de tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 123,
+      "fields": {
+          "token": "17302",
+          "description": "Estampació de tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 124,
+      "fields": {
+          "token": "17303",
+          "description": "Altres acabats de tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 125,
+      "fields": {
+          "token": "17400",
+          "description": "Fabricació d'altres articles confeccionats amb tèxtils, excepte peces de vestir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 126,
+      "fields": {
+          "token": "17510",
+          "description": "Fabricació de catifes i moquetes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 127,
+      "fields": {
+          "token": "17520",
+          "description": "Fabricació de cordes, cordells, caramell i xarxes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 128,
+      "fields": {
+          "token": "17530",
+          "description": "Fabricació de teles no teixides i articles confeccionats amb aquestes, excepte peces de vestir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 129,
+      "fields": {
+          "token": "17541",
+          "description": "Fabricació de teixits estrets"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 130,
+      "fields": {
+          "token": "17542",
+          "description": "Fabricació de teixits impregnats, endurits o recoberts en matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 131,
+      "fields": {
+          "token": "17543",
+          "description": "Fabricació d'altres articles tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 132,
+      "fields": {
+          "token": "17600",
+          "description": "Fabricació de teixits de punt"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 133,
+      "fields": {
+          "token": "17710",
+          "description": "Fabricació de calceteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 134,
+      "fields": {
+          "token": "17720",
+          "description": "Fabricació d'altres articles en teixits de punt"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 135,
+      "fields": {
+          "token": "18100",
+          "description": "Confecció de peces de cuir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 136,
+      "fields": {
+          "token": "18210",
+          "description": "Confecció de roba de treball"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 137,
+      "fields": {
+          "token": "18221",
+          "description": "Confecció industrial"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 138,
+      "fields": {
+          "token": "18222",
+          "description": "Confecció a mesura"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 139,
+      "fields": {
+          "token": "18231",
+          "description": "Confecció de roba interior masculina"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 140,
+      "fields": {
+          "token": "18232",
+          "description": "Confecció de llenceria femenina"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 141,
+      "fields": {
+          "token": "18241",
+          "description": "Confecció de roba per a bebè i primera infància"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 142,
+      "fields": {
+          "token": "18242",
+          "description": "Confecció de roba esportiva"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 143,
+      "fields": {
+          "token": "18243",
+          "description": "Confecció d'altres peces de vestir i accessoris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 144,
+      "fields": {
+          "token": "18301",
+          "description": "Preparació, adobat i tenyit de pells de peletería"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 145,
+      "fields": {
+          "token": "18302",
+          "description": "Fabricació d'articles de pelleteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 146,
+      "fields": {
+          "token": "19100",
+          "description": "Preparació, adobat i acabat del cuir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 147,
+      "fields": {
+          "token": "19201",
+          "description": "Fabricació d'articles de marroquineria i viatge"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 148,
+      "fields": {
+          "token": "19202",
+          "description": "Fabricació d'altres articles de pell"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 149,
+      "fields": {
+          "token": "19300",
+          "description": "Fabricació de calçat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 150,
+      "fields": {
+          "token": "20101",
+          "description": "Serrat i raspallat de la fusta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 151,
+      "fields": {
+          "token": "20102",
+          "description": "Preparació industrial de la fusta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 152,
+      "fields": {
+          "token": "20200",
+          "description": "Fabricació de xapes, taulers contraxapats, alistonats, de partícules aglomerades, de fibres i altres taulers i panells"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 153,
+      "fields": {
+          "token": "20301",
+          "description": "Fabricació de peces de fusteria i ebenisteria per a la construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 154,
+      "fields": {
+          "token": "20302",
+          "description": "Fabricació d'estructures de fusta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 155,
+      "fields": {
+          "token": "20400",
+          "description": "Fabricació d'envasos i embalatges de fusta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 156,
+      "fields": {
+          "token": "20510",
+          "description": "Fabricació d'altres productes de fusta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 157,
+      "fields": {
+          "token": "20521",
+          "description": "Tractament del suro brut i fabricació de productes de suro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 158,
+      "fields": {
+          "token": "20522",
+          "description": "Fabricació d'articles de cistelleria i esparteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 159,
+      "fields": {
+          "token": "21111",
+          "description": "Fabricació de pasta paperera a partir de fibra verge"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 160,
+      "fields": {
+          "token": "21112",
+          "description": "Fabricació de pasta paperera a partir de fibra regenerada"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 161,
+      "fields": {
+          "token": "21120",
+          "description": "Fabricació de paper i cartró"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 162,
+      "fields": {
+          "token": "21210",
+          "description": "\"Fabricació de paper i cartró ondats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 163,
+      "fields": {
+          "token": "21220",
+          "description": "Fabricació d'articles de paper i cartró per a ús domèstic i sanitari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 164,
+      "fields": {
+          "token": "21230",
+          "description": "Fabricació d'articles de papereria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 165,
+      "fields": {
+          "token": "21240",
+          "description": "Fabricació de papers pintats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 166,
+      "fields": {
+          "token": "21250",
+          "description": "Fabricació d'altres articles de paper i cartró"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 167,
+      "fields": {
+          "token": "22110",
+          "description": "Edició de llibres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 168,
+      "fields": {
+          "token": "22120",
+          "description": "Edició de diaris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 169,
+      "fields": {
+          "token": "22130",
+          "description": "Edició de revistes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 170,
+      "fields": {
+          "token": "22140",
+          "description": "Edició de suports de so gravat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 171,
+      "fields": {
+          "token": "22150",
+          "description": "Altres activitats d'edició"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 172,
+      "fields": {
+          "token": "22210",
+          "description": "Impressió de periòdics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 173,
+      "fields": {
+          "token": "22220",
+          "description": "Altres activitats d'impressió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 174,
+      "fields": {
+          "token": "22230",
+          "description": "Enquadernació i acabat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 175,
+      "fields": {
+          "token": "22240",
+          "description": "Composició i fotogravat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 176,
+      "fields": {
+          "token": "22250",
+          "description": "Altres activitats gràfiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 177,
+      "fields": {
+          "token": "22310",
+          "description": "Reproducció de suports de so gravat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 178,
+      "fields": {
+          "token": "22320",
+          "description": "Reproducció de suports de vídeo gravat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 179,
+      "fields": {
+          "token": "22330",
+          "description": "Reproducció de suports d'informàtica gravats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 180,
+      "fields": {
+          "token": "23100",
+          "description": "Coquerías"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 181,
+      "fields": {
+          "token": "23200",
+          "description": "Refí de petroli"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 182,
+      "fields": {
+          "token": "23301",
+          "description": "Producció de combustibles nuclears i isòtops radioactius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 183,
+      "fields": {
+          "token": "23302",
+          "description": "Processat de combustibles nuclears i gestió de residus radioactius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 184,
+      "fields": {
+          "token": "24110",
+          "description": "Fabricació de gasos industrials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 185,
+      "fields": {
+          "token": "24120",
+          "description": "Fabricació de colorants i pigments"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 186,
+      "fields": {
+          "token": "24130",
+          "description": "Fabricació de productes bàsics de química inorgànica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 187,
+      "fields": {
+          "token": "24141",
+          "description": "Fabricació de productes químics orgànics d'origen petroquímic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 188,
+      "fields": {
+          "token": "24142",
+          "description": "Fabricació d'altres productes bàsics de química orgànica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 189,
+      "fields": {
+          "token": "24150",
+          "description": "Fabricació d'abonaments i compostos nitrogenats fertilitzants"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 190,
+      "fields": {
+          "token": "24160",
+          "description": "Fabricació de primeres matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 191,
+      "fields": {
+          "token": "24170",
+          "description": "Fabricació de cautxú sintètic en forma primària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 192,
+      "fields": {
+          "token": "24200",
+          "description": "Fabricació de pesticides i altres productes agroquímics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 193,
+      "fields": {
+          "token": "24301",
+          "description": "Fabricació de pintures, vernissos i revestiments similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 194,
+      "fields": {
+          "token": "24302",
+          "description": "Fabricació de tintes d'impremta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 195,
+      "fields": {
+          "token": "24410",
+          "description": "Fabricació de productes farmacèutics de base"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 196,
+      "fields": {
+          "token": "24421",
+          "description": "Fabricació d'especialitats farmacèutiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 197,
+      "fields": {
+          "token": "24422",
+          "description": "Fabricació d'altres productes de farmàcia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 198,
+      "fields": {
+          "token": "24510",
+          "description": "Fabricació de sabons, detergents i altres articles de neteja i abrillantament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 199,
+      "fields": {
+          "token": "24520",
+          "description": "Fabricació de perfums i productes de bellesa i higiene"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 200,
+      "fields": {
+          "token": "24611",
+          "description": "Fabricació d'explosius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 201,
+      "fields": {
+          "token": "24612",
+          "description": "Fabricació d'articles pirotècnics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 202,
+      "fields": {
+          "token": "24620",
+          "description": "Fabricació de cues i gelatines"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 203,
+      "fields": {
+          "token": "24630",
+          "description": "Fabricació d'olis essencials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 204,
+      "fields": {
+          "token": "24640",
+          "description": "Fabricació de material fotogràfic verge i preparats químics para fotografia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 205,
+      "fields": {
+          "token": "24650",
+          "description": "Fabricació de suports verges per a enregistrament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 206,
+      "fields": {
+          "token": "24661",
+          "description": "Tractament d'olis i greixos per a usos industrials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 207,
+      "fields": {
+          "token": "24662",
+          "description": "Fabricació d'altres productes químics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 208,
+      "fields": {
+          "token": "24700",
+          "description": "Fabricació de fibres artificials i sintètiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 209,
+      "fields": {
+          "token": "25110",
+          "description": "Fabricació de pneumàtics i càmeres de cautxú"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 210,
+      "fields": {
+          "token": "25120",
+          "description": "Reconstrucció i recauchutado de pneumàtics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 211,
+      "fields": {
+          "token": "25130",
+          "description": "Fabricació d'altres productes de cautxú"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 212,
+      "fields": {
+          "token": "25210",
+          "description": "Fabricació de plaques, fulles, tubs i perfils de matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 213,
+      "fields": {
+          "token": "25220",
+          "description": "Fabricació d'envasos i embalatges de matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 214,
+      "fields": {
+          "token": "25230",
+          "description": "Fabricació de productes de matèries plàstiques per a la construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 215,
+      "fields": {
+          "token": "25241",
+          "description": "Fabricació de productes diversos en matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 216,
+      "fields": {
+          "token": "25242",
+          "description": "Fabricació de peces tècniques en matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 217,
+      "fields": {
+          "token": "26110",
+          "description": "Fabricació de vidre pla"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 218,
+      "fields": {
+          "token": "26120",
+          "description": "Manipulat i transformació de vidre pla"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 219,
+      "fields": {
+          "token": "26130",
+          "description": "Fabricació de vidre buit"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 220,
+      "fields": {
+          "token": "26140",
+          "description": "Fabricació de fibra de vidre"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 221,
+      "fields": {
+          "token": "26150",
+          "description": "Fabricació i manipulat d'un altre vidre (inclòs el vidre tècnic)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 222,
+      "fields": {
+          "token": "26210",
+          "description": "Fabricació d'articles ceràmics d'ús domèstic i ornamental"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 223,
+      "fields": {
+          "token": "26220",
+          "description": "Fabricació d'aparells sanitaris ceràmics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 224,
+      "fields": {
+          "token": "26230",
+          "description": "Fabricació d'aïlladors i peces aïllants de material ceràmic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 225,
+      "fields": {
+          "token": "26240",
+          "description": "Fabricació d'altres productes ceràmics d'ús tècnic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 226,
+      "fields": {
+          "token": "26250",
+          "description": "Fabricació d'altres productes ceràmics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 227,
+      "fields": {
+          "token": "26260",
+          "description": "Fabricació de productes ceràmics refractaris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 228,
+      "fields": {
+          "token": "26300",
+          "description": "Fabricació de taulells i rajoles de ceràmica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 229,
+      "fields": {
+          "token": "26400",
+          "description": "Fabricació de maons, teules i productes de terres cuites per a la construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 230,
+      "fields": {
+          "token": "26510",
+          "description": "Fabricació de ciment"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 231,
+      "fields": {
+          "token": "26520",
+          "description": "Fabricació de calç"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 232,
+      "fields": {
+          "token": "26530",
+          "description": "Fabricació de guix"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 233,
+      "fields": {
+          "token": "26610",
+          "description": "Fabricació d'elements de formigó per a la construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 234,
+      "fields": {
+          "token": "26620",
+          "description": "Fabricació d'elements de guix per a la construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 235,
+      "fields": {
+          "token": "26630",
+          "description": "Fabricació de formigó fresc"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 236,
+      "fields": {
+          "token": "26640",
+          "description": "Fabricació de morter"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 237,
+      "fields": {
+          "token": "26650",
+          "description": "Fabricació de fibrociment"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 238,
+      "fields": {
+          "token": "26660",
+          "description": "Fabricació d'altres productes de formigó, guix i ciment"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 239,
+      "fields": {
+          "token": "26701",
+          "description": "Tallt, tallat i acabat de la pedra"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 240,
+      "fields": {
+          "token": "26702",
+          "description": "Fabricació de pedres artificials amb ligants sintètics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 241,
+      "fields": {
+          "token": "26810",
+          "description": "Fabricació de productes abrasius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 242,
+      "fields": {
+          "token": "26820",
+          "description": "Fabricació d'altres productes minerals no metàl·lics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 243,
+      "fields": {
+          "token": "27100",
+          "description": "Fabricació de productes bàsics de ferro, acer i ferroaleacions (CECA)*"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 244,
+      "fields": {
+          "token": "27211",
+          "description": "Producció de tubs de ferro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 245,
+      "fields": {
+          "token": "27212",
+          "description": "Producció d'accessoris de tubs de ferro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 246,
+      "fields": {
+          "token": "27221",
+          "description": "Producció de tubs d'acer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 247,
+      "fields": {
+          "token": "27222",
+          "description": "Producció d'accessoris de tubs d'acer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 248,
+      "fields": {
+          "token": "27310",
+          "description": "Estirat en fred"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 249,
+      "fields": {
+          "token": "27320",
+          "description": "Laminació en fred"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 250,
+      "fields": {
+          "token": "27330",
+          "description": "Producció de perfils en fred per conformació amb plegat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 251,
+      "fields": {
+          "token": "27340",
+          "description": "Trefilad en fred"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 252,
+      "fields": {
+          "token": "27351",
+          "description": "Ferroaleacions no CECA (*)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 253,
+      "fields": {
+          "token": "27352",
+          "description": "Altres processos de la transformació del ferro i de l'acer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 254,
+      "fields": {
+          "token": "27410",
+          "description": "Producció i primera transformació de metalls preciosos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 255,
+      "fields": {
+          "token": "27420",
+          "description": "Producció i primera transformació d'alumini"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 256,
+      "fields": {
+          "token": "27431",
+          "description": "Producció i primera transformació de plom"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 257,
+      "fields": {
+          "token": "27432",
+          "description": "Producció i primera transformació de zinc"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 258,
+      "fields": {
+          "token": "27433",
+          "description": "Producció i primera transformació d'estany"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 259,
+      "fields": {
+          "token": "27440",
+          "description": "Producció i primera transformació de coure"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 260,
+      "fields": {
+          "token": "27450",
+          "description": "Producció i primera transformació d'altres metalls no ferris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 261,
+      "fields": {
+          "token": "27510",
+          "description": "Fosa de ferro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 262,
+      "fields": {
+          "token": "27520",
+          "description": "Fosa d'acer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 263,
+      "fields": {
+          "token": "27540",
+          "description": "Fosa d'altres metalls no ferris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 264,
+      "fields": {
+          "token": "27563",
+          "description": "Fosa de metalls lleugers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 265,
+      "fields": {
+          "token": "28110",
+          "description": "Fabricació d'estructures metàl·liques i les seves parts"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 266,
+      "fields": {
+          "token": "28120",
+          "description": "Fabricació de fusteria metàl·lica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 267,
+      "fields": {
+          "token": "28210",
+          "description": "Fabricació de cisternes, grans dipòsits i contenidors de metall"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 268,
+      "fields": {
+          "token": "28220",
+          "description": "Fabricació de radiadors i calderes per a calefacció central"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 269,
+      "fields": {
+          "token": "28300",
+          "description": "Fabricació de generadors de vapor"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 270,
+      "fields": {
+          "token": "28401",
+          "description": "Forja i estampació de metalls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 271,
+      "fields": {
+          "token": "28402",
+          "description": "Encunyat i embutición de metalls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 272,
+      "fields": {
+          "token": "28403",
+          "description": "Metal·lúrgia de pólvores"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 273,
+      "fields": {
+          "token": "28510",
+          "description": "Tractament i revestiment de metalls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 274,
+      "fields": {
+          "token": "28520",
+          "description": "Enginyeria mecànica general per compte de tercers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 275,
+      "fields": {
+          "token": "28610",
+          "description": "Fabricació d'articles de ganiveteria i coberteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 276,
+      "fields": {
+          "token": "28621",
+          "description": "Fabricació d'eines manuals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 277,
+      "fields": {
+          "token": "28622",
+          "description": "Fabricació d'eines mecàniques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 278,
+      "fields": {
+          "token": "28630",
+          "description": "Fabricació de panys i ferradures"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 279,
+      "fields": {
+          "token": "28710",
+          "description": "Fabricació de bidons i tonells de ferro o acer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 280,
+      "fields": {
+          "token": "28720",
+          "description": "Fabricació d'envasos i embalatges lleugers, en metall"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 281,
+      "fields": {
+          "token": "28730",
+          "description": "Fabricació de productes de filferro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 282,
+      "fields": {
+          "token": "28740",
+          "description": "Fabricació de perns, cargols, cadenes i molls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 283,
+      "fields": {
+          "token": "28751",
+          "description": "Fabricació d'articles metàl·lics de parament domèstic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 284,
+      "fields": {
+          "token": "28752",
+          "description": "Fabricació de caixes fortes i portes de seguretat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 285,
+      "fields": {
+          "token": "28753",
+          "description": "Fabricació d'altres productes metàl·lics diversos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 286,
+      "fields": {
+          "token": "29110",
+          "description": "Fabricació de motors i turbines, excepte els destinats a aeronaus, vehicles automòbils i ciclomotors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 287,
+      "fields": {
+          "token": "29121",
+          "description": "Fabricació de bombes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 288,
+      "fields": {
+          "token": "29122",
+          "description": "Fabricació de compressors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 289,
+      "fields": {
+          "token": "29123",
+          "description": "Fabricació de transmissions hidràuliques i pneumàtiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 290,
+      "fields": {
+          "token": "29130",
+          "description": "Fabricació de vàlvules i aixeteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 291,
+      "fields": {
+          "token": "29141",
+          "description": "Fabricació de rodaments"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 292,
+      "fields": {
+          "token": "29142",
+          "description": "Fabricació d'òrgans mecànics de transmissió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 293,
+      "fields": {
+          "token": "29210",
+          "description": "Fabricació de forns i cremadors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 294,
+      "fields": {
+          "token": "29221",
+          "description": "Fabricació d'ascensors, muntacàrregues, escales mecàniques i similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 295,
+      "fields": {
+          "token": "29222",
+          "description": "Fabricació d'un altre material d'elevació i manipulació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 296,
+      "fields": {
+          "token": "29230",
+          "description": "Fabricació de maquinària de ventilació i refrigeració no domèstica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 297,
+      "fields": {
+          "token": "29241",
+          "description": "Fabricació de maquinària i equip d'embalatge i condicionament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 298,
+      "fields": {
+          "token": "29242",
+          "description": "Fabricació de material per pesar"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 299,
+      "fields": {
+          "token": "29243",
+          "description": "Fabricació d'una altra maquinària d'ús general per a la indústria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 300,
+      "fields": {
+          "token": "29310",
+          "description": "Fabricació de tractors agrícoles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 301,
+      "fields": {
+          "token": "29321",
+          "description": "Producció d'una altra maquinària agrària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 302,
+      "fields": {
+          "token": "29322",
+          "description": "Reparació de maquinària i material agrari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 303,
+      "fields": {
+          "token": "29401",
+          "description": "Fabricació de màquines-eina per treballar els metalls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 304,
+      "fields": {
+          "token": "29402",
+          "description": "Fabricació de màquines-eina per treballar la fusta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 305,
+      "fields": {
+          "token": "29403",
+          "description": "Fabricació d'altres màquines-eina"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 306,
+      "fields": {
+          "token": "29510",
+          "description": "Fabricació de maquinària per a la indústria metal·lúrgica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 307,
+      "fields": {
+          "token": "29520",
+          "description": "Fabricació de maquinària per a les indústries extractives i de la construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 308,
+      "fields": {
+          "token": "29530",
+          "description": "Fabricació de maquinària per a la indústria de l'alimentació, begudes i tabac"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 309,
+      "fields": {
+          "token": "29541",
+          "description": "Fabricació de maquinària per a la indústria tèxtil i de la confecció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 310,
+      "fields": {
+          "token": "29542",
+          "description": "Fabricació de maquinària de rentat i neteja en sec"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 311,
+      "fields": {
+          "token": "29543",
+          "description": "Fabricació de maquinària per a la indústria del cuir i del calçat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 312,
+      "fields": {
+          "token": "29550",
+          "description": "Fabricació de maquinària per a la indústria del paper i del cartró"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 313,
+      "fields": {
+          "token": "29561",
+          "description": "Fabricació de maquinària i equip per a arts gràfiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 314,
+      "fields": {
+          "token": "29562",
+          "description": "Fabricació de màquines per treballar el cautxú i matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 315,
+      "fields": {
+          "token": "29563",
+          "description": "Fabricació de motlles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 316,
+      "fields": {
+          "token": "29564",
+          "description": "Fabricació d'una altra maquinària per a usos específics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 317,
+      "fields": {
+          "token": "29601",
+          "description": "Fabricació d'armament pesat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 318,
+      "fields": {
+          "token": "29602",
+          "description": "Fabricació d'armes lleugeres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 319,
+      "fields": {
+          "token": "29710",
+          "description": "Fabricació d'aparells electrodomèstics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 320,
+      "fields": {
+          "token": "29720",
+          "description": "Fabricació d'aparells domèstics no elèctrics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 321,
+      "fields": {
+          "token": "30010",
+          "description": "Fabricació de màquines d'oficina"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 322,
+      "fields": {
+          "token": "30020",
+          "description": "Fabricació d'ordinadors i un altre equip informàtic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 323,
+      "fields": {
+          "token": "31100",
+          "description": "Fabricació de motors elèctrics, transformadors i generadors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 324,
+      "fields": {
+          "token": "31200",
+          "description": "Fabricació d'aparells de distribució i control elèctrics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 325,
+      "fields": {
+          "token": "31300",
+          "description": "Fabricació de fils i cables elèctrics aïllats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 326,
+      "fields": {
+          "token": "31400",
+          "description": "Fabricació d'acumuladors i piles elèctriques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 327,
+      "fields": {
+          "token": "31501",
+          "description": "Fabricació de llums i tubs elèctrics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 328,
+      "fields": {
+          "token": "31502",
+          "description": "Fabricació d'aparells d'il·luminació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 329,
+      "fields": {
+          "token": "31611",
+          "description": "Fabricació d'aparells i dispositius elèctrics per a motors de combustió interna"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 330,
+      "fields": {
+          "token": "31612",
+          "description": "Fabricació d'aparells elèctrics d'il·luminació i senyalització per a material de transport"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 331,
+      "fields": {
+          "token": "31620",
+          "description": "Fabricació d'un altre equip i material elèctric"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 332,
+      "fields": {
+          "token": "32100",
+          "description": "Fabricació de vàlvules, tubs i altres components electrònics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 333,
+      "fields": {
+          "token": "32201",
+          "description": "Fabricació d'equips d'emissió de radi i televisió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 334,
+      "fields": {
+          "token": "32202",
+          "description": "Fabricació d'aparells per a la radiotelefonia i radiotelegrafia amb fils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 335,
+      "fields": {
+          "token": "32300",
+          "description": "Fabricació d'aparells de recepció, enregistrament i reproducció de so i imatge"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 336,
+      "fields": {
+          "token": "33100",
+          "description": "Fabricació d'equip i instruments médic quirúrgics i d'aparells ortopédics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 337,
+      "fields": {
+          "token": "33200",
+          "description": "Fabricació d'instruments i aparells de mesura, verificació, control, navegació i altres finalitats, excepte equips de control per a processos industrials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 338,
+      "fields": {
+          "token": "33300",
+          "description": "Fabricació d'equip de control de processos industrials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 339,
+      "fields": {
+          "token": "33401",
+          "description": "Fabricació de lents correctores de la visió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 340,
+      "fields": {
+          "token": "33402",
+          "description": "Fabricació d'instruments fotogràfics i òptics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 341,
+      "fields": {
+          "token": "33500",
+          "description": "Fabricació de rellotges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 342,
+      "fields": {
+          "token": "34100",
+          "description": "Fabricació de vehicles de motor"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 343,
+      "fields": {
+          "token": "34200",
+          "description": "Fabricació de carrosseries per a vehicles de motor, de remolcs i semirremolcs"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 344,
+      "fields": {
+          "token": "34300",
+          "description": "Fabricació de parts, peces i accessoris no elèctrics per a vehicles de motor i les seves motores"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 345,
+      "fields": {
+          "token": "35111",
+          "description": "Construcció i reparació de vaixells"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 346,
+      "fields": {
+          "token": "35112",
+          "description": "Desballestament naval"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 347,
+      "fields": {
+          "token": "35120",
+          "description": "Construcció i reparació d'embarcacions d'esbarjo i deporti"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 348,
+      "fields": {
+          "token": "35200",
+          "description": "Fabricació de material ferroviari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 349,
+      "fields": {
+          "token": "35300",
+          "description": "Construcció aeronàutica i espacial"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 350,
+      "fields": {
+          "token": "35410",
+          "description": "Fabricació de motocicletes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 351,
+      "fields": {
+          "token": "35420",
+          "description": "Fabricació de bicicletes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 352,
+      "fields": {
+          "token": "35430",
+          "description": "Fabricació de vehicles per a invàlids"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 353,
+      "fields": {
+          "token": "35500",
+          "description": "Fabricació d'un altre material de transport"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 354,
+      "fields": {
+          "token": "36110",
+          "description": "Fabricació de cadires i altres seients"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 355,
+      "fields": {
+          "token": "36120",
+          "description": "Fabricació de mobles d'oficina i establiments comercials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 356,
+      "fields": {
+          "token": "36130",
+          "description": "Fabricació de mobles de cuina i bany"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 357,
+      "fields": {
+          "token": "36141",
+          "description": "Fabricació de mobles domèstics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 358,
+      "fields": {
+          "token": "36142",
+          "description": "Fabricació de mobles de jardí"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 359,
+      "fields": {
+          "token": "36143",
+          "description": "Fabricació d'altres mobles diversos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 360,
+      "fields": {
+          "token": "36144",
+          "description": "Activitats relacionades amb la fabricació de mobles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 361,
+      "fields": {
+          "token": "36150",
+          "description": "Fabricació de matalassos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 362,
+      "fields": {
+          "token": "36210",
+          "description": "Fabricació de monedes i medalles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 363,
+      "fields": {
+          "token": "36221",
+          "description": "Fabricació d'articles de joieria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 364,
+      "fields": {
+          "token": "36222",
+          "description": "Fabricació d'articles d'orfebreria i argenteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 365,
+      "fields": {
+          "token": "36300",
+          "description": "Fabricació d'instruments musicals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 366,
+      "fields": {
+          "token": "36400",
+          "description": "Fabricació d'articles d'esport"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 367,
+      "fields": {
+          "token": "36500",
+          "description": "Fabricació de jocs i joguines"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 368,
+      "fields": {
+          "token": "36610",
+          "description": "Fabricació de bijuteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 369,
+      "fields": {
+          "token": "36620",
+          "description": "Fabricació d'escombres, brotxes i raspalls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 370,
+      "fields": {
+          "token": "36630",
+          "description": "Fabricació d'altres articles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 371,
+      "fields": {
+          "token": "37100",
+          "description": "Reciclatge de ferralla i deixalles de metall"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 372,
+      "fields": {
+          "token": "37200",
+          "description": "Reciclatge de deixalles no metàl·liques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 373,
+      "fields": {
+          "token": "40101",
+          "description": "Producció d'energia hidràulica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 374,
+      "fields": {
+          "token": "40102",
+          "description": "Producció d'energia tèrmica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 375,
+      "fields": {
+          "token": "40103",
+          "description": "Producció d'energia nuclear"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 376,
+      "fields": {
+          "token": "40104",
+          "description": "Producció d'una altra energia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 377,
+      "fields": {
+          "token": "40105",
+          "description": "Distribució d'energia elèctrica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 378,
+      "fields": {
+          "token": "40200",
+          "description": "Producció de gas; distribució de combustibles gasosos per conductes urbans, excepte gaseoductes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 379,
+      "fields": {
+          "token": "40300",
+          "description": "Producció i distribució de vapor i aigua calenta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 380,
+      "fields": {
+          "token": "41000",
+          "description": "Captació, depuració i distribució d'aigua"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 381,
+      "fields": {
+          "token": "45111",
+          "description": "Demolició i excavacions"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 382,
+      "fields": {
+          "token": "45112",
+          "description": "Grans moviments de terres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 383,
+      "fields": {
+          "token": "45120",
+          "description": "Perforacions i sondejos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 384,
+      "fields": {
+          "token": "45211",
+          "description": "Construcció d'edificis"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 385,
+      "fields": {
+          "token": "45212",
+          "description": "Obres singulars d'enginyeria civil en superfície i en altura"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 386,
+      "fields": {
+          "token": "45213",
+          "description": "Obres singulars d'enginyeria civil subterrània"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 387,
+      "fields": {
+          "token": "45214",
+          "description": "Construcció de xarxes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 388,
+      "fields": {
+          "token": "45215",
+          "description": "Construcció d'esteses elèctriques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 389,
+      "fields": {
+          "token": "45216",
+          "description": "Construcció de línies de telecomunicacions"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 390,
+      "fields": {
+          "token": "45217",
+          "description": "Altres treballs de construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 391,
+      "fields": {
+          "token": "45221",
+          "description": "Construcció de cobertes i teulades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 392,
+      "fields": {
+          "token": "45222",
+          "description": "Treballs d'impermeabilització"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 393,
+      "fields": {
+          "token": "45231",
+          "description": "Construcció i reparació de vies fèrries"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 394,
+      "fields": {
+          "token": "45232",
+          "description": "Construcció de carreteres, autopistes, aeròdroms i instal·lacions esportives"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 395,
+      "fields": {
+          "token": "45240",
+          "description": "Obres hidràuliques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 396,
+      "fields": {
+          "token": "45251",
+          "description": "Muntatge d'armadures i estructures metàl·liques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 397,
+      "fields": {
+          "token": "45252",
+          "description": "Fonamentacions i pilotatge"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 398,
+      "fields": {
+          "token": "45253",
+          "description": "Altres obres especialitzades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 399,
+      "fields": {
+          "token": "45310",
+          "description": "Instal·lacions elèctriques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 400,
+      "fields": {
+          "token": "45320",
+          "description": "Aïllament tèrmic, acústic i antivibratori"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 401,
+      "fields": {
+          "token": "45331",
+          "description": "Lampisteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 402,
+      "fields": {
+          "token": "45332",
+          "description": "Instal·lació de climatització"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 403,
+      "fields": {
+          "token": "45340",
+          "description": "Altres instal·lacions d'edificis i obres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 404,
+      "fields": {
+          "token": "45410",
+          "description": "Revocament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 405,
+      "fields": {
+          "token": "45421",
+          "description": "Fusteria de fusta i matèries plàstiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 406,
+      "fields": {
+          "token": "45422",
+          "description": "Fusteria metàl·lica. Serralleria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 407,
+      "fields": {
+          "token": "45430",
+          "description": "Revestiment de sòls i parets"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 408,
+      "fields": {
+          "token": "45441",
+          "description": "Acristalament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 409,
+      "fields": {
+          "token": "45442",
+          "description": "Pintura"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 410,
+      "fields": {
+          "token": "45450",
+          "description": "Altres treballs d'acabat d'edificis i obres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 411,
+      "fields": {
+          "token": "45500",
+          "description": "Lloguer d'equip de construcció o demolició dotat d'operari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 412,
+      "fields": {
+          "token": "50101",
+          "description": "Venda de vehicles automòbils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 413,
+      "fields": {
+          "token": "50102",
+          "description": "Venda de camions, autobusos i similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 414,
+      "fields": {
+          "token": "50103",
+          "description": "Venda de caravanes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 415,
+      "fields": {
+          "token": "50200",
+          "description": "Manteniment i reparació de vehicles de motor"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 416,
+      "fields": {
+          "token": "50301",
+          "description": "Comerç a l'engròs de recanvis i accessoris de vehicles de motor"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 417,
+      "fields": {
+          "token": "50302",
+          "description": "Comerç al detall de recanvis i accessoris de vehicles de motor"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 418,
+      "fields": {
+          "token": "50400",
+          "description": "Venda, manteniment i reparació de motocicletes i ciclomotors i dels seus recanvis i accessoris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 419,
+      "fields": {
+          "token": "50500",
+          "description": "Venda al detall de carburants per a l'automoció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 420,
+      "fields": {
+          "token": "51110",
+          "description": "Intermediaris del comerç de matèries primeres agràries, animals vius, matèries primeres tèxtils i productes semielaborados"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 421,
+      "fields": {
+          "token": "51120",
+          "description": "Intermediàris del comerç de combustibles, minerals, metalls i productes químics industrials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 422,
+      "fields": {
+          "token": "51130",
+          "description": "Intermediaris del comerç de la fusta i materials de construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 423,
+      "fields": {
+          "token": "51140",
+          "description": "Intermediaris del comerç de maquinària, equip industrial, embarcacions i aeronaus"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 424,
+      "fields": {
+          "token": "51150",
+          "description": "Intermediaris del comerç de mobles, articles per a la llar i ferreteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 425,
+      "fields": {
+          "token": "51160",
+          "description": "Intermediaris del comerç de tèxtils, peces de vestir, calçat i articles de cuir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 426,
+      "fields": {
+          "token": "51170",
+          "description": "Intermediaris del comerç de productes alimentosos, begudes i tabac"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 427,
+      "fields": {
+          "token": "51180",
+          "description": "Intermediaris del comerç especialitzats en la venda de productes específics o grups de productes no esmentats anteriorment"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 428,
+      "fields": {
+          "token": "51190",
+          "description": "Intermediaris del comerç de productes diversos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 429,
+      "fields": {
+          "token": "51210",
+          "description": "Comerç a l'engròs de cereals, sements i aliments per al bestiar"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 430,
+      "fields": {
+          "token": "51220",
+          "description": "Comerç a l'engròs de flors i plantes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 431,
+      "fields": {
+          "token": "51230",
+          "description": "Comerç a l'engròs d'animals vius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 432,
+      "fields": {
+          "token": "51240",
+          "description": "Comerç a l'engròs de cuirs i pells"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 433,
+      "fields": {
+          "token": "51250",
+          "description": "Comerç a l'engròs de tabac en branca"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 434,
+      "fields": {
+          "token": "51310",
+          "description": "Comerç a l'engròs de fruites, patates i verdures"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 435,
+      "fields": {
+          "token": "51321",
+          "description": "Comerç a l'engròs de carn"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 436,
+      "fields": {
+          "token": "51322",
+          "description": "Comerç a l'engròs de productes cárnics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 437,
+      "fields": {
+          "token": "51323",
+          "description": "Comerç a l'engròs de volateria i altres animals de granja i caça"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 438,
+      "fields": {
+          "token": "51330",
+          "description": "Comerç a l'engròs de productes làctics, ous, olis i greixos comestibles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 439,
+      "fields": {
+          "token": "51340",
+          "description": "Comerç a l'engròs de begudes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 440,
+      "fields": {
+          "token": "51350",
+          "description": "Comerç a l'engròs de productes del tabac"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 441,
+      "fields": {
+          "token": "51360",
+          "description": "Comerç a l'engròs de sucre, xocolata i confiteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 442,
+      "fields": {
+          "token": "51370",
+          "description": "Comerç a l'engròs de cafè, te, cacao i espècies"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 443,
+      "fields": {
+          "token": "51381",
+          "description": "Comerç a l'engròs de peixos i mariscs"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 444,
+      "fields": {
+          "token": "51382",
+          "description": "Comerç a l'engròs d'altres productes alimentosos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 445,
+      "fields": {
+          "token": "51391",
+          "description": "Comerç a l'engròs de productes alimentosos congelats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 446,
+      "fields": {
+          "token": "51392",
+          "description": "Comerç a l'engròs no especialitzat, d'altres productes alimentosos, begudes i tabac"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 447,
+      "fields": {
+          "token": "51410",
+          "description": "Comerç a l'engròs de tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 448,
+      "fields": {
+          "token": "51421",
+          "description": "Comerç a l'engròs de peces de vestir (incloses les peces de cuir i peletería)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 449,
+      "fields": {
+          "token": "51422",
+          "description": "Comerç a l'engròs de calçat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 450,
+      "fields": {
+          "token": "51423",
+          "description": "Comerç a l'engròs d'accessoris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 451,
+      "fields": {
+          "token": "51430",
+          "description": "Comerç a l'engròs d'aparells electrodomèstics i d'aparells de radi i televisió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 452,
+      "fields": {
+          "token": "51441",
+          "description": "Comerç a l'engròs de porcellana i cristalleria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 453,
+      "fields": {
+          "token": "51442",
+          "description": "Comerç a l'engròs de papers pintats i articles de neteja"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 454,
+      "fields": {
+          "token": "51450",
+          "description": "Comerç a l'engròs de perfumeria i productes de bellesa"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 455,
+      "fields": {
+          "token": "51460",
+          "description": "Comerç a l'engròs de productes farmacèutics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 456,
+      "fields": {
+          "token": "51471",
+          "description": "Comerç a l'engròs d'articles de papereria, llibres i similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 457,
+      "fields": {
+          "token": "51472",
+          "description": "Comerç a l'engròs de jocs i joguines"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 458,
+      "fields": {
+          "token": "51473",
+          "description": "Comerç a l'engròs de rellotges, joieria, argenteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 459,
+      "fields": {
+          "token": "51474",
+          "description": "Comerç a l'engròs d'articles de marroquinería i viatge i altres articles de cuir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 460,
+      "fields": {
+          "token": "51475",
+          "description": "Comerç a l'engròs d'altres articles d'ús domèstic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 461,
+      "fields": {
+          "token": "51510",
+          "description": "Comerç a l'engròs de combustibles sòlids, líquids i gasosos i productes similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 462,
+      "fields": {
+          "token": "51521",
+          "description": "Comerç a l'engròs de minerals metàl·lics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 463,
+      "fields": {
+          "token": "51522",
+          "description": "Comerç a l'engròs de ferro i acer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 464,
+      "fields": {
+          "token": "51523",
+          "description": "Comerç a l'engròs de metalls preciosos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 465,
+      "fields": {
+          "token": "51524",
+          "description": "Comerç a l'engròs de metalls no ferris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 466,
+      "fields": {
+          "token": "51531",
+          "description": "Comerç a l'engròs de fusta"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 467,
+      "fields": {
+          "token": "51532",
+          "description": "Comerç a l'engròs de pintures i vernissos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 468,
+      "fields": {
+          "token": "51533",
+          "description": "Comerç a l'engròs de materials bàsics de construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 469,
+      "fields": {
+          "token": "51534",
+          "description": "Comerç a l'engròs d'altres materials de construcció per a instal·lacions d'edificis"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 470,
+      "fields": {
+          "token": "51541",
+          "description": "Comerç a l'engròs de ferreteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 471,
+      "fields": {
+          "token": "51542",
+          "description": "Comerç a l'engròs de materials de lampisteria i calefacció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 472,
+      "fields": {
+          "token": "51551",
+          "description": "Comerç a l'engròs de fertilitzants i productes químics per a l'agricultura"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 473,
+      "fields": {
+          "token": "51552",
+          "description": "Comerç a l'engròs de cautxú i matèries plàstiques en formes primàries"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 474,
+      "fields": {
+          "token": "51553",
+          "description": "Comerç a l'engròs de productes químics industrials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 475,
+      "fields": {
+          "token": "51560",
+          "description": "Comerç a l'engròs d'altres productes semielaboradors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 476,
+      "fields": {
+          "token": "51571",
+          "description": "Comerç a l'engròs de ferralla"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 477,
+      "fields": {
+          "token": "51572",
+          "description": "Comerç a l'engròs d'altres productes de deixalla"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 478,
+      "fields": {
+          "token": "51611",
+          "description": "Comerç a l'engròs de maquinària per treballar la fusta i el suro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 479,
+      "fields": {
+          "token": "51612",
+          "description": "Comerç a l'engròs de màquines-eina per treballar els metalls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 480,
+      "fields": {
+          "token": "51620",
+          "description": "Comerç a l'engròs de maquinària per a la construcció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 481,
+      "fields": {
+          "token": "51630",
+          "description": "Comerç a l'engròs de maquinària per a la indústria tèxtil, màquines de cosir i fer punt"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 482,
+      "fields": {
+          "token": "51640",
+          "description": "Comerç a l'engròs de màquines i equip d'oficina"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 483,
+      "fields": {
+          "token": "51651",
+          "description": "Comerç a l'engròs de material elèctric i electrònic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 484,
+      "fields": {
+          "token": "51652",
+          "description": "Comerç a l'engròs de material i equips diversos industrials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 485,
+      "fields": {
+          "token": "51653",
+          "description": "Comerç a l'engròs de material i equips diversos per al comerç i els serveis"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 486,
+      "fields": {
+          "token": "51660",
+          "description": "Comerç a l'engròs de màquines, accessoris i útils agrícoles, inclosos els tractors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 487,
+      "fields": {
+          "token": "51700",
+          "description": "Altre comerç a l'engròs"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 488,
+      "fields": {
+          "token": "52111",
+          "description": "Hipermercats (més de 2.500 m2)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 489,
+      "fields": {
+          "token": "52112",
+          "description": "Supermercats (entre 2.499 y 400 m2)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 490,
+      "fields": {
+          "token": "52113",
+          "description": "Superserveis (entre 399 i 120 m2)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 491,
+      "fields": {
+          "token": "52114",
+          "description": "Autoserveis (entre 119 y 40 m2)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 492,
+      "fields": {
+          "token": "52115",
+          "description": "Altres establiments no especialitzats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 493,
+      "fields": {
+          "token": "52121",
+          "description": "Grans magatzems"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 494,
+      "fields": {
+          "token": "52122",
+          "description": "Altre comerç al detall en establiments no especialitzats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 495,
+      "fields": {
+          "token": "52210",
+          "description": "Comerç al detall de fruites i verdures"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 496,
+      "fields": {
+          "token": "52220",
+          "description": "Comerç al detall de carn i productes Cárnics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 497,
+      "fields": {
+          "token": "52230",
+          "description": "Comerç al detall de peixos i mariscs"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 498,
+      "fields": {
+          "token": "52240",
+          "description": "Comerç al detall de pa i productes de fleca, confiteria i pastisseria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 499,
+      "fields": {
+          "token": "52250",
+          "description": "Comerç al detall de begudes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 500,
+      "fields": {
+          "token": "52260",
+          "description": "Comerç al detall de productes de tabac"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 501,
+      "fields": {
+          "token": "52271",
+          "description": "Comerç al detall de productes làctics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 502,
+      "fields": {
+          "token": "52272",
+          "description": "Altre comerç al detall en establiments especialitzats en alimentació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 503,
+      "fields": {
+          "token": "52310",
+          "description": "Comerç al detall de productes farmacèutics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 504,
+      "fields": {
+          "token": "52320",
+          "description": "Comerç al detall d'articles mèdics i ortopédics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 505,
+      "fields": {
+          "token": "52330",
+          "description": "Comerç al detall de cosmètics i articles de tocador"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 506,
+      "fields": {
+          "token": "52410",
+          "description": "Comerç al detall de tèxtils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 507,
+      "fields": {
+          "token": "52420",
+          "description": "Comerç al detall de peces de vestir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 508,
+      "fields": {
+          "token": "52430",
+          "description": "Comerç al detall de calçat i articles de cuir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 509,
+      "fields": {
+          "token": "52440",
+          "description": "\"Comerç al detall de mobles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 510,
+      "fields": {
+          "token": "52450",
+          "description": "Comerç al detall d'electrodomèstics, aparells de radi, televisió i so"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 511,
+      "fields": {
+          "token": "52461",
+          "description": "Comerç al detall de ferreteria i vidre pla"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 512,
+      "fields": {
+          "token": "52462",
+          "description": "Comerç al detall de materials de bricolatge"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 513,
+      "fields": {
+          "token": "52463",
+          "description": "Comerç al detall de materials de construcció, pintures i vernissos, i material de sanejament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 514,
+      "fields": {
+          "token": "52470",
+          "description": "Comerç al detall de llibres, periòdics i papereria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 515,
+      "fields": {
+          "token": "52481",
+          "description": "Comerç al detall d'òptica, fotografia i precisió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 516,
+      "fields": {
+          "token": "52482",
+          "description": "Comerç al detall articles de rellotgeria, joieria i argenteria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 517,
+      "fields": {
+          "token": "52483",
+          "description": "Comerç al detall de joguines i articles d'esport"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 518,
+      "fields": {
+          "token": "52484",
+          "description": "Comerç al detall d'articles de drogueria, papers pintats i revestiments de sòls"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 519,
+      "fields": {
+          "token": "52485",
+          "description": "Comerç al detall de llavors, flors, plantes i animals de companyia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 520,
+      "fields": {
+          "token": "52486",
+          "description": "Comerç al detall de combustibles (excepte para vehicles automòbils)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 521,
+      "fields": {
+          "token": "52487",
+          "description": "Galeries d'art comercials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 522,
+      "fields": {
+          "token": "52488",
+          "description": "Altre comerç al detall"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 523,
+      "fields": {
+          "token": "52501",
+          "description": "Botiga d'antiguitats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 524,
+      "fields": {
+          "token": "52502",
+          "description": "Altre comerç al detall d'objectes de segona mà"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 525,
+      "fields": {
+          "token": "52610",
+          "description": "Comerç al detall per correu"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 526,
+      "fields": {
+          "token": "52620",
+          "description": "Comerç al detall en llocs de venda i mercadillos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 527,
+      "fields": {
+          "token": "52631",
+          "description": "Venda domiciliària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 528,
+      "fields": {
+          "token": "52632",
+          "description": "Altre tipus de comerç al detall no realitzat en establiments"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 529,
+      "fields": {
+          "token": "52710",
+          "description": "Reparació de calçat i altres articles de cuir"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 530,
+      "fields": {
+          "token": "52720",
+          "description": "Reparació d'aparells domèstics elèctrics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 531,
+      "fields": {
+          "token": "52730",
+          "description": "Reparació de rellotges i joieria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 532,
+      "fields": {
+          "token": "52740",
+          "description": "Una altra reparació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 533,
+      "fields": {
+          "token": "55111",
+          "description": "Hotels i motels amb restaurant"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 534,
+      "fields": {
+          "token": "55112",
+          "description": "Hostals i pensions amb restaurant"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 535,
+      "fields": {
+          "token": "55121",
+          "description": "Hotels i motels sense restaurant"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 536,
+      "fields": {
+          "token": "55122",
+          "description": "Hostals i pensions sense restaurant"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 537,
+      "fields": {
+          "token": "55211",
+          "description": "Albergs juvenils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 538,
+      "fields": {
+          "token": "55212",
+          "description": "Refugi de muntanya"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 539,
+      "fields": {
+          "token": "55213",
+          "description": "Hostals i pensions amb restaurant"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 540,
+      "fields": {
+          "token": "55220",
+          "description": "Càmping"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 541,
+      "fields": {
+          "token": "55231",
+          "description": "Apartaments turístics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 542,
+      "fields": {
+          "token": "55232",
+          "description": "Centres i colònies de vacances"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 543,
+      "fields": {
+          "token": "55233",
+          "description": "Altres allotjaments turístics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 544,
+      "fields": {
+          "token": "55234",
+          "description": "Altres allotjaments especials no turístics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 545,
+      "fields": {
+          "token": "55300",
+          "description": "Restaurants"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 546,
+      "fields": {
+          "token": "55400",
+          "description": "Establiments de begudes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 547,
+      "fields": {
+          "token": "55510",
+          "description": "Menjadors col·lectius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 548,
+      "fields": {
+          "token": "55521",
+          "description": "Provisió de menjars preparats a empreses"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 549,
+      "fields": {
+          "token": "55522",
+          "description": "Altres activitats de provisió de menjars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 550,
+      "fields": {
+          "token": "60100",
+          "description": "Transport per ferrocarril"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 551,
+      "fields": {
+          "token": "60211",
+          "description": "Transport urbà i suburbà per ferrocarril (metre i superfície)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 552,
+      "fields": {
+          "token": "60212",
+          "description": "Transport urbà regular de viatgers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 553,
+      "fields": {
+          "token": "60213",
+          "description": "Transport regular de viatgers per carretera"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 554,
+      "fields": {
+          "token": "60214",
+          "description": "Altre transport regular (telefèric,funicular i cremallera)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 555,
+      "fields": {
+          "token": "60220",
+          "description": "Transport per taxi"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 556,
+      "fields": {
+          "token": "60230",
+          "description": "Altres tipus de transport terrestre discrecional de viatgers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 557,
+      "fields": {
+          "token": "60241",
+          "description": "Mudances"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 558,
+      "fields": {
+          "token": "60242",
+          "description": "Transport d'altres mercaderies per carretera"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 559,
+      "fields": {
+          "token": "60243",
+          "description": "Lloguer de camions amb conductor"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 560,
+      "fields": {
+          "token": "60300",
+          "description": "Transport per canonada"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 561,
+      "fields": {
+          "token": "61100",
+          "description": "Transport marítim"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 562,
+      "fields": {
+          "token": "61200",
+          "description": "Transport per vies de navegació interiors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 563,
+      "fields": {
+          "token": "62100",
+          "description": "Transport aeri regular"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 564,
+      "fields": {
+          "token": "62200",
+          "description": "Transport aeri discrecional"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 565,
+      "fields": {
+          "token": "62300",
+          "description": "Transport espacial"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 566,
+      "fields": {
+          "token": "63110",
+          "description": "Manipulació de mercaderies"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 567,
+      "fields": {
+          "token": "63121",
+          "description": "Dipòsit i emmagatzematge frigorífic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 568,
+      "fields": {
+          "token": "63122",
+          "description": "Dipòsit i emmagatzematge de mercaderies perilloses"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 569,
+      "fields": {
+          "token": "63123",
+          "description": "Dipòsit i emmagatzematge en sitges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 570,
+      "fields": {
+          "token": "63124",
+          "description": "Altres dipòsits i emmagatzematges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 571,
+      "fields": {
+          "token": "63211",
+          "description": "Terminals i estacions de ferrocarril"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 572,
+      "fields": {
+          "token": "63212",
+          "description": "Terminals d'estacions d'autobusos de viatgers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 573,
+      "fields": {
+          "token": "63213",
+          "description": "Autopistes de peatge i altres vies de peatge"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 574,
+      "fields": {
+          "token": "63214",
+          "description": "Aparcaments"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 575,
+      "fields": {
+          "token": "63215",
+          "description": "Altres activitats annexes al transport"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 576,
+      "fields": {
+          "token": "63221",
+          "description": "Explotacions de ports i serveis portuaris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 577,
+      "fields": {
+          "token": "63222",
+          "description": "Altres activitats annexes al transport marítim"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 578,
+      "fields": {
+          "token": "63231",
+          "description": "Explotacions d'aeroports"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 579,
+      "fields": {
+          "token": "63232",
+          "description": "Altres activitats diverses annexes al transport aeri"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 580,
+      "fields": {
+          "token": "63301",
+          "description": "Majoristes i minoristes de turisme"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 581,
+      "fields": {
+          "token": "63302",
+          "description": "Agències de viatges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 582,
+      "fields": {
+          "token": "63303",
+          "description": "Altres activitats de suport turístic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 583,
+      "fields": {
+          "token": "63400",
+          "description": "Organització del transport de mercaderies"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 584,
+      "fields": {
+          "token": "64110",
+          "description": "Activitats postals nacionals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 585,
+      "fields": {
+          "token": "64120",
+          "description": "Activitats de correu diferents de les activitats postals nacionals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 586,
+      "fields": {
+          "token": "64200",
+          "description": "Telecomunicacions"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 587,
+      "fields": {
+          "token": "65110",
+          "description": "Banca Central"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 588,
+      "fields": {
+          "token": "65121",
+          "description": "Bancs"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 589,
+      "fields": {
+          "token": "65122",
+          "description": "Caixes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 590,
+      "fields": {
+          "token": "65123",
+          "description": "Cooperatives de crèdit"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 591,
+      "fields": {
+          "token": "65210",
+          "description": "Arrendament financer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 592,
+      "fields": {
+          "token": "65221",
+          "description": "Societats de crèdit hipotecari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 593,
+      "fields": {
+          "token": "65222",
+          "description": "Entitats de finançament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 594,
+      "fields": {
+          "token": "65223",
+          "description": "Societats mediadores al mercat de diners"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 595,
+      "fields": {
+          "token": "65224",
+          "description": "Institut de Crèdit Oficial/ICO (mentre que exerceix com a agència financera del Govern)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 596,
+      "fields": {
+          "token": "65231",
+          "description": "Institucions d'inversió col·lectiva de caràcter financer"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 597,
+      "fields": {
+          "token": "65232",
+          "description": "Societats i fons de capital de risc"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 598,
+      "fields": {
+          "token": "65233",
+          "description": "Altres societats d'inversió en actius financers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 599,
+      "fields": {
+          "token": "66011",
+          "description": "Entitats d'assegurances privades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 600,
+      "fields": {
+          "token": "66012",
+          "description": "Entitats de previsió social"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 601,
+      "fields": {
+          "token": "66020",
+          "description": "Plans de pensions"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 602,
+      "fields": {
+          "token": "66031",
+          "description": "Assegurances de danys"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 603,
+      "fields": {
+          "token": "66032",
+          "description": "Reasseguro"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 604,
+      "fields": {
+          "token": "67110",
+          "description": "Administració de mercats financers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 605,
+      "fields": {
+          "token": "67121",
+          "description": "Societats de valors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 606,
+      "fields": {
+          "token": "67122",
+          "description": "Altres activitats borsàries per compte de tercers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 607,
+      "fields": {
+          "token": "67131",
+          "description": "Societats de garantia recíproca i de reafiançament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 608,
+      "fields": {
+          "token": "67132",
+          "description": "Societats de taxació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 609,
+      "fields": {
+          "token": "67133",
+          "description": "Cases de canvi"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 610,
+      "fields": {
+          "token": "67134",
+          "description": "Fons de garantia de dipòsit"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 611,
+      "fields": {
+          "token": "67135",
+          "description": "Societats gestores"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 612,
+      "fields": {
+          "token": "67201",
+          "description": "Agents i corredors d'assegurances"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 613,
+      "fields": {
+          "token": "67202",
+          "description": "Intermediaris d'assegurances"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 614,
+      "fields": {
+          "token": "67203",
+          "description": "Altres activitats auxiliars d'assegurances i plans de pensions"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 615,
+      "fields": {
+          "token": "70111",
+          "description": "Promoció immobiliària d'habitatges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 616,
+      "fields": {
+          "token": "70112",
+          "description": "Una altra promoció immobiliària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 617,
+      "fields": {
+          "token": "70120",
+          "description": "Compravenda de béns immobiliaris per compte propi"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 618,
+      "fields": {
+          "token": "70201",
+          "description": "Lloguer d'habitatges"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 619,
+      "fields": {
+          "token": "70202",
+          "description": "Lloguer d'altres béns immobiliaris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 620,
+      "fields": {
+          "token": "70310",
+          "description": "Agents de la propietat immobiliària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 621,
+      "fields": {
+          "token": "70321",
+          "description": "Administració d'immobles residencials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 622,
+      "fields": {
+          "token": "70322",
+          "description": "Administració d'altres béns immobiliaris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 623,
+      "fields": {
+          "token": "71100",
+          "description": "Lloguer d'automòbils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 624,
+      "fields": {
+          "token": "71210",
+          "description": "Lloguer d'altres mitjans de transport terrestre"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 625,
+      "fields": {
+          "token": "71220",
+          "description": "Lloguer de mitjans de navegació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 626,
+      "fields": {
+          "token": "71230",
+          "description": "Lloguer de mitjans de transport aeri"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 627,
+      "fields": {
+          "token": "71310",
+          "description": "Lloguer de maquinària i equip agrari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 628,
+      "fields": {
+          "token": "71320",
+          "description": "Lloguer de maquinària i equip per a la construcció i enginyeria civil"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 629,
+      "fields": {
+          "token": "71331",
+          "description": "Lloguer d'equips informàtics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 630,
+      "fields": {
+          "token": "71332",
+          "description": "Lloguer d'altres màquines i equip d'oficina"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 631,
+      "fields": {
+          "token": "71340",
+          "description": "Lloguer d'altres tipus de maquinària i equip"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 632,
+      "fields": {
+          "token": "71401",
+          "description": "Lloguer d'aparells de radi,televisió i so"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 633,
+      "fields": {
+          "token": "71402",
+          "description": "Lloguer de vestuari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 634,
+      "fields": {
+          "token": "71403",
+          "description": "Lloguer d'equip i material esportiu"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 635,
+      "fields": {
+          "token": "71404",
+          "description": "Lloguer d'altres efectes personals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 636,
+      "fields": {
+          "token": "72100",
+          "description": "Consulta d'equip informàtic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 637,
+      "fields": {
+          "token": "72200",
+          "description": "Consulta d'aplicacions informàtiques i subministrament de programes d'informàtica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 638,
+      "fields": {
+          "token": "72300",
+          "description": "Procés de dades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 639,
+      "fields": {
+          "token": "72400",
+          "description": "Activitats relacionades amb bases de dades"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 640,
+      "fields": {
+          "token": "72500",
+          "description": "Manteniment i reparació de màquines d'oficina, comptabilitat i equip informàtic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 641,
+      "fields": {
+          "token": "72600",
+          "description": "Altres activitats relacionades amb la informàtica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 642,
+      "fields": {
+          "token": "73100",
+          "description": "Investigació i desenvolupament sobre ciències naturals i tècniques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 643,
+      "fields": {
+          "token": "73200",
+          "description": "Investigació i desenvolupament sobre ciències socials i humanitats"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 644,
+      "fields": {
+          "token": "74111",
+          "description": "Consulta,assessorament i pràctica legal del Dret"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 645,
+      "fields": {
+          "token": "74112",
+          "description": "Notaries i registres"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 646,
+      "fields": {
+          "token": "74113",
+          "description": "Altres activitats jurídiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 647,
+      "fields": {
+          "token": "74120",
+          "description": "Activitats de comptabilitat, teneduria de llibres, auditoria i assessoria fiscal"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 648,
+      "fields": {
+          "token": "74130",
+          "description": "Estudio de mercat i realització d'enquestes d'opinió pública"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 649,
+      "fields": {
+          "token": "74141",
+          "description": "Activitats d'assessorament en direcció i gestió empresarial"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 650,
+      "fields": {
+          "token": "74142",
+          "description": "Relacions públiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 651,
+      "fields": {
+          "token": "74150",
+          "description": "Gestió de societats de cartera (holdings)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 652,
+      "fields": {
+          "token": "74201",
+          "description": "Serveis tècnics d'arquitectura"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 653,
+      "fields": {
+          "token": "74202",
+          "description": "Serveis tècnics d'enginyeria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 654,
+      "fields": {
+          "token": "74203",
+          "description": "Serveis tècnics de cartografia i topografia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 655,
+      "fields": {
+          "token": "74204",
+          "description": "Altres serveis tècnics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 656,
+      "fields": {
+          "token": "74301",
+          "description": "Inspecció tècnica de vehicles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 657,
+      "fields": {
+          "token": "74302",
+          "description": "Altres assajos i anàlisis tècnics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 658,
+      "fields": {
+          "token": "74401",
+          "description": "Agencies i consultors de publicitat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 659,
+      "fields": {
+          "token": "74402",
+          "description": "Gestió de suports publicitaris"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 660,
+      "fields": {
+          "token": "74501",
+          "description": "Selecció de personal directiu i executiu"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 661,
+      "fields": {
+          "token": "74502",
+          "description": "Agències de col·locació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 662,
+      "fields": {
+          "token": "74503",
+          "description": "Agencies de subministrament de personal"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 663,
+      "fields": {
+          "token": "74601",
+          "description": "Investigació"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 664,
+      "fields": {
+          "token": "74602",
+          "description": "Vigilància, protecció i seguretat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 665,
+      "fields": {
+          "token": "74700",
+          "description": "Activitats industrials de neteja"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 666,
+      "fields": {
+          "token": "74811",
+          "description": "Laboratoris de revelat,impressió i ampliació fotogràfica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 667,
+      "fields": {
+          "token": "74812",
+          "description": "Estudis fotogràfics i altres activitats de fotografia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 668,
+      "fields": {
+          "token": "74820",
+          "description": "Activitats d'envasament i empaquetat per compte de tercers"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 669,
+      "fields": {
+          "token": "74831",
+          "description": "Activitats de secretaria i reprografia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 670,
+      "fields": {
+          "token": "74832",
+          "description": "Activitats de traducció"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 671,
+      "fields": {
+          "token": "74833",
+          "description": "Activitats annexes a la distribució publicitària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 672,
+      "fields": {
+          "token": "74841",
+          "description": "Disseny no industrial i decoració d'interiors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 673,
+      "fields": {
+          "token": "74842",
+          "description": "Organització de fires, exhibicions i congressos"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 674,
+      "fields": {
+          "token": "74843",
+          "description": "Altres activitats empresarials"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 675,
+      "fields": {
+          "token": "75111",
+          "description": "Activitats generals de l'Administració Central"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 676,
+      "fields": {
+          "token": "75112",
+          "description": "Activitats generals de l'Administració Autonòmica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 677,
+      "fields": {
+          "token": "75113",
+          "description": "Activitats generals de l'Administració Local"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 678,
+      "fields": {
+          "token": "75120",
+          "description": "Regulació de les Activitats sanitàries, educatives, culturals i altres serveis socials, excepte Seguretat Social obligatòria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 679,
+      "fields": {
+          "token": "75130",
+          "description": "Regulació de l'activitat econòmica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 680,
+      "fields": {
+          "token": "75140",
+          "description": "Altres activitats auxiliars de serveis per a l'Administració Pública en general"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 681,
+      "fields": {
+          "token": "75210",
+          "description": "Afers exteriors"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 682,
+      "fields": {
+          "token": "75220",
+          "description": "Defensa"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 683,
+      "fields": {
+          "token": "75230",
+          "description": "Justícia"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 684,
+      "fields": {
+          "token": "75240",
+          "description": "Ordre públic i seguretat"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 685,
+      "fields": {
+          "token": "75250",
+          "description": "Activitats de protecció civil"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 686,
+      "fields": {
+          "token": "75300",
+          "description": "Seguretat social obligatòria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 687,
+      "fields": {
+          "token": "80101",
+          "description": "Ensenyament infantil"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 688,
+      "fields": {
+          "token": "80102",
+          "description": "Ensenyament primaria"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 689,
+      "fields": {
+          "token": "80210",
+          "description": "Ensenyament secundari de formació general"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 690,
+      "fields": {
+          "token": "80221",
+          "description": "Ensenyament secundari de formació professional específica"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 691,
+      "fields": {
+          "token": "80222",
+          "description": "Un altre ensenyament secundari de formació tècnica i professional"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 692,
+      "fields": {
+          "token": "80301",
+          "description": "Ensenyament superior no universitari"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 693,
+      "fields": {
+          "token": "80302",
+          "description": "Ensenyament superior universitària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 694,
+      "fields": {
+          "token": "80303",
+          "description": "Ensenyament superior d'especialització i postgrau"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 695,
+      "fields": {
+          "token": "80411",
+          "description": "Escoles de conducció de vehicles automòbils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 696,
+      "fields": {
+          "token": "80412",
+          "description": "Escoles de pilotatge"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 697,
+      "fields": {
+          "token": "80421",
+          "description": "Formació per a adults i formació professional contínua"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 698,
+      "fields": {
+          "token": "80422",
+          "description": "Acadèmies"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 699,
+      "fields": {
+          "token": "80423",
+          "description": "Altres ensenyaments"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 700,
+      "fields": {
+          "token": "85110",
+          "description": "Activitats hospitalàries"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 701,
+      "fields": {
+          "token": "85120",
+          "description": "Activitats mèdiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 702,
+      "fields": {
+          "token": "85130",
+          "description": "Activitats odontológiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 703,
+      "fields": {
+          "token": "85141",
+          "description": "Activitats sanitàries de professionals independents (excepte metges)"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 704,
+      "fields": {
+          "token": "85142",
+          "description": "Activitats de servei d'ambulància"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 705,
+      "fields": {
+          "token": "85143",
+          "description": "Laboratoris d'anàlisis clíniques d'anatomia patològica i similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 706,
+      "fields": {
+          "token": "85144",
+          "description": "Altres activitats sanitàries"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 707,
+      "fields": {
+          "token": "85200",
+          "description": "Activitats veterinàries"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 708,
+      "fields": {
+          "token": "85311",
+          "description": "Acolliment d'ancians amb allotjament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 709,
+      "fields": {
+          "token": "85312",
+          "description": "Acolliment de persones amb minusvalideses amb allotjament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 710,
+      "fields": {
+          "token": "85313",
+          "description": "Acolliment de menors amb allotjament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 711,
+      "fields": {
+          "token": "85314",
+          "description": "Acolliment de dones amb allotjament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 712,
+      "fields": {
+          "token": "85315",
+          "description": "Altre acolliment amb allotjament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 713,
+      "fields": {
+          "token": "85321",
+          "description": "Activitats de serveis socials a persones amb minusvalideses"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 714,
+      "fields": {
+          "token": "85322",
+          "description": "Guarderies"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 715,
+      "fields": {
+          "token": "85323",
+          "description": "Activitats de serveis socials a domicili"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 716,
+      "fields": {
+          "token": "85324",
+          "description": "Promoció de la convivència"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 717,
+      "fields": {
+          "token": "85325",
+          "description": "Altres serveis socials sense allotjament"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 718,
+      "fields": {
+          "token": "90001",
+          "description": "Activitats de depuració d'aigües residuals i clavegueram"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 719,
+      "fields": {
+          "token": "90002",
+          "description": "Activitats de neteja de vies públiques i tractament de deixalles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 720,
+      "fields": {
+          "token": "90003",
+          "description": "Altres activitats de sanejament públic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 721,
+      "fields": {
+          "token": "91110",
+          "description": "Activitats d'organitzacions empresarials i patronals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 722,
+      "fields": {
+          "token": "91120",
+          "description": "Activitats d'organitzacions professionals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 723,
+      "fields": {
+          "token": "91200",
+          "description": "Activitats sindicals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 724,
+      "fields": {
+          "token": "91310",
+          "description": "Activitats d'organitzacions religioses"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 725,
+      "fields": {
+          "token": "91320",
+          "description": "Activitats d'organitzacions polítiques"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 726,
+      "fields": {
+          "token": "91331",
+          "description": "Associacions juvenils"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 727,
+      "fields": {
+          "token": "91332",
+          "description": "Altre tipus d'activitats associatives"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 728,
+      "fields": {
+          "token": "92111",
+          "description": "Producció de pel·lícules"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 729,
+      "fields": {
+          "token": "92112",
+          "description": "Activitats de suport a la producció cinematogràfica i de vídeo"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 730,
+      "fields": {
+          "token": "92121",
+          "description": "Distribució de pel·lícules cinematogràfiques i cintes de vídeo"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 731,
+      "fields": {
+          "token": "92122",
+          "description": "Distribució de pel·lícules en cintes de vídeo"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 732,
+      "fields": {
+          "token": "92130",
+          "description": "Exhibició de pel·lícules"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 733,
+      "fields": {
+          "token": "92201",
+          "description": "Activitats de ràdio"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 734,
+      "fields": {
+          "token": "92202",
+          "description": "Producció i distribució de televisió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 735,
+      "fields": {
+          "token": "92203",
+          "description": "Emissió de programes de televisió"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 736,
+      "fields": {
+          "token": "92311",
+          "description": "\"Creació artística i literària"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 737,
+      "fields": {
+          "token": "92312",
+          "description": "Producció d'espectacles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 738,
+      "fields": {
+          "token": "92313",
+          "description": "Altres activitats relacionades amb l'espectacle"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 739,
+      "fields": {
+          "token": "92320",
+          "description": "Gestió de sales d'espectacles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 740,
+      "fields": {
+          "token": "92330",
+          "description": "Activitats de fires i parcs d'atraccions"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 741,
+      "fields": {
+          "token": "92341",
+          "description": "Sales de ball, discoteques i activitats similars"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 742,
+      "fields": {
+          "token": "92342",
+          "description": "Espectacles taurins"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 743,
+      "fields": {
+          "token": "92343",
+          "description": "Altres espectacles"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 744,
+      "fields": {
+          "token": "92400",
+          "description": "Activitats d'agències de notícies"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 745,
+      "fields": {
+          "token": "92510",
+          "description": "Activitats de biblioteques i arxius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 746,
+      "fields": {
+          "token": "92521",
+          "description": "Activitats de museus"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 747,
+      "fields": {
+          "token": "92522",
+          "description": "Activitats de conservació de llocs i edificis històrics"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 748,
+      "fields": {
+          "token": "92530",
+          "description": "Activitats de jardins botànics, zoològics i parcs nacionals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 749,
+      "fields": {
+          "token": "92611",
+          "description": "Gestió d'estadis i poliesportius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 750,
+      "fields": {
+          "token": "92612",
+          "description": "Gestió d'estacions d'esquí"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 751,
+      "fields": {
+          "token": "92613",
+          "description": "Gestió d'altres instal·lacions esportives"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 752,
+      "fields": {
+          "token": "92621",
+          "description": "Clubs i escoles esportives"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 753,
+      "fields": {
+          "token": "92622",
+          "description": "Gestió de ports esportius"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 754,
+      "fields": {
+          "token": "92623",
+          "description": "Altres activitats relacionades amb l'esport"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 755,
+      "fields": {
+          "token": "92711",
+          "description": "Casinos i sales de jocs d'atzar"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 756,
+      "fields": {
+          "token": "92712",
+          "description": "Loteries i apostes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 757,
+      "fields": {
+          "token": "92713",
+          "description": "Altres activitats relacionades amb els jocs d'atzar"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 758,
+      "fields": {
+          "token": "92720",
+          "description": "Altres activitats recreatives"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 759,
+      "fields": {
+          "token": "93010",
+          "description": "Rentat, neteja i tenyit de peces tèxtils i de pell"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 760,
+      "fields": {
+          "token": "93020",
+          "description": "Perruquería i altres tractaments de bellesa"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 761,
+      "fields": {
+          "token": "93030",
+          "description": "Pompes fúnebres i activitats relacionades amb les mateixes"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 762,
+      "fields": {
+          "token": "93041",
+          "description": "Activitats termals i balnearis"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 763,
+      "fields": {
+          "token": "93042",
+          "description": "Altres activitats de manteniment físic corporal"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 764,
+      "fields": {
+          "token": "93050",
+          "description": "Altres activitats de serveis personals"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 765,
+      "fields": {
+          "token": "95000",
+          "description": "Llars que empren personal domèstic"
+      }
+  },
+  {
+      "model": "coredata.CNAE",
+      "pk": 766,
+      "fields": {
+          "token": "99000",
+          "description": "Organismes extraterritorials"
+      }
+  }
+]

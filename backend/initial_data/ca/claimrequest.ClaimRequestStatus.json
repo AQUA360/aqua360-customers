@@ -1,0 +1,55 @@
+[
+    {
+        "model": "claimrequest.claimrequeststatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "2",
+            "name": "Pendent",
+            "color": null,
+            "position": 0,
+            "is_default": true
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Acceptada",
+            "color": "green",
+            "position": 1,
+            "is_default": false
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "3",
+            "name": "Finalitzada",
+            "color": null,
+            "position": 2,
+            "is_default": false
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "4",
+            "name": "Anul·lada",
+            "color": "red",
+            "position": 3,
+            "is_default": false
+        }
+    }
+    
+]

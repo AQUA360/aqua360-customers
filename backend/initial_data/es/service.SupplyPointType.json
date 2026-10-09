@@ -1,0 +1,122 @@
+[
+    {
+        "model": "service.supplypointtype",
+        "pk": 9,
+        "fields": {
+            "token": "COMUNIDAD PROPIETARIOS",
+            "name": "Comunidad de propietarios",
+            "position": null,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 10,
+        "fields": {
+            "token": "COMERCIAL",
+            "name": "Comercial",
+            "position": null,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 1,
+        "fields": {
+            "token": "DOMESTICO",
+            "name": "Doméstico",
+            "position": 1,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 2,
+        "fields": {
+            "token": "INDUSTRIAL",
+            "name": "Industrial",
+            "position": 0,
+            "is_default": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 3,
+        "fields": {
+            "token": "MUNICIPAL",
+            "name": "Municipal",
+            "position": 3,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 4,
+        "fields": {
+            "token": "NO DOMESTICO",
+            "name": "No doméstico",
+            "position": 5,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 5,
+        "fields": {
+            "token": "OBRAS",
+            "name": "Obras",
+            "position": 4,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 6,
+        "fields": {
+            "token": "PISCINAS",
+            "name": "Piscinas",
+            "position": 6,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 7,
+        "fields": {
+            "token": "RIEGO/BALDEO",
+            "name": "Riego/Baldeo",
+            "position": 7,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.supplypointtype",
+        "pk": 8,
+        "fields": {
+            "token": "SERV. CONTRAINCENDIOS",
+            "name": "Servicios contra incendios",
+            "position": 8,
+            "is_default": false,
+            "created_at": null,
+            "updated_at": null
+        }
+    }
+]

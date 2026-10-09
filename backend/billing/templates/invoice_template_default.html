@@ -1,0 +1,652 @@
+{% load billing_filters %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Factura d'aigua</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 2cm;
+            margin-right: 2cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+
+            @frame footer_frame {
+                /* Another static Frame */
+                -pdf-frame-content: footer_content;
+                left: 50pt;
+                width: 512pt;
+                bottom: 12pt;
+                height: 100pt;
+            }
+        }
+
+        @font-face {
+            font-family: 'Montserrat';
+            src: url('config/fonts/Montserrat-Regular.ttf');
+        }
+
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('config/fonts/OpenSans-Regular.ttf');
+            font-weight: normal;
+        }
+
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('contract/fonts/OpenSans-SemiBold.ttf');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'OpenSans', sans-serif;
+            font-size: 11px;
+        }
+
+        .header img {
+            width: 120px;
+            height: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+
+        <table width="100%" style="margin-top: 10px;">
+            <tr>
+                {% if logo %}
+                <td width="120px">
+                    <img src="{{ logo }}" alt="Company Logo">
+                </td>
+                {% endif %}
+                <td width="50%">
+                    <table style="font-family: 'Montserrat', sans-serif;" class="company-table">
+                        <tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> {{ company.name }} </td>
+                        </tr>
+                        <tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> {{ company.address.address_complete }} </td>
+                        </tr>
+                        <tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> {{ company.address.postal_code }} {{
+                                company.address.city.name }} </td>
+                        </tr>
+                        {% if company.website %}<tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> {{ company.website|default_if_none:"" }}</td>
+                        </tr>{% endif %}
+                        <tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> <br /> TELÈFON D'ATENCIÓ AL CLIENT: {{
+                                company.phone }} </td>
+                        </tr>
+                        {% if company.phone2 %}<tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> TELÈFON D'AVERIES: {{ company.phone2 }} </td>
+                        </tr> {% endif %}
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="body-data" style="display: flex; margin: 15px 0 0 0;">
+        <table style="display: flex; justify-content: space-around;">
+            <tr>
+                <td style="width: 50%; margin-top: 10px;">
+                    <div style="margin-top:10px; ">
+                        <p style="text-align:right;">
+                            <span style="text-align:right;">
+                                <strong>Dades de contracte </strong>
+                            </span>
+                        </p>
+                        <table class="contract-data"
+                            style="font-size: 10px; border-bottom: 0.01em solid rgba(0, 0, 0, 0.5);">
+                            {% if contract %}
+                            <tr>
+                                <td>
+                                    <span>Núm. contracte:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ contract.token }} </span>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr style="padding-top:2px">
+                                <td>
+                                    <span>Titular:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.customer_final }} </span>
+                                </td>
+                            </tr>
+                            <tr style="padding-top:2px">
+                                <td>
+                                    <span>NIF:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.customer_token_final }} </span>
+                                </td>
+                            </tr>
+                            <tr style="padding-top:2px">
+                                <td>
+                                    <span>Adreça:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.address_final }} </span>
+                                </td>
+                            </tr>
+                            <tr style="padding-top:2px">
+                                <td>
+                                    <span>Municipi:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.location_final }} </span>
+                                </td>
+                            </tr>
+                            {% if invoice.persons_final %}
+                            <tr style="padding-top:2px">
+                                <td>
+                                    <span>Persones a l'habitatge:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.persons_final }} </span>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                </td>
+                <td style="margin-left:40px; vertical-align:top;">
+                    <div>
+                        <div style="margin-top:10px;">
+                            <p>
+                                <span>
+                                    {{ contract.token }}
+                                </span>
+                            </p>
+                            <p style="font-weight: bold; font-size: 15px;">
+                                <span>
+                                    {{ invoice.address_final }}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                    <div style="margin-top:5px; ">
+                        <span style="text-align:right;">Dades de facturació</span>
+                        <table class="contract-data" style="font-size: 10px;">
+                            <tr>
+                                <td>
+                                    <span>Data:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.issue_date|date:"d F Y" }} </span>
+                                </td>
+                            </tr>
+                            <tr style="padding-top:2px">
+                                <td>
+                                    <span>Número:</span>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span> {{ invoice.serie_final }} </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div style="margin-top:30px;">
+        <table>
+            <tr>
+                <td style="width: 70%;">
+                    <table style="">
+                        <tr style="border-bottom: 1px solid black;">
+                            <td style="text-align: left; width: 40%; ">
+                                <span style="font-weight: bold;">{{ invoice.title_final }}</span>
+                            </td>
+                            <td style="text-align: right; ">
+                                <span style="font-weight: bold;">Quantitat</span>
+                            </td>
+                            <td style="text-align: right; ">
+                                <span style="font-weight: bold;">Preu</span>
+                            </td>
+                            <td style="text-align: right; ">
+                                <span style="font-weight: bold;">Import</span>
+                            </td>
+                            <td style="text-align: right; ">
+                                <span style="font-weight: bold;">
+                                    <strong>IVA(%)</strong>
+                                </span>
+                            </td>
+                        </tr>
+                        {% regroup lines by company as company_groups %}
+                        {% for company_group in company_groups %}
+                        <tr style="vertical-align: top;">
+                            <td colspan="4" style="padding-top:2px;">
+                                <p style="font-weight: bold;">
+                                    <span style="font-weight: bold;">
+                                        {{ company_group.grouper.name }}, NIF:{{ company_group.grouper.vat }}
+                                    </span>
+                                </p>
+
+                            </td>
+                        </tr>
+
+
+
+                        {% regroup company_group.list by reading as reading_groups %}
+                        {% for reading_group in reading_groups %}
+                        {% regroup reading_group.list by product_name as product_groups %}
+                        {% for product_group in product_groups %}
+                        {% cycle '#f2f2f2' '#ffffff' as bgcolor silent %}
+                        <tr style="padding-top: 1px; background-color: {{ bgcolor }};">
+                            <td style="text-align: left;  vertical-align: top; padding-left: 2px;">
+                                <span style="font-weight: bold;">
+                                    {{ product_group.grouper }} {% comment %} {% if product_group.list.0.line_item_type.billing_range.publication %} ({{ forloop.counter
+                                    }}){% endif %} {% endcomment %}
+                                </span>
+                            </td>
+                            <td style="text-align: right; vertical-align: top;"> </td>
+                            <td style="text-align: right; vertical-align: top;"> </td>
+                            <td style="text-align: right; vertical-align: top;"> </td>
+                            <td style="text-align: right; vertical-align: top;"> </td>
+                        </tr>
+                        {% for line_item in product_group.list %}
+                        <tr style="background-color: {{ bgcolor }};">
+                            <td style="text-align: left;  vertical-align: top; padding-left: 5px;">
+                                <span style="font-size: 8px;">
+                                    {{ line_item.name }}
+                                    {% if line_item.description %}
+                                    {{ line_item.description }}
+                                    {% endif %}
+                                </span>
+                            </td>
+                            <td style="text-align: right; vertical-align: top;">
+                                {% if line_item.units|floatformat:2|slice:"-3:" == ".00" %}
+                                {{ line_item.units|floatformat:0 }}
+                                {% else %}
+                                {{ line_item.units|floatformat:2 | remove_useless_zeros }}
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right; vertical-align: top;">
+                                <span style="font-weight: bold;">{{ line_item.price_unit | floatformat:4 |
+                                    remove_useless_zeros }}</span>
+                            </td>
+                            <td style="text-align: right; vertical-align: top;">
+                                {{ line_item.price | floatformat:4 | remove_useless_zeros }}
+                            </td>
+                            <td style="text-align: right; vertical-align: top; padding-right: 5px;">
+                                {{ line_item.tax_percent | floatformat:0 }}%
+                            </td>
+
+                        </tr>
+                        {% endfor %}
+                        {% endfor %}
+                        {% endfor %}
+                        {% endfor %}
+                        <tr style="border-top: 1px solid grey"> </tr>
+                        {% for tax_rate, tax_data in taxes.items %}
+                        <tr style="padding-top:2px">
+                            <td colspan="3">
+                                <p style="font-weight: bold;">
+                                    <span style="font-weight: bold;">
+                                        IVA. al {{ tax_rate | floatformat:0 }}% BASE IMPOSABLE: {{ tax_data.tax_base |
+                                        floatformat:2 | remove_useless_zeros }}
+                                    </span>
+                                </p>
+                            </td>
+                            <td style="text-align: right;">
+                                <p style="font-weight: bold;">
+                                    <span style="font-weight: bold;">
+                                        {{ tax_data.tax_value | floatformat:2 | remove_useless_zeros }}
+                                    </span>
+                                </p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        <tr style="padding-top:2px; border-top: 1px solid black">
+                            <td colspan="3">
+                                <p style="font-weight: bold;">
+                                    <span style="font-weight: bold;">
+                                        SUBTOTAL:
+                                    </span>
+                                </p>
+                            </td>
+                            <td style="text-align: right;">
+                                <p style="font-weight: bold;">
+                                    <span style="font-weight: bold;">
+                                        {{ invoice.total_final | floatformat:2 }}
+                                    </span>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+                <td style="width: 2%;">
+                </td>
+                <td style="width: 28%;">
+                    <table>
+                        {% for msg_id, msg in messages.items %}
+                        <tr class="message-box">
+                            <td>
+                                <p style="font-weight: bold; text-align: justify;">
+                                    </br>
+                                    {{ msg.title }} </br> {{ msg.content }}
+                                </p>
+
+                                {% if msg.chart %}
+                                <p style="text-align: justify;">
+                                    <img src="{{ msg.chart }}" alt="Chart for {{ msg.title }}"
+                                        style="max-width: 50%; height: auto;">
+                                </p>
+                                {% endif %}
+                            </td>
+
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                            <td>
+                                <p>
+                                    <span>
+                                        </br>
+                                        LA VOSTRA DESPESA
+                                    </span>
+                                </p>
+                                <p style="text-align: justify;">
+                                    <span style="text-align: justify;">
+                                        La seva despesa mitjana en el període ha estat de {{consumption_day}} EUR/dia.
+                                    </span>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
+    </br>
+
+    <div style="align-content: right; width: 27%; display:flex; justify-content: flex-end; margin-right: 50px;">
+        <table>
+            <tr>
+                <td style="text-align: left; width: 40%; vertical-align: bottom;">
+                    <p>
+                        <span>
+                            CONSUM TOTAL {{ invoice.real_consumption | floatformat:2 }} m3
+                        </span>
+                    </p>
+                </td>
+                <td style="text-align: left; width: 40%; vertical-align: bottom; text-size: 15px; ">
+                    <p>
+                        <span>
+                            TOTAL FACTURA {{ invoice.total_final | floatformat:2 }}€
+                        </span>
+                    </p>
+                </td>
+
+            </tr>
+            <tr>
+            </tr>
+            <tr>
+                <td style="text-align: left; width: 30%; vertical-align: bottom; ">
+                </td>
+                <td style="text-align: left; width: 50%; vertical-align: bottom; text-size: 20px; ">
+                    <p>
+                        <span style="font-size: 18px; font-weight: bold;">
+                            TOTAL A PAGAR {{ invoice.left_to_pay | floatformat:2 }}€
+                        </span>
+                    </p>
+                </td>
+            </tr>
+            {% if used_import > 0 %}
+            <tr></tr>
+            <tr>
+                <td style="text-align: left; width: 40%; vertical-align: bottom;">
+                    <p>
+                        <span>
+                            SALDO LIQUIDAT {{ used_import | floatformat:2 }}€
+                        </span>
+                    </p>
+                </td>
+                <td style="text-align: left; width: 40%; vertical-align: bottom; text-size: 15px; ">
+                </td>
+            </tr>
+            {% endif %}
+
+            {% if corrected_readings %}
+            <tr></tr>
+            {% for reading in corrected_readings %}
+            <tr>
+                <td style="text-align: left; width: 40%; vertical-align: bottom;">
+                    <p>
+                        <span>
+                            CONSUM LIQUIDAT {{ reading.estimated_used | floatformat:2 | remove_useless_zeros }} m3
+                        </span>
+                    </p>
+                </td>
+                <td style="text-align: left; width: 40%; vertical-align: bottom; text-size: 15px; ">
+                </td>
+            </tr>
+            {% endfor %}
+            {% endif %}
+
+        </table>
+
+    </div>
+
+    <div style="margin-top:20px;">
+        <table style="display: flex; justify-content: space-around;">
+            <tr>
+                <td style="width: 70%; margin-top: 10px;">
+                    <div style="margin-top:20px; ">
+                        <table style="margin-top: 10px; text-size: 8px; text-align: center;">
+                            <tr style="border-bottom: 1px solid black; align-content: center; width: 50%;">
+                                <td>
+                                    <p>
+                                        <span>
+                                            Comptador
+                                        </span>
+                                    </p>
+                                </td>
+                                <td style="width: 10%;">
+                                    <p>
+                                        <span>
+                                            Ø
+                                        </span>
+                                    </p>
+                                </td>
+                                <td>
+                                    <p>
+                                        <span>
+                                            Lectura anterior
+                                        </span>
+                                    </p>
+                                </td>
+                                <td>
+                                    <p>
+                                        <span>
+                                            Lectura actual
+                                        </span>
+                                    </p>
+                                </td>
+                                <td style="width: 10%;">
+                                    <p>
+                                        <span>
+                                            Consum
+                                        </span>
+                                    </p>
+                                </td>
+                                <td>
+                                    <p>
+                                        <span>
+                                            Dies període
+                                        </span>
+                                    </p>
+                                </td>
+                            </tr>
+                            {% for reading in invoice.readings.all %}
+
+                            <tr style="align-content: center; width: 70%; padding-top:2px">
+                                <td>
+                                    <p>
+                                        <span>
+                                            {{reading.supply_point.meter.code}}
+                                        </span>
+                                    </p>
+                                </td>
+                                <td style="width: 10%;">
+                                    <p>
+                                        <span>
+                                            {{reading.supply_point.meter.caliber.token}}
+                                        </span>
+                                    </p>
+                                </td>
+                                <td>
+                                    <p>
+                                        <span>
+                                            {{reading.previous_reading.reading_value | floatformat:0}}
+                                        </span>
+                                    </p>
+                                </td>
+                                <td>
+                                    <p>
+                                        <span>
+                                            {{reading.reading_value | floatformat:0}}
+                                        </span>
+                                    </p>
+                                </td>
+                                <td style="width: 10%;">
+                                    <p>
+                                        <span>
+                                            {% if reading.is_estimated %}
+                                            0
+                                            {% else %}
+                                            {{reading.calculated_value | floatformat:0}}
+                                            {% endif %}
+                                        </span>
+                                    </p>
+                                </td>
+                                <td>
+                                    <p>
+                                        <span>
+                                            {{reading.consumption_days}}
+                                        </span>
+                                    </p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    {% load i18n %}
+    {% language 'ca' %}
+    <div style="margin-top: 20px;">
+        <p>
+            <span>
+                {{ company.address.province.name }}, {{ company.address.city.name }}, {{ invoice.created_at|date:"d F Y"
+                }}
+            </span>
+        </p>
+    </div>
+    {% endlanguage %}
+    {% comment %} <div>
+        <pdf:nextpage />
+    </div> {% endcomment %}
+
+
+
+    <!-- Signature Section -->
+    <div id="footer_content">
+
+        {% if iban and not invoice.payment_type_token_final == 'DIRECT_DEBIT' %}
+        <p style="justify-content: space-between;">
+            <span style="justify-content: space-between;">
+                L'import de la factura serà carregat pròximament al compte núm. IBAN
+                {{ iban }} de BANC 222XXXXXXXX. Els dígits s'han ocultat per la vostra seguretat. El pagament d'aquesta
+                factura s'acreditarà mitjançant el corresponent dèbit bancari o rebut de caixa
+            </span>
+        </p>
+        {% endif %}
+
+        {% if barcode %}
+        <table style="width: 100%; ">
+            <tr>
+                <td style="width: 50%; padding: 0;"></td> <!-- Empty cell for spacing -->
+                <td style="width: 50%; text-align: right; vertical-align: bottom; padding: 0;">
+                    <img src="data:image/png;base64,{{ barcode }}" alt="Barcode for {{ invoice.token }}"
+                        style="max-width: 100%; height: auto; margin-bottom: 0px;">
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2" style="padding: 0; margin-top: 5px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="background-color: rgb(240, 240, 240); font-size: 10px; text-align: center;">
+                            <td style="width: 25%; border: 1px solid #ccc; padding: 3px;">
+                                Emissora
+                            </td>
+                            <td style="width: 25%; border: 1px solid #ccc; padding: 3px;">
+                                Referència
+                            </td>
+                            <td style="width: 20%; border: 1px solid #ccc; padding: 3px;">
+                                Identificació
+                            </td>
+                            <td style="width: 15%; border: 1px solid #ccc; padding: 3px;">
+                                Data Límit
+                            </td>
+                            <td style="width: 15%; border: 1px solid #ccc; padding: 3px;">
+                                Total a pagar
+                            </td>
+                        </tr>
+                        <tr style="text-align: center; font-size: 10px;">
+                            <td style="width: 25%; border: 1px solid #ccc; padding: 3px; color: black;">
+                                {{ barcode_values.transmitter }}{{ barcode_values.suffix }}
+                            </td>
+                            <td style="width: 25%; border: 1px solid #ccc; padding: 3px; color: black;">
+                                {{ barcode_values.display_reference }}
+                            </td>
+                            <td style="width: 20%; border: 1px solid #ccc; padding: 3px; color: black;">
+                                {{ barcode_values.ident }}
+                            </td>
+                            <td style="width: 15%; border: 1px solid #ccc; padding: 3px; color: black;">
+                                {% if now_date %}
+                                {{ now_date|date:"d/m/Y" }}
+                                {% elif due_date %}
+                                {{ due_date|date:"d/m/Y" }}
+                                {% else %}
+                                {{ invoice.due_date|date:"d/m/Y" }}
+                                {% endif %}
+                            </td>
+                            <td style="width: 15%; border: 1px solid #ccc; padding: 3px; color: black;">
+                                {% if payment_amount %}
+                                {{ payment_amount | format_eu:2 }} €
+                                {% else %}
+                                {{ invoice.left_to_pay | format_eu:2 }} €
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+        {% endif %}
+
+        <p style="font-size: 6px; justify-content: space-between;">
+            <span style="font-size: 6px; justify-content: space-between;">
+                1.- Responsable: {{ company.alias }}. 2.- Finalitat: Gestió comercial i administrativa. 3.- Legitimació:
+                Execució d’un contracte, comanda o relació comercial. 4.- Destinataris: No es cediran
+                dades a tercers, excepte en els supòsits d’impagament o existència d’obligació legal. 5.- Drets: Accés,
+                rectificació i cancel·lació de les dades, així com els altres drets que consten
+                explicats en la informació addicional. 6.- Informació addicional: Pot consultar la informació addicional
+                i detallada sobre Protecció de Dades a la nostra web
+            </span>
+        </p>
+    </div>
+</body>

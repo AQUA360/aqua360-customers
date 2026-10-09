@@ -1,0 +1,62 @@
+[
+  {
+    "model": "billing.readeralert",
+    "pk": 1,
+    "fields": {
+      "created_at": "2025-07-22T12:38:21.411Z",
+      "updated_at": "2025-07-22T13:09:34.668Z",
+      "token": "Absent",
+      "name": "Ausente",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.readeralert",
+    "pk": 2,
+    "fields": {
+      "created_at": "2025-07-22T12:38:26.839Z",
+      "updated_at": "2025-07-22T13:09:40.393Z",
+      "token": "Comptador parat",
+      "name": "Contador parado",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.readeralert",
+    "pk": 3,
+    "fields": {
+      "created_at": "2025-07-22T12:38:29.519Z",
+      "updated_at": "2025-07-22T13:09:53.042Z",
+      "token": "Dial trencat",
+      "name": "Dial roto",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.readeralert",
+    "pk": 4,
+    "fields": {
+      "created_at": "2025-07-22T12:38:31.311Z",
+      "updated_at": "2025-07-22T13:10:04.436Z",
+      "token": "Error número de comptador",
+      "name": "Error número de contador",
+      "position": null,
+      "is_default": false
+    }
+  },
+  {
+    "model": "billing.readeralert",
+    "pk": 10,
+    "fields": {
+      "created_at": "2025-07-22T13:10:06.747Z",
+      "updated_at": "2025-07-22T13:10:16.578Z",
+      "token": "Falta comptador",
+      "name": "Falta contador",
+      "position": null,
+      "is_default": false
+    }
+  }
+]

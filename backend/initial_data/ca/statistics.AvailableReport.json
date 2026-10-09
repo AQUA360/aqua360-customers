@@ -1,0 +1,877 @@
+[
+{
+    "model": "statistics.availablereport",
+    "pk": 1,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.651Z",
+        "updated_at": "2026-05-18T15:02:21.651Z",
+        "name": "Resum de facturació",
+        "description": "Resum global de facturació amb imports agregats per explotació i període.",
+        "is_active": true,
+        "function_name": "get_report_billing_summary",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 1
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 2,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.655Z",
+        "updated_at": "2026-05-22T12:22:10.315Z",
+        "name": "Resum comptable (Factures)",
+        "description": "Resum d'assentaments i conceptes comptables facturats.",
+        "is_active": true,
+        "function_name": "accounting_values_invoice_report",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 2
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 3,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.658Z",
+        "updated_at": "2026-05-22T12:22:10.318Z",
+        "name": "Resum comptable (Cobraments)",
+        "description": "Resum d'assentaments i conceptes comptables facturats (Factures).",
+        "is_active": true,
+        "function_name": "accounting_values_payment_report",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 3
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 4,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.662Z",
+        "updated_at": "2026-05-22T12:22:10.322Z",
+        "name": "Resum comptable (Compromís de pagament)",
+        "description": "Resum d'assentaments i conceptes comptables facturats (Compromisos de pagament).",
+        "is_active": true,
+        "function_name": "accounting_values_commitment_report",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 4
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 5,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.665Z",
+        "updated_at": "2026-05-18T15:02:21.665Z",
+        "name": "Remeses Aqua",
+        "description": "Detall resumit de les remeses bancàries enviades per al cobrament.",
+        "is_active": true,
+        "function_name": "aqua_remittance_report",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": true,
+        "required_fields": [
+            "remittance_id"
+        ],
+        "position": 5
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 6,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.668Z",
+        "updated_at": "2026-05-18T15:02:21.668Z",
+        "name": "Declaració ACA",
+        "description": "Declaració oficial del cànon de l'aigua d'acord amb la normativa de l'ACA.",
+        "is_active": true,
+        "function_name": "aca_summary_report",
+        "section": 1,
+        "download_button_name": "Generar Cànon ACA",
+        "has_custom_config": true,
+        "required_fields": [],
+        "position": 6
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 7,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.671Z",
+        "updated_at": "2026-05-18T15:02:21.671Z",
+        "name": "Padró de facturació",
+        "description": "Registre unificat de factures emeses.",
+        "is_active": true,
+        "function_name": "register_billing_summary",
+        "section": 1,
+        "download_button_name": "Descarregar Padró",
+        "has_custom_config": true,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 7
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 8,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.673Z",
+        "updated_at": "2026-05-18T15:02:21.673Z",
+        "name": "Resum de facturació detallat",
+        "description": "Detall minuciós línia per línia del registre de facturació.",
+        "is_active": true,
+        "function_name": "detailed_billing_summary",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 8
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 9,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.676Z",
+        "updated_at": "2026-05-18T15:02:21.676Z",
+        "name": "Resum de facturació per tipus de punt de subministrament",
+        "description": "Detall d'imports facturats agregats per modalitat o tipus de subministrament.",
+        "is_active": true,
+        "function_name": "billing_summary_by_supply_type",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 9
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 10,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.680Z",
+        "updated_at": "2026-05-18T15:02:21.680Z",
+        "name": "Resum d'abonats per tarifa",
+        "description": "Distribució dels imports facturats segmentats per les diferents tarifes actives.",
+        "is_active": true,
+        "function_name": "billing_summary_by_rates",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 10
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 11,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.683Z",
+        "updated_at": "2026-05-18T15:02:21.683Z",
+        "name": "Resum de facturació IVA",
+        "description": "Agregació de bases imposables i quotes d'impostos aplicats (IVA).",
+        "is_active": true,
+        "function_name": "billing_taxes_summary",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 11
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 12,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.686Z",
+        "updated_at": "2026-05-18T15:02:21.686Z",
+        "name": "Resum de facturació per integració NAVISION",
+        "description": "Detall línia per línia d'impostos aplicats en el període.",
+        "is_active": true,
+        "function_name": "billing_taxes_detailed_summary",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 12
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 13,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.690Z",
+        "updated_at": "2026-05-18T15:02:21.690Z",
+        "name": "Resum de consum",
+        "description": "Detall de consums registrats i mitjanes del període liquidat.",
+        "is_active": true,
+        "function_name": "billing_detailed_consumption_summary",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 13
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 14,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.693Z",
+        "updated_at": "2026-05-18T15:02:21.693Z",
+        "name": "Padró de facturació reduït",
+        "description": "Versió compacta i resumida del registre de factures.",
+        "is_active": true,
+        "function_name": "mini_register_billing_summary",
+        "section": 1,
+        "download_button_name": "Descarregar Padró",
+        "has_custom_config": true,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 14
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 16,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.699Z",
+        "updated_at": "2026-05-18T15:02:21.699Z",
+        "name": "Resum de pagaments cobrats",
+        "description": "Informe de cobraments i devolucions amb prorrateig conceptual de costos.",
+        "is_active": true,
+        "function_name": "cobraments_excel_report",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 16
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 17,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.702Z",
+        "updated_at": "2026-05-18T15:02:21.702Z",
+        "name": "Informe de Recaptació per Conceptes",
+        "description": "Informe de recaptació agregada per cadascun dels conceptes dinàmics.",
+        "is_active": true,
+        "function_name": "recaptacio_conceptes_report",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 17
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 18,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.705Z",
+        "updated_at": "2026-05-18T15:02:21.705Z",
+        "name": "Fiances INCASOL",
+        "description": "Llistat de fiances gestionades, actives, retornades o cancel·lades.",
+        "is_active": true,
+        "function_name": "bails_report",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 18
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 19,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.707Z",
+        "updated_at": "2026-05-18T15:02:21.708Z",
+        "name": "Resum de facturació per persona",
+        "description": "Resum de facturació acumulat i desglossat per persona/titular.",
+        "is_active": true,
+        "function_name": "report_billing_total_by_person",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 19
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 20,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.710Z",
+        "updated_at": "2026-05-18T15:02:21.710Z",
+        "name": "Model 347",
+        "description": "Declaració anual d'operacions amb terceres persones que superin el límit legal (Model 347).",
+        "is_active": true,
+        "function_name": "report_billing_347",
+        "section": 1,
+        "download_button_name": "Descarregar Model 347",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 20
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 21,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.713Z",
+        "updated_at": "2026-05-18T15:02:21.713Z",
+        "name": "Resum de rebuts domiciliats",
+        "description": "Situació i balances balances globals dels rebuts de cartera.",
+        "is_active": true,
+        "function_name": "wallet_summary",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 1
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 22,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.717Z",
+        "updated_at": "2026-05-18T15:02:21.717Z",
+        "name": "Llistat de rebuts domiciliats",
+        "description": "Distribució i relació detallada per entitat bancària.",
+        "is_active": true,
+        "function_name": "wallet_bank_list",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 2
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 23,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.720Z",
+        "updated_at": "2026-05-18T15:02:21.720Z",
+        "name": "Llistat de rebuts domiciliats detallat",
+        "description": "Detall individual de moviments bancaris per entitat.",
+        "is_active": true,
+        "function_name": "wallet_bank_detailed_summary",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 3
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 24,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.723Z",
+        "updated_at": "2026-05-18T15:02:21.723Z",
+        "name": "Resum de pagaments cobrats en efectiu",
+        "description": "Registre dels moviments comptabilitzats per la caixa física/manual.",
+        "is_active": true,
+        "function_name": "wallet_cash_detailed_summary",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 4
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 25,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.726Z",
+        "updated_at": "2026-05-18T15:02:21.726Z",
+        "name": "Informe retorn SEPA",
+        "description": "Llistat general de deutes vençuts i pendents de cobrament.",
+        "is_active": true,
+        "function_name": "wallet_unpaid_summary",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 5
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 26,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.729Z",
+        "updated_at": "2026-05-18T15:02:21.729Z",
+        "name": "Informe de tots els impagats (Global)",
+        "description": "Informe global de tots els rebuts en estat impagat o vençut sense importar el mètode de pagament.",
+        "is_active": true,
+        "function_name": "wallet_all_unpaid_summary",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 6
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 27,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.732Z",
+        "updated_at": "2026-05-18T15:02:21.732Z",
+        "name": "Exportació de contractes",
+        "description": "Llistat complet de contractes amb les seves dades tècniques i d'abonats.",
+        "is_active": true,
+        "function_name": "contracts_export_report",
+        "section": 5,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 1
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 28,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.736Z",
+        "updated_at": "2026-05-18T15:02:21.736Z",
+        "name": "Resum de lectures i factures per contracte",
+        "description": "Traçabilitat històrica de lectures i factures associades a cada contracte.",
+        "is_active": true,
+        "function_name": "contracts_invoice_reading_summary_report",
+        "section": 5,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 2
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 29,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.739Z",
+        "updated_at": "2026-05-18T15:02:21.739Z",
+        "name": "Exportació de tarifes",
+        "description": "Relació de tarifes actives assignades als contractes.",
+        "is_active": true,
+        "function_name": "contracts_tariffs_export_report",
+        "section": 5,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 3
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 30,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.742Z",
+        "updated_at": "2026-05-18T15:02:21.742Z",
+        "name": "Exportació de baixes",
+        "description": "Resum històric dels contractes que han sol·licitat la baixa del servei.",
+        "is_active": true,
+        "function_name": "contracts_termination_export_report",
+        "section": 5,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 4
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 31,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.744Z",
+        "updated_at": "2026-05-18T15:02:21.744Z",
+        "name": "Resum temps destinat a ordres de treball",
+        "description": "Estadístiques de resolució i temps de resposta d'ordres de treball de camp.",
+        "is_active": true,
+        "function_name": "order_time_summary",
+        "section": 6,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range"
+        ],
+        "position": 1
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 32,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.747Z",
+        "updated_at": "2026-05-18T15:02:21.747Z",
+        "name": "Ingrés detallat per tipologia i periodicitat",
+        "description": "Estadística del nombre d'abonats classificats per tipus d'ús i freqüència de lectura.",
+        "is_active": true,
+        "function_name": "detailed_typology_periodicity_report",
+        "section": 7,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 1
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 33,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.750Z",
+        "updated_at": "2026-05-18T15:02:21.750Z",
+        "name": "Ingrés detallat per concepte",
+        "description": "Ingressos de facturació segregats per concepte tarifari i període.",
+        "is_active": true,
+        "function_name": "detailed_concept_report",
+        "section": 7,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 2
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 34,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.753Z",
+        "updated_at": "2026-05-18T15:02:21.753Z",
+        "name": "Detall ingressos no tarifaris",
+        "description": "Relació d'ingressos especials o derivats d'actuacions no periòdiques.",
+        "is_active": true,
+        "function_name": "non_tariff_income_report",
+        "section": 7,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 3
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 35,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.756Z",
+        "updated_at": "2026-05-18T15:02:21.756Z",
+        "name": "Evolució d'abonats, altes i baixes",
+        "description": "Gràfics i ràtios històrics de noves altes i baixes netes.",
+        "is_active": true,
+        "function_name": "subscriber_evolution_report",
+        "section": 7,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 4
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 36,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.759Z",
+        "updated_at": "2026-05-18T15:02:21.759Z",
+        "name": "Evolució de tarifa social i vulnerables",
+        "description": "Estadístiques dels abonats beneficiaris de bonificacions i cànons socials.",
+        "is_active": true,
+        "function_name": "social_tariff_evolution_report",
+        "section": 7,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 5
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 37,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.761Z",
+        "updated_at": "2026-05-18T15:02:21.761Z",
+        "name": "Temps de resposta a reclamacions",
+        "description": "Informe d'auditoria sobre reclamacions rebudes i la seva data de tancament.",
+        "is_active": true,
+        "function_name": "claim_response_time_report",
+        "section": 7,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 6
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 38,
+    "fields": {
+        "created_at": "2026-05-18T15:02:21.764Z",
+        "updated_at": "2026-05-18T15:02:21.764Z",
+        "name": "Volum i estadístiques de gestions",
+        "description": "Mètriques agregades de l'activitat diària de l'oficina comercial.",
+        "is_active": true,
+        "function_name": "management_volume_report",
+        "section": 7,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 7
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 39,
+    "fields": {
+        "created_at": "2026-05-22T12:22:10.360Z",
+        "updated_at": "2026-05-22T12:22:10.360Z",
+        "name": "Informe de clavegueram facturat",
+        "description": "Informe de clavegueram basat en les factures i no amb els moviments de cartera.",
+        "is_active": true,
+        "function_name": "clavegueram_invoices_report",
+        "section": 1,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 21
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 40,
+    "fields": {
+        "created_at": "2026-05-22T12:22:10.360Z",
+        "updated_at": "2026-05-22T12:22:10.360Z",
+        "name": "Informe de deute pendent",
+        "description": "Informe de deute pendent per contractes i abonats, mostrant les factures a pagar fins a una data seleccionada. (Només es farà servir la data més nova seleccionada del rang de dates)",
+        "is_active": true,
+        "function_name": "total_customers_debt_report",
+        "section": 4,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "exploitation_id"
+        ],
+        "position": 22
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 41,
+    "fields": {
+        "created_at": "2026-05-22T12:22:10.360Z",
+        "updated_at": "2026-05-22T12:22:10.360Z",
+        "name": "Declaració tributària SGTTXS",
+        "description": "Declaració tributària SGTTXS",
+        "is_active": false,
+        "function_name": "sgt_txt_report",
+        "section": 4,
+        "download_button_name": "Descarregar txt",
+        "has_custom_config": false,
+        "required_fields": [
+            "date_range",
+            "id"
+        ],
+        "position": 23
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 42,
+    "fields": {
+        "created_at": "2026-05-22T12:22:10.360Z",
+        "updated_at": "2026-05-22T12:22:10.360Z",
+        "name": "Fitxer importació a comptabilitat",
+        "description": "Fitxer amb les factures declarades a una data específica. (Només es farà servir la data més nova seleccionada del rang de dates)",
+        "is_active": false,
+        "function_name": "general_accounting_report",
+        "section": 2,
+        "download_button_name": "Descarregar txt",
+        "has_custom_config": true,
+        "required_fields": [
+            "date_range"
+        ],
+        "position": 23
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 43,
+    "fields": {
+        "created_at": "2026-05-22T12:22:10.360Z",
+        "updated_at": "2026-05-22T12:22:10.360Z",
+        "name": "Deute pendent",
+        "description": "Resum de deutes pendents per contracte i/o persona",
+        "is_active": false,
+        "function_name": "pending_invoices_values_report",
+        "section": 5,
+        "download_button_name": "Descarregar Excel",
+        "has_custom_config": true,
+        "required_fields": [
+            "date_range"
+        ],
+        "position": 24
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 44,
+    "fields": {
+        "created_at": "2026-05-22T12:22:10.360Z",
+        "updated_at": "2026-05-22T12:22:10.360Z",
+        "name": "(SII) Subministre Informació Inmediata",
+        "description": "(SII) Subministre Informació Inmediata",
+        "is_active": false,
+        "function_name": "sii_report",
+        "section": 1,
+        "download_button_name": "Descarregar Fitxer XML",
+        "has_custom_config": true,
+        "required_fields": [
+            "date_range",
+            "end_date",
+            "exploitation_id"
+        ],
+        "position": 25
+    }
+},
+{
+    "model": "statistics.availablereport",
+    "pk": 45,
+    "fields": {
+        "created_at": "2026-05-22T12:22:10.360Z",
+        "updated_at": "2026-05-22T12:22:10.360Z",
+        "name": "Informe Comptable",
+        "description": "Informe Comptable",
+        "is_active": false,
+        "function_name": "sii_report",
+        "section": 1,
+        "download_button_name": "Descarregar Fitxer XML",
+        "has_custom_config": true,
+        "required_fields": [
+            "date_range",
+            "end_date",
+            "exploitation_id"
+        ],
+        "position": 25
+    }
+}
+]

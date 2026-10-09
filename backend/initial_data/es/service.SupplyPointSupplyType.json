@@ -1,0 +1,230 @@
+[
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 1,
+      "fields": {
+          "token": "COMPTADOR",
+          "name": "CONTADOR",
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 4,
+      "fields": {
+          "token": "BOCA INCENDI AMB COMPTADOR",
+          "name": "BOCA DE INCENDIO CON CONTADOR",
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 5,
+      "fields": {
+          "token": "PASSI",
+          "name": "PASSI",
+          "position": 2,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 6,
+      "fields": {
+          "token": "DESCALCIFICADOR",
+          "name": "DESCALCIFICADOR",
+          "position": 3,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 7,
+      "fields": {
+          "token": "APARELL",
+          "name": "APARELL",
+          "position": 4,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 8,
+      "fields": {
+          "token": "COMUNITAT_REGANTS",
+          "name": "COMUNITAT_REGANTS",
+          "position": 5,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 9,
+      "fields": {
+          "token": "PORT",
+          "name": "PORT",
+          "position": 6,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 10,
+      "fields": {
+          "token": "BOCA REG",
+          "name": "BOCA REG",
+          "position": 7,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 11,
+      "fields": {
+          "token": "REG AIGUA REUTILITZADA",
+          "name": "REG AGUA REUTILIZADA",
+          "position": 8,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 12,
+      "fields": {
+          "token": "AFORAMENT/BUCS/REGANTS",
+          "name": "AFORAMIENTO/POZOS/REGANTS",
+          "position": 9,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 13,
+      "fields": {
+          "token": "PER SERVEI",
+          "name": "POR SERVICIO (PUNTUAL/ESPORÁDICA)",
+          "position": 10,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 14,
+      "fields": {
+          "token": "CAMIÓ CISTERNA",
+          "name": "CAMION CISTERNA",
+          "position": 11,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 15,
+      "fields": {
+          "token": "CALCIFICADOR",
+          "name": "CALCIFICADOR",
+          "position": 12,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 16,
+      "fields": {
+          "token": "SENSE SUBMINISTRAMENT",
+          "name": "SIN SUMINISTRO",
+          "position": 13,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 17,
+      "fields": {
+          "token": "AIGUA EN ALTA",
+          "name": "AGUA EN ALTA",
+          "position": 16,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 18,
+      "fields": {
+          "token": "CUBAS",
+          "name": "CUBAS",
+          "position": 14,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 19,
+      "fields": {
+          "token": "AIGUA REGENERADA",
+          "name": "AGUA REGENERADA",
+          "position": 15,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 20,
+      "fields": {
+          "token": "CONTROL DE XARXA",
+          "name": "CONTROL DE RED",
+          "position": 17,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.supplypointsupplytype",
+      "pk": 21,
+      "fields": {
+          "token": "BOCA INCENDIS SENSE COMPTADOR",
+          "name": "BOCA INCENDIOS SIN CONTADOR",
+          "position": 18,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

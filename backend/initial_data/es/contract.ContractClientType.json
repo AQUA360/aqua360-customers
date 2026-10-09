@@ -1,0 +1,87 @@
+[
+  {
+    "model": "contract.contractclienttype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.549Z",
+      "token": "P",
+      "name": "Particular",
+      "position": 0,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractclienttype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-13T11:01:45.845Z",
+      "updated_at": "2024-11-13T11:17:30.554Z",
+      "token": "E",
+      "name": "Empresa",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractclienttype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-11-13T11:02:44.511Z",
+      "updated_at": "2024-11-13T11:17:30.556Z",
+      "token": "G",
+      "name": "Grupo Empresarial",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractclienttype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-11-13T11:01:43.004Z",
+      "updated_at": "2024-11-13T11:17:30.557Z",
+      "token": "M",
+      "name": "Municipal",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractclienttype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-11-13T11:01:44.416Z",
+      "updated_at": "2024-11-13T11:17:30.559Z",
+      "token": "O",
+      "name": "Oficial",
+      "position": 4,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractclienttype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-11-13T11:01:42.073Z",
+      "updated_at": "2024-11-13T11:17:30.559Z",
+      "token": "I",
+      "name": "Industrial",
+      "position": 5,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractclienttype",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-11-13T11:01:42.073Z",
+      "updated_at": "2024-11-13T11:17:30.559Z",
+      "token": "A",
+      "name": "Agrícola",
+      "position": 6,
+      "is_default": false
+    }
+  }
+  
+]

@@ -1,0 +1,173 @@
+[
+    {
+        "model": "pricing.articlecode",
+        "pk": 1,
+        "fields": {
+            "token": "77800002",
+            "name": "DEUDA ANTERIOR COMPAÑÍA GESTORA",
+            "position":1
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 2,
+        "fields": {
+            "token": "70500001",
+            "name": "FINANCIAMIENTO OBRAS AGUA",
+            "position":2
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 3,
+        "fields": {
+            "token": "70500004",
+            "name": "FINANCIAMIENTO OBRAS ALCANTARILLADO",
+            "position":3
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 4,
+        "fields": {
+            "token": "70000001",
+            "name": "CUOTA CONSUMO",
+            "position":4
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 5,
+        "fields": {
+            "token": "18000000",
+            "name": "FIANZA ALTA (FB:1)",
+            "position":5
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 6,
+        "fields": {
+            "token": "70500006",
+            "name": "CUOTA CONEXIÓN ALTA (FB:1)",
+            "position":6
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 7,
+        "fields": {
+            "token": "70000002",
+            "name": "CUOTA DE SERVICIO",
+            "position":7
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 8,
+        "fields": {
+            "token": "70500003",
+            "name": "CUOTA DE ALCANTARILLADO",
+            "position":8
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 9,
+        "fields": {
+            "token": "70000000",
+            "name": "RESTAURACIÓN DE SERVICIO",
+            "position":9
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 10,
+        "fields": {
+            "token": "70500005",
+            "name": "SERVICIOS DIVERSOS (FB:1)",
+            "position":10
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 11,
+        "fields": {
+            "token": "70500007",
+            "name": "VENTA DE CONTADOR (FB:1)",
+            "position":11
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 12,
+        "fields": {
+            "token": "70500002",
+            "name": "CONSERVACIÓN DE CONTADOR (FB:1)",
+            "position":12
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 13,
+        "fields": {
+            "token": "75900001",
+            "name": "CANON AGUA FUGAS",
+            "position":13
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 14,
+        "fields": {
+            "token": "75900001",
+            "name": "CANON AGUA DOMÉSTICO (1R. BLOQUE)",
+            "position":14
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 15,
+        "fields": {
+            "token": "75900001",
+            "name": "CANON AGUA DOMÉSTICO (2N BLOQUE)",
+            "position":15
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 16,
+        "fields": {
+            "token": "75900001",
+            "name": "CANON AGUA DOMÉSTICO (3R BLOQUE)",
+            "position":16
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 17,
+        "fields": {
+            "token": "75900001",
+            "name": "CANON AGUA DOMÉSTICO (4T BLOQUE)",
+            "position":17
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 18,
+        "fields": {
+            "token": "75900001",
+            "name": "CANON AGUA INDUSTRIAL",
+            "position":18
+        }
+    },
+    {
+        "model": "pricing.articlecode",
+        "pk": 19,
+        "fields": {
+            "token": "75900001",
+            "name": "CANON AGUA INDUSTRIAL ESPECÍFICO",
+            "position":19
+        }
+    }
+]

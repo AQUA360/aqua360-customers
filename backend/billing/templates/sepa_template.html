@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SEPA</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 1cm;
+            @frame footer_frame {           /* Another static Frame */
+                -pdf-frame-content: footer_content;
+                left: 50pt; width: 512pt; top: 800pt; height: 20pt;
+            }
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Regular.ttf');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Italic.ttf');
+            font-weight: normal;
+            font-style: italic;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-Bold.ttf');
+            font-weight: bold;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-SemiBold.ttf');
+            font-weight: semi-bold;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'STIXTwoText';
+            src: url('config/fonts/STIXTwoText-BoldItalic.ttf');
+            font-weight: bold;
+            font-style: italic;
+        }
+        
+        body {
+            font-family: 'STIXTwoText', serif;
+            font-size: 12px;
+        }
+        .footer, .signatures {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .title img {
+            width: 120px;
+            height: auto;
+        }
+
+        .title h2, .title h3 {
+            text-align: center; /* Horizontally center the text */
+            font-weight: bold;
+        }
+        .title h3 {
+            font-style: italic;
+        }
+
+        .legal-text {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        table.signature-table {
+            border: 1px solid #999;
+        }
+        table.signature-table td {
+            line-height: 1;
+            padding 2px 3px;
+        }
+        table.creditor-table, table.debtor-table {
+            border: 1px solid #999;
+        }
+        .creditor-table td, .debtor-table td {
+            border: none;
+            line-height: 1;
+            padding: 1px 3px;
+        }
+        .creditor-table td span, .debtor-table td span{
+            font-size: 8px;
+        }
+
+        .square {
+            width: 10px;
+            height: 10px;
+        }
+        table.square-table {
+            border-collapse: collapse;
+        }
+        table.square-table td {
+            width: 10px;
+            height: 10px;
+            border: 1px solid black;
+            background-color: white;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header with Company Logo and Contact Information -->
+    <div class="title">
+        <div>
+            <h2 style="padding:0;margin:0;">Ordre de domiciliació SEPA</h2>
+            <h3 style="padding:0;margin:0;">SEPA Direct Debit Mandate</h3>
+        </div>
+        <img src="{{ company.logo }}" alt="Company Logo">
+        <div>
+            {{ company.name }}
+        </div>
+    </div>
+
+    <table class="creditor-table" width="100%" style="margin-top: 10px;">
+        <tr>
+            <td  width="40%">
+                Referència de l'ordre de domiciliació <br> <span> Mandate reference </span>
+            </td>
+            <td width="60%">
+                {{ mandate_reference|default:contract.token }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Identificador del creditor <br> <span> Creditor identifier </span>
+            </td>
+            <td>
+               {{ company.vat }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Nom del creditor <br> <span> Creditor name </span>
+            </td>
+            <td>
+                {{ company.name }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Adreça <br> <span> Address </span>
+            </td>
+            <td>
+                {{ company.address_complete }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Codi postal - Població - Província <br> <span> Postal code - Town/city - Province </span>
+            </td>
+            <td>
+                {{company.address.postal_code}} - {{company.address.city.name}} - {{company.address.province.name}}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                País <br> <span> Country </span>
+            </td>
+            <td>
+                {{company.address.country.name}}
+            </td>
+        </tr>
+    </table>
+
+    <p style="font-size: 10px; text-align: justify">Mitjançant la signatura d’aquesta ordre de domiciliació, el deutor autoritza el creditor a enviar instruccions a l’entitat del deutor per fer el cobrament al seu compte i a l’entitat per efectuar el cobrament al seu compte seguint les instruccions del creditor. Com a part dels seus drets, el deutor està legitimat al reemborsament per la seva entitat en els termes i condicions del contracte que hi té subscrit. La sol·licitud de reemborsament haurà d’efectuar-se en les vuit setmanes que segueixen a la data de deute en compte. Podeu obtenir informació addicional sobre els vostres drets a la vostra entitat financera. </p>
+    <p style="font-size: 8px; text-align: justify">By signing this mandate form, you authorise the Creditor to send instructions to your bank to debit your account and your bank to debit your account in accordance with the instructions from the Creditor. As pan of your rights, you are entitled to a refund from your bank under the terms and conditions of your agreement with your bank. A refund must be claimed within eight weeks starting from the date on which your account was debited. Your rights are explained in a statement that you can obtain from your bank. </p>
+
+    <table class="debtor-table" width="100%" style="margin-top: 10px;">
+        <tr>
+            <td width="40%">
+                Nom del deutor <br> <span> Debtor name </span>
+            </td>
+            <td width="60%">
+                {{ holder.full_name}}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                NIF-NIE del deutor <br> <span> Debtor Tax ID/Foreigner ID </span>
+            </td>
+            <td>
+               {{ holder.token }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Adreça del deutor <br> <span> Debtor address </span>
+            </td>
+            <td>
+                {{ holder_address.address_complete }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Codi postal - Població - Província <br> <span> Postal code - Town/city - Province </span>
+            </td>
+            <td>
+                {{ debtor_address.postal_code }} - {{ debtor_address.city.name }} - {{ debtor_address.province.name }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                País del deutor <br> <span> Debtor country </span>
+            </td>
+            <td>
+                {{ debtor_address.country.name }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                SWIFT/BIC<br> <span> SWIFT/BIC </span>
+            </td>
+            <td>
+                {{ swift }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Número de compte - IBAN <br> <span> Account number - IBAN </span>
+            </td>
+            <td>
+                {{ iban }}
+            </td>
+        </tr>
+        <tr>
+            <td>
+                Tipus de pagament<br> <span> Payment type </span>
+            </td>
+            <td>
+                <table style="border: none; width: 100%;">
+                    <tr>
+                        <!-- Pagament recurrent -->
+                        <td width="53%" style="border: none; padding: 0; vertical-align: top;">
+                            <table style="border: none;">
+                                <tr>
+                                    <td width="5%" style="padding: 0; vertical-align: middle;">
+                                        <table class="square-table"> <tr> <td class="square"></td> </tr> </table>
+                                    </td>
+                                    <td  width="85%" style="padding-left: 5px; vertical-align: middle; font-size: 12px;">
+                                        <!-- Main text -->
+                                        Pagament recurrent<br>
+                                        <span style="font-size: 8px;">Recurring payment</span>
+                                    </td>
+                                    <td width="10%" style="padding: 0;">
+                                        O<br>
+                                        <span style="font-size: 8px;">or</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                        <!-- Pagament únic -->
+                        <td style="border: none; padding-left: 20px; vertical-align: top;">
+                            <table style="border: none;">
+                                <tr>
+                                    <td width="10%" style="padding: 0; vertical-align: middle;">
+                                        <table class="square-table"> <tr> <td class="square"></td> </tr> </table>
+                                    </td>
+                                    <td  width="90%" style="padding-left: 5px; vertical-align: middle; font-size: 12px;">
+                                        <!-- Main text -->
+                                        Pagament únic<br>
+                                        <span style="font-size: 8px;">One-off payment</span>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        
+    </table>
+
+    <table class="signature-table" width="100%" style="margin-top: 30px;">
+        <tr>
+            <td>
+                Localitat i data<br> <span style="font-size: 8px;">Location and date</span> <br><br>
+                {% load i18n %}
+                {% language 'ca' %}
+                <div>
+                    <p>{{ company.address.city.name }}, {{ now_date|date:"d F Y" }}</p>
+                </div>
+                {% endlanguage %}
+            </td>
+            <td>
+                Signatura del deutor<br> <span style="font-size: 8px;">Debtor signature</span><br><br><br><br><br>
+            </td>
+        </tr>
+    </table>
+
+    <div class="legal-text">
+        CAL EMPLENAR OBLIGATÒRIAMENT TOTS ELS CAMPS. UNA VEGADA SIGNADA, ENVIEU AQUESTA ORDRE DE DOMICILIACIÓ AL CREDITOR PERQUÈ LA CUSTODIÏ. <br>
+        <span style="font-size: 8px"> ALL FIELDS MANDATORY. AFTER SIGNING, SEND TO CREDITOR FOR SAFEKEEPING. </span>
+    </div>
+
+    {% comment %} <div id="footer_content" style="text-align: center; font-size: 9px; font-style: italic;">
+        Registre Mercantil Barcelona, Foli 125, Volum 10504, Full B 29265, - N.I.F. A-08076218
+    </div> {% endcomment %}
+</body>
+</html>

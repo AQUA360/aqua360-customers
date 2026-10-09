@@ -1,0 +1,26 @@
+[
+  {
+      "model": "service.connectiontype",
+      "pk": 1,
+      "fields": {
+          "token": "Interna",
+          "name": "Interna",
+          "position": null,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectiontype",
+      "pk": 2,
+      "fields": {
+          "token": "Externa",
+          "name": "Externa",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

@@ -1,0 +1,210 @@
+{% load svg_converter %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Justificant de pagament</title>
+    <style>
+        *,
+        ::after,
+        ::before {
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: A4 portrait;
+            margin-left: 2.5cm;
+            margin-right: 2.5cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+
+
+
+
+        }
+
+        @page {
+            size: A4 portrait;
+            margin-left: 2cm;
+            margin-right: 2cm;
+            margin-top: 1cm;
+            margin-bottom: 4cm;
+
+            @frame footer_frame_cif {
+                /* Another static Frame */
+                -pdf-frame-content: footer_frame_cif;
+                left: 5pt;
+                width: 100%;
+                top: 825pt;
+                height: 80pt;
+            }
+        }
+
+        @font-face {
+            font-family: "STIXTwoTextBold";
+            src: url('config/fonts/STIXTwoTextBold.ttf');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'OpenSansBold';
+            src: url('config/fonts/OpenSans-Bold.ttf');
+            font-weight: bold;
+        }
+
+
+        @font-face {
+            font-family: 'OpenSans';
+            src: url('config/fonts/OpenSans-Regular.ttf');
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 14px;
+        }
+
+        table {
+            border-collapse: collapse;
+            margin: 0px;
+            padding: 0px;
+        }
+
+        table td {
+            padding: 0px;
+            margin: 0px;
+        }
+
+        .title {
+            font-family: 'Times New Roman', serif;
+            font-size: 18px;
+            font-weight: bold;
+            color: #444444;
+            line-height: 18px;
+        }
+
+        .text p {
+            line-height: 15px;
+        }
+
+        .footer,
+        .signatures {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    {% load i18n %}
+    {% language 'ca' %}
+    <!-- Header with Company Logo and Contact Information -->
+    <div class="header">
+        {% if exploitation_image %}
+        <img src="{{ exploitation_image }}" alt="Exploitation Image" style="width: 100%;" />
+        {% endif %}
+    </div>
+    <br />
+    <br />
+    <div style="display: flex; width: 100%;">
+        <table style="display: flex; justify-content: space-around; width: 100%;">
+            <tr>
+                <td style="width: 47%; vertical-align: top;  ">
+                    <div style="">
+                        <table style="font-size: 12px;">
+                            <tr style="">
+                                <td colspan="2" style="color:{{ secondary_color }}; font-weight: bold; font-family: 'OpenSansBold';">
+                                    <span>JUSTIFICANT DE PAGAMENT</span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </td>
+                <td style="width: 6%; vertical-align: top;  ">
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <br /><br />
+    <div style="text-align: justify;">
+        <p>
+        Amb aquest document declarem que hem rebut les quantitats següents, per les factures i els imports que es detallen a continuació:
+        </p>
+    </div>
+
+    
+    <div>
+        <table style="width: 100%; font-size: 12px;">
+            <thead>
+                <tr style="background-color: {{secondary_color}}; color: {{main_color}};">
+                    <td style="width:18%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">CONTRACTE</td>
+                    <td style="width:40%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">ADREÇA SUBMINISTRAMENT</td>
+                    <td style="width:12%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">PERÍODE</td>
+                    <td style="width:18%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">NÚM. FACTURA/DOC</td>
+                    <td style="width:12%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold'; text-align: right;">IMPORT COBRAT</td>
+                </tr>
+            </thead>
+            <tbody>
+            {% for line in payment_lines %}
+                {% if forloop.counter0|divisibleby:2 %}
+                <tr style="background-color: rgb(240, 240, 240);">
+                {% else %}
+                <tr style="background-color: white;">
+                {% endif %}
+                    <td style="width:18%; padding: 4px; vertical-align: top;">{{ line.contract_token }}</td>
+                    <td style="width:40%; padding: 4px; vertical-align: top;">{{ line.supply_address }}</td>
+                    <td style="width:12%; padding: 4px; vertical-align: top;">{% if line.period %}{{ line.period | date:"Y/m" }}{% endif %}</td>
+                    <td style="width:18%; padding: 4px; vertical-align: top;">{{ line.reference }}</td>
+                    <td style="width:12%; padding: 4px; vertical-align: top; text-align: right; font-weight: bold;">{{ line.amount | floatformat:2 }}€</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if observation %}
+    <div style="text-align: justify; color: {{secondary_color}}; padding: 10px; border-top: 1px solid {{secondary_color}};">
+        <span style="font-weight: bold; font-family: 'OpenSansBold';">OBSERVACIONS</span> </br>
+        <span style="font-size: 11px;">{{observation}}</span>
+    </div>
+    {% endif %}
+    <br /><br />
+    <div>
+        <table style="width: 100%; font-weight: bold; font-family: 'OpenSansBold';">
+        <tr>
+            <td style="width: 40%; border: none;">
+            <td>
+            <td style="width: 30%; font-size: 16px; padding: 8px 4px; border-top: 1px solid black; border-bottom: 1px solid black; border-left: 1px solid black;">
+                    TOTAL COBRAT:
+            </td>
+            <td style="width: 30%; font-size: 16px; padding: 8px 4px; text-align: right; border-top: 1px solid black; border-bottom: 1px solid black; border-right: 1px solid black;">
+                    {{ total_amount | floatformat:2 }} EUR
+            </td>
+        </tr>
+        <table>
+    </div>
+    <br /><br />
+    <div>
+        <table style="width: 100%; font-size: 14px;">
+        <tr>
+            <td style="width: 30%;">
+            <td>
+            <td style="width: 70%; text-align: right;">
+                    <p>
+                    {{ now_date | date:"d F Y" }}
+                    </p>
+            </td>
+        </tr>
+        <table>
+    </div>
+
+    <div id="footer_frame_cif">
+        <p style="text-align: left; color: DodgerBlue; line-height: 15px; font-size: 10px;">{{ company.invoice_footer_text }}</p>
+    </div>
+        {% endlanguage %}
+</body>
+
+</html>

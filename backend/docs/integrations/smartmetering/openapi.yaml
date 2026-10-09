@@ -1,0 +1,316 @@
+openapi: 3.0.3
+info:
+  title: Aqua360 — API inbound Smartmetering
+  description: |
+    API de consulta d'abonats del Programa d'Abonats (PA) per a sistemes de
+    smart metering i altres integradors.
+
+    Aquest document és l'especificació **OpenAPI 3.0** (l'estàndard que van
+    succeir Swagger). Es pot importar a
+    [Swagger Editor](https://editor.swagger.io), Postman o Redoc.
+
+    El llistat replica el contracte de dades `vw_abonats_aqua360`
+    (identificador de pòlissa, comptador, tipus d'ús, punt de servei, mòdul de
+    comunicació, etc.).
+
+    ## Autenticació
+
+    1. Obtenir un token amb `POST /auth/login/` (credencials que facilita
+       l'administrador del PA).
+    2. Incloure el token a cada crida: `Authorization: Token <token>`.
+
+    Aquest usuari només pot accedir a rutes sota `/smartmetering/`.
+    Qualsevol altra ruta retorna `403 Forbidden`.
+
+    ## Prefix d'URL
+
+    Alguns desplegaments afegeixen el prefix `/api` a totes les rutes
+    (p. ex. `/api/smartmetering/v1/contracts/`). L'administrador del PA
+    ho indicarà.
+
+    ## Versionat
+
+    Les rutes estan versionades sota `/smartmetering/v1/`.
+    Canvis trencadors de format es publicaran com a `/smartmetering/v2/`, etc.
+  version: 1.0.0
+  contact:
+    name: Aqua360 — Programa d'Abonats
+
+servers:
+  - url: https://customers.example.com
+    description: Entorn de producció (substituir pel domini real)
+  - url: http://localhost:8000
+    description: Entorn local de desenvolupament
+
+tags:
+  - name: Autenticació
+    description: Obtenció del token d'accés
+  - name: Contractes
+    description: Consulta d'abonats (contractes)
+
+paths:
+  /auth/login/:
+    post:
+      tags:
+        - Autenticació
+      summary: Obtenir token d'accés
+      description: |
+        Autentica l'usuari de la integració i retorna el token per a les
+        crides següents. Les credencials les facilita l'administrador del PA.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: smartmetering
+              password: "********"
+      responses:
+        "200":
+          description: Autenticació correcta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              example:
+                username: smartmetering
+                token: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+        "400":
+          description: Dades de login invàlides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /smartmetering/v1/contracts/:
+    get:
+      tags:
+        - Contractes
+      summary: Llistar abonats (contractes)
+      description: |
+        Retorna els contractes actius del PA amb el contracte de dades
+        d'abonats (pòlissa, comptador, tipus d'ús, punt de servei, telelectura).
+
+        Filtres opcionals (query string):
+        - `policy`: identificador del contracte (pòlissa)
+        - `meter`: codi del comptador
+
+        Si s'indiquen ambdós filtres, s'apliquen en conjunció (AND).
+        Sense filtres, retorna tots els contractes actius.
+        Si no hi ha coincidències, retorna una llista buida (`[]`).
+
+        Camps sense valor (sense punt de subministrament, sense comptador,
+        etc.) arriben com a `null`.
+      operationId: listContracts
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: policy
+          in: query
+          required: false
+          description: Identificador del contracte (pòlissa)
+          schema:
+            type: string
+          example: CTR-001
+        - name: meter
+          in: query
+          required: false
+          description: Codi del comptador
+          schema:
+            type: string
+          example: MTR-001
+      responses:
+        "200":
+          description: Llista d'abonats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Abonat"
+              example:
+                - policy: CTR-001
+                  meter: MTR-001
+                  rate: Domèstica
+                  service_point: "Barcelona, 08000"
+                  inst_date: "2024-03-15"
+                  comm_module: MOD-99
+                  comm_technology: NB-IoT
+                  manufacturer: Elster
+                  model: A1700
+                  network_provider: Vodafone
+                  expl_id: EXP-01
+                  dma_id: DMA-01
+                  contract_active: true
+                  customer: Anna Garcia
+                  cadastral_ref: 08001A00010001
+                  connect_id: "12"
+        "400":
+          description: Error processant la consulta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+components:
+  securitySchemes:
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Token obtingut via `POST /auth/login/`.
+        Format de la capçalera: `Authorization: Token <token>`
+
+  responses:
+    Unauthorized:
+      description: Falta o és incorrecte el token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: Credencials d'autenticació no proporcionades.
+    Forbidden:
+      description: |
+        L'usuari autenticat no té accés a aquesta ruta
+        (només pot cridar endpoints sota `/smartmetering/`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: No teniu permís per realitzar aquesta acció.
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: smartmetering
+        password:
+          type: string
+          format: password
+          example: "********"
+
+    LoginResponse:
+      type: object
+      required:
+        - username
+        - token
+      properties:
+        username:
+          type: string
+          example: smartmetering
+        token:
+          type: string
+          description: Token per a la capçalera Authorization
+          example: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+
+    ErrorDetail:
+      type: object
+      properties:
+        detail:
+          type: string
+
+    Abonat:
+      type: object
+      description: |
+        Un abonat (contracte) en el format del contracte de dades
+        de smart metering.
+      properties:
+        policy:
+          type: string
+          nullable: true
+          description: Identificador del contracte (pòlissa)
+          example: CTR-001
+        meter:
+          type: string
+          nullable: true
+          description: Codi del comptador
+          example: MTR-001
+        rate:
+          type: string
+          nullable: true
+          description: |
+            Tipus d'ús del contracte (Domèstica, Comercial, Industrial,
+            Municipal, Agrícola, …). No és una tarifa de preu.
+          example: Domèstica
+        service_point:
+          type: string
+          nullable: true
+          description: Adreça del punt de subministrament
+          example: "Barcelona, 08000"
+        inst_date:
+          type: string
+          format: date
+          nullable: true
+          description: Data d'instal·lació del comptador (`YYYY-MM-DD`)
+          example: "2024-03-15"
+        comm_module:
+          type: string
+          nullable: true
+          description: Identificador del mòdul de comunicació
+          example: MOD-99
+        comm_technology:
+          type: string
+          nullable: true
+          description: Tecnologia de comunicació (p. ex. NB-IoT, LoRaWAN)
+          example: NB-IoT
+        manufacturer:
+          type: string
+          nullable: true
+          description: Fabricant del comptador
+          example: Elster
+        model:
+          type: string
+          nullable: true
+          description: Model del comptador
+          example: A1700
+        network_provider:
+          type: string
+          nullable: true
+          description: Proveïdor de xarxa de telelectura
+          example: Vodafone
+        expl_id:
+          type: string
+          nullable: true
+          description: Token de l'explotació (`Exploitation.token`)
+          example: EXP-01
+        dma_id:
+          type: string
+          nullable: true
+          description: Token de la DMA (`DMA.token`)
+          example: DMA-01
+        contract_active:
+          type: boolean
+          description: |
+            `true` si el contracte està en estat actiu
+            (alta, no baixa ni suspès)
+          example: true
+        customer:
+          type: string
+          nullable: true
+          description: Nom complet del titular
+          example: Anna Garcia
+        cadastral_ref:
+          type: string
+          nullable: true
+          description: Referència cadastral del punt de subministrament
+          example: 08001A00010001
+        connect_id:
+          type: string
+          nullable: true
+          description: Identificador de la connexió (com a text)
+          example: "12"

@@ -1,0 +1,206 @@
+[
+  {
+      "model": "service.metercaliber",
+      "pk": 1,
+      "fields": {
+          "token": "15",
+          "name": "15",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 2,
+      "fields": {
+          "token": "20",
+          "name": "20",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 3,
+      "fields": {
+          "token": "25",
+          "name": "25",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 4,
+      "fields": {
+          "token": "30",
+          "name": "30",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 5,
+      "fields": {
+          "token": "32",
+          "name": "32",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 6,
+      "fields": {
+          "token": "40",
+          "name": "40",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 7,
+      "fields": {
+          "token": "50",
+          "name": "50",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 8,
+      "fields": {
+          "token": "65",
+          "name": "65",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 9,
+      "fields": {
+          "token": "80",
+          "name": "80",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 10,
+      "fields": {
+          "token": "100",
+          "name": "100",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 11,
+      "fields": {
+          "token": "125",
+          "name": "125",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 12,
+      "fields": {
+          "token": "150",
+          "name": "150",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 13,
+      "fields": {
+          "token": "200",
+          "name": "200",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 14,
+      "fields": {
+          "token": "250",
+          "name": "250",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 15,
+      "fields": {
+          "token": "300",
+          "name": "300",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 16,
+      "fields": {
+          "token": "400",
+          "name": "400",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.metercaliber",
+      "pk": 17,
+      "fields": {
+          "token": "500",
+          "name": "500",
+          "position": null,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

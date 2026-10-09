@@ -1,0 +1,326 @@
+[
+  {
+    "model": "contract.contractusetype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-08T10:11:05.817Z",
+      "updated_at": "2024-10-10T08:00:50.631Z",
+      "token": "2",
+      "name": "Aigua Regenerada",
+      "position": 1,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-08T10:11:26.030Z",
+      "updated_at": "2024-10-10T08:00:45.139Z",
+      "token": "1",
+      "name": "Agrícola",
+      "position": 0,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-10T07:58:43.887Z",
+      "updated_at": "2024-10-10T08:01:00.699Z",
+      "token": "3",
+      "name": "Aigua en Alta",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-10T07:58:45.088Z",
+      "updated_at": "2024-10-10T08:01:12.651Z",
+      "token": "4",
+      "name": "Comercial",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-10-10T07:58:46.679Z",
+      "updated_at": "2024-10-10T08:02:18.364Z",
+      "token": "5",
+      "name": "Complex Turístic",
+      "position": 4,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-10-10T07:58:48.579Z",
+      "updated_at": "2024-10-10T08:02:38.206Z",
+      "token": "6",
+      "name": "Comunitat de Propietaris",
+      "position": 5,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-10-10T07:58:50.381Z",
+      "updated_at": "2024-10-10T08:02:48.466Z",
+      "token": "7",
+      "name": "Control de Xarxa",
+      "position": 6,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 8,
+    "fields": {
+      "created_at": "2024-10-10T07:58:52.324Z",
+      "updated_at": "2024-10-10T08:02:59.126Z",
+      "token": "8",
+      "name": "Cubas",
+      "position": 7,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 9,
+    "fields": {
+      "created_at": "2024-10-10T07:58:53.892Z",
+      "updated_at": "2024-10-10T08:06:56.775Z",
+      "token": "9",
+      "name": "Domèstic",
+      "position": 8,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 10,
+    "fields": {
+      "created_at": "2024-10-10T07:58:56.651Z",
+      "updated_at": "2024-10-10T08:03:08.629Z",
+      "token": "10",
+      "name": "Eventual",
+      "position": 9,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 11,
+    "fields": {
+      "created_at": "2024-10-10T07:58:59.215Z",
+      "updated_at": "2024-10-10T08:03:19.030Z",
+      "token": "11",
+      "name": "Familiar",
+      "position": 10,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 12,
+    "fields": {
+      "created_at": "2024-10-10T07:59:01.159Z",
+      "updated_at": "2024-10-10T08:03:37.029Z",
+      "token": "12",
+      "name": "Fonts",
+      "position": 11,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 13,
+    "fields": {
+      "created_at": "2024-10-10T07:59:02.902Z",
+      "updated_at": "2024-10-10T08:03:40.890Z",
+      "token": "13",
+      "name": "Garatge",
+      "position": 12,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 14,
+    "fields": {
+      "created_at": "2024-10-10T07:59:04.340Z",
+      "updated_at": "2024-10-10T08:03:54.188Z",
+      "token": "14",
+      "name": "Hort",
+      "position": 13,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 15,
+    "fields": {
+      "created_at": "2024-10-10T07:59:06.013Z",
+      "updated_at": "2024-10-10T08:04:08.093Z",
+      "token": "15",
+      "name": "Industrial",
+      "position": 14,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 16,
+    "fields": {
+      "created_at": "2024-10-10T07:59:08.539Z",
+      "updated_at": "2024-10-10T08:04:12.804Z",
+      "token": "16",
+      "name": "Jubilat",
+      "position": 15,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 17,
+    "fields": {
+      "created_at": "2024-10-10T07:59:10.387Z",
+      "updated_at": "2024-10-10T08:04:37.939Z",
+      "token": "17",
+      "name": "Municipal",
+      "position": 16,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 18,
+    "fields": {
+      "created_at": "2024-10-10T07:59:12.002Z",
+      "updated_at": "2024-10-10T08:04:53.731Z",
+      "token": "18",
+      "name": "No domèstic",
+      "position": 17,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 19,
+    "fields": {
+      "created_at": "2024-10-10T07:59:14.763Z",
+      "updated_at": "2024-10-10T08:05:15.635Z",
+      "token": "19",
+      "name": "No residents",
+      "position": 18,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 20,
+    "fields": {
+      "created_at": "2024-10-10T07:59:17.100Z",
+      "updated_at": "2024-10-10T08:05:23.196Z",
+      "token": "20",
+      "name": "Obres",
+      "position": 19,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 21,
+    "fields": {
+      "created_at": "2024-10-10T07:59:21.447Z",
+      "updated_at": "2024-10-10T08:05:33.494Z",
+      "token": "21",
+      "name": "PIME",
+      "position": 20,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 22,
+    "fields": {
+      "created_at": "2024-10-10T07:59:24.564Z",
+      "updated_at": "2024-10-10T08:05:48.544Z",
+      "token": "22",
+      "name": "Piscines",
+      "position": 21,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 23,
+    "fields": {
+      "created_at": "2024-10-10T07:59:26.983Z",
+      "updated_at": "2024-10-10T08:05:58.849Z",
+      "token": "23",
+      "name": "Ramader",
+      "position": 22,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 24,
+    "fields": {
+      "created_at": "2024-10-10T07:59:29.966Z",
+      "updated_at": "2024-10-10T08:06:07.294Z",
+      "token": "24",
+      "name": "Reg",
+      "position": 23,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 25,
+    "fields": {
+      "created_at": "2024-10-10T07:59:32.774Z",
+      "updated_at": "2024-10-10T08:06:15.781Z",
+      "token": "25",
+      "name": "Residents",
+      "position": 24,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 26,
+    "fields": {
+      "created_at": "2024-10-10T07:59:35.790Z",
+      "updated_at": "2024-10-10T08:06:32.278Z",
+      "token": "26",
+      "name": "Servei contra incendis",
+      "position": 25,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.contractusetype",
+    "pk": 27,
+    "fields": {
+      "created_at": "2024-10-10T07:59:38.367Z",
+      "updated_at": "2024-10-10T08:06:50.498Z",
+      "token": "27",
+      "name": "Sense consum",
+      "position": 26,
+      "is_default": false
+    }
+  }
+]

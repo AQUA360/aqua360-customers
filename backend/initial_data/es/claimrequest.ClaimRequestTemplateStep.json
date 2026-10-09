@@ -1,0 +1,110 @@
+[
+    {
+        "model": "claimrequest.claimrequeststeptemplate",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-03-13T09:03:20.059283Z",
+            "updated_at": "2025-03-13T09:03:20.059301Z",
+            "template": 1,
+            "token": "cancel_contract",
+            "name": "Baja de contrato",
+            "duration": 5,
+            "duration_type": "WORK",
+            "document_type": null,
+            "order_type": null,
+            "next_step": null,
+            "description": "Baja de los contratos en la gestión",
+            "position": 6
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststeptemplate",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-03-13T09:03:21.008356Z",
+            "updated_at": "2025-03-13T09:03:21.008366Z",
+            "template": 1,
+            "token": "remove_meter",
+            "name": "Emisión de retirada de contador",
+            "duration": 25,
+            "duration_type": "WORK",
+            "document_type": null,
+            "order_type": 5,
+            "next_step": 1,
+            "description": "Emisión de la retirada del contador para los contratos con facturas impagadas",
+            "position": 5
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststeptemplate",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-03-13T09:03:22.086745Z",
+            "updated_at": "2025-03-13T09:03:22.086754Z",
+            "template": 1,
+            "token": "cut_supply",
+            "name": "Emisión orden de corte de suministro",
+            "duration": 25,
+            "duration_type": "WORK",
+            "document_type": null,
+            "order_type": 1,
+            "next_step": 2,
+            "description": "Emisión de la orden de corte de suministro para los contratos con facturas impagadas",
+            "position": 4
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststeptemplate",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-03-13T09:03:22.772084Z",
+            "updated_at": "2025-03-13T12:00:59.659157Z",
+            "template": 1,
+            "token": "suspension_alert",
+            "name": "Aviso de suspensión",
+            "duration": 30,
+            "duration_type": "WORK",
+            "document_type": 1,
+            "order_type": null,
+            "next_step": 3,
+            "description": "Envío notificación de aviso de suspensión en caso de falta de pago",
+            "position": 3
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststeptemplate",
+        "pk": 5,
+        "fields": {
+            "created_at": "2025-03-13T09:03:23.872950Z",
+            "updated_at": "2025-03-13T12:01:14.739580Z",
+            "template": 1,
+            "token": "vulnerability_request",
+            "name": "Solicitud de vulnerabilidad",
+            "duration": 15,
+            "duration_type": "WORK",
+            "document_type": null,
+            "order_type": null,
+            "next_step": 4,
+            "description": "Consulta de vulnerabilidad de los contratos afectados por el impago",
+            "position": 2
+        }
+    },
+    {
+        "model": "claimrequest.claimrequeststeptemplate",
+        "pk": 6,
+        "fields": {
+            "created_at": "2025-03-13T09:03:25.021667Z",
+            "updated_at": "2025-03-13T09:03:25.021677Z",
+            "template": 1,
+            "token": "send_claim_letter",
+            "name": "Envío notificación de reclamación",
+            "duration": 25,
+            "duration_type": "WORK",
+            "document_type": 2,
+            "order_type": null,
+            "next_step": 5,
+            "description": "Envío notificación de reclamación para las facturas impagadas",
+            "position": 1
+        }
+    }
+]

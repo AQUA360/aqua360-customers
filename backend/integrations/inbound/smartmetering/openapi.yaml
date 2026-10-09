@@ -1,0 +1,275 @@
+# Especificació d'implementació (mapatge intern a models Django).
+# La còpia per a integradors (sense detalls interns) és a
+# docs/integrations/smartmetering/openapi.yaml
+openapi: 3.0.3
+info:
+  title: Programa d'Abonats — API inbound Smartmetering
+  description: |
+    API de consulta inbound del Programa d'Abonats (PA) per a sistemes de smart metering.
+
+    El payload de contractes replica el contracte de dades de la vista SQL
+    `vw_abonats_aqua360`, però es resol sempre des dels models Django
+    (`Contract`, `SupplyPoint`, `Meter`, `Connection`, …). No depèn de la vista.
+
+    ## Autenticació
+
+    1. Obtenir un token amb `POST /auth/login/` (usuari Django del grup `smartmetering`,
+       creat per l'administrador del PA o amb `python manage.py get_or_create_smartmetering_user`).
+    2. Incloure el token a cada crida: `Authorization: Token <token>`.
+
+    L'usuari Smartmetering només pot accedir a rutes sota el prefix `/smartmetering/`.
+    Qualsevol altra ruta retorna `403 Forbidden`.
+
+    ## Prefix d'URL
+
+    Si el desplegament té `API_URL_PREFIX=True`, afegir el prefix `/api` a totes les rutes
+    (p. ex. `/api/smartmetering/v1/contracts/`).
+
+    ## Versionat
+
+    Les rutes inbound de Smartmetering estan versionades sota `/smartmetering/v1/`.
+    Canvis trencadors de format es publicaran com a `/smartmetering/v2/`, etc.
+
+    ## Logs
+
+    Les crides es registren a `IntegrationRequestLog` (provider `smartmetering`, direction `inbound`).
+  version: 1.0.0
+  contact:
+    name: Aqua360 — Programa d'Abonats
+
+servers:
+  - url: https://customers.example.com
+    description: Entorn de producció (substituir pel domini real)
+  - url: http://localhost:8000
+    description: Entorn local de desenvolupament
+
+tags:
+  - name: Autenticació
+    description: Obtenció del token d'accés
+  - name: Contractes
+    description: Consulta d'abonats (contractes) en format vw_abonats_aqua360
+
+paths:
+  /auth/login/:
+    post:
+      tags:
+        - Autenticació
+      summary: Obtenir token d'accés
+      description: |
+        Autentica un usuari Django i retorna el token per a les crides següents.
+        L'usuari ha de pertànyer al grup `smartmetering` i ser creat prèviament
+        per l'administrador del PA.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: smartmetering
+              password: "********"
+      responses:
+        "200":
+          description: Autenticació correcta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              example:
+                username: smartmetering
+                token: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+        "400":
+          description: Dades de login invàlides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /smartmetering/v1/contracts/:
+    get:
+      tags:
+        - Contractes
+      summary: Llistar abonats (contractes)
+      description: |
+        Retorna els `Contract` actius (`is_active=true`) del PA amb el mateix
+        conjunt de camps que `vw_abonats_aqua360`.
+
+        Filtres opcionals (query string):
+        - `policy`: token del contracte (`Contract.token`)
+        - `meter`: codi del comptador (`Meter.code`) del `supply_point_default`
+
+        Si s'indiquen ambdós filtres, s'apliquen en conjunció (AND).
+        Sense filtres, retorna tots els contractes actius.
+        Si no hi ha coincidències, retorna una llista buida (`[]`).
+
+        Si un contracte no té `supply_point_default` o relacions associades,
+        els camps corresponents seran `null`.
+      operationId: listContracts
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: policy
+          in: query
+          required: false
+          description: Filtra per `Contract.token`
+          schema:
+            type: string
+          example: CTR-001
+        - name: meter
+          in: query
+          required: false
+          description: Filtra per `Meter.code` del `supply_point_default`
+          schema:
+            type: string
+          example: MTR-001
+      responses:
+        "200":
+          description: Llista d'abonats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AbonatExport"
+              example:
+                - policy: CTR-001
+                  meter: MTR-001
+                  rate: Domèstica
+                  service_point: "Barcelona, 08000"
+                  inst_date: "2024-03-15"
+                  comm_module: MOD-99
+                  comm_technology: NB-IoT
+                  manufacturer: Elster
+                  model: A1700
+                  network_provider: Vodafone
+                  expl_id: EXP-01
+                  dma_id: DMA-01
+                  contract_active: true
+                  customer: Anna Garcia
+                  cadastral_ref: 08001A00010001
+                  connect_id: "12"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Token obtingut via `POST /auth/login/`.
+        Format de la capçalera: `Authorization: Token <token>`
+
+  responses:
+    Unauthorized:
+      description: Falta o és incorrecte el token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: Credencials d'autenticació no proporcionades.
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: smartmetering
+        password:
+          type: string
+          format: password
+          example: "********"
+
+    LoginResponse:
+      type: object
+      required:
+        - username
+        - token
+      properties:
+        username:
+          type: string
+          example: smartmetering
+        token:
+          type: string
+          description: Token per a la capçalera Authorization
+          example: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+
+    ErrorDetail:
+      type: object
+      properties:
+        detail:
+          type: string
+
+    AbonatExport:
+      type: object
+      properties:
+        policy:
+          type: string
+          nullable: true
+          description: Token del contracte (`Contract.token`)
+        meter:
+          type: string
+          nullable: true
+          description: Codi del comptador (`Meter.code`)
+        rate:
+          type: string
+          nullable: true
+          description: Tipus d'ús del contracte (`ContractUseType.name`; p. ex. Domèstica, Comercial)
+        service_point:
+          type: string
+          nullable: true
+          description: Adreça del punt de subministrament (`Address.address_search`)
+        inst_date:
+          type: string
+          format: date
+          nullable: true
+          description: Data d'instal·lació del comptador (`Meter.installation_at`)
+        comm_module:
+          type: string
+          nullable: true
+        comm_technology:
+          type: string
+          nullable: true
+        manufacturer:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        network_provider:
+          type: string
+          nullable: true
+        expl_id:
+          type: string
+          nullable: true
+          description: Token de l'explotació (`Exploitation.token`)
+        dma_id:
+          type: string
+          nullable: true
+          description: Token de la DMA (`DMA.token`)
+        contract_active:
+          type: boolean
+          description: |
+            `true` si `Contract.status.token` coincideix amb
+            `ConfigProject.contract_active_token` (equivalent portable a `status_id = 2`
+            de la vista SQL, que és un id d'entorn)
+        customer:
+          type: string
+          nullable: true
+          description: Nom complet del titular (`holder.name` + `holder.surname`)
+        cadastral_ref:
+          type: string
+          nullable: true
+          description: Referència cadastral (`SupplyPoint.cadastral`)
+        connect_id:
+          type: string
+          nullable: true
+          description: PK de la connexió com a text (`Connection.id`)

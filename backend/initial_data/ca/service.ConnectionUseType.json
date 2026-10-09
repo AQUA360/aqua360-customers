@@ -1,0 +1,26 @@
+[
+  {
+      "model": "service.connectionusetype",
+      "pk": 1,
+      "fields": {
+          "token": "aigua",
+          "name": "Aigua Sanitaria",
+          "position": 0,
+          "is_default": true,
+          "created_at": null,
+          "updated_at": null
+      }
+  },
+  {
+      "model": "service.connectionusetype",
+      "pk": 2,
+      "fields": {
+          "token": "incendis",
+          "name": "Aigua Contraincendis",
+          "position": 1,
+          "is_default": false,
+          "created_at": null,
+          "updated_at": null
+      }
+  }
+]

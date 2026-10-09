@@ -1,0 +1,165 @@
+<script setup>
+import H1Region from '../atoms/H1Region.vue';
+import TableHeader from '../atoms/TableHeader.vue';
+import { useToast } from 'vue-toastification';
+import ContractDetail from './ContractDetail.vue';
+import DocumentList from './DocumentList.vue';
+import ImagesView from './ImagesView.vue';
+
+const toast = useToast();
+const { t } = useI18n();
+const { $IncidentApiService, $IncidentReportApiService, $ConfigProjectApiService } = useNuxtApp();
+
+const emit = defineEmits(['changed']);
+const props = defineProps({
+    id: {
+        type: Number,
+        default: null,
+    },
+    incident_id: {
+        type: Number,
+        default: null,
+    }
+});
+
+const loading = ref(true);
+const loading_document = ref(true);
+const saving = ref(false);
+const attemptedSave = ref(false);
+
+const incident = ref(null)
+const report = ref(null)
+
+const report_date = ref(null)
+const description = ref('')
+
+const documents = ref([])
+
+const getData = async () => {
+    //loading.value = true;
+    try {
+        if (props.id) {
+            let response = await $IncidentReportApiService.getDetail(props.id);
+            report.value = response;
+            report_date.value = response.incident_data? response.incident_data : report_date.value;
+            description.value = response.description;
+            documents.value = response.documentation_files;
+        } else if (report.value) {
+            let response = await $IncidentReportApiService.getDetail(report.value.id);
+            report.value = response;
+            report_date.value = response.incident_data? response.incident_data : report_date.value;
+            description.value = response.description;
+            documents.value = response.documentation_files;
+        }
+    } catch (error) {
+        console.log(error);
+    } finally {
+        loading.value = false;
+        loading_document.value = false;
+    }
+
+}
+
+
+const save = async (close = false) => {
+    attemptedSave.value = true;
+    if (!isValid()) return
+
+    try {
+        let save_data = {
+            id: report.value ? report.value.id : null,
+            incident: props.incident_id || null,
+            description: description.value,
+            incident_data: report_date.value,
+        }
+
+        let response = await $IncidentReportApiService.save(save_data)
+        report.value = response
+        if (response) {
+            emit('changed', close)
+        }
+
+    } catch (error) {
+        console.log(error)
+    }
+}
+
+const saveDocument = async (file) => {
+    if (report_date.value == null || report_date.value == '') toast.error(t("warning_block.warning_before_save_doc_date"))
+    loading_document.value = true;
+    await save(false)
+    let save_data = {
+        id: report.value.id,
+        file: file,
+    }
+    let response = await $IncidentReportApiService.saveDocument(save_data)
+    if (response) {
+        await getData()
+        emit('changed', false)
+    }
+}
+
+const isValid = () => {
+    if (report_date.value == null || report_date.value == '') return false
+    return true
+}
+
+onMounted(() => {
+    getData()
+})
+
+watch(() => props.id, (newValue, oldValue) => {
+    getData()
+});
+
+watch(() => props.incident_id, (newValue, oldValue) => {
+    getData()
+});
+
+</script>
+<template>
+    <div v-if="!loading" id="wrapper" class="region__content">
+        <div class="mb-6">
+            <H1Region>{{ props.id ? $t('common.report_detail') + ': ' + report.token : $t('billing_block.new_report') }}
+            </H1Region>
+        </div>
+
+
+        <div v-if="!props.id" class="mb-6 w-[50%]">
+            <AtomsInputDate v-model="report_date" :label="t('common.date')" class="mb-2"
+                :invalid="attemptedSave && (report_date == null || report_date == '')" :required="true" />
+        </div>
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.description') }}</label>
+            <textarea name="description" id="description" cols="30" rows="5" v-model="description"
+                class="w-full border border-slate-300 rounded-md p-2 focus:outline-none focus:border-primary"></textarea>
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.documentation') }}</label>
+            <div v-if="loading_document" class="flex justify-center items-center">
+                <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
+                <span class="ml-2">{{ $t('common.loading') }}...</span>
+            </div>
+            <div v-else-if="!loading_document && documents.length > 0">
+                <DocumentList :documents="documents" @change="getData" />
+            </div>
+            <AtomsInputFile @update="saveDocument" :name="'incidentDocumentFile'" :uploaded="null" :fullWidth="true"
+                class="w-full" />
+        </div>
+
+        <hr class="my-2" />
+        <div class="flex flex-row-reverse gap-3 mt-4">
+            <button @click="save(true)" class="button-primary">
+                <Icon name="fa6-solid:floppy-disk" />&nbsp; {{
+                    $t('common.save') }}
+            </button>
+        </div>
+    </div>
+    <div v-else class="p-4">
+        <div class="flex justify-center items-center">
+            <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
+            <span class="ml-2">{{ $t('common.loading') }}...</span>
+        </div>
+    </div>
+</template>

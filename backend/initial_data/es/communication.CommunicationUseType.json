@@ -1,0 +1,50 @@
+[
+  {
+    "model": "communication.communicationusetype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-09T12:24:04.825Z",
+      "updated_at": "2024-10-09T12:24:04.825Z",
+      "token": "other",
+      "name": "Otros",
+      "position": 1,
+      "is_default": true
+    }
+  },
+  {
+    "model": "communication.communicationusetype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-09T12:24:14.798Z",
+      "updated_at": "2024-10-09T12:24:31.543Z",
+      "token": "contract",
+      "name": "Contrato",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "communication.communicationusetype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-09T12:24:14.798Z",
+      "updated_at": "2024-10-09T12:24:31.543Z",
+      "token": "billing",
+      "name": "Facturación",
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "communication.communicationusetype",
+    "pk": 4,
+    "fields": {
+      "created_at": "2024-10-09T12:24:14.798Z",
+      "updated_at": "2024-10-09T12:24:31.543Z",
+      "token": "reading",
+      "name": "Lecturas",
+      "position": 4,
+      "is_default": false
+    }
+  }
+]

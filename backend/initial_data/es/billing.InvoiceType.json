@@ -1,0 +1,27 @@
+[
+  {
+    "model": "billing.invoicetype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.549Z",
+      "token": "P",
+      "name": "Presupuesto",
+      "position": 0,
+      "is_default": true
+    }
+  },
+  {
+    "model": "billing.invoicetype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-11-13T11:01:36.932Z",
+      "updated_at": "2024-11-13T11:17:30.549Z",
+      "token": "F",
+      "name": "Factura",
+      "position": 1,
+      "is_default": false
+    }
+  }
+  
+]

@@ -1,0 +1,39 @@
+[
+    {
+        "model": "pricing.quantity",
+        "pk": 1,
+        "fields": {
+            "token": "consum",
+            "name": "Consum",
+            "is_default": true
+        }
+    },
+    {
+        "model": "pricing.quantity",
+        "pk": 2,
+        "fields": {
+            "token": "dies_consum",
+            "name": "Dies de consum",
+            "is_default": false
+        }
+    },
+    {
+        "model": "pricing.quantity",
+        "pk": 3,
+        "fields": {
+            "token": "diferencia_fuita",
+            "name": "Diferencia de fuita",
+            "is_default": false
+        }
+    },
+    {
+        "model": "pricing.quantity",
+        "pk": 4,
+        "fields": {
+            "token": "diferencia_fuita_consum",
+            "name": "Diferencia de fuita i consum",
+            "is_default": false
+        }
+    }
+  ]
+  

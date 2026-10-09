@@ -1,0 +1,388 @@
+openapi: 3.0.3
+info:
+  title: Programa d'Abonats — API inbound Giswater
+  description: |
+    API de consulta inbound del Programa d'Abonats (PA) per a Giswater i altres aplicacions terceres.
+
+    ## Autenticació
+
+    1. Obtenir un token amb `POST /auth/login/` (usuari Django del grup `giswater`,
+       creat per l'administrador del PA o amb `python manage.py get_or_create_giswater_user`).
+    2. Incloure el token a cada crida: `Authorization: Token <token>`.
+
+    L'usuari Giswater només pot accedir a rutes sota el prefix `/giswater/`.
+    Qualsevol altra ruta retorna `403 Forbidden`.
+
+    ## Prefix d'URL
+
+    Si el desplegament té `API_URL_PREFIX=True`, afegir el prefix `/api` a totes les rutes
+    (p. ex. `/api/giswater/v1/contracts/`).
+
+    ## Versionat
+
+    Les rutes inbound de Giswater estan versionades sota `/giswater/v1/`.
+    Canvis trencadors de format es publicaran com a `/giswater/v2/`, etc.
+
+    ## Logs
+
+    Les crides es registren a `IntegrationRequestLog` (provider `giswater`, direction `inbound`).
+  version: 1.0.0
+  contact:
+    name: Aqua360 — Programa d'Abonats
+
+servers:
+  - url: https://customers.example.com
+    description: Entorn de producció (substituir pel domini real)
+  - url: http://localhost:8000
+    description: Entorn local de desenvolupament
+
+tags:
+  - name: Autenticació
+    description: Obtenció del token d'accés
+  - name: Contractes
+    description: Consulta de contractes i punts de subministrament
+  - name: Lectures
+    description: Consulta de lectures (consums) per contracte
+
+paths:
+  /auth/login/:
+    post:
+      tags:
+        - Autenticació
+      summary: Obtenir token d'accés
+      description: |
+        Autentica un usuari Django i retorna el token per a les crides següents.
+        L'usuari ha de pertànyer al grup `giswater` i ser creat prèviament
+        per l'administrador del PA.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: giswater
+              password: "********"
+      responses:
+        "200":
+          description: Autenticació correcta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              example:
+                username: giswater
+                token: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+        "400":
+          description: Dades de login invàlides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /giswater/v1/contracts/:
+    get:
+      tags:
+        - Contractes
+      summary: Llistar contractes
+      description: |
+        Retorna els `Contract` del PA amb dades del `supply_point_default`
+        i la seva `connection`.
+
+        Filtres opcionals (query string):
+        - `connection_token`: token de la connexió (`Connection.token`)
+        - `connection_code_gis`: identificador connec a Giswater (`Connection.code_gis`)
+
+        Si s'indiquen ambdós filtres, s'apliquen en conjunció (AND).
+        Sense filtres, retorna tots els contractes.
+
+        Si un contracte no té `supply_point_default` o connexió associada,
+        els camps `connection` i/o `supply_point` seran `null`.
+      operationId: listContracts
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: connection_token
+          in: query
+          required: false
+          description: Filtra per `Connection.token` del `supply_point_default`
+          schema:
+            type: string
+          example: CONN-001
+        - name: connection_code_gis
+          in: query
+          required: false
+          description: Filtra per `Connection.code_gis` del `supply_point_default`
+          schema:
+            type: string
+          example: "12547"
+      responses:
+        "200":
+          description: Llista de contractes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContractExport"
+              example:
+                - connection:
+                    token: CONN-001
+                    code_gis: "12547"
+                    exploitation_token: EXP-01
+                    diameter: D20
+                    dma_token: DMA-01
+                    latitude: 41.480614
+                    longitude: 2.323578
+                  supply_point:
+                    token: SP-001
+                    address: "Barcelona, 08000"
+                    meter_code: MTR-001
+                  contract:
+                    token: CTR-001
+                    holder:
+                      name: Anna
+                      surname: Garcia
+                    holder_full_name: Anna Garcia
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /giswater/v1/contracts/{contract_token}/readings/:
+    get:
+      tags:
+        - Lectures
+      summary: Lectures d'un contracte
+      description: |
+        Retorna les lectures (`Reading`) del contracte indicat.
+
+        - Filtre: `contract_id` coincident i `is_active=true`
+        - Ordre: `reading_date` descendent
+      operationId: listContractReadings
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: contract_token
+          in: path
+          required: true
+          description: Valor de `Contract.token`
+          schema:
+            type: string
+          example: CTR-001
+      responses:
+        "200":
+          description: Llista de lectures (pot ser buida si el contracte no en té)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReadingExport"
+              example:
+                - id: 123
+                  meter_code: MTR-001
+                  reading_date: "2026-01-15"
+                  reading_value: 100.5
+                  consumption: 12.0
+                  is_control: false
+                  origin: manual
+                  is_estimated: false
+                  estimated_used: null
+                  supply_point_token: SP-001
+                  consumption_days: 30
+                  billing_consumption: 11.5
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Contracte no trobat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+              example:
+                detail: Contracte no trobat.
+
+components:
+  securitySchemes:
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Token obtingut via `POST /auth/login/`.
+        Format de la capçalera: `Authorization: Token <token>`
+
+  responses:
+    Unauthorized:
+      description: Falta o és incorrecte el token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDetail"
+          example:
+            detail: Credencials d'autenticació no proporcionades.
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: giswater
+        password:
+          type: string
+          format: password
+          example: "********"
+
+    LoginResponse:
+      type: object
+      required:
+        - username
+        - token
+      properties:
+        username:
+          type: string
+          example: giswater
+        token:
+          type: string
+          description: Token per a la capçalera Authorization
+          example: 7b21d0b21ac28cd8721688b5db7d484adc32101f
+
+    ErrorDetail:
+      type: object
+      properties:
+        detail:
+          type: string
+
+    ConnectionExport:
+      type: object
+      nullable: true
+      properties:
+        token:
+          type: string
+          nullable: true
+        code_gis:
+          type: string
+          nullable: true
+          description: Identificador connec a Giswater
+        exploitation_token:
+          type: string
+          nullable: true
+          description: Token de l'explotació (`Exploitation.token`)
+        diameter:
+          type: string
+          nullable: true
+          description: Token del diàmetre de connexió (`ConnectionDiameter.token`)
+        dma_token:
+          type: string
+          nullable: true
+          description: Token de la DMA (`DMA.token`)
+        latitude:
+          type: number
+          format: double
+          nullable: true
+        longitude:
+          type: number
+          format: double
+          nullable: true
+
+    SupplyPointExport:
+      type: object
+      nullable: true
+      properties:
+        token:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+          description: Adreça completa del punt de subministrament (`Address.address_search`)
+        meter_code:
+          type: string
+          nullable: true
+          description: Codi del comptador (`Meter.code`)
+
+    ContractHolder:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        surname:
+          type: string
+          nullable: true
+
+    ContractInfo:
+      type: object
+      properties:
+        token:
+          type: string
+          nullable: true
+        holder:
+          $ref: "#/components/schemas/ContractHolder"
+        holder_full_name:
+          type: string
+          nullable: true
+          description: Nom complet del titular (`holder.name` + `holder.surname`)
+
+    ContractExport:
+      type: object
+      properties:
+        connection:
+          $ref: "#/components/schemas/ConnectionExport"
+        supply_point:
+          $ref: "#/components/schemas/SupplyPointExport"
+        contract:
+          $ref: "#/components/schemas/ContractInfo"
+
+    ReadingExport:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        meter_code:
+          type: string
+          nullable: true
+          description: Codi del comptador (`Meter.code`)
+        reading_date:
+          type: string
+          format: date
+          nullable: true
+        reading_value:
+          type: number
+          format: double
+          nullable: true
+          description: Valor de lectura del comptador
+        consumption:
+          type: number
+          format: double
+          nullable: true
+          description: Consum calculat (`Reading.calculated_value`)
+        is_control:
+          type: boolean
+        origin:
+          type: string
+          nullable: true
+        is_estimated:
+          type: boolean
+        estimated_used:
+          type: number
+          format: double
+          nullable: true
+        supply_point_token:
+          type: string
+          nullable: true
+          description: Token del punt de subministrament (`SupplyPoint.token`)
+        consumption_days:
+          type: integer
+          nullable: true
+        billing_consumption:
+          type: number
+          format: double
+          nullable: true
+          description: Consum de facturació (`Reading.real_consumption`)

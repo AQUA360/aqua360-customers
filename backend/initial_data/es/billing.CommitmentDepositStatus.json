@@ -1,0 +1,58 @@
+[
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 1,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "0",
+            "name": "Pendiente",
+            "color": null,
+            "position": 1,
+            "description": "Se ha generado y está a la espera de liquidarse",
+            "is_default": true
+        }
+    },
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 2,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "1",
+            "name": "Parcialmente cobrado",
+            "color": "blue",
+            "position": 2,
+            "description": "El compromiso ha sido parcialmente liquidado",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 3,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "2",
+            "name": "Cobrado",
+            "color": "green",
+            "position": 3,
+            "description": "El compromiso ha sido liquidado por completo",
+            "is_default": false
+        }
+    },
+    {
+        "model": "billing.commitmentdepositstatus",
+        "pk": 4,
+        "fields": {
+            "created_at": "2025-01-27T12:03:14.241Z",
+            "updated_at": "2025-01-31T08:27:51.050Z",
+            "token": "-1",
+            "name": "Anulado",
+            "color": "red",
+            "position": 4,
+            "description": "Compromiso no cumplido",
+            "is_default": false
+        }
+    }
+]

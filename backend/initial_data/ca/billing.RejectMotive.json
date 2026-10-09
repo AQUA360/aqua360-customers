@@ -1,0 +1,567 @@
+[
+    {
+      "model": "billing.rejectmotivetype",
+      "pk": 1,
+      "fields": {
+        "created_at": "2025-01-27T12:03:14.241Z",
+        "updated_at": "2025-01-31T08:27:51.050Z",
+        "token": "clientreturn",
+        "name": "Devolució del client",
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotivetype",
+      "pk": 2,
+      "fields": {
+        "created_at": "2025-01-27T12:03:14.241Z",
+        "updated_at": "2025-01-31T08:27:51.050Z",
+        "token": "bankreturn",
+        "name": "Devolució del banc",
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotivetype",
+      "pk": 3,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "incorrectformat",
+        "name": "Devolució per format incorrecte",
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotivetype",
+      "pk": 4,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "deceasedclient",
+        "name": "Client final difunt",
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 1,
+      "fields": {
+        "created_at": "2025-01-27T12:03:14.241Z",
+        "updated_at": "2025-01-31T08:27:51.050Z",
+        "token": "AC01",
+        "name": "Número de compte incorrecte",
+        "description": "Identificador del compte incorrecte (p. ex. IBAN no vàlid)",
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 2,
+      "fields": {
+        "created_at": "2025-01-27T12:03:14.241Z",
+        "updated_at": "2025-01-31T08:27:51.050Z",
+        "token": "AC04",
+        "name": "Compte tancat",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 3,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AC06",
+        "name": "Compte bloquejat",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 4,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AG01",
+        "name": "Operació prohibida",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 5,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AG02",
+        "name": "Codi d'operació financera invàlid",
+        "description": "Codi d'operació incorrecte",
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 6,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM01",
+        "name": "Import és zero",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 7,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM02",
+        "name": "Import no permès",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 8,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM03",
+        "name": "Divisa no permesa",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 9,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM04",
+        "name": "Fons insuficients",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 10,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM05",
+        "name": "Duplicada",
+        "description": "Pagament duplicat",
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 11,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM06",
+        "name": "Import massa baix",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 12,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM07",
+        "name": "Import bloquejat",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 13,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM09",
+        "name": "Import equivocat",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 14,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "AM10",
+        "name": "Suma de control invàlida",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 15,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "BE01",
+        "name": "Incoherent amb el client final",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 16,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "BE04",
+        "name": "Falta l'adreça del creditor",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 17,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "BE05",
+        "name": "Part iniciadora no reconeguda",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 18,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "BE06",
+        "name": "Client final desconegut",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 19,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "BE07",
+        "name": "Falta l'adreça del deutor",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 20,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "DT01",
+        "name": "Data invàlida",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 21,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "ED01",
+        "name": "Banc corresponsal no permès",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 22,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "ED03",
+        "name": "Informació del saldo sol·licitada",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 23,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "ED05",
+        "name": "Liquidació fallida",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 24,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "FF01",
+        "name": "Format de fitxer invàlid",
+        "description": "Format del fitxer invàlid",
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 25,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MD01",
+        "name": "Absència d'ordre de domiciliació",
+        "type": 3,
+        "description": null,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 26,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MD02",
+        "name": "Falta informació obligatòria a l'ordre de domiciliació",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 27,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MD03",
+        "name": "Format del fitxer invàlid per raons distintes de l'indicador d'agrupament",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 28,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MD04",
+        "name": "Format del fitxer invàlid a causa de l'indicador d'agrupament",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 29,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MD06",
+        "name": "Sol·licitud de reemborsament feta pel client final",
+        "description": null,
+        "type": 1,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 30,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MD07",
+        "name": "Client final difunt",
+        "description": null,
+        "type": 4,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 31,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MS02",
+        "name": "Raó no especificada, generada pel client",
+        "description": null,
+        "type": 1,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 32,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "MS03",
+        "name": "Raó no especificada, generada per l'agent",
+        "description": "Raó no especificada",
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 33,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "NARR",
+        "name": "Text",
+        "description": null,
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 34,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "RC01",
+        "name": "Identificador de l'entitat financera incorrecte",
+        "description": "Identificador de l'entitat financera incorrecte (p. ex. BIC invàlid)",
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 35,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "RF01",
+        "name": "Referència de l'operació no és única",
+        "description": null,
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 36,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "RR01",
+        "name": "Falta l'identificador al compte de l'ordenant",
+        "description": "Raons regulatòries",
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 37,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "RR02",
+        "name": "Falta el nom o l'adreça de l'ordenant",
+        "description": "Raons regulatòries",
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 38,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "RR03",
+        "name": "Falta el nom o l'adreça del beneficiari",
+        "description": "Raons regulatòries",
+        "type": 3,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 39,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "RR04",
+        "name": "Raons regulatòries",
+        "description": "Raons regulatòries",
+        "type": 2,
+        "is_active": true
+      }
+    },
+    {
+      "model": "billing.rejectmotive",
+      "pk": 40,
+      "fields": {
+        "created_at": "2025-02-01T00:00:00.000Z",
+        "updated_at": "2025-02-01T00:00:00.000Z",
+        "token": "TM01",
+        "name": "Hora de tancament (Cut-off time)",
+        "description": "Fitxer rebut després de l'hora de tancament",
+        "type": 2,
+        "is_active": true
+      }
+    }
+  ]
+  

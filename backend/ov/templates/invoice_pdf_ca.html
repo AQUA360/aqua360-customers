@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Factura - {{ invoice.number }}</title>
+    <style>
+        @page {
+            margin: 1.5cm;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 11pt;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            width: 100%;
+        }
+
+        /* HEADER */
+        .header {
+            text-align: right;
+            border-bottom: 2px solid #222;
+            padding-bottom: 15px;
+            margin-bottom: 35px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 26pt;
+            font-weight: bold;
+            color: #222;
+            letter-spacing: 1px;
+        }
+
+        .header p {
+            margin: 2px 0 0 0;
+            font-size: 11pt;
+            color: #666;
+        }
+
+        /* INFO GRID */
+        .info-grid {
+            width: 100%;
+            margin-bottom: 35px;
+            border-collapse: collapse;
+        }
+
+        .info-grid td {
+            width: 50%;
+            vertical-align: top;
+            padding: 0 10px;
+        }
+
+        .info-grid h2 {
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 0 0 8px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #ddd;
+            color: #222;
+        }
+
+        .info-grid p {
+            margin: 0 0 6px 0;
+        }
+
+        .label {
+            color: #555;
+            display: inline-block;
+            width: 130px;
+            font-weight: 500;
+        }
+
+        /* TOTALS */
+        .total-section {
+            width: 100%;
+            margin-top: 40px;
+            text-align: right;
+        }
+
+        .total-section p {
+            margin: 0;
+            color: #777;
+        }
+
+        .total-amount {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #000;
+            padding: 12px 0;
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            display: inline-block;
+            min-width: 180px;
+        }
+
+        .pending-amount {
+            font-size: 13pt;
+            font-weight: bold;
+            color: #c0392b;
+            margin-top: 8px;
+        }
+
+        /* PAYMENT DETAILS */
+        .payment-details {
+            margin-top: 40px;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+
+        .payment-details h2 {
+            margin: 0 0 10px 0;
+            font-size: 12pt;
+            font-weight: bold;
+            color: #222;
+        }
+
+        .payment-details p {
+            margin: 0 0 6px 0;
+        }
+
+        /* FOOTER */
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 9pt;
+            color: #888;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+
+        <div class="header">
+            <h1>FACTURA</h1>
+            <p>#{{ invoice.number }}</p>
+        </div>
+
+        <table class="info-grid">
+            <tr>
+                <td>
+                    <h2>Client</h2>
+                    <p><strong>{{ invoice.customer_final }}</strong></p>
+                    <p>{{ invoice.customer_full_address }}</p>
+                    <p>{{ invoice.customer_email_final }}</p>
+                    <p>{{ invoice.customer_tlf_final }}</p>
+                </td>
+                <td>
+                    <h2>Detalls</h2>
+                    <p><span class="label">Contracte:</span> {{ invoice.contract_number }}</p>
+                    <p><span class="label">Data d'emissió:</span> {{ invoice.issue_date_formatted }}</p>
+                    <p><span class="label">Data de venciment:</span> {{ invoice.due_date_formatted }}</p>
+                    <p><span class="label">Estat:</span> {{ invoice.status_name }}</p>
+                </td>
+            </tr>
+        </table>
+        
+        <div class="total-section">
+            <p>Total a Pagar</p>
+            <div class="total-amount">{{ invoice.total_final }} €</div>
+            
+            {% if invoice.left_to_pay > 0 %}
+                <div class="pending-amount">Pendent: {{ invoice.left_to_pay }} €</div>
+            {% endif %}
+        </div>
+
+        {% if invoice.payment_iban_final %}
+        <div class="payment-details">
+            <h2>Dades de Pagament</h2>
+            <p><span class="label">IBAN:</span> <strong>{{ invoice.payment_iban_final }}</strong></p>
+            <p><span class="label">Concepte:</span> Factura {{ invoice.number }}</p>
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p>Gràcies per la seva confiança.</p>
+        </div>
+
+    </div>
+
+</body>
+</html>

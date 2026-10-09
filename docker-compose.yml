@@ -1,0 +1,168 @@
+x-django-env: &django-env
+  DJANGO_SETTINGS_MODULE: customers.settings
+  SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
+  DEBUG: ${DEBUG:-True}
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+  DATABASE_NAME: ${POSTGRES_DB:-avsis_customers}
+  DATABASE_USER: ${POSTGRES_USER:-postgres}
+  DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  DATABASE_HOST: db
+  DATABASE_PORT: 5432
+  CELERY_BROKER_URL: redis://redis:6379/0
+
+services:
+  db:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-avsis_customers}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-avsis_customers}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./docker-data/media:/app/media
+      - ./docker-data/static:/app/staticfiles
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/admin/login/', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: ["/app/docker-celery-worker.sh"]
+    command: []
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+    volumes:
+      - ./docker-data/media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: ["/app/docker-celery-beat.sh"]
+    command: []
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+    volumes:
+      - ./docker-data/media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NUXT_PUBLIC_API_HOST: ${NUXT_PUBLIC_API_HOST:-http://localhost:8000}
+        NUXT_PUBLIC_DEFAULT_LOCALE: ${LANGUAGE:-ca}
+        NUXT_PUBLIC_ENV: ${ENV:-test}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      # Nuxt 3: runtimeConfig.public es sobreescriu amb NUXT_PUBLIC_* (no amb LANGUAGE/ENV genèrics)
+      NUXT_PUBLIC_DEFAULT_LOCALE: ${LANGUAGE:-ca}
+      NUXT_PUBLIC_ENV: ${ENV:-test}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  gmao-consumer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python -u manage.py run_gmao_consumer
+    # on-failure: sense RabbitMQ (RABBITMQ_ENABLED=False) la comanda surt amb codi 0 i no s'ha de reiniciar en bucle
+    restart: on-failure
+    env_file:
+      - .env
+    environment:
+      <<: *django-env
+    volumes:
+      - ./docker-data/media:/app/media
+    healthcheck:
+      test: [ "CMD-SHELL", "ps aux | grep '[r]un_gmao_consumer' || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

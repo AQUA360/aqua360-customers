@@ -1,0 +1,28 @@
+[
+  {
+    "model": "claimrequest.claimdocumenttype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2025-04-29T15:04:47.183Z",
+      "updated_at": "2025-04-29T15:04:47.183Z",
+      "token": "letter_suspension",
+      "name": "Carta de suspensió",
+      "description": null,
+      "is_default": true,
+      "position": 1
+    }
+  },
+  {
+    "model": "claimrequest.claimdocumenttype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2025-04-29T15:04:47.183Z",
+      "updated_at": "2025-04-29T15:04:47.183Z",
+      "token": "pay_reminder",
+      "name": "Recordatori de pagament",
+      "description": null,
+      "is_default": false,
+      "position": 2
+    }
+  }
+]

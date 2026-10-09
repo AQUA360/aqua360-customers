@@ -1,0 +1,74 @@
+[
+  {
+    "model": "contract.paymenttype",
+    "pk": 1,
+    "fields": {
+      "created_at": "2024-10-09T12:24:04.825Z",
+      "updated_at": "2024-10-09T12:24:04.825Z",
+      "token": "DIRECT_DEBIT",
+      "name": "Domiciliació Bancària - SEPA",
+      "position": 1,
+      "is_default": true
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 2,
+    "fields": {
+      "created_at": "2024-10-09T12:24:14.798Z",
+      "updated_at": "2024-10-09T12:24:31.543Z",
+      "token": "BANK_TRANSFER",
+      "name": "Transferència Bancària",
+      "position": 2,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 3,
+    "fields": {
+      "created_at": "2024-10-09T12:24:14.798Z",
+      "updated_at": "2024-10-09T12:24:31.543Z",
+      "token": "BANK_PAYMENT",
+      "name": "Pagament Bancari", 
+      "position": 3,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 5,
+    "fields": {
+      "created_at": "2024-10-09T12:24:26.173Z",
+      "updated_at": "2024-10-09T12:24:26.173Z",
+      "token": "CASH",
+      "name": "Efectiu",
+      "position": 5,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 6,
+    "fields": {
+      "created_at": "2024-10-09T12:24:39.656Z",
+      "updated_at": "2024-10-09T12:24:39.656Z",
+      "token": "CARD",
+      "name": "Targeta Bancària",
+      "position": 6,
+      "is_default": false
+    }
+  },
+  {
+    "model": "contract.paymenttype",
+    "pk": 7,
+    "fields": {
+      "created_at": "2024-10-09T12:24:39.656Z",
+      "updated_at": "2024-10-09T12:24:39.656Z",
+      "token": "BALANCE",
+      "name": "Saldo",
+      "position": 7,
+      "is_default": false
+    }
+  }
+]
