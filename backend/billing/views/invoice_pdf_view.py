@@ -245,6 +245,16 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                 logo = os.path.join(settings.DOMAIN_MEDIA, f'media/{logo_db}')
             else:
                 logo = os.path.join(settings.MEDIA_ROOT, logo_db)
+
+        qr_web = None
+        if company_obj:
+            qr_name = 'qr_web.png'
+            qr_path = os.path.join(settings.MEDIA_ROOT, 'uploads', 'logo', str(company_obj.id), qr_name)
+            if os.path.exists(qr_path):
+                if hasattr(settings, 'DOMAIN_MEDIA') and settings.DOMAIN_MEDIA:
+                    qr_web = f"{settings.DOMAIN_MEDIA.rstrip('/')}/media/uploads/logo/{company_obj.id}/{qr_name}"
+                else:
+                    qr_web = qr_path
         
         barcode = None
         barcode_base64 = None
@@ -470,7 +480,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                 is_invoice = False
         except:
             pass
-        
+
         billing_period = None
         try:
             if invoice.billing:
@@ -574,6 +584,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                 'show_meter': show_meter,
                 'meter_change_readings': meter_change_readings,
                 'verifactu_qr': verifactu_qr_base64,
+                'qr_web': qr_web,
                 'ov_image': ov_image,
                 'physical_address': physical_address,
                 'physical_location': physical_location,
@@ -633,6 +644,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                 'show_meter': show_meter,
                 'meter_change_readings': meter_change_readings,
                 'verifactu_qr': verifactu_qr_base64,
+                'qr_web': qr_web,
                 'ov_image': ov_image,
                 'physical_address': physical_address,
                 'physical_location': physical_location,

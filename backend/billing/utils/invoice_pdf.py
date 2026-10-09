@@ -253,6 +253,15 @@ def generate(context, invoice, exploitation, temporary=False):
         barcode_values = None
         
         logo = company_obj.logo.path if company_obj and company_obj.logo else None
+        qr_web = None
+        if company_obj:
+            qr_name = 'qr_web.png'
+            qr_path = os.path.join(settings.MEDIA_ROOT, 'uploads', 'logo', str(company_obj.id), qr_name)
+            if os.path.exists(qr_path):
+                if hasattr(settings, 'DOMAIN_MEDIA') and settings.DOMAIN_MEDIA:
+                    qr_web = f"{settings.DOMAIN_MEDIA.rstrip('/')}/media/uploads/logo/{company_obj.id}/{qr_name}"
+                else:
+                    qr_web = qr_path
 
         
         contract = None
@@ -599,6 +608,7 @@ def generate(context, invoice, exploitation, temporary=False):
             'tertiary_color': tertiary_color if is_digital else None,
             'show_meter': show_meter,
             'verifactu_qr': verifactu_qr_base64,
+            'qr_web': qr_web,
             'meter_change_readings': meter_change_readings,
             'ov_image': ov_image,
             'physical_address': physical_address,

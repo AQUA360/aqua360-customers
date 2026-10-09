@@ -206,6 +206,87 @@ def invoice_period(invoice):
     except Exception:
         return ""
 
+
+BILLER_INITIAL_MONTH = {
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+}
+
+
+def _invoice_period_anchor(invoice):
+    """(any, mes) que situa la factura dins d'un cicle del facturador."""
+    year = getattr(invoice, 'billing_period_year', None)
+    month = getattr(invoice, 'billing_period_month', None)
+    if year and month and 1 <= int(month) <= 12:
+        return int(year), int(month)
+    reading_dates = [
+        r.reading_date for r in invoice.readings.all() if getattr(r, 'reading_date', None)
+    ]
+    if reading_dates:
+        last = max(reading_dates)
+        return last.year, last.month
+    return None
+
+
+def _cycle_bounds_from_biller(year, month, biller):
+    """Cicle complet definit per period_type i initial_month del facturador.
+
+    El mes de la factura només diu en quin cicle cau. El rang el marca el
+    facturador: trimestral des de gener és Gener-Març, Abril-Juny, etc.
+    """
+    interval = PERIOD_TYPE_MONTHS.get(getattr(biller, 'period_type', None))
+    initial = BILLER_INITIAL_MONTH.get(getattr(biller, 'initial_month', None))
+    if not interval or not initial:
+        return None
+    position = ((month - initial) % 12) % interval
+    start_month = month - position
+    start_year = year
+    if start_month <= 0:
+        start_month += 12
+        start_year -= 1
+    end_index = start_month + interval - 1
+    end_year = start_year + (end_index - 1) // 12
+    end_month = (end_index - 1) % 12 + 1
+    return start_month, start_year, end_month, end_year
+
+
+def _format_period_bounds(start_month, start_year, end_month, end_year):
+    end_name = _month_name(end_year, end_month)
+    if start_year == end_year and start_month == end_month:
+        return f"{end_name}/{end_year}"
+    start_name = _month_name(start_year, start_month)
+    if start_year == end_year:
+        return f"{start_name}-{end_name}/{end_year}"
+    return f"{start_name}/{start_year}-{end_name}/{end_year}"
+
+
+@register.filter
+def invoice_biller_period(invoice):
+    """Període del facturador, en format Abril-Juny/2026.
+
+    Surt de period_type i initial_month. El mes de la factura només indica
+    quin cicle és. Sense facturador al lot la fila no es pinta. No
+    substitueix la variable de context `billing_period`.
+    """
+    if invoice is None:
+        return ""
+
+    try:
+        if not _is_consumption_invoice(invoice):
+            return ""
+        biller = getattr(getattr(invoice, 'billing', None), 'biller', None)
+        if biller is None:
+            return ""
+        anchor = _invoice_period_anchor(invoice)
+        if not anchor:
+            return ""
+        bounds = _cycle_bounds_from_biller(anchor[0], anchor[1], biller)
+        if not bounds:
+            return ""
+        return _format_period_bounds(*bounds)
+    except Exception:
+        return ""
+
 @register.filter
 def is_advanced_product(value):
     val_upper = str(value or '').upper()
