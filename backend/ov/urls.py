@@ -18,6 +18,9 @@ from .views import (
     ConsumptionDownloadOVView,
     ConsumptionsDownloadOVView,
     BillingPeriodsOVView,
+    SepaDocumentUploadView,
+    CancelDirectDebitView,
+    ContactDataOVView,
 )
 
 urlpatterns = [
@@ -33,6 +36,12 @@ urlpatterns = [
         BillingDataOVUpdateIBANView.as_view(),
         name="update-iban-ov",
     ),  # Post method
+    # /ov/contact-data/?contract_token=<token>
+    path(
+        "contact-data/",
+        ContactDataOVView.as_view(),
+        name="contact-data-ov",
+    ),  # Get method
     # /ov/invoices/?contract_token=<token>
     path("invoices/", BillingContractInvoicesOVView.as_view(), name="invoices-ov"),
     # /ov/invoice/?contract_token=<token>&invoice_token=<token>
@@ -85,6 +94,18 @@ urlpatterns = [
         "meter/<str:token>/",
         MeterDetailByTokenOVView.as_view(),
         name="meter-detail-by-token-ov",
+    ),
+    # /ov/procedures/<contract_token>/upload-sepa-signed/
+    path(
+        "procedures/<str:contract_token>/upload-sepa-signed/",
+        SepaDocumentUploadView.as_view(),
+        name="upload-sepa-signed-ov",
+    ),
+    # /ov/procedures/<contract_token>/cancel-direct-debit/
+    path(
+        "procedures/<str:contract_token>/cancel-direct-debit/",
+        CancelDirectDebitView.as_view(),
+        name="cancel-direct-debit-ov",
     ),
     # /ov/invoice/<token>/detail/
     path(
