@@ -13,6 +13,7 @@ info:
     | `/ov/contract-detail/` | GET | Detalle del contrato |
     | `/ov/billing-data/` | GET / POST | Consulta y actualización de datos de facturación |
     | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN |
+    | `/ov/contact-data/` | GET | Consulta de la configuración del perfil (datos de facturación + dirección del titular) |
     | `/ov/invoices/` | GET | Listado de facturas (excluye pre-facturas) |
     | `/ov/invoice/` | GET | Detalle de una factura |
     | `/ov/invoice/{token}/detail/` | GET | Detalle completo de una factura (tarifas y desglose fiscal) |
@@ -27,7 +28,9 @@ info:
     | `/ov/create-reading/` | POST | Registrar lectura de contador |
     | `/ov/contracts/` | GET | Listado de contratos por titular o pagador (DNI) |
     | `/ov/contract/{token}/` | GET | Detalle del contrato por token (incluye datos de la cuenta) |
-    | `/ov/meter/{token}/` | GET | Detalle del contador del contrato por token |
+    | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
+    | `/ov/procedures/{contract_token}/upload-sepa-signed/` | POST | Subir y archivar el mandato SEPA firmado del contrato |
+    | `/ov/procedures/{contract_token}/cancel-direct-debit/` | POST | Cancelar la domiciliación (revocación del mandato SEPA) y cambiar el tipo de pago |
 
     ## Autenticación
 
@@ -48,7 +51,7 @@ info:
 
     ## Notas generales
 
-    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` devuelve el IBAN sin enmascarar cuando `es_titular_cuenta` es `true`.
+    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` devuelve el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, la clave `is_account_holder` no aparece en la respuesta.
     - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
     - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
   version: 1.0.0
@@ -76,6 +79,10 @@ tags:
     description: Consulta de consumos facturados
   - name: Lecturas
     description: Registro de lecturas de contador
+  - name: Trámites
+    description: Trámites del abonado (alta, domiciliación, etc.) y documentos adjuntos
+  - name: Perfil
+    description: Configuración del perfil del abonado
 
 paths:
   /auth/login/:
@@ -118,36 +125,31 @@ paths:
     get:
       tags:
         - Contrato
-      summary: Detalle del contrato
+      summary: Detalle del contrato (redirige a /ov/contract/{token}/)
       description: |
-        Devuelve los datos principales de un contrato identificado por `contract_token`.
+        Alias legacy de `GET /ov/contract/{token}/`. Recibe el identificador
+        como parámetro de consulta `contract_token` y responde con una
+        redirección `302 Found` al endpoint por token
+        (`contract-detail-by-token-ov`), conservando el resto de parámetros
+        de consulta (p. ej. `dni`).
+
+        Esta vista no consulta la base de datos: si el contrato no existe,
+        el `404 Not Found` lo devuelve la vista destino.
       operationId: getContractDetail
       security:
         - tokenAuth: []
       parameters:
         - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/dniOptional"
       responses:
-        "200":
-          description: Datos del contrato
-          content:
-            application/json:
+        "302":
+          description: Redirección a `/ov/contract/{token}/`, conservando los parámetros de consulta restantes
+          headers:
+            Location:
+              description: Ruta destino
               schema:
-                $ref: "#/components/schemas/ContractDetail"
-              example:
-                token: CTR-001
-                status_token: "1"
-                status_name: Activo
-                holder_token: "12345678A"
-                payment_type: DOM
-                use_type: Doméstico
-                last_invoice_date: "2026-01-15T10:30:00Z"
-                iban: "ES123456********56789012"
-                supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
-                meter_serial_number: MTR-001
-                meter_caliber: "15"
-                smart_metering: "false"
-                registration_date: "15/03/2020"
-                termination_date: null
+                type: string
+              example: /ov/contract/CTR-001/?dni=12345678A
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -305,6 +307,52 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /ov/contact-data/:
+    get:
+      tags:
+        - Perfil
+      summary: Consultar la configuración del perfil
+      description: |
+        Devuelve los datos de facturación y contacto del contrato (los mismos
+        campos que `GET /ov/billing-data/`) más `holder_address`, la dirección
+        postal del titular del contrato (`PersonAddress` con `is_billing`).
+
+        Parámetro obligatorio `contract_token` en la query: responde `400` si
+        falta y `404` si el contrato no existe.
+      operationId: getContactData
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      responses:
+        "200":
+          description: Configuración del perfil del contrato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactData"
+              example:
+                nif: "12345678A"
+                tenant_name: Anna Garcia
+                supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                city: Barcelona
+                postal_code: "08110"
+                paper_invoice: "false"
+                email: anna.garcia@example.com
+                invoice_language: es
+                phone1: "600123456"
+                phone2: ""
+                payment_type: DOM
+                iban: "ES123456********56789012"
+                holder_name: Anna Garcia
+                holder_address: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /ov/invoices/:
     get:
       tags:
@@ -389,16 +437,16 @@ paths:
         Solo devuelve facturas definitivas (tipo `invoice_type_invoice_token`); las
         proformas, pre-facturas y presupuestos se excluyen, igual que en `/ov/invoice-pdf/`.
 
-        La dirección tributaria (`direccion_tributaria`) es condicional:
+        La dirección tributaria (`tax_address`) es condicional:
 
         - Si la factura **no** está domiciliada (el tipo de pago no es `DIRECT_DEBIT`),
-          el campo `direccion_tributaria` **no aparece** en la respuesta.
+          el campo `tax_address` **no aparece** en la respuesta.
         - Si está domiciliada y el pagador es el propio titular del contrato
           (`payer_token_final` coincide con `customer_token_final`), el campo aparece
-          con `anonimizada: false` y la dirección completa.
+          con `is_anonymized: false` y la dirección completa.
         - Si está domiciliada pero el pagador es un tercero, el campo aparece con
-          `anonimizada: true`, se omite `direccion` y solo se exponen `codigo_postal`,
-          `ciudad`, `provincia` y `pais`.
+          `is_anonymized: true`, se omite `address` y solo se exponen `postal_code`,
+          `city`, `province` y `country`.
       operationId: getInvoiceDetailByToken
       security:
         - tokenAuth: []
@@ -428,13 +476,13 @@ paths:
                   month: 3
                   days: 31
                 dwelling_code: VIV-000123
-                direccion_tributaria:
-                  anonimizada: false
-                  direccion: "C/ Barcelona, 31"
-                  codigo_postal: "08110"
-                  ciudad: Barcelona
-                  provincia: Barcelona
-                  pais: España
+                tax_address:
+                  is_anonymized: false
+                  address: "C/ Barcelona, 31"
+                  postal_code: "08110"
+                  city: Barcelona
+                  province: Barcelona
+                  country: España
                 tariffs:
                   - name: Subministrament d'aigua
                     description: Canalización y consumo de agua
@@ -897,8 +945,12 @@ paths:
         El DNI es obligatorio y se compara tras normalizarlo (sin espacios y en mayúsculas).
         Si el DNI coincide en ambos roles, el contrato aparece una sola vez.
 
-        `acciones_permitidas` se calcula por contrato según su estado y su tipo de pago,
+        `allowed_actions` se calcula por contrato según su estado y su tipo de pago,
         por lo que su contenido puede variar entre elementos de una misma respuesta.
+
+        `is_account_holder` indica si el `dni` recibido coincide con el titular de la
+        cuenta de domiciliación; como en este endpoint el `dni` es obligatorio, la
+        clave siempre está presente.
       operationId: listContractsByDni
       security:
         - tokenAuth: []
@@ -924,27 +976,29 @@ paths:
                     status_token: "1"
                     status_name: Alta
                     payment_type: DOM
-                    titular_contrato:
+                    contract_holder:
                       dni: "12345678A"
                       nombre: Anna Garcia
-                    titular_domiciliacion:
+                    direct_debit_holder:
                       dni: "12345678A"
                       nombre: Anna Garcia
                       iban: "ES912345********45678901"
-                    acciones_permitidas:
+                    allowed_actions:
                       - consultar_datos_facturacion
                       - actualizar_iban
                       - registrar_lectura
+                    is_account_holder: true
                   - token: CTR-002
                     status_token: "-1"
                     status_name: Baixa
                     payment_type: DOM
-                    titular_contrato:
+                    contract_holder:
                       dni: "12345678A"
                       nombre: Anna Garcia
-                    titular_domiciliacion: null
-                    acciones_permitidas:
+                    direct_debit_holder: null
+                    allowed_actions:
                       - consultar_datos_facturacion
+                    is_account_holder: false
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -959,22 +1013,29 @@ paths:
       summary: Detalle del contrato por token
       description: |
         Devuelve los datos del contrato identificado por el `token` incluido en la
-        propia ruta, a diferencia de `/ov/contract-detail/`, que recibe el
-        identificador como parámetro de consulta `contract_token`.
+        propia ruta. Es la ruta destino de la redirección del alias legacy
+        `/ov/contract-detail/`, que recibe el identificador como parámetro de
+        consulta `contract_token`.
 
         Expande las estructuras de `/ov/contract-detail/` y `/ov/billing-data/`
         añadiendo los datos de la cuenta de domiciliación: el DNI de su titular,
-        la dirección postal del titular y la bandera que indica si el titular del
-        contrato es también el titular de la cuenta.
+        la dirección postal del titular y la bandera `is_account_holder`.
+
+        `is_account_holder` solo se evalúa si se envía el parámetro opcional
+        `dni`: coincide con `true` cuando ese `dni` (normalizado) corresponde al
+        titular de la cuenta de domiciliación. Si `dni` no se envía, la clave
+        `is_account_holder` **no aparece** en la respuesta.
 
         Excepción a la nota general sobre IBAN: en este endpoint el campo `iban`
-        se devuelve sin enmascarar cuando `es_titular_cuenta` es `true`; si es
-        `false` aparece enmascarado (8 primeros caracteres + asteriscos + 8 últimos).
+        se devuelve sin enmascarar solo si se envía `dni` y este coincide con el
+        titular de la cuenta; en cualquier otro caso aparece enmascarado
+        (8 primeros caracteres + asteriscos + 8 últimos).
       operationId: getContractDetailByToken
       security:
         - tokenAuth: []
       parameters:
         - $ref: "#/components/parameters/contractTokenPath"
+        - $ref: "#/components/parameters/dniOptional"
       responses:
         "200":
           description: Datos del contrato
@@ -1006,9 +1067,9 @@ paths:
                 invoice_language: es
                 phone1: "600000000"
                 phone2: "600000001"
-                dni_titular_cuenta: "12345678A"
-                es_titular_cuenta: true
-                direccion_titular: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
+                account_holder_dni: "12345678A"
+                is_account_holder: true
+                holder_address: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
                 iban: "ES12345678901234567890"
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -1017,7 +1078,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /ov/meter/{token}/:
+  /ov/meter/{contract_token}/:
     get:
       tags:
         - Contador
@@ -1026,8 +1087,7 @@ paths:
         Devuelve los cinco datos del contador que la Oficina Virtual muestra en
         su bloque fijo de lectura: número de serie, calibre, cifras, año de
         fabricación y fecha de instalación.
-
-        El `token` de la ruta es el del contrato; el contador se resuelve desde
+        El `contract_token` de la ruta es el del contrato; el contador se resuelve desde
         su punto de suministro por defecto (`supply_point_default.meter`), el
         mismo origen que `meter_serial_number` y `meter_caliber` de
         `/ov/contract/{token}/`. Este endpoint añade los tres metadatos del
@@ -1040,7 +1100,7 @@ paths:
       security:
         - tokenAuth: []
       parameters:
-        - $ref: "#/components/parameters/contractTokenPath"
+        - $ref: "#/components/parameters/contractTokenMeterPath"
       responses:
         "200":
           description: Datos del contador
@@ -1058,6 +1118,192 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /ov/procedures/{contract_token}/upload-sepa-signed/:
+    post:
+      tags:
+        - Trámites
+      summary: Subir y archivar el mandato SEPA firmado
+      description: |
+        Sube el mandato SEPA firmado por el titular de la cuenta y lo archiva
+        como prueba de la autorización de domiciliación. El documento debe
+        estar firmado por el titular de la cuenta; el sistema central lo
+        conserva como justificante.
+
+        El archivo se envía como `multipart/form-data` con dos campos:
+        `sepa` (PDF o imagen) e `iban` de la cuenta de domiciliación.
+
+        El `iban` recibido se limpia (sin espacios, en mayúsculas) y debe
+        coincidir con el IBAN activo del contrato (`payment.IBAN.iban`); si no
+        coincide se devuelve `400`. Responde `404` si el contrato no existe.
+
+        El almacenamiento definitivo del documento aún no está integrado: la
+        operación se registra como mock y se responde `201`.
+      operationId: uploadSignedProcedureDocument
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractTokenSepaPath"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - sepa
+                - iban
+              properties:
+                sepa:
+                  type: string
+                  format: binary
+                  description: Mandato SEPA firmado (PDF o imagen)
+                iban:
+                  type: string
+                  description: IBAN de la cuenta de domiciliación del contrato (se normaliza sin espacios y en mayúsculas)
+                  example: ES9121000418450200051332
+            example:
+              sepa: (binario)
+              iban: ES9121000418450200051332
+      responses:
+        "201":
+          description: Mandato SEPA firmado subido y archivado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedMandateUploadResponse"
+              example:
+                contract_token: CTR-001
+                success: true
+        "400":
+          description: |
+            Faltan campos o el archivo no es válido (errores de campo en formato
+            Django REST Framework), o el `iban` no coincide con la cuenta
+            de domiciliación activa del contrato.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationErrors"
+                  - $ref: "#/components/schemas/ErrorMessage"
+              examples:
+                fieldErrors:
+                  summary: Falta el archivo o su tipo no es válido
+                  value:
+                    sepa:
+                      - This field is required.
+                ibanMismatch:
+                  summary: IBAN distinto al de la cuenta activa
+                  value:
+                    error: The IBAN does not match the contract's current active account.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /ov/procedures/{contract_token}/cancel-direct-debit/:
+    post:
+      tags:
+        - Trámites
+      summary: Cancelar la domiciliación (revocación del mandato SEPA)
+      description: |
+        Revoca el mandato SEPA del contrato y cambia su forma de pago al
+        tipo de pago indicado, como respuesta a una solicitud de cancelación
+        de domiciliación del usuario.
+
+        Cuerpo JSON con `period` (període de facturació desde el que aplica
+        la cancelación, p. ej. `2026-3T`), `role` (rol de quien solicita, p.
+        ej. `TITULAR` o `PAGADOR`) y `new_payment_type` (opcional: token del
+        nuevo tipo de pago; si falta se usa `BANK_TRANSFER`).
+
+        Flujo: `404` si el contrato no existe; `400` si faltan campos, si el
+        contrato no tiene forma de pago o si `new_payment_type` no
+        corresponde a un `PaymentType` existente; `500` si el tipo por
+        defecte `BANK_TRANSFER` no está en la base de datos.
+
+        Operación **idempotente**: si el contrato ya tiene el tipo de pago
+        objetivo no se escribe nada (ni cambio de tipo, ni `ContractLog`, ni
+        `ContractObservation`) y se responde `200` con
+        `message: "Direct debit already cancelled."`.
+
+        Cuando sí hay cambio, se actualiza `contract.payment.type` y se
+        registran una entrada de auditoría `ContractLog` (campo
+        `payment_type`, con el token anterior y el nuevo) y una
+        `ContractObservation` con el `period` y el `role` solicitados, todo
+        dentro de una transacción.
+      operationId: cancelDirectDebit
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractTokenCancelPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelDirectDebitRequest"
+            example:
+              period: "2026-3T"
+              role: TITULAR
+              new_payment_type: BANK_TRANSFER
+      responses:
+        "200":
+          description: |
+            Cancelación aplicada (cambio de tipo de pago + auditoría) o bien
+            ya estaba cancelada (respuesta idempotente, sin escrituras).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelDirectDebitResponse"
+              examples:
+                cancelled:
+                  summary: Cancelación aplicada
+                  value:
+                    contract_token: CTR-001
+                    success: true
+                    message: Direct debit cancelled successfully.
+                alreadyCancelled:
+                  summary: Ya estaba cancelada (idempotente, sin escrituras)
+                  value:
+                    contract_token: CTR-001
+                    success: true
+                    message: Direct debit already cancelled.
+        "400":
+          description: |
+            Faltan campos (formato Django REST Framework), el contrato no
+            tiene forma de pago o `new_payment_type` no existe.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationErrors"
+                  - $ref: "#/components/schemas/ErrorMessage"
+              examples:
+                fieldErrors:
+                  summary: Faltan period o role
+                  value:
+                    period:
+                      - This field is required.
+                noPayment:
+                  summary: El contrato no tiene forma de pago
+                  value:
+                    error: Contract has no payment method
+                invalidPaymentType:
+                  summary: Token de tipo de pago desconocido
+                  value:
+                    error: Invalid payment type token
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          description: El tipo de pago por defecto `BANK_TRANSFER` no existe en la base de datos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Default payment type BANK_TRANSFER not found
 
 components:
   securitySchemes:
@@ -1095,6 +1341,19 @@ components:
       description: |
         DNI/NIF del titular del contrato (`Contract.holder.token`) o del titular de la
         cuenta de domiciliación (`PersonBank.dni` / `PersonBank.person.token`).
+      schema:
+        type: string
+      example: "12345678A"
+
+    dniOptional:
+      name: dni
+      in: query
+      required: false
+      description: |
+        DNI/NIF del solicitante. En `/ov/contract/{token}/` determina la
+        bandera `is_account_holder` (solo se evalúa y se incluye en la
+        respuesta cuando se envía) y desenmascara el IBAN cuando coincide con
+        el titular de la cuenta de domiciliación.
       schema:
         type: string
       example: "12345678A"
@@ -1170,6 +1429,33 @@ components:
 
     contractTokenPath:
       name: token
+      in: path
+      required: true
+      description: Token del contrato (`Contract.token`)
+      schema:
+        type: string
+      example: CTR-001
+
+    contractTokenMeterPath:
+      name: contract_token
+      in: path
+      required: true
+      description: Token del contrato (`Contract.token`)
+      schema:
+        type: string
+      example: CTR-001
+
+    contractTokenSepaPath:
+      name: contract_token
+      in: path
+      required: true
+      description: Token del contrato (`Contract.token`)
+      schema:
+        type: string
+      example: CTR-001
+
+    contractTokenCancelPath:
+      name: contract_token
       in: path
       required: true
       description: Token del contrato (`Contract.token`)
@@ -1420,6 +1706,17 @@ components:
           type: string
           description: Nombre completo del titular
 
+    ContactData:
+      allOf:
+        - $ref: "#/components/schemas/BillingData"
+        - type: object
+          properties:
+            holder_address:
+              type: string
+              nullable: true
+              description: Dirección postal del titular del contrato (`PersonAddress` con `is_billing`); `null` si el titular no tiene dirección de envío
+              example: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
+
     UpdateBillingDataRequest:
       type: object
       required:
@@ -1655,8 +1952,9 @@ components:
         - token
         - status_token
         - payment_type
-        - titular_contrato
-        - acciones_permitidas
+        - contract_holder
+        - allowed_actions
+        - is_account_holder
       properties:
         token:
           type: string
@@ -1674,17 +1972,17 @@ components:
           type: string
           nullable: true
           description: Token del tipo de pago (`PaymentType.token`)
-        titular_contrato:
+        contract_holder:
           allOf:
             - $ref: "#/components/schemas/ContractHolder"
           nullable: true
           description: Titular del contrato; `null` si el contrato no tiene titular asignado
-        titular_domiciliacion:
+        direct_debit_holder:
           allOf:
             - $ref: "#/components/schemas/ContractDebitHolder"
           nullable: true
           description: Titular de la domiciliación; `null` si el contrato no tiene IBAN asociado
-        acciones_permitidas:
+        allowed_actions:
           type: array
           description: |
             Acciones habilitadas para este contrato concreto, calculadas según su estado
@@ -1695,6 +1993,13 @@ components:
             - consultar_datos_facturacion
             - actualizar_iban
             - registrar_lectura
+        is_account_holder:
+          type: boolean
+          description: |
+            `true` si el `dni` recibido coincide con el titular de la cuenta de
+            domiciliación. En este endpoint el `dni` es obligatorio, por lo que la
+            clave siempre está presente.
+          example: true
 
     ContractHolder:
       type: object
@@ -1816,20 +2121,27 @@ components:
           type: string
         phone2:
           type: string
-        dni_titular_cuenta:
+        account_holder_dni:
           type: string
           nullable: true
           description: DNI/NIF del titular de la cuenta de domiciliación (`PersonBank.dni`); `null` si el contrato no tiene IBAN asociado o la cuenta no almacena DNI
-        es_titular_cuenta:
+        is_account_holder:
           type: boolean
-          description: "`true` si el titular del contrato es también el titular de la cuenta de domiciliación (`holder_token` coincide con `dni_titular_cuenta`). El frontend utiliza esta bandera para aplicar la lógica de anonimización; si es `false`, el titular del contrato está viendo la cuenta de otra persona"
-        direccion_titular:
+          description: |
+            `true` si el parámetro de consulta `dni` coincide con el titular de la
+            cuenta de domiciliación (normalizado: sin espacios y en mayúsculas).
+            **Solo aparece en la respuesta si se envía `dni`**; sin `dni` la clave
+            se omite por completo. El frontend utiliza esta bandera para aplicar la
+            lógica de anonimización; si es `false`, se está viendo la cuenta de otra
+            persona.
+          example: true
+        holder_address:
           type: string
           nullable: true
           description: Dirección postal del titular del contrato (`PersonAddress` con `is_billing` activo); no confundir con `supply_point_address`, que es la dirección del punto de suministro
         iban:
           type: string
-          description: IBAN de la cuenta de domiciliación. Se devuelve sin enmascarar cuando `es_titular_cuenta` es `true` (el titular del contrato es el titular de la cuenta); en caso contrario aparece enmascarado (8 primeros caracteres + asteriscos + 8 últimos)
+          description: IBAN de la cuenta de domiciliación. Se devuelve sin enmascarar solo cuando se envía el parámetro `dni` y este coincide con el titular de la cuenta (es decir, `is_account_holder` es `true`); en cualquier otro caso aparece enmascarado (8 primeros caracteres + asteriscos + 8 últimos)
 
     InvoiceFullDetail:
       type: object
@@ -1837,14 +2149,14 @@ components:
         Detalle completo de una factura: campos básicos más periodo de facturación,
         referencia de vivienda, dirección tributaria (condicional), tarifas y desglose fiscal.
 
-        Estados condicionales de `direccion_tributaria`:
+        Estados condicionales de `tax_address`:
 
         - Factura **no domiciliada** (tipo de pago distinto de `DIRECT_DEBIT`): el campo
-          `direccion_tributaria` no aparece en la respuesta.
-        - Domiciliada y pagador = titular del contrato: `anonimizada: false` y dirección
-          completa (`direccion`, `codigo_postal`, `ciudad`, `provincia`, `pais`).
-        - Domiciliada y pagador tercero: `anonimizada: true`; se omite `direccion` y solo
-          se exponen `codigo_postal`, `ciudad`, `provincia` y `pais`.
+          `tax_address` no aparece en la respuesta.
+        - Domiciliada y pagador = titular del contrato: `is_anonymized: false` y dirección
+          completa (`address`, `postal_code`, `city`, `province`, `country`).
+        - Domiciliada y pagador tercero: `is_anonymized: true`; se omite `address` y solo
+          se exponen `postal_code`, `city`, `province` y `country`.
       properties:
         contract_number:
           type: string
@@ -1903,7 +2215,7 @@ components:
           type: string
           nullable: true
           description: Referencia del código de vivienda del punto de suministro; `null` si no está disponible
-        direccion_tributaria:
+        tax_address:
           type: object
           nullable: true
           description: |
@@ -1912,23 +2224,23 @@ components:
             Solo se expone si la factura está domiciliada; se anonimiza si el pagador es
             un tercero.
           properties:
-            anonimizada:
+            is_anonymized:
               type: boolean
-              description: "`true` cuando el pagador es un tercero (no titular del contrato); en ese caso `direccion` se omite"
-            direccion:
+              description: "`true` cuando el pagador es un tercero (no titular del contrato); en ese caso `address` se omite"
+            postal_code:
+              type: string
+            city:
+              type: string
+            province:
               type: string
               nullable: true
-              description: Dirección de la calle; solo se expone cuando `anonimizada` es `false`
-            codigo_postal:
-              type: string
-            ciudad:
-              type: string
-            provincia:
+            country:
               type: string
               nullable: true
-            pais:
+            address:
               type: string
               nullable: true
+              description: Dirección de la calle; solo se expone cuando `is_anonymized` es `false`
         tariffs:
           type: array
           description: Tarifas aplicadas en la factura (líneas de factura)
@@ -2157,3 +2469,63 @@ components:
             Indica si es el periodo de facturación en curso; el frontal lo usa
             para los avisos al configurar el medio de pago.
           example: false
+
+    SignedMandateUploadResponse:
+      type: object
+      required:
+        - contract_token
+        - success
+      properties:
+        contract_token:
+          type: string
+          description: Token del contrato al que se ha vinculado el mandato
+          example: CTR-001
+        success:
+          type: boolean
+          description: Confirmación de que el documento se ha archivado
+          example: true
+
+    CancelDirectDebitRequest:
+      type: object
+      required:
+        - period
+        - role
+      properties:
+        period:
+          type: string
+          description: Período de facturación desde el que se aplica la cancelación
+          example: "2026-3T"
+        role:
+          type: string
+          description: Rol de quien solicita la cancelación
+          example: TITULAR
+        new_payment_type:
+          type: string
+          description: |
+            Token del nuevo tipo de pago solicitado (`PaymentType.token`).
+            Opcional: si falta, se usa el tipo por defecto `BANK_TRANSFER`.
+          example: BANK_TRANSFER
+
+    CancelDirectDebitResponse:
+      type: object
+      required:
+        - contract_token
+        - success
+        - message
+      properties:
+        contract_token:
+          type: string
+          description: Token del contrato
+          example: CTR-001
+        success:
+          type: boolean
+          description: Confirmación de que la cancelación se ha tramitado
+          example: true
+        message:
+          type: string
+          description: |
+            `Direct debit cancelled successfully.` cuando se ha aplicado el
+            cambio; `Direct debit already cancelled.` cuando el contrato ya
+            tenía el tipo de pago objetivo (respuesta idempotente, sin
+            escrituras).
+          example: Direct debit cancelled successfully.

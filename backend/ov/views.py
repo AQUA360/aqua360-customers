@@ -1,23 +1,27 @@
 from django.http import FileResponse
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
+from django.shortcuts import redirect
+from django.urls import reverse
 from django.utils.dateparse import parse_date
 import csv
 import zipfile
+import logging
 from io import BytesIO, StringIO
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
 from coredata.models import ConfigProject
-from rest_framework.views import APIView
-from rest_framework.generics import RetrieveAPIView
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.generics import RetrieveAPIView
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from contract.models import Contract, PaymentType
+from contract.models import Contract, ContractLog, ContractObservation, PaymentType
 from billing.models import Invoice, InvoiceStatus, Reading
 from ov.serializers import (
-    ContractSerializer,
     BillingDataOVSerializer,
     BillingContractInvoicesOVSerializer,
     UpdateBillingDataOVSerializer,
@@ -32,34 +36,42 @@ from ov.serializers import (
     ConsumptionHistoryItemSerializer,
     ConsumptionDownloadRequestSerializer,
     BillingPeriodItemSerializer,
+    SepaDocumentUploadSerializer,
+    CancelDirectDebitSerializer,
+    ContactDataOVSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
 from ov.throttles import DniEnumerationThrottle
 
+logger = logging.getLogger(__name__)
+
 
 class ContractOVView(APIView):
-    queryset = Contract.objects.all()
+    """Alias legacy de `GET /ov/contract-detail/`.
+
+    Redirige (302) al endpoint por token `contract-detail-by-token-ov`
+    (`/ov/contract/{token}/`), conservando el resto de parámetros de query
+    (p. ej. `dni`). No consulta la base de datos: la vista destino devuelve
+    `404` si el contrato no existe.
+    """
+
     permission_classes = [IsAuthenticated]
-    LookupField = "token"
 
     def get(self, request):
         contract_token = request.query_params.get("contract_token", None)
-        print(f"Received contract_token: {contract_token}")
         if not contract_token:
             return Response(
                 {"error": "Contract token is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # contract = Contract.objects.filter(token=contract_token).first()
-        contract = self.queryset.filter(token=contract_token).first()
-        if not contract:
-            return Response(
-                {"error": "Contract not found"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        serializer = ContractSerializer(contract)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        query = request.query_params.copy()
+        query.pop("contract_token", None)
+        target = reverse("contract-detail-by-token-ov", kwargs={"token": contract_token})
+        query_string = query.urlencode()
+        if query_string:
+            target = f"{target}?{query_string}"
+        return redirect(target)
 
 
 class BillingDataOVView(APIView):
@@ -538,7 +550,9 @@ class ContractsListOVView(APIView):
                 {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        serializer = ContractListItemOVSerializer(page, many=True)
+        serializer = ContractListItemOVSerializer(
+            page, many=True, context={"request": request}
+        )
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -598,7 +612,7 @@ class InvoiceDetailByTokenOVView(RetrieveAPIView):
 
 
 class MeterDetailByTokenOVView(RetrieveAPIView):
-    """GET /ov/meter/{token}/ — detalle del contador por token de contrato."""
+    """GET /ov/meter/{contract_token}/ — detalle del contador por token de contrato."""
 
     queryset = Contract.objects.select_related("supply_point_default__meter")
     permission_classes = [IsAuthenticated]
@@ -918,3 +932,195 @@ class BillingPeriodsOVView(APIView):
 
         serializer = BillingPeriodItemSerializer(MOCK_BILLING_PERIODS, many=True)
         return Response(serializer.data)
+
+
+class SepaDocumentUploadView(APIView):
+    """POST /ov/procedures/{contract_token}/upload-sepa-signed/
+
+    Sube y archiva el mandato SEPA firmado de un contrato. Mock ligero:
+    valida que el contrato exista (404 si no) y que el `iban` enviado
+    coincida con el IBAN activo de la cuenta de domiciliación (400 si no
+    coincide); archiva el documento de forma placeholder y devuelve 201
+    con {"contract_token", "success": true}.
+    """
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @staticmethod
+    def _normalize_iban(value):
+        if not value:
+            return ""
+        return "".join(str(value).split()).upper()
+
+    def post(self, request, contract_token):
+        contract = Contract.objects.filter(token=contract_token).first()
+        if not contract:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = SepaDocumentUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded_iban = serializer.validated_data["iban"]
+        active_iban = None
+        if contract.payment and contract.payment.IBAN:
+            active_iban = contract.payment.IBAN.iban
+        if self._normalize_iban(uploaded_iban) != self._normalize_iban(active_iban):
+            return Response(
+                {
+                    "error": "The IBAN does not match the contract's current active account."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        _ = serializer.validated_data["sepa"]
+
+        logger.info(f"Mock archived signed SEPA mandate for contract {contract_token}")
+
+        return Response(
+            {"contract_token": contract_token, "success": True},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CancelDirectDebitView(APIView):
+    """POST /ov/procedures/{contract_token}/cancel-direct-debit/
+
+    Revoca el mandat SEPA i canvia la forma de pagament del contracte.
+    Valida `period`, `role` i `new_payment_type` (opcional), comprova que el
+    contracte tingui forma de pagament i resol el `PaymentType` objectiu
+    (`new_payment_type` si ve, sinó `BANK_TRANSFER`). La trucada és
+    idempotent: si el contracte ja té el tipus objectiu no escriu res i
+    respon «already cancelled». La migració de tipus, el `ContractLog` i
+    l'`ContractObservation` es fan dins d'un `transaction.atomic()`.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, contract_token):
+        contract = Contract.objects.filter(token=contract_token).first()
+        if not contract:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = CancelDirectDebitSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if not contract.payment:
+            return Response(
+                {"error": "Contract has no payment method"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        requested_payment_type = serializer.validated_data.get("new_payment_type")
+        if requested_payment_type:
+            target_payment_type = PaymentType.objects.filter(
+                token=requested_payment_type
+            ).first()
+            if not target_payment_type:
+                return Response(
+                    {"error": "Invalid payment type token"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            target_payment_type = PaymentType.objects.filter(
+                token="BANK_TRANSFER"
+            ).first()
+            if not target_payment_type:
+                return Response(
+                    {"error": "Default payment type BANK_TRANSFER not found"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        current_payment_token = (
+            contract.payment.type.token if contract.payment.type else None
+        )
+        if current_payment_token == target_payment_type.token:
+            return Response(
+                {
+                    "contract_token": contract_token,
+                    "success": True,
+                    "message": "Direct debit already cancelled.",
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        with transaction.atomic():
+            previous_payment_type = contract.payment.type
+
+            contract.payment.type = target_payment_type
+            contract.payment.save()
+
+            ContractLog.objects.create(
+                contract=contract,
+                field_name="payment_type",
+                old_value=(
+                    previous_payment_type.token if previous_payment_type else "None"
+                ),
+                new_value=target_payment_type.token,
+                operation_token=(
+                    f"LOG_{contract.token}_"
+                    f"{ContractLog.objects.filter(contract=contract).count() + 1}"
+                ),
+                user=request.user,
+            )
+
+            ContractObservation.objects.create(
+                contract=contract,
+                observation=(
+                    "Cancelación de domiciliación solicitada desde la Oficina Virtual:\n"
+                    f"period = {serializer.validated_data['period']}\n"
+                    f"role = {serializer.validated_data['role']}"
+                ),
+                user=request.user,
+            )
+
+        logger.info(
+            f"Direct debit cancelled for contract {contract_token}: "
+            f"period={serializer.validated_data['period']}, "
+            f"role={serializer.validated_data['role']}, "
+            f"new_payment_type={target_payment_type.token}"
+        )
+
+        return Response(
+            {
+                "contract_token": contract_token,
+                "success": True,
+                "message": "Direct debit cancelled successfully.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ContactDataOVView(APIView):
+    """GET /ov/contact-data/?contract_token=<token>
+
+    Configuración del perfil: devuelve los datos de facturación y
+    contacto del contrato (igual que `/ov/billing-data/`) más
+    `holder_address`, la dirección postal del titular del contracte.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        contract_token = request.query_params.get("contract_token", None)
+
+        if not contract_token:
+            return Response(
+                {"error": "Contract token is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        contract = Contract.objects.filter(token=contract_token).first()
+        if not contract:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ContactDataOVSerializer(contract)
+        return Response(serializer.data, status=status.HTTP_200_OK)
