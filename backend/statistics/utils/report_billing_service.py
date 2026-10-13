@@ -863,8 +863,10 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                     
                     total_dom_consumption,
                     # _get_signed_invoice_consumption_total(dom_invoices, payoff_status_token),
-                    _get_signed_invoice_consumption_total(ind_invoices, payoff_status_token),
-                    _get_signed_invoice_consumption_total(mun_invoices, payoff_status_token),
+                    int(ind_lines.filter(line_item_type__quantity__token='diferencia_fuita_consum').exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
+                    # _get_signed_invoice_consumption_total(ind_invoices, payoff_status_token),
+                    int(mun_lines.exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
+                    # _get_signed_invoice_consumption_total(mun_invoices, payoff_status_token),
                     # _get_signed_invoice_consumption_total(keeper_invoices, payoff_status_token),
                     0,
 
