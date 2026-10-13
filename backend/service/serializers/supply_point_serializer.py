@@ -1,4 +1,5 @@
 import base64
+import math
 from django.utils import timezone
 from datetime import timedelta 
 from rest_framework import serializers
@@ -329,6 +330,17 @@ class SupplyPointSerializer(serializers.ModelSerializer):
             else:
                 # Si és un ID (int o string numeric)
                 mutable_data['address'] = address_input
+
+        # connection_id buit, "NaN" o no finit → None: a l'update es tracta com
+        # «sense canvis» i no esborra l'escomesa actual
+        if 'connection_id' in mutable_data:
+            connection_id_value = mutable_data['connection_id']
+            if (
+                connection_id_value == ''
+                or (isinstance(connection_id_value, str) and connection_id_value.strip().lower() == 'nan')
+                or (isinstance(connection_id_value, float) and not math.isfinite(connection_id_value))
+            ):
+                mutable_data['connection_id'] = None
 
         return super().to_internal_value(mutable_data)
     
@@ -732,13 +744,14 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 supply_point_change_meter(user, instance.id, previous_meter, meter)
         
         ## change connection
-        if validated_data.get('connection_id'):
-            previous_connection = instance.connection
-            connection = Connection.objects.get(id=validated_data.get('connection_id'))
-            validated_data['connection'] = connection
-            validated_data.pop('connection_id')
-            if previous_connection != connection:
-                supply_point_change_connection(user, instance.id, previous_connection, connection)
+        if 'connection_id' in validated_data:
+            connection_id = validated_data.pop('connection_id')
+            if connection_id:
+                previous_connection = instance.connection
+                connection = Connection.objects.get(id=connection_id)
+                validated_data['connection'] = connection
+                if previous_connection != connection:
+                    supply_point_change_connection(user, instance.id, previous_connection, connection)
         
         if validated_data.get('property_id'):
             previous_property = instance.property
