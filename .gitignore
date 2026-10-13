@@ -12,3 +12,5 @@ __pycache__/
 *.sqlite
 *.sqlite3
 SECURITY.md
+AGENTS.md
+CLAUDE.md

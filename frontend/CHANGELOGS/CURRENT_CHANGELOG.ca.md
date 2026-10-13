@@ -8,10 +8,29 @@
     - L'assignació en bloc deixa triar si s'aplica a les remeses, a les transferències o a totes dues.
     - A la pantalla de remeses, el mapa que s'obre només ensenya la columna del tipus de remesa que s'està preparant (transferències quan és de retorns).
     - `saveBankRoutingBulk` i `saveBankRoutingSpecial` accepten `operation` (per defecte `collection`). Claus noves `billing_block.transfer_from` i `billing_block.all_routing_operations`, i `info_bank_routing` actualitzat, als quatre idiomes. Cal desplegar-lo junt amb el backend.
+#### CONTRACT (`ContractBonificationsVariables.vue`, `ContractTabs.vue`, `ContractRegion.vue`, `i18n/locales/*` — pestanya única de bonificacions i variables)
+    - Les pestanyes «Bonificacions» i «Variables» del contracte (fitxa i contracte fixat) s'uneixen en una sola, «Bonificacions i variables», amb els dos comptadors a l'etiqueta (p. ex. «(2 · 5)»).
+    - Cada bonificació es mostra com una targeta amb el tipus, l'estat ACA, les dates i la documentació, i a dins les seves variables (agrupades pel camp `bonification` de la variable). El llapis d'editar cada variable es manté.
+    - Les variables que no pertanyen a cap bonificació van en una targeta a part, «Variables sense bonificació».
+    - Les vençudes s'agrupen igual sota «Bonificacions i variables vençudes». Abans, una bonificació vençuda sortia repetida una vegada per cada variable vençuda (el log en té una entrada per variable); ara surt una sola vegada amb les seves variables.
+    - Claus noves `contract_block.bonifications_and_variables`, `variables_without_bonification` i `expired_bonifications_variables` als quatre idiomes.
+
 ### FIX
+#### ORDER (`OrderMiniDetail.vue` — ordres de treball sense tipus a les pestanyes)
+    - El tipus de l'ordre és l'enllaç que obre el detall. Si l'ordre no tenia tipus, l'enllaç quedava buit i no hi havia res on clicar. Ara es mostra el motiu (o «-» si tampoc en té), també a l'exportació XLSX.
+    - La columna «Tipus» guanya espai i «Operaris» en perd (`minmax(150px, 2fr)` / `minmax(100px, 1fr)`).
+
+#### CONTRACT (`ContractPinned.vue` — obrir ordres de treball des del contracte fixat)
+    - En clicar una ordre de la pestanya «Ordres de treball» del contracte fixat s'obria un panell lateral buit, perquè no hi havia `OrderRegion`. Ara s'hi mostra el detall de l'ordre.
 #### CONTRACT (PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
     - `pages/contract/contracts/[id]/data-change.vue`: avís quan el nou nombre de persones a l'habitatge queda per sota del mínim de l'ampliació de trams i, en desar, es desactivaran la bonificació i les seves variables. Només surt si el contracte té la bonificació activa (`aca_tram_min_persons` del backend). Textos a `ca`, `es`, `en` i `gl`.
     - `AddBonification.vue`: les variables es desen abans que els documents i, si el backend en rebutja alguna (p. ex. membres per sota del mínim), s'esborren la bonificació i les variables que s'acaben de crear perquè no quedi a mitges.
+### REFACTOR
+#### CONTRACT (`ContractTabs.vue` — format)
+    - Plantilla reformatada a l'estil de la resta de components (indentació de 2 espais, atributs a la mateixa línia de l'etiqueta, salt a 120 caràcters). Sense canvis de comportament.
+
+#### GENERAL (`locales/`, `i18n.config.ts` — traduccions antigues)
+    - S'eliminen `frontend/locales/` i `frontend/i18n.config.ts`, una còpia antiga que no carregava ningú: les traduccions reals són a `frontend/i18n/locales/` (ca, es, gl, en). Les dues úniques claus que només hi havia a la còpia antiga (`dashboard.show_only_me`, `customer_service_block.digital_comm`) no s'utilitzen.
 
 ## [09-10-2026]
 
