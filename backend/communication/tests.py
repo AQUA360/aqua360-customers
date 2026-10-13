@@ -272,3 +272,111 @@ class SupplyCutProcessCreationTests(SupplyCutProcessTestCase):
         instance = self.save(supply_cuts=[cut.id])
         self.assertIsNotNone(instance.status)
         self.assertEqual(instance.use_type, CommunicationUseType.objects.get(is_default=True))
+
+class DeleteCancelledTestCase(TestCase):
+    """Esborrat lògic de comunicacions i processos cancel·lats."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import User
+        from communication.models import CommunicationStatus
+
+        cls.user = User.objects.create_superuser('admin', 'admin@example.com', 'pass')
+        cls.comm_cancelled = CommunicationStatus.objects.create(token='-1', name='Cancel·lada')
+        cls.comm_pending = CommunicationStatus.objects.create(token='0', name='Pendent')
+        cls.process_cancelled = CommunicationProcessStatus.objects.create(token='-1', name='Anul·lat')
+        cls.process_pending = CommunicationProcessStatus.objects.create(token='0', name='Pendent')
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def make_comm(self, comm_status, process=None):
+        from communication.models import Communication
+
+        return Communication.objects.create(status=comm_status, process=process)
+
+    def test_delete_cancelled_communication(self):
+        from logger.models import LogCommunicationStatusChange
+
+        comm = self.make_comm(self.comm_cancelled)
+        response = self.client.post(f'/communication/communication/{comm.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 200)
+        comm.refresh_from_db()
+        self.assertFalse(comm.is_active)
+        self.assertTrue(LogCommunicationStatusChange.objects.filter(object=comm).exists())
+
+    def test_delete_not_cancelled_communication_is_rejected(self):
+        comm = self.make_comm(self.comm_pending)
+        response = self.client.post(f'/communication/communication/{comm.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 400)
+        comm.refresh_from_db()
+        self.assertTrue(comm.is_active)
+
+    def test_delete_requires_delete_permission(self):
+        from django.contrib.auth.models import Permission, User
+
+        user = User.objects.create_user('viewer', 'viewer@example.com', 'pass')
+        user.user_permissions.add(
+            Permission.objects.get(codename='view_communication'),
+            Permission.objects.get(codename='add_communication'),
+        )
+        self.client.force_authenticate(user)
+        comm = self.make_comm(self.comm_cancelled)
+        response = self.client.post(f'/communication/communication/{comm.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 403)
+        comm.refresh_from_db()
+        self.assertTrue(comm.is_active)
+
+    def test_delete_cancelled_process_and_its_cancelled_communications(self):
+        process = CommunicationProcess.objects.create(status=self.process_cancelled)
+        cancelled = self.make_comm(self.comm_cancelled, process)
+        pending = self.make_comm(self.comm_pending, process)
+
+        response = self.client.post(f'/communication/communication-process/{process.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 200)
+        process.refresh_from_db()
+        cancelled.refresh_from_db()
+        pending.refresh_from_db()
+        self.assertFalse(process.is_active)
+        self.assertFalse(cancelled.is_active)
+        self.assertTrue(pending.is_active)
+
+    def test_delete_not_cancelled_process_is_rejected(self):
+        process = CommunicationProcess.objects.create(status=self.process_pending)
+        comm = self.make_comm(self.comm_cancelled, process)
+        response = self.client.post(f'/communication/communication-process/{process.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 400)
+        process.refresh_from_db()
+        comm.refresh_from_db()
+        self.assertTrue(process.is_active)
+        self.assertTrue(comm.is_active)
+
+    def test_exclude_cancelled_filter(self):
+        from communication.filters.communication_filter import CommunicationFilter
+        from communication.filters.communication_process_filter import CommunicationProcessFilter
+        from communication.models import Communication
+
+        cancelled = self.make_comm(self.comm_cancelled)
+        pending = self.make_comm(self.comm_pending)
+        queryset = Communication.objects.all()
+
+        ids = set(CommunicationFilter({'exclude_cancelled': 'true'}, queryset=queryset).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {pending.id})
+        ids = set(CommunicationFilter({}, queryset=queryset).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {cancelled.id, pending.id})
+        # Un filtre d'estat explícit mana per sobre d'exclude_cancelled.
+        ids = set(CommunicationFilter(
+            {'exclude_cancelled': 'true', 'status': str(self.comm_cancelled.id)}, queryset=queryset
+        ).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {cancelled.id})
+
+        cancelled_process = CommunicationProcess.objects.create(status=self.process_cancelled)
+        pending_process = CommunicationProcess.objects.create(status=self.process_pending)
+        ids = set(CommunicationProcessFilter(
+            {'exclude_cancelled': 'true'}, queryset=CommunicationProcess.objects.all()
+        ).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {pending_process.id})
+        self.assertNotIn(cancelled_process.id, ids)

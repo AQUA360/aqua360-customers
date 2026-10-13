@@ -89,10 +89,10 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['sms_coms'] = instance.communications.filter(types__token='sms').count()
-        data['whatsapp_coms'] = instance.communications.filter(types__token='whatsapp').count()
-        data['email_coms'] = instance.communications.filter(types__token='email').count()
-        data['letter_coms'] = instance.communications.filter(types__token='letter').count()
+        data['sms_coms'] = instance.communications.filter(is_active=True, types__token='sms').count()
+        data['whatsapp_coms'] = instance.communications.filter(is_active=True, types__token='whatsapp').count()
+        data['email_coms'] = instance.communications.filter(is_active=True, types__token='email').count()
+        data['letter_coms'] = instance.communications.filter(is_active=True, types__token='letter').count()
         
         from billing.models import Billing
         billing = Billing.objects.filter(communication_process=instance).first()
@@ -147,7 +147,7 @@ class CommunicationProcessListSerializer(serializers.ModelSerializer):
     def get_has_electronic_invoices(self, obj):
         return obj.communications.filter(types__token='electronic_inv').exists()
     def get_total_communications(self, obj):
-        return obj.communications.count()
+        return obj.communications.filter(is_active=True).count()
     def get_total_sent_communications(self, obj):
         return obj.communications.filter(status__token=ConfigProject.objects.get(token='communication_status_sent_token').value).count()
     def get_readings_exploitation(self, obj):
