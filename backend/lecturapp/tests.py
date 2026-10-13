@@ -158,3 +158,58 @@ class TestSyncReadingsSharedMeter(TestCase):
         readings = Reading.objects.filter(batch=self.batch, meter=meter)
         self.assertEqual(readings.count(), 1)
         self.assertEqual(readings.get().contract_id, c1.id)
+
+
+class TestLecturappExcludesInactiveMeters(TestCase):
+    """La lecturapp no ha de rebre comptadors en aforament ni inactius (estat -1)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ConfigProject.objects.update_or_create(token='token_meter_status_no_meter', defaults={'value': '0'})
+        statuses = {
+            token: MeterStatus.objects.get_or_create(token=token, defaults={'name': token})[0]
+            for token in ('1', '-1', '0')
+        }
+        route = Route.objects.create(token='route-inactive-meters')
+        cls.position = RoutePosition.objects.create(route=route, position=1)
+        cls.property = Property.objects.create(token='property-inactive-meters', route_position=cls.position)
+        cls.meters = {}
+        for token, status in statuses.items():
+            meter = Meter.objects.create(code=f'METER-STATUS-{token}', status=status)
+            SupplyPoint.objects.create(token=f'sp-status-{token}', meter=meter, property=cls.property)
+            cls.meters[token] = meter
+
+        # Posició on només hi ha un comptador inactiu: no s'ha d'enviar.
+        cls.inactive_position = RoutePosition.objects.create(route=route, position=2)
+        inactive_property = Property.objects.create(token='property-only-inactive', route_position=cls.inactive_position)
+        SupplyPoint.objects.create(
+            token='sp-only-inactive',
+            meter=Meter.objects.create(code='METER-ONLY-INACTIVE', status=statuses['-1']),
+            property=inactive_property,
+        )
+        cls.route = route
+        cls.context = {'include_telecontrol': True}
+
+    def test_property_meters_only_active(self):
+        from unittest.mock import patch
+        from lecturapp.serializers import PropertyAppDetailedSerializer
+
+        with patch('lecturapp.serializers.MeterAppSerializer') as meter_serializer:
+            PropertyAppDetailedSerializer(context=self.context).get_meters(self.property)
+        sent_meters = meter_serializer.call_args.args[0]
+        self.assertEqual(sent_meters, [self.meters['1']])
+
+    def test_property_counts_only_active(self):
+        from lecturapp.serializers import PropertyAppSerializer
+
+        data = PropertyAppSerializer(self.property, context=self.context).data
+        self.assertEqual(data['num_meters'], 1)
+
+    def test_route_skips_positions_with_only_inactive_meters(self):
+        from unittest.mock import patch
+        from lecturapp.serializers import RouteAppDetailSerializer
+
+        with patch('lecturapp.serializers.RoutePositionAppDetailedSerializer') as position_serializer:
+            RouteAppDetailSerializer(context=self.context).get_positions(self.route)
+        sent_positions = position_serializer.call_args.args[0]
+        self.assertEqual(sent_positions, [self.position])
