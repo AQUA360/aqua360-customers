@@ -1,5 +1,21 @@
 # Changelog Backend
 
+## [13-10-2026]
+
+### FIX
+#### CONTRACT (`contract/utils/aca_tram_service.py` — PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
+    - Es podia aplicar la bonificació d'ampliació de trams a contractes que no arriben al mínim de persones: `create_aca_bonification_on_total_persons_increase` la creava amb qualsevol augment de `total_persons` (p. ex. d'1 a 2) i la variable de membres no tenia cap validació.
+    - Nou `ConfigProject` `aca_tram_min_persons` (migració `coredata.0137`, valor `4`; si no existeix o no és un enter, també 4). Helper `watchdog.aca_config.aca_tram_min_persons()`.
+    - La lògica passa de `contract/signals.py` a `contract/utils/aca_tram_service.py` (`sync_aca_tram_with_total_persons`, cridat pel nou receptor `sync_aca_tram_on_total_persons_change`):
+        - Només es crea la bonificació si les persones augmenten i arriben al mínim.
+        - Si el contracte ja la té, s'actualitza el nombre de membres també quan baixa (sempre per sobre del mínim); no es torna a encuar la sol·licitud ACA si el valor no canvia.
+        - Si baixa per sota del mínim, la bonificació es desactiva (amb data de fi), `deactivate_bonification` en desactiva les variables i s'esborra la sol·licitud ACA encara no enviada.
+    - `sync_contract_total_persons_from_aca_variable` ja no toca el contracte si la variable està inactiva, si la bonificació està desactivada o si el valor no arriba al mínim. Abans, en desactivar la bonificació, el contracte recuperava el nombre antic de membres. Quan sí que l'actualitza, ara ho registra a `LogContractTotalMembers`.
+    - `VariableSaveSerializer.validate` rebutja la variable de membres per sota del mínim (excepte en desactivar-la).
+    - `ContractDataChangeEditSerializer` exposa `aca_tram_min_persons` (només si el contracte té la bonificació activa) perquè el formulari avisi abans de desactivar-la.
+    - Tot plegat només s'aplica amb `uses_aca` actiu; als projectes sense ACA no canvia res.
+    - Tests: `contract/tests/test_aca_tram_service.py`.
+
 ## [09-10-2026]
 
 ### REFACTOR

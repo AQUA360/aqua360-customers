@@ -1547,6 +1547,7 @@ export default {
     person_no_contract: 'La persona no està relacionada amb cap contracte',
     total_persons: 'Persones a l\'habitatge',
     total_persons_min: 'El nombre de persones a l\'habitatge ha de ser com a mínim 1. Si cal reflectir un cas especial, afegiu-ho com a variable del contracte.',
+    aca_tram_deactivation_warning: 'Amb aquest nombre de persones a l\'habitatge es desactivaran la bonificació d\'ampliació de trams de l\'ACA i les seves variables (mínim: {min} persones).',
     no_tlf: 'Contracte sense telèfon',
     no_comms: 'Contracte sense comunicació definida',
     no_email: 'Contracte sense correu electrònic assignat',
