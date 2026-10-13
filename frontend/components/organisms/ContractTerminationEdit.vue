@@ -201,7 +201,7 @@ const finalStep = async () => {
 
         let payload = {
           'status': statusSelected.value.value,
-          'status_name': statusSelected.value.name,
+          'status_name': statusSelected.value.label,
         }
         /* for (const supply_point of supply_points.value) {
           //let statusSelected = statuses.value.find(s => s.token === supply_point.status_token) || statuses.value[0];
@@ -258,9 +258,12 @@ const getStatuses = async () => {
     data.forEach(item => {
       statuses.value.push({
         value: item.id,
-        label: item.name
+        label: item.name,
+        token: item.token,
+        is_default: item.is_default,
       })
     })
+    selectDefaultStatus();
 
   } catch (error) {
     console.error(error);
@@ -289,7 +292,7 @@ const getSupplyPoint = async () => {
       ...new Set(supply_point.value.contracts.map((c) => c.id)),
     ];
     supply_point_has_contracts.value = distinctContracts.length > 1;
-    statusSelected.value = statuses.value.find(s => s.token === supply_point.value.status?.token) || statuses.value[0];
+    selectDefaultStatus();
   } catch (err) {
     console.log(err);
   } finally {
@@ -462,6 +465,13 @@ const clickGuardarLectura = async (id) => {
     console.log(error)
   }
 }
+
+// Després de la baixa el punt queda, per defecte, en l'estat marcat com a predeterminat
+// (pendent de contractació). Els estats i el punt es carreguen en paral·lel.
+const selectDefaultStatus = () => {
+  if (statusSelected.value || !statuses.value.length) return;
+  statusSelected.value = statuses.value.find(s => s.is_default) || statuses.value[0];
+};
 
 const updateSelect = async (ev) => {
   statusSelected.value = ev;

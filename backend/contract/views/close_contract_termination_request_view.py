@@ -19,16 +19,12 @@ class CloseContractTerminationRequestViewSet(APIView):
     # Extract data for each child model from the request
     id = self.kwargs.get('id')
     status_data = request.data.get('status')
-    supply_point_status = SupplyPointStatus.objects.get(id=status_data)
+    supply_point_status = SupplyPointStatus.objects.get(id=status_data) if status_data else None
     
     termination_request = ContractTerminationRequest.objects.get(id=id)
     termination_pending_token = ConfigProject.objects.get(token = 'contract_termination_pending_token').value
     termination_completed_token = ConfigProject.objects.get(token = 'contract_termination_completed_token').value
     contract = Contract.objects.get(id = termination_request.contract.id)
-    
-    for supply_point in contract.supply_points.all():
-      supply_point.status = supply_point_status
-      supply_point.save()
     
     token = ConfigProject.objects.get(token = contract_terminated_token).value
     
@@ -52,7 +48,8 @@ class CloseContractTerminationRequestViewSet(APIView):
     
     # Donar de baixa el punt i el comptador si és necessari
     from contract.utils.contract_request_service import check_and_deactivate_supply_point_and_meter
-    check_and_deactivate_supply_point_and_meter(termination_request)
+    # L'estat triat només s'aplica als punts sense altres contractes actius ni sol·licituds obertes.
+    check_and_deactivate_supply_point_and_meter(termination_request, supply_point_status)
     
     serializer = ContractTerminationRequestSerializer(termination_request, context={'request': request})
         
