@@ -1,5 +1,19 @@
 # Changelog Backend
 
+## [13-10-2026]
+
+### FEAT
+#### BILLING/SERVICE (D_004-357 — compte de l'empresa per a les transferències de retorn)
+    - `CompanyBankRouting` té un camp nou `operation` (`collection` / `transfer`): les remeses de cobrament (pain.008) i les transferències de retorn als clients (pain.001) tenen ara mapes d'encaminament independents. Permet, per exemple, cobrar els IBAN nacionals per un compte i els estrangers per un altre, i fer els retorns a l'inrevés.
+    - Les restriccions úniques passen a ser per operació. La migració `service.0131` hi afegeix el camp i la `service.0132` copia les files existents com a `transfer`, de manera que els retorns continuen sortint pel mateix compte que abans fins que se'n canviï el mapa.
+    - `resolve_payment_banks` rep `is_return` i aplica el mapa corresponent. La generació de remeses i el llistat de rebuts el passen segons el tipus de remesa.
+    - API `company-bank-routing`: `bulk` i `set_special` accepten `operation` (per defecte `collection`, així que les peticions d'abans no canvien). `matrix` manté les claus d'abans per als cobraments i afegeix les de transferències a `transfer`, dins de cada fila i a l'arrel. El filtre accepta `operation`.
+    - Tests a `billing/tests/test_remittance_routing.py`.
+
+### FIX
+#### BILLING (`billing/utils/remittance_routing.py` — rebuts sense empresa en remeses d'una sola empresa)
+    - Els rebuts sense factura ni contracte (p. ex. devolucions a una persona) s'atribuïen a l'única empresa seleccionada, però el mapa d'encaminament i el compte per defecte només es carregaven per a les empreses que sortien dels rebuts. Aquests rebuts acabaven sempre amb l'avís `company_without_bank` i fora de la remesa. Ara l'empresa s'atribueix abans de carregar els mapes.
+
 ## [09-10-2026]
 
 ### REFACTOR

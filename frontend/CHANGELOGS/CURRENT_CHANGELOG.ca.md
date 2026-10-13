@@ -1,5 +1,14 @@
 # Changelog Frontend
 
+## [13-10-2026]
+
+### FEAT
+#### BILLING/SERVICE (`CompanyBankRouting.vue`, `SEPAManagementEdit.vue`, `exploitation-api.js`, `locales/*` — D_004-357, compte de l'empresa per a les transferències de retorn)
+    - L'encaminament de remeses de la fitxa d'empresa té una segona columna, «Transferir des de», al costat de «Remesar a»: a les files «IBAN estranger» i «Per defecte», a cada entitat i a l'estimació de clients per compte. Cada columna desa el seu mapa (`operation` `collection` / `transfer`), de manera que els retorns poden sortir per un compte diferent del que cobra les remeses.
+    - L'assignació en bloc deixa triar si s'aplica a les remeses, a les transferències o a totes dues.
+    - A la pantalla de remeses, el mapa que s'obre només ensenya la columna del tipus de remesa que s'està preparant (transferències quan és de retorns).
+    - `saveBankRoutingBulk` i `saveBankRoutingSpecial` accepten `operation` (per defecte `collection`). Claus noves `billing_block.transfer_from` i `billing_block.all_routing_operations`, i `info_bank_routing` actualitzat, als quatre idiomes. Cal desplegar-lo junt amb el backend.
+
 ## [09-10-2026]
 
 ### REFACTOR
