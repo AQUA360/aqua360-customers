@@ -1,6 +1,11 @@
 # Changelog Backend
 
 ## [09-10-2026]
+### CHORE (BAILS)
+    - Ara és automàtic quan es dona de baixa un contracte que la fiança vagi directe al saldo del contracte en comptes de quedar-se pendent. S'ha afegit un pending script per arreglar les fiances pendents.
+
+
+## [09-10-2026]
 
 ### FEAT
 
