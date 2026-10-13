@@ -9,6 +9,7 @@ from service.serializers.meter_serializer import MeterMinimalSerializer
 from service.serializers.supply_point_serializer import SupplyPointAppSerializer, SupplyPointMinimalSerializer
 from contract.serializers.contract_minimal_serializer import ContractMinimalNoSuppliesSerializer, ContractMinimalSerializer
 from billing.utils.reading_service import calculate_estimated_bag, check_billing_period, copy_new_reading_to_all, get_existing_reading, get_reading_alerts_config, get_reading_minimal_object, get_reading_copy_group
+from billing.utils.reading_filters import BILLED_READING_FILTER
 from ..models import EstimatedBag, EstimatedBagMovement, InvoiceStatus, ReaderAlert, Reading, ReadingAlert
 
 class ReaderAlertSerializer(serializers.ModelSerializer):
@@ -196,7 +197,14 @@ class ReadingSaveSerializer(serializers.ModelSerializer):
                 meter=validated_data['meter'],
                 reading_date__lt=validated_data['reading_date']).exclude(is_control=True).order_by('-reading_date').first()
         
-        if previous_reading and not previous_reading.reading_value:
+        # Només es reaprofita una lectura anterior SENSE valor (pendent d'omplir). Una
+        # lectura amb valor 0 és una lectura real, i una lectura facturada no es pot
+        # tocar: si es reaprofités, se li canviaria la data i el lot a la nova lectura.
+        if (
+            previous_reading
+            and previous_reading.reading_value is None
+            and not Reading.objects.filter(BILLED_READING_FILTER, pk=previous_reading.pk).exists()
+        ):
             existing_reading = previous_reading
             previous_reading = Reading.objects.filter(
                 supply_point=validated_data['supply_point'],
