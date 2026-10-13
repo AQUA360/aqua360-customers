@@ -1,5 +1,47 @@
 # Changelog Backend
 
+## [13-10-2026]
+
+### FEAT
+
+#### BILLING (`billing/utils/reading_service.py`, `billing/views/reading_view.py`, `billing/serializers/reading_serializer.py` — lectures enllaçades per `copied_from`)
+    - Quan es modifica una lectura que és còpia d'una altra o que té còpies (`copied_from` / `copies`, p. ex. comptadors generals repartits entre contractes), la modificació s'aplica a totes les lectures del grup.
+    - Nous helpers `get_reading_copy_group_root`, `get_reading_copy_group` (lectures actives i no de control del grup, sense la pròpia) i `get_copy_calculated_value`: cada còpia manté la seva lectura anterior, i el consum es recalcula contra aquesta més el mateix ajust manual que s'hagi fet a la lectura editada.
+    - Edició directa (`PUT`/`PATCH` a `/billing/reading/<id>/`): `ReadingViewSet.perform_update` propaga `reading_date`, `reading_value`, `leak_value` i el consum recalculat a la resta del grup (via `ReadingSerializer`, dins la mateixa transacció). Només si algun d'aquests valors ha canviat (sense fuita i fuita 0 es consideren iguals), i a cada còpia només s'envien els camps que hi són diferents: una còpia que ja té els mateixos valors no es torna a desar (desar-la li trauria la marca d'estimada i el moviment de la bossa). Canviar només la nota d'alerta no toca les còpies.
+    - Modificació de lectures del contracte (`modify_existing_readings`): quan una lectura del grup es substitueix per una de nova, les altres també (la vella passa a control, s'afegeix a `modified_readings`, es registra a `LogReadingChange` i es traspassa a les baixes). Les noves lectures queden enllaçades a la nova original per `copied_from`. Les còpies que no canvien de valor no es substitueixen, només es tornen a enllaçar.
+    - `ReadingSerializer`, `ReadingByBatchSerializer` i `ReadingByBatchMinimalSerializer` exposen `copies_count` (nombre de lectures del grup que es modificaran juntament amb la lectura).
+    - Tests: `billing/tests/test_reading_copy_group.py`.
+
+#### BILLING/SERVICE (D_004-357 — compte de l'empresa per a les transferències de retorn)
+    - `CompanyBankRouting` té un camp nou `operation` (`collection` / `transfer`): les remeses de cobrament (pain.008) i les transferències de retorn als clients (pain.001) tenen ara mapes d'encaminament independents. Permet, per exemple, cobrar els IBAN nacionals per un compte i els estrangers per un altre, i fer els retorns a l'inrevés.
+    - Les restriccions úniques passen a ser per operació. La migració `service.0131` hi afegeix el camp i la `service.0132` copia les files existents com a `transfer`, de manera que els retorns continuen sortint pel mateix compte que abans fins que se'n canviï el mapa.
+    - `resolve_payment_banks` rep `is_return` i aplica el mapa corresponent. La generació de remeses i el llistat de rebuts el passen segons el tipus de remesa.
+    - API `company-bank-routing`: `bulk` i `set_special` accepten `operation` (per defecte `collection`, així que les peticions d'abans no canvien). `matrix` manté les claus d'abans per als cobraments i afegeix les de transferències a `transfer`, dins de cada fila i a l'arrel. El filtre accepta `operation`.
+    - Tests a `billing/tests/test_remittance_routing.py`.
+
+### FIX
+#### BILLING (`billing/utils/remittance_routing.py` — rebuts sense empresa en remeses d'una sola empresa)
+    - Els rebuts sense factura ni contracte (p. ex. devolucions a una persona) s'atribuïen a l'única empresa seleccionada, però el mapa d'encaminament i el compte per defecte només es carregaven per a les empreses que sortien dels rebuts. Aquests rebuts acabaven sempre amb l'avís `company_without_bank` i fora de la remesa. Ara l'empresa s'atribueix abans de carregar els mapes.
+#### CONTRACT (`contract/utils/aca_tram_service.py` — PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
+    - Es podia aplicar la bonificació d'ampliació de trams a contractes que no arriben al mínim de persones: `create_aca_bonification_on_total_persons_increase` la creava amb qualsevol augment de `total_persons` (p. ex. d'1 a 2) i la variable de membres no tenia cap validació.
+    - Nou `ConfigProject` `aca_tram_min_persons` (migració `coredata.0137`, valor `4`; si no existeix o no és un enter, també 4). Helper `watchdog.aca_config.aca_tram_min_persons()`.
+    - La lògica passa de `contract/signals.py` a `contract/utils/aca_tram_service.py` (`sync_aca_tram_with_total_persons`, cridat pel nou receptor `sync_aca_tram_on_total_persons_change`):
+        - Només es crea la bonificació si les persones augmenten i arriben al mínim.
+        - Si el contracte ja la té, s'actualitza el nombre de membres també quan baixa (sempre per sobre del mínim); no es torna a encuar la sol·licitud ACA si el valor no canvia.
+        - Si baixa per sota del mínim, la bonificació es desactiva (amb data de fi), `deactivate_bonification` en desactiva les variables i s'esborra la sol·licitud ACA encara no enviada.
+    - `sync_contract_total_persons_from_aca_variable` ja no toca el contracte si la variable està inactiva, si la bonificació està desactivada o si el valor no arriba al mínim. Abans, en desactivar la bonificació, el contracte recuperava el nombre antic de membres. Quan sí que l'actualitza, ara ho registra a `LogContractTotalMembers`.
+    - `VariableSaveSerializer.validate` rebutja la variable de membres per sota del mínim (excepte en desactivar-la).
+    - `ContractDataChangeEditSerializer` exposa `aca_tram_min_persons` (només si el contracte té la bonificació activa) perquè el formulari avisi abans de desactivar-la.
+    - Tot plegat només s'aplica amb `uses_aca` actiu; als projectes sense ACA no canvia res.
+    - Tests: `contract/tests/test_aca_tram_service.py`.
+
+### CHORE
+#### GENERAL (`.gitignore`, `backend/.gitignore` — fitxers que no han d'anar al repositori)
+    - Les personalitzacions per client (`*_personalized.*`, `*_personalized_*`) deixen d'anar al repositori i s'ignoren: 8 plantilles HTML, `billing/utils/generate_serie_final_personalized.py` i `coredata/utils/name_utils_personalized.py`. El codi ja les carrega només si existeixen (`template_utils`, `try/except ImportError`); sense elles s'usa la versió per defecte.
+    - Es recuperen les entrades del `.gitignore` del repositori antic que faltaven: exports reals d'Odoo (`integrations/outbound/odoo/exports/` i `exports-jsons.zip`), `dades_prod.json`, `deploy_info.json`, `DEPLOYS.md`, `celerybeat-schedule*`, `celerybeat.pid` i, a l'arrel, `.claude/settings.local.json`.
+    - Es treuen del repositori `celerybeat-schedule` (si viatja amb la imatge, cada contenidor nou considera vençudes totes les tasques periòdiques) i els exports d'Odoo, que contenen dades de clients.
+    - En fer pull, Git esborra aquests fitxers de la còpia de treball: qui els faci servir n'ha de fer una còpia abans. Celery torna a crear `celerybeat-schedule` sol.
+
 ## [09-10-2026]
 ### CHORE (BAILS)
     - Ara és automàtic quan es dona de baixa un contracte que la fiança vagi directe al saldo del contracte en comptes de quedar-se pendent. S'ha afegit un pending script per arreglar les fiances pendents.

@@ -7,6 +7,11 @@ importexport/
 *.csv
 *.xlsx
 
+# Personalitzacions per client (plantilles *_personalized*.html i mòduls
+# *_personalized.py): es carreguen si existeixen, però mai al repositori.
+*_personalized.*
+*_personalized_*
+
 # Logs
 logs/*.log
 logs/*.log.*
@@ -83,3 +88,21 @@ config/private/**
 *.iml
 *.ipr
 *.iws
+
+# Exports reals d'Odoo (dades de clients; no versionar)
+integrations/outbound/odoo/exports/
+integrations/outbound/odoo/exports-jsons.zip
+
+# Dades de producció descarregades localment; no versionar
+dades_prod.json
+
+# Registre del deploy generat per scripts/record_deploy.sh al servidor
+deploy_info.json
+DEPLOYS.md
+
+# Estat del celery beat (last_run_at de cada tasca). Mai al repo: si viatja
+# amb la imatge, cada contenidor nou arrenca amb marques de temps velles i
+# considera vençudes totes les tasques mensuals.
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid
