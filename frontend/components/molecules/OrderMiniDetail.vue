@@ -33,11 +33,14 @@ const emit = defineEmits(['show-detail', 'update:count']);
 
 const { $OrderApiService } = useNuxtApp();
 
+// Orders without a type fall back to their reason (motiu) so the row still has a clickable label.
+const orderLabel = (item) => item.type_name || item.type?.name || item.reason_name || item.reason?.name || '-';
+
 // Column definitions for the XLSX export — mirror the visible columns above.
 const exportColumns = computed(() => [
   { header: t('common.creation'), value: (row) => row.created_at ? formatDate(row.created_at) : '', key: 'created_at' },
   { header: t('common.completion'), value: (row) => row.completed_at ? formatDate(row.completed_at) : '', key: 'completed_at' },
-  { header: t('common.type'), value: (row) => row.type_name ? row.type_name : row.type?.name, key: 'type' },
+  { header: t('common.type'), value: (row) => orderLabel(row), key: 'type' },
   { header: t('common.contract'), value: (row) => row.related_contract_token || '', key: 'related_contract_token' },
   { header: t('common.status'), value: (row) => row.status?.name, key: 'status' },
   { header: t('common.operators'), value: (row) => (row?.operators?.length > 0) ? row.operators.map(operator => `${operator.name} ${operator.surname} (${operator.token})`).join(', ') : '' },
@@ -57,7 +60,7 @@ const showDetail = function (component, id) {
 }
 
 const gridTemplateColumns = computed(() => {
-  return '100px 100px 150px 120px 150px 1fr';
+  return '100px 100px minmax(150px, 2fr) 120px 150px minmax(100px, 1fr)';
 });
 
 const selectedId = ref(null)
@@ -131,8 +134,8 @@ watch(() => [props.incident_id, props.contract_id, props.contract_request_id, pr
   
         <div class="footering text-slate-500 p-2 w-full truncate">
           <button v-if="!props.isSubRegion" @click="showDetail('OrderRegion', item.id)"
-            class="text-start text-sky-500 underline truncate">{{ item.type_name? item.type_name : item.type?.name }}</button>
-          <span v-else class="truncate">{{ item.type_name? item.type_name : item.type?.name }}</span>
+            class="text-start text-sky-500 underline truncate">{{ orderLabel(item) }}</button>
+          <span v-else class="truncate">{{ orderLabel(item) }}</span>
         </div>
   
         <div class="footering text-slate-500 p-2 w-full truncate">
