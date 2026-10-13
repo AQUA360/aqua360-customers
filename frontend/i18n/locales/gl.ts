@@ -2898,6 +2898,7 @@ export default {
     warning_reading_before_estimated: 'A data de lectura non pode ser anterior á última lectura real en caso de ser estimada.',
     warning_reading_unallowed_to_estimated: 'Lectura non estimada debido a contrato novo ou conflito dentro do período actual',
     warning_leak_value_too_high: 'A fuga non pode ser superior ao consumo',
+    warning_linked_readings_modified: 'Esta lectura está ligada con outras lecturas (orixinal ou copias). Xunto con esta, modificaranse {count} lecturas máis.',
     warning_no_previous_avg_found: 'Non se atopou un consumo medio previo',
     warning_last_reading_pending_billing: 'Limitacións aplicadas debido a unha facturación pendente, os cambios relacionados coa última lectura foron desactivados',
     warning_inactive_template: 'O modelo está inactivo. Non se xerará ningún ficheiro diario.',

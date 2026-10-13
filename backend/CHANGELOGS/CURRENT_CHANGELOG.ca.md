@@ -3,6 +3,15 @@
 ## [13-10-2026]
 
 ### FEAT
+
+#### BILLING (`billing/utils/reading_service.py`, `billing/views/reading_view.py`, `billing/serializers/reading_serializer.py` — lectures enllaçades per `copied_from`)
+    - Quan es modifica una lectura que és còpia d'una altra o que té còpies (`copied_from` / `copies`, p. ex. comptadors generals repartits entre contractes), la modificació s'aplica a totes les lectures del grup.
+    - Nous helpers `get_reading_copy_group_root`, `get_reading_copy_group` (lectures actives i no de control del grup, sense la pròpia) i `get_copy_calculated_value`: cada còpia manté la seva lectura anterior, i el consum es recalcula contra aquesta més el mateix ajust manual que s'hagi fet a la lectura editada.
+    - Edició directa (`PUT`/`PATCH` a `/billing/reading/<id>/`): `ReadingViewSet.perform_update` propaga `reading_date`, `reading_value`, `leak_value` i el consum recalculat a la resta del grup (via `ReadingSerializer`, dins la mateixa transacció). Només si algun d'aquests valors ha canviat (sense fuita i fuita 0 es consideren iguals), i a cada còpia només s'envien els camps que hi són diferents: una còpia que ja té els mateixos valors no es torna a desar (desar-la li trauria la marca d'estimada i el moviment de la bossa). Canviar només la nota d'alerta no toca les còpies.
+    - Modificació de lectures del contracte (`modify_existing_readings`): quan una lectura del grup es substitueix per una de nova, les altres també (la vella passa a control, s'afegeix a `modified_readings`, es registra a `LogReadingChange` i es traspassa a les baixes). Les noves lectures queden enllaçades a la nova original per `copied_from`. Les còpies que no canvien de valor no es substitueixen, només es tornen a enllaçar.
+    - `ReadingSerializer`, `ReadingByBatchSerializer` i `ReadingByBatchMinimalSerializer` exposen `copies_count` (nombre de lectures del grup que es modificaran juntament amb la lectura).
+    - Tests: `billing/tests/test_reading_copy_group.py`.
+
 #### BILLING/SERVICE (D_004-357 — compte de l'empresa per a les transferències de retorn)
     - `CompanyBankRouting` té un camp nou `operation` (`collection` / `transfer`): les remeses de cobrament (pain.008) i les transferències de retorn als clients (pain.001) tenen ara mapes d'encaminament independents. Permet, per exemple, cobrar els IBAN nacionals per un compte i els estrangers per un altre, i fer els retorns a l'inrevés.
     - Les restriccions úniques passen a ser per operació. La migració `service.0131` hi afegeix el camp i la `service.0132` copia les files existents com a `transfer`, de manera que els retorns continuen sortint pel mateix compte que abans fins que se'n canviï el mapa.

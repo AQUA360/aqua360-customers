@@ -3020,6 +3020,7 @@ export default {
     warning_reading_before_estimated: 'La data de lectura no pot ser anterior a la última lectura real en cas de ser estimada.',
     warning_reading_unallowed_to_estimated: 'Lectura no estimada degut a contracte nou o conflicte dins un període actual',
     warning_leak_value_too_high: 'La fuita no pot ser superior al consum',
+    warning_linked_readings_modified: 'Aquesta lectura està enllaçada amb altres lectures (original o còpies). Juntament amb aquesta, es modificaran {count} lectures més.',
     warning_no_previous_avg_found: 'No s\'ha trobat un consum mitjà previ',
     warning_last_reading_pending_billing: 'Limitacions aplicades degut a una facturació pendent, els canvis relacionats amb la última lectura han sigut desactivats',
     warning_inactive_template: 'La plantilla està inactiva. No es generarà cap fitxer diari.',
