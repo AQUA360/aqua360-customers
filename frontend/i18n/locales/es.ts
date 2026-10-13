@@ -2179,6 +2179,7 @@ export default {
     cause_no_price_rate: 'Sin tarifas asignadas',
     cause_excluded_billing: 'Facturas excluidas',
     cause_block_billing: 'Contrato no facturable',
+    non_billable_contracts: 'Contratos no facturables (no cuentan como aviso)',
     cause_unprocessed_invoice: 'Factura no procesada',
     consumption_alerts_warning: 'Hay alertas de consumo relacionadas con esta facturación',
     generate_missing_batch: 'Generar lote de lecturas',
