@@ -65,6 +65,36 @@ def get_hydrant_icon_base64(color=None):
     return svg_to_base64_png(img_svg, width=100, height=100, color=color)
 
 @register.simple_tag
+def get_facebook_icon_base64(color=None):
+    img_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12a10 10 0 1 0-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.78-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0 0 22 12z"/></svg>'''
+    return svg_to_base64_png(img_svg, width=100, height=100, color=color)
+
+@register.simple_tag
+def get_x_icon_base64(color=None):
+    img_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18.24 2H21l-6.51 7.44L22 22h-6.17l-4.83-6.31L5.6 22H2.82l6.96-7.96L2 2h6.32l4.37 5.78L18.24 2zm-1.08 18h1.7L7.01 3.88H5.18L17.16 20z"/></svg>'''
+    return svg_to_base64_png(img_svg, width=100, height=100, color=color)
+
+@register.simple_tag
+def get_instagram_icon_base64(color=None):
+    img_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zm10 2H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm-5 3.2A3.8 3.8 0 1 1 8.2 12 3.8 3.8 0 0 1 12 8.2zm0 1.6a2.2 2.2 0 1 0 2.2 2.2A2.2 2.2 0 0 0 12 9.8zM17.4 6.4a1 1 0 1 1-1 1 1 1 0 0 1 1-1z"/></svg>'''
+    return svg_to_base64_png(img_svg, width=100, height=100, color=color)
+
+@register.simple_tag
+def get_whatsapp_icon_base64(color=None):
+    img_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.15 6.4 2.15 11.83c0 1.74.46 3.44 1.34 4.94L2 22l5.39-1.41a10 10 0 0 0 4.65 1.18h.01c5.46 0 9.89-4.4 9.89-9.83C21.94 6.4 17.5 2 12.04 2zm5.76 13.92c-.24.68-1.4 1.3-1.94 1.38-.5.08-1.12.11-1.81-.11-.42-.14-.95-.31-1.64-.6-2.88-1.25-4.76-4.15-4.9-4.34-.14-.19-1.16-1.54-1.16-2.94s.73-2.08 1-2.37c.24-.28.64-.41 1.02-.41.12 0 .23 0 .33.01.3.01.44.03.64.49.24.58.82 2 .89 2.15.07.14.12.31.02.5-.09.19-.14.31-.28.48-.14.16-.29.37-.42.49-.14.14-.28.29-.12.56.16.28.72 1.19 1.55 1.93 1.07.95 1.96 1.25 2.24 1.39.28.14.44.12.6-.07.16-.19.69-.8.88-1.08.19-.28.37-.23.62-.14.26.09 1.63.77 1.91.91.28.14.46.21.53.33.07.12.07.68-.17 1.36z"/></svg>'''
+    return svg_to_base64_png(img_svg, width=100, height=100, color=color)
+
+@register.simple_tag
+def get_laptop_icon_base64(color=None):
+    img_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9H4V5zm-2 12a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-1z"/></svg>'''
+    return svg_to_base64_png(img_svg, width=100, height=100, color=color)
+
+@register.simple_tag
+def get_water_drop_icon_base64(color=None):
+    img_svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2s7 7.2 7 12a7 7 0 0 1-14 0C5 9.2 12 2 12 2zm-1.2 15.2a2.4 2.4 0 0 1-1.6-2.2c0-.3.2-.5.5-.5s.5.2.5.5a1.4 1.4 0 0 0 1.5 1.4c.3 0 .5.2.5.5s-.2.3-.4.3z"/></svg>'''
+    return svg_to_base64_png(img_svg, width=100, height=100, color=color)
+
+@register.simple_tag
 def get_recycle_icon_base64(color=None):
     # 1. Comprovem si l'usuari ha pujat un fitxer SVG personalitzat a config/assets/recycle.svg
     import os

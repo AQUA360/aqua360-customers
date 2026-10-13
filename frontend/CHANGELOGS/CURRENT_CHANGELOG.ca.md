@@ -1,5 +1,48 @@
 # Changelog Frontend
 
+## [13-10-2026]
+
+### FEAT
+#### BILLING (`ReadingEdit.vue`, `ReadingsChange.vue`, `i18n/locales/*` — avís de lectures enllaçades)
+    - En editar una lectura existent que és còpia d'una altra o que té còpies (`copies_count` > 0), s'avisa que es modificaran N lectures més juntament amb aquesta.
+    - Edició de lectures del lot (`ReadingEdit.vue`): avís sota la fila quan canvia la lectura, la fuita o el consum (no només la nota), i també al missatge de confirmació en desar.
+    - Canvi de lectures del contracte (`ReadingsChange.vue`): avís a la targeta de cada lectura existent modificada (no a les noves, les que no canvien, les esborrades ni les de control).
+    - Clau nova `warning_block.warning_linked_readings_modified` als quatre idiomes.
+
+#### BILLING/SERVICE (`CompanyBankRouting.vue`, `SEPAManagementEdit.vue`, `exploitation-api.js`, `locales/*` — D_004-357, compte de l'empresa per a les transferències de retorn)
+    - L'encaminament de remeses de la fitxa d'empresa té una segona columna, «Transferir des de», al costat de «Remesar a»: a les files «IBAN estranger» i «Per defecte», a cada entitat i a l'estimació de clients per compte. Cada columna desa el seu mapa (`operation` `collection` / `transfer`), de manera que els retorns poden sortir per un compte diferent del que cobra les remeses.
+    - L'assignació en bloc deixa triar si s'aplica a les remeses, a les transferències o a totes dues.
+    - A la pantalla de remeses, el mapa que s'obre només ensenya la columna del tipus de remesa que s'està preparant (transferències quan és de retorns).
+    - `saveBankRoutingBulk` i `saveBankRoutingSpecial` accepten `operation` (per defecte `collection`). Claus noves `billing_block.transfer_from` i `billing_block.all_routing_operations`, i `info_bank_routing` actualitzat, als quatre idiomes. Cal desplegar-lo junt amb el backend.
+
+#### CONTRACT (`ContractBonificationsVariables.vue`, `ContractTabs.vue`, `ContractRegion.vue`, `i18n/locales/*` — pestanya única de bonificacions i variables)
+    - Les pestanyes «Bonificacions» i «Variables» del contracte (fitxa i contracte fixat) s'uneixen en una sola, «Bonificacions i variables», amb els dos comptadors a l'etiqueta (p. ex. «(2 · 5)»).
+    - Cada bonificació es mostra com una targeta amb el tipus, l'estat ACA, les dates i la documentació, i a dins les seves variables (agrupades pel camp `bonification` de la variable). El llapis d'editar cada variable es manté.
+    - Les variables que no pertanyen a cap bonificació van en una targeta a part, «Variables sense bonificació».
+    - Les vençudes s'agrupen igual sota «Bonificacions i variables vençudes». Abans, una bonificació vençuda sortia repetida una vegada per cada variable vençuda (el log en té una entrada per variable); ara surt una sola vegada amb les seves variables.
+    - Claus noves `contract_block.bonifications_and_variables`, `variables_without_bonification` i `expired_bonifications_variables` als quatre idiomes.
+
+### FIX
+#### ORDER (`OrderMiniDetail.vue` — ordres de treball sense tipus a les pestanyes)
+    - El tipus de l'ordre és l'enllaç que obre el detall. Si l'ordre no tenia tipus, l'enllaç quedava buit i no hi havia res on clicar. Ara es mostra el motiu (o «-» si tampoc en té), també a l'exportació XLSX.
+    - La columna «Tipus» guanya espai i «Operaris» en perd (`minmax(150px, 2fr)` / `minmax(100px, 1fr)`).
+
+#### CONTRACT (`ContractPinned.vue` — obrir ordres de treball des del contracte fixat)
+    - En clicar una ordre de la pestanya «Ordres de treball» del contracte fixat s'obria un panell lateral buit, perquè no hi havia `OrderRegion`. Ara s'hi mostra el detall de l'ordre.
+#### CONTRACT (PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
+    - `pages/contract/contracts/[id]/data-change.vue`: avís quan el nou nombre de persones a l'habitatge queda per sota del mínim de l'ampliació de trams i, en desar, es desactivaran la bonificació i les seves variables. Només surt si el contracte té la bonificació activa (`aca_tram_min_persons` del backend). Textos a `ca`, `es`, `en` i `gl`.
+    - `AddBonification.vue`: les variables es desen abans que els documents i, si el backend en rebutja alguna (p. ex. membres per sota del mínim), s'esborren la bonificació i les variables que s'acaben de crear perquè no quedi a mitges.
+### REFACTOR
+#### CONTRACT (`ContractTabs.vue` — format)
+    - Plantilla reformatada a l'estil de la resta de components (indentació de 2 espais, atributs a la mateixa línia de l'etiqueta, salt a 120 caràcters). Sense canvis de comportament.
+
+#### GENERAL (`locales/`, `i18n.config.ts` — traduccions antigues)
+    - S'eliminen `frontend/locales/` i `frontend/i18n.config.ts`, una còpia antiga que no carregava ningú: les traduccions reals són a `frontend/i18n/locales/` (ca, es, gl, en). Les dues úniques claus que només hi havia a la còpia antiga (`dashboard.show_only_me`, `customer_service_block.digital_comm`) no s'utilitzen.
+
+### CHORE
+#### GENERAL (`frontend/.gitignore` — entrades del repositori antic)
+    - S'ignoren `/nuxt` i `/nuxt-app@*` (restes d'instal·lacions de npm interrompudes), `.watchmanconfig`, `public/deploy-info.json` i `DEPLOYS.md` (generats per `scripts/record_deploy.sh` al servidor), com al repositori antic.
+
 ## [09-10-2026]
 
 ### REFACTOR

@@ -8,7 +8,7 @@ from service.models import Meter, SupplyPoint
 from service.serializers.meter_serializer import MeterMinimalSerializer
 from service.serializers.supply_point_serializer import SupplyPointAppSerializer, SupplyPointMinimalSerializer
 from contract.serializers.contract_minimal_serializer import ContractMinimalNoSuppliesSerializer, ContractMinimalSerializer
-from billing.utils.reading_service import calculate_estimated_bag, check_billing_period, copy_new_reading_to_all, get_existing_reading, get_reading_alerts_config, get_reading_minimal_object
+from billing.utils.reading_service import calculate_estimated_bag, check_billing_period, copy_new_reading_to_all, get_existing_reading, get_reading_alerts_config, get_reading_minimal_object, get_reading_copy_group
 from ..models import EstimatedBag, EstimatedBagMovement, InvoiceStatus, ReaderAlert, Reading, ReadingAlert
 
 class ReaderAlertSerializer(serializers.ModelSerializer):
@@ -94,6 +94,8 @@ class ReadingSerializer(serializers.ModelSerializer):
         # Facturada = té factura definitiva (mateix criteri que BILLED_READING_FILTER). El
         # frontal ho fa servir per limitar quines lectures es poden triar com a inicials d'una alta.
         representation['is_billed'] = instance.invoices.filter(type_final='F').exists()
+        # Lectures enllaçades (original/còpies) que es modificaran juntament amb aquesta
+        representation['copies_count'] = get_reading_copy_group(instance).count()
         return representation
     
     def update(self, instance, validated_data):
@@ -335,6 +337,7 @@ class ReadingByBatchSerializer(serializers.ModelSerializer):
         representation['period_from'] = instance.previous_reading.reading_date if instance.previous_reading else None
         representation['period_to'] = instance.reading_date
         representation['is_fire'] = instance.is_fire
+        representation['copies_count'] = get_reading_copy_group(instance).count()
         return representation
 class ReadingByBatchMinimalSerializer(serializers.ModelSerializer):
     contract = serializers.CharField(read_only=True, source='contract.token', required=False, allow_null=True)
@@ -370,6 +373,7 @@ class ReadingByBatchMinimalSerializer(serializers.ModelSerializer):
         representation['period_to'] = instance.reading_date
         representation['is_fire'] = instance.is_fire
         representation['in_communication_process'] = existing_reading['in_communication_process']
+        representation['copies_count'] = get_reading_copy_group(instance).count()
         alert_notes = representation['alert_notes']
         reader_alert = representation['reader_alert']
         remote_alert = representation['remote_alert']

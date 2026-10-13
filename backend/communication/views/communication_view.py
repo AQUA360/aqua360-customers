@@ -10,8 +10,9 @@ from auth.permissions import PermissionManager
 from billing.models import Invoice, Reading
 from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
 from billing.serializers.reading_serializer import ReadingMinimalSerializer
-from communication.models import Communication, CommunicationProcess, CommunicationProcessStatus, CommunicationStatus, MessageType
+from communication.models import CANCELLED_STATUS_TOKEN, Communication, CommunicationProcess, CommunicationProcessStatus, CommunicationStatus, MessageType
 from communication.filters.communication_filter import CommunicationFilter
+from communication.permissions import CommunicationDeletePermission
 from communication.serializers.communication_serializer import CommunicationSerializer, CommunicationListSerializer, CommunicationSaveSerializer
 from communication.utils.communication_service import get_email_image_preview
 from contract.models import Contract
@@ -245,6 +246,30 @@ class CommunicationViewSet(viewsets.ModelViewSet):
       instance.save()
       return Response({"message": "Communication cancelled successfully"}, status=status.HTTP_200_OK)
     
+  @action(detail=True, methods=['post'], url_path='delete-cancelled')
+  def delete_cancelled(self, request, pk=None):
+      """
+      Esborrat lògic d'una comunicació cancel·lada: queda amb is_active=False
+      i deixa de sortir als llistats, però no s'elimina de la base de dades.
+      Només s'accepta si la comunicació ja està cancel·lada.
+      """
+      from logger.models import LogCommunicationStatusChange
+
+      instance = self.get_object()
+      if not instance.status or instance.status.token != CANCELLED_STATUS_TOKEN:
+          return Response({"error": "Only cancelled communications can be deleted"}, status=status.HTTP_400_BAD_REQUEST)
+
+      LogCommunicationStatusChange.objects.create(
+          object=instance,
+          previous_status=instance.status,
+          current_status=instance.status,
+          observation='Comunicació eliminada',
+          user=request.user
+      )
+      instance.is_active = False
+      instance.save(update_fields=['is_active', 'updated_at'])
+      return Response({"message": "Communication deleted successfully"}, status=status.HTTP_200_OK)
+
   @action(detail=False, methods=['post'], url_path='export')
   def export_csv(self, request, *args, **kwargs):
       from communication.tasks import export_communications_csv_task
@@ -258,6 +283,9 @@ class CommunicationViewSet(viewsets.ModelViewSet):
   def get_permissions(self):
       if self.action == 'permissions':
           return [IsAuthenticated()]
+      if self.action == 'delete_cancelled':
+          # És un POST, però l'acció elimina: exigim `delete_communication`.
+          return [IsAuthenticated(), CommunicationDeletePermission()]
       if self.action == 'export_csv':
           # Exportar és una acció de només lectura: exigim `view_communication`
           # encara que la petició sigui un POST (DjangoModelPermissions exigiria

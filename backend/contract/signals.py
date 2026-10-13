@@ -324,7 +324,7 @@ def track_aca_bonification_request(sender, instance, **kwargs):
     Aquest tracking (i tot el que en depèn: sol·licituds pendents, exportació del
     fitxer) només s'activa amb `aca_notification_enabled` (ConfigProject); la
     Bonification/Variable en si es crea igualment (veure
-    `create_aca_bonification_on_total_persons_increase`), només amb `uses_aca`."""
+    `contract.utils.aca_tram_service.sync_aca_tram_with_total_persons`), només amb `uses_aca`."""
     if getattr(instance, '_skip_signal', False):
         return
 
@@ -385,14 +385,6 @@ def sync_aca_bonification_num_persons(sender, instance, **kwargs):
     except (TypeError, ValueError):
         pass
 
-def _aca_bonification_type():
-    """BonificationType d'ampliació de trams ACA, segons `ConfigProject.aca_at_token`."""
-    config = ConfigProject.objects.filter(token='aca_at_token').first()
-    if not config or not config.value:
-        return None
-    return BonificationType.objects.filter(token__icontains=config.value).order_by('id').first()
-
-
 def _attach_variable_to_aca_bonification(variable):
     """La variable "Membres d'ampliació de tram (ACA)" s'ha desat solta sobre un
     contracte (apartat Variables, `AddVariable.vue`), sense passar pel formulari de
@@ -403,7 +395,8 @@ def _attach_variable_to_aca_bonification(variable):
 
     Retorna la Bonification vinculada, o None si aquest projecte no té configurat el
     tipus de bonificació ACA o la variable no n'és una de les seves."""
-    bonification_type = _aca_bonification_type()
+    from .utils.aca_tram_service import get_aca_tram_bonification_type
+    bonification_type = get_aca_tram_bonification_type()
     if not bonification_type:
         return None
     if not bonification_type.variable_types.filter(pk=variable.type_id).exists():
@@ -444,24 +437,35 @@ def sync_contract_total_persons_from_aca_variable(sender, instance, **kwargs):
     Bonification ACA-TRAM, actualitza `Contract.total_persons` (Persones a
     l'habitatge) amb el mateix valor — només si l'ACA està activa per aquest
     projecte (`watchdog.aca_config.uses_aca_enabled`). És el sentit invers de
-    `create_aca_bonification_on_total_persons_increase` (aquest mateix fitxer).
+    `sync_aca_tram_on_total_persons_change` (aquest mateix fitxer).
 
     Si la variable s'ha desat solta sobre el contracte (sense bonificació), abans la
     vinculem a la bonificació d'ampliació de trams del contracte
-    (`_attach_variable_to_aca_bonification`)."""
+    (`_attach_variable_to_aca_bonification`).
+
+    Una variable inactiva (bonificació desactivada) o per sota del mínim de persones
+    (`aca_tram_min_persons`) no toca el contracte: l'API ja no accepta valors per sota
+    del mínim (`VariableSaveSerializer`), però en poden arribar d'altres fluxos."""
     if getattr(instance, '_skip_signal', False):
         return
-    if not instance.type or 'MEMBRES' not in (instance.type.token or '').upper():
+    if not instance.is_active or not instance.type or 'MEMBRES' not in (instance.type.token or '').upper():
         return
 
-    from watchdog.aca_config import uses_aca_enabled
+    from watchdog.aca_config import aca_tram_min_persons, uses_aca_enabled
     if not uses_aca_enabled():
+        return
+
+    try:
+        num_persons = int(instance.value)
+    except (TypeError, ValueError):
+        return
+    if num_persons < aca_tram_min_persons():
         return
 
     bonification = instance.bonification
     if bonification is None and instance.contract_id:
         bonification = _attach_variable_to_aca_bonification(instance)
-    if not bonification or not bonification.contract_id:
+    if not bonification or not bonification.is_active or not bonification.contract_id:
         return
 
     bonification_token = ConfigProject.objects.filter(token='aca_at_token').first()
@@ -470,13 +474,17 @@ def sync_contract_total_persons_from_aca_variable(sender, instance, **kwargs):
     if not bonification.bonification_type or bonification_token.value.lower() not in (bonification.bonification_type.token or '').lower():
         return
 
-    try:
-        num_persons = int(instance.value)
-    except (TypeError, ValueError):
-        return
-
     contract = bonification.contract
     if contract.total_persons != num_persons:
+        from logger.models import LogContractTotalMembers
+        from order.middleware import get_current_user
+        LogContractTotalMembers.objects.create(
+            object=contract,
+            previous_total_persons=contract.total_persons,
+            current_total_persons=num_persons,
+            user=get_current_user(),
+            observation="Actualitzat des de la variable de membres de l'ampliació de trams (ACA)",
+        )
         contract._skip_signal = True
         contract.total_persons = num_persons
         contract.save(update_fields=['total_persons'])
@@ -484,7 +492,7 @@ def sync_contract_total_persons_from_aca_variable(sender, instance, **kwargs):
 @receiver(pre_save, sender=Contract)
 def capture_total_persons_before_save(sender, instance, **kwargs):
     """Guarda l'antic `total_persons` a la pròpia instància (no persistit) perquè
-    `create_aca_bonification_on_total_persons_increase` el pugui comparar a `post_save`,
+    `sync_aca_tram_on_total_persons_change` el pugui comparar a `post_save`,
     independentment de quin flux (vista, comanda, script) faci el `.save()`."""
     if instance.pk:
         instance._old_total_persons = Contract.objects.filter(pk=instance.pk).values_list(
@@ -493,116 +501,16 @@ def capture_total_persons_before_save(sender, instance, **kwargs):
     else:
         instance._old_total_persons = None
 
-def _update_existing_aca_bonification(bonification, total_persons, notification_enabled):
-    """El contracte ja té una Bonification ACA-TRAM activa: actualitza el valor de la
-    seva Variable ACA-TRAM-MEMBRES en lloc de crear-ne una de nova (i una altra
-    ACABonificationRequest duplicada) cada cop que torna a pujar `total_persons`.
-
-    Si l'enviament de notificacions ACA està activat (`aca_notification_enabled`), la
-    sol·licitud (ja enviada o no) torna a quedar pendent d'enviar amb el nou valor —
-    l'ACA necessita rebre l'ampliació de trams actualitzada, no la primera que es va
-    enviar."""
-    variable_type = bonification.bonification_type.variable_types.filter(
-        token__icontains='MEMBRES'
-    ).first()
-    if not variable_type:
-        return
-
-    variable, variable_created = Variable.objects.get_or_create(
-        bonification=bonification, type=variable_type,
-        defaults={
-            'contract': bonification.contract,
-            'value': str(total_persons),
-            'name': variable_type.name,
-            'token': generate_token(Variable),
-        },
-    )
-    if not variable_created:
-        variable.value = str(total_persons)
-        variable.save()
-
-    if not notification_enabled:
-        return
-
-    aca_request, _ = ACABonificationRequest.objects.get_or_create(bonification=bonification)
-    aca_request.num_persons_to_apply = total_persons
-    aca_request.sent_at = None
-    aca_request.aca_document = None
-    aca_request.save()
-
-
 @receiver(post_save, sender=Contract)
-def create_aca_bonification_on_total_persons_increase(sender, instance, created, **kwargs):
-    """Quan augmenta el nombre d'habitants (`total_persons`) d'un contracte i l'ACA
-    està activa per aquest projecte (`watchdog.aca_config.uses_aca_enabled`), crea
-    automàticament la `Bonification` "Ampliació de trams" i la seva `Variable`
-    ACA-TRAM-MEMBRES amb el nou valor — mateixa parella que avui es crea a mà des de
-    `AddBonification.vue` — o, si el contracte ja en té una activa, actualitza aquesta
-    mateixa en lloc de duplicar-la (`_update_existing_aca_bonification`).
-    `track_aca_bonification_request`/`sync_aca_bonification_num_persons` (aquest mateix
-    fitxer) ja recullen automàticament una Bonification/Variable noves, generant la
-    corresponent `ACABonificationRequest` pendent."""
+def sync_aca_tram_on_total_persons_change(sender, instance, created, **kwargs):
+    """Quan canvia el nombre d'habitants (`total_persons`) d'un contracte, ajusta la
+    bonificació d'ampliació de trams de l'ACA (crear, actualitzar o desactivar segons el
+    mínim de persones). Veure `contract.utils.aca_tram_service`."""
     if created or getattr(instance, '_skip_signal', False):
         return
 
-    old_total_persons = getattr(instance, '_old_total_persons', None)
-    if old_total_persons is None or instance.total_persons is None:
-        return
-    if instance.total_persons <= old_total_persons:
-        return
-
-    from watchdog.aca_config import uses_aca_enabled, aca_notification_enabled
-    if not uses_aca_enabled():
-        return
-
-    bonification_token = ConfigProject.objects.filter(token='aca_at_token').first()
-    if not bonification_token or not bonification_token.value:
-        return
-
-    bonification_type = BonificationType.objects.filter(
-        token__icontains=bonification_token.value
-    ).order_by('id').first()
-    if not bonification_type:
-        return
-
-    variable_types = list(bonification_type.variable_types.all())
-    if not variable_types:
-        return
-
-    existing_bonification = Bonification.objects.filter(
-        contract=instance, bonification_type=bonification_type, is_active=True
-    ).order_by('-id').first()
-    if existing_bonification:
-        _update_existing_aca_bonification(existing_bonification, instance.total_persons, aca_notification_enabled())
-        return
-
-    bonification = Bonification.objects.create(
-        person=instance.holder,
-        contract=instance,
-        bonification_type=bonification_type,
-        requested_at=timezone.now(),
-        is_active=True,
-        token=generate_token(Bonification),
-    )
-    # Es crea una Variable per cada VariableType del tipus de bonificació (p. ex.
-    # "Amplicació de tram (ACA)", booleana, i "Membres d'ampliació de tram (ACA)",
-    # amb el nombre d'habitants), mateix comportament que `AddBonification.vue`
-    # (`VariableSaveSerializer.create` fixa "True" per als tipus booleans).
-    for variable_type in variable_types:
-        if variable_type.data_type == 'bool':
-            value = 'True'
-        elif 'MEMBRES' in (variable_type.token or '').upper():
-            value = str(instance.total_persons)
-        else:
-            continue
-        Variable.objects.create(
-            contract=instance,
-            bonification=bonification,
-            type=variable_type,
-            value=value,
-            name=variable_type.name,
-            token=generate_token(Variable),
-        )
+    from .utils.aca_tram_service import sync_aca_tram_with_total_persons
+    sync_aca_tram_with_total_persons(instance, getattr(instance, '_old_total_persons', None))
 
 @receiver(pre_delete, sender=Contract)
 def delete_contract_related(sender, instance, **kwargs):
