@@ -9,7 +9,12 @@
     - Canvi de lectures del contracte (`ReadingsChange.vue`): avís a la targeta de cada lectura existent modificada (no a les noves, les que no canvien, les esborrades ni les de control).
     - Clau nova `warning_block.warning_linked_readings_modified` als quatre idiomes.
 
-### FEAT
+#### BILLING/SERVICE (`CompanyBankRouting.vue`, `SEPAManagementEdit.vue`, `exploitation-api.js`, `locales/*` — D_004-357, compte de l'empresa per a les transferències de retorn)
+    - L'encaminament de remeses de la fitxa d'empresa té una segona columna, «Transferir des de», al costat de «Remesar a»: a les files «IBAN estranger» i «Per defecte», a cada entitat i a l'estimació de clients per compte. Cada columna desa el seu mapa (`operation` `collection` / `transfer`), de manera que els retorns poden sortir per un compte diferent del que cobra les remeses.
+    - L'assignació en bloc deixa triar si s'aplica a les remeses, a les transferències o a totes dues.
+    - A la pantalla de remeses, el mapa que s'obre només ensenya la columna del tipus de remesa que s'està preparant (transferències quan és de retorns).
+    - `saveBankRoutingBulk` i `saveBankRoutingSpecial` accepten `operation` (per defecte `collection`). Claus noves `billing_block.transfer_from` i `billing_block.all_routing_operations`, i `info_bank_routing` actualitzat, als quatre idiomes. Cal desplegar-lo junt amb el backend.
+
 #### CONTRACT (`ContractBonificationsVariables.vue`, `ContractTabs.vue`, `ContractRegion.vue`, `i18n/locales/*` — pestanya única de bonificacions i variables)
     - Les pestanyes «Bonificacions» i «Variables» del contracte (fitxa i contracte fixat) s'uneixen en una sola, «Bonificacions i variables», amb els dos comptadors a l'etiqueta (p. ex. «(2 · 5)»).
     - Cada bonificació es mostra com una targeta amb el tipus, l'estat ACA, les dates i la documentació, i a dins les seves variables (agrupades pel camp `bonification` de la variable). El llapis d'editar cada variable es manté.
@@ -33,6 +38,10 @@
 
 #### GENERAL (`locales/`, `i18n.config.ts` — traduccions antigues)
     - S'eliminen `frontend/locales/` i `frontend/i18n.config.ts`, una còpia antiga que no carregava ningú: les traduccions reals són a `frontend/i18n/locales/` (ca, es, gl, en). Les dues úniques claus que només hi havia a la còpia antiga (`dashboard.show_only_me`, `customer_service_block.digital_comm`) no s'utilitzen.
+
+### CHORE
+#### GENERAL (`frontend/.gitignore` — entrades del repositori antic)
+    - S'ignoren `/nuxt` i `/nuxt-app@*` (restes d'instal·lacions de npm interrompudes), `.watchmanconfig`, `public/deploy-info.json` i `DEPLOYS.md` (generats per `scripts/record_deploy.sh` al servidor), com al repositori antic.
 
 ## [09-10-2026]
 
