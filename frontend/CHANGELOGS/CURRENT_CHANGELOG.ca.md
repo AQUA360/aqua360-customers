@@ -3,6 +3,13 @@
 ## [13-10-2026]
 
 ### FEAT
+#### BILLING (`ReadingEdit.vue`, `ReadingsChange.vue`, `i18n/locales/*` — avís de lectures enllaçades)
+    - En editar una lectura existent que és còpia d'una altra o que té còpies (`copies_count` > 0), s'avisa que es modificaran N lectures més juntament amb aquesta.
+    - Edició de lectures del lot (`ReadingEdit.vue`): avís sota la fila quan canvia la lectura, la fuita o el consum (no només la nota), i també al missatge de confirmació en desar.
+    - Canvi de lectures del contracte (`ReadingsChange.vue`): avís a la targeta de cada lectura existent modificada (no a les noves, les que no canvien, les esborrades ni les de control).
+    - Clau nova `warning_block.warning_linked_readings_modified` als quatre idiomes.
+
+### FEAT
 #### CONTRACT (`ContractBonificationsVariables.vue`, `ContractTabs.vue`, `ContractRegion.vue`, `i18n/locales/*` — pestanya única de bonificacions i variables)
     - Les pestanyes «Bonificacions» i «Variables» del contracte (fitxa i contracte fixat) s'uneixen en una sola, «Bonificacions i variables», amb els dos comptadors a l'etiqueta (p. ex. «(2 · 5)»).
     - Cada bonificació es mostra com una targeta amb el tipus, l'estat ACA, les dates i la documentació, i a dins les seves variables (agrupades pel camp `bonification` de la variable). El llapis d'editar cada variable es manté.

@@ -2896,6 +2896,7 @@ export default {
     warning_reading_before_estimated: 'The reading date cannot be earlier than the last actual reading if it is estimated.',
     warning_reading_unallowed_to_estimated: 'Reading not estimated due to a new contract or a conflict within the current period',
     warning_leak_value_too_high: 'The leak cannot exceed the consumption',
+    warning_linked_readings_modified: 'This reading is linked to other readings (original or copies). Along with this one, {count} more readings will be modified.',
     warning_no_previous_avg_found: 'No previous average consumption was found',
     warning_last_reading_pending_billing: 'Restrictions applied due to pending billing; changes related to the last reading have been disabled',
     warning_inactive_template: 'The template is inactive. No daily file will be generated.',

@@ -2,6 +2,15 @@
 
 ## [13-10-2026]
 
+### FEAT
+#### BILLING (`billing/utils/reading_service.py`, `billing/views/reading_view.py`, `billing/serializers/reading_serializer.py` — lectures enllaçades per `copied_from`)
+    - Quan es modifica una lectura que és còpia d'una altra o que té còpies (`copied_from` / `copies`, p. ex. comptadors generals repartits entre contractes), la modificació s'aplica a totes les lectures del grup.
+    - Nous helpers `get_reading_copy_group_root`, `get_reading_copy_group` (lectures actives i no de control del grup, sense la pròpia) i `get_copy_calculated_value`: cada còpia manté la seva lectura anterior, i el consum es recalcula contra aquesta més el mateix ajust manual que s'hagi fet a la lectura editada.
+    - Edició directa (`PUT`/`PATCH` a `/billing/reading/<id>/`): `ReadingViewSet.perform_update` propaga `reading_date`, `reading_value`, `leak_value` i el consum recalculat a la resta del grup (via `ReadingSerializer`, dins la mateixa transacció). Només si algun d'aquests valors ha canviat (sense fuita i fuita 0 es consideren iguals), i a cada còpia només s'envien els camps que hi són diferents: una còpia que ja té els mateixos valors no es torna a desar (desar-la li trauria la marca d'estimada i el moviment de la bossa). Canviar només la nota d'alerta no toca les còpies.
+    - Modificació de lectures del contracte (`modify_existing_readings`): quan una lectura del grup es substitueix per una de nova, les altres també (la vella passa a control, s'afegeix a `modified_readings`, es registra a `LogReadingChange` i es traspassa a les baixes). Les noves lectures queden enllaçades a la nova original per `copied_from`. Les còpies que no canvien de valor no es substitueixen, només es tornen a enllaçar.
+    - `ReadingSerializer`, `ReadingByBatchSerializer` i `ReadingByBatchMinimalSerializer` exposen `copies_count` (nombre de lectures del grup que es modificaran juntament amb la lectura).
+    - Tests: `billing/tests/test_reading_copy_group.py`.
+
 ### FIX
 #### CONTRACT (`contract/utils/aca_tram_service.py` — PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
     - Es podia aplicar la bonificació d'ampliació de trams a contractes que no arriben al mínim de persones: `create_aca_bonification_on_total_persons_increase` la creava amb qualsevol augment de `total_persons` (p. ex. d'1 a 2) i la variable de membres no tenia cap validació.
