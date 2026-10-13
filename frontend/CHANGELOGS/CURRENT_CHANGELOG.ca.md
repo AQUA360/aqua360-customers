@@ -1,5 +1,30 @@
 # Changelog Frontend
 
+## [13-10-2026]
+
+### FEAT
+#### CONTRACT (`ContractBonificationsVariables.vue`, `ContractTabs.vue`, `ContractRegion.vue`, `i18n/locales/*` — pestanya única de bonificacions i variables)
+    - Les pestanyes «Bonificacions» i «Variables» del contracte (fitxa i contracte fixat) s'uneixen en una sola, «Bonificacions i variables», amb els dos comptadors a l'etiqueta (p. ex. «(2 · 5)»).
+    - Cada bonificació es mostra com una targeta amb el tipus, l'estat ACA, les dates i la documentació, i a dins les seves variables (agrupades pel camp `bonification` de la variable). El llapis d'editar cada variable es manté.
+    - Les variables que no pertanyen a cap bonificació van en una targeta a part, «Variables sense bonificació».
+    - Les vençudes s'agrupen igual sota «Bonificacions i variables vençudes». Abans, una bonificació vençuda sortia repetida una vegada per cada variable vençuda (el log en té una entrada per variable); ara surt una sola vegada amb les seves variables.
+    - Claus noves `contract_block.bonifications_and_variables`, `variables_without_bonification` i `expired_bonifications_variables` als quatre idiomes.
+
+### FIX
+#### ORDER (`OrderMiniDetail.vue` — ordres de treball sense tipus a les pestanyes)
+    - El tipus de l'ordre és l'enllaç que obre el detall. Si l'ordre no tenia tipus, l'enllaç quedava buit i no hi havia res on clicar. Ara es mostra el motiu (o «-» si tampoc en té), també a l'exportació XLSX.
+    - La columna «Tipus» guanya espai i «Operaris» en perd (`minmax(150px, 2fr)` / `minmax(100px, 1fr)`).
+
+#### CONTRACT (`ContractPinned.vue` — obrir ordres de treball des del contracte fixat)
+    - En clicar una ordre de la pestanya «Ordres de treball» del contracte fixat s'obria un panell lateral buit, perquè no hi havia `OrderRegion`. Ara s'hi mostra el detall de l'ordre.
+
+### REFACTOR
+#### CONTRACT (`ContractTabs.vue` — format)
+    - Plantilla reformatada a l'estil de la resta de components (indentació de 2 espais, atributs a la mateixa línia de l'etiqueta, salt a 120 caràcters). Sense canvis de comportament.
+
+#### GENERAL (`locales/`, `i18n.config.ts` — traduccions antigues)
+    - S'eliminen `frontend/locales/` i `frontend/i18n.config.ts`, una còpia antiga que no carregava ningú: les traduccions reals són a `frontend/i18n/locales/` (ca, es, gl, en). Les dues úniques claus que només hi havia a la còpia antiga (`dashboard.show_only_me`, `customer_service_block.digital_comm`) no s'utilitzen.
+
 ## [09-10-2026]
 
 ### REFACTOR
