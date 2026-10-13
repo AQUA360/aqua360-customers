@@ -2119,6 +2119,7 @@ export default {
     cause_no_price_rate: 'No rates assigned',
     cause_excluded_billing: 'Excluded invoices',
     cause_block_billing: 'Non-billable contract',
+    non_billable_contracts: 'Non-billable contracts (not counted as warnings)',
     cause_unprocessed_invoice: 'Unprocessed invoice',
     consumption_alerts_warning: 'There are consumption alerts related to this billing run',
     generate_missing_batch: 'Generate reading batch',
