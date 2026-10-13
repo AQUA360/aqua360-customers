@@ -1547,6 +1547,7 @@ export default {
     person_no_contract: 'La persona no está relacionada con ningún contrato',
     total_persons: 'Personas en la vivienda',
     total_persons_min: 'El número de personas en la vivienda debe ser como mínimo 1. Si hay que reflejar un caso especial, añádalo como variable del contrato.',
+    aca_tram_deactivation_warning: 'Con este número de personas en la vivienda se desactivarán la bonificación de ampliación de tramos de la ACA y sus variables (mínimo: {min} personas).',
     no_tlf: 'Contrato sin teléfono',
     no_comms: 'Contrato sin comunicación definida',
     no_email: 'Contrato sin correo electrónico asignado',

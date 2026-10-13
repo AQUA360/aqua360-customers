@@ -23,6 +23,7 @@ import AddInvoiceBudget from '../molecules/AddInvoiceBudget.vue';
 import AddFraud from '../molecules/AddFraud.vue';
 import FraudRegion from './FraudRegion.vue';
 import IncidentRegion from './IncidentRegion.vue';
+import OrderRegion from './OrderRegion.vue';
 import PriceRateRegionDetail from './PriceRateRegionDetail.vue';
 import PriceIntervalRegion from './PriceIntervalRegion.vue';
 import CalendarTaskEdit from '../molecules/CalendarTaskEdit.vue';
@@ -746,6 +747,8 @@ const setActiveTab = (tab) => {
             <PriceIntervalRegion v-if="showRegionDetailComponent === 'PriceIntervalRegion'"
                 :id="parseInt(regionDetailId)" :isSubRegion="true" />
             <IncidentRegion v-if="showRegionDetailComponent === 'IncidentRegion'"
+                :id="parseInt(regionDetailId)" :isSubRegion="true" />
+            <OrderRegion v-if="showRegionDetailComponent === 'OrderRegion'"
                 :id="parseInt(regionDetailId)" :isSubRegion="true" />
             <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'"
                 :id="regionDetailId" :isSubRegion="true" @update-id="(newId) => regionDetailId = newId"

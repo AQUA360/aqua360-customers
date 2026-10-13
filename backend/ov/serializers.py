@@ -735,7 +735,7 @@ def mask_iban(iban):
 
 class ContractHolderOVSerializer(serializers.Serializer):
     """
-    `titular_contrato` — the contract holder (``Contract.holder``, a
+    `contract_holder` — the contract holder (``Contract.holder``, a
     ``coredata.Person``).
     """
 
@@ -752,7 +752,7 @@ class ContractHolderOVSerializer(serializers.Serializer):
 
 class ContractDebitHolderOVSerializer(serializers.Serializer):
     """
-    `titular_domiciliacion` — the holder of the direct-debit account
+    `direct_debit_holder` — the holder of the direct-debit account
     (``Contract.payment.IBAN``, a ``coredata.PersonBank``).
     """
 
@@ -791,9 +791,31 @@ class ContractListItemOVSerializer(serializers.Serializer):
     status_token = serializers.SerializerMethodField()
     status_name = serializers.SerializerMethodField()
     payment_type = serializers.SerializerMethodField()
-    titular_contrato = serializers.SerializerMethodField()
-    titular_domiciliacion = serializers.SerializerMethodField()
-    acciones_permitidas = serializers.SerializerMethodField()
+    contract_holder = serializers.SerializerMethodField()
+    direct_debit_holder = serializers.SerializerMethodField()
+    allowed_actions = serializers.SerializerMethodField()
+    is_account_holder = serializers.SerializerMethodField()
+
+    def _request_dni(self):
+        """DNI passat per query, normalitzat (`None` si no n'hi ha)."""
+        request = self.context.get("request")
+        if request is None:
+            return None
+        dni = (request.query_params.get("dni") or "").strip().upper()
+        return dni or None
+
+    @staticmethod
+    def _iban(obj):
+        return obj.payment.IBAN if obj.payment else None
+
+    @staticmethod
+    def _iban_holder_dni(iban):
+        if not iban:
+            return None
+        dni = iban.dni or (iban.person.token if iban.person else None)
+        if not dni:
+            return None
+        return str(dni).strip().upper()
 
     def get_token(self, obj):
         return obj.token
@@ -807,21 +829,39 @@ class ContractListItemOVSerializer(serializers.Serializer):
     def get_payment_type(self, obj):
         return obj.payment.type.token if obj.payment and obj.payment.type else None
 
-    def get_titular_contrato(self, obj):
+    def get_contract_holder(self, obj):
         if not obj.holder:
             return None
         return ContractHolderOVSerializer(obj.holder).data
 
-    def get_titular_domiciliacion(self, obj):
+    def get_direct_debit_holder(self, obj):
         person_bank = obj.payment.IBAN if obj.payment else None
         if not person_bank:
             return None
         return ContractDebitHolderOVSerializer(person_bank).data
 
-    def get_acciones_permitidas(self, obj):
+    def get_allowed_actions(self, obj):
         # TODO: the per-contract allow-list of actions is not defined yet, so no
         # action is advertised for any contract.
         return []
+
+    def get_is_account_holder(self, obj):
+        """`true` si el `dni` de la query coincide amb el titular del compte
+        de domiciliació; `false` si el `dni` no hi és o no coincideix (la clau
+        s'elimina del resultat quan no hi ha `dni`)."""
+        dni = self._request_dni()
+        if not dni:
+            return False
+        iban_dni = self._iban_holder_dni(self._iban(obj))
+        if not iban_dni:
+            return False
+        return dni == iban_dni
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self._request_dni():
+            data.pop("is_account_holder", None)
+        return data
 
 
 class ContractFullDetailSerializer(serializers.ModelSerializer):
@@ -860,9 +900,9 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
     phone1 = serializers.SerializerMethodField()
     phone2 = serializers.SerializerMethodField()
 
-    dni_titular_cuenta = serializers.SerializerMethodField()
-    es_titular_cuenta = serializers.SerializerMethodField()
-    direccion_titular = serializers.SerializerMethodField()
+    account_holder_dni = serializers.SerializerMethodField()
+    is_account_holder = serializers.SerializerMethodField()
+    holder_address = serializers.SerializerMethodField()
     iban = serializers.SerializerMethodField()
 
     class Meta:
@@ -891,9 +931,9 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             "invoice_language",
             "phone1",
             "phone2",
-            "dni_titular_cuenta",
-            "es_titular_cuenta",
-            "direccion_titular",
+            "account_holder_dni",
+            "is_account_holder",
+            "holder_address",
             "iban",
         ]
 
@@ -985,7 +1025,7 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
     def get_invoice_language(self, obj):
         return config("INVOICE_LANGUAGE", default="en")
 
-    def get_dni_titular_cuenta(self, obj):
+    def get_account_holder_dni(self, obj):
         iban = self._iban(obj)
         if not iban:
             return None
@@ -993,21 +1033,36 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             iban.person.token if iban.person and iban.person.token else None
         )
 
-    def get_es_titular_cuenta(self, obj):
-        holder = obj.holder
-        iban = self._iban(obj)
-        if not holder or not iban:
-            return False
-        if iban.person_id and iban.person_id == holder.pk:
-            return True
-        dni = iban.dni or (
-            iban.person.token if iban.person and iban.person.token else None
-        )
-        return bool(
-            holder.token and dni and holder.token.strip().upper() == dni.strip().upper()
-        )
+    def _request_dni(self):
+        """DNI passat per query, normalitzat (`None` si no n'hi ha)."""
+        request = self.context.get("request")
+        if request is None:
+            return None
+        dni = (request.query_params.get("dni") or "").strip().upper()
+        return dni or None
 
-    def get_direccion_titular(self, obj):
+    @staticmethod
+    def _iban_holder_dni(iban):
+        if not iban:
+            return None
+        dni = iban.dni or (iban.person.token if iban.person else None)
+        if not dni:
+            return None
+        return str(dni).strip().upper()
+
+    def get_is_account_holder(self, obj):
+        """`true` només si la query passa un `dni` que coincideix amb el
+        titular del compte de domiciliació (normalitzat). Sense `dni` a la
+        query la clau s'elimina del resultat."""
+        dni = self._request_dni()
+        if not dni:
+            return False
+        iban_dni = self._iban_holder_dni(self._iban(obj))
+        if not iban_dni:
+            return False
+        return dni == iban_dni
+
+    def get_holder_address(self, obj):
         holder = obj.holder
         if not holder:
             return None
@@ -1025,12 +1080,18 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
         iban_number = iban.iban if iban else None
         if not iban_number:
             return ""
-        if self.get_es_titular_cuenta(obj):
+        if self.get_is_account_holder(obj):
             return iban_number
         first_part = iban_number[:8]
         last_part = iban_number[-8:]
         masked_middle = "*" * (len(iban_number) - 16)
         return f"{first_part}{masked_middle}{last_part}"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self._request_dni():
+            data.pop("is_account_holder", None)
+        return data
 
 
 class InvoiceFullDetailSerializer(serializers.ModelSerializer):
@@ -1050,7 +1111,7 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     pdf_available = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
     dwelling_code = serializers.SerializerMethodField()
-    direccion_tributaria = serializers.SerializerMethodField()
+    tax_address = serializers.SerializerMethodField()
     tariffs = serializers.SerializerMethodField()
     fiscal_breakdown = serializers.SerializerMethodField()
 
@@ -1070,7 +1131,7 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
             "pdf_available",
             "billing_period",
             "dwelling_code",
-            "direccion_tributaria",
+            "tax_address",
             "tariffs",
             "fiscal_breakdown",
         ]
@@ -1098,23 +1159,23 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     def get_dwelling_code(self, obj):
         return None
 
-    def get_direccion_tributaria(self, obj):
+    def get_tax_address(self, obj):
         if obj.payment_type_token_final != self._direct_debit_token():
             return None
-        anonimizada = bool(
+        is_anonymized = bool(
             obj.payer_token_final
             and obj.customer_token_final
             and obj.payer_token_final != obj.customer_token_final
         )
         payload = {
-            "anonimizada": anonimizada,
-            "codigo_postal": obj.postal_code_final or "",
-            "ciudad": obj.city_final or "",
-            "provincia": obj.province_final,
-            "pais": obj.country_final,
+            "is_anonymized": is_anonymized,
+            "postal_code": obj.postal_code_final or "",
+            "city": obj.city_final or "",
+            "province": obj.province_final,
+            "country": obj.country_final,
         }
-        if not anonimizada:
-            payload["direccion"] = obj.address_final
+        if not is_anonymized:
+            payload["address"] = obj.address_final
         return payload
 
     def get_tariffs(self, obj):
@@ -1172,8 +1233,8 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if data.get("direccion_tributaria") is None:
-            data.pop("direccion_tributaria", None)
+        if data.get("tax_address") is None:
+            data.pop("tax_address", None)
         return data
 
 
@@ -1315,5 +1376,70 @@ class BillingPeriodItemSerializer(serializers.Serializer):
     period_code = serializers.CharField()
     months_label = serializers.CharField()
     is_current = serializers.BooleanField()
+
+
+class SepaDocumentUploadSerializer(serializers.Serializer):
+    """Valida el upload del mandato SEPA firmado (multipart/form-data):
+    el documento (`sepa`) y el IBAN de la cuenta de domiciliación (`iban`)."""
+
+    sepa = serializers.FileField(required=True)
+    iban = serializers.CharField(required=True)
+
+    def validate_iban(self, value):
+        # Limpia espacios (en blanco por agrupación) y normaliza a mayúsculas
+        return "".join(value.split()).upper()
+
+    def validate_sepa(self, value):
+        if not value:
+            raise serializers.ValidationError("File is required")
+        name = str(value.name or "").lower()
+        if not (
+            name.endswith(".pdf")
+            or name.endswith((".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".bmp", ".webp", ".heic"))
+        ):
+            raise serializers.ValidationError(
+                "Invalid file type. Only PDF or image files are allowed."
+            )
+        return value
+
+
+class CancelDirectDebitSerializer(serializers.Serializer):
+    """Valida la sol·licitud de cancel·lació de domiciliació (revocació
+    del mandat SEPA i canvi de la forma de pagament del contracte).
+
+    - `period`: període de facturació des del qual s'aplica la cancel·lació
+      (p. ex. "2026-3T").
+    - `role`: rol de qui sol·licita (p. ex. "TITULAR", "PAGADOR").
+    - `new_payment_type`: token del nou tipus de pagament demanat; opcional.
+      Si falta, es fa servir el tipus per defecte `BANK_TRANSFER`.
+    """
+
+    period = serializers.CharField(required=True)
+    role = serializers.CharField(required=True)
+    new_payment_type = serializers.CharField(required=False)
+
+
+class ContactDataOVSerializer(BillingDataOVSerializer):
+    """Extén `BillingDataOVSerializer` (configuración del perfil) amb
+    l'adreça postal del titular del contracte (`holder_address`)."""
+
+    holder_address = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Contract
+        fields = BillingDataOVSerializer.Meta.fields + ["holder_address"]
+
+    def get_holder_address(self, obj):
+        holder = obj.holder
+        if not holder:
+            return None
+        billing_address = (
+            PersonAddress.objects.filter(person=holder, is_billing=True)
+            .select_related("address")
+            .first()
+        )
+        if billing_address and billing_address.address:
+            return str(billing_address.address)
+        return None
 
 

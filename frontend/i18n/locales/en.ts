@@ -1537,6 +1537,7 @@ export default {
     person_no_contract: 'The person is not related to any contract',
     total_persons: 'People in the household',
     total_persons_min: 'The number of people in the household must be at least 1. If you need to reflect a special case, add it as a contract variable.',
+    aca_tram_deactivation_warning: 'With this number of people in the household, the ACA tier extension bonus and its variables will be deactivated (minimum: {min} people).',
     no_tlf: 'Contract without phone number',
     no_comms: 'Contract without defined communication',
     no_email: 'Contract without assigned email',
