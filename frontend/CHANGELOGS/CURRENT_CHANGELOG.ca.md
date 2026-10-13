@@ -1,5 +1,12 @@
 # Changelog Frontend
 
+## [13-10-2026]
+
+### FIX
+#### CONTRACT (PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
+    - `pages/contract/contracts/[id]/data-change.vue`: avís quan el nou nombre de persones a l'habitatge queda per sota del mínim de l'ampliació de trams i, en desar, es desactivaran la bonificació i les seves variables. Només surt si el contracte té la bonificació activa (`aca_tram_min_persons` del backend). Textos a `ca`, `es`, `en` i `gl`.
+    - `AddBonification.vue`: les variables es desen abans que els documents i, si el backend en rebutja alguna (p. ex. membres per sota del mínim), s'esborren la bonificació i les variables que s'acaben de crear perquè no quedi a mitges.
+
 ## [09-10-2026]
 
 ### REFACTOR
