@@ -251,13 +251,6 @@ const isTotalPersonsValid = computed(() => {
   return Number.isInteger(value) && value >= 1;
 });
 
-/** Ampliació de trams de l'ACA: el backend només informa el mínim si el contracte en té
- * la bonificació activa; per sota, en desar es desactivaran la bonificació i les variables. */
-const acaTramWillDeactivate = computed(() => {
-  const minPersons = contract.value?.aca_tram_min_persons;
-  return minPersons != null && isTotalPersonsValid.value && Number(contract.value?.total_persons) < minPersons;
-});
-
 const save = async () => {
   if (isSaving.value) return;
   // Persones a l'habitatge: 0 o negatiu trenca la facturació (divisió per zero)
@@ -630,11 +623,6 @@ onMounted(async () => {
             class="mt-2 flex items-start gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
             <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0 text-base" />
             <span>{{ $t('contract_block.total_persons_min') }}</span>
-          </div>
-          <div v-if="acaTramWillDeactivate"
-            class="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-            <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0 text-base" />
-            <span>{{ $t('contract_block.aca_tram_deactivation_warning', { min: contract.aca_tram_min_persons }) }}</span>
           </div>
         </div>
 

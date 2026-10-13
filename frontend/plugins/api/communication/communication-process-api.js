@@ -7,7 +7,7 @@ export default defineNuxtPlugin(nuxtApp => {
     const config = useRuntimeConfig();
     const apiHost = config.public.apiHost;
   
-    const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, types = [], supplyCut = null, exclude_cancelled = false) => {
+    const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, types = [], supplyCut = null) => {
       let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
   
       if (sort) {
@@ -31,10 +31,6 @@ export default defineNuxtPlugin(nuxtApp => {
 
       if (supplyCut) {
         apiUrl += `&supply_cut=${supplyCut}`;
-      }
-
-      if (exclude_cancelled) {
-        apiUrl += `&exclude_cancelled=true`;
       }
 
       let exploitation_id = localStorage.getItem('exploitation');
@@ -166,19 +162,6 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     };
 
-    // Esborrat lògic d'un element cancel·lat (deixa de sortir als llistats).
-    const deleteCancelled = async (id) => {
-      const apiUrl = `${apiHost}${entity}${id}/delete-cancelled/`;
-
-      try {
-        const response = await $apiManager.fetch(apiUrl, 'POST');
-        return true;
-
-      } catch (error) {
-        throw error;
-      }
-    };
-
     const getPermissions = async () => {
       const apiUrl = `${apiHost}${entity}permissions/`;
       try {
@@ -195,12 +178,12 @@ export default defineNuxtPlugin(nuxtApp => {
   
     // Server-side XLSX export (async). Mirrors getAll's filters/search/sort but
     // POSTs to `{entity}export/`, returning `{ task_id }`. Same args as getAll (no page).
-    const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, types = [], exclude_cancelled = false) => {
+    const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, types = []) => {
       let exploitation_id = localStorage.getItem('exploitation');
 
       return $apiManager.exportTable(entity, {
         searchQuery, filters, sort, desc,
-        extraParams: { types, exploitation: exploitation_id || null, exclude_cancelled: exclude_cancelled || null }
+        extraParams: { types, exploitation: exploitation_id || null }
       });
     }
 
@@ -213,7 +196,6 @@ export default defineNuxtPlugin(nuxtApp => {
       sendMessages,
       downloadEInvoices,
       deleteItem,
-      deleteCancelled,
       getPermissions,
       exportData
     };

@@ -316,23 +316,6 @@ const cancelProcess = async () => {
   }
 }
 
-// Esborrat lògic: el procés cancel·lat i les seves comunicacions cancel·lades
-// deixen de sortir als llistats.
-const deleteCancelledProcess = async () => {
-  if (!confirm(t("confirmation_text_block.confirm_delete_cancelled_process"))) return;
-  try {
-    const response = await $CommunicationProcessApiService.deleteCancelled(props.id);
-    if (response) {
-      toast.success(t('common.deleted_successfully'));
-      emit('close-subregion');
-      emit('changed');
-    }
-  } catch (error) {
-    console.error('Error deleting process:', error);
-    toast.error(t('common.error'));
-  }
-}
-
 const getFiles = async (taskId) => {
   try {
     const response = await $apiManager.checkTask(taskId)
@@ -459,10 +442,6 @@ onMounted(async () => {
           </DropdownOption>
           <DropdownOption v-if="['0', '1'].includes(data?.status?.token)" :name="`${t('common.cancel')} ${t('common.comms_process_detail').toLowerCase()}`" @click="cancelProcess()">
             <Icon name="fa6-solid:xmark" class="display-inline mr-2" /> {{ t('common.cancel') }} {{ t('common.comms_process_detail').toLowerCase() }}
-          </DropdownOption>
-          <DropdownOption v-if="data?.status?.token === '-1' && objectPermissions?.can_delete" :name="`${t('common.delete')} ${t('common.comms_process_detail').toLowerCase()}`"
-            @click="deleteCancelledProcess()" class="text-red-600">
-            <Icon name="fa6-solid:trash" class="display-inline mr-2 text-red-600" /> {{ t('common.delete') }} {{ t('common.comms_process_detail').toLowerCase() }}
           </DropdownOption>
         </OptionsDropdown>
       </div>

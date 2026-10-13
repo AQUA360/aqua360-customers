@@ -42,31 +42,6 @@ def return_bails_termination_requests():
 
 
 @shared_task
-def fix_pending_bails_task():
-    from contract.models import Bail
-    from contract.utils.bail_service import liquidate_bail
-
-    try:
-        pending_bail_token = ConfigProject.objects.get(
-            token="bail_status_pending_token"
-        )
-        bails = Bail.objects.filter(
-            status__token=pending_bail_token.value
-        )
-        bail_count = bails.count()
-        liquidate_bail(None, bails)
-        return {
-            "status": "success",
-            "message": f"Liquidated {bail_count} pending bails",
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Error fixing pending bails: {e}",
-        }
-
-
-@shared_task
 def fill_contract_use_aca_task(update_all_contracts=False):
     try:
         from contract.utils.use_aca_service import run_fill_contract_use_aca

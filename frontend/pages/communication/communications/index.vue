@@ -52,8 +52,6 @@ const filter_types = ref([]);
 const filter_status = ref([]);
 
 const selectedDateRangeArr = ref([]);
-// Les cancel·lades s'amaguen per defecte (un filtre d'estat explícit les mostra igualment).
-const showCancelled = ref(false);
 const date_range = ref({});
 
 const isFilterOpen = ref(false);
@@ -96,7 +94,7 @@ const exportColumns = computed(() => [
 ]);
 
 const exportCommunications = (columns) => $CommunicationApiService.exportData(
-  searchInput.value, statuses.value, sortBy.value, sortDesc.value, null, [], is_individual.value, types.value, null, date_range.value, columns, !showCancelled.value
+  searchInput.value, statuses.value, sortBy.value, sortDesc.value, null, [], is_individual.value, types.value, null, date_range.value, columns
 );
 
 const getData = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, is_individual = null, types = []) => {
@@ -108,7 +106,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
   error.value = null;
 
   try {
-    const data = await $CommunicationApiService.getAll(searchQuery, filters, page, sort, desc, null, [], is_individual, types, null, date_range.value, !showCancelled.value);
+    const data = await $CommunicationApiService.getAll(searchQuery, filters, page, sort, desc, null, [], is_individual, types, null, date_range.value);
 
     items.value = data.results;
     Object.assign(pagination.value, {
@@ -255,7 +253,6 @@ const resetFilters = () => {
   is_individual.value = null;
   selectedDateRangeArr.value = [];
   date_range.value = {};
-  showCancelled.value = false;
   getData();
 };
 
@@ -348,10 +345,6 @@ watch(() => route.query, () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
-
-      <label class="text-slate-800 text-base flex items-center gap-1">
-        <input type="checkbox" v-model="showCancelled" @change="handleFilterChange" /> {{ $t('customer_service_block.show_cancelled') }}
-      </label>
 
       <span>
         <button id="filterShow" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"

@@ -12,6 +12,3 @@ __pycache__/
 *.sqlite
 *.sqlite3
 SECURITY.md
-AGENTS.md
-CLAUDE.md
-.claude/settings.local.json

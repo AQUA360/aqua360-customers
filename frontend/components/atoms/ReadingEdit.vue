@@ -110,11 +110,6 @@
         </button>
       </div>
     </div>
-    <div v-if="showLinkedReadingsWarning"
-      class="mx-4 mb-2 flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700">
-      <Icon name="fa6-solid:triangle-exclamation" class="shrink-0" />
-      {{ t('warning_block.warning_linked_readings_modified', { count: reading.copies_count }) }}
-    </div>
     <ReadingListDetail @exclude="onExcluded" @open-region="openRegion" :show="props.showDetail" :reading="reading" />
   </div>
 </template>
@@ -188,14 +183,6 @@ const isDirty = computed(() => {
          changing_reading.value != initialValues.value.is_manual;
 });
 
-// Linked readings (original/copies) only follow value changes, not the alert note
-const showLinkedReadingsWarning = computed(() => {
-  if (!(reading.value.copies_count > 0)) return false;
-  return reading.value.read2 != initialValues.value.read2 ||
-         reading.value.leak_value != initialValues.value.leak_value ||
-         reading.value.calculated_value != initialValues.value.calculated_value;
-});
-
 const handleManualConsumption = (reading, changed) => {
   if (changed && !reading.previous_consumption_value) {
     reading.previous_consumption_value = reading.calculated_value;
@@ -211,11 +198,7 @@ const handleManualConsumption = (reading, changed) => {
 const save = async () => {
   if (!isDirty.value) return;
 
-  let confirmMessage = t("confirmation_text_block.confirm_modify");
-  if (showLinkedReadingsWarning.value) {
-    confirmMessage = t('warning_block.warning_linked_readings_modified', { count: reading.value.copies_count }) + '\n\n' + confirmMessage;
-  }
-  if (confirm(confirmMessage)) {
+  if (confirm(t("confirmation_text_block.confirm_modify"))) {
     const data = {
       id: reading.value.id,
       reading_value: reading.value.read2,

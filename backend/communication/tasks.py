@@ -908,7 +908,7 @@ def export_communications_csv_task(query_params):
             build_export_csv_bytes, parse_columns_param, resolve_columns,
         )
 
-        base_queryset = Communication.objects.filter(is_active=True).order_by('-created_at', '-status', '-sent_at')
+        base_queryset = Communication.objects.all().order_by('-created_at', '-status', '-sent_at')
         filterset = CommunicationFilter(data=query_params, queryset=base_queryset)
         queryset = filterset.qs.select_related('person', 'status', 'process', 'use_type')
 

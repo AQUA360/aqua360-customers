@@ -69,7 +69,6 @@ class ContractDataChangeEditSerializer(serializers.ModelSerializer):
     person_contact_sms = PersonContactSerializer(many=True, read_only=True)
     contacts = PersonContactSerializer(many=True, read_only=True)
     supply_point_default = serializers.SerializerMethodField()
-    aca_tram_min_persons = serializers.SerializerMethodField()
 
     class Meta:
         model = Contract
@@ -93,16 +92,9 @@ class ContractDataChangeEditSerializer(serializers.ModelSerializer):
             'supply_point_default',
             'registration_date',
             'language',
-            'aca_tram_min_persons',
         ]
 
     def get_supply_point_default(self, obj):
         if not obj.supply_point_default_id:
             return None
         return {'id': obj.supply_point_default_id}
-
-    def get_aca_tram_min_persons(self, obj):
-        """Mínim de persones de l'ampliació de trams de l'ACA si el contracte en té la
-        bonificació activa (el formulari avisa que baixar-ne la desactivarà); si no, None."""
-        from contract.utils.aca_tram_service import aca_tram_min_persons_for_contract
-        return aca_tram_min_persons_for_contract(obj)

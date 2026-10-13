@@ -395,12 +395,6 @@
     return null;
   };
 
-  // Només els informes que demanen l'any (347) l'han de rebre; si no, surt com a filtre a tots els informes.
-  const reportUsesYear = (report) => {
-    return ['model_347', 'report_billing_347'].includes(report.function_name) ||
-      (report.required_fields || []).some(f => ['model_347_year', 'year'].includes(f));
-  };
-
   const sections = computed(() => {
     const map = new Map();
     activeReports.value.forEach(report => {
@@ -484,8 +478,6 @@
     const selectedProdIds = formData.selected_product_ids || [];
     const formattedProductIds = Array.isArray(selectedProdIds) ? selectedProdIds.join(',') : selectedProdIds;
 
-    const reportYear = reportUsesYear(report) ? (formData.model_347_year || model347Year.value || null) : null;
-
     const payload = {
       date_range: formData.date_range || dateRange.value || null,
       start_date: (formData.date_range && formData.date_range[0])
@@ -513,8 +505,8 @@
         : (selectedReportType.value && selectedReportType.value.code !== 'null' ? selectedReportType.value.code : null),
       include_preinvoices: formData.include_preinvoices !== undefined ? formData.include_preinvoices : includePreinvoices.value,
       include_tax_free_lines: formData.include_tax_free_lines !== undefined ? formData.include_tax_free_lines : includeTaxFreeLines.value,
-      model_347_year: reportYear,
-      year: reportYear,
+      model_347_year: formData.model_347_year || model347Year.value || null,
+      year: formData.model_347_year || model347Year.value || null,
       product_ids: formattedProductIds,
       taxes_ids: formattedProductIds,
       payment_type_ids: Array.isArray(formData.selected_payment_type_ids) ? formData.selected_payment_type_ids.join(',') : (formData.selected_payment_type_ids || ''),

@@ -143,6 +143,7 @@ class BillingViewSet(viewsets.ModelViewSet):
       new_termination = 0
       no_price_rate = 0
       excluded_billing = 0
+      block_billing = 0
       unprocessed_invoice = 0
       no_meter = 0
 
@@ -243,17 +244,6 @@ class BillingViewSet(viewsets.ModelViewSet):
         Q(readings__reading_date__range=(first_start_reading, last_end_reading)) |
         Q(readings__isnull=True, issue_date__range=(first_start_reading, last_end_reading))
       ).values_list('contract_id', flat=True).distinct())
-
-      # Els contractes no facturables no són avisos: es compten a part i no surten a la llista.
-      block_billing = Contract.objects.filter(
-        Q(id__in=route_contracts.values('id')) |
-        Q(id__in=exploitation_contracts.values('id')),
-        block_billing=True
-      ).exclude(
-        id__in=invoiced_in_period_contract_ids
-      ).distinct().count()
-      route_contracts = route_contracts.exclude(block_billing=True)
-      exploitation_contracts = exploitation_contracts.exclude(block_billing=True)
 
       missing_by_route = route_contracts.exclude(id__in=invoiced_in_period_contract_ids).distinct()
       missing_by_exploitation = exploitation_contracts.exclude(id__in=invoiced_in_period_contract_ids).distinct()
@@ -362,6 +352,8 @@ class BillingViewSet(viewsets.ModelViewSet):
           no_price_rate += 1
         if 'excluded_billing' in missing_reasons:
           excluded_billing += 1
+        if 'block_billing' in missing_reasons:
+          block_billing += 1
         if 'unprocessed_invoice' in missing_reasons:
           unprocessed_invoice += 1
         if 'no_meter' in missing_reasons:
