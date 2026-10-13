@@ -10,8 +10,6 @@ ACA_PRODUCT_CONFIG_TOKEN = 'token_product_aca'
 ACA_DIR_VARIABLE_CONFIG_TOKEN = 'contract_use_aca_dir_variable_token'
 ACA_KEEPER_USE_TYPE_CONFIG_TOKEN = 'contract_keeper_use_type_token'
 ACA_RAMADER_ARTICLE_TOKEN = 'ramader_0'
-ACA_TRAM_MIN_PERSONS_CONFIG_TOKEN = 'aca_tram_min_persons'
-DEFAULT_ACA_TRAM_MIN_PERSONS = 4
 
 REQUIRED_ACA_ARTICLE_CODE_SPECS = (
     ('part_fixa', 'Part fixa'),
@@ -49,7 +47,7 @@ def aca_notification_enabled():
     """Activa l'enviament de notificacions a l'ACA (sol·licituds pendents d'enviar,
     exportació del fitxer d'ampliació de trams). La creació de la Bonification/Variable
     ACA-TRAM en augmentar `total_persons` NO depèn d'aquest flag, només de `uses_aca_enabled`
-    (veure `contract.utils.aca_tram_service.sync_aca_tram_with_total_persons`)."""
+    (veure `contract.signals.create_aca_bonification_on_total_persons_increase`)."""
     if not uses_aca_enabled():
         return False
     try:
@@ -59,16 +57,6 @@ def aca_notification_enabled():
     if value is None:
         return False
     return str(value).strip().lower() in ('true', '1', 'yes', 't')
-
-
-def aca_tram_min_persons():
-    """Mínim de persones a l'habitatge per tenir dret a l'ampliació de trams de l'ACA
-    (bonificació ACA-TRAM). Si el ConfigProject no existeix o no és un enter vàlid, es
-    fa servir el mínim legal actual (unitats de convivència de 4 o més membres)."""
-    try:
-        return int(get_config_value(ACA_TRAM_MIN_PERSONS_CONFIG_TOKEN))
-    except (TypeError, ValueError):
-        return DEFAULT_ACA_TRAM_MIN_PERSONS
 
 
 def get_config_value(token):

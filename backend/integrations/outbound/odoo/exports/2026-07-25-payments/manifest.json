@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-07-25T11:43:13",
+  "movement_date": null,
+  "invoice_issue_date": "2026-07-25",
+  "remittance_id": null,
+  "dry_run": true,
+  "count": 6,
+  "movements": [
+    {
+      "movement_id": 1,
+      "aqua_id": "260725007",
+      "file": "1_260725007.json",
+      "amount": 580.73,
+      "date": "2026-07-25",
+      "invoice_aqua_id": "01000000195"
+    },
+    {
+      "movement_id": 2,
+      "aqua_id": "260725001",
+      "file": "2_260725001.json",
+      "amount": 780.82,
+      "date": "2026-07-25",
+      "invoice_aqua_id": "01000000194"
+    },
+    {
+      "movement_id": 3,
+      "aqua_id": "260725002",
+      "file": "3_260725002.json",
+      "amount": 494.71,
+      "date": "2026-07-25",
+      "invoice_aqua_id": "01000000193"
+    },
+    {
+      "movement_id": 4,
+      "aqua_id": "260725003",
+      "file": "4_260725003.json",
+      "amount": 924.81,
+      "date": "2026-07-25",
+      "invoice_aqua_id": "01000000192"
+    },
+    {
+      "movement_id": 5,
+      "aqua_id": "260725004",
+      "file": "5_260725004.json",
+      "amount": 591.95,
+      "date": "2026-07-25",
+      "invoice_aqua_id": "01000000191"
+    },
+    {
+      "movement_id": 6,
+      "aqua_id": "260725005",
+      "file": "6_260725005.json",
+      "amount": 807.0,
+      "date": "2026-07-25",
+      "invoice_aqua_id": "01000000190"
+    }
+  ]
+}

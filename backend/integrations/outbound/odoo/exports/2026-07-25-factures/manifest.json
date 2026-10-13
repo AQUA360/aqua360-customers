@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-07-25T11:33:10",
+  "issue_date": "2026-07-25",
+  "dry_run": true,
+  "count": 6,
+  "invoices": [
+    {
+      "invoice_id": 190,
+      "aqua_id": "01000000190",
+      "name": "FC/202607/000006",
+      "file": "190_01000000190.json",
+      "move_type": "out_invoice",
+      "amount_total": 807.0
+    },
+    {
+      "invoice_id": 191,
+      "aqua_id": "01000000191",
+      "name": "FC/202607/000005",
+      "file": "191_01000000191.json",
+      "move_type": "out_invoice",
+      "amount_total": 591.95
+    },
+    {
+      "invoice_id": 192,
+      "aqua_id": "01000000192",
+      "name": "FC/202607/000004",
+      "file": "192_01000000192.json",
+      "move_type": "out_invoice",
+      "amount_total": 924.81
+    },
+    {
+      "invoice_id": 193,
+      "aqua_id": "01000000193",
+      "name": "FC/202607/000003",
+      "file": "193_01000000193.json",
+      "move_type": "out_invoice",
+      "amount_total": 494.71
+    },
+    {
+      "invoice_id": 194,
+      "aqua_id": "01000000194",
+      "name": "FC/202607/000002",
+      "file": "194_01000000194.json",
+      "move_type": "out_invoice",
+      "amount_total": 780.82
+    },
+    {
+      "invoice_id": 195,
+      "aqua_id": "01000000195",
+      "name": "FC/202607/000001",
+      "file": "195_01000000195.json",
+      "move_type": "out_invoice",
+      "amount_total": 580.73
+    }
+  ]
+}

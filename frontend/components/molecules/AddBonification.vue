@@ -55,41 +55,9 @@ const save = async () => {
     contract: bonification.value?.contract?.id || props.contract?.id || null,
   }
 
-  const isNewBonification = !bonification.value?.id;
   const response = await $BonificationApiService.save(data_save)
 
   bonification.value = response;
-
-  // Guardar variables. Abans que els documents: el backend en pot rebutjar alguna
-  // (p. ex. el mínim de membres de l'ampliació de trams de l'ACA) i llavors desfem la
-  // bonificació que s'acaba de crear perquè no quedi a mitges.
-  const savedVariables = [];
-  try {
-    for (const variable of variables.value) {
-      variable.bonification = bonification.value.id;
-      const save_data = {
-        contract_request: props.contract_request?.id || props.request?.id || null,
-        contract: bonification.value?.contract?.id || props.contract?.id || null,
-        bonification: bonification.value.id,
-        type: variable.type.id,
-        value: variable.value,
-        name: variable.type.name,
-        ...(variable.start_at && { start_at: variable.start_at }),
-        ...(variable.end_at && { end_at: variable.end_at }),
-      };
-
-      savedVariables.push(await $VariableApiService.save(save_data));
-    }
-  } catch (error) {
-    if (isNewBonification) {
-      for (const saved of savedVariables) {
-        await $VariableApiService.doDelete(saved);
-      }
-      await $BonificationApiService.doDelete(bonification.value);
-      bonification.value = null;
-    }
-    return;
-  }
 
   // Guardar documents
   for (const doc of documents.value) {
@@ -100,6 +68,23 @@ const save = async () => {
         file: null // TODO: save file
       });
     }
+  }
+
+  // Guardar variables
+  for (const variable of variables.value) {
+    variable.bonification = bonification.value.id;
+    const save_data = {
+      contract_request: props.contract_request?.id || props.request?.id || null,
+      contract: bonification.value?.contract?.id || props.contract?.id || null,
+      bonification: bonification.value.id,
+      type: variable.type.id,
+      value: variable.value,
+      name: variable.type.name,
+      ...(variable.start_at && { start_at: variable.start_at }),
+      ...(variable.end_at && { end_at: variable.end_at }),
+    };
+
+    await $VariableApiService.save(save_data);
   }
 
   emit('new-item', bonification.value);

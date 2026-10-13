@@ -1,74 +1,11 @@
 import datetime
-from billing.models import Invoice, InvoiceStatus, Payment, PaymentStatus
-from billing.utils.confirm_invoice_service import confirm_invoice
-from billing.utils.payment_service import generate_payment_movement, log_payment_status
+from billing.models import Invoice, Payment, PaymentStatus
 from contract.models import Bail, BailStatus, PiggyBankMovement
 from coredata.models import ConfigProject
 from django.utils import timezone
 from coredata.utils.name_utils import generate_token
 from logger.models import LogBailStatus
 from billing.utils.invoice_service import generate_payment_id, invoice_generate_return_bail
-
-
-def liquidate_bail(user, bails):
-    bail_status_returned_token = ConfigProject.objects.get(token='bail_status_returned_token').value
-    returned_status = BailStatus.objects.get(token=bail_status_returned_token)
-    status_invoice_confirmed = InvoiceStatus.objects.get(
-        token=ConfigProject.objects.get(token='invoice_status_confirmed_token').value
-    )
-    payment_status_piggy = PaymentStatus.objects.get(
-        token=ConfigProject.objects.get(token='payment_status_piggy_token').value
-    )
-    processed_invoice_ids = set()
-
-    for bail in bails:
-        prev_status = bail.status
-        bail.status = returned_status
-        bail.return_date = timezone.now()
-        bail.payment_date = timezone.now()
-        bail.save()
-
-        LogBailStatus.objects.create(
-            object=bail,
-            previous_status=prev_status,
-            current_status=bail.status,
-            user=user,
-            timestamp=timezone.now(),
-            observation=None,
-        )
-
-        invoice = bail.invoice
-        if invoice and invoice.id not in processed_invoice_ids:
-            processed_invoice_ids.add(invoice.id)
-            invoice.status = status_invoice_confirmed
-            invoice.save()
-            confirm_invoice(invoice)
-
-            invoice_payments = Payment.objects.filter(invoice=invoice)
-            for payment in invoice_payments:
-                log_payment_status(payment, payment_status_piggy, user)
-                generate_payment_movement(
-                    payment, payment_status_piggy,
-                    payment.payment_date, "BALANCE",
-                    None, user,
-                    None,
-                    None,
-                )
-                payment.status = payment_status_piggy
-                payment.save()
-                payment.refresh_from_db()
-
-        PiggyBankMovement.objects.create(
-            token=generate_token(PiggyBankMovement),
-            piggy_bank=bail.contract.piggy_bank,
-            amount=bail.amount,
-            is_positive=True,
-            movement_date=timezone.now(),
-            bail=bail,
-        )
-        bail.contract.piggy_bank.amount += bail.amount
-        bail.contract.piggy_bank.save()
-
 
 def pending_bail_contract_termination(user, instance):
     if instance.payment:
@@ -80,13 +17,13 @@ def pending_bail_contract_termination(user, instance):
         if bails.count() > 0:
             invoice = invoice_generate_return_bail(user, instance.id, 'RETORN FIANÇA', instance.payment.type.id, payment_bank, True)
             pending_bail_token = ConfigProject.objects.get(token='bail_status_pending_token').value
-            pending_bails = []
             for bail in bails:
                 prev_status = bail.status
                 
                 bail.status = BailStatus.objects.get(token=pending_bail_token)
                 bail.invoice = invoice
                 
+                #TODO: GENERATE AND SET INVOICE
                 bail.save()
                 
                 LogBailStatus.objects.create(
@@ -97,9 +34,6 @@ def pending_bail_contract_termination(user, instance):
                     timestamp = datetime.datetime.now(),
                     observation = None
                 )
-                pending_bails.append(bail)
-
-            liquidate_bail(user, pending_bails)
     
     
 

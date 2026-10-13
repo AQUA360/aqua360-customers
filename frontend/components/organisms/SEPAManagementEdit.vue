@@ -1396,8 +1396,7 @@ watch(selectedContracts, () => {
               </option>
             </select>
           </div>
-          <CompanyBankRouting :key="routingCompanyId" :company_id="routingCompanyId"
-            :operations="[paymentsType === 'return' ? 'transfer' : 'collection']" />
+          <CompanyBankRouting :key="routingCompanyId" :company_id="routingCompanyId" />
         </template>
       </div>
     </div>

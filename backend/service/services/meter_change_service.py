@@ -6,22 +6,6 @@ from service.utils.supply_point_service import supply_point_change_meter  # ajus
 from billing.models import Reading, EstimatedBagMovement
 
 
-def set_meter_change_dates(new_meter, released_meter, change_date):
-    """
-    Desa la data del canvi com a data d'instal·lació del comptador nou i de
-    desinstal·lació del comptador retirat, només si encara no en tenen.
-    `released_meter` és el comptador vell quan ja no és a cap punt de subministrament.
-    """
-    if not isinstance(change_date, datetime.date):
-        return
-    if not new_meter.installation_at:
-        new_meter.installation_at = change_date
-        new_meter.save(update_fields=['installation_at'])
-    if released_meter and not released_meter.uninstallation_at:
-        released_meter.uninstallation_at = change_date
-        released_meter.save(update_fields=['uninstallation_at'])
-
-
 class MeterChangeService:
     """
     Encapsula el canvi de comptador d'un punt de subministrament: mou el meter
@@ -69,14 +53,10 @@ class MeterChangeService:
             new_meter.status = meter_status_active
             new_meter.save()
 
-        released_meter = None
         if current_meter:
             if not SupplyPoint.objects.filter(meter=current_meter).exists():
                 current_meter.status = meter_status_inactive
                 current_meter.save()
-                released_meter = current_meter
-
-        set_meter_change_dates(new_meter, released_meter, change_date)
 
         supply_point_change_meter(self.user, supply_point.id, current_meter, new_meter)
 

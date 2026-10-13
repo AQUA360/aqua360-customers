@@ -202,22 +202,6 @@ const cancelComm = async () => {
   }
 }
 
-// Esborrat lògic: la comunicació cancel·lada deixa de sortir als llistats.
-const deleteCancelledComm = async () => {
-  if (!confirm(t("confirmation_text_block.confirm_delete_cancelled_comm"))) return;
-  try {
-    const response = await $CommunicationApiService.deleteCancelled(props.id);
-    if (response) {
-      toast.success(t('common.deleted_successfully'));
-      emit('close-subregion');
-      emit('changed');
-    }
-  } catch (error) {
-    console.error('Error deleting communication:', error);
-    toast.error(t('common.error'));
-  }
-}
-
 const returnLetter = async () => {
   if (!confirm(t("confirmation_text_block.confirm_return_letter"))) return;
   try {
@@ -319,10 +303,6 @@ onMounted(async () => {
           </DropdownOption>
           <DropdownOption v-if="data?.status?.token === '0'" :name="`${t('common.cancel')} ${t('communication').toLowerCase()}`" @click="cancelComm()">
             <Icon name="fa6-solid:xmark" class="display-inline mr-2" /> {{ t('common.cancel') }} {{ t('communication').toLowerCase() }}
-          </DropdownOption>
-          <DropdownOption v-if="data?.status?.token === '-1' && objectPermissions?.can_delete" :name="`${t('common.delete')} ${t('communication').toLowerCase()}`"
-            @click="deleteCancelledComm()" class="text-red-600">
-            <Icon name="fa6-solid:trash" class="display-inline mr-2 text-red-600" /> {{ t('common.delete') }} {{ t('communication').toLowerCase() }}
           </DropdownOption>
         </OptionsDropdown>
       </div>

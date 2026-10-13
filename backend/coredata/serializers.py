@@ -1026,7 +1026,7 @@ class PersonSerializer(serializers.ModelSerializer):
         return PersonObservationSerializer(instance.observations.filter(is_important=True, is_active=True), many=True, context=self.context).data
     
     def get_total_communications(self, instance):
-        return instance.communications.filter(is_active=True).count()
+        return instance.communications.count()
     
     def get_addresses_count(self, instance):
         return instance.addresses.filter(is_active=True).values('address__id').distinct().count()
@@ -1390,7 +1390,7 @@ class PersonContractMinimalSerializer(serializers.ModelSerializer):
         return []
 
     def get_total_communications(self, instance):
-        return instance.communications.filter(is_active=True).count()
+        return instance.communications.count()
     
     """ def get_banks(self, obj):
         return PersonBankSerializer(obj.banks.all(), many=True).data

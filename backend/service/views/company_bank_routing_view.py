@@ -12,25 +12,6 @@ from service.models import CompanyBank, CompanyBankRouting
 from service.permissions import CompanyPermission
 from service.serializers.company_bank_routing_serializer import CompanyBankRoutingSerializer
 
-OPERATIONS = [operation for operation, _ in CompanyBankRouting.OPERATION_CHOICES]
-
-
-def get_operation(data):
-    """
-    Operació del mapa sobre la qual actua una petició. Sense indicar-la és
-    `collection`, que és el que entenien les peticions d'abans que n'hi hagués
-    més d'una. Torna None si el valor no és cap operació coneguda.
-    """
-    operation = data.get('operation') or CompanyBankRouting.OPERATION_COLLECTION
-    return operation if operation in OPERATIONS else None
-
-
-def invalid_operation_response():
-    return Response(
-        {"error": f"`operation` must be one of {', '.join(OPERATIONS)}"},
-        status=status.HTTP_400_BAD_REQUEST,
-    )
-
 
 class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
     """
@@ -54,12 +35,6 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
         """
         El catàleg d'entitats bancàries amb el compte on encamina cadascuna a
         l'empresa demanada: és el que pinta la taula de la pàgina d'empresa.
-
-        Les claus de primer nivell de cada fila (`company_bank`, `routing`,
-        `is_active`), `special` i `effective_default*` són de les remeses de
-        cobrament. Les de transferències de retorn van al costat, amb la mateixa
-        forma, a `transfer` (dins de cada fila i a l'arrel), perquè la pantalla
-        pugui ensenyar les dues columnes amb una sola petició.
 
         Paràmetres:
           - `company` (obligatori)
@@ -89,40 +64,37 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
             )
         banks = banks.order_by('-clients', 'token')
 
-        def routing_cell(routing):
-            return {
-                'company_bank': routing.company_bank_id if routing else None,
-                'routing': routing.id if routing else None,
-                'is_active': routing.is_active if routing else True,
-            }
-
-        routings = {operation: {} for operation in OPERATIONS}
-        special_routings = {operation: {} for operation in OPERATIONS}
-        for routing in CompanyBankRouting.objects.filter(company_id=company_id):
-            if routing.match_type == CompanyBankRouting.MATCH_PAYER_BANK:
-                routings[routing.operation][routing.bank_id] = routing
-            else:
-                special_routings[routing.operation][routing.match_type] = routing
+        routings = {
+            routing.bank_id: routing
+            for routing in CompanyBankRouting.objects.filter(
+                company_id=company_id, match_type=CompanyBankRouting.MATCH_PAYER_BANK
+            )
+        }
 
         rows = []
         for bank in banks:
+            routing = routings.get(bank.id)
             rows.append({
                 'bank': bank.id,
                 'token': bank.token,
                 'name': bank.name,
                 'bic': bank.bic,
                 'clients': bank.clients,
-                **routing_cell(routings[CompanyBankRouting.OPERATION_COLLECTION].get(bank.id)),
-                'transfer': routing_cell(routings[CompanyBankRouting.OPERATION_TRANSFER].get(bank.id)),
+                'company_bank': routing.company_bank_id if routing else None,
+                'routing': routing.id if routing else None,
+                'is_active': routing.is_active if routing else True,
             })
 
-        special = {
-            operation: {
-                match_type: routing_cell(special_routings[operation].get(match_type))
-                for match_type in (CompanyBankRouting.MATCH_FOREIGN, CompanyBankRouting.MATCH_DEFAULT)
+        special = {}
+        for match_type in (CompanyBankRouting.MATCH_FOREIGN, CompanyBankRouting.MATCH_DEFAULT):
+            routing = CompanyBankRouting.objects.filter(
+                company_id=company_id, match_type=match_type
+            ).first()
+            special[match_type] = {
+                'routing': routing.id if routing else None,
+                'company_bank': routing.company_bank_id if routing else None,
+                'is_active': routing.is_active if routing else True,
             }
-            for operation in OPERATIONS
-        }
 
         company_banks = CompanyBank.objects.filter(
             company_id=company_id, is_active=True
@@ -136,24 +108,19 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
         fallback_bank_id, fallback_is_explicit = get_company_fallback_banks(
             [int(company_id)]
         ).get(int(company_id), (None, False))
-
-        def default_summary(operation):
-            default_bank_id = special[operation][CompanyBankRouting.MATCH_DEFAULT]['company_bank']
-            return {
-                'special': special[operation],
-                'effective_default': default_bank_id or fallback_bank_id,
-                # Cert quan el compte per defecte l'ha triat algú (fila `default`
-                # del mapa o `CompanyBank.is_default`) i no és el primer de la
-                # llista.
-                'effective_default_is_explicit': bool(default_bank_id) or fallback_is_explicit,
-            }
+        effective_default = special[CompanyBankRouting.MATCH_DEFAULT]['company_bank'] or fallback_bank_id
 
         return Response({
             'company': int(company_id),
             'count': len(rows),
             'banks': rows,
-            **default_summary(CompanyBankRouting.OPERATION_COLLECTION),
-            'transfer': default_summary(CompanyBankRouting.OPERATION_TRANSFER),
+            'special': special,
+            'effective_default': effective_default,
+            # Cert quan el compte per defecte l'ha triat algú (fila `default` del
+            # mapa o `CompanyBank.is_default`) i no és el primer de la llista.
+            'effective_default_is_explicit': bool(
+                special[CompanyBankRouting.MATCH_DEFAULT]['company_bank']
+            ) or fallback_is_explicit,
             'company_banks': [
                 {
                     'id': company_bank.id,
@@ -171,18 +138,13 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
         """
         Assigna en bloc unes quantes entitats a un compte, o les desassigna.
 
-        Cos: `{company, company_bank, banks: [ids], operation}`. Amb
-        `company_bank` a null s'esborren les files d'aquelles entitats (tornen al
-        compte per defecte). Sense això, configurar 70 entitats vol dir 70
-        peticions. `operation` és `collection` (per defecte) o `transfer`.
+        Cos: `{company, company_bank, banks: [ids]}`. Amb `company_bank` a null
+        s'esborren les files d'aquelles entitats (tornen al compte per defecte).
+        Sense això, configurar 70 entitats vol dir 70 peticions.
         """
         company_id = request.data.get('company')
         company_bank_id = request.data.get('company_bank')
         bank_ids = request.data.get('banks') or []
-        operation = get_operation(request.data)
-
-        if not operation:
-            return invalid_operation_response()
 
         if not company_id:
             return Response(
@@ -200,7 +162,6 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
                 company_id=company_id,
                 bank_id__in=bank_ids,
                 match_type=CompanyBankRouting.MATCH_PAYER_BANK,
-                operation=operation,
             ).delete()
             return Response({"deleted": deleted}, status=status.HTTP_200_OK)
 
@@ -217,7 +178,6 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
                 company_id=company_id,
                 bank_id=bank_id,
                 match_type=CompanyBankRouting.MATCH_PAYER_BANK,
-                operation=operation,
                 defaults={'company_bank_id': company_bank_id, 'is_active': True},
             )
             created += 1 if was_created else 0
@@ -265,17 +225,12 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
         Desa les dues files especials del mapa: `foreign` (IBAN no espanyol) i
         `default` (la resta, i els rebuts sense IBAN).
 
-        Cos: `{company, match_type, company_bank, operation}`. Amb
-        `company_bank` a null s'esborra la fila. `operation` és `collection`
-        (per defecte) o `transfer`.
+        Cos: `{company, match_type, company_bank}`. Amb `company_bank` a null
+        s'esborra la fila.
         """
         company_id = request.data.get('company')
         match_type = request.data.get('match_type')
         company_bank_id = request.data.get('company_bank')
-        operation = get_operation(request.data)
-
-        if not operation:
-            return invalid_operation_response()
 
         if not company_id:
             return Response(
@@ -290,14 +245,13 @@ class CompanyBankRoutingViewSet(viewsets.ModelViewSet):
 
         if not company_bank_id:
             deleted, _ = CompanyBankRouting.objects.filter(
-                company_id=company_id, match_type=match_type, operation=operation
+                company_id=company_id, match_type=match_type
             ).delete()
             return Response({"deleted": deleted}, status=status.HTTP_200_OK)
 
         routing, created = CompanyBankRouting.objects.update_or_create(
             company_id=company_id,
             match_type=match_type,
-            operation=operation,
             defaults={'company_bank_id': company_bank_id, 'bank_id': None, 'is_active': True},
         )
         return Response(

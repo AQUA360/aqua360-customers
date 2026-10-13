@@ -28,8 +28,6 @@ from billing.utils.request_initial_reading_service import (
 )
 from billing.utils.reading_service import (
     check_billing_period,
-    get_copy_calculated_value,
-    get_reading_copy_group,
     get_estimated_reading_minimal_object,
     get_estimated_reading,
     READING_ESTIMATE_PERIOD_CHOICES,
@@ -88,52 +86,6 @@ class ReadingViewSet(viewsets.ModelViewSet):
     context['request'] = self.request
     return context
 
-  # Fields that belong to the physical reading and must stay equal on all the
-  # readings of a copy group (copied_from)
-  COPY_GROUP_SYNC_FIELDS = ('reading_date', 'reading_value', 'leak_value')
-
-  def perform_update(self, serializer):
-    tracked_fields = self.COPY_GROUP_SYNC_FIELDS + ('calculated_value',)
-    previous_values = {f: getattr(serializer.instance, f) for f in tracked_fields}
-    with transaction.atomic():
-      reading = serializer.save()
-      changed_fields = [
-        f for f in tracked_fields
-        if f in serializer.validated_data and not self._same_value(f, previous_values[f], serializer.validated_data[f])
-      ]
-      if changed_fields:
-        self._sync_copy_group(reading, serializer, changed_fields)
-
-  @staticmethod
-  def _same_value(field, current, new):
-    # No leak and a leak of 0 are the same for the reading
-    if field == 'leak_value':
-      return (current or 0) == (new or 0)
-    return current == new
-
-  def _sync_copy_group(self, reading, serializer, changed_fields):
-    validated_data = serializer.validated_data
-    sync_fields = [f for f in changed_fields if f in self.COPY_GROUP_SYNC_FIELDS]
-
-    for copy in get_reading_copy_group(reading):
-      targets = {f: validated_data[f] for f in sync_fields}
-      if 'reading_value' in changed_fields or 'calculated_value' in changed_fields:
-        targets['calculated_value'] = get_copy_calculated_value(
-          copy.previous_reading, reading.reading_value, reading.calculated_value, reading.previous_reading
-        )
-      # Only send what actually differs: saving a copy has side effects
-      # (estimated bag, alerts), so an unchanged copy must not be touched
-      data = {
-        f: serializer.fields[f].to_representation(value) if value is not None else None
-        for f, value in targets.items()
-        if not self._same_value(f, getattr(copy, f), value)
-      }
-      if not data:
-        continue
-      copy_serializer = ReadingSerializer(copy, data=data, partial=True, context=self.get_serializer_context())
-      copy_serializer.is_valid(raise_exception=True)
-      copy_serializer.save()
-
   def filter_queryset(self, queryset):
     queryset = super().filter_queryset(queryset)
     if queryset.ordered:
@@ -144,7 +96,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
             ordering.append('id')
         return queryset.order_by(*ordering)
     return queryset.order_by('-reading_date', 'contract__token', 'id')
-
+  
   @action(detail=False, methods=['get'], url_path='by-batch')
   def list_by_batch(self, request):
     #GET /api/readings/by-batch/?batch=1

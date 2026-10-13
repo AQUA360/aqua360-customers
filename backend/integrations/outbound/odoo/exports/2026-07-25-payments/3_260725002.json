@@ -1,0 +1,23 @@
+{
+  "aqua_id": "260725002",
+  "payment_type": "inbound",
+  "partner_id": {
+    "aqua_id": "Z22365670",
+    "name": "Ajuntament ",
+    "vat": "P08008000"
+  },
+  "amount": 494.71,
+  "date": "2026-07-25",
+  "memo": "Cobrament rebut FC/202607/000003 - remesa P0800800020260725131",
+  "payment_mode_id": {
+    "id": "DIRECT_DEBIT",
+    "name": "Domiciliación Bancaria - SEPA"
+  },
+  "reconcile": {
+    "invoice_aqua_id": "01000000193"
+  },
+  "journal_id": {
+    "aqua_id": "P08008000",
+    "name": "CAIXA D'ESTALVIS DE TERRASSA"
+  }
+}

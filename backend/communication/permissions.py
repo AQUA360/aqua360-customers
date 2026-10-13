@@ -20,10 +20,3 @@ class CommunicationPermission(permissions.BasePermission):
             raise exceptions.MethodNotAllowed(request.method)
         
         return request.user.has_perm(f'communication.{required_permission}')
-
-
-class CommunicationDeletePermission(permissions.BasePermission):
-    """Accions que eliminen (encara que vagin per POST): exigeix `delete_communication`."""
-
-    def has_permission(self, request, view):
-        return request.user.has_perm('communication.delete_communication')

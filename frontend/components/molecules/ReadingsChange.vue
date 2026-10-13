@@ -202,7 +202,6 @@ const buildModifiedReadingFromOriginal = (r) => ({
     is_control: r.is_control,
     estimated_used: r.estimated_used,
     block_estimate_correction: false,
-    copies_count: r.copies_count || 0,
     invoice: r.invoice,
 });
 
@@ -366,14 +365,6 @@ const selectReading = async (reading) => {
     readingsToDelete.value = [];
     await recalculateNewReadingsConsumption(false);
 }
-
-// Linked readings (original/copies) that will be modified along with an existing reading
-const linkedReadingsCount = (pair) => {
-    const modified = pair.modified;
-    if (!modified || modified.is_new || !pair.original || pair.original.is_control) return 0;
-    if (unmodified_readings.value.includes(modified.id) || readingsToDelete.value.includes(modified.id)) return 0;
-    return modified.copies_count || 0;
-};
 
 const toggleDeleteReading = (readingId) => {
     if (readingsToDelete.value.includes(readingId)) {
@@ -1712,11 +1703,6 @@ watch(() => props.estimated_bag, (newVal) => {
                                                 {{ $t('informative_block.info_within_period_unallow') }}
                                             </p>
 
-                                        </div>
-                                        <div v-if="linkedReadingsCount(pair) > 0"
-                                            class="mb-1 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
-                                            <Icon name="fa6-solid:triangle-exclamation" class="shrink-0" />
-                                            {{ $t('warning_block.warning_linked_readings_modified', { count: linkedReadingsCount(pair) }) }}
                                         </div>
                                         <div class="flex items-start gap-2 grid grid-cols-4 mr-5">
 
