@@ -43,7 +43,10 @@
     - En fer pull, Git esborra aquests fitxers de la còpia de treball: qui els faci servir n'ha de fer una còpia abans. Celery torna a crear `celerybeat-schedule` sol.
 
 ## [09-10-2026]
-### CHORE (BAILS)
+### CHORE 
+#### REPORT ACA
+    - S'ha igualat el vol. consumit amb el facturat
+#### BAILS
     - Ara és automàtic quan es dona de baixa un contracte que la fiança vagi directe al saldo del contracte en comptes de quedar-se pendent. S'ha afegit un pending script per arreglar les fiances pendents.
 
 
