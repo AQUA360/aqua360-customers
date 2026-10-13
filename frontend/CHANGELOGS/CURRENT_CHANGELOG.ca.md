@@ -32,6 +32,10 @@
 #### GENERAL (`locales/`, `i18n.config.ts` — traduccions antigues)
     - S'eliminen `frontend/locales/` i `frontend/i18n.config.ts`, una còpia antiga que no carregava ningú: les traduccions reals són a `frontend/i18n/locales/` (ca, es, gl, en). Les dues úniques claus que només hi havia a la còpia antiga (`dashboard.show_only_me`, `customer_service_block.digital_comm`) no s'utilitzen.
 
+### CHORE
+#### GENERAL (`frontend/.gitignore` — entrades del repositori antic)
+    - S'ignoren `/nuxt` i `/nuxt-app@*` (restes d'instal·lacions de npm interrompudes), `.watchmanconfig`, `public/deploy-info.json` i `DEPLOYS.md` (generats per `scripts/record_deploy.sh` al servidor), com al repositori antic.
+
 ## [09-10-2026]
 
 ### REFACTOR

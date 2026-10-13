@@ -26,6 +26,13 @@
     - Tot plegat només s'aplica amb `uses_aca` actiu; als projectes sense ACA no canvia res.
     - Tests: `contract/tests/test_aca_tram_service.py`.
 
+### CHORE
+#### GENERAL (`.gitignore`, `backend/.gitignore` — fitxers que no han d'anar al repositori)
+    - Les personalitzacions per client (`*_personalized.*`, `*_personalized_*`) deixen d'anar al repositori i s'ignoren: 8 plantilles HTML, `billing/utils/generate_serie_final_personalized.py` i `coredata/utils/name_utils_personalized.py`. El codi ja les carrega només si existeixen (`template_utils`, `try/except ImportError`); sense elles s'usa la versió per defecte.
+    - Es recuperen les entrades del `.gitignore` del repositori antic que faltaven: exports reals d'Odoo (`integrations/outbound/odoo/exports/` i `exports-jsons.zip`), `dades_prod.json`, `deploy_info.json`, `DEPLOYS.md`, `celerybeat-schedule*`, `celerybeat.pid` i, a l'arrel, `.claude/settings.local.json`.
+    - Es treuen del repositori `celerybeat-schedule` (si viatja amb la imatge, cada contenidor nou considera vençudes totes les tasques periòdiques) i els exports d'Odoo, que contenen dades de clients.
+    - En fer pull, Git esborra aquests fitxers de la còpia de treball: qui els faci servir n'ha de fer una còpia abans. Celery torna a crear `celerybeat-schedule` sol.
+
 ## [09-10-2026]
 
 ### FEAT
