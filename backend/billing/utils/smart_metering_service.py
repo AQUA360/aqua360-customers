@@ -6,19 +6,21 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from io import BytesIO
+
 import requests
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 
-from billing.models import Reading, ReadingBatch, ReadingBatchStatus
+from billing.models import Reading, ReadingDocument
 from billing.utils.reading_service import check_billing_period, check_overflow_value
 from contract.models import Contract
 from coredata.models import ConfigProject
 from coredata.utils.address_utils import get_address_complete_without_city
 from integrations.models import IntegrationRequestLog
 from service.models import SupplyPoint
-from billing.utils.reading_filters import PENDING_READING_FILTER
 
 logger = logging.getLogger(__name__)
 
@@ -527,21 +529,6 @@ def _telecontrol_supply_point_base_qs():
     )
 
 
-def _meter_in_reading_batch_scope(reading_batch, meter):
-    """
-    Same include_telecontrol / include_manual rules as ReadingBatchSetupViewSet
-    and assign_readings: a meter on a shared route is NOT in this batch if the
-    batch was created with the opposite filter (e.g. manuals-only).
-    """
-    if not meter:
-        return False
-    if not reading_batch.include_telecontrol:
-        return not meter.has_remote_reading
-    if not reading_batch.include_manual:
-        return meter.has_remote_reading
-    return True
-
-
 def _is_smart_metering_meter(meter):
     return bool(
         meter
@@ -550,20 +537,13 @@ def _is_smart_metering_meter(meter):
     )
 
 
-def _collect_batch_telecontrol_targets(reading_batch, reading_date):
+def _collect_telecontrol_targets(reading_date):
     """
-    Smart Metering meters that actually belong to this batch.
+    Supply points with a Smart Metering meter (``remote_reading_type=SMART_METERING``).
 
-    Scope = meters on the batch routes (or fix_meters) that pass the batch's
-    ``include_telecontrol`` / ``include_manual`` filters, AND have
-    ``remote_reading_type=SMART_METERING``.
-
-    Sharing a route with another batch is not enough: a manuals-only batch must
-    not surface telecontrol meters that belong to a different lot on the same routes.
+    The load is no longer tied to a reading batch: it covers every Smart Metering
+    meter and the batch picks the resulting reading document afterwards.
     """
-    if not reading_batch.include_telecontrol:
-        return []
-
     active_contract_token = ConfigProject.objects.get(token="contract_active_token").value
     terminated_contract_token = ConfigProject.objects.get(token="contract_terminated_status").value
     contract_termination_completed_token = ConfigProject.objects.get(
@@ -584,47 +564,18 @@ def _collect_batch_telecontrol_targets(reading_batch, reading_date):
     targets = []
     seen = set()
 
-    # Same route → SP query as ReadingBatchSetupViewSet, then Smart Metering only.
-    route_sps = (
+    supply_points = (
         _telecontrol_supply_point_base_qs()
-        .filter(property__route_position__route__reading_batches=reading_batch)
         .filter(smart_metering_q)
+        .prefetch_related(_active_contracts_prefetch(*prefetch_args))
+        .distinct()
+        .order_by("id")
     )
-    # Manuals-only is already handled above; telecontrol-only still needs the filter.
-    if not reading_batch.include_manual:
-        route_sps = route_sps.filter(meter__has_remote_reading=True)
-    route_sps = route_sps.prefetch_related(_active_contracts_prefetch(*prefetch_args)).distinct()
-
-    for sp in route_sps:
+    for sp in supply_points:
         meter = sp.meter
         if not _is_smart_metering_meter(meter):
             continue
         if meter.status and meter.status.token == token_meter_status_no_meter:
-            continue
-        if not _meter_in_reading_batch_scope(reading_batch, meter):
-            continue
-        key = (sp.id, meter.id)
-        if key in seen:
-            continue
-        seen.add(key)
-        targets.append(sp)
-
-    # Explicit fix_meters on the batch (same as setup: always part of the lot when linked).
-    fix_sps = (
-        _telecontrol_supply_point_base_qs()
-        .filter(
-            meter__reading_batches=reading_batch,
-            meter__has_remote_reading=True,
-            meter__remote_reading_type="SMART_METERING",
-        )
-        .prefetch_related(_active_contracts_prefetch(*prefetch_args))
-        .distinct()
-    )
-    for sp in fix_sps:
-        meter = sp.meter
-        if not _is_smart_metering_meter(meter):
-            continue
-        if not _meter_in_reading_batch_scope(reading_batch, meter):
             continue
         key = (sp.id, meter.id)
         if key in seen:
@@ -743,7 +694,7 @@ def _calculated_fields(reading_value, previous, row_reading_date, meter=None):
     return _calculate_consumption(reading_value, row_reading_date, previous, meter)
 
 
-def _find_reading_to_replace(reading_batch, supply_point, meter, contract, row_reading_date):
+def _find_reading_to_replace(reading_document, supply_point, meter, contract, row_reading_date):
     existing = Reading.objects.filter(
         supply_point=supply_point,
         meter=meter,
@@ -755,13 +706,27 @@ def _find_reading_to_replace(reading_batch, supply_point, meter, contract, row_r
     if existing:
         return existing
 
-    return reading_batch.readings.filter(
+    # Re-load of the same document (replace): the API may return another date.
+    return reading_document.readings.filter(
         supply_point=supply_point,
         meter=meter,
         contract=contract,
         is_control=False,
         is_initial=False,
     ).first()
+
+
+def _can_replace_reading(reading, reading_document):
+    """
+    A reading already used by a batch, invoiced, or loaded by another document
+    must not be modified by a Smart Metering load (it would leave the other lot
+    or document with stale data).
+    """
+    if reading.batch_id:
+        return False
+    if reading.document_id and reading.document_id != reading_document.id:
+        return False
+    return not reading.invoices.exists()
 
 
 def _mark_reading_as_control(reading):
@@ -777,7 +742,7 @@ def _link_modified_reading(original_reading, new_reading):
 
 
 def _create_smart_metering_reading(
-    reading_batch,
+    reading_document,
     supply_point,
     meter,
     contract,
@@ -789,7 +754,7 @@ def _create_smart_metering_reading(
 ):
     return Reading.objects.create(
         token=f"{contract.token}/{meter.code}/SM{row_reading_date.strftime('%y%m%d')}",
-        batch=reading_batch,
+        document=reading_document,
         supply_point=supply_point,
         reading_date=row_reading_date,
         reading_value=reading_value,
@@ -840,7 +805,7 @@ def _rechain_future_readings(replaced_reading, new_reading, supply_point, meter,
 
 
 def _save_smart_metering_reading(
-    reading_batch,
+    reading_document,
     supply_point,
     meter,
     contract,
@@ -850,10 +815,13 @@ def _save_smart_metering_reading(
     """
     Guarda la lectura de smart metering amb el mateix patró que modify_existing_readings:
     la lectura substituïda passa a control i la nova apunta a l'última lectura activa.
+    Retorna None si no es pot desar (lectura existent protegida o anterior a l'última).
     """
     reading_to_replace = _find_reading_to_replace(
-        reading_batch, supply_point, meter, contract, row_reading_date
+        reading_document, supply_point, meter, contract, row_reading_date
     )
+    if reading_to_replace and not _can_replace_reading(reading_to_replace, reading_document):
+        return None
     previous = _previous_reading(
         supply_point,
         meter,
@@ -872,7 +840,7 @@ def _save_smart_metering_reading(
         )
         if unchanged:
             reading_to_replace.previous_reading = previous
-            reading_to_replace.batch = reading_batch
+            reading_to_replace.document = reading_document
             reading_to_replace.origin = ORIGIN_SMART_METERING
             reading_to_replace.calculated_value = calculated_value
             reading_to_replace.consumption_days = consumption_days
@@ -880,7 +848,7 @@ def _save_smart_metering_reading(
             reading_to_replace.save(
                 update_fields=[
                     "previous_reading",
-                    "batch",
+                    "document",
                     "origin",
                     "calculated_value",
                     "consumption_days",
@@ -892,7 +860,7 @@ def _save_smart_metering_reading(
 
         _mark_reading_as_control(reading_to_replace)
         new_reading = _create_smart_metering_reading(
-            reading_batch,
+            reading_document,
             supply_point,
             meter,
             contract,
@@ -908,12 +876,16 @@ def _save_smart_metering_reading(
         )
         return new_reading
 
-    allow_by_period = check_billing_period(
-        row_reading_date, supply_point, meter, contract, previous
-    )
+    try:
+        allow_by_period = check_billing_period(
+            row_reading_date, supply_point, meter, contract, previous
+        )
+    except AttributeError:
+        # Supply point without route: the load is no longer limited to batch routes.
+        allow_by_period = True
     if allow_by_period or not previous:
         return _create_smart_metering_reading(
-            reading_batch,
+            reading_document,
             supply_point,
             meter,
             contract,
@@ -928,7 +900,7 @@ def _save_smart_metering_reading(
         return None
 
     return _create_smart_metering_reading(
-        reading_batch,
+        reading_document,
         supply_point,
         meter,
         contract,
@@ -1006,7 +978,7 @@ def _coerce_client_preview(preview, reading_date_str):
     return preview
 
 
-def build_smart_metering_preview(reading_batch, reading_date_str, api_timeout=None, progress_callback=None):
+def build_smart_metering_preview(reading_date_str, api_timeout=None, progress_callback=None):
     def _progress(current, total, description=""):
         if progress_callback:
             progress_callback(current, total, description)
@@ -1014,29 +986,7 @@ def build_smart_metering_preview(reading_batch, reading_date_str, api_timeout=No
     reading_date = _parse_request_date(reading_date_str)
     _progress(0, 100, "targets_loading")
 
-    # Smart metering only applies to telecontrol meters included in the batch.
-    if not reading_batch.include_telecontrol:
-        _progress(100, 100, "done")
-        return {
-            "readings": [],
-            "counters": {
-                "assigned_readings": 0,
-                "missing_readings": 0,
-                "discarded_readings": 0,
-                "readings_with_reader_alerts": 0,
-                "readings_with_remote_alerts": 0,
-                "readings_without_reading_value": 0,
-                "readings_remote_reading": 0,
-                "readings_inactive_supplypoints": 0,
-                "total_telecontrol_in_batch": 0,
-                "matched_meters": 0,
-            },
-            "extra_in_api": [],
-            "reading_date": reading_date.isoformat(),
-            "origin": ORIGIN_SMART_METERING,
-        }
-
-    supply_points = _collect_batch_telecontrol_targets(reading_batch, reading_date)
+    supply_points = _collect_telecontrol_targets(reading_date)
     batch_codes = {
         _normalize_meter_code_for_match(sp.meter.code)
         for sp in supply_points
@@ -1193,78 +1143,99 @@ def _append_reading(readings_to_assign, reading_ids, reading):
         readings_to_assign.append(reading)
 
 
-def _merge_smart_metering_into_batch(reading_batch, readings_to_assign, reading_ids, replaced_keys):
-    """
-    Link smart metering readings to the batch without removing any other batch readings.
-    """
-    if not readings_to_assign:
-        return
-
-    attach_ids = [reading.pk for reading in readings_to_assign if reading.batch_id != reading_batch.id]
-    if attach_ids:
-        Reading.objects.filter(pk__in=attach_ids).update(batch=reading_batch)
+SKIP_REASON_NO_API_READING = "no_api_reading"
+SKIP_REASON_NOT_SAVED = "existing_reading_protected_or_older"
 
 
-def _build_batch_pending_counters(reading_batch):
-    """Counters aligned with ReadingBatchSummaryView after readings are persisted."""
-    from django.db.models import Count
-
-    active_contract = ConfigProject.objects.get(token="contract_active_token").value
-    supply_active_token = ConfigProject.objects.get(token="supply_point_status_activate_token").value
-    supply_cut_token = ConfigProject.objects.get(token="supply_point_status_cut_token").value
-
-    non_control_readings = reading_batch.readings.filter(is_control=False)
-    pending_filter = PENDING_READING_FILTER
-    pending_readings = non_control_readings.filter(pending_filter).distinct()
-
-    sp_query = SupplyPoint.objects.filter(
-        property__route_position__route__reading_batches=reading_batch,
+def find_smart_metering_document(reading_date):
+    """Smart Metering reading document already loaded for ``reading_date`` (one per date)."""
+    return (
+        ReadingDocument.objects.filter(
+            source=ReadingDocument.SOURCE_SMART_METERING,
+            reading_date=reading_date,
+        )
+        .order_by("-created_at")
+        .first()
     )
-    if reading_batch.include_telecontrol and not reading_batch.include_manual:
-        sp_query = sp_query.filter(meter__has_remote_reading=True)
-    elif reading_batch.include_manual and not reading_batch.include_telecontrol:
-        sp_query = sp_query.filter(meter__has_remote_reading=False)
-
-    batch_sp_ids = set(sp_query.values_list("id", flat=True))
-    fix_sp_ids = set(SupplyPoint.objects.filter(meter__reading_batches=reading_batch).values_list("id", flat=True))
-    batch_sp_ids.update(fix_sp_ids)
-    readings_sp_ids = set(non_control_readings.values_list("supply_point_id", flat=True))
-    missing_sp_ids = batch_sp_ids - readings_sp_ids
-    missing_readings_count = SupplyPoint.objects.filter(
-        id__in=missing_sp_ids,
-        contracts__status__token=active_contract,
-    ).distinct().count()
-
-    if reading_batch.documents.exists():
-        num_readings_in_files = reading_batch.documents.aggregate(
-            total=Count("readings__id", filter=Q(readings__is_control=False), distinct=True)
-        )["total"] or 0
-    else:
-        num_readings_in_files = 0
-
-    return {
-        "assigned_readings": pending_readings.count(),
-        "missing_readings": missing_readings_count,
-        "discarded_readings": max(0, num_readings_in_files - len(batch_sp_ids)),
-        "readings_with_reader_alerts": pending_readings.filter(reader_alert__isnull=False).values("supply_point_id").distinct().count(),
-        "readings_with_remote_alerts": pending_readings.filter(remote_alert__isnull=False).values("supply_point_id").distinct().count(),
-        "readings_without_reading_value": pending_readings.filter(reading_value__isnull=True).values("supply_point_id").distinct().count(),
-        "readings_remote_reading": pending_readings.filter(meter__has_remote_reading=True).values("supply_point_id").distinct().count(),
-        "readings_inactive_supplypoints": pending_readings.exclude(
-            supply_point__status__token__in=[supply_active_token, supply_cut_token]
-        ).values("supply_point_id").distinct().count(),
-    }
 
 
-def assign_smart_metering_readings(reading_batch, reading_date_str, preview=None):
+def smart_metering_document_is_replaceable(reading_document):
+    """
+    A Smart Metering document can be loaded again only while none of its readings
+    has been used: not linked to a batch and no reading in a batch or invoiced.
+    """
+    if reading_document.batch_id:
+        return False
+    readings = reading_document.readings.all()
+    if readings.filter(batch__isnull=False).exists():
+        return False
+    return not readings.filter(invoices__isnull=False).exists()
+
+
+def _build_smart_metering_workbook(readings, not_loaded_rows):
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "readings"
+    ws.append([
+        "meter", "reading_value", "reading_date", "origin",
+        "contract", "holder", "address", "previous_reading_value", "consumption",
+    ])
+    for reading in readings:
+        previous = reading.previous_reading
+        ws.append([
+            reading.meter.code if reading.meter else "",
+            float(reading.reading_value) if reading.reading_value is not None else None,
+            reading.reading_date.isoformat() if reading.reading_date else "",
+            reading.origin or "",
+            reading.contract.token if reading.contract else "",
+            _contract_holder_name(reading.contract) if reading.contract else "",
+            (
+                get_address_complete_without_city(reading.supply_point.address).strip()
+                if reading.supply_point and reading.supply_point.address
+                else ""
+            ),
+            float(previous.reading_value) if previous and previous.reading_value is not None else None,
+            float(reading.calculated_value) if reading.calculated_value is not None else None,
+        ])
+
+    ws_missing = wb.create_sheet("not_loaded")
+    ws_missing.append(["meter", "contract", "holder", "address", "reading_value", "reading_date", "reason"])
+    for row, reason in not_loaded_rows:
+        ws_missing.append([
+            row.get("meter_code") or "",
+            ((row.get("contracts") or [{}])[0]).get("token") or "",
+            row.get("holder") or "",
+            row.get("address_complete") or "",
+            row.get("reading_value"),
+            row.get("reading_date") or "",
+            reason,
+        ])
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def import_smart_metering_readings(reading_document, preview=None):
+    """
+    Save the Smart Metering readings of ``reading_document.reading_date`` into the
+    document (``batch`` stays empty: the reading batch picks the document later,
+    like any uploaded readings file) and attach an Excel with the loaded readings.
+    """
+    reading_date_str = reading_document.reading_date.isoformat()
     if preview is None:
-        preview = build_smart_metering_preview(reading_batch, reading_date_str)
+        preview = build_smart_metering_preview(reading_date_str)
     else:
         preview = _coerce_client_preview(preview, reading_date_str)
-    fallback_date = _parse_request_date(reading_date_str)
-    readings_to_assign = []
+    fallback_date = reading_document.reading_date
+    saved_readings = []
     reading_ids = set()
     set_added_readings = set()
+    not_loaded_rows = [
+        (row, SKIP_REASON_NO_API_READING) for row in preview["readings"] if not row.get("matched")
+    ]
 
     matched_rows = [row for row in preview["readings"] if row.get("matched")]
     supply_points_by_id = {
@@ -1300,7 +1271,7 @@ def assign_smart_metering_readings(reading_batch, reading_date_str, preview=None
         reading_value = Decimal(str(row["reading_value"]))
 
         new_reading = _save_smart_metering_reading(
-            reading_batch,
+            reading_document,
             supply_point,
             meter,
             contract,
@@ -1308,19 +1279,33 @@ def assign_smart_metering_readings(reading_batch, reading_date_str, preview=None
             reading_value,
         )
         if new_reading:
-            _append_reading(readings_to_assign, reading_ids, new_reading)
+            _append_reading(saved_readings, reading_ids, new_reading)
+        else:
+            not_loaded_rows.append((row, SKIP_REASON_NOT_SAVED))
 
-    if readings_to_assign:
-        _merge_smart_metering_into_batch(
-            reading_batch,
-            readings_to_assign,
-            reading_ids,
-            set_added_readings,
+    readings_for_file = (
+        Reading.objects.filter(id__in=reading_ids)
+        .select_related(
+            "meter", "contract__holder", "supply_point__address__street",
+            "supply_point__address__street_number", "previous_reading",
         )
+        .order_by("meter__code")
+    )
+    file_bytes = _build_smart_metering_workbook(readings_for_file, not_loaded_rows)
+    if reading_document.file:
+        reading_document.file.delete(save=False)
+    reading_document.file.save(
+        f"smart_metering_{reading_document.reading_date.strftime('%Y%m%d')}.xlsx",
+        ContentFile(file_bytes),
+        save=False,
+    )
+    reading_document.status = ReadingDocument.STATUS_PROCESSED
+    reading_document.processed_at = timezone.now()
+    reading_document.save(update_fields=["file", "status", "processed_at", "updated_at"])
 
-    pending_processing_token = ConfigProject.objects.get(token="reading_batch_pending_processing_token").value
-    reading_batch.status = ReadingBatchStatus.objects.get(token=pending_processing_token)
-    reading_batch.assign_readings_task_id = None
-    reading_batch.save(update_fields=["status", "assign_readings_task_id"])
-
-    return _build_batch_pending_counters(reading_batch)
+    return {
+        "document_id": reading_document.id,
+        "saved_readings": len(saved_readings),
+        "not_saved_readings": len([1 for _, reason in not_loaded_rows if reason == SKIP_REASON_NOT_SAVED]),
+        "missing_readings": len([1 for _, reason in not_loaded_rows if reason == SKIP_REASON_NO_API_READING]),
+    }

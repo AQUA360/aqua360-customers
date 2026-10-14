@@ -2202,6 +2202,13 @@ export default {
     readings_continue_from_to: 'Readings from {from} → to {to}'
   },
   reading_block:   {
+    smart_metering_load_title: 'Load Smart Metering',
+    smart_metering_load_help: 'Gets the readings of every Smart Metering meter for the given date and creates a readings document.',
+    smart_metering_get_readings: 'Get readings',
+    smart_metering_load_in_progress: 'A Smart Metering load for this date is already in progress.',
+    smart_metering_already_loaded_locked: 'There is already a Smart Metering load for this date ({token}) and its readings have been used in a batch or an invoice. It cannot be loaded again.',
+    smart_metering_replace_confirm: 'There is already a Smart Metering load for this date ({token}). Do you want to replace it with the current readings?',
+    smart_metering_loaded: 'Smart Metering readings loaded: {saved}. Not saved: {not_saved} (see the «not_loaded» sheet in the Excel file).',
     contract_estimation_title: 'Bulk reading estimation',
     reading_batch_template: 'Reading batch template',
     select_template_warning: 'Please select a reading batch template',

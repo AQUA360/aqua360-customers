@@ -2262,6 +2262,13 @@ export default {
     readings_continue_from_to: 'Lectures des de {from} → fins a {to}'
   },
   reading_block:   {
+    smart_metering_load_title: 'Carregar Smart Metering',
+    smart_metering_load_help: 'Obté les lectures de tots els comptadors Smart Metering per a la data indicada i en genera un document de lectures.',
+    smart_metering_get_readings: 'Obtenir lectures',
+    smart_metering_load_in_progress: 'Ja s\'està fent una càrrega de Smart Metering per a aquesta data.',
+    smart_metering_already_loaded_locked: 'Ja hi ha una càrrega de Smart Metering per a aquesta data ({token}) i les seves lectures ja s\'han fet servir en un lot o una factura. No es pot tornar a carregar.',
+    smart_metering_replace_confirm: 'Ja hi ha una càrrega de Smart Metering per a aquesta data ({token}). Vols substituir-la amb les lectures actuals?',
+    smart_metering_loaded: 'Lectures de Smart Metering carregades: {saved}. No desades: {not_saved} (vegeu el full «not_loaded» de l\'Excel).',
     contract_estimation_title: 'Estimació massiva de lectures',
     reading_batch_template: 'Plantilla de lot de lectura',
     select_template_warning: 'Si us plau, selecciona una plantilla de lot de lectura',

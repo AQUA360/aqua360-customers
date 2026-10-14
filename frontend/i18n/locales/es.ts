@@ -2262,6 +2262,13 @@ export default {
     readings_continue_from_to: 'Lecturas desde {from} → hasta {to}'
   },
   reading_block:   {
+    smart_metering_load_title: 'Cargar Smart Metering',
+    smart_metering_load_help: 'Obtiene las lecturas de todos los contadores Smart Metering para la fecha indicada y genera un documento de lecturas.',
+    smart_metering_get_readings: 'Obtener lecturas',
+    smart_metering_load_in_progress: 'Ya se está realizando una carga de Smart Metering para esta fecha.',
+    smart_metering_already_loaded_locked: 'Ya existe una carga de Smart Metering para esta fecha ({token}) y sus lecturas ya se han usado en un lote o una factura. No se puede volver a cargar.',
+    smart_metering_replace_confirm: 'Ya existe una carga de Smart Metering para esta fecha ({token}). ¿Quieres sustituirla con las lecturas actuales?',
+    smart_metering_loaded: 'Lecturas de Smart Metering cargadas: {saved}. No guardadas: {not_saved} (ver la hoja «not_loaded» del Excel).',
     contract_estimation_title: 'Estimación masiva de lecturas',
     reading_batch_template: 'Plantilla de lote de lectura',
     select_template_warning: 'Por favor, selecciona una plantilla de lote de lectura',
