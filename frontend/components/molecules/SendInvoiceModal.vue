@@ -18,6 +18,8 @@ const toast = useToast();
 const {
   $InvoiceApiService,
   $ConfiglistApiService,
+  $ConfigProjectApiService,
+  $MessageTemplateApiService,
   $PersonApiService
 } = useNuxtApp();
 
@@ -65,6 +67,9 @@ const emit = defineEmits([
 ]);
 
 const OTHER = '__other__';
+
+// Origen de les plantilles de missatge de facturació
+const BILLING_ORIGIN_TOKEN = 'billing';
 
 // ---------------------------------------------------------
 // CONTACTS
@@ -194,11 +199,138 @@ const defaultBodyFor = (lang) =>
     }
   );
 
+const defaultSubjectFor = (lang) =>
+  [
+    t('invoice', {}, { locale: lang }),
+    props.invoice?.serie_final
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+const subject = ref(
+  defaultSubjectFor(
+    selectedLang.value
+  )
+);
+
 const body = ref(
   defaultBodyFor(
     selectedLang.value
   )
 );
+
+// ---------------------------------------------------------
+// MESSAGE TEMPLATES (origen facturació)
+// ---------------------------------------------------------
+
+const messageTemplates = ref([]);
+const selectedTemplate = ref(null);
+const loadingTemplates = ref(false);
+const emailTypeToken = ref(null);
+
+// Plantilla del tipus email de la plantilla seleccionada
+const templateContent = ref(null);
+
+const getMessageTemplates = async () => {
+  loadingTemplates.value = true;
+
+  try {
+    const [origins, emailToken] =
+      await Promise.all([
+        $ConfiglistApiService.getAll(
+          'communication/message-origin'
+        ),
+        $ConfigProjectApiService.get(
+          'message_type_email_token'
+        )
+      ]);
+
+    emailTypeToken.value = emailToken;
+
+    const billingOrigin =
+      (origins?.results || []).find(
+        (o) => o.token === BILLING_ORIGIN_TOKEN
+      );
+
+    if (!billingOrigin) {
+      messageTemplates.value = [];
+      return;
+    }
+
+    const result =
+      await $MessageTemplateApiService.getAll(
+        '',
+        [],
+        1,
+        null,
+        false,
+        billingOrigin.id
+      );
+
+    messageTemplates.value =
+      (result?.results || [])
+        .filter((tpl) => tpl.is_active !== false)
+        .map((tpl) => ({
+          label: tpl.name || tpl.token,
+          value: tpl.id
+        }));
+  } catch (err) {
+    console.error(err);
+  } finally {
+    loadingTemplates.value = false;
+  }
+};
+
+const loadTemplateContent = async (templateId) => {
+  templateContent.value = null;
+
+  if (!templateId) {
+    return;
+  }
+
+  try {
+    const result =
+      await $MessageTemplateApiService
+        .getMessageTypeTemplates(templateId);
+
+    // No filtrem per is_active: la UI de plantilles no el gestiona i en
+    // desar amb FormData DRF el posa a false (com fa la resta de
+    // pantalles de comunicacions, l'ignorem)
+    const typeTemplates =
+      (result?.results || []).filter(
+        (tt) => !tt.unused
+      );
+
+    templateContent.value =
+      typeTemplates.find(
+        (tt) =>
+          tt.type?.token ===
+          emailTypeToken.value
+      ) || null;
+
+    if (!templateContent.value) {
+      toast.warning(
+        t('billing_block.template_without_email')
+      );
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+// Omple l'assumpte i el cos amb la plantilla seleccionada
+// o, si no n'hi ha, amb els textos per defecte de l'idioma
+const applyMessageContent = () => {
+  const lang = selectedLang.value;
+
+  subject.value =
+    templateContent.value?.subject ||
+    defaultSubjectFor(lang);
+
+  body.value =
+    templateContent.value?.body ||
+    defaultBodyFor(lang);
+};
 
 // ---------------------------------------------------------
 // COMPANY CONFIG
@@ -257,9 +389,10 @@ const applyDefaultCompanyConfig = () => {
     null;
 };
 
-onMounted(
-  getCompanyConfigs
-);
+onMounted(() => {
+  getCompanyConfigs();
+  getMessageTemplates();
+});
 
 // ---------------------------------------------------------
 // WATCHERS
@@ -276,10 +409,7 @@ watch(
       props.contract?.language ||
       locale.value;
 
-    body.value =
-      defaultBodyFor(
-        selectedLang.value
-      );
+    applyMessageContent();
 
     applyDefaultEmail();
 
@@ -297,9 +427,14 @@ watch(
 
 watch(
   selectedLang,
-  (lang) => {
-    body.value =
-      defaultBodyFor(lang);
+  applyMessageContent
+);
+
+watch(
+  selectedTemplate,
+  async (templateId) => {
+    await loadTemplateContent(templateId);
+    applyMessageContent();
   }
 );
 
@@ -316,10 +451,7 @@ watch(
       props.contract?.language ||
       locale.value;
 
-    body.value =
-      defaultBodyFor(
-        selectedLang.value
-      );
+    applyMessageContent();
 
     applyDefaultEmail();
     applyDefaultCompanyConfig();
@@ -429,6 +561,7 @@ const sendEmail = async () => {
       props.invoice.id,
       {
         email: email.value,
+        subject: subject.value,
         body: body.value,
         company_config_id:
           selectedCompanyConfig.value
@@ -699,6 +832,48 @@ const sendEmail = async () => {
           />
         </div>
 
+        <!-- Message template -->
+        <div class="mb-8">
+          <h4
+            class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2"
+          >
+            {{ t('common.template') }}
+          </h4>
+
+          <select
+            v-model="selectedTemplate"
+            :disabled="loadingTemplates"
+            class="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 disabled:opacity-50"
+          >
+            <option :value="null">
+              {{ t('default') }}
+            </option>
+
+            <option
+              v-for="tpl in messageTemplates"
+              :key="tpl.value"
+              :value="tpl.value"
+            >
+              {{ tpl.label }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Email subject -->
+        <div class="mb-8">
+          <h4
+            class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2"
+          >
+            {{ t('customer_service_block.subject') }}
+          </h4>
+
+          <input
+            v-model="subject"
+            type="text"
+            class="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+          />
+        </div>
+
         <!-- Email body -->
         <div class="mb-8">
           <div
@@ -710,9 +885,11 @@ const sendEmail = async () => {
               {{ t('billing_block.email_body') }}
             </h4>
 
+            <!-- L'idioma només aplica als textos per defecte -->
             <select
               v-model="selectedLang"
-              class="border border-slate-300 rounded-md text-sm text-slate-700 py-1 px-2 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+              :disabled="!!templateContent"
+              class="border border-slate-300 rounded-md text-sm text-slate-700 py-1 px-2 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 disabled:opacity-50"
               :title="t('common.language')"
             >
               <option

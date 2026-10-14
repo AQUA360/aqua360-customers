@@ -1620,6 +1620,7 @@ export default {
     invoice_no_document: 'A factura non ten documento xerado. Entra na factura e selecciona \'Xerar factura\' antes de continuar.',
     correct_send_email: 'Factura enviada por correo electrónico correctamente',
     error_send_email: 'Erro ao enviar a factura por correo electrónico',
+    template_without_email: 'O modelo seleccionado non ten ningunha mensaxe de tipo correo electrónico. Usaranse os textos por defecto.',
     category: 'Categoría',
     categories: 'Categorías',
     serie_digit_av: 'Díxito serie AV',

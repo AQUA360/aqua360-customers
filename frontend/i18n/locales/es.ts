@@ -1670,6 +1670,7 @@ export default {
     invoice_no_document: 'La factura no tiene documento generado. Entra en la factura y selecciona \'Generar factura\' antes de continuar.',
     correct_send_email: 'Factura enviada por correo electrónico correctamente',
     error_send_email: 'Error al enviar la factura por correo electrónico',
+    template_without_email: 'La plantilla seleccionada no tiene ningún mensaje de tipo correo electrónico. Se usarán los textos por defecto.',
     category: 'Categoría',
     categories: 'Categorías',
     serie_digit_av: 'Dígito serie AV',
