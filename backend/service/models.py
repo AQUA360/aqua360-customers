@@ -278,12 +278,26 @@ class CompanyConfigEmail(models.Model):
     mail_send_user = models.CharField(max_length=255, null=True, blank=True)
     mail_send_mail = models.EmailField(null=True, blank=True) #EMAIL_HOST_USER
     use_type = models.ForeignKey('communication.CommunicationUseType', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Connection Use Type")
+    # Contrasenya SMTP pròpia del correu, xifrada amb SMTP_PASSWORD_ENCRYPTION_KEY (mai en clar ni per l'API).
+    encrypted_password = models.TextField(null=True, blank=True)
     
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
     def __str__(self):
         return "CompanyConfigEmail ID {}".format(self.id)
+
+    @property
+    def has_password(self):
+        return bool(self.encrypted_password)
+
+    def set_password(self, raw_password):
+        from service.utils.smtp_password_crypto import encrypt_smtp_password
+        self.encrypted_password = encrypt_smtp_password(raw_password) if raw_password else None
+
+    def get_password(self):
+        from service.utils.smtp_password_crypto import decrypt_smtp_password
+        return decrypt_smtp_password(self.encrypted_password)
 
 class Company(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
