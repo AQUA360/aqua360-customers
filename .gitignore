@@ -15,3 +15,5 @@ SECURITY.md
 AGENTS.md
 CLAUDE.md
 .claude/settings.local.json
+
+dev.sh
