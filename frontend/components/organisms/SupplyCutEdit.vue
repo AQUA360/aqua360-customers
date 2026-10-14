@@ -1,10 +1,9 @@
 <script setup>
-import { toRaw, ref, onMounted, watch, watchEffect } from 'vue';
+import { toRaw, ref, computed, onMounted, watch, watchEffect } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import H1 from '~/components/atoms/H1.vue';
 import _ from 'lodash';
-import ButtonSeleccio from '~/components/atoms/ButtonSeleccio.vue';
 import AddSupplyPoints from '~/components/molecules/AddSupplyPoints.vue';
 import AddContracts from '../molecules/AddContracts.vue';
 import SupplyPointDetail from '../molecules/SupplyPointDetail.vue';
@@ -367,6 +366,7 @@ watch(selectedOriginType, () => {
   affectedContracts.value = [];
   supply_point_ids.value = [];
   contract_ids.value = [];
+  resetBulkState();
 })
 
 
@@ -374,6 +374,143 @@ const dateIntervalError = (event) => {
   toast.error(event)
   date_end.value = null
 }
+
+// ---------------------------------------------------------------------------
+// Bulk planning: paste/upload a flat list of identifiers (strict single type
+// taken from the radio above) and create ONE supply cut over every resolved
+// supply point. Lives inside this screen; the pickers above stay available.
+// ---------------------------------------------------------------------------
+const stage = ref('input'); // 'input' | 'preview'
+const identifiersText = ref('');
+const bulkFileInput = ref(null);
+const bulkFileName = ref('');
+const preview = ref(null);
+const previewing = ref(false);
+const bulkSaving = ref(false);
+const overrideConflicts = ref(false);
+
+const MAX_IDENTIFIERS = 5000;
+
+const bulkIdentifierType = computed(() => {
+  if (selectedOriginType.value === 'CONTRACT') return 'contract_token';
+  if (selectedOriginType.value === 'SP') return 'supply_point_id';
+  return 'street_id';
+});
+
+const parsedIdentifiers = computed(() => {
+  const parts = identifiersText.value.split(/[\n\r,;]+/);
+  const seen = new Set();
+  const result = [];
+  for (const part of parts) {
+    const value = part.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+});
+
+const parsedCount = computed(() => parsedIdentifiers.value.length);
+const overCap = computed(() => parsedCount.value > MAX_IDENTIFIERS);
+const hasBulkInput = computed(() => parsedCount.value > 0);
+
+const isValidBulk = computed(() => {
+  if (parsedCount.value === 0) return false;
+  if (overCap.value) return false;
+  if (!selectedCause.value) return false;
+  if (!date_start.value) return false;
+  return true;
+});
+
+const canCreateBulk = computed(() => {
+  if (!preview.value) return false;
+  if ((preview.value.stats?.resolved ?? 0) === 0) return false;
+  if ((preview.value.stats?.conflicts ?? 0) > 0 && !overrideConflicts.value) return false;
+  return true;
+});
+
+const handleBulkFileChange = (event) => {
+  const file = event.target.files?.[0] ?? null;
+  if (!file) return;
+  bulkFileName.value = file.name;
+  const reader = new FileReader();
+  reader.onload = () => {
+    identifiersText.value = String(reader.result ?? '');
+  };
+  reader.readAsText(file);
+};
+
+const clearBulkFile = () => {
+  bulkFileName.value = '';
+  if (bulkFileInput.value) bulkFileInput.value.value = '';
+};
+
+const resetBulkState = () => {
+  stage.value = 'input';
+  identifiersText.value = '';
+  clearBulkFile();
+  preview.value = null;
+  overrideConflicts.value = false;
+};
+
+const handlePreview = async () => {
+  // Reuse the form's existing validation styling (attemptedSave drives the
+  // red `invalid` class on Start Date and Cause): the button is clickable as
+  // soon as the textarea has content, but the preview never runs until every
+  // mandatory top field is filled.
+  attemptedSave.value = true;
+  if (!isValidBulk.value || previewing.value) return;
+  previewing.value = true;
+  try {
+    preview.value = await $SupplyCutApiService.bulkPlanPreview({
+      identifier_type: bulkIdentifierType.value,
+      identifiers: parsedIdentifiers.value,
+    });
+    overrideConflicts.value = false;
+    stage.value = 'preview';
+  } catch (error) {
+    console.error('Error previewing bulk plan:', error);
+    toast.error(error?.data?.error || error?.message || t('common.error_save'));
+  } finally {
+    previewing.value = false;
+  }
+};
+
+const handleBulkBack = () => {
+  stage.value = 'input';
+  preview.value = null;
+  overrideConflicts.value = false;
+};
+
+const handleBulkCreate = async () => {
+  if (!canCreateBulk.value || bulkSaving.value) return;
+  bulkSaving.value = true;
+  try {
+    const result = await $SupplyCutApiService.bulkPlanCreate({
+      identifier_type: bulkIdentifierType.value,
+      identifiers: parsedIdentifiers.value,
+      cause_id: selectedCause.value.code,
+      date_start: date_start.value,
+      date_end: date_end.value ? date_end.value : null,
+      override_conflicts: overrideConflicts.value,
+    });
+    toast.success(t('service_block.bulk_plan_created', { count: result.resolved_count }));
+    navigateTo('/service/supply-cut/');
+  } catch (error) {
+    console.error('Error creating bulk plan:', error);
+    toast.error(error?.data?.error || error?.message || t('common.error_save'));
+  } finally {
+    bulkSaving.value = false;
+  }
+};
+
+// Secondary fallback link inside the bulk dropzone: opens the same picker the
+// legacy dropzone opened, so deep-linked/selected flows keep working.
+const showDetailForCurrentType = () => {
+  if (bulkIdentifierType.value === 'contract_token') showDetail('ContractForm', null);
+  else if (bulkIdentifierType.value === 'supply_point_id') showDetail('SupplyPointForm', null);
+  else showDetail('SupplyPointForm', null);
+};
 </script>
 
 <template>
@@ -381,7 +518,7 @@ const dateIntervalError = (event) => {
     <div v-if="loading">
       <AppLoading :text="$t('common.loading')" />
     </div>
-    <div v-else class="border border-gray-300 rounded p-4 bg-white">
+    <div v-else-if="stage === 'input'" class="border border-gray-300 rounded p-4 bg-white">
       <div class="bg-white border border-slate-200 rounded rounded-lg p-4 space-y-4 w-[50%] mt-2 mb-5">
         <div>
           <span class="text-gray-600 font-medium">{{ $t('service_block.supply_cut_date_long') }}</span>
@@ -425,6 +562,41 @@ const dateIntervalError = (event) => {
               {{ $t('address_block.street') }}
             </label>
           </div>
+        </div>
+
+        <!-- Bulk input: the upgraded dropzone. Paste/upload a flat list of ids
+             for the type selected above; the pickers below stay available. -->
+        <div class="border-2 border-dashed rounded p-4 mb-4 bg-gray-50">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-gray-600 font-medium">{{ $t('service_block.bulk_plan_identifiers_label') }}</span>
+            <span class="text-sm" :class="overCap ? 'text-red-600 font-semibold' : 'text-slate-500'">
+              {{ $t('service_block.bulk_plan_count', { count: parsedCount, max: MAX_IDENTIFIERS }) }}
+            </span>
+          </div>
+          <p class="text-slate-400 text-sm mb-2">{{ $t('service_block.bulk_plan_identifiers_hint') }}</p>
+          <textarea v-model="identifiersText" rows="6"
+            class="w-full p-2 border border-gray-300 rounded-md font-mono text-sm bg-white focus:outline-none"
+            :placeholder="$t('service_block.bulk_plan_identifiers_placeholder')" />
+
+          <div class="flex items-center gap-3 mt-2 flex-wrap">
+            <input ref="bulkFileInput" type="file" accept=".csv,.txt" class="hidden" @change="handleBulkFileChange" />
+            <button type="button" class="button-secondary" @click="bulkFileInput?.click()">
+              <Icon name="fa6-solid:upload" /> &nbsp; {{ $t('service_block.bulk_plan_upload_file') }}
+            </button>
+            <!-- Legacy manual selection: a first-class alternative, not an afterthought.
+                 Street mode keeps its street v-select below, so no button is needed there. -->
+            <button v-if="bulkIdentifierType !== 'street_id'" type="button" class="button-default"
+              @click="showDetailForCurrentType()">
+              <Icon name="fa6-solid:list" /> &nbsp; {{ $t('service_block.bulk_plan_or_select') }}
+            </button>
+            <span v-if="bulkFileName" class="text-sm text-slate-600 flex items-center gap-2">
+              {{ bulkFileName }}
+              <button type="button" class="text-slate-400 hover:text-slate-600" @click="clearBulkFile">
+                <Icon name="fa6-solid:xmark" />
+              </button>
+            </span>
+          </div>
+          <p class="text-slate-400 text-sm mt-1">{{ $t('service_block.bulk_plan_file_hint') }}</p>
         </div>
 
 
@@ -474,13 +646,8 @@ const dateIntervalError = (event) => {
               </button>
             </div>
           </div>
-
-          <div v-else>
-            <ButtonSeleccio @click="showDetail('ContractForm', null)">{{ $t('common.select') }} {{ $t('contract') }}
-            </ButtonSeleccio>
-            <span>{{ selectedContract.value }}</span>
-          </div>
-
+          <!-- Empty state: the unified bulk dropzone above owns the input;
+               the picker is reachable only via its secondary blue link. -->
         </div>
 
 
@@ -531,11 +698,6 @@ const dateIntervalError = (event) => {
                 <Icon name="fa6-solid:pencil" class="text-gray-600" />
               </button>
             </div>
-          </div>
-          <div v-else>
-            <ButtonSeleccio @click="showDetail('SupplyPointForm', null)">
-              {{ $t('common.select') }} {{ $t('supply_point') }}
-            </ButtonSeleccio>
           </div>
         </div>
 
@@ -618,7 +780,15 @@ const dateIntervalError = (event) => {
 
 
         <div class="col-span-2 flex flex-row-reverse mt-4">
-          <button @click="save" :disabled="saving" class="button-primary">
+          <!-- Bulk path: paste/upload content present -> preview first -->
+          <button v-if="hasBulkInput" @click="handlePreview" :disabled="previewing" class="button-primary">
+            <Icon :name="previewing ? 'fa6-solid:spinner' : 'fa6-solid:magnifying-glass'"
+              :class="previewing ? 'animate-spin' : ''" />
+            &nbsp;
+            {{ $t('service_block.bulk_plan_preview') }}
+          </button>
+          <!-- Picker path: unchanged legacy save -->
+          <button v-else @click="save" :disabled="saving" class="button-primary">
             <Icon :name="saving ? 'fa6-solid:spinner' : 'fa6-solid:floppy-disk'" 
             :class="saving ? 'animate-spin' : ''" />
             &nbsp; 
@@ -628,6 +798,106 @@ const dateIntervalError = (event) => {
 
       </div>
 
+    </div>
+
+    <!-- Stage 2 (inline, full width): bulk preview panel swaps the form area -->
+    <div v-else-if="stage === 'preview' && preview" class="border border-gray-300 rounded p-4 bg-white">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5">
+        <div class="bg-slate-50 border border-slate-200 rounded p-3 text-center">
+          <p class="text-2xl font-semibold">{{ preview.stats?.unique ?? 0 }}</p>
+          <p class="text-slate-500 text-sm">{{ $t('service_block.bulk_plan_stat_unique') }}</p>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded p-3 text-center">
+          <p class="text-2xl font-semibold">{{ preview.stats?.duplicates_in_input ?? 0 }}</p>
+          <p class="text-slate-500 text-sm">{{ $t('service_block.bulk_plan_stat_duplicates') }}</p>
+        </div>
+        <div class="bg-green-50 border border-green-200 rounded p-3 text-center">
+          <p class="text-2xl font-semibold text-green-700">{{ preview.stats?.resolved ?? 0 }}</p>
+          <p class="text-green-700 text-sm">{{ $t('service_block.bulk_plan_stat_resolved') }}</p>
+        </div>
+        <div class="bg-amber-50 border border-amber-200 rounded p-3 text-center">
+          <p class="text-2xl font-semibold text-amber-700">{{ preview.stats?.not_found ?? 0 }}</p>
+          <p class="text-amber-700 text-sm">{{ $t('service_block.bulk_plan_stat_not_found') }}</p>
+        </div>
+        <div class="bg-red-50 border border-red-200 rounded p-3 text-center">
+          <p class="text-2xl font-semibold text-red-700">{{ preview.stats?.conflicts ?? 0 }}</p>
+          <p class="text-red-700 text-sm">{{ $t('service_block.bulk_plan_stat_conflicts') }}</p>
+        </div>
+      </div>
+
+      <!-- Conflicts -->
+      <div v-if="(preview.conflicts ?? []).length" class="mb-5 border border-red-300 bg-red-50 rounded p-4">
+        <p class="text-red-800 font-medium mb-2">{{ $t('service_block.bulk_plan_conflicts_title') }}</p>
+        <p class="text-red-700 text-sm mb-3">{{ $t('service_block.bulk_plan_conflicts_hint') }}</p>
+        <div class="max-h-60 overflow-y-auto space-y-2 mb-3">
+          <div v-for="conflict in preview.conflicts" :key="conflict.supply_point_id"
+            class="bg-white border border-red-200 rounded p-2 text-sm">
+            <span class="font-mono">{{ conflict.supply_point_id }}</span>
+            <ul class="mt-1 list-disc list-inside text-slate-600">
+              <li v-for="cut in conflict.cuts" :key="cut.id">
+                {{ cut.token }} — {{ cut.status }}
+                <span v-if="cut.date_start" class="text-slate-400">({{ cut.date_start }}<template
+                    v-if="cut.date_end"> → {{ cut.date_end }}</template>)</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <label class="flex items-center gap-2 text-red-800 font-medium">
+          <input type="checkbox" v-model="overrideConflicts" />
+          {{ $t('service_block.bulk_plan_override_conflicts') }}
+        </label>
+      </div>
+
+      <!-- Not found -->
+      <div v-if="(preview.not_found ?? []).length" class="mb-5 border border-amber-300 bg-amber-50 rounded p-4">
+        <p class="text-amber-800 font-medium mb-2">{{ $t('service_block.bulk_plan_not_found_title') }}</p>
+        <p class="text-amber-700 text-sm mb-2">{{ $t('service_block.bulk_plan_not_found_hint') }}</p>
+        <div class="max-h-40 overflow-y-auto">
+          <span v-for="item in preview.not_found" :key="item"
+            class="inline-block bg-white border border-amber-200 rounded px-2 py-1 text-sm font-mono mr-2 mb-1">
+            {{ item }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Resolved table -->
+      <div class="mb-5">
+        <p class="text-gray-600 font-medium mb-2">{{ $t('service_block.bulk_plan_resolved_title') }}</p>
+        <div class="overflow-x-auto max-h-96 overflow-y-auto border border-gray-200 rounded">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 sticky top-0">
+              <tr>
+                <th class="text-left px-3 py-2 border-b">{{ $t('supply_point') }}</th>
+                <th class="text-left px-3 py-2 border-b">{{ $t('common.identificator') }}</th>
+                <th class="text-left px-3 py-2 border-b">{{ $t('address_block.address') }}</th>
+                <th class="text-left px-3 py-2 border-b">{{ $t('service_block.bulk_plan_column_conflict') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in preview.resolved" :key="row.supply_point_id" class="border-b last:border-b-0">
+                <td class="px-3 py-1 font-mono">{{ row.supply_point_id }}</td>
+                <td class="px-3 py-1 font-mono">{{ row.token }}</td>
+                <td class="px-3 py-1">{{ row.address }}</td>
+                <td class="px-3 py-1">
+                  <span v-if="row.has_conflict" class="text-red-600 font-medium">{{ $t('common.yes') }}</span>
+                  <span v-else class="text-slate-400">{{ $t('common.no') }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex justify-between mt-4">
+        <button type="button" class="button-secondary" @click="handleBulkBack">
+          <Icon name="fa6-solid:angles-left" /> &nbsp; {{ $t('service_block.bulk_plan_back') }}
+        </button>
+        <button type="button" class="button-primary" :disabled="!canCreateBulk || bulkSaving" @click="handleBulkCreate">
+          <Icon :name="bulkSaving ? 'fa6-solid:spinner' : 'fa6-solid:floppy-disk'"
+            :class="bulkSaving ? 'animate-spin' : ''" />
+          &nbsp; {{ $t('common.save') }}
+        </button>
+      </div>
     </div>
     <div role="region" id="right_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
