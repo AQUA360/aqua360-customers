@@ -63,6 +63,7 @@ onMounted(async () => {
     <div v-else-if="localData">
       <div role="row" class="grid grid-cols-2 gap-3">
         <FieldDetail class="truncate" :label='$t("common.doc")' :value="localData.file?.split('/').pop()" />
+        <FieldDetail v-if="localData.source === 'SMART_METERING'" :label="`${$t('billing_block.smart_metering')} · ${$t('billing_block.reading_date')}`" :value="formatDate(localData.reading_date)" />
         <FieldDetail :label='$t("common.uploaded")' :value="formatDate(localData.created_at)" class="items-center"/>
         <FieldDetail :label='$t("billing_block.added_readings")' :value="(localData.num_readings).toString()" />
         <FieldDetail :label="$t('billing_block.reading_batch')">
