@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 
 from datetime import datetime
 
+from billing.models import Invoice
 from contract.models import Contract, ContractStatus, ContractTerminationRequest, ContractTerminationStatus
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestSerializer
 from coredata.models import ConfigProject
@@ -32,6 +33,12 @@ class CloseContractTerminationRequestViewSet(APIView):
     contract.status = contract_status
     contract.termination_date = datetime.now().date()
     termination_request.approved_at = datetime.now()
+    # Des de l'alta (canvi de nom) es finalitza "sense factura", tret que ja es factura
+    # (factura o pressupost existent, o lectura de tall cobrada a l'alta). Després se'n pot
+    # generar igualment el pressupost.
+    if str(request.data.get('ignore_invoice', '')).lower() == 'true' and not termination_request.bill_cut_reading \
+        and not Invoice.objects.filter(contract_termination=termination_request).exists():
+      termination_request.ignore_invoice = True
     orders = None
     try:
       order_status = ConfigProject.objects.get(token = 'order_status_completed_token').value
