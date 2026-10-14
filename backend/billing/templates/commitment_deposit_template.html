@@ -293,20 +293,24 @@
         <table class="footer_content_table" width="100%">
             <tr>
                 <td width="50%" align="left" style="vertical-align: middle; color: {{ secondary_color|default:'#00a8e8' }};">
+                    {% if company.show_customer_service_block is not False %}
                     {% get_user_icon_base64 secondary_color as user_icon %}
                     {% if user_icon %}
                     <img src="{{ user_icon }}" alt="User" style="width: 12px; height: 12px; vertical-align: middle; margin-right: 5px;">
                     {% endif %}
-                    <span style="font-weight: bold; vertical-align: middle;">Atenció al client:</span>
+                    <span style="font-weight: bold; vertical-align: middle;">{{ company.customer_service_label|default:"Atenció al client" }}:</span>
                     <span style="color: #333333; font-weight: normal; vertical-align: middle;">{{ company.phone }}</span>
+                    {% endif %}
                 </td>
                 <td width="50%" align="right" style="text-align: right; vertical-align: middle; color: {{ secondary_color|default:'#00a8e8' }};">
+                    {% if company.show_breakdown_block is not False %}
                     {% get_hydrant_icon_base64 secondary_color as hydrant_icon %}
                     {% if hydrant_icon %}
                     <img src="{{ hydrant_icon }}" alt="Hydrant" style="width: 12px; height: 12px; vertical-align: middle; margin-right: 5px;">
                     {% endif %}
-                    <span style="font-weight: bold; vertical-align: middle;">Avaries i incidències:</span>
+                    <span style="font-weight: bold; vertical-align: middle;">{{ company.breakdown_label|default:"Avaries i incidències" }}:</span>
                     <span style="color: #333333; font-weight: normal; vertical-align: middle;">{{ company.phone2 }}</span>
+                    {% endif %}
                 </td>
             </tr>
         </table>
