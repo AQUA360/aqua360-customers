@@ -1620,6 +1620,7 @@ export default {
     invoice_no_document: 'The invoice has no generated document. Go into the invoice and select \'Generate invoice\' before continuing.',
     correct_send_email: 'Invoice sent by email successfully',
     error_send_email: 'Error sending the invoice by email',
+    template_without_email: 'The selected template has no email message. The default texts will be used.',
     category: 'Category',
     categories: 'Categories',
     serie_digit_av: 'AV series digit',
