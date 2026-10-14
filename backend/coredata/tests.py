@@ -192,10 +192,11 @@ class SpanishBicTests(TestCase):
         self.assertEqual(resolve_account_bic('DE89370400440532013000', 'COBADEFFXXX'), 'COBADEFFXXX')
 
 
-class PersonBankResolveSwiftTests(TestCase):
-    """`resolve` amb el mateix IBAN: s'aplica el SWIFT nou al compte, sense duplicar-lo ni tocar el titular."""
+class PersonBankResolveTests(TestCase):
+    """`resolve`: amb el mateix IBAN es desen totes les dades al compte; amb un IBAN nou se'n crea un altre."""
 
     IBAN = 'ES9121000418450200051332'
+    OTHER_IBAN = 'ES7921000813610123456789'
 
     def setUp(self):
         from django.contrib.auth import get_user_model
@@ -212,25 +213,93 @@ class PersonBankResolveSwiftTests(TestCase):
         self.client.force_authenticate(user)
         self.person = Person.objects.create(token='P-RESOLVE', name='Titular')
         self.account = PersonBank.objects.create(
-            person=self.person, iban=self.IBAN, swift='CAIX', name='Titular', is_active=True
+            person=self.person, iban=self.IBAN, swift='CAIX', name='Titular', dni='P-RESOLVE', is_active=True
         )
 
     def _resolve(self, **extra):
         payload = {'person': self.person.id, 'iban': self.IBAN, 'current_id': self.account.id, **extra}
         return self.client.post('/coredata/person-bank/resolve/', payload, format='json')
 
-    def test_nomes_canvia_el_swift(self):
-        response = self._resolve(swift='caixesbbxxx', name='Un altre nom')
+    def test_mateix_iban_desa_totes_les_dades(self):
+        response = self._resolve(
+            swift='caixesbbxxx', name='Un altre nom', dni='12345678Z', role='AUTORITZAT', account_number='123'
+        )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['reused'])
-        self.assertTrue(response.data['swift_updated'])
+        self.assertTrue(response.data['updated'])
         self.account.refresh_from_db()
         self.assertEqual(self.account.swift, 'CAIXESBBXXX')
-        self.assertEqual(self.account.name, 'Titular')
+        self.assertEqual(self.account.name, 'Un altre nom')
+        self.assertEqual(self.account.dni, '12345678Z')
+        self.assertEqual(self.account.role, 'AUTORITZAT')
+        self.assertEqual(self.account.account_number, '123')
         self.assertEqual(self.person.banks.count(), 1)
 
-    def test_swift_buit_no_esborra_el_desat(self):
-        response = self._resolve(swift='')
-        self.assertFalse(response.data['swift_updated'])
+    def test_sense_canvis_no_marca_updated(self):
+        response = self._resolve(name='Titular', dni='P-RESOLVE', swift='')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['updated'])
+
+    def test_swift_i_pais_buits_no_esborren_el_desat(self):
+        from coredata.models import Country
+
+        country = Country.objects.create(name='Espanya', iso_code='ES')
+        self.account.country = country
+        self.account.save()
+        response = self._resolve(swift='', country=None)
+        self.assertFalse(response.data['updated'])
         self.account.refresh_from_db()
         self.assertEqual(self.account.swift, 'CAIX')
+        self.assertEqual(self.account.country, country)
+
+    def test_titular_diferent_sense_dni_posa_el_generic(self):
+        from coredata.utils.person_bank_utils import DEFAULT_HOLDER_DNI
+
+        self._resolve(name='Un altre titular', dni='')
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.dni, DEFAULT_HOLDER_DNI)
+
+    def test_iban_nou_crea_compte_i_deixa_l_original(self):
+        from coredata.utils.person_bank_utils import DEFAULT_HOLDER_DNI
+
+        response = self._resolve(iban=self.OTHER_IBAN, name='Un altre titular', dni='')
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.data['reused'])
+        self.assertEqual(response.data['dni'], DEFAULT_HOLDER_DNI)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.iban, self.IBAN)
+        self.assertEqual(self.account.name, 'Titular')
+        self.assertEqual(self.person.banks.count(), 2)
+
+
+class ResolveHolderDniTests(TestCase):
+    """DNI per defecte del titular d'un compte quan arriba buit."""
+
+    def setUp(self):
+        from coredata.models import Person
+
+        self.person = Person.objects.create(token='11111111H', name='Àngela', surname='Puig  Martí')
+
+    def _resolve(self, dni, name, person=None):
+        from coredata.utils.person_bank_utils import resolve_holder_dni
+
+        return resolve_holder_dni(dni, name, person or self.person)
+
+    def test_dni_informat_es_manté(self):
+        self.assertEqual(self._resolve(' 12345678Z ', 'Una altra persona'), '12345678Z')
+
+    def test_mateix_titular_fa_servir_el_document_de_la_persona(self):
+        self.assertEqual(self._resolve('', 'angela puig marti'), '11111111H')
+        self.assertEqual(self._resolve(None, ''), '11111111H')
+
+    def test_titular_diferent_fa_servir_el_generic(self):
+        from coredata.utils.person_bank_utils import DEFAULT_HOLDER_DNI
+
+        self.assertEqual(self._resolve('', 'Una altra persona'), DEFAULT_HOLDER_DNI)
+
+    def test_persona_sense_document_fa_servir_el_generic(self):
+        from coredata.models import Person
+        from coredata.utils.person_bank_utils import DEFAULT_HOLDER_DNI
+
+        person = Person.objects.create(token='', name='Sense document')
+        self.assertEqual(self._resolve('', 'Sense document', person), DEFAULT_HOLDER_DNI)
