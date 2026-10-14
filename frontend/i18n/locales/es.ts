@@ -1385,6 +1385,7 @@ export default {
     select_holder: 'Seleccionar o añadir titular',
     holder_name: 'Nombre del titular',
     holder_role: 'Rol del titular',
+    holder_dni_default_hint: 'Si se deja vacío y el titular de la cuenta es otra persona, se guardará 99999999R.',
     tenant: 'Inquilino',
     tenant_change: 'Cambio de inquilino',
     tenant_changes: 'Cambios de inquilino',
@@ -3032,10 +3033,9 @@ export default {
     meter_code_already_exists: 'Ya existe un contador con este código'
   },
   informative_block:   {
-    person_bank_edit_not_applied: 'El IBAN no ha cambiado, así que la cuenta se ha dejado tal como estaba. Los datos del titular se modifican desde la ficha de la persona, porque esta cuenta la pueden compartir otros contratos.',
-    person_bank_swift_updated: 'Se ha actualizado el SWIFT/BIC de la cuenta. Como es el mismo IBAN, el cambio vale para todos los contratos que la usan.',
-    person_bank_reused: 'Este IBAN ya existía en esta persona: se ha seleccionado la cuenta que ya había, sin modificarla.',
-    person_bank_copied_on_edit: 'Se ha creado una cuenta nueva con este IBAN y se ha asignado solo aquí. La cuenta original no se ha tocado, porque pueden estar usándola otros contratos. Para corregirla hay que ir a la ficha de la persona.',
+    person_bank_updated: 'Se han guardado los datos de la cuenta. Como es el mismo IBAN, el cambio vale para todos los contratos que la usan.',
+    person_bank_reused: 'Este IBAN ya existía en esta persona: se ha seleccionado la cuenta que ya había.',
+    person_bank_copied_on_edit: 'Se ha creado una cuenta nueva con este IBAN y se ha asignado solo aquí. La cuenta original no se ha tocado, porque pueden estar usándola otros contratos.',
     use_type_change_not_saved_unless_allowed: 'El cambio de tipo de uso y el documento no se guardarán a menos que active la opción de cambiar tipo de uso.',
     info_exclude_payments: 'Para poder marcar como enviada la remesa, debes excluir los pagos y regenerar el documento SEPA.',
     format_title: '¿Cómo debe ser el formato del archivo?',
