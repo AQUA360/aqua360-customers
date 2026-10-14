@@ -561,13 +561,54 @@ def send_electronic_mail(comm):
     
     
 
+SMTP_PASSWORD_ENV_PREFIX = 'EMAIL_PASSWORD_'
+
+
+def get_smtp_password(*tokens):
+  """
+  Contrasenya SMTP del primer token que en tingui, en ordre de prioritat (correu, configuració);
+  si cap en té, EMAIL_HOST_PASSWORD.
+
+  Un token és el nom d'una variable d'entorn EMAIL_PASSWORD_*. Només es llegeixen aquestes perquè el
+  token es configura des de la pantalla i no ha de poder apuntar a altres secrets (SECRET_KEY, etc.).
+  """
+  from decouple import config as env_config
+
+  for token in tokens:
+    if token and token.startswith(SMTP_PASSWORD_ENV_PREFIX):
+      password = env_config(token, default=None)
+      if password:
+        return password
+  return getattr(settings, "EMAIL_HOST_PASSWORD", "")
+
+
+def resolve_smtp_password(comm_config, smtp_config_email):
+  """
+  Contrasenya SMTP, per ordre: la desada (xifrada) del correu, el token del correu, el token de la
+  configuració i EMAIL_HOST_PASSWORD.
+  """
+  if smtp_config_email:
+    stored_password = smtp_config_email.get_password()
+    if stored_password:
+      return stored_password
+  return get_smtp_password(smtp_config_email.token if smtp_config_email else None, comm_config.token)
+
+
+def get_smtp_config_email(comm_config, comm_config_email=None):
+  """Correu amb què s'autentica l'SMTP: el de la comunicació o, si no en té, el per defecte o el primer."""
+  if comm_config_email and comm_config_email.mail_send_mail:
+    return comm_config_email
+  config_emails = comm_config.company_config_emails
+  return config_emails.filter(is_default=True).first() or config_emails.first()
+
+
 def _send_via_smtp(comm_emails, subject, html_content, from_email, document_files, comm_config, comm_config_email):
   smtp_server = comm_config.mail_send_smtp_server
   smtp_port = comm_config.mail_send_smtp_port
-  smtp_user = comm_config_email.mail_send_mail if comm_config_email and comm_config_email.mail_send_mail else comm_config.company_config_emails.filter(is_default=True).first().mail_send_mail if comm_config.company_config_emails.filter(is_default=True).first() else comm_config.company_config_emails.first()
-  smtp_password = getattr(settings, comm_config.token, None) if comm_config.token else settings.EMAIL_HOST_PASSWORD
-  if not smtp_password:
-    smtp_password = getattr(settings, "EMAIL_HOST_PASSWORD", "")
+  # Cada correu pot tenir la seva contrasenya (desada o token del correu); si no, la de la configuració.
+  smtp_config_email = get_smtp_config_email(comm_config, comm_config_email)
+  smtp_user = smtp_config_email.mail_send_mail if smtp_config_email else None
+  smtp_password = resolve_smtp_password(comm_config, smtp_config_email)
   use_tls = comm_config.use_TLS if comm_config.use_TLS is not None else getattr(settings, "EMAIL_USE_TLS", True)
   use_ssl = comm_config.use_SSL if comm_config.use_SSL is not None else getattr(settings, "EMAIL_USE_SSL", False)
 
