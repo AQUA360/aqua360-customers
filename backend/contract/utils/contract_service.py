@@ -66,6 +66,9 @@ def _rename_old_contract_and_get_reused_token(contract_request):
     # facturació (trimestral).
     if termination_request.bill_cut_reading:
         termination_request.bill_cut_reading = False
+        # La baixa ja no es factura: queda "sense factura" (després se'n pot generar igualment)
+        if not Invoice.objects.filter(contract_termination=termination_request).exists():
+            termination_request.ignore_invoice = True
         termination_request.save()
 
     return base_token, termination_request
