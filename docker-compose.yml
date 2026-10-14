@@ -142,6 +142,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     command: python -u manage.py run_gmao_consumer
+    # Només per als clients amb GMAO: s'engega amb COMPOSE_PROFILES=gmao al .env. Sense, l'stack
+    # no el crea ni l'actualitza.
+    profiles: ["gmao"]
     # on-failure: sense RabbitMQ (RABBITMQ_ENABLED=False) la comanda surt amb codi 0 i no s'ha de reiniciar en bucle
     restart: on-failure
     env_file:
@@ -151,7 +154,8 @@ services:
     volumes:
       - ./docker-data/media:/app/media
     healthcheck:
-      test: [ "CMD-SHELL", "ps aux | grep '[r]un_gmao_consumer' || exit 1" ]
+      # La imatge no porta `ps`: es mira l'ordre del procés principal del contenidor.
+      test: [ "CMD-SHELL", "grep -q run_gmao_consumer /proc/1/cmdline || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3

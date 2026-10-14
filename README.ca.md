@@ -74,7 +74,7 @@ Tots els serveis haurien d’estar en execució (i `healthy` on correspongui). T
 | `backend` | API Django |
 | `celery-worker` | Tasques en segon pla |
 | `celery-beat` | Tasques programades |
-| `gmao-consumer` | Consumidor GMAO (`manage.py run_gmao_consumer`) |
+| `gmao-consumer` | Consumidor GMAO (`manage.py run_gmao_consumer`). Només amb `COMPOSE_PROFILES=gmao` al `.env` |
 | `frontend` | Interfície Nuxt |
 
 ### 5. Administració i dades de prova

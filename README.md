@@ -74,7 +74,7 @@ All services should be running (and `healthy` where applicable). All of them use
 | `backend` | Django API |
 | `celery-worker` | Background tasks |
 | `celery-beat` | Scheduled tasks |
-| `gmao-consumer` | GMAO consumer (`manage.py run_gmao_consumer`) |
+| `gmao-consumer` | GMAO consumer (`manage.py run_gmao_consumer`). Only with `COMPOSE_PROFILES=gmao` in `.env` |
 | `frontend` | Nuxt interface |
 
 ### 5. Administration and Test Data
