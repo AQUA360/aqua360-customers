@@ -278,12 +278,26 @@ class CompanyConfigEmail(models.Model):
     mail_send_user = models.CharField(max_length=255, null=True, blank=True)
     mail_send_mail = models.EmailField(null=True, blank=True) #EMAIL_HOST_USER
     use_type = models.ForeignKey('communication.CommunicationUseType', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Connection Use Type")
+    # Contrasenya SMTP pròpia del correu, xifrada amb SMTP_PASSWORD_ENCRYPTION_KEY (mai en clar ni per l'API).
+    encrypted_password = models.TextField(null=True, blank=True)
     
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
     def __str__(self):
         return "CompanyConfigEmail ID {}".format(self.id)
+
+    @property
+    def has_password(self):
+        return bool(self.encrypted_password)
+
+    def set_password(self, raw_password):
+        from service.utils.smtp_password_crypto import encrypt_smtp_password
+        self.encrypted_password = encrypt_smtp_password(raw_password) if raw_password else None
+
+    def get_password(self):
+        from service.utils.smtp_password_crypto import decrypt_smtp_password
+        return decrypt_smtp_password(self.encrypted_password)
 
 class Company(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
@@ -388,6 +402,11 @@ class CompanyBankRouting(models.Model):
 
     Sense cap fila configurada el comportament no canvia: es remesa tot al
     compte que l'usuari triï a la pantalla de remeses.
+
+    Cada fila és d'una operació (`operation`): els cobraments per domiciliació
+    (`collection`, pain.008) i les transferències de retorn als clients
+    (`transfer`, pain.001) tenen mapes independents, perquè hi ha empreses que
+    paguen des d'un compte diferent del que cobren.
     """
 
     MATCH_PAYER_BANK = 'payer_bank'
@@ -399,6 +418,13 @@ class CompanyBankRouting(models.Model):
         (MATCH_DEFAULT, 'Per defecte'),
     ]
 
+    OPERATION_COLLECTION = 'collection'
+    OPERATION_TRANSFER = 'transfer'
+    OPERATION_CHOICES = [
+        (OPERATION_COLLECTION, 'Cobrament (remesa)'),
+        (OPERATION_TRANSFER, 'Transferència (retorn)'),
+    ]
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='bank_routings')
@@ -406,23 +432,24 @@ class CompanyBankRouting(models.Model):
     # Només a `payer_bank`: a `foreign` i `default` no hi ha entitat pagadora.
     bank = models.ForeignKey(Bank, on_delete=models.CASCADE, null=True, blank=True, related_name='company_routings')
     match_type = models.CharField(max_length=32, choices=MATCH_TYPE_CHOICES, default=MATCH_PAYER_BANK)
+    operation = models.CharField(max_length=16, choices=OPERATION_CHOICES, default=OPERATION_COLLECTION)
     is_active = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = "Company Bank Routing"
         verbose_name_plural = "Company Bank Routings"
         constraints = [
-            # Una entitat pagadora no pot anar a dos comptes de la mateixa
-            # empresa, i només hi pot haver un `foreign` i un `default` per
-            # empresa (amb `bank` a NULL, que a Postgres no xoca amb un UNIQUE
-            # normal: per això la condició separada).
+            # Dins d'una mateixa operació, una entitat pagadora no pot anar a
+            # dos comptes de l'empresa, i només hi pot haver un `foreign` i un
+            # `default` per empresa (amb `bank` a NULL, que a Postgres no xoca
+            # amb un UNIQUE normal: per això la condició separada).
             models.UniqueConstraint(
-                fields=['company', 'bank'],
+                fields=['company', 'operation', 'bank'],
                 condition=models.Q(match_type='payer_bank'),
                 name='unique_company_payer_bank_routing',
             ),
             models.UniqueConstraint(
-                fields=['company', 'match_type'],
+                fields=['company', 'operation', 'match_type'],
                 condition=~models.Q(match_type='payer_bank'),
                 name='unique_company_special_routing',
             ),
@@ -430,8 +457,13 @@ class CompanyBankRouting(models.Model):
 
     def __str__(self):
         if self.match_type == self.MATCH_PAYER_BANK:
-            return f"{self.bank} -> {self.company_bank}"
-        return f"{self.get_match_type_display()} -> {self.company_bank}"
+            return f"[{self.operation}] {self.bank} -> {self.company_bank}"
+        return f"[{self.operation}] {self.get_match_type_display()} -> {self.company_bank}"
+
+    @classmethod
+    def operation_for(cls, is_return):
+        """Operació del mapa que s'aplica a una remesa segons si és de retorns."""
+        return cls.OPERATION_TRANSFER if is_return else cls.OPERATION_COLLECTION
  
 
 

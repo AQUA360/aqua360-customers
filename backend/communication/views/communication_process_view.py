@@ -19,8 +19,8 @@ from billing.tasks import generate_electronic_invoices
 from billing.views.epayment_document_generate_view import generate_xml
 from communication import process_policy
 from communication.filters.communication_process_filter import CommunicationProcessFilter
-from communication.models import Communication, CommunicationProcess, CommunicationProcessStatus, CommunicationStatus
-from communication.permissions import CommunicationPermission
+from communication.models import CANCELLED_STATUS_TOKEN, Communication, CommunicationProcess, CommunicationProcessStatus, CommunicationStatus
+from communication.permissions import CommunicationDeletePermission, CommunicationPermission
 from communication.serializers.communication_process_serializer import CommunicationProcessSerializer, CommunicationProcessListSerializer, CommunicationProcessSaveSerializer
 from coredata.models import ConfigProject
 from statistics.utils.report_service import delete_file_later
@@ -149,7 +149,51 @@ class CommunicationProcessViewSet(viewsets.ModelViewSet):
 
       return Response({"message": "Communication process and all its communications cancelled successfully"}, status=status.HTTP_200_OK)
     
+  @action(detail=True, methods=['post'], url_path='delete-cancelled')
+  def delete_cancelled(self, request, pk=None):
+      """
+      Esborrat lògic d'un procés cancel·lat i de les seves comunicacions
+      cancel·lades: queden amb is_active=False i deixen de sortir als
+      llistats, però no s'eliminen de la base de dades.
+      """
+      from django.db import transaction
+      from logger.models import LogCommunicationProcessStatusChange, LogCommunicationStatusChange
+
+      instance = self.get_object()
+      if not instance.status or instance.status.token != CANCELLED_STATUS_TOKEN:
+          return Response({"error": "Only cancelled communication processes can be deleted"}, status=status.HTTP_400_BAD_REQUEST)
+
+      with transaction.atomic():
+          LogCommunicationProcessStatusChange.objects.create(
+              object=instance,
+              previous_status=instance.status,
+              current_status=instance.status,
+              observation='Procés eliminat',
+              user=request.user
+          )
+          instance.is_active = False
+          instance.save(update_fields=['is_active', 'updated_at'])
+
+          communications = instance.communications.filter(
+              is_active=True, status__token=CANCELLED_STATUS_TOKEN
+          ).select_related('status')
+          LogCommunicationStatusChange.objects.bulk_create([
+              LogCommunicationStatusChange(
+                  object=comm,
+                  previous_status=comm.status,
+                  current_status=comm.status,
+                  observation='Comunicació eliminada amb el seu procés',
+                  user=request.user
+              )
+              for comm in communications
+          ])
+          communications.update(is_active=False)
+
+      return Response({"message": "Communication process and its communications deleted successfully"}, status=status.HTTP_200_OK)
+
   def get_permissions(self):
       if self.action == 'permissions':
           return [IsAuthenticated()]
+      if self.action == 'delete_cancelled':
+          return [IsAuthenticated(), CommunicationDeletePermission()]
       return super().get_permissions()

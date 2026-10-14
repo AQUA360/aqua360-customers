@@ -10,6 +10,7 @@ from django.db.models import Min
 from .models import CallRegister, ConfigProject, Address, Person, PersonAddress, PersonContact, PersonPiggyBank, PersonPiggyBankMovement, PersonRecord, PostalCode, Country, Street, StreetNumber, StreetNumberType, StreetType, City, Province, PersonBank, PersonCNAE, CNAE, Bank, PersonDeliquency, PersonObservation, MainPermission, IdentificationType, ReturnReason
 from django.apps import apps
 from .street_types import resolve_street_type
+from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
 
 
 
@@ -861,7 +862,18 @@ class PersonBankSaveSerializer(serializers.ModelSerializer):
 
         return super().to_internal_value(mutable_data)
 
+    def create(self, validated_data):
+        fill_holder_dni(validated_data)
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
+        if 'dni' in validated_data or 'name' in validated_data:
+            validated_data['dni'] = resolve_holder_dni(
+                validated_data.get('dni', instance.dni),
+                validated_data.get('name', instance.name),
+                validated_data.get('person', instance.person),
+            )
+
         if validated_data.get('is_default'):
             instance.person.banks.exclude(pk=instance.pk).filter(is_default=True).update(is_default=False)
 
@@ -1026,7 +1038,7 @@ class PersonSerializer(serializers.ModelSerializer):
         return PersonObservationSerializer(instance.observations.filter(is_important=True, is_active=True), many=True, context=self.context).data
     
     def get_total_communications(self, instance):
-        return instance.communications.count()
+        return instance.communications.filter(is_active=True).count()
     
     def get_addresses_count(self, instance):
         return instance.addresses.filter(is_active=True).values('address__id').distinct().count()
@@ -1138,8 +1150,7 @@ class PersonSerializer(serializers.ModelSerializer):
         if banks_data and len(banks_data) > 0:
             for b in banks_data:
                 b['person'] = person
-                print("b")
-                print(b)
+                fill_holder_dni(b)
                 bank_person = PersonBank.objects.create(**b)
                 person.banks.add(bank_person)
         
@@ -1283,12 +1294,17 @@ class PersonSerializer(serializers.ModelSerializer):
                         bank_person = PersonBank.objects.filter(id=b['id_save']).first()
 
                     if bank_person:
+                        if 'dni' in b or 'name' in b:
+                            b['dni'] = resolve_holder_dni(
+                                b.get('dni', bank_person.dni), b.get('name', bank_person.name), instance
+                            )
                         for attr, value in b.items():
                             setattr(bank_person, attr, value)
                         bank_person.person = instance
                         bank_person.save()
                     else:
                         b.pop('id_save', None)
+                        fill_holder_dni(b)
                         bank_person = PersonBank.objects.create(**b)
                     instance.banks.add(bank_person)
             
@@ -1390,7 +1406,7 @@ class PersonContractMinimalSerializer(serializers.ModelSerializer):
         return []
 
     def get_total_communications(self, instance):
-        return instance.communications.count()
+        return instance.communications.filter(is_active=True).count()
     
     """ def get_banks(self, obj):
         return PersonBankSerializer(obj.banks.all(), many=True).data

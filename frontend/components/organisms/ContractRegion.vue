@@ -183,7 +183,7 @@ const loadTabData = async (tab) => {
     await loadInvoices();
   } else if (tab === 'dataChange') {
     await getMembersChange();
-  } else if (tab === 'bonifications' || tab === 'variables') {
+  } else if (tab === 'bonifications') {
     await getExpiredVariables();
   }
 

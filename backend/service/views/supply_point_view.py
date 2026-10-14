@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from ..utils.supply_point_service import supply_point_activate, supply_point_change_address, supply_point_change_meter, supply_point_deactivate, supply_point_change_property
+from service.services.meter_change_service import set_meter_change_dates
 from fraud.models import Fraud, FraudStatus
 from coredata.models import ConfigProject
 from service.permissions import SupplyPointPermission
@@ -238,11 +239,15 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
             new_meter.status = meter_status_active
             new_meter.save()
         
+        released_meter = None
         if current_meter:
             current_meter_supply_points = SupplyPoint.objects.filter(meter=current_meter)
             if current_meter_supply_points.count() == 0:
                 current_meter.status = meter_status_inactive
                 current_meter.save()
+                released_meter = current_meter
+
+        set_meter_change_dates(new_meter, released_meter, change_date_instance)
         
         supply_point_change_meter(request.user, supply_point.id, current_meter, new_meter)
         

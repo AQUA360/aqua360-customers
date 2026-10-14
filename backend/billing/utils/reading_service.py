@@ -845,6 +845,54 @@ def fanout_general_meter_readings(billing, readings=None):
   return created
 
 
+def get_reading_copy_group_root(reading):
+  """
+  Original reading of the copy group (copied_from chain) this reading belongs to.
+  """
+  root = reading
+  seen = {root.id}
+  while root.copied_from_id and root.copied_from_id not in seen:
+    seen.add(root.copied_from_id)
+    root = root.copied_from
+  return root
+
+
+def get_reading_copy_group(reading):
+  """
+  Other active, non-control readings linked to this one via copied_from: the
+  original it was copied from plus every copy of that original (or, for an
+  original, its own copies). Editing one of them must keep the rest in sync.
+  """
+  if reading is None or reading.id is None:
+    return Reading.objects.none()
+  root = get_reading_copy_group_root(reading)
+  return Reading.objects.filter(
+    Q(id=root.id) | Q(copied_from=root),
+    is_active=True,
+    is_control=False,
+  ).exclude(id=reading.id)
+
+
+def get_copy_calculated_value(copy_previous, source_reading_value, source_calculated_value, source_previous):
+  """
+  Consumption for a copy whose reading value follows the edited (source) reading.
+  Each copy keeps its own previous reading, so the consumption is its own delta
+  against it, plus any manual adjustment applied to the source consumption.
+  """
+  if source_calculated_value is None:
+    return None
+  source_calculated = Decimal(str(source_calculated_value))
+  if source_reading_value is None:
+    return source_calculated
+  source_value = Decimal(str(source_reading_value))
+  manual_offset = Decimal(0)
+  if source_previous and source_previous.reading_value is not None:
+    manual_offset = source_calculated - (source_value - source_previous.reading_value)
+  if copy_previous and copy_previous.reading_value is not None:
+    return source_value - copy_previous.reading_value + manual_offset
+  return source_calculated
+
+
 def find_canonical_general_meter_reading(meter, reading_date=None, batch=None, start_date=None, end_date=None):
   """
   Find the physical (non-copy) reading for a general meter, typically with no contract.
@@ -1758,6 +1806,127 @@ def calculate_estimated_bag(calculated_value, is_estimated, new_reading, estimat
       except:
           pass
 
+def _resolve_copy_previous_reading(copy, source, new_previous):
+  """
+  Previous reading for a copy being replaced along with its source reading:
+  the same one when both shared it, otherwise the copy's own reading on the same
+  date as the source's new previous reading (or its current one).
+  """
+  if copy.previous_reading_id == source.previous_reading_id:
+    return new_previous
+  if new_previous is None or new_previous.id == source.previous_reading_id:
+    return copy.previous_reading
+  match = Reading.objects.filter(
+    contract=copy.contract,
+    meter_id=new_previous.meter_id,
+    reading_date=new_previous.reading_date,
+    is_control=False,
+    is_active=True,
+  ).exclude(id=copy.id).first()
+  return match or copy.previous_reading
+
+
+def _replace_reading_copy_group(reading, new_reading, user, skip_ids=()):
+  """
+  Replicates the modification of `reading` (already replaced by `new_reading`)
+  on the rest of its copy group: each linked reading is replaced the same way,
+  keeping its own contract, supply point and previous reading, and the new
+  readings stay linked to each other via copied_from.
+  """
+  related = list(get_reading_copy_group(reading).exclude(id__in=list(skip_ids)))
+  if not related:
+    return []
+
+  new_reading.refresh_from_db()
+  root = get_reading_copy_group_root(reading)
+  replacements = {reading.id: new_reading}
+  unchanged = []
+
+  for copy in related:
+    copy_previous = _resolve_copy_previous_reading(copy, reading, new_reading.previous_reading)
+    calculated_value = get_copy_calculated_value(
+      copy_previous, new_reading.reading_value, new_reading.calculated_value, new_reading.previous_reading
+    )
+    if copy_previous and copy_previous.reading_date and new_reading.reading_date:
+      consumption_days = (new_reading.reading_date - copy_previous.reading_date).days
+    else:
+      consumption_days = new_reading.consumption_days
+
+    if (
+      copy.reading_value == new_reading.reading_value and
+      (copy.leak_value or 0) == (new_reading.leak_value or 0) and
+      copy.reading_date == new_reading.reading_date and
+      copy.meter_id == new_reading.meter_id and
+      copy.calculated_value == calculated_value and
+      copy.previous_reading_id == (copy_previous.id if copy_previous else None)
+    ):
+      unchanged.append(copy)
+      continue
+
+    estimated_used = copy.estimated_used
+    available = (calculated_value or 0) - (new_reading.leak_value or 0)
+    if estimated_used and estimated_used > available:
+      estimated_used = max(available, 0)
+
+    new_copy = Reading.objects.create(
+      token=new_reading.token,
+      batch=new_reading.batch if copy.batch_id == reading.batch_id else copy.batch,
+      contract=copy.contract,
+      supply_point=copy.supply_point,
+      meter=new_reading.meter,
+      estimated_used=estimated_used,
+      reading_date=new_reading.reading_date,
+      reading_value=new_reading.reading_value,
+      leak_value=new_reading.leak_value,
+      calculated_value=calculated_value,
+      consumption_days=consumption_days,
+      real_consumption=calculated_value,
+      origin=new_reading.origin,
+      is_close=copy.is_close,
+      is_active=True,
+      is_control=False,
+      previous_reading=copy_previous,
+    )
+    copy.is_control = True
+    copy.save()
+    og_copy = copy.original_readings.first() or copy
+    og_copy.modified_readings.add(new_copy)
+    LogReadingChange.objects.create(
+      contract=copy.contract,
+      meter=new_reading.meter,
+      user=user,
+      reading_date=copy.reading_date,
+      previous_value=copy.reading_value,
+      current_value=new_reading.reading_value,
+      observation="Modificació de lectura (lectura enllaçada)"
+    )
+    for contract_termination in copy.contract_termination_requests.all():
+      contract_termination.readings.remove(copy)
+      contract_termination.readings.add(new_copy)
+
+    if new_copy.calculated_value is not None and new_copy.calculated_value < 0:
+      try:
+        alert_token = ConfigProject.objects.get(token='reading_alert_negative').value
+        new_copy.alert = ReadingAlert.objects.get(token=alert_token)
+        new_copy.alert_notes = new_copy.alert.name
+        new_copy.save(update_fields=['alert', 'alert_notes'])
+      except Exception:
+        pass
+
+    replacements[copy.id] = new_copy
+
+  # Keep the group linked to its current original: the replacement of the root
+  # when it was replaced, otherwise the root itself.
+  new_root = replacements.get(root.id) or root
+  for member in list(replacements.values()) + unchanged:
+    target_id = None if member.id == new_root.id else new_root.id
+    if member.copied_from_id != target_id:
+      member.copied_from_id = target_id
+      member.save(update_fields=['copied_from'])
+
+  return [r for r in replacements.values() if r.id != new_reading.id]
+
+
 def modify_existing_readings(readings_data, readings_to_update, readings_to_delete=None, user=None):
   
   if readings_to_delete:
@@ -1915,7 +2084,9 @@ def modify_existing_readings(readings_data, readings_to_update, readings_to_dele
                       contract_termination.readings.remove(reading)
                       contract_termination.readings.add(new_reading)
                       contract_termination.save()
-                
+
+                _replace_reading_copy_group(reading, new_reading, user, skip_ids=readings_cache.keys())
+
             else:
               reading.previous_reading = previous_reading
               reading.is_control = is_control

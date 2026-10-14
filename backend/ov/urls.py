@@ -12,12 +12,17 @@ from .views import (
     CreateReadingOVView,
     ContractsListOVView,
     ContractDetailByTokenOVView,
+    ContractByNicView,
     InvoiceDetailByTokenOVView,
     MeterDetailByTokenOVView,
     ConsumptionHistoryOVView,
     ConsumptionDownloadOVView,
     ConsumptionsDownloadOVView,
     BillingPeriodsOVView,
+    SepaDocumentUploadView,
+    CancelDirectDebitView,
+    ContactDataOVView,
+    BatchInvoiceDownloadView,
 )
 
 urlpatterns = [
@@ -33,8 +38,20 @@ urlpatterns = [
         BillingDataOVUpdateIBANView.as_view(),
         name="update-iban-ov",
     ),  # Post method
+    # /ov/contact-data/?contract_token=<token>
+    path(
+        "contact-data/",
+        ContactDataOVView.as_view(),
+        name="contact-data-ov",
+    ),  # Get method
     # /ov/invoices/?contract_token=<token>
     path("invoices/", BillingContractInvoicesOVView.as_view(), name="invoices-ov"),
+    # /ov/invoices/download/?contract_token=<token>  body: {invoice_tokens: [...]}
+    path(
+        "invoices/download/",
+        BatchInvoiceDownloadView.as_view(),
+        name="batch-invoice-download-ov",
+    ),
     # /ov/invoice/?contract_token=<token>&invoice_token=<token>
     path("invoice/", BillingContractInvoiceOVView.as_view(), name="invoice-ov"),
     # post -> body
@@ -74,6 +91,14 @@ urlpatterns = [
     path("billing-periods/", BillingPeriodsOVView.as_view(), name="billing-periods-ov"),
     # /ov/contracts/?dni=<DNI>&estado=<status_token>&page=<n>&limit=<n>
     path("contracts/", ContractsListOVView.as_view(), name="contracts-ov"),
+    # /ov/contract/by-nic/<nic>/   (nic conté «/» amb 1 o 2 barres, p. ex.
+    # 12345/1234 o 012345/654321/12345678; <path:nic>
+    # evita que el ruter retalli el NIC i acabi en 404 de ruta)
+    path(
+        "contract/by-nic/<path:nic>/",
+        ContractByNicView.as_view(),
+        name="contract-by-nic-ov",
+    ),
     # /ov/contract/<token>/
     path(
         "contract/<str:token>/",
@@ -85,6 +110,18 @@ urlpatterns = [
         "meter/<str:token>/",
         MeterDetailByTokenOVView.as_view(),
         name="meter-detail-by-token-ov",
+    ),
+    # /ov/procedures/<contract_token>/upload-sepa-signed/
+    path(
+        "procedures/<str:contract_token>/upload-sepa-signed/",
+        SepaDocumentUploadView.as_view(),
+        name="upload-sepa-signed-ov",
+    ),
+    # /ov/procedures/<contract_token>/cancel-direct-debit/
+    path(
+        "procedures/<str:contract_token>/cancel-direct-debit/",
+        CancelDirectDebitView.as_view(),
+        name="cancel-direct-debit-ov",
     ),
     # /ov/invoice/<token>/detail/
     path(

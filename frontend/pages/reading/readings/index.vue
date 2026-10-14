@@ -9,6 +9,7 @@ import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
+import SmartMeteringLoad from '~/components/molecules/SmartMeteringLoad.vue';
 import { useToast } from 'vue-toastification';
 
 const { t } = useI18n();
@@ -35,7 +36,7 @@ const toggleRegion = (force) => {
 
 const route = useRoute();
 const router = useRouter();
-const { $ReadingDocumentApiService, $ReadingApiService } = useNuxtApp();
+const { $ReadingDocumentApiService, $ReadingApiService, $ConfigProjectApiService } = useNuxtApp();
 const pending = ref(true);
 const error = ref(null);
 const items = ref([]);
@@ -43,6 +44,8 @@ const searchInput = ref('');
 const sortBy = ref('id');
 const sortDesc = ref(true);
 const permissions = ref(null);
+const smartMeteringEnabled = ref(false);
+const showSmartMeteringLoad = ref(false);
 const pagination = ref({
   page: 1,
   perPage: 50,
@@ -60,6 +63,24 @@ const getPermissions = async () => {
     permissions.value = data;
   } catch (err) {
     error.value = err;
+  }
+}
+
+const checkSmartMeteringEnabled = async () => {
+  try {
+    const configs = await $ConfigProjectApiService.getAll('smart_metering_authentication_token');
+    const smartMeteringConfig = configs.find((item) => item.token === 'smart_metering_authentication_token');
+    smartMeteringEnabled.value = Boolean(String(smartMeteringConfig?.value ?? '').trim());
+  } catch {
+    smartMeteringEnabled.value = false;
+  }
+}
+
+const onSmartMeteringLoaded = async (documentId) => {
+  showSmartMeteringLoad.value = false;
+  await getData(searchInput.value, [], pagination.value.page, sortBy.value, sortDesc.value);
+  if (documentId) {
+    showDetail(documentId);
   }
 }
 
@@ -140,6 +161,9 @@ onMounted(async () => {
   if (permissions.value?.can_view) {
     getData();
     checkRouteQuery();
+    if (permissions.value?.can_add) {
+      checkSmartMeteringEnabled();
+    }
   } else {
     pending.value = false;
     toast.error(t('common.no_permissions'));
@@ -183,6 +207,15 @@ watch(() => route.query, () => {
       <H1 class="mb-2">{{ $t('common.enter_readings') }}</H1>
       <div class="flex items-center gap-2">
         <AtomsLecturappHelpLink class="mr-2" />
+        <button
+          v-if="permissions?.can_add && smartMeteringEnabled"
+          type="button"
+          class="button-default flex items-center gap-2"
+          @click="showSmartMeteringLoad = true"
+        >
+          <Icon name="fa6-solid:tower-broadcast" />
+          {{ $t('reading_block.smart_metering_load_title') }}
+        </button>
         <button v-if="permissions?.can_add" @click="router.push('/reading/readings/estimation')" class="button-default flex items-center gap-2">
           <Icon name="fa6-solid:bolt" />
           {{ $t('reading_block.contract_estimation_title') }}
@@ -245,7 +278,14 @@ watch(() => route.query, () => {
               </button>
             </span>
             <span class="p-1">{{ formatDate(item.created_at) }}</span>
-            <button class="text-sky-500 hover:text-sky-700" @click="downloadFile(item.file)"><span class="p-1">{{ item.file?.split('/').pop() }}</span></button>
+            <button class="text-sky-500 hover:text-sky-700 flex items-center gap-2 text-left" @click="downloadFile(item.file)">
+              <span v-if="item.source === 'SMART_METERING'"
+                class="shrink-0 border border-sky-500 rounded-md text-sky-600 text-xs px-1"
+                :title="$t('billing_block.reading_date')">
+                <Icon name="fa6-solid:tower-broadcast" class="mr-1" />{{ $t('billing_block.smart_metering') }} · {{ formatDate(item.reading_date) }}
+              </span>
+              <span class="p-1">{{ item.file?.split('/').pop() }}</span>
+            </button>
             <span class="p-1">{{ item.num_readings }}</span>
           </div><!-- end for items -->
         </template>
@@ -255,6 +295,12 @@ watch(() => route.query, () => {
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />
     </div>
   </div><!-- end wrapper -->
+
+  <SmartMeteringLoad
+    :show="showSmartMeteringLoad"
+    @close="showSmartMeteringLoad = false"
+    @loaded="onSmartMeteringLoaded"
+  />
 
   <div role="region" id="right_page"
     class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white"
