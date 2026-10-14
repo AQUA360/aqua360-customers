@@ -16,6 +16,7 @@ from coredata.models import (Person, PersonBank, Bank)
 from coredata.serializers import (PersonSerializer, PersonBankSerializer, PersonBankSaveSerializer)
 from coredata.permissions import PersonPermission
 from coredata.filters.person_bank_filter import PersonBankFilter
+from coredata.utils.person_bank_utils import resolve_holder_dni
 
 class PersonBankViewSet(viewsets.ModelViewSet):
     """
@@ -39,26 +40,29 @@ class PersonBankViewSet(viewsets.ModelViewSet):
         context['request'] = self.request
         return context
     
+    # Dades del compte que es poden corregir sense canviar d'IBAN.
+    RESOLVE_EDITABLE_FIELDS = ('name', 'dni', 'role', 'account_number', 'swift', 'country', 'bank')
+    # Si arriben buits, es manté el valor desat: el frontal els envia buits quan no
+    # els ha pogut deduir (p. ex. el SWIFT de l'IBAN), no perquè s'hagin d'esborrar.
+    RESOLVE_KEEP_IF_EMPTY = ('swift', 'country')
+
     @action(detail=False, methods=['post'], url_path='resolve')
     def resolve(self, request):
         """
-        Resol quin compte ha de fer servir un contracte / factura / compromís
-        SENSE modificar mai una fila existent.
+        Resol quin compte ha de fer servir un contracte / factura / compromís.
 
         Un PersonBank penja de la PERSONA i el poden compartir diversos
-        contractes (via GeneralPayment.IBAN), així que editar-lo en lloc en
-        canvia l'IBAN a tots alhora. Aquí, en canvi:
+        contractes (via GeneralPayment.IBAN). Per això:
 
-        - si la persona ja té un compte actiu amb aquest IBAN, es retorna
-          (`reused: True`) i només se n'actualitza el SWIFT/BIC si arriba un
-          valor diferent (`swift_updated: True`): és el BIC d'aquest mateix
-          compte, així que corregir-lo és correcte per a tots els contractes
-          que el comparteixen. La resta de dades del titular no es toquen;
-        - si no, se'n crea un de nou (`reused: False`), i el compte d'origen
-          queda intacte.
+        - si la persona ja té un compte actiu amb aquest IBAN, es reaprofita
+          (`reused: True`) i s'hi desen les dades editades (titular, DNI,
+          càrrec, SWIFT, país, banc...). És el mateix compte bancari, així que
+          la correcció és vàlida per a tots els contractes que el comparteixen.
+          `updated` indica si ha canviat alguna dada;
+        - si no, se'n crea un de nou (`reused: False`) i el compte d'origen
+          queda intacte: canviar l'IBAN no ha d'afectar els altres contractes.
 
-        L'edició en lloc continua sent possible amb PUT, que és el que fa la
-        fitxa de la persona.
+        Si el DNI arriba buit, s'aplica `resolve_holder_dni`.
         """
         data = {key: value for key, value in request.data.items()}
 
@@ -76,6 +80,8 @@ class PersonBankViewSet(viewsets.ModelViewSet):
         # Una còpia no hereta mai el flag de compte per defecte de l'original.
         data.pop('is_default', None)
         data['iban'] = iban
+        if data.get('swift'):
+            data['swift'] = data['swift'].replace(' ', '').upper()
 
         existing = (
             PersonBank.objects.filter(person_id=person_id, is_active=True)
@@ -90,15 +96,24 @@ class PersonBankViewSet(viewsets.ModelViewSet):
 
         context = self.get_serializer_context()
         if match:
-            # Un SWIFT buit no esborra el que hi ha: el frontal l'envia buit quan
-            # no l'ha pogut deduir de l'IBAN, no perquè l'usuari el vulgui treure.
-            swift = (data.get('swift') or '').replace(' ', '').upper()
-            swift_updated = bool(swift) and swift != (match.swift or '').strip().upper()
-            if swift_updated:
-                match.swift = swift
-                match.save(update_fields=['swift', 'updated_at'])
+            changes = {
+                field: data[field] for field in self.RESOLVE_EDITABLE_FIELDS
+                if field in data and not (field in self.RESOLVE_KEEP_IF_EMPTY and not data[field])
+            }
+            if 'dni' in changes or 'name' in changes:
+                changes['dni'] = resolve_holder_dni(
+                    changes.get('dni', match.dni), changes.get('name', match.name), match.person
+                )
+            serializer = PersonBankSaveSerializer(match, data=changes, partial=True, context=context)
+            serializer.is_valid(raise_exception=True)
+            updated = any(
+                (getattr(match, field) or None) != (value or None)
+                for field, value in serializer.validated_data.items()
+            )
+            if updated:
+                serializer.save()
             payload = PersonBankSerializer(match, context=context).data
-            return Response({**payload, 'reused': True, 'swift_updated': swift_updated}, status=status.HTTP_200_OK)
+            return Response({**payload, 'reused': True, 'updated': updated}, status=status.HTTP_200_OK)
 
         serializer = PersonBankSaveSerializer(data=data, context=context)
         serializer.is_valid(raise_exception=True)

@@ -296,6 +296,7 @@ onMounted(() => {
       <div class="field mb-3">
         <label for="dni" class="text-slate-500">{{ $t('common.person_id') }}</label>
         <input class="input mt-1" type="text" v-model="selectedDni" />
+        <p class="text-xs text-slate-400 mt-1">{{ $t('contract_block.holder_dni_default_hint') }}</p>
       </div>
 
       <div class="field mb-3">

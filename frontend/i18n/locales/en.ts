@@ -1375,6 +1375,7 @@ export default {
     select_holder: 'Select or add holder',
     holder_name: 'Holder name',
     holder_role: 'Holder role',
+    holder_dni_default_hint: 'If left empty and the account holder is someone else, 99999999R will be saved.',
     tenant: 'Tenant',
     tenant_change: 'Tenant change',
     tenant_changes: 'Tenant changes',
@@ -2910,10 +2911,9 @@ export default {
     meter_code_already_exists: 'A meter with this code already exists'
   },
   informative_block:   {
-    person_bank_edit_not_applied: 'The IBAN did not change, so the account was left as it was. Holder details are edited from the person file, as other contracts may share this account.',
-    person_bank_swift_updated: 'The account SWIFT/BIC has been updated. Since it is the same IBAN, the change applies to every contract using it.',
-    person_bank_reused: 'This IBAN already existed for this person: the existing account has been selected, unchanged.',
-    person_bank_copied_on_edit: 'A new account with this IBAN has been created and assigned only here. The original account was left untouched, as other contracts may be using it. To correct it, go to the person file.',
+    person_bank_updated: 'The account details have been saved. As it is the same IBAN, the change applies to every contract using it.',
+    person_bank_reused: 'This IBAN already existed for this person: the existing account has been selected.',
+    person_bank_copied_on_edit: 'A new account with this IBAN has been created and assigned only here. The original account was left untouched, as other contracts may be using it.',
     use_type_change_not_saved_unless_allowed: 'The use type change and the document will not be saved unless you enable the option to change use type.',
     info_exclude_payments: 'To mark the remittance as sent, you must exclude the payments and regenerate the SEPA document.',
     format_title: 'What format should the file be in?',

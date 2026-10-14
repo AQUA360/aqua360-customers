@@ -1375,6 +1375,7 @@ export default {
     select_holder: 'Seleccionar ou engadir titular',
     holder_name: 'Nome do titular',
     holder_role: 'Rol do titular',
+    holder_dni_default_hint: 'Se se deixa baleiro e o titular da conta é outra persoa, gardarase 99999999R.',
     tenant: 'Inquilino',
     tenant_change: 'Cambio de inquilino',
     tenant_changes: 'Cambios de inquilino',
@@ -2910,10 +2911,9 @@ export default {
     meter_code_already_exists: 'Xa existe un contador con este código'
   },
   informative_block:   {
-    person_bank_edit_not_applied: 'O IBAN non cambiou, así que a conta deixouse tal como estaba. Os datos do titular modifícanse desde a ficha da persoa, porque esta conta poden compartila outros contratos.',
-    person_bank_swift_updated: 'Actualizouse o SWIFT/BIC da conta. Como é o mesmo IBAN, o cambio vale para todos os contratos que a usan.',
-    person_bank_reused: 'Este IBAN xa existía nesta persoa: seleccionouse a conta que xa había, sen modificala.',
-    person_bank_copied_on_edit: 'Creouse unha conta nova con este IBAN e asignouse só aquí. A conta orixinal non se tocou, porque poden estar a usala outros contratos. Para corrixila hai que ir á ficha da persoa.',
+    person_bank_updated: 'Gardáronse os datos da conta. Como é o mesmo IBAN, o cambio vale para todos os contratos que a usan.',
+    person_bank_reused: 'Este IBAN xa existía nesta persoa: seleccionouse a conta que xa había.',
+    person_bank_copied_on_edit: 'Creouse unha conta nova con este IBAN e asignouse só aquí. A conta orixinal non se tocou, porque poden estar a usala outros contratos.',
     use_type_change_not_saved_unless_allowed: 'O cambio de tipo de uso e o documento non se gardarán a menos que active a opción de cambiar tipo de uso.',
     info_exclude_payments: 'Para poder marcar como enviada a remesa, debes excluír os pagos e rexerar o documento SEPA.',
     format_title: 'Como debe ser o formato do arquivo?',

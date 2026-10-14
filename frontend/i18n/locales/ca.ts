@@ -1385,6 +1385,7 @@ export default {
     select_holder: 'Seleccionar o afegir titular',
     holder_name: 'Nom del titular',
     holder_role: 'Rol del titular',
+    holder_dni_default_hint: 'Si es deixa buit i el titular del compte és una altra persona, es desarà 99999999R.',
     tenant: 'Llogater',
     tenant_change: 'Canvi de llogater',
     tenant_changes: 'Canvis de llogater',
@@ -3032,10 +3033,9 @@ export default {
     meter_code_already_exists: 'Ja existeix un comptador amb aquest codi'
   },
   informative_block:   {
-    person_bank_edit_not_applied: 'L\'IBAN no ha canviat, així que el compte s\'ha deixat tal com estava. Les dades del titular es modifiquen des de la fitxa de la persona, perquè aquest compte el poden compartir altres contractes.',
-    person_bank_swift_updated: 'S\'ha actualitzat el SWIFT/BIC del compte. Com que és el mateix IBAN, el canvi val per a tots els contractes que el fan servir.',
-    person_bank_reused: 'Aquest IBAN ja existia en aquesta persona: s\'ha seleccionat el compte que ja hi havia, sense modificar-lo.',
-    person_bank_copied_on_edit: 'S\'ha creat un compte nou amb aquest IBAN i s\'ha assignat només aquí. El compte original no s\'ha tocat, perquè el poden estar fent servir altres contractes. Per corregir-lo cal anar a la fitxa de la persona.',
+    person_bank_updated: 'S\'han desat les dades del compte. Com que és el mateix IBAN, el canvi val per a tots els contractes que el fan servir.',
+    person_bank_reused: 'Aquest IBAN ja existia en aquesta persona: s\'ha seleccionat el compte que ja hi havia.',
+    person_bank_copied_on_edit: 'S\'ha creat un compte nou amb aquest IBAN i s\'ha assignat només aquí. El compte original no s\'ha tocat, perquè el poden estar fent servir altres contractes.',
     use_type_change_not_saved_unless_allowed: 'El canvi de tipus d\'ús i el document no es desaran tret que activeu l\'opció de canviar tipus d\'ús.',
     info_exclude_payments: 'Per poder marcar com a enviada la remesa, has d\'excloure els pagaments i regenerar el document SEPA.',
     format_title: 'Com ha de ser el format del fitxer?',
