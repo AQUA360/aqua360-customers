@@ -129,6 +129,22 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    // Resolve a list of street ids to their display labels, so a pasted/uploaded
+    // id list can be sanity-checked (chips) before the bulk supply-cut preview.
+    const resolveIds = async (ids) => {
+      const apiUrl = `${apiHost}${entity}resolve-ids/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'POST', JSON.stringify({ ids }), { 'Content-Type': 'application/json' });
+        if (response && Array.isArray(response.streets)) {
+          return response.streets;
+        } else {
+          return [];
+        }
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const apiService = {
       getAll,
       exportData,
@@ -138,6 +154,7 @@ export default defineNuxtPlugin(nuxtApp => {
       create,
       patch,
       getPermissions,
+      resolveIds,
     };
   
     nuxtApp.provide(provideName, apiService);
