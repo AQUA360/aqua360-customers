@@ -31,7 +31,7 @@ const props = defineProps({
 
 const toast = useToast()
 const { t } = useI18n();
-const { $ConfiglistApiService, $InvoiceApiService, $ContractApiService, $ConfigProjectApiService, $RouteApiService, $ProductApiService, $ClaimRequestApiService, $ExploitationApiService } = useNuxtApp();
+const { $ConfiglistApiService, $InvoiceApiService, $ContractApiService, $ConfigProjectApiService, $RouteApiService, $ProductApiService, $ClaimRequestApiService, $ExploitationApiService, $ReadingBatchTemplateApiService } = useNuxtApp();
 
 // Estats generals
 const currentStep = ref(0);
@@ -54,6 +54,7 @@ const maxStep = computed(() => {
 const selectedClientTypes = ref([])
 const selectedUseTypes = ref([])
 const selectedZones = ref([])
+const selectedReadingBatchTemplates = ref([])
 const selectedDebtMngs = ref([])
 const selectedOrigins = ref([])
 const selectedContractStatuses = ref([])
@@ -93,6 +94,7 @@ const isPaymentExcluded = (payment) => paymentsToIgnore.value.some(p => p.id ===
 const clientTypes = ref([])
 const useTypes = ref([])
 const zones = ref([])
+const readingBatchTemplates = ref([])
 const debtManagements = ref([])
 const origins = ref([])
 const contractStatuses = ref([])
@@ -109,6 +111,7 @@ const loading_contracts = ref(true)
 const loadingUseTypesIds = ref(false)
 const loadingClientTypesIds = ref(false)
 const loadingZonesIds = ref(false)
+const loadingReadingBatchTemplates = ref(false)
 const loadingDebtMngsIds = ref(false)
 const loadingOriginsIds = ref(false)
 const loadingContractStatuses = ref(false)
@@ -283,6 +286,25 @@ const getUseTypes = async () => {
   }
 }
 
+// Plantilles de lot de lectura (lots dins d'una zona); si hi ha zones
+// seleccionades, només les que tenen rutes d'aquestes zones.
+const getReadingBatchTemplates = async () => {
+  loadingReadingBatchTemplates.value = true
+  try {
+    const fetchData = await $ReadingBatchTemplateApiService.getAllWithRoutes(selectedZones.value.map(el => el.code))
+    readingBatchTemplates.value = fetchData.map(item => ({
+      label: item.name,
+      code: item.id
+    }))
+    const availableIds = readingBatchTemplates.value.map(el => el.code)
+    selectedReadingBatchTemplates.value = selectedReadingBatchTemplates.value.filter(el => availableIds.includes(el.code))
+  } catch (error) {
+    console.error('Error loading reading batch templates:', error);
+  } finally {
+    loadingReadingBatchTemplates.value = false
+  }
+}
+
 const getRouteZones = async () => {
   loadingZonesIds.value = true
   zones.value = [];
@@ -419,6 +441,7 @@ const getClaimData = async () => {
       selectedExploitationId: selectedExploitation.value.code,
       selectedClientTypesIds: selectedClientTypes.value.map(el => el.code),
       selectedZonesIds: selectedZones.value.map(el => el.code),
+      selectedReadingBatchTemplatesIds: selectedReadingBatchTemplates.value.map(el => el.code),
       selectedDebtMngsIds: selectedDebtMngs.value.map(el => el.code),
       selectedContractStatusesIds: selectedContractStatuses.value.map(el => el.code),
       selectedOriginsIds: selectedOrigins.value.map(el => el.code),
@@ -472,6 +495,7 @@ const onContractSelected = async (item) => {
   selectedDebtMngs.value = []
   selectedOrigins.value = []
   selectedZones.value = []
+  selectedReadingBatchTemplates.value = []
   selectedRejectionReasons.value = []
   filter_date_start.value = null
   filter_date_end.value = null
@@ -781,6 +805,10 @@ watch(() => selectedExploitation.value, () => {
   getRouteZones()
 }, { immediate: true });
 
+watch(() => selectedZones.value, () => {
+  getReadingBatchTemplates()
+}, { immediate: true });
+
 </script>
 
 <template>
@@ -897,6 +925,12 @@ watch(() => selectedExploitation.value, () => {
               <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('service_block.zone') }}</label>
               <v-select multiple class="block w-full mr-1 custom-select" v-model="selectedZones" :options="zones"
                 :loading="loadingZonesIds" />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('billing_block.reading_batch_template') }}</label>
+              <v-select multiple class="block w-full mr-1 custom-select" v-model="selectedReadingBatchTemplates"
+                :options="readingBatchTemplates" :loading="loadingReadingBatchTemplates" />
             </div>
 
             <div>
