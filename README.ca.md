@@ -133,7 +133,7 @@ docker compose up -d frontend
 
 ### Imatges construïdes a GitHub
 
-En publicar una release, l’acció `.github/workflows/imatges.yml` construeix les imatges del backend i del frontend i les puja a `ghcr.io/aqua360/aqua360-customers-backend` i `ghcr.io/aqua360/aqua360-customers-frontend` amb l’etiqueta de la release (per exemple, `v1.135.00`). Les imatges només porten el codi d’aquest repositori: la configuració de cada client (`.env`) es llegeix en engegar el contenidor.
+En publicar una release, l’acció `.github/workflows/imatges.yml` construeix les imatges del backend i del frontend i les puja a `ghcr.io/aqua360/aqua360-customers-backend` i `ghcr.io/aqua360/aqua360-customers-frontend` amb l’etiqueta de la release (per exemple, `v1.135.00`) i la del commit. Les imatges només porten el codi d’aquest repositori: la configuració de cada client (`.env`) es llegeix en engegar el contenidor.
 
 Per fer servir una versió sense construir res al servidor, posar-la al `.env` i:
 
