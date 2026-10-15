@@ -10,6 +10,13 @@
     - Nou filtre `mask_iban`: IBAN en blocs de 4 separats per guions amb l'últim bloc ocult (`ES00-0000-0000-0000-0000-****`).
     - Les plantilles de carta que els facin servir requereixen aquest backend desplegat.
 
+#### BILLING (`billing/utils/charts_service.py` — gràfic de consum de la factura a partir de les factures)
+    - Cada barra del gràfic és ara el consum facturat (`Invoice.consumption`) d'una factura del contracte, en lloc del recalculat a partir de les lectures. El gràfic coincideix amb el que s'ha cobrat en comptadors generals, comptadors compartits entre contractes i refacturacions.
+    - Les factures es posicionen per la data de la seva última lectura, de manera que una refacturació ocupa el lloc de la factura original encara que s'emeti mesos després.
+    - S'exclouen pressupostos, factures abonades o anul·lades, els seus abonaments (que copien el consum en positiu) i les factures sense lectures (derrames i similars, que tenen `consumption` desat amb un valor que no és consum d'aigua). Ja no surten barres de lectures intermèdies que no s'han facturat.
+    - Si una factura de consum no té el consum desat, es calcula a partir de les seves lectures. Si el contracte no té prou factures (p. ex. contractes que abans es facturaven fora de l'aplicació), les barres que falten s'omplen amb l'historial de lectures anterior a la factura més antiga, com fins ara.
+    - S'elimina la barra apilada "Subministrament adicional": el total de cada barra no canvia, però ja no es distingeix per subministrament.
+
 ### FIX
 #### CONTRACT (`contract/serializers/contract_serializer.py` — factures d'una altra sol·licitud a la llista de factures del contracte)
     - `get_request_invoices` buscava les factures de la sol·licitud amb `contract_request__token=obj.token`, és a dir, comparava el token del contracte amb el de les sol·licituds. Si una sol·licitud aliena tenia el mateix token que el contracte, les seves factures sortien a la pestanya de factures del contracte. Ara es filtra per la FK `contract_request` del contracte (igual que `contract_pinned_serializer.py` i `get_invoices_count`), i els contractes sense sol·licitud no en retornen cap.

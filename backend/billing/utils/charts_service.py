@@ -3,6 +3,7 @@ import matplotlib
 matplotlib.use('Agg')  # Set backend before importing pyplot
 import matplotlib.pyplot as plt
 from billing.models import Reading, Invoice
+from django.db.models import Max, Q
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.conf import settings
@@ -28,6 +29,40 @@ def get_complementary_color(rgb_color):
 
 def get_darker_color(rgb_color):
     return (rgb_color[0] * 0.85, rgb_color[1] * 0.85, rgb_color[2] * 0.85)
+
+MAX_BARS = 5
+
+def resolve_reading(reading, seen=None):
+    """A control reading can later be corrected; the correction is linked via
+    modified_readings. Follow that link to the final, non-control value instead of
+    keeping the superseded one (mirrors invoice_service.resolve_reading)."""
+    if seen is None:
+        seen = set()
+    if reading.id in seen:
+        return reading
+    seen.add(reading.id)
+    if reading.is_control:
+        replacement = reading.modified_readings.filter(is_control=False).first()
+        if replacement:
+            return resolve_reading(replacement, seen)
+    return reading
+
+def get_invoice_chart_readings(invoice):
+    """Lectures que ha cobrat una factura. `invoice.readings` només conté la lectura final de cada
+    comptador: en un canvi de comptador a mig període, la lectura de tancament del comptador substituït
+    queda enllaçada via previous_reading i no a invoice.readings, i també s'ha de tenir en compte."""
+    invoice_readings = list(invoice.readings.filter(is_active=True))
+    invoice_reading_ids = {reading.id for reading in invoice_readings}
+    chart_readings = []
+    for reading in invoice_readings:
+        chart_readings.append(reading)
+        prev = reading.previous_reading
+        if prev and prev.is_close and prev.id not in invoice_reading_ids:
+            chart_readings.append(prev)
+        prev_prev = prev.previous_reading if prev else None
+        if prev_prev and prev_prev.is_close and prev_prev.id not in invoice_reading_ids:
+            chart_readings.append(prev_prev)
+    return [resolve_reading(reading) for reading in chart_readings]
 
 def generate_chart(invoice, title, hide_background_and_logos=False):
     # Validate invoice
@@ -55,126 +90,104 @@ def generate_chart(invoice, title, hide_background_and_logos=False):
     if not hasattr(contract, 'supply_point_default') or contract.supply_point_default is None:
         print("Error: Contract has no supply_point_default")
         return None
-    
+
+    # Cada barra és el consum facturat (`Invoice.consumption`) d'una factura del contracte, no el
+    # recalculat a partir de les lectures: així el gràfic coincideix amb el que s'ha cobrat (comptadors
+    # generals, canvis de comptador, fuites, refacturacions...). Cada factura es posiciona per la data
+    # de la seva última lectura, que una refacturació comparteix amb la factura original; l'issue_date
+    # i el billing_period passen a ser els de la refacturació i la mourien de lloc. Només compten factures
+    # amb lectures: n'hi ha sense lectures (derrames...) que tenen `consumption` desat amb un valor que no
+    # és consum d'aigua.
     dates = []
     values = []
-    extra_values = []
     used_reading_ids = set()
+    # Data de la lectura més antiga ja representada: l'historial de lectures només s'usa per sota
+    readings_cutoff = None
 
-    def resolve_reading(reading, seen=None):
-        """A control reading can later be corrected; the correction is linked via
-        modified_readings. Follow that link to the final, non-control value instead of
-        keeping the superseded one (mirrors invoice_service.resolve_reading)."""
-        if seen is None:
-            seen = set()
-        if reading.id in seen:
-            return reading
-        seen.add(reading.id)
-        if reading.is_control:
-            replacement = reading.modified_readings.filter(is_control=False).first()
-            if replacement:
-                return resolve_reading(replacement, seen)
-        return reading
-
-    # Current invoice bar: aggregate every reading attached to this invoice (resolving any
-    # control reading to its corrected value), summed per supply point, instead of one bar
-    # per reading - this is what makes a meter change within the same billing show as a
-    # single bar with the combined consumption.
-    main_total = 0.0
-    extra_total = 0.0
-    has_main = False
-    bar_date = None
-
-    # `invoice.readings` només conté la lectura final de cada comptador facturat: en un
-    # canvi de comptador a mig període, `reading.real_consumption` es queda amb el consum
-    # propi d'aquesta lectura (p.ex. 14) i el total combinat (p.ex. 14+45=59) només viu a
-    # `invoice.consumption` -- la lectura de tancament del comptador substituït (real_consumption
-    # ja correcte, no cal recalcular-lo) queda enllaçada via previous_reading pero mai
-    # s'afegeix a invoice.readings.set(...). Sense això la barra només reflectia el consum
-    # del comptador nou (mateix bug que a les taules "Dades de consum" del PDF, corregit
-    # amb `meter_change_readings`). Sumar-hi aquesta
-    # lectura addicional no duplica res: real_consumption de la lectura final mai inclou ja
-    # el consum del comptador substituït.
-    chart_readings = []
-    if hasattr(invoice, 'readings'):
-        invoice_reading_ids = set(invoice.readings.filter(is_active=True).values_list('id', flat=True))
-        for reading in invoice.readings.filter(is_active=True):
-            chart_readings.append(reading)
-            prev = reading.previous_reading
-            if prev and prev.is_close and prev.id not in invoice_reading_ids:
-                chart_readings.append(prev)
-            prev_prev = prev.previous_reading if prev else None
-            if prev_prev and prev_prev.is_close and prev_prev.id not in invoice_reading_ids:
-                chart_readings.append(prev_prev)
-
-    for reading in chart_readings:
-        resolved = resolve_reading(reading)
-        used_reading_ids.add(resolved.id)
-
-        if resolved.reading_date and (bar_date is None or resolved.reading_date > bar_date):
-            bar_date = resolved.reading_date
-
-        value = float(resolved.real_consumption) if resolved.real_consumption is not None else 0.0
-        if resolved.supply_point_id == contract.supply_point_default_id:
-            main_total += value
-            has_main = True
+    def add_invoice_bar(bar_invoice, bar_date):
+        nonlocal readings_cutoff
+        chart_readings = get_invoice_chart_readings(bar_invoice)
+        if bar_invoice.consumption is not None:
+            value = float(bar_invoice.consumption)
         else:
-            extra_total += value
+            # Factura de consum sense el consum desat: es calcula a partir de les seves lectures
+            value = sum(float(reading.real_consumption or 0) for reading in chart_readings)
+        dates.append(bar_date)
+        values.append(value)
+        used_reading_ids.update(reading.id for reading in chart_readings)
+        readings_cutoff = min([reading.reading_date for reading in chart_readings if reading.reading_date] + [bar_date])
 
-    if not has_main or bar_date is None:
-        print("Error: No readings found for contract")
+    current_bar_date = invoice.readings.filter(is_active=True).aggregate(m=Max('reading_date'))['m']
+    if current_bar_date is None:
+        print("Error: Invoice has no readings")
         return None
+    add_invoice_bar(invoice, current_bar_date)
 
-    dates.append(bar_date)
-    values.append(main_total)
-    extra_values.append(extra_total)
+    # Barres anteriors: factures vàlides del contracte. S'exclouen pressupostos, factures abonades o
+    # anul·lades (i els seus abonaments, que copien el consum en positiu) i factures sense lectures.
+    excluded_statuses = list(ConfigProject.objects.filter(
+        token__in=['invoice_status_cancelled_token', 'invoice_status_payoff_token', 'invoice_status_dropped_token']
+    ).values_list('value', flat=True))
+    invoice_type_token = ConfigProject.objects.filter(token='invoice_type_invoice_token').values_list('value', flat=True).first()
 
-    # Earlier bars: walk the reading history backwards (one final reading per bar), the same
-    # way previous billings were charted before, but skip any reading already folded into a
-    # more recent bar so it isn't double counted.
-    cutoff_date = min(
-        (r.reading_date for r in Reading.objects.filter(id__in=used_reading_ids) if r.reading_date),
-        default=bar_date,
-    )
+    # Ids per separat: un OR entre `contract` i `contract_termination__contract` impedeix fer servir
+    # els índexs i la consulta passa de mil·lisegons a segons per factura.
+    contract_invoice_ids = list(Invoice.objects.filter(contract=contract).values_list('id', flat=True))
+    contract_invoice_ids += list(Invoice.objects.filter(contract_termination__contract=contract).values_list('id', flat=True))
 
-    for i in range(4):
-        try:
-            next_reading = Reading.objects.filter(
-                contract=contract,
-                supply_point=contract.supply_point_default,
-                is_control=False,
-                is_initial=False,
-                is_active=True,
-                reading_date__lt=cutoff_date,
-            ).exclude(id__in=used_reading_ids).order_by('-reading_date').first()
+    previous_invoices = Invoice.objects.filter(
+        id__in=contract_invoice_ids,
+        is_active=True,
+        is_suppressed=False,
+        type__token=invoice_type_token,
+    ).filter(
+        Q(return_token__isnull=True) | Q(return_token=''),
+    ).exclude(
+        status__token__in=excluded_statuses,
+    ).exclude(
+        id=invoice.id,
+    ).annotate(
+        period_date=Max('readings__reading_date', filter=Q(readings__is_active=True)),
+    ).filter(
+        period_date__lt=current_bar_date,
+    ).order_by('-period_date', '-id')
 
-            if next_reading is None or next_reading.reading_date is None:
-                break
-
-            extra_readings = Reading.objects.filter(
-                contract=contract,
-                reading_date=next_reading.reading_date,
-                is_control=False,
-                is_initial=False,
-                is_active=True,
-            ).exclude(supply_point=next_reading.supply_point).exclude(id__in=used_reading_ids)
-
-            dates.append(next_reading.reading_date)
-            values.append(float(next_reading.real_consumption) if next_reading.real_consumption is not None else 0.0)
-            extra_values.append(sum(
-                float(reading.real_consumption) if reading.real_consumption is not None else 0.0
-                for reading in extra_readings
-            ))
-
-            used_reading_ids.add(next_reading.id)
-            used_reading_ids.update(extra_readings.values_list('id', flat=True))
-            cutoff_date = next_reading.reading_date
-        except (AttributeError, ValueError) as e:
+    for previous_invoice in previous_invoices:
+        if len(dates) >= MAX_BARS:
             break
-        except Exception as e:
-            # Log unexpected errors but continue
-            print(f"Error processing reading {i}: {str(e)}")
+        # Una sola barra per període si hi hagués més d'una factura vàlida amb la mateixa data
+        if previous_invoice.period_date in dates:
+            continue
+        add_invoice_bar(previous_invoice, previous_invoice.period_date)
+
+    # Si no hi ha prou factures (p.ex. contractes que abans es facturaven fora de l'aplicació), s'omplen
+    # les barres que falten amb l'historial de lectures anterior a la factura més antiga: una lectura del
+    # subministrament principal per barra, més les dels altres subministraments del contracte del mateix dia.
+    while readings_cutoff and len(dates) < MAX_BARS:
+        next_reading = Reading.objects.filter(
+            contract=contract,
+            supply_point=contract.supply_point_default,
+            is_control=False,
+            is_initial=False,
+            is_active=True,
+            reading_date__lt=readings_cutoff,
+        ).exclude(id__in=used_reading_ids).order_by('-reading_date').first()
+
+        if next_reading is None or next_reading.reading_date is None:
             break
+
+        same_day_readings = list(Reading.objects.filter(
+            contract=contract,
+            reading_date=next_reading.reading_date,
+            is_control=False,
+            is_initial=False,
+            is_active=True,
+        ).exclude(id__in=used_reading_ids))
+
+        dates.append(next_reading.reading_date)
+        values.append(sum(float(reading.real_consumption or 0) for reading in same_day_readings))
+        used_reading_ids.update(reading.id for reading in same_day_readings)
+        readings_cutoff = next_reading.reading_date
 
     # Validate we have data to plot
     if not dates or not values or len(dates) != len(values):
@@ -252,10 +265,6 @@ def generate_chart(invoice, title, hide_background_and_logos=False):
 
     fig, ax = plt.subplots(figsize=(7, 6))  # Create figure and axis
 
-    # Ensure extra_values matches dates length
-    while len(extra_values) < len(dates):
-        extra_values.append(0)
-    
     # Use equally spaced positions instead of dates for x-axis
     x_positions = list(range(len(dates)))[::-1]
     MAX_BAR_WIDTH = 0.4  # Cap width so a single bar doesn't span the full chart
@@ -273,24 +282,11 @@ def generate_chart(invoice, title, hide_background_and_logos=False):
         plt.close(fig)
         return None
 
-    if any(extra_value != 0 for extra_value in extra_values):
-        try:
-            ax.bar(x=x_positions,
-                height=extra_values,
-                width=bar_width,
-                align='center',
-                color=additional_color,
-                bottom=values,
-                label='Subministrament adicional')
-        except (ValueError, TypeError) as e:
-            # Continue without extra bars if there's an error
-            print(f"Warning: Could not add extra bars: {str(e)}")
-
     # Add value labels on top of each bar
     for i in range(len(dates)):
         try:
-            if i < len(values) and i < len(extra_values):
-                total = float(values[i]) + float(extra_values[i])
+            if i < len(values):
+                total = float(values[i])
                 ax.text(x=x_positions[i],
                         y=total + 0.5,
                         s=f'{total:.0f}',
@@ -303,7 +299,7 @@ def generate_chart(invoice, title, hide_background_and_logos=False):
 
     # Adjust ylim to account for total height
     try:
-        total_height = [float(v1) + float(v2) for v1, v2 in zip(values, extra_values) if v1 is not None and v2 is not None]
+        total_height = [float(v) for v in values if v is not None]
         if total_height:
             ax.set_ylim(0, max(total_height) + 5)
         else:
