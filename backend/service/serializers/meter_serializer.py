@@ -234,10 +234,11 @@ class MeterSerializer(serializers.ModelSerializer):
             street_number = StreetNumber.objects.get(id=street_number_data.get('street_number_id'))
             street_number.street = street
             street_number.number_type = street_number_type
-            street_number.number = street_number_data.get('number', None)
-            street_number.number_end = street_number_data.get('number_end', None)
-            street_number.number_suffix = street_number_data.get('number_suffix', None)
-            street_number.number_end_suffix = street_number_data.get('number_end_suffix', None)
+            # Com a l'update: el número pot ser el de l'adreça d'un punt de subministrament,
+            # així que un camp que no ve al payload no s'ha de buidar.
+            for field in ('number', 'number_end', 'number_suffix', 'number_end_suffix'):
+                if field in street_number_data:
+                    setattr(street_number, field, street_number_data.get(field))
             street_number.save()
         else:
             street_number = StreetNumber.objects.create(

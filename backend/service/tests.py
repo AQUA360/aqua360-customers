@@ -1600,3 +1600,51 @@ class TestSupplyCutResolveReviewAndAlert(TestCase):
         )
 
 
+
+
+class TestMeterSerializerStreetNumber(TestCase):
+    """El número de carrer d'un comptador pot ser el de l'adreça del seu punt: no s'ha de perdre ni canviar."""
+
+    def setUp(self):
+        from coredata.models import Street, StreetNumber, StreetNumberType, StreetType
+
+        StreetType.objects.create(abbreviation='C', name='Carrer')
+        self.street = Street.objects.create(name='Carrer de Prova')
+        number_type_s, _ = StreetNumberType.objects.get_or_create(type='S', defaults={'description': 'S'})
+        self.shared = StreetNumber.objects.create(street=self.street, number_type=number_type_s,
+                                                  number=13, number_suffix='B')
+        self.supply_point = SupplyPoint.objects.create(
+            address=Address.objects.create(street=self.street, street_number=self.shared))
+
+    def _street(self):
+        return {'type_abbreviation': 'C', 'name': self.street.name, 'street_id': self.street.id}
+
+    def test_create_no_buida_els_camps_que_no_venen(self):
+        from service.serializers.meter_serializer import MeterSerializer
+
+        meter = MeterSerializer().create({
+            'code': 'M1',
+            'address_street': self._street(),
+            'address_street_number': {'number_type': {'type': 'S'}, 'street_number_id': self.shared.id},
+            'supply_points': [self.supply_point.id],
+        })
+
+        self.shared.refresh_from_db()
+        self.assertEqual(meter.address_street_number_id, self.shared.id)
+        self.assertEqual(str(self.shared), '13-B')
+
+    def test_update_sense_id_no_toca_el_numero_del_punt(self):
+        from service.serializers.meter_serializer import MeterSerializer
+
+        meter = Meter.objects.create(code='M1', address_street=self.street, address_street_number=self.shared)
+        meter = MeterSerializer().update(meter, {
+            'address_street': self._street(),
+            'address_street_number': {'number_type': {'type': 'N'}, 'number': 7, 'number_end': None,
+                                      'number_suffix': None, 'number_end_suffix': None},
+            'supply_points': [self.supply_point.id],
+        })
+
+        self.shared.refresh_from_db()
+        self.assertNotEqual(meter.address_street_number_id, self.shared.id)
+        self.assertEqual(str(meter.address_street_number), '7')
+        self.assertEqual(str(self.shared), '13-B')
