@@ -143,7 +143,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Tornar enrere és posar la versió anterior i repetir-ho (les migracions no es desfan). Sense `CUSTOMERS_VERSION`, o amb `up --build`, es construeix al servidor com sempre (etiqueta `local`).
+Tornar enrere és posar la versió anterior i repetir-ho (les migracions no es desfan). Sense `CUSTOMERS_VERSION`, o amb `up --build`, es construeix al servidor com sempre (etiqueta `local-<stack>`, una per stack perquè els stacks d’un mateix servidor no comparteixin imatge).
 
 ### Desplegament automatitzat (Ansible)
 
