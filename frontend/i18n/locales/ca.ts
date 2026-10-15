@@ -2314,6 +2314,7 @@ export default {
     connection_installation: 'Instal·lació d\'escomesa',
     meter_reading: 'Lectura de comptador',
     remove_meter: 'Retirada de comptador',
+    viewing_all_order_types_warning: 'S\'estan mostrant tots els tipus d\'ordre. Verifica la teva selecció.',
     cut_order: 'Ordre de tall',
     cut_orders: 'Ordres de tall',
     remove_order: 'Ordre de retirada',
@@ -2989,6 +2990,7 @@ export default {
   warning_block:   {
     warning_missing_initial_reading: 'Falta la lectura inicial del nou contracte',
     warning_order_type_not_found: 'No s\'ha trobat el tipus d\'ordre',
+    warning_order_reason_not_found: 'No s\'ha trobat el motiu d\'ordre',
     warning_order_status_not_found: 'No s\'ha trobat l\'estat d\'ordre per defecte',
     data_warning: 'Assegureu-vos que tots els dades estan assignades correctament',
     date_warning: 'La data final ha de ser posterior o igual a la data inicial',

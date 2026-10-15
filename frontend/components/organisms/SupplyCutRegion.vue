@@ -13,6 +13,7 @@ import Time from '~/components/atoms/Time.vue';
 import ButtonOutline from '~/components/atoms/ButtonOutline.vue';
 import SupplyCutDetail from '~/components/molecules/SupplyCutDetail.vue';
 import SupplyPointDetail from '~/components/molecules/SupplyPointDetail.vue';
+import WorkOrderTypeSelectorModal from '~/components/molecules/WorkOrderTypeSelectorModal.vue';
 import { useToast } from 'vue-toastification';
 import { usePermissions } from '~/middleware/permission';
 import { format } from 'date-fns';
@@ -202,7 +203,7 @@ const getData = async () => {
       selectedSuppplyPoint.value = data.value?.supply_points[0]
     }
 
-    if (!orderTypeSupplyCut.value) await getOrderConfig();
+    if (!orderTypes.value.length) await getOrderConfig();
     await getOrder();
 
   } catch (err) {
@@ -292,55 +293,113 @@ const supplyPointClicked = (item) => {
 }
 
 // supply cut work orders
-const supplyCutOrderTypeToken = ref('cut_supply');
-const orderTypeSupplyCut = ref(null);
+const orderTypes = ref([]);
 const orderStatuses = ref([]);
-const order = ref(null);
+const orders = ref([]);
 const savingOrder = ref(false);
+const workOrderSelectorOpen = ref(false);
+const { reasonId, resolved, getReasonId } = useOrderReasonId('order_reason_customer_supply_cut');
 
 const getOrderConfig = async () => {
   try {
     const order_types = await $ConfiglistApiService.getAll('order/order-type');
-    const order_type_token = await $ConfigProjectApiService.get('order_type_supply_cut_token');
-    if (order_type_token) supplyCutOrderTypeToken.value = order_type_token;
-    orderTypeSupplyCut.value = order_types.results.find(item => item.token == supplyCutOrderTypeToken.value);
-
+    orderTypes.value = order_types.results;
+  } catch (err) {
+    console.error(err);
+  }
+  try {
     const order_statuses = await $ConfiglistApiService.getAll('order/order-status');
     orderStatuses.value = order_statuses.results;
   } catch (err) {
     console.error(err);
   }
+  await getReasonId();
 }
 
 const getOrder = async () => {
-  order.value = null;
-  if (!selectedSuppplyPoint.value || !orderTypeSupplyCut.value) return;
+  orders.value = [];
+  if (!selectedSuppplyPoint.value) return;
   try {
     const response = await $OrderApiService.getAll('', [], 1, null, false, null,
-      [orderTypeSupplyCut.value.id], null, null, null, null, '', '', null, [], [],
+      [], null, null, null, null, '', '', null, [], [],
       [selectedSuppplyPoint.value.id]);
-    order.value = response.results?.[0] || null;
+    orders.value = (response.results || []).filter(
+      order => order.supply_point?.id == selectedSuppplyPoint.value.id
+    );
   } catch (err) {
     console.error(err);
   }
 }
 
-const generateWorkOrder = async () => {
+const excludedOrderTypeIds = computed(() =>
+  orders.value.map(order => order.type?.id).filter(id => id != null)
+);
+
+const linkedOrderTypes = computed(() => {
+  if (!resolved.value || reasonId.value == null) return null;
+  return orderTypes.value.filter(orderType =>
+    orderType.reasons?.some(reason => reason.id == reasonId.value)
+  );
+});
+
+const availableOrderTypes = computed(() => {
+  if (linkedOrderTypes.value?.length) return linkedOrderTypes.value;
+  return orderTypes.value.filter(orderType => orderType.token == 'cut_supply');
+});
+
+const showAllTypesWarning = computed(() =>
+  resolved.value
+  && reasonId.value != null
+  && !(linkedOrderTypes.value && linkedOrderTypes.value.length)
+);
+
+const relevantOrders = computed(() => {
+  const rid = reasonId.value;
+  return orders.value.filter(order =>
+    (rid != null && order.reason?.id == rid)
+    || order.type?.token == 'cut_supply'
+  );
+});
+
+const openWorkOrderSelector = async () => {
   if (!selectedSuppplyPoint.value) return;
+  await getReasonId();
+  workOrderSelectorOpen.value = true;
+};
 
-  if (!orderTypeSupplyCut.value) {
-    toast.error(`${t('warning_block.warning_order_type_not_found')}: ${supplyCutOrderTypeToken.value} (order_type_supply_cut_token)`);
-    return;
-  }
-
-  const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
-  const statusId = defaultOrderStatus?.id || orderStatuses.value[0]?.id;
-  if (!statusId) {
-    toast.error(t('warning_block.warning_order_status_not_found'));
-    return;
-  }
-
+const onWorkOrderSelected = async (orderType) => {
+  workOrderSelectorOpen.value = false;
+  if (savingOrder.value) return;
   if (!confirm(t('confirmation_text_block.confirm_create_orders'))) return;
+
+  savingOrder.value = true;
+  try {
+    const order_saved = await createWorkOrder(orderType);
+    if (order_saved) {
+      orders.value.push(order_saved);
+      toast.success(t('common.correct_creation'));
+    }
+  } catch (err) {
+    console.error('Error creating order:', err?.data || err?.response?.data || err);
+    toast.error(t('common.error_save'));
+  } finally {
+    savingOrder.value = false;
+  }
+};
+
+const createWorkOrder = async (orderType) => {
+  const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+  if (!orderType?.id || !statusId) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return null;
+  }
+
+  const reason_id = reasonId.value ?? await getReasonId();
+  if (!reason_id) {
+    toast.error(t('warning_block.warning_order_reason_not_found'));
+    return null;
+  }
 
   const sp = selectedSuppplyPoint.value;
   const description = `${t('supply_cut')}: ${data.value?.token || ''}\n` +
@@ -356,27 +415,17 @@ const generateWorkOrder = async () => {
     // backend overrides it with the final token inside create().
     token: format(new Date(), 'yyyyMMddHHmmss'),
     supply_point: sp.id,
-    type: orderTypeSupplyCut.value.id,
+    type: orderType.id,
     status: statusId,
     description: description,
+    reason: reason_id,
   };
 
-  const contract_id = sp.contracts?.[0]?.id;
-  if (contract_id) order_data.contract = contract_id;
   const dueDate = data.value?.exec_start || data.value?.date_start;
   if (dueDate) order_data.dueDateAt = dueDate.substring(0, 10);
 
-  savingOrder.value = true;
-  try {
-    const order_saved = await $OrderApiService.save(order_data);
-    order.value = order_saved;
-    toast.success(t('common.correct_creation'));
-  } catch (err) {
-    console.error(err);
-    toast.error(t('common.error_save'));
-  } finally {
-    savingOrder.value = false;
-  }
+  const order_saved = await $OrderApiService.save(order_data);
+  return order_saved;
 };
 
 // remove a supply point from the cut (stops affecting its contract)
@@ -406,7 +455,7 @@ const clickDeleteOrder = async (id) => {
   if (!confirm(t('confirmation_text_block.confirm_delete'))) return;
   try {
     await $OrderApiService.deleteItem(id);
-    order.value = null;
+    orders.value = orders.value.filter(order => order.id != id);
   } catch (err) {
     console.error(err);
     toast.error(t('common.error'));
@@ -707,23 +756,19 @@ const saveResolveReview = async () => {
                   </div>
 
                 </div>
-                <div v-if="order" class="flex items-center justify-between max-w-xl bg-green-100 py-1 px-2 mb-2">
-                  <MoleculesOrderTypeDetail :data="order.type" :order="order"
-                    @show-detail="showDetail({ component: 'OrderRegion', id: order.id })" />
-                  <button v-if="objectPermissions?.can_change" @click="clickDeleteOrder(order.id)"
-                    class="text-slate-500 ml-2" :title="`${t('common.delete')} ${t('common.work_order')}`">
-                    <Icon name="fa6-solid:trash" />
-                  </button>
+                <div v-if="relevantOrders.length > 0" class="mb-2">
+                  <div v-for="o in relevantOrders" :key="o.id"
+                    class="flex items-center justify-between max-w-xl bg-green-100 py-1 px-2 mb-2">
+                    <MoleculesOrderTypeDetail :data="o.type" :order="o"
+                      @show-detail="showDetail({ component: 'OrderRegion', id: o.id })" />
+                    <button v-if="objectPermissions?.can_change" @click="clickDeleteOrder(o.id)"
+                      class="text-slate-500 ml-2" :title="`${t('common.delete')} ${t('common.work_order')}`">
+                      <Icon name="fa6-solid:trash" />
+                    </button>
+                  </div>
                 </div>
-                <div v-else-if="!orderTypeSupplyCut" class="flex items-start gap-2 max-w-xl bg-amber-50 border border-amber-300 text-amber-700 text-sm py-1 px-2 mb-2">
-                  <Icon name="fa6-solid:triangle-exclamation" class="mt-1 shrink-0" />
-                  <span>
-                    {{ t('warning_block.warning_order_type_not_found') }}:
-                    <code>{{ supplyCutOrderTypeToken }}</code>
-                    (<code>order_type_supply_cut_token</code>)
-                  </span>
-                </div>
-                <ButtonOutline v-else-if="objectPermissions?.can_change" :disabled="savingOrder" @click="generateWorkOrder">
+                <ButtonOutline v-if="objectPermissions?.can_change" :disabled="savingOrder"
+                  @click="openWorkOrderSelector">
                   <Icon v-if="savingOrder" name="fa6-solid:spinner" class="animate-spin mr-2" />
                   {{ $t('common.generate') }} {{ $t('common.work_order') }}
                 </ButtonOutline>
@@ -817,6 +862,11 @@ const saveResolveReview = async () => {
         <OrganismsMapRegion v-if="showRegionDetailComponent === 'Map'" :longitude="parseFloat(selectedSuppplyPoint.connection?.longitude)" :latitude="parseFloat(selectedSuppplyPoint.connection?.latitude)" :address="selectedSuppplyPoint.address_complete"></OrganismsMapRegion>
       </div>
     </div>
+
+    <WorkOrderTypeSelectorModal v-model:open="workOrderSelectorOpen" :order-types="availableOrderTypes"
+      :excluded-type-ids="excludedOrderTypeIds"
+      :warning="showAllTypesWarning ? t('order_block.viewing_all_order_types_warning') : null"
+      @select="onWorkOrderSelected" />
 
   </div>
 </template>

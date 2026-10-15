@@ -2,7 +2,9 @@
 import { formatDate } from '~/utils/date';
 import { format } from 'date-fns';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
+import { useToast } from 'vue-toastification';
 const { t } = useI18n();
+const toast = useToast();
 
 const props = defineProps({
   reading: Object,
@@ -137,13 +139,24 @@ const setupData = async () => {
 
 const createOrderReadMeter = async () => {
   const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderTypeReadMeter.value?.id) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return;
+  }
+  if (!statusId) {
+    toast.error(t('warning_block.warning_order_status_not_found'));
+    return;
+  }
+
   // creem un order del tipus lectura, si cal després l'usuari l'eliminarà
   const order_data = {
     token: format(new Date(), 'yyyyMMddHHmmss'),
     contract: detail.value.contract?.id,
     supply_point: detail.value.supply_point?.id,
     type: orderTypeReadMeter.value.id,
-    status: defaultOrderStatus.id || orderStatuses.value[0].id,
+    status: statusId,
     requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
   }
 
