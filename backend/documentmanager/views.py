@@ -174,8 +174,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         print(doc_ids)
         try:
             service = None
-            documents = Document.objects.filter(id__in=doc_ids)
-            if not documents.exists():
+            # L'ordre dels ids és el del PDF (p. ex. agrupat per persona a les comunicacions)
+            documents = Document.in_order(doc_ids)
+            if not documents:
                 return Response(
                     {"error": "No documents found with the provided IDs"},
                     status=status.HTTP_404_NOT_FOUND,
