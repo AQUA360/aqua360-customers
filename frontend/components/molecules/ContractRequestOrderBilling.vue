@@ -2,21 +2,28 @@
 // components/molecules/ContractRequestOrderBilling.vue
 import { ref, onMounted, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { format } from 'date-fns';
+import { useToast } from 'vue-toastification';
 
 import OrderEdit from '~/components/organisms/OrderEdit.vue'; // Assegura't que aquest component està importat
 import OrderTypeDetail from '~/components/molecules/OrderTypeDetail.vue';
 import { formatMoneyWithCurrency } from '~/utils/money';
 import PriceRateSelectMultiple from '~/components/organisms/PriceRateSelectMultiple.vue';
 import OrderRegion from '../organisms/OrderRegion.vue';
+import ButtonOutline from '~/components/atoms/ButtonOutline.vue';
+import WorkOrderTypeSelectorModal from '~/components/molecules/WorkOrderTypeSelectorModal.vue';
 
 const {
   $OrderTypeApiService,
   $BailTypeApiService,
   $PriceRateApiService,
   $ConfigProjectApiService,
+  $ConfiglistApiService,
   $OrderApiService
 } = useNuxtApp();
 const { t } = useI18n();
+const toast = useToast();
+const { reasonId, resolved, getReasonId } = useOrderReasonId('order_reason_contract_activation');
 
 const props = defineProps({
   request: {
@@ -54,9 +61,12 @@ const origin_reading_token = ref(null)
 const origin_supply_token = ref(null)
 
 // Definició de l'array per a orders (si no està definit)
+const orderTypes = ref([]);
+const orderStatuses = ref([]);
 const order_types = ref([]); // Assegura't que existeix
-const order_types_select = ref([]);
 const orders = ref([]);
+const savingOrder = ref(false);
+const workOrderSelectorOpen = ref(false);
 
 const openAddOrderType = () => {
   closeAllRegions();
@@ -116,27 +126,43 @@ const loadPriceRates = async () => {
 
 const loadOrderTypes = async () => {
   const response = await $OrderTypeApiService.getAll();
-  order_types_select.value = response.results.map(item => ({
-    label: item.name,
-    value: item.id
-  }));
+  orderTypes.value = response.results;
+}
+
+const loadOrderStatuses = async () => {
+  try {
+    const response = await $ConfiglistApiService.getAll('order/order-status');
+    orderStatuses.value = response.results;
+  } catch (error) {
+    console.error('Error loading order statuses:', error);
+  }
 }
 
 const loadData = async () => {
   loading.value = true;
   if (props.request) {
     // Assigna les dades del request si estan disponibles
-    origin_contract_token.value = await $ConfigProjectApiService.get('origin_contract_token');
-    origin_reading_token.value = await $ConfigProjectApiService.get('origin_reading_token');
-    origin_supply_token.value = await $ConfigProjectApiService.get('origin_supply_token');
+    try {
+      origin_contract_token.value = await $ConfigProjectApiService.get('origin_contract_token');
+    } catch (error) {
+      console.warn("ConfigProject 'origin_contract_token' not found", error);
+    }
+    try {
+      origin_reading_token.value = await $ConfigProjectApiService.get('origin_reading_token');
+    } catch (error) {
+      console.warn("ConfigProject 'origin_reading_token' not found", error);
+    }
+    try {
+      origin_supply_token.value = await $ConfigProjectApiService.get('origin_supply_token');
+    } catch (error) {
+      console.warn("ConfigProject 'origin_supply_token' not found", error);
+    }
     await loadOrderTypes();
+    await loadOrderStatuses();
     await loadBailTypes();
     await loadPriceRates();
-    order_types.value = props.request.order_types ? props.request.order_types.map(item => ({
-      label: item.name,
-      value: item.id
-    })) : [];
     orders.value = props.request?.orders ? props.request.orders : [];
+    syncOrderTypesFromOrders();
 
     // per defecte, haurien de sortir totes les opcions seleccionades
     selectedBudgetLineItem.value = optionsBudgedLineItems.value;
@@ -170,20 +196,82 @@ const orderUpdate = async () => {
   console.log(orders.value);
 }
 
-const executeOrderType = async (order_type_id) => {
+const syncOrderTypesFromOrders = () => {
+  order_types.value = orders.value
+    .filter(order => order.type?.id != null)
+    .map(order => ({ label: order.type.name, value: order.type.id }));
+};
+
+const excludedOrderTypeIds = computed(() =>
+  orders.value.map(order => order.type?.id).filter(id => id != null)
+);
+
+const linkedOrderTypes = computed(() => {
+  if (!resolved.value || reasonId.value == null) return null;
+  return orderTypes.value.filter(orderType =>
+    orderType.reasons?.some(reason => reason.id == reasonId.value)
+  );
+});
+
+const availableOrderTypes = computed(() =>
+  linkedOrderTypes.value?.length ? linkedOrderTypes.value : []
+);
+
+const showAllTypesWarning = computed(() =>
+  resolved.value
+  && reasonId.value != null
+  && !(linkedOrderTypes.value && linkedOrderTypes.value.length)
+);
+
+const openWorkOrderSelector = async () => {
+  await getReasonId();
+  workOrderSelectorOpen.value = true;
+};
+
+const createWorkOrder = async (orderType) => {
+  const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderType?.id || !statusId) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return null;
+  }
+
+  const reason_id = reasonId.value ?? await getReasonId();
+  if (!reason_id) {
+    toast.error(t('warning_block.warning_order_reason_not_found'));
+    return null;
+  }
+
+  const order_data = {
+    token: format(new Date(), 'yyyyMMddHHmmss'),
+    contract_request: props.request.id,
+    supply_point: props.request.supply_point_default?.id,
+    type: orderType.id,
+    status: statusId,
+    requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+    reason: reason_id,
+  };
+
+  const order_saved = await $OrderApiService.save(order_data);
+  return order_saved;
+}
+
+const onWorkOrderSelected = async (orderType) => {
+  workOrderSelectorOpen.value = false;
+  if (savingOrder.value) return;
+  savingOrder.value = true;
   try {
-    let save_data = {
-      token: props.request.token,
-      contract_request: props.request.id,
-      type: order_type_id,
-      supply_point: props.request.supply_point_default.id,
+    const order_saved = await createWorkOrder(orderType);
+    if (order_saved) {
+      orders.value.push(order_saved);
+      syncOrderTypesFromOrders();
     }
-    let response = await $OrderApiService.save(save_data);
-    if (response) {
-      orders.value.push(response);
-    }
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error('Error creating order:', err?.data || err?.response?.data || err);
+    toast.error(t('common.error'));
+  } finally {
+    savingOrder.value = false;
   }
 }
 
@@ -193,6 +281,7 @@ const clickDeleteOrder = async (id) => {
       let response = await $OrderApiService.deleteItem(id);
       if (response) {
         orders.value = orders.value.filter(order => order.id != id);
+        syncOrderTypesFromOrders();
       }
     } catch (error) {
       console.error(error);
@@ -246,69 +335,24 @@ watch(order_types, () => {
         </abbr>
       </label>
 
-      <v-select v-model="order_types" :options="order_types_select" multiple @update:model-value="emitChange" />
-
-      <!-- <div class="flex items-center gap-3 pl-3">
-        <button name="" class="button-default-xs" @click="openAddOrderType">
-          <Icon name="fa-solid:plus" class="text-slate-500 mr-1" />
-          {{ $t('Afegir Ordre de Treball') }}
-        </button>
-      </div>
-
-      <ul class="pl-3 mt-3">
-        <li v-for="order_type in order_types" :key="order_type.id"
-          class="flex items-center justify-between max-w-xl bg-green-100 py-1 px-2 mb-2">
-          <OrderTypeDetail :data="order_type" />
-          <button @click="deleteOrderType(order_type)" class="text-slate-500 ml-2">
-            <Icon name="fa6-solid:trash" />
-          </button>
-        </li>
-      </ul> -->
-    </div>
-
-    <div v-if="order_types.length > 0" class="my-4 max-w-xl">
-      <div v-for="order_type in order_types" :key="order_type.value">
-        <div v-if="!orders.some(order => order.type.id == order_type.value)"
-          class="grid grid-cols-[1fr,auto] gap-4 items-center px-3 py-1 mb-2 border border-slate-200 rounded-md hover:bg-slate-100 transition-colors">
-          <div class="flex items-center gap-2">
-            <Icon name="fa6-solid:screwdriver-wrench" class="text-slate-500" />
-            <span class="font-medium text-gray-700">
-              {{ order_type.label }}
-            </span>
-          </div>
-          <button @click="executeOrderType(order_type.value)" class="button-secondary">
-            {{ $t('order_block.execute') }}
-          </button>
-        </div>
-        <div v-else class="flex items-center justify-between max-w-xl bg-green-100 pt-1 px-2 mb-1">
-          <MoleculesOrderTypeDetail :data="orders.find(order => order?.type?.id == order_type.value).type"
-            :order="orders.find(order => order?.type?.id == order_type.value)" :id="order_type.value"
+      <div v-if="orders.length > 0" class="mb-3">
+        <div v-for="order in orders" :key="order.id"
+          class="flex items-center justify-between max-w-xl bg-green-100 pt-1 px-2 mb-1">
+          <MoleculesOrderTypeDetail :data="order.type" :order="order"
             @show-detail="showDetail" />
-          <div class="flex items-center text-slate-500 hover:text-red-500">
-            <button @click="clickDeleteOrder(orders.find(order => order?.type?.id == order_type.value).id)">
-              <Icon name="fa6-solid:trash" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Orders that exist but their type is no longer selected -->
-    <div v-if="orders.filter(order => !order_types.some(ot => ot.value == order.type.id)).length > 0" class="my-4 max-w-xl">
-      <div v-for="order in orders.filter(order => !order_types.some(ot => ot.value == order.type.id))" :key="order.id">
-        <div class="flex items-center justify-between max-w-xl bg-orange-100 pt-1 px-2 mb-1">
-          <MoleculesOrderTypeDetail :data="order.type"
-            :order="order" :id="order.type.id"
-            @show-detail="showDetail" />
-          <div class="flex items-center text-slate-500 hover:text-red-500">
+          <div class="text-slate-500 hover:text-red-500">
             <button @click="clickDeleteOrder(order.id)">
               <Icon name="fa6-solid:trash" />
             </button>
           </div>
         </div>
       </div>
+
+      <ButtonOutline :disabled="savingOrder || loading" @click="openWorkOrderSelector">
+        <Icon v-if="savingOrder" name="fa6-solid:spinner" class="animate-spin mr-2" />
+        {{ $t('common.generate') }} {{ $t('common.work_order') }}
+      </ButtonOutline>
     </div>
-    
 
     <!-- /end Orders -->
 
@@ -369,6 +413,11 @@ watch(order_types, () => {
       </div>
     </div>
     <!-- /end Regió lateral per formularis -->
+
+    <WorkOrderTypeSelectorModal v-model:open="workOrderSelectorOpen" :order-types="availableOrderTypes"
+      :excluded-type-ids="excludedOrderTypeIds"
+      :warning="showAllTypesWarning ? t('order_block.viewing_all_order_types_warning') : null"
+      @select="onWorkOrderSelected" />
   </div>
 </template>
 

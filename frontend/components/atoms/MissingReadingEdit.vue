@@ -192,12 +192,23 @@ const orderStatuses = ref([]);
 
 const createOrderReadMeter = async () => {
   const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderTypeReadMeter.value?.id) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return;
+  }
+  if (!statusId) {
+    toast.error(t('warning_block.warning_order_status_not_found'));
+    return;
+  }
+
   // creem un order del tipus lectura, si cal després l'usuari l'eliminarà
   const order_data = {
     token: format(new Date(), 'yyyyMMddHHmmss'),
     supply_point: supply.value.id,
     type: orderTypeReadMeter.value.id,
-    status: defaultOrderStatus.id || orderStatuses.value[0].id,
+    status: statusId,
     requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
   }
 

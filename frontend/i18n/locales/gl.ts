@@ -2283,6 +2283,7 @@ export default {
     connection_installation: 'Instalación de acometida',
     meter_reading: 'Lectura de contador',
     remove_meter: 'Retirada de contador',
+    viewing_all_order_types_warning: 'Estanse mostrando todos os tipos de orde. Verifica a túa selección.',
     cut_order: 'Orde de corte',
     cut_orders: 'Ordes de corte',
     remove_order: 'Orde de retirada',
@@ -2896,6 +2897,7 @@ export default {
   warning_block:   {
     warning_missing_initial_reading: 'Falta a lectura inicial do novo contrato',
     warning_order_type_not_found: 'Non se atopou o tipo de orde',
+    warning_order_reason_not_found: 'Non se atopou o motivo da orde',
     warning_order_status_not_found: 'Non se atopou o estado de orde por defecto',
     data_warning: 'Asegúrese de que todos os datos están asignados correctamente',
     date_warning: 'A data final debe ser posterior ou igual á data inicial',

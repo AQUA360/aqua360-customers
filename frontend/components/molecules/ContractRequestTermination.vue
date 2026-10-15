@@ -440,6 +440,17 @@ const loadData = async () => {
 
 const createOrderReadMeter = async (id) => {
   const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderTypeReadMeter.value?.id) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return null;
+  }
+  if (!statusId) {
+    toast.error(t('warning_block.warning_order_status_not_found'));
+    return null;
+  }
+
   // creem un order del tipus lectura, si cal després l'usuari l'eliminarà
   const order_data = {
     token: format(new Date(), 'yyyyMMddHHmmss'),
@@ -447,7 +458,7 @@ const createOrderReadMeter = async (id) => {
     contract_termination_request: termination_request.value.id,
     supply_point: id,
     type: orderTypeReadMeter.value.id,
-    status: defaultOrderStatus.id || orderStatuses.value[0].id,
+    status: statusId,
     requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
   }
 
@@ -545,7 +556,9 @@ const clickGenerarOrdreLectura = async (id) => {
   saving.value = true;
   try {
     const order_saved = await createOrderReadMeter(id);
-    emit('contract-terminated', { contract_termination_request: termination_request.value.id });
+    if (order_saved) {
+      emit('contract-terminated', { contract_termination_request: termination_request.value.id });
+    }
   } finally {
     saving.value = false;
   }

@@ -2283,6 +2283,7 @@ export default {
     connection_installation: 'Connection installation',
     meter_reading: 'Meter reading',
     remove_meter: 'Meter removal',
+    viewing_all_order_types_warning: 'Showing all order types. Please verify your selection.',
     cut_order: 'Cutoff order',
     cut_orders: 'Cutoff orders',
     remove_order: 'Removal order',
@@ -2896,6 +2897,7 @@ export default {
   warning_block:   {
     warning_missing_initial_reading: 'The new contract is missing its initial reading',
     warning_order_type_not_found: 'Order type not found',
+    warning_order_reason_not_found: 'Order reason not found',
     warning_order_status_not_found: 'Default order status not found',
     data_warning: 'Please make sure all data has been entered correctly',
     date_warning: 'The end date must be later than or equal to the start date',
