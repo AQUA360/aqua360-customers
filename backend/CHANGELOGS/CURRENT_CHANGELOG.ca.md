@@ -11,6 +11,12 @@
     - Les plantilles de carta que els facin servir requereixen aquest backend desplegat.
 
 ### FIX
+#### SERVICE (`service/serializers/meter_serializer.py` — adreça del comptador opcional)
+    - `MeterSerializer.create()` fallava sense `address_street` (variables sense definir): ara crea el comptador sense carrer ni número.
+    - `MeterSerializer.update()` amb `address_street` i `address_street_number` explícitament a `null` treu l'adreça del comptador; si les claus no hi són, es manté com abans.
+    - `street_complete` retorna `null` en lloc de `"None"` quan el comptador no té carrer.
+    - Tests a `service/tests.py` (`TestMeterOptionalAddress`). Cal desplegar-lo junt amb el frontend.
+
 #### CONTRACT (`contract/serializers/contract_serializer.py` — factures d'una altra sol·licitud a la llista de factures del contracte)
     - `get_request_invoices` buscava les factures de la sol·licitud amb `contract_request__token=obj.token`, és a dir, comparava el token del contracte amb el de les sol·licituds. Si una sol·licitud aliena tenia el mateix token que el contracte, les seves factures sortien a la pestanya de factures del contracte. Ara es filtra per la FK `contract_request` del contracte (igual que `contract_pinned_serializer.py` i `get_invoices_count`), i els contractes sense sol·licitud no en retornen cap.
 
