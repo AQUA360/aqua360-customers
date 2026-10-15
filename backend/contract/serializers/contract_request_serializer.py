@@ -104,7 +104,11 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
         default_status = ContractRequestStatus.objects.filter(is_default=True).first()
         if default_status:
             validated_data['status'] = default_status
-        
+
+        # Sense sol·licitant, el titular fa de sol·licitant
+        if not validated_data.get('person') and validated_data.get('holder'):
+            validated_data['person'] = validated_data['holder']
+
         # Creem l'objecte ContractRequest sense el camp 'contacts'
         obj = ContractRequest.objects.create(**validated_data)
         
@@ -255,6 +259,9 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
         # Actualitzar camps de ContractRequest
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        # Sense sol·licitant, el titular fa de sol·licitant
+        if instance.person_id is None and instance.holder_id:
+            instance.person = instance.holder
         instance.save()
         
         # Assignar els contacts si estan presents
