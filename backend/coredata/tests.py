@@ -400,3 +400,112 @@ class RecoverLostStreetNumbersTests(TestCase):
         self.assertEqual(str(ok), 'LOCAL')
         self.assertEqual(sn.number_type.type, 'SN')
         self.assertIsNone(sn.number)
+
+
+class FillConnectionStreetNumbersTests(TestCase):
+    """Opscript 0004: omple el número de les escomeses amb l'adreça del punt o de la bateria."""
+
+    def setUp(self):
+        from coredata.models import Street, StreetNumberType
+        from service.models import ConnectionInstallationType
+
+        self.types = {t: StreetNumberType.objects.get_or_create(type=t, defaults={'description': t})[0]
+                      for t in ('', 'N', 'SN')}
+        self.installation_types = {t: ConnectionInstallationType.objects.get_or_create(token=t)[0]
+                                   for t in ('cluster', 'individual')}
+        self.street = Street.objects.create(name='Carrer de Prova')
+
+    def _run(self):
+        import importlib
+
+        importlib.import_module('coredata.opscripts.0004_fill_connection_street_numbers').run()
+
+    def _street_number(self, number_type, street=None, **fields):
+        from coredata.models import StreetNumber
+
+        return StreetNumber.objects.create(street=street or self.street, number_type=self.types[number_type], **fields)
+
+    def _connection(self, installation_type, number_type=''):
+        from coredata.models import Street
+        from service.models import Connection
+
+        # les escomeses importades tenen un carrer propi (duplicat) i un número buit
+        street = Street.objects.create(name=self.street.name)
+        return Connection.objects.create(
+            installation_type=self.installation_types[installation_type], address_street=street,
+            address_street_number=self._street_number(number_type, street=street),
+        )
+
+    def _supply_point(self, connection, street_number, **fields):
+        from coredata.models import Address
+        from service.models import SupplyPoint
+
+        address = Address.objects.create(street=street_number.street, street_number=street_number)
+        return SupplyPoint.objects.create(connection=connection, address=address, **fields)
+
+    def test_individual_agafa_l_adreca_del_punt(self):
+        connection = self._connection('individual')
+        source = self._street_number('N', number=7)
+        self._supply_point(connection, source)
+
+        self._run()
+
+        connection.refresh_from_db()
+        self.assertEqual(connection.address_street_number, source)
+        self.assertEqual(connection.address_street, self.street)
+
+    def test_individual_amb_un_altre_carrer_agafa_tota_l_adreca_del_punt(self):
+        from coredata.models import Street
+
+        connection = self._connection('individual')
+        source = self._street_number('N', street=Street.objects.create(name='Avinguda Completa'), number=3)
+        self._supply_point(connection, source)
+
+        self._run()
+
+        connection.refresh_from_db()
+        self.assertEqual(connection.address_street.name, 'Avinguda Completa')
+        self.assertEqual(connection.address_street_number, source)
+
+    def test_bateria_agafa_l_adreca_de_la_bateria(self):
+        from service.models import Cluster, ClusterNozzle
+
+        connection = self._connection('cluster')
+        cluster_number = self._street_number('N', number=10)
+        cluster = Cluster.objects.create(connection=connection, address_street=self.street,
+                                         address_street_number=cluster_number)
+        nozzle = ClusterNozzle.objects.create(cluster=cluster, token='1')
+        # els punts de les boques tenen números diferents: mana la bateria
+        self._supply_point(connection, self._street_number('N', number=1), cluster_nozzle=nozzle)
+        self._supply_point(connection, self._street_number('N', number=2), cluster_nozzle=nozzle)
+
+        self._run()
+
+        connection.refresh_from_db()
+        self.assertEqual(connection.address_street_number, cluster_number)
+
+    def test_bateria_sense_bateries_agafa_l_adreca_dels_punts(self):
+        connection = self._connection('cluster')
+        source = self._street_number('N', number=4)
+        self._supply_point(connection, source)
+
+        self._run()
+
+        connection.refresh_from_db()
+        self.assertEqual(connection.address_street_number, source)
+
+    def test_no_toca_sn_explicit_font_sense_numero_ni_discrepancies(self):
+        explicit_sn = self._connection('individual', number_type='SN')
+        self._supply_point(explicit_sn, self._street_number('N', number=1))
+        from_sn = self._connection('individual')
+        self._supply_point(from_sn, self._street_number('SN'))
+        conflict = self._connection('individual')
+        self._supply_point(conflict, self._street_number('N', number=1))
+        self._supply_point(conflict, self._street_number('N', number=2))
+        originals = {c.id: c.address_street_number_id for c in (explicit_sn, from_sn, conflict)}
+
+        self._run()
+
+        for connection in (explicit_sn, from_sn, conflict):
+            connection.refresh_from_db()
+            self.assertEqual(connection.address_street_number_id, originals[connection.id])
