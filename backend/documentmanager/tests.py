@@ -1,3 +1,4 @@
+import io
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -187,3 +188,49 @@ class DocumentSignApiTest(TestCase):
         self.client.force_authenticate(user=None)
         response = self.client.post(reverse("documentsign-retrieve", args=[document_sign.id]))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+def _blank_pdf():
+    from PyPDF2 import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+class DocumentOrderTest(TestCase):
+    """El PDF únic respecta l'ordre dels ids rebuts, no l'ordre de creació."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_superuser(
+            username="docorder", email="docorder@example.com", password="secret"
+        )
+        self.client.force_authenticate(user=self.user)
+        self.first = Document.objects.create(entity_id=1, service="hdd", document_name="first.pdf")
+        self.second = Document.objects.create(entity_id=1, service="hdd", document_name="second.pdf")
+        self.third = Document.objects.create(entity_id=1, service="hdd", document_name="third.pdf")
+
+    def test_in_order_keeps_requested_order_without_duplicates(self):
+        ids = [self.third.id, str(self.first.id), self.third.id, self.second.id, 999999]
+        self.assertEqual(Document.in_order(ids), [self.third, self.first, self.second])
+
+    @patch("documentmanager.views.sign_pdf", side_effect=lambda buffer, *args: buffer)
+    @patch("documentmanager.views.CompanySerializer")
+    @patch("documentmanager.views.Exploitation")
+    @patch("documentmanager.views.download_document")
+    def test_single_pdf_merges_in_requested_order(self, download_document, *mocks):
+        download_document.side_effect = lambda document: _blank_pdf()
+
+        response = self.client.post(
+            reverse("download_single_pdf_document"),
+            {"doc_ids": [self.third.id, self.first.id, self.second.id]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        merged = [call.args[0] for call in download_document.call_args_list]
+        self.assertEqual(merged, [self.third, self.first, self.second])

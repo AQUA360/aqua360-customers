@@ -35,6 +35,16 @@ class Document(models.Model):
             raise ValidationError(f"Unsupported service: {self.service}")
         super().save(*args, **kwargs)
 
+    @classmethod
+    def in_order(cls, document_ids):
+        """Documents en l'ordre dels ids rebuts (sense repetits), no en l'ordre de la BD."""
+        by_id = {document.id: document for document in cls.objects.filter(id__in=document_ids)}
+        documents = []
+        for document_id in dict.fromkeys(int(document_id) for document_id in document_ids):
+            if document_id in by_id:
+                documents.append(by_id[document_id])
+        return documents
+
     def __str__(self):
         return self.document_name
 

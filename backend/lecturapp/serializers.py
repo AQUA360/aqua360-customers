@@ -288,11 +288,11 @@ class RouteAppDetailSerializer(serializers.ModelSerializer):
         positions_list = list(positions)
 
         def position_has_valid_meter(position):
-            """True if at least one meter (main) has status != token_meter_status_no_meter."""
+            """True if at least one meter (main) is neither no_meter (aforament) nor inactive (-1)."""
             for prop in position.properties.all():
                 for sp in prop.supply_points.all():
                     if sp.meter:
-                        if sp.meter.status and sp.meter.status.token != token_meter_status_no_meter:
+                        if sp.meter.status and sp.meter.status.token not in [token_meter_status_no_meter, '-1']:
                             return True
             return False
 
@@ -324,8 +324,8 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
         
         for supply_point in supply_points:
             if supply_point.meter:
-                # Add main meter (only if status token is not token_meter_status_no_meter)
-                if supply_point.meter.status and supply_point.meter.status.token != token_meter_status_no_meter:
+                # Add main meter (only if status token is neither no_meter nor inactive '-1')
+                if supply_point.meter.status and supply_point.meter.status.token not in [token_meter_status_no_meter, '-1']:
                     meter_ids.add(supply_point.meter.id)
 
         representation['num_meters'] = len(meter_ids)
@@ -359,9 +359,9 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
         
         for supply_point in supply_points:
             if supply_point.meter:
-                # Add main meter if not seen in this property and status is not no_meter
+                # Add main meter if not seen in this property and status is neither no_meter nor inactive '-1'
                 if (supply_point.meter.id not in local_seen_meter_ids and
-                    supply_point.meter.status and supply_point.meter.status.token != token_meter_status_no_meter):
+                    supply_point.meter.status and supply_point.meter.status.token not in [token_meter_status_no_meter, '-1']):
                     meters.append(supply_point.meter)
                     local_seen_meter_ids.add(supply_point.meter.id)
         
@@ -393,8 +393,8 @@ class PropertyAppSerializer(serializers.ModelSerializer):
         # Count supply points and readings using pre-fetched data (excluding meters with status token '-1')
         for supply_point in supply_points:
             if supply_point.meter:
-                # Only count meter if status token is not '-1'
-                if supply_point.meter.status and supply_point.meter.status.token != '-1':
+                # Only count meter if status token is neither no_meter nor inactive '-1'
+                if supply_point.meter.status and supply_point.meter.status.token not in [token_meter_status_no_meter, '-1']:
                     num_meters += 1
                 # Check if meter has reading in batch
                 if any(reading.meter_id == supply_point.meter.id for reading in batch_readings):
