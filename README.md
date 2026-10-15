@@ -133,7 +133,7 @@ docker compose up -d frontend
 
 ### Images built on GitHub
 
-When a release is published, the `.github/workflows/imatges.yml` action builds the backend and frontend images and pushes them to `ghcr.io/aqua360/aqua360-customers-backend` and `ghcr.io/aqua360/aqua360-customers-frontend`, tagged with the release (for example, `v1.135.00`). The images only contain this repository's code: each customer's configuration (`.env`) is read when the container starts.
+When a release is published, the `.github/workflows/imatges.yml` action builds the backend and frontend images and pushes them to `ghcr.io/aqua360/aqua360-customers-backend` and `ghcr.io/aqua360/aqua360-customers-frontend`, tagged with the release (for example, `v1.135.00`) and with the commit. The images only contain this repository's code: each customer's configuration (`.env`) is read when the container starts.
 
 To run a version without building anything on the server, set it in `.env` and:
 

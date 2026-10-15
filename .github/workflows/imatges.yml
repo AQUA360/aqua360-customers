@@ -1,5 +1,6 @@
 # Construeix les imatges del backend i del frontend un sol cop per release i les puja al registre de
-# GitHub (ghcr.io) amb l'etiqueta de la versió. Els servidors dels clients només les baixen.
+# GitHub (ghcr.io) amb l'etiqueta de la versió i la del commit. Els servidors dels clients només les
+# baixen.
 #
 # Seguretat: el registre és públic, igual que aquest repositori. Aquí només es construeix el codi
 # del repositori: cap .env, servidor, domini ni contrasenya. La configuració de cada client es posa
@@ -37,6 +38,11 @@ jobs:
         with:
           ref: ${{ github.event_name == 'push' && github.sha || env.VERSIO }}
 
+      # Etiqueta també amb el commit: HelpAsset, en actualitzar, busca la imatge del commit que
+      # posa i, si no hi és, la construeix al servidor.
+      - id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -49,7 +55,9 @@ jobs:
         with:
           context: ./${{ matrix.part }}
           push: true
-          tags: ghcr.io/aqua360/aqua360-customers-${{ matrix.part }}:${{ env.VERSIO }}
+          tags: |
+            ghcr.io/aqua360/aqua360-customers-${{ matrix.part }}:${{ env.VERSIO }}
+            ghcr.io/aqua360/aqua360-customers-${{ matrix.part }}:${{ steps.commit.outputs.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ env.VERSIO }}
