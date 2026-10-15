@@ -28,6 +28,7 @@ class OrderFilter(filters.FilterSet):
     created_by = filters.CharFilter(method='filter_created_by')
     
     city = filters.CharFilter(method='filter_city')
+    supply_point_ids = filters.CharFilter(method='filter_supply_point_ids')
     
     class Meta:
         model = Order
@@ -37,7 +38,8 @@ class OrderFilter(filters.FilterSet):
             'claim_request', 'type_token', 'contract', 'contract_id',
             'contract_request', 'contract_termination_request',
             'connection_request', 'incident', 'exploitation',
-            'search_all_address', 'search_by_address', 'related_contract_token', 'created_by', 'city']
+            'search_all_address', 'search_by_address', 'related_contract_token', 'created_by', 'city',
+            'supply_point_ids']
 
     def filter_search(self, queryset, name, value):
         return queryset.filter(
@@ -256,4 +258,11 @@ class OrderFilter(filters.FilterSet):
                 Q(connection__address_city__id__in=city_ids) |
                 Q(connection_request__address_city__id__in=city_ids)
             ).distinct()
+        return queryset
+
+    def filter_supply_point_ids(self, queryset, name, value):
+        if value:
+            sp_ids = [v for v in value.split(',') if v.strip()]
+            if sp_ids:
+                return queryset.filter(supply_point__id__in=sp_ids)
         return queryset

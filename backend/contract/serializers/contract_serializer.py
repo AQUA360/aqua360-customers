@@ -223,10 +223,12 @@ class ContractSerializer(serializers.ModelSerializer):
     
     def get_request_invoices(self, obj):
         request_invoices = []
+        if not obj.contract_request_id:
+            return request_invoices
         try:
             type_final = ConfigProject.objects.get(token='invoice_type_invoice_token').value
             invoices = Invoice.objects.filter(
-                contract_request__token=obj.token,
+                contract_request_id=obj.contract_request_id,
                 type_final=type_final
                 ).order_by('-created_at')
             for invoice in invoices:

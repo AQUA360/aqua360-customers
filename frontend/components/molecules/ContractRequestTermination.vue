@@ -360,9 +360,17 @@ const loadData = async () => {
   const order_statuses = await $ConfiglistApiService.getAll('order/order-status');
   orderStatuses.value = order_statuses.results;
 
-  // agafem el contracte actiu
+  // Estat "Finalitzada" de les baixes, per saber si ja s'ha finalitzat des d'aquí
+  const completedToken = await $ConfigProjectApiService.get('contract_termination_completed_token');
+  const termination_statuses = await $ConfiglistApiService.getAll('contract/contract-termination-request-status');
+  terminationCompletedStatus.value = termination_statuses.results.find(s => s.token == completedToken) || null;
+
+  // agafem el contracte actiu (o el de la baixa d'aquesta sol·licitud, que si ja s'ha
+  // finalitzat ja no està actiu)
   if (props.supply_point && props.supply_point.contracts && props.supply_point.contracts.length > 0) {
-    activeContract.value = props.supply_point.contracts.find(item => item.status_token == contractActiveToken.value);
+    const terminatedContractIds = (props.request?.contract_termination_requests || []).map(item => item.contract?.id);
+    activeContract.value = props.supply_point.contracts.find(item => terminatedContractIds.includes(item.id))
+      || props.supply_point.contracts.find(item => item.status_token == contractActiveToken.value);
     // if active contract is being terminated or there's no active contract
     if (activeContract.value == null || (activeContract.value && props.request?.contract_termination_requests?.length > 0)) {
       emit('on-pending-termination', false);
@@ -432,6 +440,17 @@ const loadData = async () => {
 
 const createOrderReadMeter = async (id) => {
   const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderTypeReadMeter.value?.id) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return null;
+  }
+  if (!statusId) {
+    toast.error(t('warning_block.warning_order_status_not_found'));
+    return null;
+  }
+
   // creem un order del tipus lectura, si cal després l'usuari l'eliminarà
   const order_data = {
     token: format(new Date(), 'yyyyMMddHHmmss'),
@@ -439,7 +458,7 @@ const createOrderReadMeter = async (id) => {
     contract_termination_request: termination_request.value.id,
     supply_point: id,
     type: orderTypeReadMeter.value.id,
-    status: defaultOrderStatus.id || orderStatuses.value[0].id,
+    status: statusId,
     requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
   }
 
@@ -490,6 +509,42 @@ const terminate = async ({ skipConfirm = false } = {}) => {
   }
 }
 
+const terminationCompletedStatus = ref(null);
+const finalizing_termination = ref(false);
+
+// La resposta del save() porta l'estat com a id; la de la sol·licitud, com a objecte
+const terminationFinalized = computed(() => {
+  const status = termination_request.value?.status;
+  if (status == null || !terminationCompletedStatus.value) return false;
+  return typeof status === 'object'
+    ? status.token == terminationCompletedStatus.value.token
+    : status == terminationCompletedStatus.value.id;
+});
+
+// Finalitza la baixa des de l'alta, sense haver de passar per Baixes de contracte. Queda
+// "sense factura" tret que es facturi la lectura de tall; el pressupost es pot generar després.
+const finalizeTermination = async () => {
+  if (!termination_request.value?.readings?.length && !termination_request.value?.orders?.length) {
+    toast.warning(t('contract_block.cut_reading_required_to_finalize'));
+    return;
+  }
+  if (!confirm(t('confirmation_text_block.confirm_finalize_termination_from_request'))) return;
+  finalizing_termination.value = true;
+  try {
+    const closed = await $ContractTerminationApiService.close(termination_request.value.id, { ignore_invoice: true });
+    if (closed?.id) {
+      termination_request.value = { ...termination_request.value, status: closed.status, ignore_invoice: closed.ignore_invoice };
+      toast.success(t('common.correct_finish'));
+      emit('contract-terminated', { contract_termination_request: closed.id });
+    }
+  } catch (error) {
+    console.error('Error finalizing termination:', error);
+    toast.error(t('contract_block.unexpected_error'));
+  } finally {
+    finalizing_termination.value = false;
+  }
+}
+
 // Es pot donar de baixa el contracte actiu des de fora (mateixes condicions que el botó de la card)
 const canTerminate = computed(() => activeContract.value != null && termination_request.value == null
   && !loading.value && !loading_termination.value && !saving.value
@@ -501,7 +556,9 @@ const clickGenerarOrdreLectura = async (id) => {
   saving.value = true;
   try {
     const order_saved = await createOrderReadMeter(id);
-    emit('contract-terminated', { contract_termination_request: termination_request.value.id });
+    if (order_saved) {
+      emit('contract-terminated', { contract_termination_request: termination_request.value.id });
+    }
   } finally {
     saving.value = false;
   }
@@ -1131,7 +1188,8 @@ watch(billCutReading, async (newVal) => {
               </div>
               <span v-if="termination_request"
                 class="inline-flex items-center gap-1 w-fit bg-emerald-50 text-emerald-700 px-2 py-1 rounded border border-emerald-200 font-medium">
-                <Icon name="fa6-solid:circle-check" /> {{ t('contract_block.termination_requested') }}
+                <Icon name="fa6-solid:circle-check" />
+                {{ terminationFinalized ? t('contract_block.termination_finalized') : t('contract_block.termination_requested') }}
               </span>
               <span v-else
                 class="inline-flex items-center gap-1 w-fit bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-200 font-medium">
@@ -1145,11 +1203,19 @@ watch(billCutReading, async (newVal) => {
                   <Icon v-if="loading_termination" name="fa6-solid:spinner" class="animate-spin mr-2" />
                   {{ loading_termination ? $t('common.loading') + '...' : $t('common.terminate') }}
                 </button>
-                <button v-else class="button-default flex items-center gap-x-2"
-                  @click="showDetail('ContractTerminationRegion', termination_request.id)">
-                  <Icon name="fa6-solid:eye" class="text-slate-500" />
-                  {{ t('contract_termination_request') }}
-                </button>
+                <template v-else>
+                  <button v-if="!terminationFinalized" :disabled="loading || saving || finalizing_termination"
+                    @click="finalizeTermination" class="button-primary font-bold flex items-center gap-x-2">
+                    <Icon :name="finalizing_termination ? 'fa6-solid:spinner' : 'fa6-solid:circle-check'"
+                      :class="{ 'animate-spin': finalizing_termination }" />
+                    {{ t('contract_block.finalize_termination') }}
+                  </button>
+                  <button class="button-default flex items-center gap-x-2"
+                    @click="showDetail('ContractTerminationRegion', termination_request.id)">
+                    <Icon name="fa6-solid:eye" class="text-slate-500" />
+                    {{ t('contract_termination_request') }}
+                  </button>
+                </template>
               </div>
             </template>
           </div>
@@ -1168,7 +1234,7 @@ watch(billCutReading, async (newVal) => {
             <fieldset v-if="isChangeOfNameRequest" class="mb-4 border px-3 py-2 bg-sky-50">
               <legend class="px-3 font-semibold bg-white shadow">{{ t('contract_block.bill_cut_reading_choice_title') }}</legend>
               <div class="flex items-center gap-4">
-                <button type="button" role="radio" :aria-checked="billCutReading === true" :disabled="saving"
+                <button type="button" role="radio" :aria-checked="billCutReading === true" :disabled="saving || terminationFinalized"
                   @click="billCutReading = true"
                   class="flex-1 text-left px-4 py-3 rounded-lg border-2 transition-all duration-150"
                   :class="billCutReading === true
@@ -1180,7 +1246,7 @@ watch(billCutReading, async (newVal) => {
                     <span class="font-semibold text-sm text-gray-800">{{ t('contract_block.bill_cut_reading_to_termination') }}</span>
                   </div>
                 </button>
-                <button type="button" role="radio" :aria-checked="billCutReading !== true" :disabled="saving"
+                <button type="button" role="radio" :aria-checked="billCutReading !== true" :disabled="saving || terminationFinalized"
                   @click="billCutReading = false"
                   class="flex-1 text-left px-4 py-3 rounded-lg border-2 transition-all duration-150"
                   :class="billCutReading !== true

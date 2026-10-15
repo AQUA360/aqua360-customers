@@ -360,7 +360,8 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                     and claim_request.current_step.step_template.group_payments
                 )
 
-                if not claim_payments.exists() or add_joined_payments:
+                # Amb pagaments agrupats també s'adjunten les factures; el rebut és el document agrupat
+                if not claim_payments.exists():
                     print(f"No ClaimRequestPayment found for contract {contract.id}")
                 else:
                     for cr_payment in claim_payments:
@@ -908,7 +909,7 @@ def export_communications_csv_task(query_params):
             build_export_csv_bytes, parse_columns_param, resolve_columns,
         )
 
-        base_queryset = Communication.objects.all().order_by('-created_at', '-status', '-sent_at')
+        base_queryset = Communication.objects.filter(is_active=True).order_by('-created_at', '-status', '-sent_at')
         filterset = CommunicationFilter(data=query_params, queryset=base_queryset)
         queryset = filterset.qs.select_related('person', 'status', 'process', 'use_type')
 

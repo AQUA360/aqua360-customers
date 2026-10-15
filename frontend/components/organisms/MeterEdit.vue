@@ -1,6 +1,7 @@
 <script setup>
 import { toRaw, ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'vue-toastification';
 import { remoteTypeOptions } from '~/utils/service';
 import H1 from '~/components/atoms/H1.vue';
 import H1Region from '../atoms/H1Region.vue';
@@ -20,6 +21,7 @@ const props = defineProps({
 });
 
 const { t,te } = useI18n();
+const toast = useToast();
 const { $MeterApiService, $ConfiglistApiService, $AddressHelper, $MeterManufacturerApiService, $MeterModelApiService, $AddressApiService } = useNuxtApp();
 
 const emit = defineEmits(['created']);
@@ -381,19 +383,19 @@ const save = async () => {
       });
     }
 
-    if (address_data.value.streetNumberNumber) {
-      if (address_data.value?.streetNumberType != 'SN') {
-        selectedOptions.address_street_number.number = address_data.value?.streetNumberNumber || null,
-          selectedOptions.address_street_number.number_end = address_data.value?.streetNumberEnd || null,
-          selectedOptions.address_street_number.number_suffix = address_data.value?.streetNumberSuffix || null,
-          selectedOptions.address_street_number.number_end_suffix = address_data.value?.streetNumberEndSuffix || null
-      }
+    // Tots els camps del número s'envien sempre que no sigui S/N (també si només hi ha sufix),
+    // perquè el backend no els deixi buits ni conservi valors d'abans
+    if (selectedOptions.address_street_number && address_data.value.streetNumberType != 'SN') {
+      selectedOptions.address_street_number.number = address_data.value?.streetNumberNumber ?? null;
+      selectedOptions.address_street_number.number_end = address_data.value?.streetNumberEnd ?? null;
+      selectedOptions.address_street_number.number_suffix = address_data.value?.streetNumberSuffix || null;
+      selectedOptions.address_street_number.number_end_suffix = address_data.value?.streetNumberEndSuffix || null;
     }
 
-    if (props.meter != null && props.meter.address_street_number != null) {
-      selectedOptions.address_street_number.street_number_id = props.meter.address_street_number.id;
-    }
-    else if (address_data.value.streetNumberId) {
+    // Només es reaprofita el número si no s'ha canviat (AddPartialAddress el retorna buit quan
+    // canvia el carrer o el número): pot ser compartit amb l'adreça d'un punt de subministrament,
+    // i editar-lo canviaria també el punt. Sense id, el backend en crea un de nou per al comptador.
+    if (selectedOptions.address_street_number && address_data.value.streetNumberId) {
       selectedOptions.address_street_number.street_number_id = address_data.value.streetNumberId;
     }
 
@@ -505,6 +507,14 @@ const setValues = async () => {
     };
   }
 
+  // Sense això, en desar s'enviaven el municipi i el codi postal a null i es perdien
+  if (props.meter.address_city) {
+    address_data.value.city = { code: props.meter.address_city.id, label: props.meter.address_city.name };
+  }
+  if (props.meter.address_postal_code) {
+    address_data.value.cp = { code: props.meter.address_postal_code.id, label: props.meter.address_postal_code.code };
+  }
+
   shown_address_data.value = { ...props.meter }
 
 }
@@ -554,10 +564,31 @@ const getStatusForBadge = (item) => ({
   color: item?.status_color ?? item?.status?.color ?? ''
 });
 
+/** Un número que no és S/N però no té número ni sufix es mostraria buit, com si fos S/N */
+const isStreetNumberMissing = () => {
+  const type = address_data.value?.streetNumberType;
+  if (!type || type == 'SN') return false;
+  const number = address_data.value?.streetNumberNumber;
+  return (number == null || number === '') && !address_data.value?.streetNumberSuffix;
+}
+
+const hasAddress = () => {
+  return !!(address_data.value?.streetId || address_data.value?.street_name || address_data.value?.street_type);
+}
+
+/** L'adreça és opcional, però si se n'indica una ha de tenir carrer i tipus de via */
+const isAddressIncomplete = () => {
+  if (!hasAddress()) return false;
+  return address_data.value?.street_name == '' || address_data.value?.street_name == null || address_data.value?.street_type == null;
+}
+
 const isValid = () => {
   if (code.value == '' || code.value == null) return false;
-  if (address_data.value?.street_name == '' || address_data.value?.street_name == null) return false;
-  if (address_data.value?.street_type == null) return false;
+  if (isAddressIncomplete()) return false;
+  if (isStreetNumberMissing()) {
+    toast.error(t('address_block.error_required_street_number'));
+    return false;
+  }
   if (meter_status.value == null) return false;
   if (meter_caliber.value == null) return false;
   return true;
@@ -862,16 +893,17 @@ onMounted(() => {
         <hr class="mb-2 col-span-3" />
 
         <div class="mb-2">
-          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.meter_location') }} *</label>
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.meter_location') }}</label>
           <div v-if="address_data.streetId == null" class="footering text-gray-900 rounded shadow">
             <button @click="openRegion('address')"
-              :class="{ 'invalid': attemptedSave && address_data.streetId == null }"
+              :class="{ 'invalid': attemptedSave && isAddressIncomplete() }"
               class="display-block block w-full px-1 py-1 text-base text-slate-400 border-b hover:bg-slate-200 text-left active:bg-slate-300">
               <Icon name="fa6-solid:plus" class="text-slate-400" /> {{ $t('common.assign') }} {{
                 $t('address_block.address') }}
             </button>
           </div>
-          <div v-else class="relative group footering text-slate-500 rounded shadow p-2">
+          <div v-else class="relative group footering text-slate-500 rounded shadow p-2"
+            :class="{ 'invalid': attemptedSave && isStreetNumberMissing() }">
             {{ $AddressHelper.getAddressString(shown_address_data) }}
             <button
               class="absolute cursor-pointer shadow-sm border text-sm w-6 h-6 bg-white right-8 top-1 rounded-md text-slate-600 hover:text-blue-700 opacity-0 transition-all duration-300 focus:border-none focus:outline-none group-hover:opacity-100"

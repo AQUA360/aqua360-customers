@@ -5,26 +5,102 @@
 #### STATISTICS (`report_billing_by_zone_service.py` — línia d'ensobrat a l'execució de padrons per zona)
     - L'informe «Execució de padrons per zona de tarificació» classificava l'ensobrat com a «Altres conceptes» (no és aigua, clavegueram ni cànon). Ara es detecta per token/nom `ENSOBRAT` i surt com a concepte propi a cada zona, amb el mateix desglossament per padró (núm. factures i euros) i un total `TOTAL ENSOBRAT` al peu.
 
-## [13-10-2026]
+#### BILLING (`billing/templatetags/billing_filters.py` — filtres per a les cartes d'impagats)
+    - Nou filtre `invoice_period_month`: últim mes del període facturat en format `MM/AAAA` (p. ex. `03/2026`), per a columnes estretes com el detall del deute de les cartes d'impagats. Mateix criteri que `invoice_period` (lectura més recent o mes de facturació menys un) i retorna "Puntual" per a les factures que no són de consum.
+    - Nou filtre `address_without_city`: `address_complete` d'una adreça serialitzada sense el ", MUNICIPI" final, per als blocs de destinatari on el municipi ja surt a la línia del codi postal.
+    - Nou filtre `invoice_period_short`: període facturat amb abreviatures de mes de 3 lletres en l'idioma actiu (`ABR - JUN 2026`, `JUL 2026`, `NOV 2025 - GEN 2026`); "Puntual" per a les factures que no són de consum.
+    - Nou filtre `mask_iban`: IBAN en blocs de 4 separats per guions amb l'últim bloc ocult (`ES00-0000-0000-0000-0000-****`).
+    - Les plantilles de carta que els facin servir requereixen aquest backend desplegat.
+
+#### BILLING (`billing/utils/charts_service.py` — gràfic de consum de la factura a partir de les factures)
+    - Cada barra del gràfic és ara el consum facturat (`Invoice.consumption`) d'una factura del contracte, en lloc del recalculat a partir de les lectures. El gràfic coincideix amb el que s'ha cobrat en comptadors generals, comptadors compartits entre contractes i refacturacions.
+    - Les factures es posicionen per la data de la seva última lectura, de manera que una refacturació ocupa el lloc de la factura original encara que s'emeti mesos després.
+    - S'exclouen pressupostos, factures abonades o anul·lades, els seus abonaments (que copien el consum en positiu) i les factures sense lectures (derrames i similars, que tenen `consumption` desat amb un valor que no és consum d'aigua). Ja no surten barres de lectures intermèdies que no s'han facturat.
+    - Si una factura de consum no té el consum desat, es calcula a partir de les seves lectures. Si el contracte no té prou factures (p. ex. contractes que abans es facturaven fora de l'aplicació), les barres que falten s'omplen amb l'historial de lectures anterior a la factura més antiga, com fins ara.
+    - S'elimina la barra apilada "Subministrament adicional": el total de cada barra no canvia, però ja no es distingeix per subministrament.
 
 ### FIX
-#### CONTRACT (`contract/utils/aca_tram_service.py` — PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
-    - Es podia aplicar la bonificació d'ampliació de trams a contractes que no arriben al mínim de persones: `create_aca_bonification_on_total_persons_increase` la creava amb qualsevol augment de `total_persons` (p. ex. d'1 a 2) i la variable de membres no tenia cap validació.
-    - Nou `ConfigProject` `aca_tram_min_persons` (migració `coredata.0137`, valor `4`; si no existeix o no és un enter, també 4). Helper `watchdog.aca_config.aca_tram_min_persons()`.
-    - La lògica passa de `contract/signals.py` a `contract/utils/aca_tram_service.py` (`sync_aca_tram_with_total_persons`, cridat pel nou receptor `sync_aca_tram_on_total_persons_change`):
-        - Només es crea la bonificació si les persones augmenten i arriben al mínim.
-        - Si el contracte ja la té, s'actualitza el nombre de membres també quan baixa (sempre per sobre del mínim); no es torna a encuar la sol·licitud ACA si el valor no canvia.
-        - Si baixa per sota del mínim, la bonificació es desactiva (amb data de fi), `deactivate_bonification` en desactiva les variables i s'esborra la sol·licitud ACA encara no enviada.
-    - `sync_contract_total_persons_from_aca_variable` ja no toca el contracte si la variable està inactiva, si la bonificació està desactivada o si el valor no arriba al mínim. Abans, en desactivar la bonificació, el contracte recuperava el nombre antic de membres. Quan sí que l'actualitza, ara ho registra a `LogContractTotalMembers`.
-    - `VariableSaveSerializer.validate` rebutja la variable de membres per sota del mínim (excepte en desactivar-la).
-    - `ContractDataChangeEditSerializer` exposa `aca_tram_min_persons` (només si el contracte té la bonificació activa) perquè el formulari avisi abans de desactivar-la.
-    - Tot plegat només s'aplica amb `uses_aca` actiu; als projectes sense ACA no canvia res.
-    - Tests: `contract/tests/test_aca_tram_service.py`.
+#### SERVICE (`service/serializers/meter_serializer.py` — adreça del comptador opcional)
+    - `MeterSerializer.create()` fallava sense `address_street` (variables sense definir): ara crea el comptador sense carrer ni número.
+    - `MeterSerializer.update()` amb `address_street` i `address_street_number` explícitament a `null` treu l'adreça del comptador; si les claus no hi són, es manté com abans.
+    - `street_complete` retorna `null` en lloc de `"None"` quan el comptador no té carrer.
+    - Tests a `service/tests.py` (`TestMeterOptionalAddress`). Cal desplegar-lo junt amb el frontend.
 
-## [09-10-2026]
+#### CONTRACT (`contract/serializers/contract_serializer.py` — factures d'una altra sol·licitud a la llista de factures del contracte)
+    - `get_request_invoices` buscava les factures de la sol·licitud amb `contract_request__token=obj.token`, és a dir, comparava el token del contracte amb el de les sol·licituds. Si una sol·licitud aliena tenia el mateix token que el contracte, les seves factures sortien a la pestanya de factures del contracte. Ara es filtra per la FK `contract_request` del contracte (igual que `contract_pinned_serializer.py` i `get_invoices_count`), i els contractes sense sol·licitud no en retornen cap.
+
+## [14-10-2026]
 
 ### FEAT
+#### COREDATA (`coredata/views/person_bank_view.py`, `coredata/utils/person_bank_utils.py`, `coredata/serializers.py` — 1886, edició completa del compte bancari i DNI per defecte al titular)
+    - `resolve` de `PersonBank`: amb el mateix IBAN es desen titular, DNI, càrrec, número de compte, SWIFT, país i banc (abans només el SWIFT). SWIFT i país buits no esborren el valor desat; la resposta retorna `updated`. Amb un IBAN nou es continua creant un compte i l'original queda intacte.
+    - DNI buit: `99999999R` si el titular és una altra persona, o el document de la persona si n'és el titular. La regla s'aplica a `resolve`, `PersonBankSaveSerializer` i als comptes desats des de la fitxa de persona.
+    - Tests a `coredata/tests.py`.
 
+#### SERVICE (`service/utils/supply_cut_bulk_planner.py`, `service/views/supply_cut_view.py`, `coredata/views/street_view.py`, `communication/utils/communication_service.py` — D_004-367, planificació massiva de talls de subministrament)
+    - Nou `supply_cut_bulk_planner`: resol una llista d'identificadors d'un sol tipus (`contract_token`, `supply_point_id`, `street_id`) a punts de subministrament, amb deduplicació, detecció de conflictes amb talls oberts i previsualització. Límit de 5.000 identificadors; per carrer només punts actius.
+    - Noves accions `bulk-plan/preview/` i `bulk-plan/` a `SupplyCutViewSet`: el servidor torna a resoldre la llista, retorna `409` si hi ha conflictes sense `override_conflicts` i crea el tall en estat Planificat (`source=manual`), amb els punts vinculats però sense tallar fins a `date_start`. Permís `add_supplycut`.
+    - Nova acció `resolve-ids` a `StreetViewSet` (id de carrer → etiqueta).
+    - Noves variables de plantilla `%supplycut.*` a les comunicacions; `affected_addresses` només llista els punts on el destinatari és titular, propietari o llogater.
+    - Tests: `service/tests_supply_cut_bulk_planner.py` i `communication/tests.py`. Cal desplegar-lo junt amb el frontend.
+
+#### SERVICE/COMMUNICATION (`service/models.py`, `service/utils/smtp_password_crypto.py`, `service/serializers/value_objects_serializer.py`, `communication/utils/communication_service.py` — D_004-374, contrasenya SMTP pròpia per a cada correu de l'empresa)
+    - Nou camp `CompanyConfigEmail.encrypted_password` (migració `service.0134`), xifrat amb Fernet amb la clau `SMTP_PASSWORD_ENCRYPTION_KEY` del `.env` (admet diverses claus separades per comes per rotar-la).
+    - Enviament SMTP i `send_test_email`: la contrasenya s'agafa, per ordre, de la desada al correu, de la variable `EMAIL_PASSWORD_*` del correu, de la de la configuració i d'`EMAIL_HOST_PASSWORD`. Només es llegeixen variables d'entorn `EMAIL_PASSWORD_*`.
+    - Corregit l'usuari SMTP quan no hi ha correu per defecte (es passava l'objecte en lloc de l'adreça).
+    - API: la contrasenya és només d'escriptura (`password`, `clear_password`) i la resposta només inclou `has_password`. Sense clau configurada es rebutja amb `400`. El desat de la configuració és atòmic i deixa un sol correu per defecte.
+    - Tests: `communication/tests_smtp_password.py`. Cal desplegar-lo junt amb el frontend.
+
+#### CONTRACT (`contract/utils/contract_service.py`, `contract/views/close_contract_termination_request_view.py`, `billing/views/generate_invoice_budget_view.py` — ACUSTOMERS-344, finalitzar la baixa des de l'alta i el canvi de nom)
+    - El tancament de la baixa accepta `ignore_invoice`: la baixa queda finalitzada «sense factura» tret que es facturi la lectura de tall o ja tingui factura o pressupost. Mantenint el número de contracte, la baixa també queda «sense factura».
+    - Generar el pressupost d'una baixa treu la marca «sense factura».
+    - Tests: `contract/tests/test_finalize_termination_from_request.py`.
+
+#### BILLING (`billing/models.py`, `billing/utils/smart_metering_service.py`, `billing/views/reading_document_view.py`, `billing/serializers/reading_document_serializer.py` — D_004-217, càrrega de lectures de Smart Metering des d'Introduir lectures)
+    - `ReadingDocument` té els camps nous `source` (`FILE` / `SMART_METERING`) i `reading_date` (migració `billing.0322`).
+    - La previsualització i la importació de Smart Metering ja no depenen del lot: cobreixen tots els comptadors de Smart Metering i desen les lectures en un document de lectures, amb un Excel generat (fulls de lectures desades i de no carregades, amb el motiu).
+    - No es modifiquen lectures ja assignades a un lot, facturades o d'un altre document, per evitar lectures estranyes en carregar des de lots diferents.
+    - Una sola càrrega per data: es bloqueja si ja n'hi ha una, i només es pot substituir mentre les seves lectures no s'hagin fet servir.
+    - API: accions noves `smart-metering/preview` i `smart-metering/import` a `reading-document`. S'eliminen les del lot (`reading-batch-summary`) i les seves tasques. Els documents de Smart Metering no es poden processar amb plantilla.
+    - Cal desplegar-lo junt amb el frontend. Tests: `billing/tests/test_smart_metering_document.py`.
+
+### CHORE
+#### COMMUNICATION (`communication/serializers/message_template_serializer.py` — 1860)
+    - `MessageTemplateListSerializer` exposa `is_active` perquè el selector de plantilles de l'enviament de factures descarti les inactives.
+
+## [13-10-2026]
+
+### FEAT
+#### BILLING (`billing/utils/reading_service.py`, `billing/views/reading_view.py`, `billing/serializers/reading_serializer.py` — lectures enllaçades per `copied_from`)
+    - Quan es modifica una lectura que és còpia d'una altra o que té còpies (`copied_from` / `copies`, p. ex. comptadors generals repartits entre contractes), la modificació s'aplica a totes les lectures del grup.
+    - Nous helpers `get_reading_copy_group_root`, `get_reading_copy_group` (lectures actives i no de control del grup, sense la pròpia) i `get_copy_calculated_value`: cada còpia manté la seva lectura anterior, i el consum es recalcula contra aquesta més el mateix ajust manual que s'hagi fet a la lectura editada.
+    - Edició directa (`PUT`/`PATCH` a `/billing/reading/<id>/`): `ReadingViewSet.perform_update` propaga `reading_date`, `reading_value`, `leak_value` i el consum recalculat a la resta del grup (via `ReadingSerializer`, dins la mateixa transacció). Només si algun d'aquests valors ha canviat (sense fuita i fuita 0 es consideren iguals), i a cada còpia només s'envien els camps que hi són diferents: una còpia que ja té els mateixos valors no es torna a desar (desar-la li trauria la marca d'estimada i el moviment de la bossa). Canviar només la nota d'alerta no toca les còpies.
+    - Modificació de lectures del contracte (`modify_existing_readings`): quan una lectura del grup es substitueix per una de nova, les altres també (la vella passa a control, s'afegeix a `modified_readings`, es registra a `LogReadingChange` i es traspassa a les baixes). Les noves lectures queden enllaçades a la nova original per `copied_from`. Les còpies que no canvien de valor no es substitueixen, només es tornen a enllaçar.
+    - `ReadingSerializer`, `ReadingByBatchSerializer` i `ReadingByBatchMinimalSerializer` exposen `copies_count` (nombre de lectures del grup que es modificaran juntament amb la lectura).
+    - Tests: `billing/tests/test_reading_copy_group.py`.
+
+#### BILLING/SERVICE (D_004-357 — compte de l'empresa per a les transferències de retorn)
+    - `CompanyBankRouting` té un camp nou `operation` (`collection` / `transfer`): les remeses de cobrament (pain.008) i les transferències de retorn als clients (pain.001) tenen ara mapes d'encaminament independents. Permet, per exemple, cobrar els IBAN nacionals per un compte i els estrangers per un altre, i fer els retorns a l'inrevés.
+    - Les restriccions úniques passen a ser per operació. La migració `service.0131` hi afegeix el camp i la `service.0132` copia les files existents com a `transfer`, de manera que els retorns continuen sortint pel mateix compte que abans fins que se'n canviï el mapa.
+    - `resolve_payment_banks` rep `is_return` i aplica el mapa corresponent. La generació de remeses i el llistat de rebuts el passen segons el tipus de remesa.
+    - API `company-bank-routing`: `bulk` i `set_special` accepten `operation` (per defecte `collection`, així que les peticions d'abans no canvien). `matrix` manté les claus d'abans per als cobraments i afegeix les de transferències a `transfer`, dins de cada fila i a l'arrel. El filtre accepta `operation`.
+    - Tests a `billing/tests/test_remittance_routing.py`.
+
+#### COMMUNICATION (`communication/views/communication_view.py`, `communication/views/communication_process_view.py`, `communication/permissions.py`, `communication/filters/*` — D_004-370, eliminació lògica de comunicacions i processos cancel·lats)
+    - Noves accions `POST delete-cancelled` a `CommunicationViewSet` i `CommunicationProcessViewSet`: esborrat lògic (`is_active=False`) només si l'element està cancel·lat; si no, `400`. El `DELETE` actual continua cancel·lant.
+    - Eliminar un procés cancel·lat desactiva també les seves comunicacions cancel·lades. Queda registrat a `LogCommunicationStatusChange` i `LogCommunicationProcessStatusChange` amb observació i usuari.
+    - Nou permís `CommunicationDeletePermission`: les accions exigeixen `delete_communication` encara que vagin per `POST`. Constant `CANCELLED_STATUS_TOKEN` (`'-1'`) a `communication.models`.
+    - Filtre `exclude_cancelled` a `CommunicationFilter` i `CommunicationProcessFilter` (s'ignora si hi ha un filtre d'estat explícit).
+    - Els eliminats ja no compten al total de comunicacions de persona i contracte, als totals del procés ni a l'exportació CSV.
+    - Sense migracions (`is_active` ja existia). Cal desplegar-lo junt amb el frontend. Tests a `communication/tests.py`.
+
+#### OV/AUTH (`ov/views.py`, `ov/serializers.py`, `ov/urls.py`, `auth/urls.py`, `docs/ov/openapi.yaml` — cerca de contracte per NIC i descàrrega de factures en ZIP)
+    - Nou `GET /ov/contract/by-nic/<nic>/` (NIC amb 1 o 2 barres, validat amb regex abans de consultar la BD).
+    - Nou `POST /ov/invoices/download/`: genera un ZIP amb els PDF de les factures definitives del contracte indicat.
+    - `POST /auth/login` accepta també la ruta sense barra final.
+    - OpenAPI actualitzat amb els dos endpoints nous (exemples anonimitzats).
+
+<!-- Entrades afegides el 09-10-2026 després de la release 1.133.01: es comptabilitzen en aquest dia. -->
 #### BILLING (`billing/templatetags/billing_filters.py`, `billing/utils/invoice_pdf.py`, `billing/views/invoice_pdf_view.py`, `billing/templatetags/svg_converter.py`, `billing/templates/invoice_template.html`, `billing/templates/invoice_request_template.html` — període del facturador i QR web)
     - Nou filtre `invoice_biller_period`. El rang (p. ex. Gener-Març/2026) surt de `Biller.period_type` i `Biller.initial_month`. El mes de la factura (`billing_period_year` / `billing_period_month`, o la data de la lectura si no hi són) només indica quin cicle és. El nom del lot no es llegeix.
     - Si el lot no té facturador, o la factura no és de consum, el filtre retorna buit i la fila no es pinta.
@@ -53,6 +129,69 @@
     - `ContactDataOVSerializer` hereta de `BillingDataOVSerializer` i afegeix el `SerializerMethodField` `holder_address` amb la mateixa lògica de `ContractFullDetailSerializer` (guart de titular nul inclòs).
     - Errors: `400 {error: "Contract token is required"}` si falta el paràmetre de query (mateix criteri que `billing-data`), `404 {error: "Contract not found"}` si el contracte no existeix (mateix criteri que `/ov/contract/{token}/`) i `401` sense autenticació.
     - `docs/ov/openapi.yaml`: nou tag `Perfil`, file a la taula de resum, path amb `operationId: getContactData` (paràmetre `contractToken`, respostes 200/400/401/404) i esquema `ContactData` compost amb `allOf` sobre `BillingData` + `holder_address`.
+
+### FIX
+#### BILLING (`billing/utils/remittance_routing.py` — rebuts sense empresa en remeses d'una sola empresa)
+    - Els rebuts sense factura ni contracte (p. ex. devolucions a una persona) s'atribuïen a l'única empresa seleccionada, però el mapa d'encaminament i el compte per defecte només es carregaven per a les empreses que sortien dels rebuts. Aquests rebuts acabaven sempre amb l'avís `company_without_bank` i fora de la remesa. Ara l'empresa s'atribueix abans de carregar els mapes.
+#### CONTRACT (`contract/utils/aca_tram_service.py` — PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
+    - Es podia aplicar la bonificació d'ampliació de trams a contractes que no arriben al mínim de persones: `create_aca_bonification_on_total_persons_increase` la creava amb qualsevol augment de `total_persons` (p. ex. d'1 a 2) i la variable de membres no tenia cap validació.
+    - Nou `ConfigProject` `aca_tram_min_persons` (migració `coredata.0137`, valor `4`; si no existeix o no és un enter, també 4). Helper `watchdog.aca_config.aca_tram_min_persons()`.
+    - La lògica passa de `contract/signals.py` a `contract/utils/aca_tram_service.py` (`sync_aca_tram_with_total_persons`, cridat pel nou receptor `sync_aca_tram_on_total_persons_change`):
+        - Només es crea la bonificació si les persones augmenten i arriben al mínim.
+        - Si el contracte ja la té, s'actualitza el nombre de membres també quan baixa (sempre per sobre del mínim); no es torna a encuar la sol·licitud ACA si el valor no canvia.
+        - Si baixa per sota del mínim, la bonificació es desactiva (amb data de fi), `deactivate_bonification` en desactiva les variables i s'esborra la sol·licitud ACA encara no enviada.
+    - `sync_contract_total_persons_from_aca_variable` ja no toca el contracte si la variable està inactiva, si la bonificació està desactivada o si el valor no arriba al mínim. Abans, en desactivar la bonificació, el contracte recuperava el nombre antic de membres. Quan sí que l'actualitza, ara ho registra a `LogContractTotalMembers`.
+    - `VariableSaveSerializer.validate` rebutja la variable de membres per sota del mínim (excepte en desactivar-la).
+    - `ContractDataChangeEditSerializer` exposa `aca_tram_min_persons` (només si el contracte té la bonificació activa) perquè el formulari avisi abans de desactivar-la.
+    - Tot plegat només s'aplica amb `uses_aca` actiu; als projectes sense ACA no canvia res.
+    - Tests: `contract/tests/test_aca_tram_service.py`.
+
+#### BILLING (`billing/views/epayment_document_generate_view.py` — empresa emissora de la factura electrònica)
+    - Amb múltiples empreses (`use_multiple_companies`), l'XML de la factura electrònica agafa l'empresa de la factura com a emissora (NIF i comptes). Sense múltiples empreses es manté la lògica anterior (empresa de l'explotació o `main_company_token`).
+
+#### BILLING (`billing/views/billing_view.py` — D_004-373, contractes no facturables fora dels possibles no facturats)
+    - `check_missing` comptava els contractes no facturables (`block_billing`) com a possibles no facturats. Ara s'exclouen de la llista, dels totals (`missing_contracts`, `missing_by_route`, `missing_by_exploitation`), dels llistats filtrats i de l'Excel.
+    - El camp `block_billing` de la resposta passa a ser el nombre de contractes no facturables sense factura al període, comptats a part. Cal desplegar-lo junt amb el frontend.
+    - Tests: `billing/tests/test_check_missing_block_billing.py`.
+
+#### BILLING (`billing/serializers/reading_serializer.py` — 1876, lectures a 0 o facturades sobreescrites en entrar-ne una)
+    - En crear una lectura manual, una lectura anterior amb valor 0 es tractava com a buida i es reaprofitava (data, lot i origen nous) encara que estigués facturada: desapareixia de l'històric i la nova no es podia entrar.
+    - Ara només es reaprofita si no té valor (`reading_value` nul) i no té factura definitiva (`BILLED_READING_FILTER`); en la resta de casos es crea una lectura nova.
+    - Tests: `billing/tests/test_reading_save_previous_reading.py`.
+
+#### CONTRACT (`contract/utils/contract_request_service.py`, `contract/views/close_contract_termination_request_view.py` — D_004-278, estat del punt de subministrament després d'una baixa)
+    - `check_and_deactivate_supply_point_and_meter` no feia res si la baixa no tenia lectures i saltava els punts sense comptador: el punt quedava «Actiu» sense cap contracte actiu. Ara es revisen sempre tots els punts del contracte.
+    - Els punts sense altres contractes actius ni sol·licituds obertes reben l'estat triat a la pantalla (`supply_point_status`). Sense estat triat (baixa completada pel tancament de les ordres) es manté l'estat si ja és de baixa; si no, passa al predeterminat. El comptador passa a inactiu, excepte si és compartit (general) i encara és a altres punts.
+    - Sense lectures de baixa no es desen `removal_at` ni `uninstallation_at`.
+    - `CloseContractTerminationRequestViewSet` delega l'estat al servei (un punt amb un altre contracte actiu conserva el seu estat); el camp `status` és opcional. Afecta el tancament manual i el tancament per ordres (`contract_termination_check_orders`).
+    - Tests: `contract/tests/test_termination_supply_point_status.py`.
+
+#### SERVICE (`service/services/meter_change_service.py`, `service/views/supply_point_view.py` — E_25_164-28, dates d'instal·lació en el canvi de comptador)
+    - El canvi de comptador no desava cap data: la data del canvi passa a ser la `installation_at` del comptador nou i la `uninstallation_at` del retirat, només si encara no en tenen. El vell només es marca com a desinstal·lat quan ja no és a cap punt de subministrament.
+    - Nou helper `set_meter_change_dates`, cridat des de `MeterChangeService.apply` (ordres de treball i RabbitMQ/GMAO) i des de `SupplyPointViewSet.save_meter_change`. Les ordres de treball usen la data del dia.
+    - Tests: `service/tests_meter_change_dates.py`.
+
+#### SERVICE (`service/serializers/supply_point_serializer.py` — escomesa en editar un punt de subministrament)
+    - Un `connection_id` buit o `NaN` en editar un punt de subministrament ja no esborra l'escomesa actual.
+
+#### STATISTICS (`statistics/utils/report_billing_service.py` — resum ACA: volum consumit igual al facturat)
+    - Al resum de l'informe ACA, el consum domèstic, industrial i municipal es calcula amb les unitats facturades (sense la part fixa), de manera que quadra amb el volum facturat.
+
+#### PRICING (`pricing/models.py` — migracions fantasma de la categoria del concepte comptable)
+    - `AccountingConcept.CATEGORY_CHOICES` era un `set`: l'ordre canviava a cada procés de Python i, segons l'execució, `makemigrations`/`migrate` detectaven un canvi inexistent a `pricing`. Passa a ser una llista amb el mateix ordre que la migració `0119`; no cal cap migració nova.
+
+### CHORE
+#### GENERAL (`.gitignore`, `backend/.gitignore` — fitxers que no han d'anar al repositori)
+    - Les personalitzacions per client (`*_personalized.*`, `*_personalized_*`) deixen d'anar al repositori i s'ignoren: 8 plantilles HTML, `billing/utils/generate_serie_final_personalized.py` i `coredata/utils/name_utils_personalized.py`. El codi ja les carrega només si existeixen (`template_utils`, `try/except ImportError`); sense elles s'usa la versió per defecte.
+    - Es recuperen les entrades del `.gitignore` del repositori antic que faltaven: exports reals d'Odoo (`integrations/outbound/odoo/exports/` i `exports-jsons.zip`), `dades_prod.json`, `deploy_info.json`, `DEPLOYS.md`, `celerybeat-schedule*`, `celerybeat.pid` i, a l'arrel, `.claude/settings.local.json`.
+    - Es treuen del repositori `celerybeat-schedule` (si viatja amb la imatge, cada contenidor nou considera vençudes totes les tasques periòdiques) i els exports d'Odoo, que contenen dades de clients.
+    - En fer pull, Git esborra aquests fitxers de la còpia de treball: qui els faci servir n'ha de fer una còpia abans. Celery torna a crear `celerybeat-schedule` sol.
+
+#### CONTRACT (`contract/utils/bail_service.py`, `contract/views/bail_view.py`, `contract/tasks.py`, `contract/opscripts/0003_fix_pending_bails.py` — fiances en donar de baixa un contracte)
+    - En donar de baixa un contracte, la fiança passa automàticament al saldo del contracte en comptes de quedar-se pendent.
+    - Opscript `contract/0003_fix_pending_bails` per regularitzar les fiances que havien quedat pendents.
+
+## [09-10-2026]
 
 ### REFACTOR
 #### DOCUMENTMANAGER/IMPORTEXPORT (cua de descàrregues i exportació genèrica fora d'`importexport`)

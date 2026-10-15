@@ -1,3 +1,5 @@
+from django.core.exceptions import ImproperlyConfigured
+from django.db import transaction
 from rest_framework import serializers
 from django_filters import rest_framework as filters
 
@@ -121,13 +123,60 @@ class CompanyTypeSerializer(serializers.ModelSerializer):
         model = CompanyType
         fields = '__all__'
 
+def apply_config_email_password(config_email, password=None, clear_password=False):
+    """Desa (xifrada) o treu la contrasenya SMTP del correu; una contrasenya buida manté l'actual."""
+    if password:
+        try:
+            config_email.set_password(password)
+        except ImproperlyConfigured as exc:
+            raise serializers.ValidationError({'password': str(exc)})
+    elif clear_password:
+        config_email.encrypted_password = None
+
+
+def pop_config_email_password(config_email_data):
+    """Treu del diccionari els camps de contrasenya (no són camps del model) i els retorna."""
+    config_email_data.pop('has_password', None)
+    return config_email_data.pop('password', None), bool(config_email_data.pop('clear_password', False))
+
+
+def ensure_single_default_email(config_emails):
+    """Només un correu per defecte: el primer marcat o, si no n'hi ha cap, el primer."""
+    if not config_emails:
+        return
+    default_email = next((email for email in config_emails if email.is_default), config_emails[0])
+    for email in config_emails:
+        if email.is_default != (email is default_email):
+            email.is_default = email is default_email
+            email.save(update_fields=['is_default'])
+
+
 class CompanyConfigEmailSerializer(serializers.ModelSerializer):
+    # La contrasenya només s'escriu; en llegir només se sap si n'hi ha (has_password).
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True, trim_whitespace=False)
+    clear_password = serializers.BooleanField(write_only=True, required=False, default=False)
+
     class Meta:
         model = CompanyConfigEmail
-        fields = '__all__'
+        exclude = ['encrypted_password']
+
+    def create(self, validated_data):
+        password = validated_data.pop('password', None)
+        clear_password = validated_data.pop('clear_password', False)
+        instance = CompanyConfigEmail(**validated_data)
+        apply_config_email_password(instance, password, clear_password)
+        instance.save()
+        return instance
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        clear_password = validated_data.pop('clear_password', False)
+        apply_config_email_password(instance, password, clear_password)
+        return super().update(instance, validated_data)
     
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        data['has_password'] = instance.has_password
         data['label'] = f"{instance.mail_send_user} <{instance.use_type.name}>"
         data['value'] = instance.id
         data['use_type'] = {
@@ -159,6 +208,7 @@ class CompanyConfigSerializer(serializers.ModelSerializer):
         }
         return company_data
     
+    @transaction.atomic
     def create(self, validated_data):
         company_id = validated_data.pop('company_id', None)
         config_emails_data = validated_data.pop('config_emails_data', None)
@@ -171,16 +221,23 @@ class CompanyConfigSerializer(serializers.ModelSerializer):
         
         if config_emails_data:
             use_types = CommunicationUseType.objects.all()
+            new_config_emails = []
             for config_email_data in config_emails_data:
                 use_type = use_types.filter(id=config_email_data.pop('use_type').get('value')).first()
-                CompanyConfigEmail.objects.create(
+                password, clear_password = pop_config_email_password(config_email_data)
+                config_email = CompanyConfigEmail(
                     company_config=instance,
                     use_type=use_type,
                     **config_email_data
                 )
+                apply_config_email_password(config_email, password, clear_password)
+                config_email.save()
+                new_config_emails.append(config_email)
+            ensure_single_default_email(new_config_emails)
         
         return instance
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         config_emails_data = validated_data.pop('config_emails_data', None)
         use_types = CommunicationUseType.objects.all()
@@ -189,21 +246,27 @@ class CompanyConfigSerializer(serializers.ModelSerializer):
             new_config_emails = []
             for config_email_data in config_emails_data:
                 use_type = use_types.filter(id=config_email_data.pop('use_type').get('value')).first()
+                password, clear_password = pop_config_email_password(config_email_data)
                 if config_email_data.get('id'):
                     config_email = previous_config_emails.filter(id=config_email_data.pop('id')).first()
                     config_email.use_type = use_type
                     config_email.mail_send_user = config_email_data.pop('mail_send_user')
                     config_email.mail_send_mail = config_email_data.pop('mail_send_mail')
                     config_email.is_default = config_email_data.pop('is_default')
+                    config_email.token = config_email_data.pop('token', config_email.token)
+                    apply_config_email_password(config_email, password, clear_password)
                     config_email.save()
                     new_config_emails.append(config_email)
                 else:
-                    new_config_email = CompanyConfigEmail.objects.create(
+                    new_config_email = CompanyConfigEmail(
                         company_config=instance,
                         use_type=use_type,
                         **config_email_data
                     )
+                    apply_config_email_password(new_config_email, password, clear_password)
+                    new_config_email.save()
                     new_config_emails.append(new_config_email)
+            ensure_single_default_email(new_config_emails)
             previous_config_emails.exclude(mail_send_mail__in=[config_email.mail_send_mail for config_email in new_config_emails]).update(is_active=False)
             # instance.company_config_emails.clear()
             instance.company_config_emails.set(new_config_emails)

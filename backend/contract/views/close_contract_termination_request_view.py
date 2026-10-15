@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 
 from datetime import datetime
 
+from billing.models import Invoice
 from contract.models import Contract, ContractStatus, ContractTerminationRequest, ContractTerminationStatus
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestSerializer
 from coredata.models import ConfigProject
@@ -19,16 +20,12 @@ class CloseContractTerminationRequestViewSet(APIView):
     # Extract data for each child model from the request
     id = self.kwargs.get('id')
     status_data = request.data.get('status')
-    supply_point_status = SupplyPointStatus.objects.get(id=status_data)
+    supply_point_status = SupplyPointStatus.objects.get(id=status_data) if status_data else None
     
     termination_request = ContractTerminationRequest.objects.get(id=id)
     termination_pending_token = ConfigProject.objects.get(token = 'contract_termination_pending_token').value
     termination_completed_token = ConfigProject.objects.get(token = 'contract_termination_completed_token').value
     contract = Contract.objects.get(id = termination_request.contract.id)
-    
-    for supply_point in contract.supply_points.all():
-      supply_point.status = supply_point_status
-      supply_point.save()
     
     token = ConfigProject.objects.get(token = contract_terminated_token).value
     
@@ -36,6 +33,12 @@ class CloseContractTerminationRequestViewSet(APIView):
     contract.status = contract_status
     contract.termination_date = datetime.now().date()
     termination_request.approved_at = datetime.now()
+    # Des de l'alta (canvi de nom) es finalitza "sense factura", tret que ja es factura
+    # (factura o pressupost existent, o lectura de tall cobrada a l'alta). Després se'n pot
+    # generar igualment el pressupost.
+    if str(request.data.get('ignore_invoice', '')).lower() == 'true' and not termination_request.bill_cut_reading \
+        and not Invoice.objects.filter(contract_termination=termination_request).exists():
+      termination_request.ignore_invoice = True
     orders = None
     try:
       order_status = ConfigProject.objects.get(token = 'order_status_completed_token').value
@@ -52,7 +55,8 @@ class CloseContractTerminationRequestViewSet(APIView):
     
     # Donar de baixa el punt i el comptador si és necessari
     from contract.utils.contract_request_service import check_and_deactivate_supply_point_and_meter
-    check_and_deactivate_supply_point_and_meter(termination_request)
+    # L'estat triat només s'aplica als punts sense altres contractes actius ni sol·licituds obertes.
+    check_and_deactivate_supply_point_and_meter(termination_request, supply_point_status)
     
     serializer = ContractTerminationRequestSerializer(termination_request, context={'request': request})
         

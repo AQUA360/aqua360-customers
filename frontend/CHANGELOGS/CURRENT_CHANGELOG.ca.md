@@ -1,14 +1,73 @@
 # Changelog Frontend
 
+## [15-10-2026]
+
+### FEAT
+#### SERVICE (`MeterEdit.vue` — adreça del comptador opcional)
+    - La ubicació del comptador ja no és obligatòria: es pot crear i desar un comptador sense adreça, i en treure-la (paperera) es desa sense adreça.
+    - Si se n'indica una, el carrer i el tipus de via continuen sent obligatoris, i el número si no és S/N. Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### SERVICE (`MeterEdit.vue` — el municipi i el codi postal del comptador es perdien en editar-lo)
+    - `setValues()` no carregava `address_city` ni `address_postal_code` del comptador, de manera que en desar sense obrir el panell d'adreça s'enviaven a `null` i el backend els esborrava. Ara es carreguen del detall del comptador.
+
+## [14-10-2026]
+
+### FEAT
+#### BILLING (`SendInvoiceModal.vue`, `i18n/locales/*` — 1860, plantilla de facturació a l'enviament de factures)
+    - Nou selector amb les plantilles de missatge actives de l'origen de facturació; l'opció «Per defecte» manté els textos per defecte de l'idioma triat. En triar-ne una s'omplen l'assumpte i el cos amb el seu missatge de correu; si no en té, s'avisa i s'usen els textos per defecte.
+    - Nou camp d'assumpte editable (per defecte «Factura <sèrie>»), que s'envia sempre.
+    - El selector d'idioma només s'aplica als textos per defecte i es desactiva amb una plantilla seleccionada; en navegar entre factures es manté la plantilla.
+    - Clau nova `billing_block.template_without_email`.
+
+#### PERSON (`AddBank.vue`, `PersonBankSelect.vue`, `i18n/locales/*` — 1886, edició completa del compte bancari)
+    - Es treu l'avís de dades no desades en editar un compte amb el mateix IBAN (ara el backend desa tots els camps), amb missatge d'actualització i ajuda al camp DNI sobre el valor per defecte. Cal desplegar-lo junt amb el backend.
+
+#### SERVICE (`SupplyCutEdit.vue`, `supply-cut-api.js`, `street-api.js`, `utils/messages.ts`, `i18n/locales/*` — D_004-367, planificació massiva de talls de subministrament)
+    - La pantalla «Nou tall» permet enganxar o carregar (`.csv`/`.txt`) una llista d'identificadors (contractes, punts de subministrament o carrers), amb comptador contra el límit de 5.000, o triar-los des del selector existent.
+    - «Previsualitzar» mostra estadístiques, resolts, no trobats i conflictes (amb casella per anul·lar-los) abans de crear el tall. Es marquen els camps obligatoris que falten.
+    - Nou grup de variables `supplycut` a l'editor de missatges. 24 claus `bulk_plan_*` i claus de variables noves. Cal desplegar-lo junt amb el backend.
+
+#### SERVICE (`AddCompanyConfig.vue`, `i18n/locales/*` — D_004-374, contrasenya SMTP per correu)
+    - Camp de contrasenya per a cada correu de l'empresa, amb estat «desada» i opció de treure-la; la variable `.env` passa a «Opcions avançades».
+    - Corregit el correu per defecte amb correus nous (id `null`) i es mostra l'error en desar. Cal desplegar-lo junt amb el backend.
+
+#### CONTRACT REQUEST (`ContractRequestTermination.vue`, `ContractTerminationDetail.vue`, `contract-termination-api.js`, `i18n/locales/*` — ACUSTOMERS-344, finalitzar la baixa des de l'alta i el canvi de nom)
+    - Botó «Finalitzar baixa» al pas de baixa un cop donat de baixa el contracte, amb confirmació; cal la lectura de tall o l'ordre de lectura.
+    - El pas de baixa mostra el contracte encara que ja no estigui actiu i l'estat «Baixa finalitzada». El botó de pressupost de la fitxa de la baixa ja no queda bloquejat.
+    - L'API de tancament només envia `status` si n'hi ha. Cal desplegar-lo junt amb el backend.
+
+#### READING (`SmartMeteringLoad.vue`, `pages/reading/readings/index.vue`, `ReadingDocumentDetail.vue`, `ReadingBatchSetup.vue`, `ReadingBatchEdit.vue`, `smart-metering-api.js`, `i18n/locales/*` — D_004-217, càrrega de Smart Metering des d'Introduir lectures)
+    - Botó nou «Carregar Smart Metering» a Introduir lectures (component `SmartMeteringLoad`), amb previsualització i importació per data.
+    - Els documents de lectures mostren l'origen (Smart Metering) i la data de lectura al llistat i al detall.
+    - Es treu el flux de Smart Metering de la configuració del lot. Traduccions ca, es, en i gl. Cal desplegar-lo junt amb el backend.
+
 ## [13-10-2026]
 
 ### FEAT
+#### BILLING (`ReadingEdit.vue`, `ReadingsChange.vue`, `i18n/locales/*` — avís de lectures enllaçades)
+    - En editar una lectura existent que és còpia d'una altra o que té còpies (`copies_count` > 0), s'avisa que es modificaran N lectures més juntament amb aquesta.
+    - Edició de lectures del lot (`ReadingEdit.vue`): avís sota la fila quan canvia la lectura, la fuita o el consum (no només la nota), i també al missatge de confirmació en desar.
+    - Canvi de lectures del contracte (`ReadingsChange.vue`): avís a la targeta de cada lectura existent modificada (no a les noves, les que no canvien, les esborrades ni les de control).
+    - Clau nova `warning_block.warning_linked_readings_modified` als quatre idiomes.
+
+#### BILLING/SERVICE (`CompanyBankRouting.vue`, `SEPAManagementEdit.vue`, `exploitation-api.js`, `locales/*` — D_004-357, compte de l'empresa per a les transferències de retorn)
+    - L'encaminament de remeses de la fitxa d'empresa té una segona columna, «Transferir des de», al costat de «Remesar a»: a les files «IBAN estranger» i «Per defecte», a cada entitat i a l'estimació de clients per compte. Cada columna desa el seu mapa (`operation` `collection` / `transfer`), de manera que els retorns poden sortir per un compte diferent del que cobra les remeses.
+    - L'assignació en bloc deixa triar si s'aplica a les remeses, a les transferències o a totes dues.
+    - A la pantalla de remeses, el mapa que s'obre només ensenya la columna del tipus de remesa que s'està preparant (transferències quan és de retorns).
+    - `saveBankRoutingBulk` i `saveBankRoutingSpecial` accepten `operation` (per defecte `collection`). Claus noves `billing_block.transfer_from` i `billing_block.all_routing_operations`, i `info_bank_routing` actualitzat, als quatre idiomes. Cal desplegar-lo junt amb el backend.
+
 #### CONTRACT (`ContractBonificationsVariables.vue`, `ContractTabs.vue`, `ContractRegion.vue`, `i18n/locales/*` — pestanya única de bonificacions i variables)
     - Les pestanyes «Bonificacions» i «Variables» del contracte (fitxa i contracte fixat) s'uneixen en una sola, «Bonificacions i variables», amb els dos comptadors a l'etiqueta (p. ex. «(2 · 5)»).
     - Cada bonificació es mostra com una targeta amb el tipus, l'estat ACA, les dates i la documentació, i a dins les seves variables (agrupades pel camp `bonification` de la variable). El llapis d'editar cada variable es manté.
     - Les variables que no pertanyen a cap bonificació van en una targeta a part, «Variables sense bonificació».
     - Les vençudes s'agrupen igual sota «Bonificacions i variables vençudes». Abans, una bonificació vençuda sortia repetida una vegada per cada variable vençuda (el log en té una entrada per variable); ara surt una sola vegada amb les seves variables.
     - Claus noves `contract_block.bonifications_and_variables`, `variables_without_bonification` i `expired_bonifications_variables` als quatre idiomes.
+
+#### COMMUNICATION (`CommunicationRegion.vue`, `CommunicationProcessRegion.vue`, `pages/communication/communications/index.vue`, `pages/communication/process-communications/index.vue`, `communication-api.js`, `communication-process-api.js`, `i18n/locales/*` — D_004-370, eliminar comunicacions i processos cancel·lats)
+    - Opció «Eliminar» al menú del detall de comunicació i de procés: només per als cancel·lats i amb permís d'eliminar. Crida la nova acció `delete-cancelled` del backend.
+    - Casella «Mostrar cancel·lades» als llistats de comunicacions i de processos, desmarcada per defecte (filtre `exclude_cancelled`).
+    - Traduccions ca, es, en i gl. Cal desplegar-lo junt amb el backend.
 
 ### FIX
 #### ORDER (`OrderMiniDetail.vue` — ordres de treball sense tipus a les pestanyes)
@@ -20,12 +79,33 @@
 #### CONTRACT (PA-49: nombre de persones i bonificació d'ampliació de trams de l'ACA)
     - `pages/contract/contracts/[id]/data-change.vue`: avís quan el nou nombre de persones a l'habitatge queda per sota del mínim de l'ampliació de trams i, en desar, es desactivaran la bonificació i les seves variables. Només surt si el contracte té la bonificació activa (`aca_tram_min_persons` del backend). Textos a `ca`, `es`, `en` i `gl`.
     - `AddBonification.vue`: les variables es desen abans que els documents i, si el backend en rebutja alguna (p. ex. membres per sota del mínim), s'esborren la bonificació i les variables que s'acaben de crear perquè no quedi a mitges.
+
+#### BILLING (`InvoiceLineItemDetailInvoice.vue` — D_004-356, unitats dels conceptes de la factura)
+    - A la pestanya de conceptes de la factura les unitats es truncaven a enter (p. ex. 3,87 sortia com a 3). Nou helper `formatUnits` amb el mateix format que el PDF: sense decimals si són enteres i amb 2 decimals si no. S'aplica també a la vista agrupada per empresa.
+
+#### BILLING (`PossibleNonBilledCard.vue`, `i18n/locales/*` — D_004-373, contractes no facturables)
+    - Els contractes no facturables (`block_billing`) surten de «Causes possibles» i es mostren en una línia separada, «Contractes no facturables (no compten com a avís)». Clau nova `billing_block.non_billable_contracts`. Cal desplegar-lo junt amb el backend.
+
+#### STATISTICS (`pages/billing/reports/add.vue` — D_004-267, l'any als filtres dels informes)
+    - Tots els informes rebien `model_347_year` i `year` i als filtres aplicats sortia «Any: <any anterior>» encara que l'informe no el fes servir. Nou helper `reportUsesYear`: l'any només s'envia als informes del model 347 o als que el tenen a `required_fields`.
+
+#### CONTRACT (`FieldDetail.vue`, `ContractDetail.vue`, `PinnedContractBasicInfo.vue` — D_004-266, etiquetes del mètode de pagament i del mandat)
+    - Les etiquetes «Mètode de pagament» i «Identificador de mandat» quedaven tallades amb «...». Nova prop opcional `wrapLabel` a `FieldDetail` (l'etiqueta passa a dues línies); el valor del mètode de pagament ja no es trunca i el mandat fa `break-all`. També al contracte fixat.
+
+#### CONTRACT (`ContractTerminationEdit.vue` — D_004-278, estat del punt de subministrament en finalitzar la baixa)
+    - Les opcions d'estat porten `token` i `is_default` i se'n preselecciona la predeterminada (pendent de contractació). Abans la cerca per token no trobava res, s'agafava la primera opció i, si el punt es carregava abans que els estats, el selector quedava buit.
+    - Corregit `status_name` del payload (`label` en lloc de `name`).
+
 ### REFACTOR
 #### CONTRACT (`ContractTabs.vue` — format)
     - Plantilla reformatada a l'estil de la resta de components (indentació de 2 espais, atributs a la mateixa línia de l'etiqueta, salt a 120 caràcters). Sense canvis de comportament.
 
 #### GENERAL (`locales/`, `i18n.config.ts` — traduccions antigues)
     - S'eliminen `frontend/locales/` i `frontend/i18n.config.ts`, una còpia antiga que no carregava ningú: les traduccions reals són a `frontend/i18n/locales/` (ca, es, gl, en). Les dues úniques claus que només hi havia a la còpia antiga (`dashboard.show_only_me`, `customer_service_block.digital_comm`) no s'utilitzen.
+
+### CHORE
+#### GENERAL (`frontend/.gitignore` — entrades del repositori antic)
+    - S'ignoren `/nuxt` i `/nuxt-app@*` (restes d'instal·lacions de npm interrompudes), `.watchmanconfig`, `public/deploy-info.json` i `DEPLOYS.md` (generats per `scripts/record_deploy.sh` al servidor), com al repositori antic.
 
 ## [09-10-2026]
 

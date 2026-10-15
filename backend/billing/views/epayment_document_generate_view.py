@@ -18,6 +18,7 @@ from billing.serializers.invoice_serializer import InvoiceFullSerializer
 from billing.serializers.payment_serializer import PaymentSEPASerializer
 from billing.signals import create_payment_invoice
 from billing.utils.payment_service import get_payment_SEPA_data
+from billing.utils.aca_company_service import use_multiple_companies
 from django.db.models import Sum
 import xml.etree.ElementTree as ET
 from django.core.files.base import ContentFile
@@ -269,13 +270,19 @@ def generate_xml(payment, invoice_inst=None):
     if not exploitation and contract:
         exploitation = contract.supply_point_default.connection.exploitation
         
-    if (exploitation and exploitation.company.company_banks.count() == 0):
-        raise Exception("Company has no banks")
-    if not exploitation:
-        main_company_token = ConfigProject.objects.get(token='main_company_token').value
-        main_company = Company.objects.get(vat=main_company_token)
+    # Amb múltiples empreses, l'emissora és l'empresa de la factura
+    if use_multiple_companies() and invoice.company:
+        main_company = invoice.company
+        if main_company.company_banks.count() == 0:
+            raise Exception("Company has no banks")
     else:
-        main_company = exploitation.company
+        if (exploitation and exploitation.company.company_banks.count() == 0):
+            raise Exception("Company has no banks")
+        if not exploitation:
+            main_company_token = ConfigProject.objects.get(token='main_company_token').value
+            main_company = Company.objects.get(vat=main_company_token)
+        else:
+            main_company = exploitation.company
     invoice_line_items = InvoiceLineItem.objects.filter(invoice=invoice, is_active=True)
     batchIdent = f"ES{main_company.vat}{invoice.serie_final}"
     # COMPANY BANK LATER SELECTED

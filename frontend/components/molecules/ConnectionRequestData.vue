@@ -1,6 +1,7 @@
 <script setup>
 import ButtonOutline from '~/components/atoms/ButtonOutline.vue';
 import OrderTypeDetail from './OrderTypeDetail.vue';
+import WorkOrderTypeSelectorModal from '~/components/molecules/WorkOrderTypeSelectorModal.vue';
 import { format } from 'date-fns';
 
 import { useToast } from 'vue-toastification';
@@ -57,11 +58,12 @@ const selectedSupplyType = ref(null);
 
 const closedOrderStatus = ref();
 
-const order = ref(null);
+const orders = ref([]);
 const orderStatuses = ref([]);
 const orderTypes = ref([]);
-const orderTypeLandInspection = ref(null);
-const landInspectionToken = ref('land_inspection');
+const savingOrder = ref(false);
+const workOrderSelectorOpen = ref(false);
+const { reasonId, resolved, getReasonId } = useOrderReasonId('order_reason_new_connection_request');
 
 const closeAllRegions = () => {
   // tanquem tots els components
@@ -209,20 +211,14 @@ const loadData = async (getAll = true) => {
 
       const order_types = await $ConfiglistApiService.getAll('order/order-type');
       orderTypes.value = order_types.results;
-      const order_type_token = await $ConfigProjectApiService.get('order_type_land_inspection_token');
-      if (order_type_token) landInspectionToken.value = order_type_token;
-      orderTypeLandInspection.value = order_types.results.find(item => item.token == landInspectionToken.value);
-      if (!orderTypeLandInspection.value) {
-        // Fallback: try to find by name if token fails
-        orderTypeLandInspection.value = order_types.results.find(item => {
-          const n = (item.name || '').toLowerCase();
-          return n.includes('inspecció') && n.includes('pressupost');
-        });
-      }
       const order_statuses = await $ConfiglistApiService.getAll('order/order-status');
       orderStatuses.value = order_statuses.results;
-      const closed_order_status = await $ConfigProjectApiService.get('order_status_completed_token');
-      closedOrderStatus.value = orderStatuses.value.find(item => item.token == closed_order_status);
+      try {
+        const closed_order_status = await $ConfigProjectApiService.get('order_status_completed_token');
+        closedOrderStatus.value = orderStatuses.value.find(item => item.token == closed_order_status);
+      } catch (error) {
+        console.warn("ConfigProject 'order_status_completed_token' not found", error);
+      }
     } catch (error) {
       console.error("Error loading draft:", error);
     } finally {
@@ -258,18 +254,14 @@ const getOrder = async () => {
   console.log('getOrder', props.request.id);
   try {
     const order_response = await $OrderApiService.getFilterConnectionRequest(props.request.id);
-    
-    // Filter by ID if we have the type resolved, otherwise by token
-    if (orderTypeLandInspection.value) {
-      order.value = order_response.find(item => item.type?.id == orderTypeLandInspection.value.id);
-    } else {
-      order.value = order_response.find(item => item.type?.token == landInspectionToken.value);
-    }
 
-    if (order.value) {
+    orders.value = Array.isArray(order_response) ? order_response : (order_response?.results || []);
+
+    if (orders.value.length) {
+      const latest = orders.value[orders.value.length - 1];
       const res = {
-        order: order.value,
-        warning: order.value.status?.id != closedOrderStatus.value?.id
+        order: latest,
+        warning: latest.status?.id != closedOrderStatus.value?.id
       }
 
       emit('current-order', res);
@@ -281,33 +273,71 @@ const getOrder = async () => {
   }
 }
 
-const generateWorkOrder = async () => {
+const excludedOrderTypeIds = computed(() =>
+  orders.value.map(order => order.type?.id).filter(id => id != null)
+);
+
+const linkedOrderTypes = computed(() => {
+  if (!resolved.value || reasonId.value == null) return null;
+  return orderTypes.value.filter(orderType =>
+    orderType.reasons?.some(reason => reason.id == reasonId.value)
+  );
+});
+
+const availableOrderTypes = computed(() => {
+  if (linkedOrderTypes.value?.length) return linkedOrderTypes.value;
+  return orderTypes.value.filter(orderType => orderType.token == 'land_inspection');
+});
+
+const showAllTypesWarning = computed(() =>
+  resolved.value
+  && reasonId.value != null
+  && !(linkedOrderTypes.value && linkedOrderTypes.value.length)
+);
+
+const openWorkOrderSelector = async () => {
+  await getReasonId();
+  workOrderSelectorOpen.value = true;
+};
+
+const onWorkOrderSelected = async (orderType) => {
+  workOrderSelectorOpen.value = false;
+  if (savingOrder.value) return;
+  savingOrder.value = true;
   try {
-    const order_saved = await createOrderLandInspection();
+    const order_saved = await createWorkOrder(orderType);
     if (order_saved) {
-      order.value = order_saved;
+      orders.value.push(order_saved);
+      const res = {
+        order: order_saved,
+        warning: order_saved.status?.id != closedOrderStatus.value?.id
+      };
+      emit('current-order', res);
     } else {
       await getOrder();
     }
     emitChange()
   } catch (err) {
-    console.error(err);
+    console.error('Error creating order:', err?.data || err?.response?.data || err);
     toast.error(t('common.error'));
+  } finally {
+    savingOrder.value = false;
   }
 };
 
-const createOrderLandInspection = async () => {
-  if (!orderTypeLandInspection.value) {
-    toast.error(t('warning_block.warning_order_type_not_found') + ': ' + landInspectionToken.value);
-    return;
+const createWorkOrder = async (orderType) => {
+  const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderType?.id || !statusId) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return null;
   }
 
-  const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
-  const statusId = defaultOrderStatus?.id || orderStatuses.value[0]?.id;
-
-  if (!statusId) {
-    toast.error(t('warning_block.warning_order_status_not_found'));
-    return;
+  const reason_id = reasonId.value ?? await getReasonId();
+  if (!reason_id) {
+    toast.error(t('warning_block.warning_order_reason_not_found'));
+    return null;
   }
 
   const description = `${t("address_block.location")}: ${props.request.address_complete || ''}\n` +
@@ -322,12 +352,13 @@ const createOrderLandInspection = async () => {
   const order_data = {
     token: format(new Date(), 'yyyyMMddHHmmss'),
     connection_request: props.request.id,
-    type: orderTypeLandInspection.value.id,
+    type: orderType.id,
     status: statusId,
     requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
     latitude: props.request.latitude,
     longitude: props.request.longitude,
-    description: description
+    description: description,
+    reason: reason_id,
   }
 
   const order_saved = await $OrderApiService.save(order_data);
@@ -338,8 +369,12 @@ const clickDeleteOrder = async (id) => {
   if (id && confirm(t('confirmation_text_block.confirm_deactivate'))) {
     try {
       await $OrderApiService.deleteItem(id);
-      order.value = null;
-      emit('current-order', { order: null, warning: false });
+      orders.value = orders.value.filter(order => order.id != id);
+      if (orders.value.length) {
+        await getOrder();
+      } else {
+        emit('current-order', { order: null, warning: false });
+      }
       emitChange();
       toast.success(t('common.deleted_successfully'));
     } catch (error) {
@@ -459,19 +494,23 @@ watch(() => props.request, (newVal) => {
     </div><!-- end row -->
     <!-- <hr class="my-2"> -->
     <div v-if="!hideOrder">
-      <label for="order_land_inspection" class="block text-sm font-medium text-gray-700 mb-2">
-        {{ t('order') }}: {{ $t('order_block.terrain_inspection') }}</label>
-      <ButtonOutline v-if="!order" @click="generateWorkOrder">
-        {{ $t('common.generate') }} {{ $t('common.work_order') }}
-      </ButtonOutline>
-      <div v-else class="flex items-center justify-between max-w-xl bg-green-100 pt-1 px-2 mb-1">
-        <OrderTypeDetail :data="order.type" :order="order" @show-detail="showDetail('OrderRegion', order.id)" />
-        <div class="flex items-center">
-          <button @click="clickDeleteOrder(order.id)" class="text-slate-500">
-            <Icon name="fa6-solid:trash" />
-          </button>
+      <label class="block text-sm font-medium text-gray-700 mb-2">
+        {{ $t('common.orders') }}</label>
+      <div v-if="orders.length > 0" class="mb-2">
+        <div v-for="o in orders" :key="o.id"
+          class="flex items-center justify-between max-w-xl bg-green-100 pt-1 px-2 mb-1">
+          <OrderTypeDetail :data="o.type" :order="o" @show-detail="showDetail" />
+          <div class="flex items-center">
+            <button @click="clickDeleteOrder(o.id)" class="text-slate-500">
+              <Icon name="fa6-solid:trash" />
+            </button>
+          </div>
         </div>
       </div>
+      <ButtonOutline :disabled="loading || savingOrder" @click="openWorkOrderSelector">
+        <Icon v-if="loading || savingOrder" name="fa6-solid:spinner" class="animate-spin mr-2" />
+        {{ $t('common.generate') }} {{ $t('common.work_order') }}
+      </ButtonOutline>
     </div>
     <div role="region" id="right_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
@@ -485,6 +524,11 @@ watch(() => props.request, (newVal) => {
         <OrganismsTankEdit :id="tankId" v-if="editingTank" @saved="fetchTank" />
       </div>
     </div>
+
+    <WorkOrderTypeSelectorModal v-model:open="workOrderSelectorOpen" :order-types="availableOrderTypes"
+      :excluded-type-ids="excludedOrderTypeIds"
+      :warning="showAllTypesWarning ? t('order_block.viewing_all_order_types_warning') : null"
+      @select="onWorkOrderSelected" />
   </div>
 </template>
 <style>

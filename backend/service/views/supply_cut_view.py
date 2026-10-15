@@ -2,6 +2,7 @@ from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from django.db.models import Prefetch
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from service.filters.supply_cut_filter import SupplyCutFilter, SupplyCutOrderingFilter
@@ -13,6 +14,7 @@ from logger.models import LogSupplyCutStatus
 from service.models import SupplyCut, SupplyCutCause, SupplyCutStatus, SupplyPoint
 from service.serializers.supply_cut_serializer import SupplyCutSerializer, SupplyCutMinimalSerializer
 from service.utils import supply_cut_service
+from service.utils import supply_cut_bulk_planner as bulk_planner
 
 
 class SupplyCutViewSet(viewsets.ModelViewSet):
@@ -277,6 +279,96 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=False, methods=['post'], url_path='bulk-plan/preview')
+    def bulk_plan_preview(self, request):
+        """Resolve a bulk identifier list and report conflicts (read-only)."""
+        try:
+            preview = bulk_planner.build_preview(
+                request.data.get('identifier_type'),
+                request.data.get('identifiers'),
+            )
+        except bulk_planner.BulkPlanError as exc:
+            return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(preview, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='bulk-plan')
+    def bulk_plan(self, request):
+        """Create ONE supply cut linking every resolved supply point.
+
+        The server re-resolves the raw identifier list (never trusts a
+        client-resolved id list), refuses to proceed over conflicts unless
+        `override_conflicts` is set, and then delegates the write to the same
+        `SupplyCutSerializer` the single-cut flow uses: the cut is born
+        PLANNED, `source=manual`, and its points are not cut until it
+        activates on `date_start`.
+        """
+        identifier_type = request.data.get('identifier_type')
+        identifiers = request.data.get('identifiers')
+        cause_id = request.data.get('cause_id')
+        date_start = request.data.get('date_start')
+        date_end = request.data.get('date_end')
+        override_conflicts = bool(request.data.get('override_conflicts'))
+
+        if not date_start:
+            return Response({'error': "El camp 'date_start' és obligatori."}, status=status.HTTP_400_BAD_REQUEST)
+        if not cause_id:
+            return Response({'error': "El camp 'cause_id' és obligatori."}, status=status.HTTP_400_BAD_REQUEST)
+        if not SupplyCutCause.objects.filter(id=cause_id).exists():
+            return Response({'error': "Motiu de tall desconegut."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            preview = bulk_planner.build_preview(identifier_type, identifiers)
+        except bulk_planner.BulkPlanError as exc:
+            return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not preview['resolved']:
+            return Response(
+                {'error': "Cap identificador s'ha pogut resoldre a un punt de subministrament."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if preview['conflicts'] and not override_conflicts:
+            return Response(
+                {
+                    'error': 'Hi ha punts de subministrament ja inclosos en un tall obert.',
+                    'code': 'conflicts',
+                    'conflicts': preview['conflicts'],
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        payload = {
+            'token': request.data.get('token') or self._bulk_plan_token(date_start),
+            'supply_points': [row['supply_point_id'] for row in preview['resolved']],
+            'date_start': date_start,
+            'date_end': date_end,
+            'cause_id': cause_id,
+        }
+        serializer = SupplyCutSerializer(data=payload, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        cut = serializer.save()
+
+        return Response(
+            {
+                'cut_id': cut.id,
+                'cut_token': cut.token,
+                'resolved_count': len(preview['resolved']),
+                'conflict_count': len(preview['conflicts']),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _bulk_plan_token(date_start):
+        """Same convention the single-cut frontend generates today."""
+        import random
+        from datetime import datetime
+        try:
+            day = datetime.fromisoformat(str(date_start)).strftime('%Y%m%d')
+        except ValueError:
+            day = timezone.now().strftime('%Y%m%d')
+        return '{}-{}'.format(random.randint(10000, 99999), day)
+
     @action(detail=False, methods=['get'], url_path='permissions')
     def permissions(self, request):
         pk = request.query_params.get('id')
@@ -296,4 +388,18 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
-        return super().get_permissions()
+        if self.action in ('bulk_plan_preview', 'bulk_plan'):
+            # Custom POSTs: DjangoModelPermissions would demand add_supplycut
+            # on the preview too; both are gated explicitly in check_permissions.
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if self.action == 'bulk_plan' and not request.user.has_perm('service.add_supplycut'):
+            self.permission_denied(request)
+        if self.action == 'bulk_plan_preview' and not (
+            request.user.has_perm('service.add_supplycut')
+            or request.user.has_perm('service.change_supplycut')
+        ):
+            self.permission_denied(request)

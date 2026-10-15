@@ -258,6 +258,9 @@ SMS_APP_URL = config("SMS_APP_URL", default="")
 SMS_API_KEY = config("SMS_API_KEY", default="")
 
 customers01 = config("EMAIL_PASSWORD_01", default="")
+# Clau Fernet per xifrar les contrasenyes SMTP desades a la BD (CompanyConfigEmail.encrypted_password).
+# Admet diverses claus separades per comes per rotar-la: la primera xifra, totes desxifren.
+SMTP_PASSWORD_ENCRYPTION_KEY = config("SMTP_PASSWORD_ENCRYPTION_KEY", default="")
 
 
 

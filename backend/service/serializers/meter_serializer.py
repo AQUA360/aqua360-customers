@@ -193,61 +193,65 @@ class MeterSerializer(serializers.ModelSerializer):
         street_data = validated_data.pop('address_street', None)
         street_number_data = validated_data.pop('address_street_number', None)
 
+        # L'adreça del comptador és opcional: sense carrer no es crea cap número
+        street = None
+        street_number = None
         if street_data:
             type_abbreviation = street_data.pop('type_abbreviation', None)
             type_name = street_data.pop('type_name', '')
 
-        street_type, _ = StreetType.objects.get_or_create(
-            abbreviation=type_abbreviation,
-            defaults={'name': type_name}
-        )
-
-        if street_data.get('street_id'):
-            street = Street.objects.get(id=street_data.get('street_id'))
-            street.type = street_type
-            street.name = street_data['name']
-            street.save()
-        else:
-            street, _ = Street.objects.get_or_create(
-                type=street_type,
-                name=street_data['name'],
-                city=validated_data.get('address_city')
+            street_type, _ = StreetType.objects.get_or_create(
+                abbreviation=type_abbreviation,
+                defaults={'name': type_name}
             )
-        street_number_type_data = street_number_data.pop('type', None) if street_number_data else None
-        if street_number_type_data is None and street_number_data:
-            street_number_type_data = street_number_data.pop('number_type', None)
 
-        number_type_type_data = None
-        if isinstance(street_number_type_data, dict):
-            number_type_type_data = street_number_type_data.get('type')
-        if not number_type_type_data and street_number_data:
-            number_type_type_data = street_number_data.pop('number_type_type', None)
+            if street_data.get('street_id'):
+                street = Street.objects.get(id=street_data.get('street_id'))
+                street.type = street_type
+                street.name = street_data['name']
+                street.save()
+            else:
+                street, _ = Street.objects.get_or_create(
+                    type=street_type,
+                    name=street_data['name'],
+                    city=validated_data.get('address_city')
+                )
+            street_number_type_data = street_number_data.pop('type', None) if street_number_data else None
+            if street_number_type_data is None and street_number_data:
+                street_number_type_data = street_number_data.pop('number_type', None)
 
-        if not number_type_type_data:
-            number_type_type_data = ConfigProject.objects.get(token='address_street_no_number_type_token').value
+            number_type_type_data = None
+            if isinstance(street_number_type_data, dict):
+                number_type_type_data = street_number_type_data.get('type')
+            if not number_type_type_data and street_number_data:
+                number_type_type_data = street_number_data.pop('number_type_type', None)
 
-        street_number_type, _ = StreetNumberType.objects.get_or_create(
-            type=number_type_type_data
-        )
+            if not number_type_type_data:
+                number_type_type_data = ConfigProject.objects.get(token='address_street_no_number_type_token').value
 
-        if street_number_data and 'street_number_id' in street_number_data and street_number_data.get('street_number_id'):
-            street_number = StreetNumber.objects.get(id=street_number_data.get('street_number_id'))
-            street_number.street = street
-            street_number.number_type = street_number_type
-            street_number.number = street_number_data.get('number', None)
-            street_number.number_end = street_number_data.get('number_end', None)
-            street_number.number_suffix = street_number_data.get('number_suffix', None)
-            street_number.number_end_suffix = street_number_data.get('number_end_suffix', None)
-            street_number.save()
-        else:
-            street_number = StreetNumber.objects.create(
-                street=street,
-                number_type=street_number_type,
-                number = street_number_data.get('number', None) if street_number_data and 'number' in street_number_data else None,
-                number_end = street_number_data.get('number_end', None) if street_number_data and 'number_end' in street_number_data else None,
-                number_suffix = street_number_data.get('number_suffix', None) if street_number_data and 'number_suffix' in street_number_data else None,
-                number_end_suffix = street_number_data.get('number_end_suffix', None) if street_number_data and 'number_end_suffix' in street_number_data else None,
+            street_number_type, _ = StreetNumberType.objects.get_or_create(
+                type=number_type_type_data
             )
+
+            if street_number_data and 'street_number_id' in street_number_data and street_number_data.get('street_number_id'):
+                street_number = StreetNumber.objects.get(id=street_number_data.get('street_number_id'))
+                street_number.street = street
+                street_number.number_type = street_number_type
+                # Com a l'update: el número pot ser el de l'adreça d'un punt de subministrament,
+                # així que un camp que no ve al payload no s'ha de buidar.
+                for field in ('number', 'number_end', 'number_suffix', 'number_end_suffix'):
+                    if field in street_number_data:
+                        setattr(street_number, field, street_number_data.get(field))
+                street_number.save()
+            else:
+                street_number = StreetNumber.objects.create(
+                    street=street,
+                    number_type=street_number_type,
+                    number = street_number_data.get('number', None) if street_number_data and 'number' in street_number_data else None,
+                    number_end = street_number_data.get('number_end', None) if street_number_data and 'number_end' in street_number_data else None,
+                    number_suffix = street_number_data.get('number_suffix', None) if street_number_data and 'number_suffix' in street_number_data else None,
+                    number_end_suffix = street_number_data.get('number_end_suffix', None) if street_number_data and 'number_end_suffix' in street_number_data else None,
+                )
 
         meter = Meter.objects.create(
             address_street=street,
@@ -274,9 +278,18 @@ class MeterSerializer(serializers.ModelSerializer):
         return meter
     
     def update(self, instance, validated_data):
+        # Carrer i número enviats explícitament a null: es treu l'adreça del comptador
+        clear_address = (
+            'address_street' in validated_data and validated_data['address_street'] is None
+            and 'address_street_number' in validated_data and validated_data['address_street_number'] is None
+        )
         street_data = validated_data.pop('address_street', None)
         street_number_data = validated_data.pop('address_street_number', None)
         street = None
+
+        if clear_address:
+            instance.address_street = None
+            instance.address_street_number = None
 
         if street_data:
             type_abbreviation = street_data.pop('type_abbreviation')
@@ -465,7 +478,7 @@ class MeterSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['address_complete'] = str(instance)
-        representation['street_complete'] = str(instance.address_street)
+        representation['street_complete'] = str(instance.address_street) if instance.address_street_id else None
         representation['name'] = str(instance)
 
         representation['address_postal_code'] = PostalCodeSerializer(instance.address_postal_code).data if instance.address_postal_code else None

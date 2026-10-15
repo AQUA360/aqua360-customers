@@ -34,8 +34,9 @@ class ReadingDocumentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'created_at', 'updated_at', 'token', 'file', 'batch', 'template',
             'status', 'task_id', 'processed_at', 'last_preview', 'not_found_readings',
-            'auto_process',
+            'auto_process', 'source', 'reading_date',
         ]
+        read_only_fields = ['source', 'reading_date']
         
     def create(self, validated_data):
         validated_data.pop('auto_process', None)
@@ -114,7 +115,7 @@ class ReadingDocumentListSerializer(serializers.ModelSerializer):
         model = ReadingDocument
         fields = [
             'id', 'created_at', 'updated_at', 'token', 'file', 'batch', 'template',
-            'status', 'task_id', 'processed_at',
+            'status', 'task_id', 'processed_at', 'source', 'reading_date',
         ]
         
     def to_representation(self, instance):

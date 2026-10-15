@@ -88,8 +88,8 @@
                     <tr><td> {{ company.address.address_complete }} </td></tr>
                     <tr><td> {{ company.address.postal_code }} {{ company.address.city.name }} </td></tr>
                     <tr><td> {{ company.website|default_if_none:"" }}</td></tr>
-                    <tr><td> <br/> TELÈFON D'ATENCIÓ AL CLIENT: {{ company.phone }} </td></tr>
-                    {%if company.phone2%}<tr><td> TELÈFON D'AVERIES: {{ company.phone2 }} </td></tr> {%endif%}
+                    {% if company.show_customer_service_block is not False %}<tr><td> <br/> {{ company.customer_service_label|default:"TELÈFON D'ATENCIÓ AL CLIENT"|upper }}: {{ company.phone }} </td></tr>{% endif %}
+                    {% if company.phone2 and company.show_breakdown_block is not False %}<tr><td> {{ company.breakdown_label|default:"TELÈFON D'AVERIES"|upper }}: {{ company.phone2 }} </td></tr> {%endif%}
                 </table>
             </td>
             <td width="50%">

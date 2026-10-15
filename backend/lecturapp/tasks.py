@@ -110,7 +110,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
                     property_meters[property_obj.id] = []
                 
                 # Add main meter if status is valid (ignore sub_meters)
-                if meter.status and meter.status.token != '-1':
+                if meter.status and meter.status.token not in [token_meter_status_no_meter, '-1']:
                     if (not exclude_telecontrol) or (exclude_telecontrol and (not getattr(meter, 'has_remote_reading', False) or getattr(meter, 'force_manual_reading', False))):
                         property_meters[property_obj.id].append(meter)
             

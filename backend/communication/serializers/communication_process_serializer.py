@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db import transaction
+from django.db.models import BooleanField, Case, Value, When
 
 from auth.serializers import UserMinimalSerializer
 from communication import process_policy
@@ -67,11 +68,19 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
         files = []
         postal_token = ConfigProject.objects.get(token='message_type_letter_token').value
         email_token = ConfigProject.objects.get(token='message_type_email_token').value
-        for communication in obj.communications.all():
+        # Agrupat per comunicació (persona): primer la carta o el document de comunicació
+        # que en fa (p. ex. l'avís del pas d'impagats) i després factures i pagaments
+        is_communication_document = Case(
+            When(file__entity='COMUNICACIO', then=Value(True)), default=Value(False), output_field=BooleanField(),
+        )
+        for communication in obj.communications.order_by('id'):
             type_tokens = (communication.type_tokens or '').split(',')
             comm_is_postal = postal_token in type_tokens
             comm_is_email = email_token in type_tokens
-            for comm_file in communication.files.filter(is_active=True):
+            comm_files = communication.files.filter(is_active=True).annotate(
+                is_communication_document=is_communication_document,
+            ).order_by('-is_letter', '-is_communication_document', 'id')
+            for comm_file in comm_files:
                 if comm_file.file:
                     # Un document exclos d'un canal (p. ex. el del pas de reclamacio amb
                     # `attach_claim_documents` desmarcat) no surt al paquet d'aquell canal.
@@ -89,10 +98,10 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['sms_coms'] = instance.communications.filter(types__token='sms').count()
-        data['whatsapp_coms'] = instance.communications.filter(types__token='whatsapp').count()
-        data['email_coms'] = instance.communications.filter(types__token='email').count()
-        data['letter_coms'] = instance.communications.filter(types__token='letter').count()
+        data['sms_coms'] = instance.communications.filter(is_active=True, types__token='sms').count()
+        data['whatsapp_coms'] = instance.communications.filter(is_active=True, types__token='whatsapp').count()
+        data['email_coms'] = instance.communications.filter(is_active=True, types__token='email').count()
+        data['letter_coms'] = instance.communications.filter(is_active=True, types__token='letter').count()
         
         from billing.models import Billing
         billing = Billing.objects.filter(communication_process=instance).first()
@@ -147,7 +156,7 @@ class CommunicationProcessListSerializer(serializers.ModelSerializer):
     def get_has_electronic_invoices(self, obj):
         return obj.communications.filter(types__token='electronic_inv').exists()
     def get_total_communications(self, obj):
-        return obj.communications.count()
+        return obj.communications.filter(is_active=True).count()
     def get_total_sent_communications(self, obj):
         return obj.communications.filter(status__token=ConfigProject.objects.get(token='communication_status_sent_token').value).count()
     def get_readings_exploitation(self, obj):

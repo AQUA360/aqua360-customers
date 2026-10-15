@@ -2,6 +2,7 @@
 import { ref, onMounted, nextTick, computed, watch } from 'vue';
 import debounce from 'lodash.debounce';
 import H1Region from '../atoms/H1Region.vue';
+import { useToast } from 'vue-toastification';
 import { fi, is } from 'date-fns/locale';
 import _ from 'lodash';
 
@@ -15,6 +16,7 @@ const props = defineProps({
 
 const emit = defineEmits(['show-subregion', 'change']);
 const { $ExploitationApiService, $ConfiglistApiService } = useNuxtApp();
+const toast = useToast();
 
 const loading = ref(false);
 
@@ -81,6 +83,7 @@ const save = async () => {
     emit('change', data);
   } catch (error) {
     console.error(error)
+    toast.error(error?.data?.password?.[0] || error?.data?.password || t('common.error'));
   } finally {
     saving.value = false;
     attemptedSave.value = false;
@@ -125,9 +128,16 @@ const getData = async () => {
 }
 
 const defaultMailChange = (mail) => {
+  // Es compara l'objecte: els correus nous encara no tenen id (null === null els marcaria tots).
   company_emails.value.forEach(email => {
-    email.is_default = email.id === mail.id;
+    email.is_default = email === mail;
   });
+}
+
+// La contrasenya desada no arriba mai al front: només se sap si n'hi ha (has_password).
+const removeMailPassword = (mail) => {
+  mail.password = '';
+  mail.clear_password = true;
 }
 
 const addCompanyEmail = () => {
@@ -135,6 +145,8 @@ const addCompanyEmail = () => {
     id: null,
     mail_send_mail: null,
     mail_send_user: null,
+    password: '',
+    token: null,
     use_type: null
   });
 }
@@ -262,7 +274,7 @@ watch(() => props.config_data, (newValue) => {
                   <Icon name="fa6-solid:trash" class="text-sm" />
                 </button>
                 <div class="flex items-center gap-2">
-                  <input type="radio" name="default_bank" class="ml-2" :value="mail.id"
+                  <input type="radio" name="default_bank" class="ml-2" :value="index"
                   :checked="mail.is_default" @change="defaultMailChange(mail)" />
                   <div class=" p-4 bg-slate-50">
 
@@ -286,7 +298,36 @@ watch(() => props.config_data, (newValue) => {
                         <v-select class="block w-full custom-select" v-model="mail.use_type"
                           :options="comm_use_types" :clearable="false" />
                       </div>
+                      <div class="flex flex-col justify-between h-full">
+                        <label class="mb-2 block text-sm font-medium text-slate-600">
+                          {{ $t('common.password') }} ({{ t('common.optional') }})
+                        </label>
+                        <input type="password" v-model="mail.password" class="input" autocomplete="new-password"
+                          :placeholder="mail.has_password && !mail.clear_password ? t('service_block.config_mail_password_keep') : ''" />
+                      </div>
+                      <div class="col-span-2 flex items-end pb-2 text-sm text-slate-500">
+                        <template v-if="mail.has_password && !mail.clear_password">
+                          <Icon name="fa6-solid:lock" class="mr-2" />
+                          <span>{{ $t('service_block.config_mail_password_saved') }}</span>
+                          <button type="button" class="ml-3 text-red-600 hover:underline" @click="removeMailPassword(mail)">
+                            {{ $t('service_block.config_mail_password_remove') }}
+                          </button>
+                        </template>
+                        <span v-else>{{ $t('service_block.config_mail_password_none') }}</span>
+                      </div>
                     </div>
+                    <details class="mt-3 text-sm text-slate-600" :open="!!mail.token">
+                      <summary class="cursor-pointer">{{ $t('service_block.config_mail_advanced') }}</summary>
+                      <div class="mt-2 flex flex-col max-w-sm">
+                        <label class="mb-2 flex items-center text-sm font-medium text-slate-600">
+                          <abbr :title="t('service_block.config_mail_password_env_info')">
+                            <Icon name="fa6-solid:circle-info" class="text-slate-500" />
+                          </abbr>
+                          <span class="ml-2">{{ $t('service_block.config_mail_password_env') }} ({{ t('common.optional') }})</span>
+                        </label>
+                        <input type="text" v-model="mail.token" class="input" placeholder="EMAIL_PASSWORD_02" />
+                      </div>
+                    </details>
                   </div>
                 </div>
               </div>

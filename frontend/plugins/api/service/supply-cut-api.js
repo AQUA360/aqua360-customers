@@ -183,6 +183,34 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const bulkPlanPreview = async (payload) => {
+      const apiUrl = `${apiHost}${entity}bulk-plan/preview/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(payload), { 'Content-Type': 'application/json' });
+        if (response) {
+          return response;
+        } else {
+          throw new Error('Error estructura no trobada');
+        }
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    const bulkPlanCreate = async (payload) => {
+      const apiUrl = `${apiHost}${entity}bulk-plan/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(payload), { 'Content-Type': 'application/json' });
+        if (response) {
+          return response;
+        } else {
+          throw new Error('Error estructura no trobada');
+        }
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const apiService = {
       getData,
       getFilterStatus,
@@ -193,7 +221,9 @@ export default defineNuxtPlugin(nuxtApp => {
       getPermissions,
       startCut,
       finishCut,
-      resolveReview
+      resolveReview,
+      bulkPlanPreview,
+      bulkPlanCreate
     };
   
     nuxtApp.provide(provideName, apiService);

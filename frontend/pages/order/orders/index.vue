@@ -821,8 +821,8 @@ watch(() => route.query, () => {
                 <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
               </button>
             </span>
-            <span class="p-1">{{ item.type?.name }}</span>
-            <span class="p-1">{{ item.reason?.name }}</span>
+            <span class="p-1" :title="item.type?.name">{{ item.type?.name }}</span>
+            <span class="p-1" :title="item.reason?.name">{{ item.reason?.name }}</span>
             <span class="p-1 overflow-hidden text-ellipsis whitespace-nowrap" :title="getAddress(item)">{{
               getAddress(item) }}</span>
             <span class="p-1 truncate"

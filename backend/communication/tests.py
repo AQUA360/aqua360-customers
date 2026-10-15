@@ -5,15 +5,20 @@ from rest_framework.serializers import ValidationError
 
 from communication import process_policy
 from communication.models import (
+    Communication,
+    CommunicationFile,
     CommunicationProcess,
     CommunicationProcessStatus,
     CommunicationUseType,
 )
 from communication.serializers.communication_process_serializer import (
     CommunicationProcessSaveSerializer,
+    CommunicationProcessSerializer,
 )
-from coredata.models import ConfigProject
-from service.models import SupplyCut
+from communication.utils.communication_service import get_com_values, refactor_text
+from contract.models import Contract
+from coredata.models import Address, City, ConfigProject, Country, Person, Street, StreetNumber
+from service.models import SupplyCut, SupplyCutCause, SupplyCutStatus, SupplyPoint
 
 
 class SupplyCutProcessTestCase(TestCase):
@@ -272,3 +277,458 @@ class SupplyCutProcessCreationTests(SupplyCutProcessTestCase):
         instance = self.save(supply_cuts=[cut.id])
         self.assertIsNotNone(instance.status)
         self.assertEqual(instance.use_type, CommunicationUseType.objects.get(is_default=True))
+
+class DeleteCancelledTestCase(TestCase):
+    """Esborrat lògic de comunicacions i processos cancel·lats."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import User
+        from communication.models import CommunicationStatus
+
+        cls.user = User.objects.create_superuser('admin', 'admin@example.com', 'pass')
+        cls.comm_cancelled = CommunicationStatus.objects.create(token='-1', name='Cancel·lada')
+        cls.comm_pending = CommunicationStatus.objects.create(token='0', name='Pendent')
+        cls.process_cancelled = CommunicationProcessStatus.objects.create(token='-1', name='Anul·lat')
+        cls.process_pending = CommunicationProcessStatus.objects.create(token='0', name='Pendent')
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def make_comm(self, comm_status, process=None):
+        from communication.models import Communication
+
+        return Communication.objects.create(status=comm_status, process=process)
+
+    def test_delete_cancelled_communication(self):
+        from logger.models import LogCommunicationStatusChange
+
+        comm = self.make_comm(self.comm_cancelled)
+        response = self.client.post(f'/communication/communication/{comm.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 200)
+        comm.refresh_from_db()
+        self.assertFalse(comm.is_active)
+        self.assertTrue(LogCommunicationStatusChange.objects.filter(object=comm).exists())
+
+    def test_delete_not_cancelled_communication_is_rejected(self):
+        comm = self.make_comm(self.comm_pending)
+        response = self.client.post(f'/communication/communication/{comm.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 400)
+        comm.refresh_from_db()
+        self.assertTrue(comm.is_active)
+
+    def test_delete_requires_delete_permission(self):
+        from django.contrib.auth.models import Permission, User
+
+        user = User.objects.create_user('viewer', 'viewer@example.com', 'pass')
+        user.user_permissions.add(
+            Permission.objects.get(codename='view_communication'),
+            Permission.objects.get(codename='add_communication'),
+        )
+        self.client.force_authenticate(user)
+        comm = self.make_comm(self.comm_cancelled)
+        response = self.client.post(f'/communication/communication/{comm.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 403)
+        comm.refresh_from_db()
+        self.assertTrue(comm.is_active)
+
+    def test_delete_cancelled_process_and_its_cancelled_communications(self):
+        process = CommunicationProcess.objects.create(status=self.process_cancelled)
+        cancelled = self.make_comm(self.comm_cancelled, process)
+        pending = self.make_comm(self.comm_pending, process)
+
+        response = self.client.post(f'/communication/communication-process/{process.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 200)
+        process.refresh_from_db()
+        cancelled.refresh_from_db()
+        pending.refresh_from_db()
+        self.assertFalse(process.is_active)
+        self.assertFalse(cancelled.is_active)
+        self.assertTrue(pending.is_active)
+
+    def test_delete_not_cancelled_process_is_rejected(self):
+        process = CommunicationProcess.objects.create(status=self.process_pending)
+        comm = self.make_comm(self.comm_cancelled, process)
+        response = self.client.post(f'/communication/communication-process/{process.id}/delete-cancelled/')
+        self.assertEqual(response.status_code, 400)
+        process.refresh_from_db()
+        comm.refresh_from_db()
+        self.assertTrue(process.is_active)
+        self.assertTrue(comm.is_active)
+
+    def test_exclude_cancelled_filter(self):
+        from communication.filters.communication_filter import CommunicationFilter
+        from communication.filters.communication_process_filter import CommunicationProcessFilter
+        from communication.models import Communication
+
+        cancelled = self.make_comm(self.comm_cancelled)
+        pending = self.make_comm(self.comm_pending)
+        queryset = Communication.objects.all()
+
+        ids = set(CommunicationFilter({'exclude_cancelled': 'true'}, queryset=queryset).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {pending.id})
+        ids = set(CommunicationFilter({}, queryset=queryset).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {cancelled.id, pending.id})
+        # Un filtre d'estat explícit mana per sobre d'exclude_cancelled.
+        ids = set(CommunicationFilter(
+            {'exclude_cancelled': 'true', 'status': str(self.comm_cancelled.id)}, queryset=queryset
+        ).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {cancelled.id})
+
+        cancelled_process = CommunicationProcess.objects.create(status=self.process_cancelled)
+        pending_process = CommunicationProcess.objects.create(status=self.process_pending)
+        ids = set(CommunicationProcessFilter(
+            {'exclude_cancelled': 'true'}, queryset=CommunicationProcess.objects.all()
+        ).qs.values_list('id', flat=True))
+        self.assertEqual(ids, {pending_process.id})
+        self.assertNotIn(cancelled_process.id, ids)
+
+
+class SupplyCutMessageVariableTests(TestCase):
+    """The `%supplycut.*` message variables.
+
+    A process links cuts through an M2M, so every value is joined across the
+    linked cuts: nothing is silently dropped and the single-cut case (the norm)
+    renders without any extra marker.
+
+    `affected_addresses` is GDPR-scoped: a recipient only ever sees the supply
+    points they are the holder, owner or tenant of.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.country = Country.objects.create(name='Espanya', iso_code='ES')
+        cls.city = City.objects.create(name='Barcelona', token='BCN')
+        cls.status = SupplyCutStatus.objects.create(token='1', name='Actiu')
+        cls.cause = SupplyCutCause.objects.create(token='1', name='Impagament de Factures')
+        # The contract post_save signal looks this up on every save.
+        ConfigProject.objects.get_or_create(
+            token='contract_terminated_status', defaults={'value': '99'},
+        )
+
+    def make_address(self, street_name, number, door=None):
+        street = Street.objects.create(name=street_name)
+        street_number = StreetNumber.objects.create(street=street, number=number)
+        return Address.objects.create(
+            street=street,
+            street_number=street_number,
+            city=self.city,
+            country=self.country,
+            door=door,
+        )
+
+    def make_point(self, address=None):
+        return SupplyPoint.objects.create(
+            token='SP-{}'.format(SupplyPoint.objects.count() + 1),
+            address=address,
+        )
+
+    def make_cut(self, token='CUT-1', date_start=None, date_end=None):
+        return SupplyCut.objects.create(
+            token=token,
+            cause=self.cause,
+            status=self.status,
+            date_start=date_start,
+            date_end=date_end,
+        )
+
+    def make_communication(self, cuts=()):
+        process = CommunicationProcess.objects.create(token='PROC-1')
+        process.supply_cuts.set([cut.id for cut in cuts])
+        return Communication.objects.create(process=process)
+
+    def make_person(self, name):
+        return Person.objects.create(name=name)
+
+    def make_contract(self, holder=None, owner=None, tenant=None, points=(), default=None):
+        contract = Contract.objects.create(
+            holder=holder, owner=owner, tenant=tenant, supply_point_default=default,
+        )
+        contract.supply_points.set(points)
+        return contract
+
+    def values(self, communication, person=None):
+        return get_com_values({'id': person.id} if person else None, communication, None)
+
+    def test_single_cut_renders_without_a_marker(self):
+        # The norm is one cut per process: a bare value, not a bullet list.
+        cut = self.make_cut()
+        communication = self.make_communication([cut])
+        self.assertEqual(self.values(communication)['supplycut.cause_name'], 'Impagament de Factures')
+
+    def test_token_status_and_dates_are_exposed(self):
+        from datetime import datetime
+        from django.utils import timezone
+        cut = self.make_cut(
+            token='CUT-42',
+            date_start=timezone.make_aware(datetime(2026, 10, 5, 8, 0)),
+            date_end=timezone.make_aware(datetime(2026, 10, 7, 18, 0)),
+        )
+        values = self.values(self.make_communication([cut]))
+        self.assertEqual(values['supplycut.token'], 'CUT-42')
+        self.assertEqual(values['supplycut.status'], 'Actiu')
+        self.assertEqual(values['supplycut.date_start'], '05/10/2026')
+        self.assertEqual(values['supplycut.date_end'], '07/10/2026')
+
+    def test_affected_addresses_gives_the_full_address(self):
+        # For a non-payment cut the exact street, number and door are what make
+        # the notice legally actionable.
+        cut = self.make_cut()
+        point = self.make_point(self.make_address('Carrer Mallorca', '10', door='2r'))
+        cut.supply_points.add(point)
+        person = self.make_person('Abonat')
+        self.make_contract(holder=person, points=[point])
+        address = self.values(self.make_communication([cut]), person)['supplycut.affected_addresses']
+        self.assertIn('Carrer Mallorca', address)
+        self.assertIn('10', address)
+        self.assertIn('2r', address)
+
+    def test_addresses_are_bulleted_when_a_cut_has_several_points(self):
+        cut = self.make_cut()
+        first = self.make_point(self.make_address('Carrer Mallorca', '10'))
+        second = self.make_point(self.make_address('Carrer Mallorca', '12'))
+        cut.supply_points.add(first, second)
+        person = self.make_person('Abonat')
+        self.make_contract(holder=person, points=[first, second])
+        value = self.values(self.make_communication([cut]), person)['supplycut.affected_addresses']
+        self.assertEqual(value.count('\n- '), 1)
+        self.assertTrue(value.startswith('Carrer Mallorca, 10'))
+
+    def test_multiple_cuts_are_joined_instead_of_dropping_one(self):
+        # The relation is M2M even though the business is 1-to-1: if a second
+        # cut ever lands, the letter must still mention both.
+        first = self.make_cut(token='CUT-1')
+        second = self.make_cut(token='CUT-2')
+        values = self.values(self.make_communication([first, second]))
+        self.assertEqual(values['supplycut.token'], 'CUT-1\n- CUT-2')
+
+    def test_cut_without_supply_points_yields_empty_string_not_a_list(self):
+        # Several pre-existing entries return [], which renders as a literal
+        # "[]" in the customer's letter.
+        cut = self.make_cut()
+        self.assertEqual(self.values(self.make_communication([cut]))['supplycut.affected_addresses'], '')
+
+    def test_no_linked_cut_yields_empty_strings(self):
+        values = self.values(self.make_communication())
+        self.assertEqual(values['supplycut.token'], '')
+        self.assertEqual(values['supplycut.cause_name'], '')
+
+    def test_communication_without_process_does_not_raise(self):
+        # `get_com_values` runs for every communication, including ones created
+        # outside a process.
+        values = self.values(Communication.objects.create())
+        self.assertEqual(values['supplycut.token'], '')
+
+    def test_missing_dates_and_exec_dates_stay_empty(self):
+        values = self.values(self.make_communication([self.make_cut()]))
+        for key in ('supplycut.date_start', 'supplycut.date_end',
+                    'supplycut.exec_start', 'supplycut.exec_end'):
+            self.assertEqual(values[key], '')
+
+    def test_tokens_are_substituted_in_the_body(self):
+        cut = self.make_cut(token='CUT-9')
+        communication = self.make_communication([cut])
+        body = refactor_text('Tall %supplycut.cause_name (%supplycut.token)', self.values(communication))
+        self.assertEqual(body, 'Tall Impagament de Factures (CUT-9)')
+
+    # --- GDPR: recipient-scoped addresses ---------------------------------
+
+    def test_neighbour_address_is_never_included(self):
+        # A cut can span several supply points, but each recipient only ever
+        # sees their own address, never the neighbour's.
+        cut = self.make_cut()
+        mine = self.make_point(self.make_address('Carrer Mallorca', '10'))
+        neighbour = self.make_point(self.make_address('Carrer Balmes', '20'))
+        cut.supply_points.add(mine, neighbour)
+        me = self.make_person('Abonat')
+        other = self.make_person('Veï')
+        self.make_contract(holder=me, points=[mine])
+        self.make_contract(holder=other, points=[neighbour])
+        communication = self.make_communication([cut])
+
+        mine_address = self.values(communication, me)['supplycut.affected_addresses']
+        self.assertIn('Carrer Mallorca', mine_address)
+        self.assertNotIn('Carrer Balmes', mine_address)
+
+        other_address = self.values(communication, other)['supplycut.affected_addresses']
+        self.assertIn('Carrer Balmes', other_address)
+        self.assertNotIn('Carrer Mallorca', other_address)
+
+    def test_no_person_fails_safe_to_empty_addresses(self):
+        # With no person the list is empty rather than over-disclosing.
+        cut = self.make_cut()
+        point = self.make_point(self.make_address('Carrer Mallorca', '10'))
+        cut.supply_points.add(point)
+        person = self.make_person('Abonat')
+        self.make_contract(holder=person, points=[point])
+        values = self.values(self.make_communication([cut]), None)
+        self.assertEqual(values['supplycut.affected_addresses'], '')
+        # Non-address values are unaffected by the GDPR filter.
+        self.assertEqual(values['supplycut.cause_name'], 'Impagament de Factures')
+
+    def test_owner_and_tenant_also_see_their_address(self):
+        # Not only the holder: the owner and the tenant of the contract see
+        # the address too.
+        cut = self.make_cut()
+        point = self.make_point(self.make_address('Carrer Mallorca', '10'))
+        cut.supply_points.add(point)
+        owner = self.make_person('Propietari')
+        tenant = self.make_person('Llogater')
+        self.make_contract(owner=owner, tenant=tenant, points=[point])
+        communication = self.make_communication([cut])
+
+        self.assertIn('Carrer Mallorca', self.values(communication, owner)['supplycut.affected_addresses'])
+        self.assertIn('Carrer Mallorca', self.values(communication, tenant)['supplycut.affected_addresses'])
+
+    def test_holder_and_owner_on_same_contract_does_not_duplicate(self):
+        # A person can be both the holder and the owner of the same contract:
+        # the `.distinct()` on the owned-ids subquery keeps the address from
+        # being listed twice.
+        cut = self.make_cut()
+        point = self.make_point(self.make_address('Carrer Mallorca', '10'))
+        cut.supply_points.add(point)
+        person = self.make_person('Abonat')
+        self.make_contract(holder=person, owner=person, points=[point])
+        value = self.values(self.make_communication([cut]), person)['supplycut.affected_addresses']
+        # `Address.__str__` renders "street, number, city".
+        self.assertEqual(value, 'Carrer Mallorca, 10, Barcelona')
+
+    def test_default_contract_supply_point_is_included(self):
+        # The supply point can be linked through the contract's default FK
+        # instead of the M2M and must still be recognised.
+        cut = self.make_cut()
+        point = self.make_point(self.make_address('Carrer Mallorca', '10'))
+        cut.supply_points.add(point)
+        person = self.make_person('Abonat')
+        self.make_contract(holder=person, default=point)
+        value = self.values(self.make_communication([cut]), person)['supplycut.affected_addresses']
+        self.assertIn('Carrer Mallorca', value)
+
+    def test_gdpr_filtered_addresses_are_substituted_in_the_body(self):
+        # End-to-end: the rendered body carries the recipient's own address and
+        # never the neighbour's.
+        cut = self.make_cut()
+        mine = self.make_point(self.make_address('Carrer Mallorca', '10'))
+        neighbour = self.make_point(self.make_address('Carrer Balmes', '20'))
+        cut.supply_points.add(mine, neighbour)
+        me = self.make_person('Abonat')
+        other = self.make_person('Veï')
+        self.make_contract(holder=me, points=[mine])
+        self.make_contract(holder=other, points=[neighbour])
+        communication = self.make_communication([cut])
+
+        body = refactor_text(
+            'Adreces afectades: %supplycut.affected_addresses',
+            self.values(communication, me),
+        )
+        self.assertIn('Carrer Mallorca', body)
+        self.assertNotIn('Carrer Balmes', body)
+
+
+class CommunicationProcessComFilesOrderTests(TestCase):
+    """Els documents a descarregar surten agrupats per comunicació (persona): primer la carta,
+    després el document de comunicació i la resta, encara que es generin després."""
+
+    def setUp(self):
+        from documentmanager.models import Document
+
+        ConfigProject.objects.update_or_create(token='message_type_letter_token', defaults={'value': 'postal'})
+        ConfigProject.objects.update_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        self.process = CommunicationProcess.objects.create(token='PROC-ORDER')
+        comms = [
+            Communication.objects.create(process=self.process, type_tokens='postal')
+            for _ in range(2)
+        ]
+
+        def document(name, entity='FACTURES'):
+            return Document.objects.create(entity=entity, entity_id=1, service='hdd', document_name=name)
+
+        # Com al procés real: la carta es crea primer sense fitxer, les factures ja existeixen
+        # i els pagaments i el PDF de la carta es generen després
+        letters = [CommunicationFile.objects.create(communication=c, is_letter=True) for c in comms]
+        invoices = [document(f'factura-{i}') for i in range(2)]
+        payments = [document(f'pagament-{i}') for i in range(2)]
+        for comm, invoice, payment in zip(comms, invoices, payments):
+            CommunicationFile.objects.create(communication=comm, file=invoice)
+            CommunicationFile.objects.create(communication=comm, file=payment)
+        # El document del pas d'impagats (fa de carta) es genera després de factures i pagaments
+        claim_docs = [document(f'avis-{i}', entity='COMUNICACIO') for i in range(2)]
+        for comm, claim_doc in zip(comms, claim_docs):
+            CommunicationFile.objects.create(communication=comm, file=claim_doc)
+        letter_docs = [document(f'carta-{i}', entity='COMUNICACIO') for i in range(2)]
+        for letter, letter_doc in zip(letters, letter_docs):
+            letter.file = letter_doc
+            letter.save()
+
+        self.expected = [
+            letter_docs[0].id, claim_docs[0].id, invoices[0].id, payments[0].id,
+            letter_docs[1].id, claim_docs[1].id, invoices[1].id, payments[1].id,
+        ]
+
+    def test_com_files_grouped_by_communication_with_letter_first(self):
+        com_files = CommunicationProcessSerializer().get_com_files(self.process)
+        self.assertEqual([f['id'] for f in com_files], self.expected)
+
+
+class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
+    """Amb «Agrupar pagaments» les factures també s'adjunten a la comunicació,
+    però no els rebuts individuals (el rebut és el document agrupat)."""
+
+    def setUp(self):
+        from billing.models import Invoice, JoinedPayment, Payment
+        from claimrequest.models import (
+            ClaimRequest, ClaimRequestPayment, ClaimRequestStep, ClaimRequestStepTemplate,
+            ClaimRequestTemplate,
+        )
+        from documentmanager.models import Document
+
+        ConfigProject.objects.update_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        # Configuració que demanen els senyals de contracte, factura i pagament
+        for token in ('contract_terminated_status', 'invoice_status_cancelled_token'):
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': '-1'})
+        self.process = CommunicationProcess.objects.create(token='PROC-CLAIM')
+        step_template = ClaimRequestStepTemplate.objects.create(
+            template=ClaimRequestTemplate.objects.create(), group_payments=True,
+        )
+        self.claim = ClaimRequest.objects.create()
+        step = ClaimRequestStep.objects.create(
+            claim_request=self.claim, step_template=step_template, communication_process=self.process,
+        )
+        self.claim.current_step = step
+        self.claim.save()
+
+        self.contract = Contract.objects.create(token='CLAIM-CT')
+        self.comm = Communication.objects.create(process=self.process, type_tokens='letter')
+        self.comm.contracts.add(self.contract)
+
+        self.invoice_docs = []
+        joined = JoinedPayment.objects.create(contract=self.contract, claim_request=self.claim)
+        for i in range(2):
+            doc = Document.objects.create(entity_id=1, service='hdd', document_name=f'factura-{i}')
+            invoice = Invoice.objects.create(invoice_file=doc)
+            payment = Payment.objects.create(invoice=invoice)
+            ClaimRequestPayment.objects.create(claim_request=self.claim, contract=self.contract, payment=payment)
+            joined.payments.add(payment)
+            self.invoice_docs.append(doc)
+        self.claim_doc = Document.objects.create(entity_id=1, service='hdd', document_name='reclamacio')
+
+    def test_grouped_payments_attach_invoices_and_grouped_claim_document(self):
+        from unittest.mock import patch
+
+        from communication.tasks import generate_claim_document_pdf_task
+
+        def claim_step_file(claim_request, contract, comm, *args):
+            return CommunicationFile(communication=comm, file=self.claim_doc)
+
+        with patch('communication.tasks._create_claim_step_communication_file', side_effect=claim_step_file), \
+                patch('communication.tasks.generate_report_payment_pdf') as payment_pdf:
+            result = generate_claim_document_pdf_task([self.comm.id], self.process.id, claim_id=self.claim.id)
+
+        self.assertEqual(result['status'], 'success')
+        payment_pdf.assert_not_called()
+        files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
+        self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
+        self.assertEqual(self.comm.invoices.count(), 2)

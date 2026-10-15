@@ -10,6 +10,10 @@ config/private
 # Node dependencies
 node_modules
 
+# Staging stubs left by interrupted npm extractions
+/nuxt
+/nuxt-app@*
+
 # Logs
 logs
 *.log
@@ -26,3 +30,8 @@ logs
 
 #IDE configuration
 .vscode
+
+.watchmanconfig
+# Registre del deploy generat per scripts/record_deploy.sh al servidor
+public/deploy-info.json
+DEPLOYS.md

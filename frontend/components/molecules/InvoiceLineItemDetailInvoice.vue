@@ -115,6 +115,14 @@ const sliceString = (str, maxLength = 15) => {
   }
 }
 
+// Mateix format que el PDF de la factura: sense decimals si són enters, si no amb 2 decimals.
+const formatUnits = (units) => {
+  const value = parseFloat(units);
+  if (Number.isNaN(value)) return '';
+  const fixed = value.toFixed(2);
+  return fixed.endsWith('.00') ? value.toFixed(0) : fixed;
+}
+
 // Aplana tots els items de tots els productes/tarifes d'un grup de company (products) en un únic array.
 const flattenItems = (products) => {
   const items = [];
@@ -203,7 +211,7 @@ getData();
                     <span class="text-sm italic" v-else>{{ sliceString(element.line_item_type?.name) }}</span>
                   </span>
                   <span class="p-2">
-                    {{ parseInt(element.units) }}
+                    {{ formatUnits(element.units) }}
                   </span>
                   <span class="p-2">
                     {{ element.price_unit?.toFixed(4)?? '0.00' }}
@@ -254,7 +262,7 @@ getData();
                         <span class="text-sm italic" v-else>{{ sliceString(element.line_item_type?.name) }}</span>
                       </span>
                       <span class="p-2">
-                        {{ element.units }}
+                        {{ formatUnits(element.units) }}
                       </span>
                       <span class="p-2">
                         {{ element.price_unit?.toFixed(4) ?? '0.00' }}

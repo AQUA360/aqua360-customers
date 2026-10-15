@@ -1094,6 +1094,17 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
         return data
 
 
+class ContractByNicSerializer(ContractFullDetailSerializer):
+    """Detalle del contrato localizado por NIC: `ContractFullDetail` + la clave
+    explícita `contract_token`, el identificador que la frontend necesita para
+    el resto de flujos (`?contract_token=`). Corresponde al esquema `ContractByNic`."""
+
+    contract_token = serializers.CharField(source="token", read_only=True)
+
+    class Meta(ContractFullDetailSerializer.Meta):
+        fields = ContractFullDetailSerializer.Meta.fields + ["contract_token"]
+
+
 class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     """Detalle completo de una factura definitiva. Corresponde al esquema
     `InvoiceFullDetail` del documento OpenAPI (`GET /ov/invoice/{token}/detail/`)."""
@@ -1443,3 +1454,20 @@ class ContactDataOVSerializer(BillingDataOVSerializer):
         return None
 
 
+class BatchInvoiceDownloadSerializer(serializers.Serializer):
+    """Tokens de les factures a descarregar en el ZIP. Els buits es rebutgen
+    (`allow_empty=False`) i es desduplicen preservant l'ordre de la petició
+    per no generar noms d'entrada duplicats dins de l'arxiu."""
+
+    invoice_tokens = serializers.ListField(
+        child=serializers.CharField(), allow_empty=False
+    )
+
+    def validate_invoice_tokens(self, value):
+        seen = set()
+        deduped = []
+        for token in value:
+            if token not in seen:
+                seen.add(token)
+                deduped.append(token)
+        return deduped

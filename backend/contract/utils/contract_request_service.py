@@ -13,7 +13,7 @@ from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
 from order.utils.claim_request_order_service import get_order_type_initials
 from contract.utils.contract_service import contract_create  # Add this import at the top
-from service.models import MeterStatus, SupplyPointStatus
+from service.models import MeterStatus, SupplyPoint, SupplyPointStatus
 
 logger = logging.getLogger(__name__)
 
@@ -335,17 +335,20 @@ def contract_request_check_orders(user, contract_request_id):
         logger.exception(f"Ha ocorregut un error en finalitzar el ContractRequest {contract_request_id}.")
         raise
     
-def check_and_deactivate_supply_point_and_meter(contract_termination):
+def check_and_deactivate_supply_point_and_meter(contract_termination, supply_point_status=None):
     """
     Comprova si el punt de subministrament i el comptador vinculats a la sol·licitud de baixa es poden donar de baixa
     i els desactiva si no hi ha altres contractes actius o sol·licituds pendents.
-    """
-    readings = contract_termination.readings.all()
-    if not readings.exists():
-        logger.warning(f"No hi ha lectures per a la sol·licitud de baixa {contract_termination.id}. No es pot donar de baixa el comptador.")
-        return
 
-    last_reading = readings.order_by('-reading_date').first()
+    supply_point_status és l'estat triat en finalitzar la baixa. Si no n'hi ha (p. ex. quan la baixa es
+    completa en tancar-se les ordres), el punt passa a l'estat predeterminat, tret que ja tingui un estat
+    de baixa (pendent de contractació, no contractable o desactivat), que es manté.
+    """
+    # Sense lectures de baixa també s'actualitza l'estat; només no es poden posar les dates.
+    last_reading = contract_termination.readings.order_by('-reading_date').first()
+    last_reading_date = last_reading.reading_date if last_reading else None
+    if not last_reading:
+        logger.warning(f"No hi ha lectures per a la sol·licitud de baixa {contract_termination.id}. No es desaran les dates de baixa.")
     contract = contract_termination.contract
     supply_points = contract.supply_points.all()
     
@@ -354,8 +357,12 @@ def check_and_deactivate_supply_point_and_meter(contract_termination):
         meter_inactive_status_token = ConfigProject.objects.get(token='meter_status_inactive_token').value
         meter_inactive_status = MeterStatus.objects.get(token=meter_inactive_status_token)
         
-        supply_point_inactive_status_token = ConfigProject.objects.get(token='supply_point_status_deactivate_token').value
         supply_point_inactive_status = SupplyPointStatus.objects.get(is_default=True) # changed to default, do not deactivate but change to pending
+        terminated_status_tokens = set(ConfigProject.objects.filter(token__in=[
+            'supply_point_status_deactivate_token',
+            'supply_point_status_not_contractable_token',
+            'supply_point_pending_contract',
+        ]).values_list('value', flat=True))
         
         # Tokens de sol·licitud no obertes (finalitzades o cancel·lades)
         try:
@@ -374,8 +381,6 @@ def check_and_deactivate_supply_point_and_meter(contract_termination):
 
     for supply_point in supply_points:
         meter = supply_point.meter
-        if not meter:
-            continue
 
         # 1. Comprovar si hi ha altres contractes actius per aquest supply point
         other_active_contracts = Contract.objects.filter(
@@ -394,14 +399,20 @@ def check_and_deactivate_supply_point_and_meter(contract_termination):
             pending_contract_requests = pending_contract_requests.exclude(status__token=cancel_token)
         
         if not other_active_contracts.exists() and not pending_contract_requests.exists():
-            if meter:
+            # Un comptador compartit (general) que encara és a altres punts no es dona de baixa.
+            if meter and not SupplyPoint.objects.filter(meter=meter).exclude(id=supply_point.id).exists():
                 meter.status = meter_inactive_status
-                meter.uninstallation_at = last_reading.reading_date
+                if last_reading_date:
+                    meter.uninstallation_at = last_reading_date
                 meter.save()
                 logger.info(f"Comptador {meter.code} donat de baixa per finalització de contracte {contract.token}. Data uninstallation: {meter.uninstallation_at}")
             
-            supply_point.status = supply_point_inactive_status
-            supply_point.removal_at = last_reading.reading_date
+            if supply_point_status:
+                supply_point.status = supply_point_status
+            elif not (supply_point.status and supply_point.status.token in terminated_status_tokens):
+                supply_point.status = supply_point_inactive_status
+            if last_reading_date:
+                supply_point.removal_at = last_reading_date
             supply_point.save()
             logger.info(f"Punt de subministrament {supply_point.token} donat de baixa per finalització de contracte {contract.token}. Data removal: {supply_point.removal_at}")
 
