@@ -1,8 +1,20 @@
-from django.test import SimpleTestCase, TestCase
+from decimal import Decimal
 
+from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
+
+from billing.models import Invoice
+from contract.models import Contract
 from coredata.models import ConfigProject
+from pricing.models import ProductOrigin
 from service.models import Exploitation
 from service.serializers.exploitation_serializer import ExploitationSerializer
+from statistics.models import BillingConsumption
+from statistics.utils.billing_amount_average import (
+    TotalAmountAvgCache,
+    get_total_amount_avg,
+    is_high_amount_for_period,
+)
 from statistics.utils.incasol import resolve_incasol_num
 
 from statistics.utils.report_billing_by_zone_service import (
@@ -381,3 +393,56 @@ class IncasolNumResolutionTests(TestCase):
         serializer.save()
         self.exploitation.refresh_from_db()
         self.assertEqual(self.exploitation.incasol_num, '')
+
+
+class HighAmountWaterInvoicesTests(TestCase):
+    """L'avís d'import alt només compara amb factures d'aigua (no les d'alta ni altres)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ConfigProject.objects.update_or_create(token='origin_reading_token', defaults={'value': 'aigua'})
+        cls.water, _ = ProductOrigin.objects.get_or_create(token='aigua', defaults={'name': 'Aigua'})
+        cls.other, _ = ProductOrigin.objects.get_or_create(token='altres', defaults={'name': 'Altres'})
+        cls.contract = Contract.objects.bulk_create([Contract(
+            token='HA-NEW', registration_date=timezone.now().date(), is_active=True,
+        )])[0]
+
+    def _invoice(self, origin, total, year=None, month=None):
+        invoice = Invoice.objects.bulk_create([Invoice(
+            contract=self.contract, origin=origin, total_final=Decimal(total),
+            billing_period_year=year, billing_period_month=month,
+        )])[0]
+        BillingConsumption.objects.create(
+            invoice=invoice, contract=self.contract, year=year, month=month, total_amount=Decimal(total),
+        )
+        return invoice
+
+    def test_new_contract_with_only_registration_invoice_has_no_average(self):
+        Invoice.objects.bulk_create([Invoice(contract=self.contract, origin=self.other, total_final=Decimal('11.11'))])
+
+        self.assertIsNone(get_total_amount_avg([self.contract]))
+        self.assertFalse(is_high_amount_for_period(Decimal('40'), [self.contract], 2026, 10))
+        cache = TotalAmountAvgCache([self.contract.id])
+        self.assertFalse(cache.is_high_amount(Decimal('40'), self.contract.id, 2026, 10))
+
+    def test_average_ignores_non_water_invoices(self):
+        self._invoice(self.other, '11.11', 2026, 8)
+        self._invoice(self.water, '30', 2026, 9)
+
+        self.assertEqual(get_total_amount_avg([self.contract]), 30.0)
+        self.assertFalse(is_high_amount_for_period(Decimal('40'), [self.contract], 2026, 10))
+        self.assertTrue(is_high_amount_for_period(Decimal('50'), [self.contract], 2026, 10))
+        cache = TotalAmountAvgCache([self.contract.id])
+        self.assertEqual(cache.total_avg(self.contract.id), 30.0)
+        self.assertFalse(cache.is_high_amount(Decimal('40'), self.contract.id, 2026, 10))
+        self.assertTrue(cache.is_high_amount(Decimal('50'), self.contract.id, 2026, 10))
+
+    def test_seasonal_average_ignores_non_water_invoices(self):
+        self._invoice(self.water, '100', 2025, 1)
+        self._invoice(self.water, '20', 2025, 10)
+        self._invoice(self.other, '5', 2025, 10)
+
+        # Mitjana completa 60 i la del període (octubre 2025) 20: 95 supera 1,5 vegades totes dues.
+        self.assertTrue(is_high_amount_for_period(Decimal('95'), [self.contract], 2026, 10))
+        cache = TotalAmountAvgCache([self.contract.id])
+        self.assertEqual(cache.seasonal_avg(self.contract.id, 2026, 10), 20.0)
