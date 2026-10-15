@@ -130,8 +130,8 @@
             <tr>
                 <td colspan="2" style="font-size: 12px;">
                     <span style=" margin-top: 2px;">{{ company.address.address_complete }} {{ company.address.postal_code }}</span></br>
-                    <span><strong>TELÈFON D'ATENCIÓ AL CLIENT</strong> {{ company.phone }}</span></br>
-                    {% if company.phone2 %}<span><strong>TELÈFON D'AVERIES</strong> {{ company.phone2 }}</span></br> {% endif %}
+                    {% if company.show_customer_service_block is not False %}<span><strong>{{ company.customer_service_label|default:"TELÈFON D'ATENCIÓ AL CLIENT"|upper }}</strong> {{ company.phone }}</span></br>{% endif %}
+                    {% if company.phone2 and company.show_breakdown_block is not False %}<span><strong>{{ company.breakdown_label|default:"TELÈFON D'AVERIES"|upper }}</strong> {{ company.phone2 }}</span></br> {% endif %}
                 </td>
             </tr>
         </table>

@@ -88,32 +88,40 @@
                 <td width="50%" style="vertical-align: top;">
                     <table style="font-family: 'Montserrat', sans-serif; vertical-align: top; ">
                         <tr style="padding-top: 2px; ">
+                            {% if company.show_customer_service_block is not False %}
                             <td style="margin-x: 1px; width: 50%; text-align: center; line-height: 12px;">
                             {% get_phone_call_icon_base64 secondary_color as phone_icon %}
                             <img src="{{ phone_icon }}" alt="Phone" style="width: 15px; height: 15px; vertical-align: middle;">
                             <div style="line-height: 12px;">
-                            Atenció al client
+                            {{ company.customer_service_label|default:"Atenció al client" }}
                             </div>
                             <div style="color: {{ secondary_color }}; font-size: 15px; line-height: 12px;">
                             {{ company.phone }}
                             </div>
+                            {% if company.show_customer_service_schedule is not False %}
                             <div style="font-size: 8px; line-height: 12px;">
-                            dilluns a divendres de 8 a 15 hores
+                            {{ company.customer_service_schedule|default:"dilluns a divendres de 8 a 15 hores" }}
                             </div>
+                            {% endif %}
                             </td>
+                            {% endif %}
+                            {% if company.show_breakdown_block is not False %}
                             <td style="margin-x: 1px; width: 50%; text-align: center; line-height: 12px;">
                             {% get_wrench_icon_base64 secondary_color as wrench_icon %}
                             <img src="{{ wrench_icon }}" alt="Phone" style="width: 15px; height: 15px; vertical-align: middle;">
                             <div style="line-height: 12px;">
-                            Avaries
+                            {{ company.breakdown_label|default:"Avaries" }}
                             </div>
                             <div style="color: {{ secondary_color }}; font-size: 15px; ">
-                            {{ company.phone }}
+                            {{ company.phone2|default:company.phone }}
                             </div>
+                            {% if company.show_breakdown_schedule is not False %}
                             <div style="font-size: 8px; font-style: italic; line-height: 12px;">
-                            24 hores
+                            {{ company.breakdown_schedule|default:"24 hores" }}
                             </div>
+                            {% endif %}
                             </td>
+                            {% endif %}
                             
                         </tr> 
                          

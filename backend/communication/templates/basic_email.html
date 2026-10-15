@@ -126,8 +126,8 @@
                         <p>{{ company.address.postal_code }} {{ company.address.city.name }}</p>
                         {% if company.website %}<p><a href="{{ company.website|default_if_none:"" }}" style="color: #3498db; text-decoration: none;">{{ company.website|default_if_none:"" }}</a></p>{% endif %}
                         <div class="contact-info">
-                            <p><strong>TELÈFON D'ATENCIÓ AL CLIENT:</strong> {{ company.phone }}</p>
-                            {% if company.phone2 %}<p><strong>TELÈFON D'AVERIES:</strong> {{ company.phone2 }}</p>{% endif %}
+                            {% if company.show_customer_service_block is not False %}<p><strong>{{ company.customer_service_label|default:"TELÈFON D'ATENCIÓ AL CLIENT"|upper }}:</strong> {{ company.phone }}</p>{% endif %}
+                            {% if company.phone2 and company.show_breakdown_block is not False %}<p><strong>{{ company.breakdown_label|default:"TELÈFON D'AVERIES"|upper }}:</strong> {{ company.phone2 }}</p>{% endif %}
                         </div>
                     </td>
                 </tr>

@@ -36,6 +36,15 @@ class CompanySerializer(MultiTranslatableFieldMixin, serializers.ModelSerializer
         },
     ]
 
+    # El formulari d'empresa envia un FormData i no hi posa els camps buits:
+    # en un PUT, si no arriben vol dir que l'usuari els ha buidat.
+    clearable_fields = [
+        "customer_service_label",
+        "customer_service_schedule",
+        "breakdown_label",
+        "breakdown_schedule",
+    ]
+
     class Meta:
         model = Company
         fields = '__all__'
@@ -93,6 +102,10 @@ class CompanySerializer(MultiTranslatableFieldMixin, serializers.ModelSerializer
         address, _ = Address.objects.get_or_create(
             id=address_data
         )
+
+        if not self.partial:
+            for field in self.clearable_fields:
+                validated_data.setdefault(field, None)
 
         if type_id:
             type = CompanyType.objects.get(id=type_id)

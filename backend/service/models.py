@@ -312,6 +312,17 @@ class Company(models.Model):
     logo = models.ImageField(upload_to=logo_file_upload_to, null=True, blank=True)
     phone = models.CharField(max_length=255, null=True, blank=True)
     phone2 = models.CharField(max_length=255, null=True, blank=True)
+    # Blocs de contacte de les plantilles (factures, cartes, contractes...):
+    # `phone` és el d'atenció al client i `phone2` el d'avaries. Els textos buits
+    # deixen el que ja posa cada plantilla.
+    show_customer_service_block = models.BooleanField(default=True)
+    customer_service_label = models.CharField(max_length=255, null=True, blank=True)
+    show_customer_service_schedule = models.BooleanField(default=True)
+    customer_service_schedule = models.CharField(max_length=255, null=True, blank=True)
+    show_breakdown_block = models.BooleanField(default=True)
+    breakdown_label = models.CharField(max_length=255, null=True, blank=True)
+    show_breakdown_schedule = models.BooleanField(default=True)
+    breakdown_schedule = models.CharField(max_length=255, null=True, blank=True)
     website = models.URLField(null=True, blank=True)
     email =  models.EmailField(null=True, blank=True)
     contact_name = models.CharField(max_length=255, null=True, blank=True)
