@@ -1,5 +1,10 @@
 # Changelog Backend
 
+## [15-10-2026]
+### FEAT
+#### STATISTICS (`report_billing_by_zone_service.py` — línia d'ensobrat a l'execució de padrons per zona)
+    - L'informe «Execució de padrons per zona de tarificació» classificava l'ensobrat com a «Altres conceptes» (no és aigua, clavegueram ni cànon). Ara es detecta per token/nom `ENSOBRAT` i surt com a concepte propi a cada zona, amb el mateix desglossament per padró (núm. factures i euros) i un total `TOTAL ENSOBRAT` al peu.
+
 ## [13-10-2026]
 
 ### FIX
