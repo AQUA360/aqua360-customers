@@ -132,7 +132,7 @@ def download_multiple_documents_from_aws(document_ids):
         region_name=settings.AWS_REGION,
     )
     
-    documents = Document.objects.filter(id__in=document_ids)
+    documents = Document.in_order(document_ids)
 
     files = []  
     for document in documents:

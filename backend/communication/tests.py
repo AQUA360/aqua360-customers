@@ -6,12 +6,14 @@ from rest_framework.serializers import ValidationError
 from communication import process_policy
 from communication.models import (
     Communication,
+    CommunicationFile,
     CommunicationProcess,
     CommunicationProcessStatus,
     CommunicationUseType,
 )
 from communication.serializers.communication_process_serializer import (
     CommunicationProcessSaveSerializer,
+    CommunicationProcessSerializer,
 )
 from communication.utils.communication_service import get_com_values, refactor_text
 from contract.models import Contract
@@ -624,3 +626,109 @@ class SupplyCutMessageVariableTests(TestCase):
         )
         self.assertIn('Carrer Mallorca', body)
         self.assertNotIn('Carrer Balmes', body)
+
+
+class CommunicationProcessComFilesOrderTests(TestCase):
+    """Els documents a descarregar surten agrupats per comunicació (persona): primer la carta,
+    després el document de comunicació i la resta, encara que es generin després."""
+
+    def setUp(self):
+        from documentmanager.models import Document
+
+        ConfigProject.objects.update_or_create(token='message_type_letter_token', defaults={'value': 'postal'})
+        ConfigProject.objects.update_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        self.process = CommunicationProcess.objects.create(token='PROC-ORDER')
+        comms = [
+            Communication.objects.create(process=self.process, type_tokens='postal')
+            for _ in range(2)
+        ]
+
+        def document(name, entity='FACTURES'):
+            return Document.objects.create(entity=entity, entity_id=1, service='hdd', document_name=name)
+
+        # Com al procés real: la carta es crea primer sense fitxer, les factures ja existeixen
+        # i els pagaments i el PDF de la carta es generen després
+        letters = [CommunicationFile.objects.create(communication=c, is_letter=True) for c in comms]
+        invoices = [document(f'factura-{i}') for i in range(2)]
+        payments = [document(f'pagament-{i}') for i in range(2)]
+        for comm, invoice, payment in zip(comms, invoices, payments):
+            CommunicationFile.objects.create(communication=comm, file=invoice)
+            CommunicationFile.objects.create(communication=comm, file=payment)
+        # El document del pas d'impagats (fa de carta) es genera després de factures i pagaments
+        claim_docs = [document(f'avis-{i}', entity='COMUNICACIO') for i in range(2)]
+        for comm, claim_doc in zip(comms, claim_docs):
+            CommunicationFile.objects.create(communication=comm, file=claim_doc)
+        letter_docs = [document(f'carta-{i}', entity='COMUNICACIO') for i in range(2)]
+        for letter, letter_doc in zip(letters, letter_docs):
+            letter.file = letter_doc
+            letter.save()
+
+        self.expected = [
+            letter_docs[0].id, claim_docs[0].id, invoices[0].id, payments[0].id,
+            letter_docs[1].id, claim_docs[1].id, invoices[1].id, payments[1].id,
+        ]
+
+    def test_com_files_grouped_by_communication_with_letter_first(self):
+        com_files = CommunicationProcessSerializer().get_com_files(self.process)
+        self.assertEqual([f['id'] for f in com_files], self.expected)
+
+
+class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
+    """Amb «Agrupar pagaments» les factures també s'adjunten a la comunicació,
+    però no els rebuts individuals (el rebut és el document agrupat)."""
+
+    def setUp(self):
+        from billing.models import Invoice, JoinedPayment, Payment
+        from claimrequest.models import (
+            ClaimRequest, ClaimRequestPayment, ClaimRequestStep, ClaimRequestStepTemplate,
+            ClaimRequestTemplate,
+        )
+        from documentmanager.models import Document
+
+        ConfigProject.objects.update_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        # Configuració que demanen els senyals de contracte, factura i pagament
+        for token in ('contract_terminated_status', 'invoice_status_cancelled_token'):
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': '-1'})
+        self.process = CommunicationProcess.objects.create(token='PROC-CLAIM')
+        step_template = ClaimRequestStepTemplate.objects.create(
+            template=ClaimRequestTemplate.objects.create(), group_payments=True,
+        )
+        self.claim = ClaimRequest.objects.create()
+        step = ClaimRequestStep.objects.create(
+            claim_request=self.claim, step_template=step_template, communication_process=self.process,
+        )
+        self.claim.current_step = step
+        self.claim.save()
+
+        self.contract = Contract.objects.create(token='CLAIM-CT')
+        self.comm = Communication.objects.create(process=self.process, type_tokens='letter')
+        self.comm.contracts.add(self.contract)
+
+        self.invoice_docs = []
+        joined = JoinedPayment.objects.create(contract=self.contract, claim_request=self.claim)
+        for i in range(2):
+            doc = Document.objects.create(entity_id=1, service='hdd', document_name=f'factura-{i}')
+            invoice = Invoice.objects.create(invoice_file=doc)
+            payment = Payment.objects.create(invoice=invoice)
+            ClaimRequestPayment.objects.create(claim_request=self.claim, contract=self.contract, payment=payment)
+            joined.payments.add(payment)
+            self.invoice_docs.append(doc)
+        self.claim_doc = Document.objects.create(entity_id=1, service='hdd', document_name='reclamacio')
+
+    def test_grouped_payments_attach_invoices_and_grouped_claim_document(self):
+        from unittest.mock import patch
+
+        from communication.tasks import generate_claim_document_pdf_task
+
+        def claim_step_file(claim_request, contract, comm, *args):
+            return CommunicationFile(communication=comm, file=self.claim_doc)
+
+        with patch('communication.tasks._create_claim_step_communication_file', side_effect=claim_step_file), \
+                patch('communication.tasks.generate_report_payment_pdf') as payment_pdf:
+            result = generate_claim_document_pdf_task([self.comm.id], self.process.id, claim_id=self.claim.id)
+
+        self.assertEqual(result['status'], 'success')
+        payment_pdf.assert_not_called()
+        files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
+        self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
+        self.assertEqual(self.comm.invoices.count(), 2)

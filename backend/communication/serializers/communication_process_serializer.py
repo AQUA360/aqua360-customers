@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db import transaction
+from django.db.models import BooleanField, Case, Value, When
 
 from auth.serializers import UserMinimalSerializer
 from communication import process_policy
@@ -67,11 +68,19 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
         files = []
         postal_token = ConfigProject.objects.get(token='message_type_letter_token').value
         email_token = ConfigProject.objects.get(token='message_type_email_token').value
-        for communication in obj.communications.all():
+        # Agrupat per comunicació (persona): primer la carta o el document de comunicació
+        # que en fa (p. ex. l'avís del pas d'impagats) i després factures i pagaments
+        is_communication_document = Case(
+            When(file__entity='COMUNICACIO', then=Value(True)), default=Value(False), output_field=BooleanField(),
+        )
+        for communication in obj.communications.order_by('id'):
             type_tokens = (communication.type_tokens or '').split(',')
             comm_is_postal = postal_token in type_tokens
             comm_is_email = email_token in type_tokens
-            for comm_file in communication.files.filter(is_active=True):
+            comm_files = communication.files.filter(is_active=True).annotate(
+                is_communication_document=is_communication_document,
+            ).order_by('-is_letter', '-is_communication_document', 'id')
+            for comm_file in comm_files:
                 if comm_file.file:
                     # Un document exclos d'un canal (p. ex. el del pas de reclamacio amb
                     # `attach_claim_documents` desmarcat) no surt al paquet d'aquell canal.
