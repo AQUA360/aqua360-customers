@@ -328,6 +328,7 @@ def _build_claim_request_filters(payload):
     use_types = payload.get('selectedUseTypesIds')
     client_types = payload.get('selectedClientTypesIds')
     zones = payload.get('selectedZonesIds')
+    reading_batch_templates = payload.get('selectedReadingBatchTemplatesIds')
     contract_statuses = payload.get('selectedContractStatusesIds')
     debt_management = payload.get('selectedDebtMngsIds')
     check_without_debt = payload.get('check_without_debt', True)
@@ -342,6 +343,8 @@ def _build_claim_request_filters(payload):
         filters &= Q(client_type__id__in=client_types)
     if zones:
         filters &= Q(supply_point_default__property__route_position__route__route_zone__id__in=zones)
+    if reading_batch_templates:
+        filters &= Q(supply_point_default__property__route_position__route__reading_batch_template__id__in=reading_batch_templates)
     if contract_statuses:
         filters &= Q(status__id__in=contract_statuses)
     if rejection_motives:

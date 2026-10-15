@@ -33,6 +33,17 @@ class ReadingBatchTemplateViewSet(viewsets.ModelViewSet):
             return ReadingBatchTemplateSerializer
     return ReadingBatchTemplateSerializer
   
+  def get_queryset(self):
+    queryset = super().get_queryset()
+    # Filtres opcionals per a selectors (p. ex. reclamació d'impagats):
+    # plantilles amb rutes de les zones indicades i/o només les que tenen rutes.
+    route_zone = self.request.query_params.get('route_zone')
+    if route_zone:
+      queryset = queryset.filter(routes__route_zone__id__in=route_zone.split(',')).distinct()
+    if self.request.query_params.get('has_routes') == 'true':
+      queryset = queryset.filter(routes__isnull=False).distinct()
+    return queryset
+
   def get_serializer_context(self):
     context = super().get_serializer_context()
     context['request'] = self.request
