@@ -33,6 +33,15 @@ const logo = ref(null)
 const logoUrl = ref('')
 const phone = ref('')
 const phone2 = ref('')
+// Bloc de contacte de les plantilles: un text buit deixa el que ja posa cada plantilla.
+const show_customer_service_block = ref(true)
+const customer_service_label = ref('')
+const show_customer_service_schedule = ref(true)
+const customer_service_schedule = ref('')
+const show_breakdown_block = ref(true)
+const breakdown_label = ref('')
+const show_breakdown_schedule = ref(true)
+const breakdown_schedule = ref('')
 const email = ref('')
 const website = ref('')
 const contact_name = ref('')
@@ -99,6 +108,14 @@ const save = async () => {
       address: address_id.value,
       phone: phone.value,
       phone2: phone2.value,
+      show_customer_service_block: show_customer_service_block.value,
+      customer_service_label: customer_service_label.value || null,
+      show_customer_service_schedule: show_customer_service_schedule.value,
+      customer_service_schedule: customer_service_schedule.value || null,
+      show_breakdown_block: show_breakdown_block.value,
+      breakdown_label: breakdown_label.value || null,
+      show_breakdown_schedule: show_breakdown_schedule.value,
+      breakdown_schedule: breakdown_schedule.value || null,
       email: email.value,
       website: website.value,
       contact_name: contact_name.value,
@@ -178,6 +195,14 @@ const getData = () => {
       website.value = company.website;
       phone.value = company.phone;
       phone2.value = company.phone2;
+      show_customer_service_block.value = company.show_customer_service_block ?? true;
+      customer_service_label.value = company.customer_service_label || '';
+      show_customer_service_schedule.value = company.show_customer_service_schedule ?? true;
+      customer_service_schedule.value = company.customer_service_schedule || '';
+      show_breakdown_block.value = company.show_breakdown_block ?? true;
+      breakdown_label.value = company.breakdown_label || '';
+      show_breakdown_schedule.value = company.show_breakdown_schedule ?? true;
+      breakdown_schedule.value = company.breakdown_schedule || '';
       email.value = company.email;
       contact_name.value = company.contact_name;
       contact_phone.value = company.contact_phone;
@@ -214,6 +239,14 @@ const getData = () => {
     address.value = null;
     phone.value = null;
     phone2.value = null;
+    show_customer_service_block.value = true;
+    customer_service_label.value = '';
+    show_customer_service_schedule.value = true;
+    customer_service_schedule.value = '';
+    show_breakdown_block.value = true;
+    breakdown_label.value = '';
+    show_breakdown_schedule.value = true;
+    breakdown_schedule.value = '';
     website.value = null;
     email.value = null;
     contact_name.value = null;
@@ -495,14 +528,84 @@ watch(() => props.company_id, (newValue) => {
             </button>
           </div>
         </div>
-        <div class="mb-2">
-          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.customer_service_tlf') }} *</label>
-          <input type="text" v-model="phone" :class="{ 'invalid': attemptedSave && phone == '' }" class="input" />
-        </div>
-        <div class="mb-2">
-          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.breakdowns_tlf') }}</label>
-          <input type="text" v-model="phone2" class="input" />
-        </div>
+        <!-- Bloc de contacte que es mostra a les plantilles (factures, cartes, correus, contractes) -->
+        <section class="mb-2 col-span-2 rounded border border-slate-200 bg-slate-50 p-4">
+          <h3 class="flex items-center gap-2 font-semibold text-slate-700">
+            <Icon name="fa6-solid:file-invoice" class="text-slate-500" />
+            {{ t('service_block.template_contact_title') }}
+          </h3>
+          <p class="mt-1 mb-3 text-xs text-slate-500">{{ t('service_block.template_contact_help') }}</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="rounded border border-slate-200 bg-white p-3" :class="{ 'opacity-60': !show_customer_service_block }">
+              <div class="mb-3 flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <Icon name="fa6-solid:phone" class="text-slate-500" />
+                  {{ t('service_block.customer_service_block') }}
+                </span>
+                <label class="flex cursor-pointer select-none items-center gap-2 text-xs text-slate-500">
+                  <input v-model="show_customer_service_block" type="checkbox" class="checkbox size-4 shrink-0" />
+                  {{ t('service_block.show_customer_service_block') }}
+                </label>
+              </div>
+              <div class="mb-2">
+                <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.block_label') }}</label>
+                <input type="text" v-model="customer_service_label" class="input" :disabled="!show_customer_service_block"
+                  :placeholder="t('service_block.customer_service_label_placeholder')" />
+              </div>
+              <div class="mb-2">
+                <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.customer_service_tlf') }} *</label>
+                <input type="text" v-model="phone" :class="{ 'invalid': attemptedSave && phone == '' }" class="input" />
+              </div>
+              <div>
+                <div class="mb-2 flex items-center justify-between gap-2">
+                  <label class="text-sm font-medium text-slate-500">{{ t('service_block.block_schedule') }}</label>
+                  <label class="flex cursor-pointer select-none items-center gap-2 text-xs text-slate-500">
+                    <input v-model="show_customer_service_schedule" type="checkbox" class="checkbox size-4 shrink-0"
+                      :disabled="!show_customer_service_block" />
+                    {{ t('service_block.show_schedule') }}
+                  </label>
+                </div>
+                <input type="text" v-model="customer_service_schedule" class="input"
+                  :disabled="!show_customer_service_block || !show_customer_service_schedule"
+                  :placeholder="t('service_block.customer_service_schedule_placeholder')" />
+              </div>
+            </div>
+            <div class="rounded border border-slate-200 bg-white p-3" :class="{ 'opacity-60': !show_breakdown_block }">
+              <div class="mb-3 flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <Icon name="fa6-solid:wrench" class="text-slate-500" />
+                  {{ t('service_block.breakdowns_block') }}
+                </span>
+                <label class="flex cursor-pointer select-none items-center gap-2 text-xs text-slate-500">
+                  <input v-model="show_breakdown_block" type="checkbox" class="checkbox size-4 shrink-0" />
+                  {{ t('service_block.show_breakdowns_block') }}
+                </label>
+              </div>
+              <div class="mb-2">
+                <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.block_label') }}</label>
+                <input type="text" v-model="breakdown_label" class="input" :disabled="!show_breakdown_block"
+                  :placeholder="t('service_block.breakdowns_label_placeholder')" />
+              </div>
+              <div class="mb-2">
+                <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.breakdowns_tlf') }}</label>
+                <input type="text" v-model="phone2" class="input" />
+              </div>
+              <div>
+                <div class="mb-2 flex items-center justify-between gap-2">
+                  <label class="text-sm font-medium text-slate-500">{{ t('service_block.block_schedule') }}</label>
+                  <label class="flex cursor-pointer select-none items-center gap-2 text-xs text-slate-500">
+                    <input v-model="show_breakdown_schedule" type="checkbox" class="checkbox size-4 shrink-0"
+                      :disabled="!show_breakdown_block" />
+                    {{ t('service_block.show_schedule') }}
+                  </label>
+                </div>
+                <input type="text" v-model="breakdown_schedule" class="input"
+                  :disabled="!show_breakdown_block || !show_breakdown_schedule"
+                  :placeholder="t('service_block.breakdowns_schedule_placeholder')" />
+              </div>
+            </div>
+          </div>
+        </section>
         <div class="mb-2 col-span-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.email_long') }} *</label>
           <input type="email" placeholder="example@example.com" v-model="email"

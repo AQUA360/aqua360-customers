@@ -17,11 +17,22 @@ from billing.serializers.reading_document_serializer import (
     ReadingDocumentListSerializer,
     ReadingDocumentSerializer,
 )
-from billing.tasks import process_reading_document_file, validate_reading_document
+from billing.tasks import (
+    import_smart_metering_document_task,
+    preview_smart_metering_task,
+    process_reading_document_file,
+    validate_reading_document,
+)
 from billing.utils.reading_document_import_service import (
     ReadingDocumentPreviewValidationError,
     parse_reading_document_preview_params,
 )
+from billing.utils.smart_metering_service import (
+    _parse_request_date,
+    find_smart_metering_document,
+    smart_metering_document_is_replaceable,
+)
+from coredata.utils.name_utils import generate_token
 
 
 class ReadingDocumentViewSet(viewsets.ModelViewSet):
@@ -107,6 +118,8 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
         document = self.get_object()
         if not document.file:
             return Response({"error": "El document no té fitxer."}, status=status.HTTP_400_BAD_REQUEST)
+        if document.source == ReadingDocument.SOURCE_SMART_METERING:
+            return self._smart_metering_not_processable()
 
         try:
             params = parse_reading_document_preview_params(
@@ -124,6 +137,8 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
         document = self._clear_stale_processing_lock(self.get_object())
         if not document.file:
             return Response({"error": "El document no té fitxer."}, status=status.HTTP_400_BAD_REQUEST)
+        if document.source == ReadingDocument.SOURCE_SMART_METERING:
+            return self._smart_metering_not_processable()
         if document.status == ReadingDocument.STATUS_PROCESSING and self._celery_task_is_running(document.task_id):
             return Response(
                 {"task_id": document.task_id, "detail": "El document ja s'està processant."},
@@ -143,6 +158,8 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
         document = self._clear_stale_processing_lock(self.get_object())
         if not document.file:
             return Response({"error": "El document no té fitxer."}, status=status.HTTP_400_BAD_REQUEST)
+        if document.source == ReadingDocument.SOURCE_SMART_METERING:
+            return self._smart_metering_not_processable()
         if document.status == ReadingDocument.STATUS_PROCESSING and self._celery_task_is_running(document.task_id):
             return Response(
                 {"task_id": document.task_id, "detail": "El document ja s'està processant."},
@@ -156,6 +173,97 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         return Response({"task_id": task_id}, status=status.HTTP_202_ACCEPTED)
+
+    def _smart_metering_not_processable(self):
+        return Response(
+            {"error": "Les lectures de Smart Metering ja estan carregades; el document no es pot processar."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def _smart_metering_request_params(self, data):
+        reading_date = data.get('reading_date')
+        if not reading_date:
+            raise ValueError("reading_date is required.")
+        reading_date = _parse_request_date(reading_date)
+        replace = data.get('replace')
+        if isinstance(replace, str):
+            replace = replace.strip().lower() in ('true', '1', 'yes', 'on')
+        return reading_date, bool(replace)
+
+    def _smart_metering_existing_document(self, reading_date, replace):
+        """
+        Una sola càrrega de Smart Metering per data. Si ja n'hi ha una, es bloqueja;
+        només es pot substituir (``replace``) si les seves lectures no s'han fet servir
+        en cap lot ni factura i no s'està carregant.
+
+        Retorna (document existent a substituir o None, resposta d'error o None).
+        """
+        existing = find_smart_metering_document(reading_date)
+        if not existing:
+            return None, None
+        existing = self._clear_stale_processing_lock(existing)
+        processing = (
+            existing.status == ReadingDocument.STATUS_PROCESSING
+            and self._celery_task_is_running(existing.task_id)
+        )
+        replaceable = not processing and smart_metering_document_is_replaceable(existing)
+        if replace and replaceable:
+            return existing, None
+        return existing, Response(
+            {
+                "error": "Ja hi ha una càrrega de Smart Metering per a aquesta data.",
+                "code": "smart_metering_document_exists",
+                "existing_document": {
+                    "id": existing.id,
+                    "token": existing.token,
+                    "replaceable": replaceable,
+                    "processing": processing,
+                },
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    @action(detail=False, methods=['get'], url_path='smart-metering/preview')
+    def smart_metering_preview(self, request):
+        try:
+            reading_date, replace = self._smart_metering_request_params(request.query_params)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        _, conflict = self._smart_metering_existing_document(reading_date, replace)
+        if conflict:
+            return conflict
+
+        task = preview_smart_metering_task.delay(reading_date.isoformat())
+        return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=False, methods=['post'], url_path='smart-metering/import')
+    def smart_metering_import(self, request):
+        try:
+            reading_date, replace = self._smart_metering_request_params(request.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        document, conflict = self._smart_metering_existing_document(reading_date, replace)
+        if conflict:
+            return conflict
+
+        if document is None:
+            document = ReadingDocument.objects.create(
+                token=generate_token(ReadingDocument),
+                source=ReadingDocument.SOURCE_SMART_METERING,
+                reading_date=reading_date,
+                status=ReadingDocument.STATUS_PROCESSING,
+            )
+        else:
+            document.status = ReadingDocument.STATUS_PROCESSING
+            document.processed_at = None
+            document.save(update_fields=['status', 'processed_at'])
+
+        task = import_smart_metering_document_task.delay(document.id, request.data.get('preview'))
+        document.task_id = task.id
+        document.save(update_fields=['task_id'])
+        return Response({"task_id": task.id, "document_id": document.id}, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=['get'], url_path='template')
     def get_template(self, request):

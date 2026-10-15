@@ -1,6 +1,7 @@
 <script setup>
 import { toRaw, ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'vue-toastification';
 import { remoteTypeOptions } from '~/utils/service';
 import H1 from '~/components/atoms/H1.vue';
 import H1Region from '../atoms/H1Region.vue';
@@ -20,6 +21,7 @@ const props = defineProps({
 });
 
 const { t,te } = useI18n();
+const toast = useToast();
 const { $MeterApiService, $ConfiglistApiService, $AddressHelper, $MeterManufacturerApiService, $MeterModelApiService, $AddressApiService } = useNuxtApp();
 
 const emit = defineEmits(['created']);
@@ -381,19 +383,19 @@ const save = async () => {
       });
     }
 
-    if (address_data.value.streetNumberNumber) {
-      if (address_data.value?.streetNumberType != 'SN') {
-        selectedOptions.address_street_number.number = address_data.value?.streetNumberNumber || null,
-          selectedOptions.address_street_number.number_end = address_data.value?.streetNumberEnd || null,
-          selectedOptions.address_street_number.number_suffix = address_data.value?.streetNumberSuffix || null,
-          selectedOptions.address_street_number.number_end_suffix = address_data.value?.streetNumberEndSuffix || null
-      }
+    // Tots els camps del número s'envien sempre que no sigui S/N (també si només hi ha sufix),
+    // perquè el backend no els deixi buits ni conservi valors d'abans
+    if (selectedOptions.address_street_number && address_data.value.streetNumberType != 'SN') {
+      selectedOptions.address_street_number.number = address_data.value?.streetNumberNumber ?? null;
+      selectedOptions.address_street_number.number_end = address_data.value?.streetNumberEnd ?? null;
+      selectedOptions.address_street_number.number_suffix = address_data.value?.streetNumberSuffix || null;
+      selectedOptions.address_street_number.number_end_suffix = address_data.value?.streetNumberEndSuffix || null;
     }
 
-    if (props.meter != null && props.meter.address_street_number != null) {
-      selectedOptions.address_street_number.street_number_id = props.meter.address_street_number.id;
-    }
-    else if (address_data.value.streetNumberId) {
+    // Només es reaprofita el número si no s'ha canviat (AddPartialAddress el retorna buit quan
+    // canvia el carrer o el número): pot ser compartit amb l'adreça d'un punt de subministrament,
+    // i editar-lo canviaria també el punt. Sense id, el backend en crea un de nou per al comptador.
+    if (selectedOptions.address_street_number && address_data.value.streetNumberId) {
       selectedOptions.address_street_number.street_number_id = address_data.value.streetNumberId;
     }
 
@@ -554,10 +556,22 @@ const getStatusForBadge = (item) => ({
   color: item?.status_color ?? item?.status?.color ?? ''
 });
 
+/** Un número que no és S/N però no té número ni sufix es mostraria buit, com si fos S/N */
+const isStreetNumberMissing = () => {
+  const type = address_data.value?.streetNumberType;
+  if (!type || type == 'SN') return false;
+  const number = address_data.value?.streetNumberNumber;
+  return (number == null || number === '') && !address_data.value?.streetNumberSuffix;
+}
+
 const isValid = () => {
   if (code.value == '' || code.value == null) return false;
   if (address_data.value?.street_name == '' || address_data.value?.street_name == null) return false;
   if (address_data.value?.street_type == null) return false;
+  if (isStreetNumberMissing()) {
+    toast.error(t('address_block.error_required_street_number'));
+    return false;
+  }
   if (meter_status.value == null) return false;
   if (meter_caliber.value == null) return false;
   return true;
@@ -871,7 +885,8 @@ onMounted(() => {
                 $t('address_block.address') }}
             </button>
           </div>
-          <div v-else class="relative group footering text-slate-500 rounded shadow p-2">
+          <div v-else class="relative group footering text-slate-500 rounded shadow p-2"
+            :class="{ 'invalid': attemptedSave && isStreetNumberMissing() }">
             {{ $AddressHelper.getAddressString(shown_address_data) }}
             <button
               class="absolute cursor-pointer shadow-sm border text-sm w-6 h-6 bg-white right-8 top-1 rounded-md text-slate-600 hover:text-blue-700 opacity-0 transition-all duration-300 focus:border-none focus:outline-none group-hover:opacity-100"

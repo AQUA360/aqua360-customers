@@ -22,14 +22,15 @@ export default defineNuxtPlugin((nuxtApp) => {
   };
 
   /**
-   * Starts the smart metering preview Celery task.
-   * Returns either:
-   * - `{ task_id }` (async — poll via ProcessColorBadge / task-progress)
-   * - full preview payload with `readings` (legacy sync backends)
+   * Starts the smart metering preview Celery task (Introduir lectures).
+   * Returns `{ task_id }`; 409 if a load already exists for that date
+   * (`existing_document.replaceable` tells whether it can be replaced).
    */
-  const previewBatchReadings = async (batchId, data) => {
-    const readingDate = encodeURIComponent(data?.reading_date ?? '');
-    const apiUrl = `${apiHost}/billing/reading-batch-summary/${batchId}/smart-metering/preview/?reading_date=${readingDate}`;
+  const previewReadings = async ({ reading_date, replace = false } = {}) => {
+    const params = new URLSearchParams();
+    params.set('reading_date', reading_date ?? '');
+    if (replace) params.set('replace', 'true');
+    const apiUrl = `${apiHost}/billing/reading-document/smart-metering/preview/?${params.toString()}`;
 
     try {
       return await $apiManager.fetch(apiUrl, 'GET');
@@ -38,8 +39,9 @@ export default defineNuxtPlugin((nuxtApp) => {
     }
   };
 
-  const assignBatchReadings = async (batchId, data) => {
-    const apiUrl = `${apiHost}/billing/reading-batch-summary/${batchId}/smart-metering/assign/`;
+  /** Saves the previewed readings into a new (or replaced) reading document. */
+  const importReadings = async (data) => {
+    const apiUrl = `${apiHost}/billing/reading-document/smart-metering/import/`;
 
     try {
       return await $apiManager.fetch(apiUrl, 'POST', data, { 'Content-Type': 'application/json' });
@@ -50,8 +52,8 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   const apiService = {
     getMeterReading,
-    previewBatchReadings,
-    assignBatchReadings,
+    previewReadings,
+    importReadings,
   };
 
   nuxtApp.provide(provideName, apiService);

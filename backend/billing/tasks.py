@@ -67,7 +67,7 @@ from django.utils.translation import gettext as _
 from django.db.models import Count, Sum, Q, Min, Max, F, ExpressionWrapper, fields, Avg, Prefetch
 from django.db.models.functions import Abs
 from statistics.tasks import update_billing_consumption
-from billing.utils.smart_metering_service import assign_smart_metering_readings, build_smart_metering_preview, _json_safe, SMART_METERING_PREVIEW_API_TIMEOUT
+from billing.utils.smart_metering_service import import_smart_metering_readings, build_smart_metering_preview, _json_safe, SMART_METERING_PREVIEW_API_TIMEOUT
 from billing.utils.reading_filters import PENDING_READING_FILTER
 
 class ExportReadingBatchTaskError(ValueError):
@@ -1851,15 +1851,13 @@ def assign_readings_task(self, reading_batch_id, payload=None):
 
 
 @shared_task(bind=True)
-def preview_smart_metering_task(self, reading_batch_id, reading_date):
+def preview_smart_metering_task(self, reading_date):
   progress_recorder = ProgressRecorder(self)
-  reading_batch = ReadingBatch.objects.get(id=reading_batch_id)
 
   def on_progress(current, total, description=""):
     progress_recorder.set_progress(current, total, description)
 
   result = build_smart_metering_preview(
-      reading_batch,
       reading_date,
       api_timeout=SMART_METERING_PREVIEW_API_TIMEOUT,
       progress_callback=on_progress,
@@ -1868,16 +1866,17 @@ def preview_smart_metering_task(self, reading_batch_id, reading_date):
 
 
 @shared_task(bind=True)
-def assign_smart_metering_task(self, reading_batch_id, reading_date, preview=None):
-
+def import_smart_metering_document_task(self, reading_document_id, preview=None):
+  """Loads the Smart Metering readings into a reading document (Introduir lectures)."""
   progress_recorder = ProgressRecorder(self)
-  reading_batch = ReadingBatch.objects.get(id=reading_batch_id)
+  reading_document = ReadingDocument.objects.get(id=reading_document_id)
   progress_recorder.set_progress(0, 1)
   try:
-    result = assign_smart_metering_readings(reading_batch, reading_date, preview=preview)
+    with transaction.atomic():
+      result = import_smart_metering_readings(reading_document, preview=preview)
   except Exception:
-    reading_batch.assign_readings_task_id = None
-    reading_batch.save(update_fields=['assign_readings_task_id'])
+    reading_document.status = ReadingDocument.STATUS_FAILED
+    reading_document.save(update_fields=['status'])
     raise
   progress_recorder.set_progress(1, 1)
   return result
