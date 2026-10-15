@@ -1,5 +1,16 @@
 # Changelog Frontend
 
+## [15-10-2026]
+
+### FEAT
+#### SERVICE (`MeterEdit.vue` — adreça del comptador opcional)
+    - La ubicació del comptador ja no és obligatòria: es pot crear i desar un comptador sense adreça, i en treure-la (paperera) es desa sense adreça.
+    - Si se n'indica una, el carrer i el tipus de via continuen sent obligatoris, i el número si no és S/N. Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### SERVICE (`MeterEdit.vue` — el municipi i el codi postal del comptador es perdien en editar-lo)
+    - `setValues()` no carregava `address_city` ni `address_postal_code` del comptador, de manera que en desar sense obrir el panell d'adreça s'enviaven a `null` i el backend els esborrava. Ara es carreguen del detall del comptador.
+
 ## [14-10-2026]
 
 ### FEAT
