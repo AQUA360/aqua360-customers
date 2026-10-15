@@ -765,9 +765,11 @@ def _write_execution_sheet(sheet, padrones, zones, all_trams, canon_types, data,
     row = 3
     last_col = totals_col + cols_per_padron - 1
 
-    def write_concept_row(label, getter, fill, show_invoices=True, show_m3=True):
+    def write_concept_row(label, getter, fill, show_invoices=True, show_m3=True, bold_label=None):
         nonlocal row
-        _write_cell(sheet, row, 1, label, fill=fill, font=bold if not show_m3 or 'Total' in str(label) else None)
+        if bold_label is None:
+            bold_label = (not show_m3) or ('Total' in str(label))
+        _write_cell(sheet, row, 1, label, fill=fill, font=bold if bold_label else None)
         tot_inv, tot_m3, tot_eur = set(), 0.0, 0.0
         for i, padron in enumerate(padrones):
             col = first_data_col + i * cols_per_padron
@@ -859,6 +861,7 @@ def _write_execution_sheet(sheet, padrones, zones, all_trams, canon_types, data,
             lambda bid: getter(bid, ('ensobrat',)),
             orange,
             show_m3=False,
+            bold_label=False,
         )
         write_concept_row(
             _("Consum factura"),
