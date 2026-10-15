@@ -207,6 +207,75 @@ def invoice_period(invoice):
         return ""
 
 
+@register.filter
+def invoice_period_month(invoice):
+    """Últim mes del període facturat, en format numèric "MM/AAAA" (p. ex. "03/2026").
+
+    Format compacte per a columnes estretes (detall del deute a les cartes
+    d'impagats). Mateix criteri que `invoice_period`: el mes de tancament surt de
+    la lectura més recent o, si no n'hi ha, del mes de facturació menys un; les
+    factures puntuals no tenen període i retornen "Puntual".
+    """
+    if invoice is None:
+        return ""
+
+    try:
+        if not _is_consumption_invoice(invoice):
+            return _("Puntual")
+
+        end = _invoice_period_end(invoice)
+        if not end:
+            return ""
+        return f"{end[1]:02d}/{end[0]}"
+    except Exception:
+        return ""
+
+
+def _month_abbr(year, month):
+    """Abreviatura de 3 lletres del mes en l'idioma actiu, en majúscules ("ABR").
+
+    Es retalla a 3 lletres perquè algunes abreviatures del català de Django en
+    tenen més ("març", "maig", "juny").
+    """
+    return formats.date_format(date(year, month, 1), 'b').rstrip('.')[:3].upper()
+
+
+@register.filter
+def invoice_period_short(invoice):
+    """Període facturat amb abreviatures de mes, en l'idioma actiu.
+
+    "ABR - JUN 2026", "JUL 2026" (un sol mes) o "NOV 2025 - GEN 2026" (travessa
+    l'any). Mateix criteri de període que `invoice_period`; les factures puntuals
+    retornen "Puntual".
+    """
+    if invoice is None:
+        return ""
+
+    try:
+        if not _is_consumption_invoice(invoice):
+            return _("Puntual")
+
+        end = _invoice_period_end(invoice)
+        if not end:
+            return ""
+
+        end_year, end_month = end
+        months = _invoice_period_months(invoice)
+        start_index = (end_year * 12 + (end_month - 1)) - (months - 1)
+        start_year, start_month = divmod(start_index, 12)
+        start_month += 1
+
+        end_label = _month_abbr(end_year, end_month)
+        if months <= 1:
+            return f"{end_label} {end_year}"
+        start_label = _month_abbr(start_year, start_month)
+        if start_year == end_year:
+            return f"{start_label} - {end_label} {end_year}"
+        return f"{start_label} {start_year} - {end_label} {end_year}"
+    except Exception:
+        return ""
+
+
 BILLER_INITIAL_MONTH = {
     'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
@@ -353,11 +422,42 @@ def clean_address_suffix(value):
     return cleaned.strip()
 
 @register.filter
+def address_without_city(address):
+    """`address_complete` d'una adreça serialitzada sense el ", MUNICIPI" final.
+
+    Per a blocs de destinatari de cartes, on el municipi ja surt a la línia del
+    codi postal i no s'ha de repetir.
+    """
+    if not address:
+        return ""
+    complete = str(_item_attr(address, 'address_complete') or '').strip()
+    city = _item_attr(address, 'city')
+    city_name = _item_attr(city, 'name') if city else None
+    city_name = city_name or _item_attr(address, 'city_name')
+    if city_name:
+        suffix = f", {city_name}"
+        if complete.upper().endswith(suffix.upper()):
+            complete = complete[:-len(suffix)].rstrip()
+    return complete.rstrip(',').strip()
+
+@register.filter
 def format_iban(value):
     if not value:
         return value
     iban_str = str(value).replace(' ', '')
     return ' '.join(iban_str[i:i+4] for i in range(0, len(iban_str), 4))
+
+@register.filter
+def mask_iban(value):
+    """IBAN en blocs de 4 separats per guions i amb l'últim bloc ocult
+    ("ES00-0000-0000-0000-0000-****"), per a cartes on no s'ha de mostrar sencer."""
+    if not value:
+        return ""
+    iban_str = re.sub(r'[\s-]', '', str(value)).upper()
+    groups = [iban_str[i:i+4] for i in range(0, len(iban_str), 4)]
+    if len(groups) > 1:
+        groups[-1] = '*' * 4
+    return '-'.join(groups)
 
 def _item_attr(item, key, default=None):
     if isinstance(item, dict):

@@ -1,5 +1,15 @@
 # Changelog Backend
 
+## [15-10-2026]
+
+### FEAT
+#### BILLING (`billing/templatetags/billing_filters.py` — filtres per a les cartes d'impagats)
+    - Nou filtre `invoice_period_month`: últim mes del període facturat en format `MM/AAAA` (p. ex. `03/2026`), per a columnes estretes com el detall del deute de les cartes d'impagats. Mateix criteri que `invoice_period` (lectura més recent o mes de facturació menys un) i retorna "Puntual" per a les factures que no són de consum.
+    - Nou filtre `address_without_city`: `address_complete` d'una adreça serialitzada sense el ", MUNICIPI" final, per als blocs de destinatari on el municipi ja surt a la línia del codi postal.
+    - Nou filtre `invoice_period_short`: període facturat amb abreviatures de mes de 3 lletres en l'idioma actiu (`ABR - JUN 2026`, `JUL 2026`, `NOV 2025 - GEN 2026`); "Puntual" per a les factures que no són de consum.
+    - Nou filtre `mask_iban`: IBAN en blocs de 4 separats per guions amb l'últim bloc ocult (`ES00-0000-0000-0000-0000-****`).
+    - Les plantilles de carta que els facin servir requereixen aquest backend desplegat.
+
 ## [14-10-2026]
 
 ### FEAT
