@@ -13,7 +13,8 @@ x-django-env: &django-env
 # Imatges: cada release es construeix a GitHub (.github/workflows/imatges.yml) i es publica a ghcr.io.
 # Amb CUSTOMERS_VERSION=v1.135.00 al .env, `docker compose pull && docker compose up -d` baixa
 # aquella versió sense construir res. Sense CUSTOMERS_VERSION, o amb `up --build`, es construeix
-# aquí com sempre (etiqueta `local`).
+# aquí com sempre (etiqueta `local-<stack>`: una per stack, perquè els stacks d'un mateix servidor
+# no comparteixin imatge).
 services:
   db:
     image: postgres:16-bookworm
@@ -44,7 +45,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local}
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -77,7 +78,7 @@ services:
         condition: service_healthy
 
   celery-worker:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local}
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -99,7 +100,7 @@ services:
         condition: service_healthy
 
   celery-beat:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local}
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -121,7 +122,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/aqua360/aqua360-customers-frontend:${CUSTOMERS_VERSION:-local}
+    image: ghcr.io/aqua360/aqua360-customers-frontend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -146,7 +147,7 @@ services:
         condition: service_healthy
 
   gmao-consumer:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local}
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile

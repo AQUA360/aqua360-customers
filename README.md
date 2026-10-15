@@ -143,7 +143,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Rolling back means setting the previous version and repeating (migrations are not undone). Without `CUSTOMERS_VERSION`, or with `up --build`, the server builds as before (`local` tag).
+Rolling back means setting the previous version and repeating (migrations are not undone). Without `CUSTOMERS_VERSION`, or with `up --build`, the server builds as before (`local-<stack>` tag, one per stack so stacks on the same server do not share an image).
 
 ### Automated Deployment (Ansible)
 

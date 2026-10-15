@@ -143,7 +143,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Volver atrás es poner la versión anterior y repetirlo (las migraciones no se deshacen). Sin `CUSTOMERS_VERSION`, o con `up --build`, se construye en el servidor como siempre (etiqueta `local`).
+Volver atrás es poner la versión anterior y repetirlo (las migraciones no se deshacen). Sin `CUSTOMERS_VERSION`, o con `up --build`, se construye en el servidor como siempre (etiqueta `local-<stack>`, una por stack para que los stacks de un mismo servidor no compartan imagen).
 
 ### Despliegue automatizado (Ansible)
 
