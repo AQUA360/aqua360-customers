@@ -1,8 +1,10 @@
 # Changelog Backend
 
 ## [15-10-2026]
-
 ### FEAT
+#### STATISTICS (`report_billing_by_zone_service.py` — línia d'ensobrat a l'execució de padrons per zona)
+    - L'informe «Execució de padrons per zona de tarificació» classificava l'ensobrat com a «Altres conceptes» (no és aigua, clavegueram ni cànon). Ara es detecta per token/nom `ENSOBRAT` i surt com a concepte propi a cada zona, amb el mateix desglossament per padró (núm. factures i euros) i un total `TOTAL ENSOBRAT` al peu.
+
 #### BILLING (`billing/templatetags/billing_filters.py` — filtres per a les cartes d'impagats)
     - Nou filtre `invoice_period_month`: últim mes del període facturat en format `MM/AAAA` (p. ex. `03/2026`), per a columnes estretes com el detall del deute de les cartes d'impagats. Mateix criteri que `invoice_period` (lectura més recent o mes de facturació menys un) i retorna "Puntual" per a les factures que no són de consum.
     - Nou filtre `address_without_city`: `address_complete` d'una adreça serialitzada sense el ", MUNICIPI" final, per als blocs de destinatari on el municipi ja surt a la línia del codi postal.

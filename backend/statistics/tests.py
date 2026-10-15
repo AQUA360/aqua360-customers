@@ -62,6 +62,22 @@ class ClassifyLineTests(SimpleTestCase):
         self.assertEqual(kind, 'sewer')
         self.assertIsNone(tram)
 
+    def test_ensobrat_by_token(self):
+        kind, tram = classify_line(
+            'ENSOBRAT', 'Ensobrat', None, 'Ensobrat', None,
+            None, None, None,
+        )
+        self.assertEqual(kind, 'ensobrat')
+        self.assertIsNone(tram)
+
+    def test_ensobrat_by_name_not_water(self):
+        kind, tram = classify_line(
+            'ENS', 'Taxa ensobrat zona 1', 'aigua', 'Ensobrat', None,
+            None, None, None,
+        )
+        self.assertEqual(kind, 'ensobrat')
+        self.assertIsNone(tram)
+
     def test_part_fixa_sense_consum_is_quota(self):
         kind, tram = classify_line(
             '1000', 'Aigua', 'aigua', 'PART FIXA (SENSE CONSUM)', 'Part fixa',
@@ -252,6 +268,12 @@ class WorkbookCanonSplitTests(SimpleTestCase):
         self.assertTrue(any('CANON-DOM - TRAM 1' in str(v) for v in labels))
         self.assertTrue(any("CONSUM D'AIGUA - TRAM 1" in str(v) for v in labels))
         self.assertTrue(any('TOTAL CÀNON ZONA' in str(v) for v in labels))
+        self.assertTrue(any(str(v) == 'Ensobrat' for v in labels))
+        self.assertTrue(any(str(v) == 'TOTAL ENSOBRAT' for v in labels))
+        ensobrat_cell = next(cell for cell in wb.active['A'] if cell.value == 'Ensobrat')
+        self.assertFalse(bool(ensobrat_cell.font and ensobrat_cell.font.bold))
+        total_cell = next(cell for cell in wb.active['A'] if cell.value == 'TOTAL ENSOBRAT')
+        self.assertTrue(bool(total_cell.font and total_cell.font.bold))
         self.assertFalse(any(str(v).startswith('TOTAL ZONA:') for v in labels))
         self.assertFalse(any('Tarifa aigua' in str(v) for v in labels))
         self.assertEqual(sum(1 for v in labels if v == 'Quota servei'), 1)
