@@ -131,6 +131,20 @@ docker compose up -d celery-worker celery-beat gmao-consumer
 docker compose up -d frontend
 ```
 
+### Images built on GitHub
+
+When a release is published, the `.github/workflows/imatges.yml` action builds the backend and frontend images and pushes them to `ghcr.io/aqua360/aqua360-customers-backend` and `ghcr.io/aqua360/aqua360-customers-frontend`, tagged with the release (for example, `v1.135.00`). The images only contain this repository's code: each customer's configuration (`.env`) is read when the container starts.
+
+To run a version without building anything on the server, set it in `.env` and:
+
+```bash
+# .env: CUSTOMERS_VERSION=v1.135.00
+docker compose pull
+docker compose up -d
+```
+
+Rolling back means setting the previous version and repeating (migrations are not undone). Without `CUSTOMERS_VERSION`, or with `up --build`, the server builds as before (`local` tag).
+
 ### Automated Deployment (Ansible)
 
 Servers are deployed with the `playbooks/AquaCustomersDocker` playbook of the `aqua360-customers-deploy` repository (`99-all.yaml` runs them all in order, using the client inventory):
