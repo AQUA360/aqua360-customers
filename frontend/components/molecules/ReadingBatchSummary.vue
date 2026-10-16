@@ -696,7 +696,7 @@ watch(() => props.batch_id, (newVal) => {
         isEmbedded ? 'h-full flex-1 flex flex-col min-h-0' : 'fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-20 overflow-hidden flex flex-col',
         !isEmbedded ? { 
           'translate-x-0': showRegion, 
-          'translate-x-[2000px]': !showRegion, 
+          'translate-x-full': !showRegion, 
           'w-[90%]': showRegionComponent != 'ExportReadings', 
           'w-[55%]': showRegionComponent == 'ExportReadings' 
         } : ''
@@ -788,7 +788,7 @@ watch(() => props.batch_id, (newVal) => {
     <div role="region" id="right_over_page"
       :class="[
         isEmbedded ? 'h-full border-l border-gray-100 py-2 bg-white w-1/2 overflow-y-auto' : 'fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[60%] z-50 shadow',
-        !isEmbedded ? { 'translate-x-0': showSubRegion, 'translate-x-[2000px]': !showSubRegion } : { 'hidden': !showSubRegion }
+        !isEmbedded ? { 'translate-x-0': showSubRegion, 'translate-x-full': !showSubRegion } : { 'hidden': !showSubRegion }
       ]">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleSubRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
@@ -806,7 +806,7 @@ watch(() => props.batch_id, (newVal) => {
     <!-- Pending Readings Read-only Region -->
     <div role="region"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[80%] z-40 overflow-hidden flex flex-col shadow-lg"
-      :class="{ 'translate-x-0': showPendingRegion, 'translate-x-[2000px]': !showPendingRegion }">
+      :class="{ 'translate-x-0': showPendingRegion, 'translate-x-full': !showPendingRegion }">
       <div class="mb-3 px-3">
         <button @click="showPendingRegion = false" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
@@ -851,7 +851,7 @@ watch(() => props.batch_id, (newVal) => {
     <!-- Fix Reading Error Region -->
     <div role="region"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[30%] z-[60] overflow-hidden flex flex-col shadow-lg"
-      :class="{ 'translate-x-0': showFixRegion, 'translate-x-[2000px]': !showFixRegion }">
+      :class="{ 'translate-x-0': showFixRegion, 'translate-x-full': !showFixRegion }">
       <div class="mb-3 px-3">
         <button @click="closeFixRegion" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
