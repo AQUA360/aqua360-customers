@@ -6,6 +6,14 @@
     - `_build_claim_request_filters` accepta `payment_remittance_return_id`: limita els contractes, els pagaments i els recomptes als pagaments d'aquesta devolució SEPA. Es combina amb la resta de filtres (estats de pagament reclamables, explotació, pagaments ja en una gestió activa, etc.). Cal desplegar-lo junt amb el frontend.
     - Amb aquest filtre, a més de les factures vençudes, també compten les factures confirmades amb el pagament retornat: després d'una devolució la factura torna a «Confirmada» i no passa a «Vençuda» fins a la data de venciment, de manera que una devolució recent no tenia pagaments reclamables. La cerca general sense devolució continua demanant factures vençudes.
 
+### FIX
+#### OV (`ov/views.py`, `docs/ov/openapi.yaml`, `ov/tests.py` — `GET /ov/contract-detail/` torna a respondre directament)
+    - `GET /ov/contract-detail/?contract_token=<token>` torna a donar `200` amb el detall del contracte (mateix esquema `ContractFullDetail` que `/ov/contract/{token}/`) en lloc de redirigir amb `302`.
+    - El token pot contenir barra (`/`), que una ruta `<str:token>` no pot resoldre: abans provocava `NoReverseMatch` (`500`). Ara el contracte es busca per consulta (`Contract.token`).
+    - El `request` es passa al serialitzador perquè el paràmetre opcional `dni` continuï desenmascarant l'IBAN i determinant `is_account_holder`. `400` si falta el paràmetre; `404` si el contracte no existeix.
+    - `docs/ov/openapi.yaml`: documenta `200` (`ContractFullDetail`) i `404` en comptes del `302`.
+    - Tests a `ov/tests.py` (`ContractOVViewTests`): token amb barra, token senzill, token desconegut, paràmetre absent i processament de paràmetres extra sense redirect.
+
 ## [15-10-2026]
 ### FEAT
 #### STATISTICS (`report_billing_by_zone_service.py` — línia d'ensobrat a l'execució de padrons per zona)

@@ -53,7 +53,7 @@ info:
 
     ## Notas generales
 
-    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` devuelve el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, la clave `is_account_holder` no aparece en la respuesta.
+    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` y `/ov/contract-detail/` devuelven el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, la clave `is_account_holder` no aparece en la respuesta.
     - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
     - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
   version: 1.0.0
@@ -127,16 +127,20 @@ paths:
     get:
       tags:
         - Contrato
-      summary: Detalle del contrato (redirige a /ov/contract/{token}/)
+      summary: Detalle del contrato por contract_token de consulta
       description: |
-        Alias legacy de `GET /ov/contract/{token}/`. Recibe el identificador
-        como parámetro de consulta `contract_token` y responde con una
-        redirección `302 Found` al endpoint por token
-        (`contract-detail-by-token-ov`), conservando el resto de parámetros
-        de consulta (p. ej. `dni`).
+        Recibe el identificador como parámetro de consulta `contract_token`
+        y devuelve directamente los datos completos del contrato (mismo
+        esquema `ContractFullDetail` que `GET /ov/contract/{token}/`), sin
+        redirigir. El token puede contener barra (`/`, p. ej.
+        `12345678/001`), algo que un parámetro de ruta `<str:token>` no
+        podría resolver, por eso se busca por consulta a la base de datos.
 
-        Esta vista no consulta la base de datos: si el contrato no existe,
-        el `404 Not Found` lo devuelve la vista destino.
+        `400` si falta `contract_token`; `404` si el contrato no existe.
+
+        Igual que en `/ov/contract/{token}/`, el parámetro opcional `dni`
+        desenmascara el IBAN y expone `is_account_holder` solo cuando
+        coincide con el titular de la cuenta de domiciliación.
       operationId: getContractDetail
       security:
         - tokenAuth: []
@@ -144,18 +148,43 @@ paths:
         - $ref: "#/components/parameters/contractToken"
         - $ref: "#/components/parameters/dniOptional"
       responses:
-        "302":
-          description: Redirección a `/ov/contract/{token}/`, conservando los parámetros de consulta restantes
-          headers:
-            Location:
-              description: Ruta destino
+        "200":
+          description: Datos del contrato
+          content:
+            application/json:
               schema:
-                type: string
-              example: /ov/contract/CTR-001/?dni=12345678A
+                $ref: "#/components/schemas/ContractFullDetail"
+              example:
+                token: CTR-001
+                status_token: "1"
+                status_name: Activo
+                holder_token: "12345678A"
+                payment_type: DOM
+                use_type: Doméstico
+                last_invoice_date: "2026-01-15T10:30:00Z"
+                supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                meter_serial_number: MTR-001
+                meter_caliber: "15"
+                smart_metering: "false"
+                registration_date: "15/03/2020"
+                termination_date: null
+                nif: "12345678A"
+                tenant_name: Anna Garcia
+                holder_name: Anna Garcia
+                city: Barcelona
+                postal_code: "08110"
+                paper_invoice: "false"
+                email: anna.garcia@example.com
+                invoice_language: es
+                phone1: "600000000"
+                iban: "ES12***************7890"
+                holder_address: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /ov/billing-data/:
     get:
@@ -1101,9 +1130,9 @@ paths:
       summary: Detalle del contrato por token
       description: |
         Devuelve los datos del contrato identificado por el `token` incluido en la
-        propia ruta. Es la ruta destino de la redirección del alias legacy
-        `/ov/contract-detail/`, que recibe el identificador como parámetro de
-        consulta `contract_token`.
+        propia ruta. Equivalente a `/ov/contract-detail/`, que recibe el
+        identificador como parámetro de consulta `contract_token` (este admite
+        tokens con barra, que no caben en un parámetro de ruta `<str:token>`).
 
         Expande las estructuras de `/ov/contract-detail/` y `/ov/billing-data/`
         añadiendo los datos de la cuenta de domiciliación: el DNI de su titular,
