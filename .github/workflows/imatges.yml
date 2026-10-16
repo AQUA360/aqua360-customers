@@ -8,10 +8,6 @@
 name: Imatges
 
 on:
-  # TEMPORAL (PR #25): per provar les imatges abans de fusionar, amb l'etiqueta pr-25. Treure-ho
-  # abans de fusionar.
-  push:
-    branches: [fix/gmao-perfil-opcional]
   release:
     types: [published]
   workflow_dispatch:
@@ -25,7 +21,7 @@ permissions:
   packages: write
 
 env:
-  VERSIO: ${{ github.event.release.tag_name || inputs.versio || 'pr-25' }}
+  VERSIO: ${{ github.event.release.tag_name || inputs.versio }}
 
 jobs:
   imatge:
@@ -36,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'push' && github.sha || env.VERSIO }}
+          ref: ${{ env.VERSIO }}
 
       # Etiqueta també amb el commit: HelpAsset, en actualitzar, busca la imatge del commit que
       # posa i, si no hi és, la construeix al servidor.
