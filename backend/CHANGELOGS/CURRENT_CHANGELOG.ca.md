@@ -1,5 +1,15 @@
 # Changelog Backend
 
+## [16-10-2026]
+
+### FIX
+#### OV (`ov/views.py`, `docs/ov/openapi.yaml`, `ov/tests.py` — `GET /ov/contract-detail/` torna a respondre directament)
+    - `GET /ov/contract-detail/?contract_token=<token>` torna a donar `200` amb el detall del contracte (mateix esquema `ContractFullDetail` que `/ov/contract/{token}/`) en lloc de redirigir amb `302`.
+    - El token pot contenir barra (`/`), que una ruta `<str:token>` no pot resoldre: abans provocava `NoReverseMatch` (`500`). Ara el contracte es busca per consulta (`Contract.token`).
+    - El `request` es passa al serialitzador perquè el paràmetre opcional `dni` continuï desenmascarant l'IBAN i determinant `is_account_holder`. `400` si falta el paràmetre; `404` si el contracte no existeix.
+    - `docs/ov/openapi.yaml`: documenta `200` (`ContractFullDetail`) i `404` en comptes del `302`.
+    - Tests a `ov/tests.py` (`ContractOVViewTests`): token amb barra, token senzill, token desconegut, paràmetre absent i processament de paràmetres extra sense redirect.
+
 ## [14-10-2026]
 
 ### FEAT
