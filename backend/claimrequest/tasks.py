@@ -337,6 +337,16 @@ def _build_claim_request_filters(payload):
 
     if selected_contracts_ids:
         filters &= Q(id__in=selected_contracts_ids)
+
+    # Limitar als pagaments d'una devolució de remesa SEPA concreta
+    remittance_return_payment_ids = None
+    remittance_return_id = payload.get('payment_remittance_return_id')
+    if remittance_return_id:
+        remittance_return_payment_ids = list(
+            Payment.objects.filter(remittances_returns__id=remittance_return_id).values_list('id', flat=True)
+        )
+        filters &= Q(invoices__payments__id__in=remittance_return_payment_ids)
+        payment_filters &= Q(id__in=remittance_return_payment_ids)
     if use_types:
         filters &= Q(use_type__id__in=use_types)
     if client_types:
@@ -419,6 +429,8 @@ def _build_claim_request_filters(payload):
         annotation_filters &= ~Q(invoices__payments__id__in=ignore_payments)
     if return_fee_invoice_ids is not None:
         annotation_filters &= ~Q(invoices__id__in=return_fee_invoice_ids)
+    if remittance_return_payment_ids is not None:
+        annotation_filters &= Q(invoices__payments__id__in=remittance_return_payment_ids)
     if exploitation_id and exploitation_id != "":
         annotation_filters &= Q(invoices__exploitation__id=exploitation_id) | Q(invoices__exploitation__isnull=True)
     

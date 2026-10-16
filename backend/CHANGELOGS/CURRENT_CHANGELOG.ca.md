@@ -1,5 +1,10 @@
 # Changelog Backend
 
+## [16-10-2026]
+### FEAT
+#### CLAIMREQUEST (`claimrequest/tasks.py` — filtre per devolució de remesa SEPA a la cerca de pagaments per a gestions d'impagats)
+    - `_build_claim_request_filters` accepta `payment_remittance_return_id`: limita els contractes, els pagaments i els recomptes als pagaments d'aquesta devolució SEPA. Es combina amb la resta de filtres (estats de pagament reclamables, explotació, pagaments ja en una gestió activa, etc.). Cal desplegar-lo junt amb el frontend.
+
 ## [15-10-2026]
 ### FEAT
 #### STATISTICS (`report_billing_by_zone_service.py` — línia d'ensobrat a l'execució de padrons per zona)
