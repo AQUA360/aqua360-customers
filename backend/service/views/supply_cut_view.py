@@ -1,7 +1,7 @@
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
@@ -10,11 +10,17 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 
 from auth.permissions import PermissionManager
+from contract.models import Contract
 from logger.models import LogSupplyCutStatus
 from service.models import SupplyCut, SupplyCutCause, SupplyCutStatus, SupplyPoint
 from service.serializers.supply_cut_serializer import SupplyCutSerializer, SupplyCutMinimalSerializer
 from service.utils import supply_cut_service
 from service.utils import supply_cut_bulk_planner as bulk_planner
+
+# Paraula que l'operador ha d'escriure per confirmar la creació d'un tall
+# temporal que afecta persones vulnerables. Els talls permanents no tenen
+# cap paraula de confirmació: es bloquegen sempre.
+VULNERABLE_CONFIRMATION_WORD = 'CONFIRMAR'
 
 
 class SupplyCutViewSet(viewsets.ModelViewSet):
@@ -79,7 +85,78 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         serializer = SupplyCutMinimalSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
+    @staticmethod
+    def _enforce_vulnerability_rules(data):
+        """Protegeix les persones vulnerables a la creació manual d'un tall.
+
+        Regles (holder, tenant o owner amb vulnerability_level > 0):
+        - Motiu permanent (is_temporary=False): bloqueig estricte, 400 i cap
+          via d'evitació.
+        - Motiu temporal (is_temporary=True): cal que el payload porti
+          vulnerable_confirmation igual a VULNERABLE_CONFIRMATION_WORD.
+
+        S'aplica només al POST manual (create). L'acció bulk-plan i les
+        actualitzacions (PUT) no passen per aquí i no es toquen.
+        Retorna un Response 400 si cal bloquejar, o None si pot continuar.
+        """
+        cause_id = data.get('cause_id')
+        if not cause_id:
+            return None
+        try:
+            cause = SupplyCutCause.objects.filter(id=cause_id).first()
+        except (TypeError, ValueError):
+            cause = None
+        if cause is None:
+            return None
+
+        contract_ids = data.get('contract_ids') or []
+        supply_point_ids = data.get('supply_points') or []
+        # Tolerància a ids mal formats: el guard corre abans de la validació
+        # del serializer, i un valor no llista no ha de poder espetegar aquí.
+        if not isinstance(contract_ids, (list, tuple)):
+            contract_ids = []
+        if not isinstance(supply_point_ids, (list, tuple)):
+            supply_point_ids = []
+        contract_ids = [value for value in contract_ids if str(value).lstrip('-').isdigit()]
+        supply_point_ids = [value for value in supply_point_ids if str(value).lstrip('-').isdigit()]
+        if not contract_ids and not supply_point_ids:
+            return None
+
+        affected = Contract.objects.filter(
+            Q(id__in=contract_ids) | Q(supply_points__in=supply_point_ids)
+        )
+        vulnerable = affected.filter(
+            Q(holder__vulnerability_level__gt=0)
+            | Q(tenant__vulnerability_level__gt=0)
+            | Q(owner__vulnerability_level__gt=0)
+        ).exists()
+        if not vulnerable:
+            return None
+
+        if not cause.is_temporary:
+            return Response(
+                {
+                    'error': "Creació bloquejada: el tall és permanent i afecta persones vulnerables.",
+                    'code': 'vulnerability_blocked',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        confirmation = str(data.get('vulnerable_confirmation') or '').strip()
+        if confirmation.upper() != VULNERABLE_CONFIRMATION_WORD:
+            return Response(
+                {
+                    'error': "El tall temporal afecta persones vulnerables. Escriviu 'CONFIRMAR' per continuar.",
+                    'code': 'vulnerability_confirm_required',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
+
     def create(self, request, *args, **kwargs):
+        blocked = self._enforce_vulnerability_rules(request.data)
+        if blocked is not None:
+            return blocked
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)

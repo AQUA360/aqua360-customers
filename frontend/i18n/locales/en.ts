@@ -3669,5 +3669,20 @@ export default {
       reading_value: 'Reading value',
       contract_id: 'Contract ID'
     }
+  },
+  vulnerability_block: {
+    blocked_title: 'Permanent cut blocked',
+    blocked_message: 'This action is blocked: the cut cause is permanent and affects vulnerable people. The cut cannot be created.',
+    warning_title: 'Warning: temporary cut affecting vulnerable people',
+    warning_message: "This cut cause is temporary and affects vulnerable people. Type '{word}' to continue.",
+    confirm_label: 'Confirmation',
+    confirm_placeholder: 'CONFIRMAR',
+    confirm_invalid: "Type 'CONFIRMAR' to continue.",
+    affected_label: 'Affected contracts with vulnerable people:',
+    role_holder: 'Holder',
+    role_tenant: 'Tenant',
+    role_owner: 'Owner',
+    level_1: 'At risk',
+    level_2: 'Vulnerable',
   }
 }

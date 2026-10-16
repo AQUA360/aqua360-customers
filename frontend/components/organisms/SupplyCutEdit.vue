@@ -58,6 +58,44 @@ const affectedSupplyPoints = ref([]);
 const date_start = ref(null);
 const date_end = ref(null);
 
+// ---------------------------------------------------------------------------
+// Vulnerabilitat (protecció de persones vulnerables):
+// - Motiu permanent + persona vulnerable (holder, tenant o owner amb nivell
+//   > 0): bloqueig estricte. El backend també rebutja amb 400.
+// - Motiu temporal + persona vulnerable: cal escriure la paraula de
+//   confirmació; el backend la valida igualment.
+// ---------------------------------------------------------------------------
+const VULNERABLE_CONFIRM_WORD = 'CONFIRMAR';
+const vulnerableConfirmation = ref('');
+const vulnerableContracts = computed(() =>
+  affectedContracts.value.filter((contract) =>
+    (contract.holder_vulnerability_level ?? 0) > 0
+    || (contract.tenant_vulnerability_level ?? 0) > 0
+    || (contract.owner_vulnerability_level ?? 0) > 0,
+  ),
+);
+const hasVulnerableAffected = computed(() => vulnerableContracts.value.length > 0);
+const isPermanentCause = computed(() => selectedCause.value?.is_temporary === false);
+const isTemporaryCause = computed(() => selectedCause.value?.is_temporary === true);
+const vulnerabilityBlocked = computed(() => isPermanentCause.value && hasVulnerableAffected.value);
+const vulnerabilityNeedsConfirm = computed(() =>
+  isTemporaryCause.value && hasVulnerableAffected.value && !vulnerabilityBlocked.value,
+);
+const confirmWordValid = computed(() =>
+  vulnerableConfirmation.value.trim().toUpperCase() === VULNERABLE_CONFIRM_WORD,
+);
+
+const vulnerabilityLevelLabel = (level) => {
+  if (level === 2) return t('vulnerability_block.level_2');
+  if (level === 1) return t('vulnerability_block.level_1');
+  return String(level);
+};
+
+// Esborra la confirmació escrita cada vegada que canvien el motiu o el conjunt
+// de contractes afectats: la confirmació és per a un escenari concret.
+watch(vulnerableContracts, () => { vulnerableConfirmation.value = ''; });
+watch(selectedCause, () => { vulnerableConfirmation.value = ''; });
+
 const getCauses = async () => {
   try {
     const result = await $SupplyCutApiService.getCauses();
@@ -66,6 +104,7 @@ const getCauses = async () => {
       .map((item) => ({
         label: item.name,
         code: item.id,
+        is_temporary: item.is_temporary,
       }));
   } catch (error) {
     console.error('Error fetching causes:', error);
@@ -161,6 +200,12 @@ const getAffectedSupplyPoints = async () => {
       selectedStreets.value.length === 0 &&
       (supply_point_ids.value?.length ?? 0) == 0 &&
       (contract_ids.value?.length ?? 0) == 0) {
+      // Sense selecció no hi ha res afectat: es netegen les llistes perquè
+      // no quedin dades obsoletes (per exemple, l'avís de vulnerabilitat).
+      affectedSupplyPoints.value = [];
+      affectedContracts.value = [];
+      supply_point_ids.value = [];
+      contract_ids.value = [];
       return;
     }
     let number_ids = [];
@@ -193,6 +238,20 @@ const getAffectedSupplyPoints = async () => {
 
 const save = async () => {
   attemptedSave.value = true;
+  // Espera a tenir els punts resolts: amb dades obsoletes no es poden
+  // avaluar bé les regles de vulnerabilitat.
+  if (fetchingData.value) {
+    toast.error(t('common.loading'));
+    return;
+  }
+  if (vulnerabilityBlocked.value) {
+    toast.error(t('vulnerability_block.blocked_message'));
+    return;
+  }
+  if (vulnerabilityNeedsConfirm.value && !confirmWordValid.value) {
+    toast.error(t('vulnerability_block.confirm_invalid'));
+    return;
+  }
   if (!isValid()) {
     toast.error(t("warning_block.warning_valid_dates"));
     return;
@@ -208,6 +267,7 @@ const save = async () => {
         date_start: date_start.value,
         date_end: date_end.value ? date_end.value : null,
         cause_id: selectedCause.value.code,
+        vulnerable_confirmation: vulnerableConfirmation.value.trim(),
       });
       navigateTo('/service/supply-cut/');
     } catch (error) {
@@ -215,6 +275,8 @@ const save = async () => {
     } finally {
       saving.value = false;
     }
+  } else {
+    saving.value = false;
   }
 };
 
@@ -239,11 +301,17 @@ const onSupplyPointSelected = async (item) => {
 };
 
 const onContractSelected = async (item) => {
-  selectedContract.value = [item];
-  supply_point_ids.value = item.supply_point_ids || []
-  contract_ids.value = [item.id]
-  await getAffectedSupplyPoints()
-  closeAllRegions();
+  // Selecció múltiple (consistant amb els punts de subministrament): cada
+  // clic afegeix o treu el contracte de la selecció.
+  const index = selectedContract.value.findIndex((contract) => contract.id === item.id);
+  if (index > -1) {
+    selectedContract.value.splice(index, 1);
+  } else {
+    selectedContract.value.push(item);
+  }
+  contract_ids.value = selectedContract.value.map((contract) => contract.id);
+  supply_point_ids.value = [...new Set(selectedContract.value.flatMap((contract) => contract.supply_point_ids || []))];
+  await getAffectedSupplyPoints();
 };
 
 const updateSelect = (ev, entity) => {
@@ -779,6 +847,48 @@ const showDetailForCurrentType = () => {
         </div>
 
 
+        <!-- Protecció de persones vulnerables (només el flux manual amb
+             selector; el flux bulk no es toca). Permanent: bloqueig. Temporal:
+             cal escriure la paraula de confirmació. -->
+        <div v-if="!hasBulkInput && (vulnerabilityBlocked || vulnerabilityNeedsConfirm)"
+          class="col-span-2 mb-4 rounded border p-4"
+          :class="vulnerabilityBlocked ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'">
+          <p class="font-semibold flex items-center gap-2"
+            :class="vulnerabilityBlocked ? 'text-red-800' : 'text-amber-800'">
+            <Icon name="fa6-solid:triangle-exclamation" />
+            {{ vulnerabilityBlocked ? $t('vulnerability_block.blocked_title') : $t('vulnerability_block.warning_title') }}
+          </p>
+          <p class="text-sm mt-1" :class="vulnerabilityBlocked ? 'text-red-700' : 'text-amber-700'">
+            {{ vulnerabilityBlocked
+              ? $t('vulnerability_block.blocked_message')
+              : $t('vulnerability_block.warning_message', { word: VULNERABLE_CONFIRM_WORD }) }}
+          </p>
+          <p class="text-sm font-medium mt-2" :class="vulnerabilityBlocked ? 'text-red-800' : 'text-amber-800'">
+            {{ $t('vulnerability_block.affected_label') }}
+          </p>
+          <ul class="text-sm mt-1 space-y-1" :class="vulnerabilityBlocked ? 'text-red-700' : 'text-amber-700'">
+            <li v-for="item in vulnerableContracts" :key="item.id">
+              <span class="font-mono">{{ item.token }}</span>
+              <span v-if="item.holder_full_name"> — {{ item.holder_full_name }}</span>
+              <span v-if="(item.holder_vulnerability_level ?? 0) > 0">
+                · {{ $t('vulnerability_block.role_holder') }}: {{ vulnerabilityLevelLabel(item.holder_vulnerability_level) }}</span>
+              <span v-if="(item.tenant_vulnerability_level ?? 0) > 0">
+                · {{ $t('vulnerability_block.role_tenant') }}: {{ vulnerabilityLevelLabel(item.tenant_vulnerability_level) }}</span>
+              <span v-if="(item.owner_vulnerability_level ?? 0) > 0">
+                · {{ $t('vulnerability_block.role_owner') }}: {{ vulnerabilityLevelLabel(item.owner_vulnerability_level) }}</span>
+            </li>
+          </ul>
+          <template v-if="vulnerabilityNeedsConfirm">
+            <label class="block text-sm font-medium text-amber-800 mt-3" for="vulnerable-confirmation">
+              {{ $t('vulnerability_block.confirm_label') }}
+            </label>
+            <input id="vulnerable-confirmation" v-model="vulnerableConfirmation" type="text" autocomplete="off"
+              class="mt-1 w-64 p-2 border border-amber-400 rounded-md bg-white focus:outline-none"
+              :class="{ 'invalid border-red-500': attemptedSave && !confirmWordValid }"
+              :placeholder="$t('vulnerability_block.confirm_placeholder')" />
+          </template>
+        </div>
+
         <div class="col-span-2 flex flex-row-reverse mt-4">
           <!-- Bulk path: paste/upload content present -> preview first -->
           <button v-if="hasBulkInput" @click="handlePreview" :disabled="previewing" class="button-primary">
@@ -788,7 +898,7 @@ const showDetailForCurrentType = () => {
             {{ $t('service_block.bulk_plan_preview') }}
           </button>
           <!-- Picker path: unchanged legacy save -->
-          <button v-else @click="save" :disabled="saving" class="button-primary">
+          <button v-else @click="save" :disabled="saving || vulnerabilityBlocked" class="button-primary">
             <Icon :name="saving ? 'fa6-solid:spinner' : 'fa6-solid:floppy-disk'" 
             :class="saving ? 'animate-spin' : ''" />
             &nbsp; 

@@ -209,6 +209,9 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
                 'status_color': contract.status.color,
                 'status_token': contract.status.token,
                 'holder': holder_str,
+                'holder_vulnerability_level': contract.holder.vulnerability_level if contract.holder else None,
+                'tenant_vulnerability_level': contract.tenant.vulnerability_level if contract.tenant else None,
+                'owner_vulnerability_level': contract.owner.vulnerability_level if contract.owner else None,
             })
         representation['contracts'] = contracts
         
@@ -482,6 +485,9 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 'status_token': contract.status.token,
                 'holder': holder_str, 
                 'holder_token': contract.holder.token if contract.holder else None,
+                'holder_vulnerability_level': contract.holder.vulnerability_level if contract.holder else None,
+                'tenant_vulnerability_level': contract.tenant.vulnerability_level if contract.tenant else None,
+                'owner_vulnerability_level': contract.owner.vulnerability_level if contract.owner else None,
                 'total_debt': payments_amount
                 })
                 

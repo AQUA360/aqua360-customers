@@ -3841,5 +3841,20 @@ export default {
       reading_value: 'Valor de lectura',
       contract_id: 'ID de contracte'
     }
+  },
+  vulnerability_block: {
+    blocked_title: 'Tall permanent bloquejat',
+    blocked_message: "Aquesta acció està bloquejada: el motiu de tall és permanent i afecta persones vulnerables. No es pot crear el tall.",
+    warning_title: 'Atenció: tall temporal sobre persones vulnerables',
+    warning_message: "Aquest motiu de tall és temporal i afecta persones vulnerables. Escriu '{word}' per poder continuar.",
+    confirm_label: 'Confirmació',
+    confirm_placeholder: 'CONFIRMAR',
+    confirm_invalid: "Escriviu 'CONFIRMAR' per continuar.",
+    affected_label: 'Contractes afectats amb persones vulnerables:',
+    role_holder: 'Titular',
+    role_tenant: 'Llogater',
+    role_owner: 'Propietari',
+    level_1: 'En risc',
+    level_2: 'Vulnerable',
   }
 }

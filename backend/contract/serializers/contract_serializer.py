@@ -783,7 +783,23 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
             'previous_period_consumption',
             'prefered_communication_type',
         ]
-    
+
+    def to_representation(self, instance):
+        # Nivells de vulnerabilitat de les persones del contracte perquè la
+        # pantalla de tall manual pugui avaluar les regles de protecció
+        # (holder, tenant o owner > 0) en seleccionar contractes.
+        representation = super().to_representation(instance)
+        representation['holder_vulnerability_level'] = (
+            instance.holder.vulnerability_level if instance.holder else None
+        )
+        representation['tenant_vulnerability_level'] = (
+            instance.tenant.vulnerability_level if instance.tenant else None
+        )
+        representation['owner_vulnerability_level'] = (
+            instance.owner.vulnerability_level if instance.owner else None
+        )
+        return representation
+
     def get_prefered_communication_type(self, obj):
         return {
             'type': obj.communication_type,

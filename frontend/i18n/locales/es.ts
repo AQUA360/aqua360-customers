@@ -3841,5 +3841,20 @@ supply_cut_actions:   {
       reading_value: 'Valor de lectura',
       contract_id: 'ID de contrato'
     }
+  },
+  vulnerability_block: {
+    blocked_title: 'Corte permanente bloqueado',
+    blocked_message: 'Esta acción está bloqueada: el motivo del corte es permanente y afecta a personas vulnerables. No se puede crear el corte.',
+    warning_title: 'Atención: corte temporal sobre personas vulnerables',
+    warning_message: "Este motivo de corte es temporal y afecta a personas vulnerables. Escriba '{word}' para continuar.",
+    confirm_label: 'Confirmación',
+    confirm_placeholder: 'CONFIRMAR',
+    confirm_invalid: "Escriba 'CONFIRMAR' para continuar.",
+    affected_label: 'Contratos afectados con personas vulnerables:',
+    role_holder: 'Titular',
+    role_tenant: 'Inquilino',
+    role_owner: 'Propietario',
+    level_1: 'En riesgo',
+    level_2: 'Vulnerable',
   }
 }
