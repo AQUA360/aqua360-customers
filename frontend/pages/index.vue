@@ -1,13 +1,46 @@
 <script setup>
-import { ref, onMounted, onUpdated } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { searchValues, foundItemTranslation } from '~/utils/search';
-import { format } from 'date-fns';
-import TimeRelative from '~/components/atoms/TimeRelative.vue';
-import CalendarTable from '~/components/molecules/CalendarTable.vue';
+import Draggable from 'vuedraggable';
+import { DASHBOARD_SIZE_CLASSES, defaultCardConfig, newCardId } from '~/utils/dashboardCards';
+import DashboardCardCatalogModal from '~/components/molecules/dashboard/DashboardCardCatalogModal.vue';
+import DashboardCardConfigModal from '~/components/molecules/dashboard/DashboardCardConfigModal.vue';
+import DashboardKpiCard from '~/components/molecules/dashboard/DashboardKpiCard.vue';
+import DashboardOrdersCard from '~/components/molecules/dashboard/DashboardOrdersCard.vue';
+import DashboardReadingBatchesCard from '~/components/molecules/dashboard/DashboardReadingBatchesCard.vue';
+import DashboardTasksCard from '~/components/molecules/dashboard/DashboardTasksCard.vue';
+import DashboardDailyActivityCard from '~/components/molecules/dashboard/DashboardDailyActivityCard.vue';
+import DashboardRecentSearchesCard from '~/components/molecules/dashboard/DashboardRecentSearchesCard.vue';
+import DashboardCalendarCard from '~/components/molecules/dashboard/DashboardCalendarCard.vue';
+import DashboardQuickAccessCard from '~/components/molecules/dashboard/DashboardQuickAccessCard.vue';
+
+/**
+ * Pàgina d'inici: dashboard personalitzable per usuari. La disposició (quines
+ * cards, en quin ordre, amb quina mida i configuració) es desa al backend, i
+ * cada card carrega les seves dades per separat.
+ */
 
 const { t } = useI18n()
 const sidebarStore = useSidebarStore();
+const { $DashboardApiService } = useNuxtApp();
+
+// Cada card va dins d'una columna amb `min-w-0`: sense això, el contingut ample
+// (p. ex. una fila amb scroll horitzontal) eixampla la columna de la graella.
+// No es pot posar com a comentari dins del slot #item del Draggable: en
+// desenvolupament compta com un node i vuedraggable exigeix un sol fill.
+const CARD_COMPONENTS = {
+  daily_activity: DashboardDailyActivityCard,
+  tasks_today: DashboardTasksCard,
+  orders_to_validate: DashboardOrdersCard,
+  change_meter_pending: DashboardOrdersCard,
+  reading_batches_in_progress: DashboardReadingBatchesCard,
+  invoices_issued: DashboardKpiCard,
+  invoice_cancellations: DashboardKpiCard,
+  rebillings: DashboardKpiCard,
+  recent_searches: DashboardRecentSearchesCard,
+  calendar: DashboardCalendarCard,
+  quick_access: DashboardQuickAccessCard,
+};
 
 const handleKeydown = (event) => {
     if (event.ctrlKey && event.key === 'k') {
@@ -19,348 +52,207 @@ const handleKeydown = (event) => {
     }
 };
 
-onMounted(() => {
-    window.addEventListener('keydown', handleKeydown);
-});
-
-onUnmounted(() => {
-    window.removeEventListener('keydown', handleKeydown);
-});
-
-
 const username = ref('')
-const loading = ref(false);
-const groupedSearchHistory = ref({});
-
-const activeSupplyPointToken = ref(localStorage.getItem('config_supply_point_status_activate_token'));
-const pendingContractTerminationToken = ref(1);
-
 if (process.client) {
     username.value = localStorage.getItem('user_username') || '';
 }
 
-const { $SearchApiService } = useNuxtApp();
+const loading = ref(true);
+const loadFailed = ref(false);
+const layout = ref([]);
+const availableCards = ref([]);
+const editing = ref(false);
+const saving = ref(false);
+const showCatalog = ref(false);
+const configItem = ref(null);
 
-const getHistoryData = async () => {
+const cardsByKey = computed(() => Object.fromEntries(availableCards.value.map(card => [card.key, card])));
+// Només es pinten les cards que el frontend sap mostrar
+const visibleLayout = computed(() => layout.value.filter(item => CARD_COMPONENTS[item.key]));
+const usedKeys = computed(() => layout.value.map(item => item.key));
+const configCard = computed(() => configItem.value ? cardsByKey.value[configItem.value.key] : null);
+const showConfig = computed({
+    get: () => !!configItem.value,
+    set: (value) => { if (!value) configItem.value = null; },
+});
+
+/**
+ * Sessió amb què s'ha carregat la disposició. Cada petició llegeix el token de
+ * localStorage en el moment de fer-la, i aquest és compartit per totes les pestanyes:
+ * si en una altra pestanya es tanca la sessió o s'entra amb un altre usuari, aquesta
+ * pestanya no ha de desar la disposició que mostra (és de l'usuari anterior) al
+ * compte del nou usuari.
+ */
+const readToken = () => {
+    try { return localStorage.getItem('auth_token'); } catch (e) { return null; }
+};
+let sessionToken = null;
+const isSameSession = () => !!sessionToken && readToken() === sessionToken;
+
+const loadDashboard = async () => {
     loading.value = true;
+    loadFailed.value = false;
+    sessionToken = readToken();
     try {
-        const data = await $SearchApiService.getSearchHistory();
-        const groupedData = data.results.reduce((acc, item) => {
-            const dateKey = format(new Date(item.searched_at), 'yyyy-MM-dd');
-
-            if (!acc[dateKey]) {
-                acc[dateKey] = [];
-            }
-            acc[dateKey].push(item);
-            return acc;
-        }, {});
-        groupedSearchHistory.value = groupedData;
-        console.log('groupedSearchHistory.value')
-        console.log(Object.entries(groupedSearchHistory.value))
+        const [layoutResponse, cards] = await Promise.all([
+            $DashboardApiService.getLayout(),
+            $DashboardApiService.getCards(),
+        ]);
+        layout.value = layoutResponse.layout;
+        availableCards.value = cards;
     } catch (error) {
-        console.error(`Error fetching:`, error);
+        console.error(error);
+        loadFailed.value = true;
     } finally {
         loading.value = false;
     }
-}
-
-const getItemTranslation = (item) => {
-    const translation = foundItemTranslation(item, 'cat');
-    return translation.cat;
 };
 
-const handleClick = (event) => {
+let saveTimeout = null;
+const saveLayout = async () => {
+    saveTimeout = null;
+    if (!isSameSession()) return;
+    saving.value = true;
     try {
-        let pathName = '/' + event.app.toLowerCase() + '/' + searchValues[event.entity][0] + '/';
-        console.log(pathName)
-        navigateTo({
-            path: pathName,
-            query: {
-                action: 'showDetail',
-                id: event.item_id,
-            }
-        })
+        await $DashboardApiService.saveLayout(layout.value);
     } catch (error) {
-        console.error(error)
+        console.error(error);
+    } finally {
+        saving.value = false;
     }
-}
+};
+// Es desa poc després de cada canvi, sense botó de desar
+const scheduleSave = () => {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(saveLayout, 600);
+};
 
-const showPage = (path, variables, advance_filters, search) => {
-    navigateTo({
-        path: path,
-        query: {
-            action: 'filterPage',
-            variables: variables,
-            advance_filters: advance_filters,
-            search: search
-        }
-    })
-}
+const addCard = (card) => {
+    layout.value.push({
+        id: newCardId(),
+        key: card.key,
+        size: card.default_size,
+        config: defaultCardConfig(card),
+    });
+    scheduleSave();
+};
+
+const removeCard = (item) => {
+    layout.value = layout.value.filter(current => current.id !== item.id);
+    scheduleSave();
+};
+
+const updateCard = (updated) => {
+    layout.value = layout.value.map(item => item.id === updated.id ? updated : item);
+    scheduleSave();
+};
+
+const resetLayout = async () => {
+    if (!confirm(t('home_dashboard.reset_confirm'))) return;
+    clearTimeout(saveTimeout);
+    if (!isSameSession()) return loadDashboard();
+    const response = await $DashboardApiService.resetLayout();
+    layout.value = response.layout;
+};
+
+const finishEditing = async () => {
+    editing.value = false;
+    if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        await saveLayout();
+    }
+};
+
+// Canvi de sessió en una altra pestanya del mateix navegador (logout o un altre usuari):
+// es descarten els canvis pendents i es carrega el dashboard del nou usuari.
+const handleStorage = (event) => {
+    if (event.key !== null && event.key !== 'auth_token' && event.key !== 'user_username') return;
+    if (readToken() === sessionToken) {
+        username.value = localStorage.getItem('user_username') || '';
+        return;
+    }
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+    editing.value = false;
+    showCatalog.value = false;
+    configItem.value = null;
+    if (!readToken()) {
+        navigateTo('/auth/login');
+        return;
+    }
+    username.value = localStorage.getItem('user_username') || '';
+    loadDashboard();
+};
 
 onMounted(() => {
-    getHistoryData()
-})
+    window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('storage', handleStorage);
+    loadDashboard();
+});
 
+onUnmounted(() => {
+    window.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('storage', handleStorage);
+    // En sortir de la pàgina es desen els canvis pendents (no si la sessió ja és una altra o s'ha tancat)
+    if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        saveLayout();
+    }
+});
 </script>
 <template>
-    <div class="space-y-8 w-[60%] mx-auto">
-        
-        <div class="text-center">
+    <div class="w-full max-w-7xl mx-auto px-6 pb-24">
+
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
             <h1 class="text-3xl font-semibold text-slate-800">{{ $t('dashboard.welcome') + ', ' + username }}</h1>
-        </div>
-
-
-        <!-- Resum del que l'usuari ha fet avui (cobraments, ordres noves, gestions de
-             contracte...), amb enllaç a l'informe complet. -->
-        <div class="px-6">
-            <MoleculesDailyActivitySummary />
-        </div>
-
-        <div class="px-6">
-            <span class="text-sm text-slate-500 flex gap-3 px-6 flex items-center ">
-                <Icon name="fa6-solid:clock-rotate-left" class="text-slate-500" />
-                {{ t("dashboard.recently_visited") }}
-            </span>
-
-            <AtomsTabs v-if="Object.entries(groupedSearchHistory).length > 0 && !loading" class="rounded-lg" :is_tab="false">
-                <template v-for="[date, results] in Object.entries(groupedSearchHistory)" :key="date">
-                    <div>
-                        <div class="relative">
-                            <div class="flex overflow-hidden space-x-4 py-3 max-w-full scroll-container">
-                                <div v-for="(result, index) in results" :key="index" @click="handleClick(result)"
-                                    class="flex-shrink-0 py-3 shadow-sm customers-shadow px-4 rounded-lg mx-2 hover:bg-slate-50 cursor-pointer transition duration-200 hover:shadow-md bg-white w-auto inline-block">
-
-                                    <div class="flex items-center gap-3 my-2">
-                                        <Icon :name="searchValues[result.entity][1]" size="25px"
-                                            class="text-slate-400" />
-                                    </div>
-                                    <div class="flex items-center gap-3 mb-2">
-                                        <span class="text-slate-500 text-sm font-semibold">{{
-                                            getItemTranslation(result.found_field) }}:</span>
-                                        <span class="text-slate-700 text-base font-medium" v-html="result.found"></span>
-                                    </div>
-
-                                    <div class="flex items-center justify-between overflow-x-auto max-w-full">
-                                        <div class="flex-shrink-0 text-xs text-slate-400 mb-2">
-                                            <span>{{ result.app }} / {{ result.entity.replace(/-/g, ' ') }}</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="flex items-right justify-end overflow-x-auto max-w-full">
-                                        <div class="text-xs text-slate-500">
-                                            <TimeRelative :datetime="result.searched_at" />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                </template>
-            </AtomsTabs>
-
-            <div v-else-if="loading" class="flex justify-center items-center h-full px-6 py-8 rounded-lg customers-shadow mt-4">
-
-                <div class="text-center">
-                    <p class="text-slate-500 mb-2 text-lg">
-                        {{ t("dashboard.wait") }}
-                    </p>
-                </div>
-
-            </div>
-            <div v-else
-                class="flex justify-center items-center h-full px-6 py-8 rounded-lg customers-shadow mt-4">
-                <div class="text-center">
-                    <h2 class="text-2xl font-semibold text-slate-700 my-2">
-                        <Icon name="fa6-solid:magnifying-glass" class="text-slate-500 mr-3" />
-                        {{ t("dashboard.no_recent_searches") }}
-                    </h2>
-                    <p class="text-slate-500 mb-2 text-lg">
-                        {{ t("dashboard.no_recent_searches_desc") }}
-                    </p>
-                    
-                </div>
-            </div>
-
-
-
-        </div>
-
-        <div class="px-6">
-            <div class="flex items-center space-x-3 px-6 mb-4">
-                <Icon name="fa-regular:lightbulb" class="text-slate-500" size="12px" />
-                <span class="text-sm text-slate-500">{{ t('dashboard.relevant_search') }}</span>
-            </div>
-
-            <div v-if="!loading" class="customers-shadow rounded-lg p-6 space-y-4">
-                <p>
-                    <button @click="showPage('contract/contracts', [1], ['variable_type'], null)"
-                        class="flex text-left items-center text-sm text-slate-700 hover:text-sky-500 hover:underline transition duration-200">
-                        <Icon name="fa-regular:star" size="14px" class="mr-2" />
-                        {{ $t('dashboard.relevant_first') }}
+            <div class="flex items-center gap-2">
+                <span v-if="saving" class="text-xs text-slate-400">{{ t('home_dashboard.saving') }}...</span>
+                <template v-if="editing">
+                    <button type="button" class="button-default" @click="resetLayout">
+                        <Icon name="fa6-solid:arrow-rotate-left" />&nbsp;{{ t('home_dashboard.reset') }}
                     </button>
-                </p>
-            </div>
-
-            <div v-else class="rounded-lg p-6 space-y-4">
-                <AtomsSkeleton class="w-full" :height="2" :has_icon="false"/>
-            </div>
-        </div>
-
-        <div class="px-6">
-            <div class="flex items-center space-x-3 px-6 mb-4">
-                <Icon name="fa6-solid:calendar-days" class="text-slate-500" size="12px" />
-                <span class="text-sm text-slate-500">{{ t('dashboard.calendar') }}</span>
-            </div>
-
-            <div v-if="!loading" class="customers-shadow rounded-lg p-6 space-y-4">
-                <CalendarTable />
-            </div>
-
-            <div v-else class="rounded-lg p-6 space-y-4">
-                <AtomsSkeleton class="w-full" :height="2" :has_icon="false"/>
+                    <button type="button" class="button-default" @click="showCatalog = true">
+                        <Icon name="fa6-solid:plus" />&nbsp;{{ t('home_dashboard.add_card') }}
+                    </button>
+                    <button type="button" class="button-primary" @click="finishEditing">
+                        <Icon name="fa6-solid:check" />&nbsp;{{ t('home_dashboard.done') }}
+                    </button>
+                </template>
+                <button v-else-if="!loading && !loadFailed" type="button" class="button-default" @click="editing = true">
+                    <Icon name="fa6-solid:table-cells-large" />&nbsp;{{ t('home_dashboard.customize') }}
+                </button>
             </div>
         </div>
 
-
-
-        <div class=" px-6 h-[350px]">
-            <span class="text-sm text-slate-500 flex gap-3 px-6 flex items-center">
-                <Icon name="fa6-solid:bars-progress" class="text-slate-500" />
-                {{ t("dashboard.quick_access") }}
-            </span>
-            <div class="rounded-lg grid grid-cols-[1fr,1fr] gap-3 h-full pb-2">
-                <div class="rounded-lg customers-shadow bg-white p-4 my-4">
-                    <span class="text-sm font-semibold text-slate-500 flex gap-3 mb-3">{{ $t('service') }}</span>
-                    <div v-if="!loading" class="overflow-y-auto">
-                        <NuxtLink to="/service/meters/add"
-                            class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                            <abbr :title="$t('service_block.new_meter')" class="no-underline">
-                                {{ $t('service_block.new_meter') }}</abbr>
-                        </NuxtLink>
-
-                        <NuxtLink to="/service/connection-requests/add"
-                            class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                            <abbr :title="$t('service_block.new_connection_request')" class="no-underline">
-                                {{ $t('service_block.new_connection_request') }}</abbr>
-
-                        </NuxtLink>
-
-                        <p class="my-2">
-                            <button @click="showPage('service/supplypoints', [activeSupplyPointToken], null, null)"
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('dashboard.active_supply_points')" class="no-underline">
-                                    {{ $t('dashboard.active_supply_points') }}</abbr>
-                            </button>
-                        </p>
-                        <p class="my-2">
-                            <button @click=""
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('dashboard.active_supply_cuts')" class="no-underline">
-                                    {{ $t('dashboard.active_supply_cuts') }}</abbr>
-                            </button>
-                        </p>
-                    </div>
-                    <div v-else >
-                        <AtomsSkeleton class="w-full" :height="5" :has_icon="false"/>
-                    </div>
-                </div>
-
-                <div class="rounded-lg bg-white customers-shadow p-4 my-4">
-                    <span class="text-sm font-semibold text-slate-500 flex gap-3 mb-3">{{ $t('contracting') }}</span>
-                    <div v-if="!loading" class="overflow-y-auto">
-                        <NuxtLink to="/contract/contract-requests/add"
-                            class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                            <abbr :title="$t('contract_block.new_contract')" class="no-underline">
-                                {{ $t('contract_block.new_contract') }}</abbr>
-
-                        </NuxtLink>
-                        <p class="my-2">
-                            <button
-                                @click="showPage('contract/contract-terminations', [pendingContractTerminationToken], null, null)"
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('dashboard.pending_contract_terminations')" class="no-underline">
-                                    {{ $t('dashboard.pending_contract_terminations') }}</abbr>
-                            </button>
-                        </p>
-                        <!-- <p class="my-2">
-                            <button
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('Importar Document ACA de bonificació')" class="no-underline">
-                                    {{ $t('Importar Document ACA de bonificació') }}</abbr>
-                            </button>
-                        </p> -->
-                    </div>
-                    <div v-else >
-                        <AtomsSkeleton class="w-full" :height="5" :has_icon="false"/>
-                    </div>
-                </div>
-
+        <div v-if="loading" class="grid grid-cols-6 gap-4">
+            <div v-for="n in 4" :key="n" class="col-span-6 xl:col-span-3 customers-shadow rounded-lg p-6">
+                <AtomsSkeleton class="w-full" :height="3" :has_icon="false" />
             </div>
-            <div class="rounded-lg grid grid-cols-[1fr,1fr] gap-3 h-full pb-2">
-
-                <div class="rounded-lg bg-white customers-shadow p-4 my-4">
-                    <span class="text-sm font-semibold text-slate-500 flex gap-3 mb-3">{{ $t('billing') }}</span>
-                    <div v-if="!loading" class="overflow-y-auto">
-                        <p class="my-2">
-                            <button
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('dashboard.start_current_batch')" class="no-underline">
-                                    {{ $t('dashboard.start_current_batch') }}</abbr>
-                            </button>
-                        </p>
-                        <!-- <p class="my-2">
-                            <button
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('Iniciar lot de facturació trimestre actual')" class="no-underline">
-                                    {{ $t('Iniciar lot de facturació trimestre actual') }}</abbr>
-                            </button>
-                        </p> -->
-                        <p class="my-2">
-                            <button
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('dashboard.unreturned_bails')" class="no-underline">
-                                    {{ $t('dashboard.unreturned_bails') }}</abbr>
-                            </button>
-                        </p>
-
-                    </div>
-                    <div v-else >
-                        <AtomsSkeleton class="w-full" :height="5" :has_icon="false"/>
-                    </div>
-                </div>
-
-                <div class="rounded-lg bg-white customers-shadow p-4 my-4">
-                    <span class="text-sm font-semibold text-slate-500 flex gap-3 mb-3">{{ $t('work_orders')
-                        }}</span>
-                    <div v-if="!loading" class="overflow-y-auto">
-                        <p class="my-2">
-                            <button
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('order_block.new_order')" class="no-underline">
-                                    {{ $t('order_block.new_order') }}</abbr>
-                            </button>
-                        </p>
-                        <p class="my-2">
-                            <button
-                                class="flex text-left w-full gap-3 text-sm items-center font-medium  py-1.5 leading-[14px] hover:bg-slate-200 rounded my-1">
-                                <abbr :title="$t('dashboard.pending_orders')" class="no-underline">
-                                    {{ $t('dashboard.pending_orders') }}
-                                </abbr>
-                            </button>
-                        </p>
-                    </div>
-                    <div v-else >
-                        <AtomsSkeleton class="w-full" :height="5" :has_icon="false"/>
-                    </div>
-                </div>
-
-            </div>
-
         </div>
 
-        <div class="h-[100px]">
-
+        <div v-else-if="loadFailed" class="customers-shadow rounded-lg p-6 text-center text-slate-500">
+            {{ t('common.error_load') }}
+            <button class="underline text-sky-500 ml-2" @click="loadDashboard">{{ t('common.load_again') }}</button>
         </div>
+
+        <div v-else-if="!visibleLayout.length" class="customers-shadow rounded-lg p-10 text-center">
+            <p class="text-slate-500 mb-4">{{ t('home_dashboard.empty') }}</p>
+            <button type="button" class="button-primary" @click="editing = true; showCatalog = true">
+                <Icon name="fa6-solid:plus" />&nbsp;{{ t('home_dashboard.add_card') }}
+            </button>
+        </div>
+
+        <Draggable v-else v-model="layout" item-key="id" handle=".card-handle" :disabled="!editing"
+            class="grid grid-cols-6 gap-4 items-stretch" ghost-class="opacity-40" @end="scheduleSave">
+            <template #item="{ element }">
+                <div class="min-w-0" :class="DASHBOARD_SIZE_CLASSES[element.size] || DASHBOARD_SIZE_CLASSES.md">
+                    <component :is="CARD_COMPONENTS[element.key]" :item="element" :editing="editing"
+                        @configure="configItem = element" @remove="removeCard(element)" />
+                </div>
+            </template>
+        </Draggable>
+
+        <DashboardCardCatalogModal v-model:open="showCatalog" :cards="availableCards" :used-keys="usedKeys" @add="addCard" />
+        <DashboardCardConfigModal v-model:open="showConfig" :item="configItem" :card="configCard" @save="updateCard" />
     </div>
 </template>

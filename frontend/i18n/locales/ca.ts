@@ -3000,6 +3000,15 @@ export default {
     friday: 'Divendres',
     saturday: 'Dissabte',
     sunday: 'Diumenge',
+    weekdays_short: {
+      monday: 'Dl',
+      tuesday: 'Dt',
+      wednesday: 'Dc',
+      thursday: 'Dj',
+      friday: 'Dv',
+      saturday: 'Ds',
+      sunday: 'Dg'
+    },
     this_week: 'Aquesta setmana',
     this_month: 'Aquest mes',
     months: 'Mesos',
@@ -3843,5 +3852,145 @@ export default {
       reading_value: 'Valor de lectura',
       contract_id: 'ID de contracte'
     }
+  },
+  home_dashboard: {
+    yesterday: 'Ahir',
+    customize: 'Personalitzar',
+    done: 'Fet',
+    reset: 'Restablir',
+    saving: 'Desant',
+    reset_confirm: 'Vols tornar a la disposició per defecte? Es perdran les cards i la configuració que has triat.',
+    empty: 'No tens cap card a la pàgina d\'inici.',
+    add_card: 'Afegir card',
+    already_added: 'ja afegida',
+    move: 'Moure',
+    configure: 'Configurar',
+    remove: 'Treure',
+    size: 'Mida',
+    sizes: {
+      sm: 'Petita',
+      md: 'Mitjana',
+      lg: 'Ampla'
+    },
+    invoices: 'factures',
+    orders: 'ordres',
+    vs_previous: 'respecte al període anterior',
+    previous_period: 'Període anterior: {count}',
+    see_all: 'Veure-les totes ({count})',
+    readings_read: '{read} de {total} lectures',
+    readings_alerts: '{count} alertes',
+    config: {
+      period: {
+        label: 'Període',
+        today: 'Avui',
+        week: 'Aquesta setmana',
+        month: 'Aquest mes',
+        quarter: 'Aquest trimestre',
+        year: 'Aquest any'
+      },
+      scope: {
+        label: 'Mostrar',
+        all: 'Totes',
+        created_by_me: 'Creades per mi',
+        visible: 'Meves i de tothom',
+        mine: 'Només les meves'
+      },
+      only_mine: {
+        label: 'Només les que he anul·lat jo'
+      }
+    },
+    cards: {
+      daily_activity: {
+        title: 'La meva activitat d\'avui',
+        description: 'Resum del que has fet avui: cobraments, ordres, gestions de contracte...'
+      },
+      tasks_today: {
+        title: 'Tasques pendents',
+        description: 'Tasques d\'avui i endarrerides, per marcar-les com a fetes.'
+      },
+      orders_to_validate: {
+        title: 'OT pendents de validar',
+        description: 'Ordres de treball que esperen validació.',
+        empty: 'No hi ha cap ordre pendent de validar.'
+      },
+      change_meter_pending: {
+        title: 'Canvis de comptador per aplicar',
+        description: 'OT de canvi de comptador tancades sense haver aplicat el canvi al sistema.',
+        empty: 'No hi ha cap canvi de comptador pendent.'
+      },
+      reading_batches_in_progress: {
+        title: 'Lots de lectures en curs',
+        description: 'Lots no facturats amb el progrés i les alertes de les lectures.',
+        empty: 'No hi ha cap lot de lectures en curs.'
+      },
+      invoices_issued: {
+        title: 'Facturació emesa',
+        description: 'Nombre i import de les factures emeses en el període.'
+      },
+      invoice_cancellations: {
+        title: 'Anul·lacions',
+        description: 'Abonaments emesos en anul·lar factures (import negatiu).'
+      },
+      rebillings: {
+        title: 'Refacturacions',
+        description: 'Factures emeses que en substitueixen una altra.'
+      },
+      recent_searches: {
+        title: 'Visitats recentment',
+        description: 'El que has obert des del cercador els últims dies.'
+      },
+      calendar: {
+        title: 'Calendari',
+        description: 'Calendari mensual de tasques.'
+      },
+      quick_access: {
+        title: 'Accessos ràpids',
+        description: 'Enllaços a les accions més habituals.'
+      }
+    }
+  },
+  calendar_tasks: {
+    notified_today: 'S\'ha avisat de la tasca «{name}» per avui',
+    title: 'Calendari',
+    open_calendar: 'Obrir el calendari',
+    today: 'Avui',
+    overdue: 'Endarrerides',
+    nothing_pending: 'No hi ha tasques pendents.',
+    mark_done: 'Marcar com a feta',
+    recurring: 'Tasca recurrent',
+    automatic: 'Automàtica',
+    next_days: 'Propers {count} dies',
+    filter_visible: 'Meves i de tothom',
+    filter_mine: 'Només les meves',
+    filter_all_users: 'Només les de tothom',
+    show_done: 'Mostrar les fetes',
+    views: {
+      month: 'Mes',
+      week: 'Setmana',
+      list: 'Llista'
+    },
+    more: '+{count} més',
+    email_daily: 'Resum diari per correu',
+    email_daily_info: 'Cada matí rebràs un correu amb les teves tasques pendents del dia i les endarrerides.',
+    email_missing: 'El teu usuari no té cap correu configurat.',
+    everyone: 'Tothom',
+    time: 'Hora',
+    recurring_task: 'Tasca recurrent',
+    repeat_every: 'Repetir cada',
+    frequencies: {
+      daily: 'dia(es)',
+      weekly: 'setmana(es)',
+      monthly: 'mes(os)',
+      yearly: 'any(s)'
+    },
+    same_weekday: 'Si no se\'n tria cap, el mateix dia de la setmana que la data inicial.',
+    end_date: 'Fins a (opcional)',
+    apply_to_series: 'Aplicar els canvis també a les ocurrències següents',
+    only_this_occurrence: 'Els canvis només s\'aplicaran a aquesta ocurrència.',
+    delete_series_confirm: 'Aquesta tasca és recurrent. Vols esborrar també totes les ocurrències pendents següents? (Cancel·lar per esborrar només aquesta)',
+    delete_occurrence_confirm: 'Esborrar només aquesta ocurrència?',
+    delete_confirm: 'Segur que vols esborrar aquesta tasca?',
+    order: 'Ordre de treball',
+    badge_title: '{today} per avui, {overdue} endarrerides'
   }
 }

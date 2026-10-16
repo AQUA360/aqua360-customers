@@ -6,7 +6,7 @@ import { usePermissions } from '~/middleware/permission';
 import { useConfigStore } from '~/stores/useConfigStore';
 import { useExploitationStore } from '~/stores/useExploitationStore';
 import { storeToRefs } from 'pinia';
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { AVAILABLE_LANGUAGES } from '~/utils/languages';
 
 const { t, locale } = useI18n();
@@ -45,6 +45,23 @@ const switchLanguage = (newLocale) => {
 };
 
 const languages = AVAILABLE_LANGUAGES;
+
+// Tasques pendents d'avui i endarrerides, per al comptador del menú. Es refresca
+// en canviar de pàgina, com el de notificacions.
+const { $CalendarTaskApiService } = useNuxtApp();
+const route = useRoute();
+const tasksSummary = ref({ today: 0, overdue: 0 });
+const pendingTasks = computed(() => (tasksSummary.value.today || 0) + (tasksSummary.value.overdue || 0));
+const loadTasksSummary = async () => {
+  try {
+    tasksSummary.value = await $CalendarTaskApiService.getSummary();
+  } catch (e) {
+    // comptador informatiu: si falla, no es mostra
+  }
+};
+watch(() => route.path, loadTasksSummary);
+watch(() => sideBarStore.tasksVersion, loadTasksSummary);
+onMounted(loadTasksSummary);
 
 // Initialize config fetch
 configStore.fetchOvEnabled();
@@ -213,6 +230,25 @@ onUnmounted(() => {
             <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:house" class="text-slate-500" /></span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('dashboard.dashboard') }}</span>
           </div>
+        </NuxtLink>
+
+        <NuxtLink to="/calendar"
+          class="flex w-full max-h-8 items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
+          :class="[hoverClass, { [highlightClass]: $route.path.startsWith('/calendar'), 'justify-center': isCollapsed }]"
+          :title="isCollapsed ? $t('calendar_tasks.title') + (pendingTasks ? ` (${pendingTasks})` : '') : undefined">
+          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
+            <span class="flex w-6 shrink-0 justify-center relative">
+              <Icon name="fa6-solid:calendar-days" class="text-slate-500" />
+              <span v-if="isCollapsed && pendingTasks" class="absolute -top-1 -right-1 h-2 w-2 rounded-full"
+                :class="tasksSummary.overdue ? 'bg-red-500' : 'bg-sky-500'" />
+            </span>
+            <span v-show="!isCollapsed" class="truncate">{{ $t('calendar_tasks.title') }}</span>
+          </div>
+          <span v-show="!isCollapsed && pendingTasks" class="text-xs font-semibold text-white rounded-full px-1.5 py-0.5 shrink-0"
+            :class="tasksSummary.overdue ? 'bg-red-500' : 'bg-sky-500'"
+            :title="$t('calendar_tasks.badge_title', { today: tasksSummary.today, overdue: tasksSummary.overdue })">
+            {{ pendingTasks }}
+          </span>
         </NuxtLink>
 
         <button

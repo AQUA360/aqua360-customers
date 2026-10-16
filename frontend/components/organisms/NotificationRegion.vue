@@ -154,6 +154,10 @@ const redirectNotification = async (result) => {
   };
   await $NotificationApiService.save(save_data);
   closeNotifications();
+  // Avís de tasques del dia: obre el calendari en aquella data
+  if (result.module === 'notification' && result.entity === 'calendar') {
+    return navigateTo('/calendar' + (result.object_id ? '?date=' + result.object_id : ''));
+  }
   if (result.object_id) {
     // For orders, open in lateral panel instead of edit page
     if (result.module === 'order' && result.entity === 'orders') {
