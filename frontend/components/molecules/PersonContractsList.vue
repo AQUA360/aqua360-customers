@@ -140,7 +140,7 @@ watch(() => props.personId, () => {
                         <span v-else class="font-medium text-slate-700">{{ item.token }}</span>
                     </div>
                     <div class="p-3">
-                        <button v-if="!props.isSubRegion" @click="showDetail('SupplyPointRegion', item.supply_point_id)"
+                        <button v-if="!props.isSubRegion && item.supply_point_default_id" @click="showDetail('SupplyPointRegion', item.supply_point_default_id)"
                             class="text-start text-sky-500 underline hover:text-sky-700 transition-colors">
                             {{ item.supply_point }}
                         </button>
