@@ -4,6 +4,7 @@
 ### FEAT
 #### CLAIMREQUEST (`claimrequest/tasks.py` — filtre per devolució de remesa SEPA a la cerca de pagaments per a gestions d'impagats)
     - `_build_claim_request_filters` accepta `payment_remittance_return_id`: limita els contractes, els pagaments i els recomptes als pagaments d'aquesta devolució SEPA. Es combina amb la resta de filtres (estats de pagament reclamables, explotació, pagaments ja en una gestió activa, etc.). Cal desplegar-lo junt amb el frontend.
+    - Amb aquest filtre, a més de les factures vençudes, també compten les factures confirmades amb el pagament retornat: després d'una devolució la factura torna a «Confirmada» i no passa a «Vençuda» fins a la data de venciment, de manera que una devolució recent no tenia pagaments reclamables. La cerca general sense devolució continua demanant factures vençudes.
 
 ## [15-10-2026]
 ### FEAT
