@@ -409,7 +409,17 @@ def _build_claim_request_filters(payload):
     annotation_filters &= Q(invoices__payments__status__in=payment_statuses)
 
     expired_status_token = ConfigProject.objects.get(token='invoice_status_expired_token').value
-    annotation_filters &= Q(invoices__status=InvoiceStatus.objects.get(token=expired_status_token))
+    invoice_status_filter = Q(invoices__status__token=expired_status_token)
+    if remittance_return_payment_ids is not None:
+        # Des d'una devolució SEPA també es poden reclamar els pagaments retornats
+        # encara que la factura no hagi vençut (continua confirmada fins a la data de venciment)
+        confirmed_status_token = ConfigProject.objects.get(token='invoice_status_confirmed_token').value
+        returned_status_token = ConfigProject.objects.get(token='payment_status_returned_token').value
+        invoice_status_filter |= Q(
+            invoices__status__token=confirmed_status_token,
+            invoices__payments__status__token=returned_status_token,
+        )
+    annotation_filters &= invoice_status_filter
 
     if date_start and date_start != "":
         annotation_filters &= Q(invoices__payments__payment_date__gte=date_start)
