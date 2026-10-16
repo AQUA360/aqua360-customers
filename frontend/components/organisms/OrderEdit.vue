@@ -1020,7 +1020,7 @@ const onIdLostFocus = async () => {
         'left-0 md:right-0 md:left-auto': true,
         'border-l-0 md:border-l md:border-gray-100': true,
         'translate-x-0': showRegion, 
-        '-translate-x-full md:translate-x-[2000px]': !showRegion, 
+        '-translate-x-full md:translate-x-full': !showRegion, 
         'w-screen max-w-full md:w-[95%]': isSubRegionOpen, 
         'w-screen max-w-full md:w-1/2': !isSubRegionOpen 
       }"

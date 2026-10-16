@@ -196,7 +196,7 @@ watch(
             class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
             :class="{
                 'translate-x-0': showRegion,
-                'translate-x-[2000px]': !showRegion,
+                'translate-x-full': !showRegion,
                 'w-[95%]': isSubRegionOpen || showRegionDetailComponent==='invoiceEdit',
                 'w-1/2': !isSubRegionOpen && showRegionDetailComponent!='invoiceEdit'
             }">

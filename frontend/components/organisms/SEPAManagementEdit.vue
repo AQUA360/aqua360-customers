@@ -1342,7 +1342,7 @@ watch(selectedContracts, () => {
       :style="{ height: `calc(100vh - ${footerHeight}px)` }"
       :class="{
         'translate-x-0': showRegionDetailComponent,
-        'translate-x-[2000px]': !showRegionDetailComponent,
+        'translate-x-full': !showRegionDetailComponent,
         'w-[95%]': isSubRegionOpen,
         'w-[50%]': !isSubRegionOpen
       }">

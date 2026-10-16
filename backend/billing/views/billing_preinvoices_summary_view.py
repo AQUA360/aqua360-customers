@@ -96,8 +96,8 @@ class BillingPreInvoicesSummaryViewSet(views.APIView):
             },{
                 'line_items': line_items_dict,
                 'taxes': tax_dict,
-                'total_billing': highlighted(str(sum(invoice.total_final for invoice in invoices))+' €'),
                 'subtotal_billing': highlighted(str(sum(invoice.subtotal_final for invoice in invoices))+' €'),
+                'total_billing': highlighted(str(sum(invoice.total_final for invoice in invoices))+' €'),
             },{
                 'bonifications': bonifications_dict,
                 'variables': variables_dict,

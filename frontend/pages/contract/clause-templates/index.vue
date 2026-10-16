@@ -196,7 +196,7 @@ const truncate = (text, length = 120) => {
 
   <div role="region" id="right_page"
     class="fixed h-full overflow-y-auto border-l border-gray-100 top-0 right-0 w-1/2 transition-all duration-500 ease py-2 text-base bg-white"
-    :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion }">
+    :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion }">
     <div id="region_nav" class="mb-3 px-3">
       <button @click="toggleRegion(false)"
         class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300"><Icon name="fa6-solid:angles-right"
