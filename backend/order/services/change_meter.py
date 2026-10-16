@@ -187,4 +187,7 @@ class OrderChangeMeterValidationService:
         self.order.change_meter_applied_by = user
         self.order.save(update_fields=['change_meter_applied_at', 'change_meter_applied_by'])
 
+        from notification.utils.auto_tasks import sync_change_meter_task
+        sync_change_meter_task(self.order, user)
+
         return {'applied': True, 'data': data}

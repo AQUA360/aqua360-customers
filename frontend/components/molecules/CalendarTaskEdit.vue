@@ -3,11 +3,34 @@ import { useI18n } from 'vue-i18n';
 import H1Region from '~/components/atoms/H1Region.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { formatDate } from '~/utils/date';
-import Date from '~/components/atoms/Date.vue';
 import ButtonOutline from '../atoms/ButtonOutline.vue';
+import { RECURRENCE_FREQUENCIES, WEEKDAY_KEYS } from '~/utils/calendarTasks';
+import { useToast } from 'vue-toastification';
 
-const { $CalendarTaskApiService, $UserApiService } = useNuxtApp();
+const { $CalendarTaskApiService, $UserApiService, $NotificationApiService } = useNuxtApp();
 const { t } = useI18n();
+const toast = useToast();
+const sidebarStore = useSidebarStore();
+
+/**
+ * Una tasca per a avui s'avisa al backend just en desar-la: es refresca la
+ * campana i el comptador de tasques del menú perquè es vegi al moment.
+ */
+const refreshNotifications = async (task) => {
+  sidebarStore.tasksChanged();
+  // Mateixa condició que el backend (notify_due_today): d'avui, pendent i no avisada.
+  // Si ha canviat de dia o s'ha tornat a obrir, el backend esborra l'avís anterior.
+  const today = new Date().toLocaleDateString('sv-SE'); // 'YYYY-MM-DD' en horari local
+  if (task?.set_date !== today || task?.task_done) return;
+  const resetByBackend = task.set_date !== originalDate.value || originalDone.value;
+  if (originalNotifiedAt.value && !resetByBackend) return;
+  try {
+    sidebarStore.newNotificationsFound(await $NotificationApiService.checkNewNotifications());
+  } catch (e) {
+    // el comptador és informatiu
+  }
+  toast.info(t('calendar_tasks.notified_today', { name: task.name }));
+};
 
 const props = defineProps({
   current_date: String,
@@ -41,6 +64,47 @@ const selectedUser = ref(null);
 const users = ref([]);
 
 const selectedDate = ref(props.current_date? props.current_date : null);
+const time = ref('');
+
+// Recurrència: en una tasca nova o puntual, crea la sèrie; en una ocurrència
+// d'una sèrie, només s'aplica si es marca «aplicar a les següents».
+const isRecurring = ref(false);
+const frequency = ref('weekly');
+const interval = ref(1);
+const weekdays = ref([]);
+const endDate = ref(null);
+const belongsToSeries = ref(false);
+const applyToSeries = ref(false);
+const originalRule = ref(null);
+const originalNotifiedAt = ref(null);
+const originalDate = ref(null);
+const originalDone = ref(false);
+
+const resetRecurrenceForm = () => {
+  isRecurring.value = false;
+  frequency.value = 'weekly';
+  interval.value = 1;
+  weekdays.value = [];
+  endDate.value = null;
+  originalRule.value = null;
+  belongsToSeries.value = false;
+  applyToSeries.value = false;
+};
+
+const toggleWeekday = (index) => {
+  weekdays.value = weekdays.value.includes(index)
+    ? weekdays.value.filter(day => day !== index)
+    : [...weekdays.value, index].sort();
+};
+
+const currentRule = () => ({
+  frequency: frequency.value,
+  interval: Number(interval.value) || 1,
+  weekdays: frequency.value === 'weekly' ? weekdays.value : [],
+  end_date: endDate.value || null,
+});
+
+const ruleChanged = () => JSON.stringify(currentRule()) !== JSON.stringify(originalRule.value);
 
 const getUsers = async () => {
   const response = await $UserApiService.getAll();
@@ -77,6 +141,21 @@ const fetchData = async () => {
       ? { code: detail.user.id, label: detail.user.username }
       : null;
     selectedDate.value = detail.set_date;
+    time.value = detail.time ? detail.time.slice(0, 5) : '';
+    originalNotifiedAt.value = detail.notified_at;
+    originalDate.value = detail.set_date;
+    originalDone.value = detail.task_done;
+    resetRecurrenceForm();
+    belongsToSeries.value = !!detail.recurrence;
+    isRecurring.value = !!detail.recurrence;
+    applyToSeries.value = false;
+    if (detail.recurrence) {
+      frequency.value = detail.recurrence.frequency;
+      interval.value = detail.recurrence.interval;
+      weekdays.value = detail.recurrence.weekdays || [];
+      endDate.value = detail.recurrence.end_date;
+      originalRule.value = currentRule();
+    }
   } catch (err) {
     console.error('Error obtenint les dades:', err);
     error.value = err;
@@ -108,12 +187,22 @@ const save = async () => {
     name: name.value,
     description: description.value,
     set_date: selectedDate.value,
+    time: time.value || null,
     all_users: all_users.value,
     user_id: all_users.value ? null : (selectedUser.value ? selectedUser.value.code : null),
   };
 
+  if (!belongsToSeries.value) {
+    if (isRecurring.value) data.recurrence_rule = currentRule();
+  } else if (applyToSeries.value) {
+    data.apply_to_series = true;
+    if (!isRecurring.value) data.recurrence_rule = null;   // atura la sèrie després d'aquesta
+    else if (ruleChanged()) data.recurrence_rule = currentRule();
+  }
+
   let response = await $CalendarTaskApiService.save(data);
   if (response){
+    refreshNotifications(response);
     if (props.object_id && props.object_service) {
       let object_save = {
         id: props.object_id,
@@ -129,6 +218,7 @@ const save = async () => {
 const isValid = () => {
   if (name.value == '') return false;
   if (!all_users.value && !selectedUser.value) return false;
+  if (!selectedDate.value) return false;
   /* if (description.value == '') return false; */
   return true;
 }
@@ -147,6 +237,11 @@ watch(() => props.id, (newId, oldId) => {
     description.value = '';
     all_users.value = true;
     selectedUser.value = null;
+    time.value = '';
+    originalNotifiedAt.value = null;
+    originalDate.value = null;
+    originalDone.value = false;
+    resetRecurrenceForm();
   }
 });
 
@@ -197,6 +292,9 @@ const handleColorChanged = () => {
       <div v-if="!props.current_date" class="my-2 col-span-2 w-[60%]">
         <AtomsInputDate v-model="selectedDate" :label="t('common.date')" class="mb-2" :required="true" />
       </div>
+      <div class="mb-2 col-span-2 w-[30%]">
+        <AtomsInputTime v-model="time" :label="t('calendar_tasks.time')" />
+      </div>
       <div v-if="!all_users" class="mb-4 col-span-2 w-[60%]">
         <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('dashboard.assigned_user') }}</label>
         <v-select class="block w-full" :class="{ 'invalid': attemptedSave && !selectedUser }" :model-value="selectedUser"
@@ -211,6 +309,44 @@ const handleColorChanged = () => {
         <AtomsColorPicker :entity="'notification/calendar-task'" :id="id" :code="color" @changed="handleColorChanged" />
       </span>
     </div>
+    <div class="mb-4 rounded-md border border-slate-200 p-3">
+      <label class="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">
+        <input v-model="isRecurring" type="checkbox" />
+        <Icon name="fa6-solid:repeat" class="text-slate-400" />
+        {{ t('calendar_tasks.recurring_task') }}
+      </label>
+
+      <div v-if="isRecurring" class="mt-3 space-y-3">
+        <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+          <span>{{ t('calendar_tasks.repeat_every') }}</span>
+          <input v-model="interval" type="number" min="1" class="input w-16" />
+          <select v-model="frequency" class="input w-40">
+            <option v-for="option in RECURRENCE_FREQUENCIES" :key="option" :value="option">
+              {{ t(`calendar_tasks.frequencies.${option}`) }}
+            </option>
+          </select>
+        </div>
+        <div v-if="frequency === 'weekly'" class="flex flex-wrap gap-1">
+          <button v-for="(weekday, index) in WEEKDAY_KEYS" :key="weekday" type="button"
+            class="px-2 py-1 text-xs rounded-md border"
+            :class="weekdays.includes(index) ? 'border-sky-500 bg-sky-50 text-sky-700' : 'border-slate-200 text-slate-600'"
+            :title="t(`date.${weekday}`)" @click="toggleWeekday(index)">
+            {{ t(`date.weekdays_short.${weekday}`) }}
+          </button>
+          <span v-if="!weekdays.length" class="text-xs text-slate-400 self-center ml-1">{{ t('calendar_tasks.same_weekday') }}</span>
+        </div>
+        <div class="w-[60%]">
+          <AtomsInputDate v-model="endDate" :label="t('calendar_tasks.end_date')" />
+        </div>
+      </div>
+
+      <label v-if="belongsToSeries" class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer mt-3">
+        <input v-model="applyToSeries" type="checkbox" />
+        {{ t('calendar_tasks.apply_to_series') }}
+      </label>
+      <p v-if="belongsToSeries && !applyToSeries" class="text-xs text-slate-400 mt-1">{{ t('calendar_tasks.only_this_occurrence') }}</p>
+    </div>
+
     <div>
       <div class="mb-4">
         <AtomsInputTextarea :autosave="false" @update:text="handleDescriptionTextareaUpdate" :text="description"
