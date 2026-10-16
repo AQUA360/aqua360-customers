@@ -21,6 +21,7 @@ import FilterSelect from '~/components/atoms/FilterSelect.vue';
 const { t } = useI18n();
 const toast = useToast();
 const objectPermissions = ref(null);
+const claimRequestPermissions = ref(null);
 
 const props = defineProps({
   remittance_id: {
@@ -34,7 +35,7 @@ const emit = defineEmits(['remittance-updated', 'close-subregion']);
 
 const route = useRoute();
 const router = useRouter();
-const { $PaymentApiService, $SepaRemittanceReturnApiService, $DocumentManagerApiService, $ConfiglistApiService } = useNuxtApp();
+const { $PaymentApiService, $SepaRemittanceReturnApiService, $DocumentManagerApiService, $ConfiglistApiService, $ClaimRequestApiService } = useNuxtApp();
 const remittanceDetails = ref(null);
 const searchInput = ref('');
 const statuses = ref([])
@@ -246,6 +247,7 @@ onMounted(async () => {
   }
   getRemittanceDetails();
   getFilterStatus();
+  claimRequestPermissions.value = await checkPermission($ClaimRequestApiService);
   if (route.query?.action == 'showDetail') {
     showDetail(route.query.component, route.query.id)
     router.replace({
@@ -298,6 +300,12 @@ const showDetail = async (component, id) => {
             <FieldDetail :label="$t('common.return_date')"
               :value="remittanceDetails.return_date ? formatDate(remittanceDetails.return_date) : '-'" class="mb-0" />
             <div class="flex gap-2 mt-2 whitespace-nowrap justify-end">
+              <NuxtLink v-if="claimRequestPermissions?.can_change && remittanceDetails.total_payments > 0"
+                :to="{ path: '/billing/claim-managements/add', query: { sepa_return_id: props.remittance_id, sepa_return_token: remittanceDetails.token } }"
+                class="button-primary flex items-center gap-2">
+                <Icon name="fa6-solid:plus" class="w-4 h-4" />
+                {{ $t('claim_block.new_claim_request') }}
+              </NuxtLink>
               <button v-if="remittanceDetails.document" @click="downloadDocument" class="button-default"
                 :title="$t('billing_block.download_xml_document')">
                 <Icon name="fa6-solid:download" class="w-4 h-4" />

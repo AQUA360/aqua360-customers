@@ -1,5 +1,12 @@
 # Changelog Frontend
 
+## [16-10-2026]
+
+### FEAT
+#### BILLING (`SEPARemittanceReturnDetail.vue`, `ClaimRequestEdit.vue` — gestió d'impagats des d'una devolució SEPA)
+    - Nou botó «Nova gestió d'impagats» al detall d'una devolució SEPA (només amb permís de canvi sobre gestions d'impagats). Obre l'assistent de nova gestió amb la devolució preseleccionada.
+    - L'assistent mostra la devolució com a filtre (es pot treure), la tracta com a criteri de cerca vàlid i llança la cerca automàticament en obrir-se, de manera que només surten els pagaments d'aquesta devolució encara pendents de reclamar. Cal desplegar-lo junt amb el backend.
+
 ## [15-10-2026]
 
 ### FEAT
