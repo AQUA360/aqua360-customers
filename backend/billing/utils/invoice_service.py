@@ -1184,7 +1184,7 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
     return invoice
 
 
-def invoice_generate_return_bail(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None):
+def invoice_generate_return_bail(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None, bails=None):
     # print("creating invoice from contract")
     # print(invoice_type_token)
     try:
@@ -1192,9 +1192,9 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
         if not contract:
             raise Exception("Contract not found")
         
-        
-        unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
-        bails = Bail.objects.filter(contract=contract, is_active=True, status__token=unreturned_bail_token)
+        if bails is None:
+            unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
+            bails = Bail.objects.filter(contract=contract, is_active=True, status__token=unreturned_bail_token)
         if not bails:
             return None
         

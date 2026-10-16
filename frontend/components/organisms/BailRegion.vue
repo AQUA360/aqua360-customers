@@ -38,6 +38,7 @@ const SubRegion = ref(props.isSubRegionOpen);
 const objectPermissions = ref(null);
 const status_returned_token = ref(null);
 const status_pending_token = ref(null);
+const status_unreturned_token = ref(null);
 
 const getPermissions = async () => {
   error.value = null;
@@ -58,6 +59,7 @@ const getData = async (load = true) => {
   try {
     status_returned_token.value = await $ConfigProjectApiService.get('bail_status_returned_token');
     status_pending_token.value = await $ConfigProjectApiService.get('bail_status_pending_token');
+    status_unreturned_token.value = await $ConfigProjectApiService.get('bail_status_unreturned_token');
     const result = await $BailApiService.getDetail(props.id);
     data.value = result;
 
@@ -65,6 +67,21 @@ const getData = async (load = true) => {
     console.error(err);
   } finally {
     pending.value = false;
+  }
+}
+
+const returnBail = async () => {
+  if (!confirm(t("confirmation_text_block.confirm_return_bail"))) return
+  try {
+    let save_data = {
+      bail_ids: [props.id]
+    }
+    await $BailApiService.returnImmediately(save_data);
+    await getData(false);
+    emit('changed');
+
+  } catch (err) {
+    console.error(err);
   }
 }
 
@@ -183,6 +200,8 @@ const setActiveTab = (tab) => {
         <H1Region class="mb-3">{{ $t('bail') }}</H1Region>
         <div class="relative">
           <OptionsDropdown v-if="objectPermissions?.can_change">
+            <DropdownOption v-if="data.status?.token == status_unreturned_token"
+              :name="t('billing_block.return_bail')" @click="returnBail()"/>
             <DropdownOption :disabled="data.status.token != status_pending_token"
               :name="t('billing_block.appropiate_bail')" @click="liquidateBail()"/>
             <DropdownOption :disabled="data.status.token != status_pending_token"
