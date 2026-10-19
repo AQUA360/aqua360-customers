@@ -196,7 +196,13 @@ def get_sepa_payments_and_batches(request):
         filters &= Q(invoice__billing__id=billing)
         
     if contracts:
-        filters &= (Q(invoice__contract__id__in=contracts) | Q(commitment_deposit__contract__id__in=contracts))
+        # Els pagaments sense factura ni dipòsit (p. ex. la devolució del saldo
+        # d'un contracte) van lligats directament al contracte.
+        filters &= (
+            Q(invoice__contract__id__in=contracts) |
+            Q(commitment_deposit__contract__id__in=contracts) |
+            Q(invoice__isnull=True, commitment_deposit__isnull=True, contract__id__in=contracts)
+        )
         
     if invoices:
         filters &= (Q(invoice__id__in=invoices) | Q(commitment_deposit__invoices__id__in=invoices))
