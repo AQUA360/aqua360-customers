@@ -337,8 +337,10 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
         initg_pty = ET.SubElement(grpHdr, "InitgPty")
         ET.SubElement(initg_pty, "Nm").text = company.alias
         initg_id = ET.SubElement(initg_pty, "Id")
-        initg_prvt_id = ET.SubElement(initg_id, "PrvtId")
-        initg_other = ET.SubElement(initg_prvt_id, "Othr")
+        # A les transferències l'ordenant és l'empresa: s'identifica com a
+        # organització (OrgId), no com a persona física.
+        initg_party_id = ET.SubElement(initg_id, "PrvtId" if not is_return else "OrgId")
+        initg_other = ET.SubElement(initg_party_id, "Othr")
         ET.SubElement(initg_other, "Id").text = bank.sepa_cred_identifier
         initg_schmenm =ET.SubElement(initg_other, "SchmeNm")
         ET.SubElement(initg_schmenm, "Prtry").text = "SEPA"
@@ -357,8 +359,11 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
         pmtTpInf = ET.SubElement(pmtInf, "PmtTpInf")
         svcLvl = ET.SubElement(pmtTpInf, "SvcLvl")
         ET.SubElement(svcLvl, "Cd").text = "SEPA"  
-        lclinstrm = ET.SubElement(pmtTpInf, "LclInstrm")
-        ET.SubElement(lclinstrm, "Cd").text = "CORE" if not is_return else "DIVI"
+        # Les transferències SEPA no porten LclInstrm: "DIVI" és un codi de
+        # propòsit (dividends) i no un instrument local.
+        if not is_return:
+            lclinstrm = ET.SubElement(pmtTpInf, "LclInstrm")
+            ET.SubElement(lclinstrm, "Cd").text = "CORE"
         # ET.SubElement(pmtTpInf, "SeqTp").text = "OOFF" if is_unique else "RCUR"
         if not is_return:
             ET.SubElement(pmtTpInf, "SeqTp").text = "RCUR"
@@ -400,8 +405,8 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
             ET.SubElement(dbtr, "Nm").text = company.alias
             
             dbtr_id = ET.SubElement(dbtr, "Id")
-            prvt_id = ET.SubElement(dbtr_id, "PrvtId")
-            prvt_other = ET.SubElement(prvt_id, "Othr")
+            org_id = ET.SubElement(dbtr_id, "OrgId")
+            prvt_other = ET.SubElement(org_id, "Othr")
             ET.SubElement(prvt_other, "Id").text = company.vat
             schmeNm = ET.SubElement(prvt_other, "SchmeNm")
             ET.SubElement(schmeNm, "Prtry").text = "SEPA"
