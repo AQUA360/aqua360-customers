@@ -633,7 +633,6 @@ class ContractSerializer(serializers.ModelSerializer):
         
         if 'is_pinned' in validated_data:
             print("is_pinned")
-            print(validated_data.get('is_pinned'))
             pinned_contract = Contract.objects.filter(user_pinned=user).first()
             if pinned_contract:
                 if pinned_contract.id == instance.id:

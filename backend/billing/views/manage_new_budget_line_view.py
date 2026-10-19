@@ -43,7 +43,6 @@ class ManageNewBudgetLineView(APIView):
         
         print("contract: ", contract)
         print("connection: ", connection)
-        print("line_item_type: ", line_item_type)
         
         if contract:
             line_items = create_from_lineitemtype(contract, line_item_type, None, None, None)

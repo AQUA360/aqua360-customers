@@ -53,7 +53,6 @@ class LineItemTypeSaveSerializer(TranslatableFieldMixin, serializers.ModelSerial
         fields = '__all__'
 
     def create(self, validated_data):
-        print(validated_data)
         price_variable = validated_data.pop('price_variable_id', None)
         price_interval = validated_data.pop('price_interval_id', None)
         billing_period = validated_data.pop('billing_period_token', None)
@@ -94,7 +93,6 @@ class LineItemTypeSaveSerializer(TranslatableFieldMixin, serializers.ModelSerial
     
     def update(self, instance, validated_data):
         print('on update')
-        print(validated_data)
         
         price_variable_id = validated_data.pop('price_variable_id', None)
         price_interval_id = validated_data.pop('price_interval_id', None)
@@ -198,8 +196,6 @@ class LineItemTypeSaveSerializer(TranslatableFieldMixin, serializers.ModelSerial
         if validated_data.get('name'):
             if not instance.name or instance.name != validated_data.get('name'):
                 print("instance name: ", instance.name)
-                print("validated name: ", validated_data.get('name'))
-                print("instance name != validated name: ", instance.name != validated_data.get('name'))
                 create_price_rate_log(
                     current_price_rate(),
                     'name',

@@ -526,7 +526,6 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         cluster_id = validated_data.pop('cluster_id', None)
         
         validated_data['cadastral'] = property_cadastral
-        print(f"address_data: {address_data}")
         if address_data:
             print(f"address_data found")
             street = Street.objects.get(id=address_data['street']['street_id'])
@@ -562,7 +561,6 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 print(f"Error getting or creating address: {e}")
                 address = Address.objects.filter(street=street, street_number=street_number, **address_data).first()
             
-            print(f"address: {address}")
             
         if connection_id:
             connection = Connection.objects.get(id = connection_id)

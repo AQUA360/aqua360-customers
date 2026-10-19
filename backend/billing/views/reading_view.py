@@ -726,14 +726,11 @@ class ReadingViewSet(viewsets.ModelViewSet):
                 reading_value__isnull=False,
                 reading_date__lt=reading_date_date).exclude(is_control=True).order_by('-reading_date').first()
           
-      print("previous_reading", previous_reading)
-      print("supply_point", supply_point)
       print("meter", meter)
       print("reading_date", reading_date_date)
       
       allow_by_period = check_billing_period(reading_date_date, supply_point, meter, contract, previous_reading)
       
-      print("allow_by_period", allow_by_period)
       
       return Response({'allow': allow_by_period}, status=status.HTTP_200_OK)
     

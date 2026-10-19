@@ -240,7 +240,6 @@ def generate_xml(payment, invoice_inst=None):
             person = contract.holder
         else:
             person = find_person_for_invoice_customer(invoice)
-    print("person: ", person)
     direct_debit_token = ConfigProject.objects.get(token='direct_debit_token').value
     bank_transfer_token = ConfigProject.objects.get(token='bank_transfer_token').value
     cash_token = ConfigProject.objects.get(token='cash_token').value
@@ -258,8 +257,6 @@ def generate_xml(payment, invoice_inst=None):
         taxes_base.update({'0.00': total_left})
         taxes.update({'0.00': 0.00})
     
-    print(invoice)
-    print(invoice.serie_final)
     invoices = None
     residenceTypeCode = None
     #TODO: GET CURRENT USED EXPLOITATION
@@ -295,7 +292,6 @@ def generate_xml(payment, invoice_inst=None):
     lang = settings.LANGUAGE_CODE
     country_company = Country.objects.get(iso_code=main_company.address.country.iso_code)
     print("gotten country_company")
-    print(invoice.country_final)
     country = Country.objects.get(iso_code=invoice.country_final)
     if country.iso_code == 'ES':
         residenceTypeCode = 'R'

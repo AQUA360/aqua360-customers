@@ -460,7 +460,6 @@ def generate_wallet_bank_summary(request, black_fill=None, white_bold_font=None,
                                                 Q(created_at__range=(start_date.date(), end_date.date()), invoice__isnull=True, commitment_deposit__isnull=True)
                                             )
             print("check 2")
-            print(payments)
             if exploitation:
                 payments = payments.filter(
                     Q(invoice__exploitation=exploitation) | 
@@ -470,13 +469,11 @@ def generate_wallet_bank_summary(request, black_fill=None, white_bold_font=None,
             multi_q = payment_multi_filter_q(**get_multi_ids(request.data))
             if multi_q:
                 payments = payments.filter(multi_q).distinct()
-            print("payments before sorting", payments)
             payments = sorted(payments, key=lambda x: x.payment_date if x.payment_date else datetime.date.max)
             print("check 3")
         else:
             raise Exception("Error obtaining payments for report wallet summary")
         print("got payments")
-        print(payments)
         bank_groups = {}
         #TODO: LATER ADD DIFFERENT CHECK DEPENDING ON COUNTRY (IF NOT ES, CODE COULD BE MORE/LESS THAN 4 DIGITS)
         total_payments_progress = len(payments)
@@ -675,7 +672,7 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
                 if remittance:
                     remittance_token = remittance.token
             except Exception as e:
-                print(f"Error getting remittance {payment.token}: {e}")
+                print(f"Error getting remittance for payment id {payment.id}: {e}")
                 pass
             
             if payment.payment_bank and len(payment.payment_bank) >= 8:
@@ -787,7 +784,6 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
                                                 Q(paid_at__range=(start_date.date(), end_date.date()))
                                             )
 
-            print("payments", payments)
 
             if exploitation:
                 payments = payments.filter(Q(invoice__exploitation=exploitation) | Q(commitment_deposit__invoices__exploitation=exploitation) | Q(invoice__isnull=True, commitment_deposit__isnull=True))

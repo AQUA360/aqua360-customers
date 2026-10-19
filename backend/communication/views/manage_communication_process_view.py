@@ -910,9 +910,6 @@ def filter_by_person(filter_data, group_same):
                 persons_dict[unique_key] = person_data
         
     elif address_type == 'contract':
-        print("filtered persons")
-        for person in filtered_persons:
-            print(person)
         contract_status_token = get_config_token('contract_active_token')
         #GET ONLY HOLDERS
         contracts = Contract.objects.filter( Q(holder__in=filtered_persons) ).filter(

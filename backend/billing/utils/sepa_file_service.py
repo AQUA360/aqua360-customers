@@ -509,7 +509,6 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
                 try:
                     schwifty_bank = SchwiftyIBAN(payment_bank_final)
                     bank_swift = str(schwifty_bank.bic)
-                    print("bank_swift from schwifty: ", bank_swift)
                 except Exception:
                     bank_swift = None
 
@@ -591,7 +590,6 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
                 if not sig_date_str:
                     # if payment_send_date is not a date but a string, try to convert it to a date
                     if isinstance(payment_send_date, str):
-                        print("payment_send_date is a string: ", payment_send_date)
                         try:
                             payment_send_date = datetime.strptime(payment_send_date, "%Y-%m-%d")
                         except:

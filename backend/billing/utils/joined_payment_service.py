@@ -72,13 +72,11 @@ def get_pending_client_data(data):
         ).exclude(joined_payments__status__token__in=joined_payment_status_tokens).distinct()
     elif person_id:
         person = Person.objects.get(id=person_id)
-        print("person: ", person)
         person_name_variations = [
             f"{person.name} {person.surname if person.surname else ''}",
             f"{person.name}{person.surname if person.surname else ''}",
             f"{person.name}{person.surname}" if person.surname else person.name,
         ]
-        print("person_name_variations: ", person_name_variations)
         payments = Payment.objects.filter(
             Q(person__id=person_id) | 
             Q(invoice__customer_token_final=person.token, invoice__customer_final__in=person_name_variations) |

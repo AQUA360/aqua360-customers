@@ -28,7 +28,6 @@ class ManageDeliquencyViewSet(APIView):
         print("date_end", date_end)
         print("sel_type", sel_type)
         print("is_fetching", is_fetching)
-        print("contract_ids", contract_ids)
         
         payment_status_paid = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
         payment_status_endowment = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_endowment_token').value)
@@ -89,9 +88,6 @@ class ManageDeliquencyViewSet(APIView):
                 print("fetching")
                 filters = Q()
                 contracts = Contract.objects.none()
-                print("status irrecoverable", payment_status_irrecoverable)
-                print("status paid", payment_status_paid)
-                print("status endowment", payment_status_endowment)
                 
                 #excluded_statuses = [payment_status_irrecoverable, payment_status_paid, payment_status_endowment]
                 #filters &= ~Q(payments__status__in=[payment_status_irrecoverable, payment_status_paid, payment_status_endowment])
@@ -111,7 +107,6 @@ class ManageDeliquencyViewSet(APIView):
                     invoices = Invoice.objects.filter(filters).distinct()
                     #get distinct contract from invoices
                     contract_ids = invoices.values_list('contract', flat=True)
-                    print("contract_ids form invoices", contract_ids)
                     contracts = Contract.objects.filter(id__in=contract_ids)
                     
                 if sel_type == 'TERMINATIONDATE':
@@ -123,7 +118,6 @@ class ManageDeliquencyViewSet(APIView):
                     #get distinct contract from terminations
                     contract_ids = terminations.values_list('contract', flat=True)
                     contracts = Contract.objects.filter(id__in=contract_ids)
-                    print("contract_ids from terminations", contract_ids)
                     
                 if sel_type == 'SPCUT':
                     supply_cut_active = ConfigProject.objects.get(token="supply_cut_status_active_token").value

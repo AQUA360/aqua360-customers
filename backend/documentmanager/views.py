@@ -92,7 +92,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def delete_documents(self, request):
         print("deleting documents")
-        print(request.data)
         
         doc_ids = request.data['doc_ids']
         print(doc_ids)

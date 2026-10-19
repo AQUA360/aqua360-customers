@@ -80,8 +80,6 @@ def build_payment_proof_context(payments, request, payment_date=None, observatio
     if not payments:
         raise ValueError('At least one payment is required')
     
-    print("payments: ", payments)
-    print("payment_date: ", payment_date)
     print("observation: ", observation)
 
     first_payment = payments[0]

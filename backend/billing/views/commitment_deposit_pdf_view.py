@@ -79,7 +79,6 @@ class CommitmentDepositPDFDownloadViewSet(APIView):
         supply_point_address_complete = address_complete
     
     print("holder_address")
-    print(holder_address)
     
     exploitation = Exploitation.objects.filter(is_active=True).first()
     if not exploitation:

@@ -67,8 +67,6 @@ def generate_accounting_values_report(request, black_fill=None, white_bold_font=
     print("type_id: ", type_id)
     print("name: ", name)
     print("id: ", id)
-    print("billing_ids: ", billing_ids)
-    print("date_range: ", date_range)
     has_serie_range = has_serie_final_range(request.data)
     if not billing_ids and not date_range and not has_serie_range:
         return Response({"error": "billing id, date range or serie_final range is required."}, status=status.HTTP_400_BAD_REQUEST), None, None
@@ -692,7 +690,6 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
     
     #PADRO DE FACTURACIÓ
     
-    print("request: ", request.data)
     id = request.data.get('id', None)
     date_range = request.data.get('date_range', None)
     billing_ids = get_billing_ids(request.data)
@@ -706,8 +703,6 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
     generate_object = request.data.get('generate_object', True)
 
     print("id: ", id)
-    print("billing_ids: ", billing_ids)
-    print("date_range: ", date_range)
     print("serie_final_from: ", serie_final_from)
     print("serie_final_to: ", serie_final_to)
     print("prefix: ", prefix)

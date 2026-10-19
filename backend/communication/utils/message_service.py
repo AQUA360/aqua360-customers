@@ -147,8 +147,6 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
             persons_map = {
                 str(p.id): p for p in Person.objects.filter(id__in=person_ids)
             }
-            print(f"persons_map: {persons_map}")
-            print(f"split_person_groups: {split_person_groups}")
 
             serialized_persons = []
             for group in split_person_groups:
@@ -176,7 +174,6 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
             
             for idx, person in enumerate(serialized_persons):
                 person_instance = persons_map.get(str(person['id']))
-                print(f"person_instance: {person_instance}")
                 if not person_instance:
                     continue
                 

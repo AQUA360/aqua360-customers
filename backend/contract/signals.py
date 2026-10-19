@@ -40,7 +40,6 @@ def contract_request_created(sender, instance, created, **kwargs):
                 print("price rate", price_rate)
                 print("supply points", instance.supply_points.all())
                 for supply_point in instance.supply_points.all():
-                    print("supply point", supply_point)
                     contract_price_rate = ContractPriceRate.objects.create(
                         token=instance.token,
                             supply_point=supply_point,
@@ -159,7 +158,6 @@ def deactivate_bonification_type(sender, instance, **kwargs):
             for bonification in bonifications:
                 bonification.is_active = False
                 bonification.save()
-                print(f"Deactivated bonification: {bonification}")
             
             print(instance.end_at)
             if not instance.end_at or instance.end_at == None:

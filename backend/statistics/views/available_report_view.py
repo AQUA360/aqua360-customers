@@ -43,7 +43,6 @@ class AvailableReportViewSet(viewsets.ModelViewSet):
         # Combinem query_params i request.data preservant valors múltiples
         payload = request_payload_as_dict(request)
         
-        print("Final Payload:", payload)
         print("--- DEBUG TRIGGER END ---")
         
         try:

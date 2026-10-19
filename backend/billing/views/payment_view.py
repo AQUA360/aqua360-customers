@@ -557,18 +557,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         print(e)
                 elif payment.invoice and (payment.invoice.connection_request or payment.invoice.contract_request) and pay_method.token == 'BALANCE':
                     person = payment.invoice.connection_request.person if payment.invoice.connection_request else payment.invoice.contract_request.person if payment.invoice.contract_request else None
-                    print("person: ", person)
                     if person and person.piggy_bank:
-                        print("piggy_bank: ", person.piggy_bank)
                         try:
-                            print("piggy_bank: ", person.piggy_bank)
                             piggy_bank = person.piggy_bank
                             piggy_bank.amount = float(piggy_bank.amount) - float(amount)
-                            print("piggy_bank.amount: ", piggy_bank.amount)
                             if piggy_bank.amount < 0:
                                 piggy_bank.amount = 0
                             piggy_bank.save()
-                            print("piggy_bank saved: ", piggy_bank)
                             PersonPiggyBankMovement.objects.create(
                                 token=generate_token(PersonPiggyBankMovement),
                                 person_piggy_bank=piggy_bank,

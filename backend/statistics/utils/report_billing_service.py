@@ -2088,7 +2088,6 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
                 line_item_types = LineItemType.objects.filter(line_items__product=product).distinct()
                 
                 for line_item_type in line_item_types:
-                    print(line_item_type)
                     filtered_invoices = invoices.filter(line_items__line_item_type=line_item_type)
                     print(filtered_invoices.count())
                     

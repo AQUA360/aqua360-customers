@@ -327,7 +327,6 @@ class BillingBatchDocumentsView(views.APIView):
             if not billing_id:
                 return Response({"error": "Billing required."}, status=status.HTTP_400_BAD_REQUEST)
             
-            print(request.data)
             issue_date = request.data.get('issue_date') if 'issue_date' in request.data else None
             end_date = request.data.get('end_date') if 'end_date' in request.data else None
             send_at = request.data.get('send_date') if 'send_date' in request.data else None
