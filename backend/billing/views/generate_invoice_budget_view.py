@@ -128,12 +128,13 @@ class GenerateInvoiceBudgetView(APIView):
             logger.info(
                 "Termination %s invoice (is_budget=%s, user=%s): linked contract requests (id, bill_cut_reading, is_active) %s, "
                 "billed contract request=%s, bill_termination_requester=%s (requested %s), "
-                "payment_bank from dialog=%s, terminated contract payment bank=%s",
+                "dialog sent a bank=%s, it is the terminated contract's bank=%s",
                 contract_termination_request.id, is_budget, request.user.id,
                 list(contract_termination_request.contract_requests_termination_requests.values_list('id', 'bill_cut_reading', 'is_active')),
                 linked_contract_request.id if linked_contract_request else None,
                 bill_termination_requester, request.data.get('bill_termination_requester', False),
-                payment_bank, contract.payment.IBAN_id if contract and contract.payment else None,
+                payment_bank is not None,
+                payment_bank is not None and contract.payment is not None and str(payment_bank) == str(contract.payment.IBAN_id),
             )
 
             budget_type_token = ConfigProject.objects.get(token='invoice_type_budget_token').value

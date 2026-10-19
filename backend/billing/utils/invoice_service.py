@@ -2202,8 +2202,9 @@ def termination_payment_bank_for_contract_request(payment_bank, contract_request
     if payment_bank and request_bank_id and terminated_bank_id \
             and int(payment_bank) == terminated_bank_id and terminated_bank_id != request_bank_id:
         logger.warning(
-            "Termination %s billed to contract request %s: ignoring bank %s of the terminated contract, using %s",
-            contract_termination_id, contract_request.id, payment_bank, request_bank_id,
+            "Termination %s billed to contract request %s: ignoring the terminated contract's bank sent by the dialog, "
+            "using the contract request's one",
+            contract_termination_id, contract_request.id,
         )
         return None
     return payment_bank
@@ -2457,13 +2458,18 @@ def invoice_contract_termination_generate(
 
         payment_bank_instance = PersonBank.objects.get(id = payment_bank) if payment_bank else (payment_source.payment.IBAN if payment_source.payment and payment_source.payment.IBAN else None)
         payment_company_bank_instance = CompanyBank.objects.get(id = company_bank) if company_bank else (payment_source.payment.company_iban if payment_source.payment and payment_source.payment.company_iban else None)
+        # Sense valors de comptes al log: només d'on surt el compte que es cobra
+        if not payment_bank_instance:
+            bank_origin = None
+        elif payment_bank:
+            bank_origin = "dialog"
+        else:
+            bank_origin = "contract request" if payment_source is billing_entity else "contract"
         logger.info(
-            "Termination %s invoice (is_budget=%s): billed to %s, person=%s, payment bank=%s (from dialog=%s), company bank=%s",
+            "Termination %s invoice (is_budget=%s): billed to %s, person=%s, bank from %s, company bank=%s",
             contract_termination.id, is_budget,
             f"contract request {billing_entity.id}" if payment_source is billing_entity else f"contract {contract.id}",
-            person.id if person else None,
-            payment_bank_instance.id if payment_bank_instance else None, bool(payment_bank),
-            payment_company_bank_instance.id if payment_company_bank_instance else None,
+            person.id if person else None, bank_origin, payment_company_bank_instance is not None,
         )
 
         # year = datetime.datetime.now().year
