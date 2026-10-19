@@ -158,17 +158,15 @@ class SupplyCutSerializer(serializers.ModelSerializer):
             instance.save()
 
         if supply_points is not None:
-            # Supply points leaving the cut must recover the active state:
-            # before, only set() was done and they stayed cut forever.
-            removed = list(instance.supply_points.exclude(id__in=supply_points)) if not created else []
-            instance.supply_points.set(supply_points)
-            if removed:
-                supply_cut_service.restore_supply_points(
-                    instance.id,
-                    supply_points=removed,
-                    user=self._request_user(),
-                    observation=self.initial_data.get('observation') if hasattr(self, 'initial_data') else None,
-                )
+            if created:
+                instance.supply_points.set(supply_points)
+            else:
+                current_ids = set(instance.supply_points.values_list('id', flat=True))
+                new_ids = {int(value) for value in supply_points}
+                if new_ids != current_ids:
+                    raise serializers.ValidationError({
+                        'supply_points': "Els punts de subministrament no es poden modificar un cop creat el tall.",
+                    })
 
         observation = self.initial_data.get('observation') if hasattr(self, 'initial_data') else None
 

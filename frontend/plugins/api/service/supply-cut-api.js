@@ -120,9 +120,9 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
-    const startCut = async (id, observation = null) => {
+    const startCut = async (id, observation = null, overrides = {}) => {
       const apiUrl = `${apiHost}${entity}${id}/start-cut/`;
-      const payload = {};
+      const payload = { ...overrides };
       if (observation) payload.observation = observation;
       try {
         return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(payload), { 'Content-Type': 'application/json' });

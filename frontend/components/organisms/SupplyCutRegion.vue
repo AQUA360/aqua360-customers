@@ -67,6 +67,13 @@ const notifyChanged = () => {
   emit('changed');
 };
 
+const VULNERABLE_CONFIRM_WORD = 'CONFIRMAR';
+const vulnerabilityLevelLabel = (level) => {
+  if (level === 2) return t('vulnerability_block.level_2');
+  if (level === 1) return t('vulnerability_block.level_1');
+  return String(level);
+};
+
 // -- Canviar motiu (edició compacta del motiu/observació/data de fi) --
 const causes = ref([]);
 const editingCauseChange = computed(() => subPanel.value === 'cause');
@@ -74,6 +81,8 @@ const editCause = ref(null);
 const editCauseDateEnd = ref('');
 const editCauseObservation = ref('');
 const savingCauseChange = ref(false);
+const causeConfirmRequired = ref(false);
+const causeVulnerableConfirmation = ref('');
 
 const loadCauses = async () => {
   try {
@@ -89,11 +98,17 @@ const editTemporaryCause = computed(() => {
   return !!c?.is_temporary;
 });
 
+const causeConfirmWordValid = computed(
+  () => causeVulnerableConfirmation.value.trim().toUpperCase() === VULNERABLE_CONFIRM_WORD
+);
+
 const handleClickChangeCause = async () => {
   if (!causes.value.length) await loadCauses();
   editCause.value = data.value?.cause?.id ?? null;
   editCauseDateEnd.value = data.value?.date_end ? String(data.value.date_end).slice(0, 16) : '';
   editCauseObservation.value = '';
+  causeConfirmRequired.value = false;
+  causeVulnerableConfirmation.value = '';
   openSubPanel('cause');
 };
 
@@ -114,11 +129,16 @@ const saveCauseChange = async () => {
       : t('supply_cut_actions.change_reason_effect_indefinite');
     if (!confirm(t('supply_cut_actions.change_reason_flips_type', { effect }))) return;
   }
+  if (causeConfirmRequired.value && !causeConfirmWordValid.value) {
+    toast.error(t('vulnerability_block.confirm_invalid'));
+    return;
+  }
   savingCauseChange.value = true;
   try {
     const payload = { id: props.id, cause_id: editCause.value };
     if (editCauseDateEnd.value) payload.date_end = editCauseDateEnd.value;
     if (editCauseObservation.value) payload.observation = editCauseObservation.value;
+    if (causeConfirmRequired.value) payload.vulnerable_confirmation = causeVulnerableConfirmation.value.trim();
     const result = await $SupplyCutApiService.save(payload);
     if (result?.id) data.value = result;
     toast.success(t('common.correct_save'));
@@ -127,7 +147,13 @@ const saveCauseChange = async () => {
     notifyChanged();
   } catch (err) {
     console.error(err);
-    toast.error(err?.response?.data?.detail || err?.response?.data?.message || t('common.error_save'));
+    const code = err?.response?.data?.code || err?.data?.code;
+    if (code === 'vulnerability_confirm_required') {
+      causeConfirmRequired.value = true;
+      causeVulnerableConfirmation.value = '';
+      return;
+    }
+    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || t('common.error_save'));
   } finally {
     savingCauseChange.value = false;
   }
@@ -214,6 +240,9 @@ const getData = async () => {
 }
 
 watch(() => props.id, () => {
+  closeStartVulnerable();
+  causeConfirmRequired.value = false;
+  causeVulnerableConfirmation.value = '';
   if (!objectPermissions.value?.can_view) {
     emit('close-subregion');
     return
@@ -462,6 +491,46 @@ const clickDeleteOrder = async (id) => {
   }
 }
 
+const startVulnerable = ref(null);
+// Permanent cause + vulnerable points: the backend hard-blocks start-cut
+// (400 vulnerability_blocked, no override); the modal mirrors that state.
+const startVulnerableBlocked = ref(false);
+const startVulnerableConfirmation = ref('');
+const startConfirmWordValid = computed(
+  () => startVulnerableConfirmation.value.trim().toUpperCase() === VULNERABLE_CONFIRM_WORD
+);
+const startVulnerableRows = computed(() => {
+  const spMap = new Map((data.value?.supply_points || []).map((sp) => [sp.id, sp.token]));
+  return (startVulnerable.value || []).map((entry) => ({
+    supply_point_id: entry.supply_point_id,
+    token: spMap.get(entry.supply_point_id) || `#${entry.supply_point_id}`,
+    people: entry.people || [],
+  }));
+});
+const closeStartVulnerable = () => {
+  startVulnerable.value = null;
+  startVulnerableBlocked.value = false;
+  startVulnerableConfirmation.value = '';
+};
+
+const confirmStartVulnerable = async () => {
+  if (!startConfirmWordValid.value || savingLifecycleAction.value) return;
+  savingLifecycleAction.value = true;
+  try {
+    const result = await $SupplyCutApiService.startCut(props.id, null, { override_vulnerable: true });
+    if (result?.id) data.value = result;
+    toast.success(t('common.correct_save'));
+    closeStartVulnerable();
+    await getOrder();
+    notifyChanged();
+  } catch (err) {
+    console.error(err);
+    toast.error(err?.response?.data?.message || err?.response?.data?.error || t('common.error_save'));
+  } finally {
+    savingLifecycleAction.value = false;
+  }
+};
+
 const runLifecycleAction = async (action, confirmKey) => {
   if (!props.id) return;
   if (!confirm(t(confirmKey))) return;
@@ -476,7 +545,19 @@ const runLifecycleAction = async (action, confirmKey) => {
     notifyChanged();
   } catch (err) {
     console.error(err);
-    toast.error(err?.response?.data?.message || t('common.error_save'));
+    const errStatus = err?.response?.status ?? err?.status;
+    const errCode = err?.response?.data?.code ?? err?.data?.code;
+    if (action === 'start' && errStatus === 409 && errCode === 'vulnerable') {
+      startVulnerableBlocked.value = false;
+      startVulnerable.value = err?.response?.data?.vulnerable || err?.data?.vulnerable || [];
+      startVulnerableConfirmation.value = '';
+    } else if (action === 'start' && errStatus === 400 && errCode === 'vulnerability_blocked') {
+      startVulnerableBlocked.value = true;
+      startVulnerable.value = err?.response?.data?.vulnerable || err?.data?.vulnerable || [];
+      startVulnerableConfirmation.value = '';
+    } else {
+      toast.error(err?.response?.data?.message || err?.response?.data?.error || t('common.error_save'));
+    }
   } finally {
     savingLifecycleAction.value = false;
   }
@@ -845,6 +926,18 @@ const saveResolveReview = async () => {
               <label>{{ $t('common.observations') }}:</label>
               <AtomsInputTextarea :autosave="false" @update:text="editCauseObservation = $event" text="" :placeholder="'common.write_comment'"></AtomsInputTextarea>
             </div>
+            <div v-if="causeConfirmRequired" class="mt-4 border border-amber-300 bg-amber-50 rounded p-3">
+              <p class="text-amber-800 font-medium mb-2 flex items-center gap-2">
+                <Icon name="fa6-solid:triangle-exclamation" />
+                {{ $t('service_block.cause_change_vulnerable_confirm') }}
+              </p>
+              <label class="block text-sm font-medium text-amber-800" for="cause-vulnerable-confirmation">
+                {{ $t('vulnerability_block.confirm_label') }}
+              </label>
+              <input id="cause-vulnerable-confirmation" v-model="causeVulnerableConfirmation" type="text" autocomplete="off"
+                class="mt-1 w-64 p-2 border border-amber-400 rounded-md bg-white focus:outline-none"
+                :placeholder="$t('vulnerability_block.confirm_placeholder')" />
+            </div>
             <div class="mt-4">
               <button class="button-primary" :disabled="savingCauseChange" @click="saveCauseChange">
                 <Icon :name="savingCauseChange ? 'fa6-solid:spinner' : 'fa6-solid:floppy-disk'" :class="{ 'animate-spin': savingCauseChange }" />
@@ -867,6 +960,53 @@ const saveResolveReview = async () => {
       :excluded-type-ids="excludedOrderTypeIds"
       :warning="showAllTypesWarning ? t('order_block.viewing_all_order_types_warning') : null"
       @select="onWorkOrderSelected" />
+
+    <div v-if="startVulnerable" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 p-5">
+        <h3 class="text-lg font-semibold flex items-center gap-2 mb-2"
+          :class="startVulnerableBlocked ? 'text-red-800' : 'text-amber-800'">
+          <Icon name="fa6-solid:triangle-exclamation" />
+          {{ startVulnerableBlocked
+            ? $t('vulnerability_block.blocked_title')
+            : $t('service_block.start_cut_vulnerable_title') }}
+        </h3>
+        <p class="text-sm mb-3" :class="startVulnerableBlocked ? 'text-red-700' : 'text-amber-700'">
+          {{ startVulnerableBlocked
+            ? $t('vulnerability_block.blocked_message_start')
+            : $t('service_block.start_cut_vulnerable_hint', { word: VULNERABLE_CONFIRM_WORD }) }}
+        </p>
+        <div class="max-h-60 overflow-y-auto space-y-2 mb-3">
+          <div v-for="entry in startVulnerableRows" :key="entry.supply_point_id"
+            class="border rounded p-2 text-sm"
+            :class="startVulnerableBlocked ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'">
+            <span class="font-mono">{{ entry.token }}</span>
+            <ul class="mt-1 list-disc list-inside text-slate-600">
+              <li v-for="person in entry.people" :key="person.person_id">
+                {{ $t(`vulnerability_block.role_${person.role}`) }} — {{ vulnerabilityLevelLabel(person.vulnerability_level) }}
+              </li>
+            </ul>
+          </div>
+        </div>
+        <template v-if="!startVulnerableBlocked">
+          <label class="block text-sm font-medium text-amber-800" for="start-vulnerable-confirmation">
+            {{ $t('vulnerability_block.confirm_label') }}
+          </label>
+          <input id="start-vulnerable-confirmation" v-model="startVulnerableConfirmation" type="text" autocomplete="off"
+            class="mt-1 w-64 p-2 border border-amber-400 rounded-md bg-white focus:outline-none"
+            :placeholder="$t('vulnerability_block.confirm_placeholder')" />
+        </template>
+        <div class="mt-4 flex gap-2">
+          <button v-if="!startVulnerableBlocked" class="button-primary"
+            :disabled="!startConfirmWordValid || savingLifecycleAction" @click="confirmStartVulnerable">
+            <Icon :name="savingLifecycleAction ? 'fa6-solid:spinner' : 'fa6-solid:scissors'" :class="{ 'animate-spin': savingLifecycleAction }" />
+            {{ $t('supply_cut_actions.start') }}
+          </button>
+          <button class="px-3 py-2 border border-gray-300 rounded-md text-sm text-slate-600 hover:bg-slate-100" @click="closeStartVulnerable">
+            {{ $t('common.cancel') }}
+          </button>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>

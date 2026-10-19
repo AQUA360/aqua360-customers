@@ -168,12 +168,49 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        blocked = self._enforce_cause_flip_rules(instance, request.data)
+        if blocked is not None:
+            return blocked
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         instance = serializer.instance
         read_serializer = SupplyCutSerializer(instance, context=self.get_serializer_context())
         return Response(read_serializer.data)
+
+    def _enforce_cause_flip_rules(self, instance, data):
+        cause_id = data.get('cause_id')
+        if not cause_id:
+            return None
+        try:
+            new_cause = SupplyCutCause.objects.filter(id=cause_id).first()
+        except (TypeError, ValueError):
+            new_cause = None
+        if new_cause is None or instance.cause_id == new_cause.id:
+            return None
+        point_ids = list(instance.supply_points.values_list('id', flat=True))
+        if not point_ids:
+            return None
+        if not bulk_planner.detect_vulnerable(point_ids):
+            return None
+        if new_cause.is_temporary:
+            confirmation = str(data.get('vulnerable_confirmation') or '').strip()
+            if confirmation.upper() != VULNERABLE_CONFIRMATION_WORD:
+                return Response(
+                    {
+                        'error': "El canvi de motiu a temporal afecta persones vulnerables. Escriviu 'CONFIRMAR' per continuar.",
+                        'code': 'vulnerability_confirm_required',
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return None
+        return Response(
+            {
+                'error': "Canvi de motiu bloquejat: el tall passa a permanent i afecta persones vulnerables.",
+                'code': 'vulnerability_blocked',
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     
     @action(detail=True, methods=['post'], url_path='resolve-review')
     def resolve_review(self, request, pk=None):
@@ -295,10 +332,38 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
     def start_cut(self, request, pk=None):
         """Inicia un tall PLANIFICAT: passa a Actiu, stampa exec_start i, si és
         indefinit, talla els punts. Un accident/previst temporal s'activa sense
-        tocar els PP."""
+        tocar els PP.
+
+        Re-valida la vulnerabilitat en el moment de l'activació (el nivell
+        d'una persona pot haver canviat des de la creació): un tall
+        permanent sobre persones vulnerables és un bloqueig estricte 400
+        sense via d'evitació; un temporal demana `override_vulnerable` (409
+        mentres no es confirmi).
+        """
         supply_cut = self.get_object()
         previous_status = supply_cut.status
         observation = request.data.get('observation')
+        override_vulnerable = bool(request.data.get('override_vulnerable'))
+        point_ids = list(supply_cut.supply_points.values_list('id', flat=True))
+        vulnerable = bulk_planner.detect_vulnerable(point_ids) if point_ids else []
+        if vulnerable and supply_cut.cause_id and not supply_cut.cause.is_temporary:
+            return Response(
+                {
+                    'error': "Activació bloquejada: el tall és permanent i afecta persones vulnerables.",
+                    'code': 'vulnerability_blocked',
+                    'vulnerable': vulnerable,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if vulnerable and not override_vulnerable:
+            return Response(
+                {
+                    'error': 'Hi ha punts de subministrament associats a persones vulnerables.',
+                    'code': 'vulnerable',
+                    'vulnerable': vulnerable,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         try:
             started = supply_cut_service.start_cut(
                 supply_cut, user=request.user, observation=observation
@@ -363,6 +428,8 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             preview = bulk_planner.build_preview(
                 request.data.get('identifier_type'),
                 request.data.get('identifiers'),
+                manual_supply_point_ids=request.data.get('supply_points'),
+                manual_contract_ids=request.data.get('contract_ids'),
             )
         except bulk_planner.BulkPlanError as exc:
             return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
@@ -372,12 +439,18 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
     def bulk_plan(self, request):
         """Create ONE supply cut linking every resolved supply point.
 
-        The server re-resolves the raw identifier list (never trusts a
-        client-resolved id list), refuses to proceed over conflicts unless
-        `override_conflicts` is set, and then delegates the write to the same
-        `SupplyCutSerializer` the single-cut flow uses: the cut is born
-        PLANNED, `source=manual`, and its points are not cut until it
-        activates on `date_start`.
+        The server re-resolves the raw identifier list (a client-resolved
+        id list is never accepted as-is; picker-selected `supply_points` /
+        `contract_ids` are merged in, existence-checked and deduped),
+        refuses to proceed over conflicts unless
+        `override_conflicts` is set and enforces the same vulnerability
+        rules as the manual creation flow: a permanent cause
+        (`is_temporary=False`) over points linked to vulnerable persons
+        (`Person.vulnerability_level != 0` on any holder/tenant/owner of
+        their active contracts) is a hard 400 with no override, while a
+        temporary cause returns 409 unless `override_vulnerable` is set.
+        The cut is born PLANNED, `source=manual`, and its points are not
+        cut until it activates on `date_start`.
         """
         identifier_type = request.data.get('identifier_type')
         identifiers = request.data.get('identifiers')
@@ -385,16 +458,26 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         date_start = request.data.get('date_start')
         date_end = request.data.get('date_end')
         override_conflicts = bool(request.data.get('override_conflicts'))
+        override_vulnerable = bool(request.data.get('override_vulnerable'))
 
         if not date_start:
             return Response({'error': "El camp 'date_start' és obligatori."}, status=status.HTTP_400_BAD_REQUEST)
         if not cause_id:
             return Response({'error': "El camp 'cause_id' és obligatori."}, status=status.HTTP_400_BAD_REQUEST)
-        if not SupplyCutCause.objects.filter(id=cause_id).exists():
+        try:
+            cause = SupplyCutCause.objects.filter(id=cause_id).first()
+        except (TypeError, ValueError):
+            cause = None
+        if cause is None:
             return Response({'error': "Motiu de tall desconegut."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            preview = bulk_planner.build_preview(identifier_type, identifiers)
+            preview = bulk_planner.build_preview(
+                identifier_type,
+                identifiers,
+                manual_supply_point_ids=request.data.get('supply_points'),
+                manual_contract_ids=request.data.get('contract_ids'),
+            )
         except bulk_planner.BulkPlanError as exc:
             return Response({'error': exc.message, 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -410,6 +493,26 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                     'error': 'Hi ha punts de subministrament ja inclosos en un tall obert.',
                     'code': 'conflicts',
                     'conflicts': preview['conflicts'],
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if preview['vulnerable'] and not cause.is_temporary:
+            return Response(
+                {
+                    'error': "Creació bloquejada: el tall és permanent i afecta persones vulnerables.",
+                    'code': 'vulnerability_blocked',
+                    'vulnerable': preview['vulnerable'],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if preview['vulnerable'] and not override_vulnerable:
+            return Response(
+                {
+                    'error': 'Hi ha punts de subministrament associats a persones vulnerables.',
+                    'code': 'vulnerable',
+                    'vulnerable': preview['vulnerable'],
                 },
                 status=status.HTTP_409_CONFLICT,
             )
@@ -431,6 +534,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 'cut_token': cut.token,
                 'resolved_count': len(preview['resolved']),
                 'conflict_count': len(preview['conflicts']),
+                'vulnerable_count': len(preview['vulnerable']),
             },
             status=status.HTTP_201_CREATED,
         )

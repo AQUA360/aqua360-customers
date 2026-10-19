@@ -94,7 +94,7 @@ const vulnerabilityLevelLabel = (level) => {
 // Esborra la confirmació escrita cada vegada que canvien el motiu o el conjunt
 // de contractes afectats: la confirmació és per a un escenari concret.
 watch(vulnerableContracts, () => { vulnerableConfirmation.value = ''; });
-watch(selectedCause, () => { vulnerableConfirmation.value = ''; });
+watch(selectedCause, () => { vulnerableConfirmation.value = ''; bulkVulnerableConfirmation.value = ''; });
 
 const getCauses = async () => {
   try {
@@ -192,7 +192,10 @@ const getNumber = (element) => {
   return result;
 };
 
+let affectedRequestId = 0;
+
 const getAffectedSupplyPoints = async () => {
+  const requestId = ++affectedRequestId;
   fetchingData.value = true;
 
   try {
@@ -223,15 +226,19 @@ const getAffectedSupplyPoints = async () => {
     const result = await $SupplyPointApiService.getByStreet(
       search_data
     );
+    if (requestId !== affectedRequestId) return;
     affectedSupplyPoints.value = result.supply_points
     affectedContracts.value = result.contracts
     supply_point_ids.value = affectedSupplyPoints.value.map(sp => sp.id)
-    contract_ids.value = affectedContracts.value.map(c => c.id)
+    if (selectedOriginType.value !== 'CONTRACT') {
+      contract_ids.value = affectedContracts.value.map(c => c.id)
+    }
     
   } catch (error) {
+    if (requestId !== affectedRequestId) return;
     console.error('Error fetching supply points:', error);
   } finally {
-    fetchingData.value = false;
+    if (requestId === affectedRequestId) fetchingData.value = false;
   }
 };
 
@@ -260,6 +267,10 @@ const save = async () => {
   saving.value = true;
   if (confirm(t('confirmation_text_block.confirm_supply_cut') + date_start.value + "/" + (date_end.value ? date_end.value : "-"))) {
     try {
+      const createdCount = supply_point_ids.value.length;
+      const vulnerableCount = new Set(
+        vulnerableContracts.value.flatMap((contract) => contract.supply_point_ids ?? []),
+      ).size;
       await $SupplyCutApiService.save({
         token: _.random(10000, 99999) + '-' + date_start.value.replaceAll('-', ''),
         supply_points: supply_point_ids.value,
@@ -269,6 +280,14 @@ const save = async () => {
         cause_id: selectedCause.value.code,
         vulnerable_confirmation: vulnerableConfirmation.value.trim(),
       });
+      if (vulnerableCount > 0) {
+        toast.success(t('service_block.bulk_plan_created_vulnerable', {
+          count: createdCount,
+          vulnerable: vulnerableCount,
+        }));
+      } else {
+        toast.success(t('service_block.bulk_plan_created', { count: createdCount }));
+      }
       navigateTo('/service/supply-cut/');
     } catch (error) {
       console.error('Error saving supply cuts:', error);
@@ -336,6 +355,7 @@ const updateSelect = (ev, entity) => {
 const excludeContract = (contr) => {
   contract_ids.value = contract_ids.value.filter(id => id !== contr.id);
   supply_point_ids.value = supply_point_ids.value.filter(id => !contr.supply_point_ids.includes(id));
+  selectedContract.value = selectedContract.value.filter(c => c.id !== contr.id);
   if (selectedSupplyPoints.value.length > 0) {
     selectedSupplyPoints.value = supply_point_ids.value.map(id => ({id: id}))
   }
@@ -426,14 +446,6 @@ watch(selectedStreets, () => {
 }, { immediate: true, deep: true });
 
 watch(selectedOriginType, () => {
-  selectedContract.value = [];
-  selectedSupplyPoints.value = [];
-  selectedStreets.value = [];
-  selectedNumbers.value = [];
-  affectedSupplyPoints.value = [];
-  affectedContracts.value = [];
-  supply_point_ids.value = [];
-  contract_ids.value = [];
   resetBulkState();
 })
 
@@ -456,6 +468,7 @@ const preview = ref(null);
 const previewing = ref(false);
 const bulkSaving = ref(false);
 const overrideConflicts = ref(false);
+const bulkVulnerableConfirmation = ref('');
 
 const MAX_IDENTIFIERS = 5000;
 
@@ -490,10 +503,22 @@ const isValidBulk = computed(() => {
   return true;
 });
 
+const bulkHasVulnerable = computed(() => (preview.value?.stats?.vulnerable ?? 0) > 0);
+// Permanent cause + vulnerable points: hard block, mirroring the backend rule
+// (no CONFIRMAR escape; the create button stays disabled).
+const bulkVulnerabilityBlocked = computed(() => isPermanentCause.value && bulkHasVulnerable.value);
+const bulkConfirmWordValid = computed(() =>
+  bulkVulnerableConfirmation.value.trim().toUpperCase() === VULNERABLE_CONFIRM_WORD
+);
+const resolvedRowOrigin = (row) =>
+  Array.isArray(row?.matched_by) && row.matched_by.includes('manual') ? 'manual' : 'list';
+
 const canCreateBulk = computed(() => {
   if (!preview.value) return false;
   if ((preview.value.stats?.resolved ?? 0) === 0) return false;
   if ((preview.value.stats?.conflicts ?? 0) > 0 && !overrideConflicts.value) return false;
+  if (bulkVulnerabilityBlocked.value) return false;
+  if (bulkHasVulnerable.value && !bulkConfirmWordValid.value) return false;
   return true;
 });
 
@@ -514,12 +539,30 @@ const clearBulkFile = () => {
 };
 
 const resetBulkState = () => {
+  affectedRequestId += 1;
+  fetchingData.value = false;
   stage.value = 'input';
   identifiersText.value = '';
   clearBulkFile();
   preview.value = null;
   overrideConflicts.value = false;
+  bulkVulnerableConfirmation.value = '';
+  selectedContract.value = [];
+  selectedSupplyPoints.value = [];
+  selectedStreets.value = [];
+  selectedNumbers.value = [];
+  affectedSupplyPoints.value = [];
+  affectedContracts.value = [];
+  supply_point_ids.value = [];
+  contract_ids.value = [];
 };
+
+watch(identifiersText, (value) => {
+  if (value.trim() !== '') return;
+  stage.value = 'input';
+  preview.value = null;
+  clearBulkFile();
+});
 
 const handlePreview = async () => {
   // Reuse the form's existing validation styling (attemptedSave drives the
@@ -533,8 +576,11 @@ const handlePreview = async () => {
     preview.value = await $SupplyCutApiService.bulkPlanPreview({
       identifier_type: bulkIdentifierType.value,
       identifiers: parsedIdentifiers.value,
+      supply_points: supply_point_ids.value,
+      contract_ids: contract_ids.value,
     });
     overrideConflicts.value = false;
+    bulkVulnerableConfirmation.value = '';
     stage.value = 'preview';
   } catch (error) {
     console.error('Error previewing bulk plan:', error);
@@ -548,6 +594,7 @@ const handleBulkBack = () => {
   stage.value = 'input';
   preview.value = null;
   overrideConflicts.value = false;
+  bulkVulnerableConfirmation.value = '';
 };
 
 const handleBulkCreate = async () => {
@@ -557,12 +604,23 @@ const handleBulkCreate = async () => {
     const result = await $SupplyCutApiService.bulkPlanCreate({
       identifier_type: bulkIdentifierType.value,
       identifiers: parsedIdentifiers.value,
+      supply_points: supply_point_ids.value,
+      contract_ids: contract_ids.value,
       cause_id: selectedCause.value.code,
       date_start: date_start.value,
       date_end: date_end.value ? date_end.value : null,
       override_conflicts: overrideConflicts.value,
+      override_vulnerable: bulkConfirmWordValid.value,
     });
-    toast.success(t('service_block.bulk_plan_created', { count: result.resolved_count }));
+    const vulnerableCount = result.vulnerable_count ?? 0;
+    if (vulnerableCount > 0) {
+      toast.success(t('service_block.bulk_plan_created_vulnerable', {
+        count: result.resolved_count,
+        vulnerable: vulnerableCount,
+      }));
+    } else {
+      toast.success(t('service_block.bulk_plan_created', { count: result.resolved_count }));
+    }
     navigateTo('/service/supply-cut/');
   } catch (error) {
     console.error('Error creating bulk plan:', error);
@@ -847,9 +905,9 @@ const showDetailForCurrentType = () => {
         </div>
 
 
-        <!-- Protecció de persones vulnerables (només el flux manual amb
-             selector; el flux bulk no es toca). Permanent: bloqueig. Temporal:
-             cal escriure la paraula de confirmació. -->
+        <!-- Protecció de persones vulnerables: el flux manual (selector)
+             bloqueja talls permanents i demana la paraula de confirmació pels
+             temporals; el flux bulk la gestiona al panell de previsualització. -->
         <div v-if="!hasBulkInput && (vulnerabilityBlocked || vulnerabilityNeedsConfirm)"
           class="col-span-2 mb-4 rounded border p-4"
           :class="vulnerabilityBlocked ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'">
@@ -912,15 +970,7 @@ const showDetailForCurrentType = () => {
 
     <!-- Stage 2 (inline, full width): bulk preview panel swaps the form area -->
     <div v-else-if="stage === 'preview' && preview" class="border border-gray-300 rounded p-4 bg-white">
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5">
-        <div class="bg-slate-50 border border-slate-200 rounded p-3 text-center">
-          <p class="text-2xl font-semibold">{{ preview.stats?.unique ?? 0 }}</p>
-          <p class="text-slate-500 text-sm">{{ $t('service_block.bulk_plan_stat_unique') }}</p>
-        </div>
-        <div class="bg-slate-50 border border-slate-200 rounded p-3 text-center">
-          <p class="text-2xl font-semibold">{{ preview.stats?.duplicates_in_input ?? 0 }}</p>
-          <p class="text-slate-500 text-sm">{{ $t('service_block.bulk_plan_stat_duplicates') }}</p>
-        </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
         <div class="bg-green-50 border border-green-200 rounded p-3 text-center">
           <p class="text-2xl font-semibold text-green-700">{{ preview.stats?.resolved ?? 0 }}</p>
           <p class="text-green-700 text-sm">{{ $t('service_block.bulk_plan_stat_resolved') }}</p>
@@ -932,6 +982,10 @@ const showDetailForCurrentType = () => {
         <div class="bg-red-50 border border-red-200 rounded p-3 text-center">
           <p class="text-2xl font-semibold text-red-700">{{ preview.stats?.conflicts ?? 0 }}</p>
           <p class="text-red-700 text-sm">{{ $t('service_block.bulk_plan_stat_conflicts') }}</p>
+        </div>
+        <div class="bg-purple-50 border border-purple-200 rounded p-3 text-center">
+          <p class="text-2xl font-semibold text-purple-700">{{ preview.stats?.vulnerable ?? 0 }}</p>
+          <p class="text-purple-700 text-sm">{{ $t('service_block.bulk_plan_stat_vulnerable') }}</p>
         </div>
       </div>
 
@@ -958,6 +1012,43 @@ const showDetailForCurrentType = () => {
         </label>
       </div>
 
+      <!-- Vulnerable persons -->
+      <div v-if="(preview.vulnerable ?? []).length" class="mb-5 border rounded p-4"
+        :class="bulkVulnerabilityBlocked ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'">
+        <p class="font-medium mb-2 flex items-center gap-2"
+          :class="bulkVulnerabilityBlocked ? 'text-red-800' : 'text-amber-800'">
+          <Icon name="fa6-solid:triangle-exclamation" />
+          {{ bulkVulnerabilityBlocked
+            ? $t('vulnerability_block.blocked_title')
+            : $t('service_block.bulk_plan_vulnerable_title', { count: preview.stats?.vulnerable ?? 0 }) }}
+        </p>
+        <p class="text-sm mb-3" :class="bulkVulnerabilityBlocked ? 'text-red-700' : 'text-amber-700'">
+          {{ bulkVulnerabilityBlocked
+            ? $t('vulnerability_block.blocked_message')
+            : $t('service_block.bulk_plan_vulnerable_hint', { word: VULNERABLE_CONFIRM_WORD }) }}
+        </p>
+        <div class="max-h-60 overflow-y-auto space-y-2 mb-3">
+          <div v-for="entry in preview.vulnerable" :key="entry.supply_point_id"
+            class="bg-white border rounded p-2 text-sm"
+            :class="bulkVulnerabilityBlocked ? 'border-red-200' : 'border-amber-200'">
+            <span class="font-mono">{{ entry.supply_point_id }}</span>
+            <ul class="mt-1 list-disc list-inside text-slate-600">
+              <li v-for="person in entry.people" :key="person.person_id">
+                {{ $t(`vulnerability_block.role_${person.role}`) }} — {{ vulnerabilityLevelLabel(person.vulnerability_level) }}
+              </li>
+            </ul>
+          </div>
+        </div>
+        <template v-if="!bulkVulnerabilityBlocked">
+          <label class="block text-sm font-medium text-amber-800" for="bulk-vulnerable-confirmation">
+            {{ $t('vulnerability_block.confirm_label') }}
+          </label>
+          <input id="bulk-vulnerable-confirmation" v-model="bulkVulnerableConfirmation" type="text" autocomplete="off"
+            class="mt-1 w-64 p-2 border border-amber-400 rounded-md bg-white focus:outline-none"
+            :placeholder="$t('vulnerability_block.confirm_placeholder')" />
+        </template>
+      </div>
+
       <!-- Not found -->
       <div v-if="(preview.not_found ?? []).length" class="mb-5 border border-amber-300 bg-amber-50 rounded p-4">
         <p class="text-amber-800 font-medium mb-2">{{ $t('service_block.bulk_plan_not_found_title') }}</p>
@@ -981,6 +1072,8 @@ const showDetailForCurrentType = () => {
                 <th class="text-left px-3 py-2 border-b">{{ $t('common.identificator') }}</th>
                 <th class="text-left px-3 py-2 border-b">{{ $t('address_block.address') }}</th>
                 <th class="text-left px-3 py-2 border-b">{{ $t('service_block.bulk_plan_column_conflict') }}</th>
+                <th class="text-left px-3 py-2 border-b">{{ $t('service_block.bulk_plan_column_vulnerable') }}</th>
+                <th class="text-left px-3 py-2 border-b">{{ $t('service_block.bulk_plan_column_origin') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -991,6 +1084,20 @@ const showDetailForCurrentType = () => {
                 <td class="px-3 py-1">
                   <span v-if="row.has_conflict" class="text-red-600 font-medium">{{ $t('common.yes') }}</span>
                   <span v-else class="text-slate-400">{{ $t('common.no') }}</span>
+                </td>
+                <td class="px-3 py-1">
+                  <span v-if="row.has_vulnerable_person" class="text-purple-700 font-medium">{{ $t('common.yes') }}</span>
+                  <span v-else class="text-slate-400">{{ $t('common.no') }}</span>
+                </td>
+                <td class="px-3 py-1">
+                  <span class="inline-block rounded px-2 py-0.5 text-xs font-medium border"
+                    :class="resolvedRowOrigin(row) === 'manual'
+                      ? 'bg-sky-100 text-sky-700 border-sky-300'
+                      : 'bg-slate-100 text-slate-600 border-slate-300'">
+                    {{ $t(resolvedRowOrigin(row) === 'manual'
+                      ? 'service_block.bulk_plan_origin_manual'
+                      : 'service_block.bulk_plan_origin_list') }}
+                  </span>
                 </td>
               </tr>
             </tbody>

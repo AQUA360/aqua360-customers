@@ -7,6 +7,7 @@ tested without HTTP, mirroring `meter_lookup_service.py`.
 """
 from django.db.models import Q
 
+from contract.models import Contract
 from coredata.models import Street
 
 from ..models import SupplyCut, SupplyPoint
@@ -116,6 +117,92 @@ def _resolve_supply_point_ids(ids):
     )
 
 
+def _resolve_contract_ids(contract_ids):
+    if not contract_ids:
+        return SupplyPoint.objects.none()
+    return (
+        SupplyPoint.objects
+        .filter(Q(contracts__id__in=contract_ids) | Q(default_contracts__id__in=contract_ids))
+        .select_related('address__street')
+        .distinct()
+    )
+
+
+def _parse_manual_ids(values):
+    """Tolerant parse of a manual id array: non-lists -> ([], []).
+
+    Returns `(int_ids, unparsable_labels)` so garbage entries can be
+    surfaced in `not_found` instead of vanishing silently.
+    """
+    if not isinstance(values, (list, tuple)):
+        return [], []
+    int_ids = []
+    unparsable = []
+    for value in values:
+        if isinstance(value, bool):
+            continue
+        try:
+            int_ids.append(int(value))
+        except (TypeError, ValueError):
+            label = str(value).strip() if value is not None else ''
+            if label:
+                unparsable.append(label)
+    return int_ids, unparsable
+
+
+def _merge_manual_points(supply_points, manual_supply_point_ids, manual_contract_ids):
+    """Append picker-selected points/contracts to the resolved text list.
+
+    Dedupes by id (text-resolved rows win, keeping their `matched_by`);
+    requested manual ids that do not resolve are reported so the caller can
+    surface them in `not_found` instead of dropping them silently. Misses
+    are tracked per domain: unresolved supply-point ids stay numeric (the
+    native idiom of that identifier mode), unresolved contracts are labelled
+    with their commercial token (raw id only when the contract does not
+    exist). Returns `(merged_supply_points, manual_not_found)`.
+    """
+    manual_ids, manual_unparsable = _parse_manual_ids(manual_supply_point_ids)
+    contract_ids, contract_unparsable = _parse_manual_ids(manual_contract_ids)
+
+    seen = set()
+    merged = []
+    for sp in supply_points:
+        if sp.id not in seen:
+            seen.add(sp.id)
+            merged.append(sp)
+
+    manual_points = list(_resolve_supply_point_ids(manual_ids))
+    found_sp_ids = {sp.id for sp in manual_points}
+    contract_points = list(_resolve_contract_ids(contract_ids))
+    linked_contracts = set()
+    if contract_ids:
+        linked_contracts = set(
+            Contract.objects.filter(
+                Q(id__in=contract_ids),
+                Q(supply_points__isnull=False) | Q(supply_point_default__isnull=False),
+            ).values_list('id', flat=True)
+        )
+    for sp in manual_points + contract_points:
+        if sp.id not in seen:
+            seen.add(sp.id)
+            merged.append(sp)
+
+    manual_not_found = [
+        str(value) for value in dict.fromkeys(manual_ids) if value not in found_sp_ids
+    ]
+    if contract_ids:
+        tokens = dict(
+            Contract.objects.filter(id__in=contract_ids).values_list('id', 'token')
+        )
+        for value in dict.fromkeys(contract_ids):
+            if value in linked_contracts:
+                continue
+            token = str(tokens.get(value) or '').strip()
+            manual_not_found.append(token if token else str(value))
+    manual_not_found += list(dict.fromkeys(manual_unparsable + contract_unparsable))
+    return merged, manual_not_found
+
+
 def _resolve_street_ids(ids):
     # A street resolves to every supply point located on it. `is_active=True`
     # keeps decommissioned points out: planning a cut onto them is meaningless.
@@ -217,8 +304,88 @@ def detect_conflicts(supply_point_ids, exclude_cut_id=None):
     return conflicts
 
 
-def build_preview(identifier_type, raw_identifiers, exclude_cut_id=None):
-    """Full preview payload for the bulk-plan flow."""
+def detect_vulnerable(supply_point_ids):
+    """Supply points whose active contracts link to a vulnerable person.
+
+    A person is vulnerable when `Person.vulnerability_level != 0` (currently
+    1 = En Risc and 2 = Vulnerable; any future non-zero state is covered too).
+    The roles checked are the holder, tenant and owner of every ACTIVE
+    contract linked to the point, through both the M2M `supply_points` and
+    the `supply_point_default` FK.
+
+    Two queries total regardless of how many supply points are passed — one
+    per relation direction, each joining the three person roles via
+    `values_list`, so no N+1. Result shaped like `detect_conflicts`, one
+    entry per affected supply point:
+
+        [{'supply_point_id': id,
+          'people': [{'person_id': id, 'role': 'holder'|'tenant'|'owner',
+                      'vulnerability_level': int}, ...]}, ...]
+    """
+    if not supply_point_ids:
+        return []
+
+    roles = ('holder', 'tenant', 'owner')
+    person_columns = tuple(
+        column
+        for role in roles
+        for column in ('{}_id'.format(role), '{}__vulnerability_level'.format(role))
+    )
+    m2m_rows = (
+        Contract.objects
+        .filter(supply_points__id__in=supply_point_ids, is_active=True)
+        .values_list('supply_points__id', *person_columns)
+    )
+    default_rows = (
+        Contract.objects
+        .filter(supply_point_default_id__in=supply_point_ids, is_active=True)
+        .values_list('supply_point_default_id', *person_columns)
+    )
+
+    # sp_id -> {(person_id, role): level}; the tuple key dedupes the same
+    # person/role appearing through several contracts on the same point.
+    vulnerable_by_sp = {}
+    for rows in (m2m_rows, default_rows):
+        for row in rows:
+            sp_id = row[0]
+            for role_index, role in enumerate(roles):
+                person_id = row[1 + role_index * 2]
+                level = row[2 + role_index * 2]
+                if person_id is None or not level:
+                    continue
+                per_sp = vulnerable_by_sp.setdefault(sp_id, {})
+                per_sp.setdefault((person_id, role), level)
+
+    return [
+        {
+            'supply_point_id': sp_id,
+            'people': [
+                {
+                    'person_id': person_id,
+                    'role': role,
+                    'vulnerability_level': level,
+                }
+                for (person_id, role), level in per_sp.items()
+            ],
+        }
+        for sp_id, per_sp in vulnerable_by_sp.items()
+    ]
+
+
+def build_preview(
+    identifier_type,
+    raw_identifiers,
+    exclude_cut_id=None,
+    manual_supply_point_ids=None,
+    manual_contract_ids=None,
+):
+    """Full preview payload for the bulk-plan flow.
+
+    Combines the pasted identifier list with any picker-selected manual
+    supply points/contracts in the same payload: the merge is deduped by id
+    and conflicts/vulnerability run over the combined set, so no manually
+    added point can slip past validation or be left out of the final save.
+    """
     if identifier_type not in IDENTIFIER_TYPES:
         raise BulkPlanError(
             "Tipus d'identificador desconegut: {}.".format(identifier_type),
@@ -235,14 +402,25 @@ def build_preview(identifier_type, raw_identifiers, exclude_cut_id=None):
         )
 
     supply_points, not_found, matched_by = resolve_identifiers(identifier_type, identifiers)
+    text_ids = {sp.id for sp in supply_points}
+    supply_points, manual_not_found = _merge_manual_points(
+        supply_points, manual_supply_point_ids, manual_contract_ids,
+    )
+    not_found = list(not_found) + manual_not_found
     sp_ids = [sp.id for sp in supply_points]
     conflicts = detect_conflicts(sp_ids, exclude_cut_id=exclude_cut_id)
     conflict_ids = {c['supply_point_id'] for c in conflicts}
+    vulnerable = detect_vulnerable(sp_ids)
+    vulnerable_ids = {v['supply_point_id'] for v in vulnerable}
 
     resolved = []
     for sp in supply_points:
-        brief = _supply_point_brief(sp, matched_by.get(sp.id, []))
+        if sp.id in text_ids:
+            brief = _supply_point_brief(sp, matched_by.get(sp.id, []))
+        else:
+            brief = _supply_point_brief(sp, ['manual'])
         brief['has_conflict'] = sp.id in conflict_ids
+        brief['has_vulnerable_person'] = sp.id in vulnerable_ids
         resolved.append(brief)
 
     return {
@@ -257,8 +435,10 @@ def build_preview(identifier_type, raw_identifiers, exclude_cut_id=None):
             'resolved': len(resolved),
             'not_found': len(not_found),
             'conflicts': len(conflicts),
+            'vulnerable': len(vulnerable),
         },
         'resolved': resolved,
         'not_found': not_found,
         'conflicts': conflicts,
+        'vulnerable': vulnerable,
     }
