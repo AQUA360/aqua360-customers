@@ -122,14 +122,13 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         if not contract_ids and not supply_point_ids:
             return None
 
-        affected = Contract.objects.filter(
-            Q(id__in=contract_ids) | Q(supply_points__in=supply_point_ids)
-        )
-        vulnerable = affected.filter(
-            Q(holder__vulnerability_level__gt=0)
-            | Q(tenant__vulnerability_level__gt=0)
-            | Q(owner__vulnerability_level__gt=0)
-        ).exists()
+        vulnerable = bool(bulk_planner.detect_vulnerable(supply_point_ids))
+        if not vulnerable and contract_ids:
+            vulnerable = Contract.objects.filter(id__in=contract_ids, is_active=True).filter(
+                Q(holder__vulnerability_level__gt=0)
+                | Q(tenant__vulnerability_level__gt=0)
+                | Q(owner__vulnerability_level__gt=0)
+            ).exists()
         if not vulnerable:
             return None
 
@@ -344,30 +343,13 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         previous_status = supply_cut.status
         observation = request.data.get('observation')
         override_vulnerable = bool(request.data.get('override_vulnerable'))
-        point_ids = list(supply_cut.supply_points.values_list('id', flat=True))
-        vulnerable = bulk_planner.detect_vulnerable(point_ids) if point_ids else []
-        if vulnerable and supply_cut.cause_id and not supply_cut.cause.is_temporary:
-            return Response(
-                {
-                    'error': "Activació bloquejada: el tall és permanent i afecta persones vulnerables.",
-                    'code': 'vulnerability_blocked',
-                    'vulnerable': vulnerable,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if vulnerable and not override_vulnerable:
-            return Response(
-                {
-                    'error': 'Hi ha punts de subministrament associats a persones vulnerables.',
-                    'code': 'vulnerable',
-                    'vulnerable': vulnerable,
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
         try:
             started = supply_cut_service.start_cut(
-                supply_cut, user=request.user, observation=observation
+                supply_cut, user=request.user, observation=observation,
+                override_vulnerable=override_vulnerable,
             )
+        except supply_cut_service.SupplyCutActivationError as exc:
+            return Response(exc.detail, status=exc.status_code)
         except ValueError as exc:
             return Response(
                 {'status': 'error', 'message': str(exc)},

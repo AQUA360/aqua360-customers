@@ -786,11 +786,16 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
 
     def test_put_adding_supply_points_is_400(self):
         cut = self._make_cut([self.sp_1])
-        response = self._put(cut, {'supply_points': [self.sp_1.id, self.sp_2.id]})
+        original_token = cut.token
+        response = self._put(cut, {
+            'supply_points': [self.sp_1.id, self.sp_2.id],
+            'token': 'must-not-be-saved',
+        })
         self.assertEqual(response.status_code, 400)
         self.assertIn('supply_points', response.data)
         cut.refresh_from_db()
         self.assertEqual(list(cut.supply_points.all()), [self.sp_1])
+        self.assertEqual(cut.token, original_token)
 
     def test_put_removing_supply_points_is_400(self):
         cut = self._make_cut([self.sp_1, self.sp_2])
@@ -888,3 +893,69 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         cut.refresh_from_db()
         self.assertEqual(cut.status_id, self.status_active.id)
+
+
+    def test_start_cut_without_cause_blocks_vulnerable_even_with_override(self):
+        holder = self.make_person('P-NO-CAUSE', vulnerability_level=2)
+        self._make_active_contract('CT-NO-CAUSE', self.sp_1, holder)
+        cut = self._make_cut([self.sp_1])
+        cut.cause = None
+        cut.save()
+
+        response = self._start(cut, {'override_vulnerable': True})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'vulnerability_blocked')
+        cut.refresh_from_db()
+        self.assertEqual(cut.status_id, self.status_planned.id)
+        self.assertIsNone(cut.exec_start)
+
+    def test_service_rechecks_vulnerability_added_after_creation(self):
+        from service.utils import supply_cut_service
+
+        holder = self.make_person('P-LATE-VULN', vulnerability_level=0)
+        contract = self._make_active_contract('CT-LATE-VULN', self.sp_1, holder)
+        contract.supply_points.clear()
+        cut = self._make_cut([self.sp_1], cause=self.cause_permanent)
+        holder.vulnerability_level = 2
+        holder.save()
+
+        with self.assertRaises(supply_cut_service.SupplyCutActivationError) as raised:
+            supply_cut_service.start_cut(cut, override_vulnerable=True)
+        self.assertEqual(raised.exception.detail['code'], 'vulnerability_blocked')
+        cut.refresh_from_db()
+        self.assertEqual(cut.status_id, self.status_planned.id)
+        self.assertIsNone(cut.exec_start)
+        self.sp_1.refresh_from_db()
+        self.assertIsNone(self.sp_1.status_id)
+
+    def test_scheduled_activation_skips_late_vulnerability_and_continues(self):
+        from service.models import SupplyPointStatus
+        from service.tasks import activate_supply_cut
+
+        cut_point_status = SupplyPointStatus.objects.create(token='test-cut', name='Tallat')
+        ConfigProject.objects.update_or_create(
+            token='supply_point_status_cut_token', defaults={'value': cut_point_status.token},
+        )
+        ConfigProject.objects.update_or_create(
+            token='supply_cut_status_active_token', defaults={'value': self.status_active.token},
+        )
+        holder = self.make_person('P-SCHEDULED-LATE', vulnerability_level=0)
+        contract = self._make_active_contract('CT-SCHEDULED-LATE', self.sp_1, holder)
+        contract.supply_points.clear()
+        blocked = self._make_cut([self.sp_1], cause=self.cause_permanent)
+        safe = self._make_cut([self.sp_2], cause=self.cause_permanent)
+        holder.vulnerability_level = 1
+        holder.save()
+
+        activate_supply_cut()
+
+        blocked.refresh_from_db()
+        safe.refresh_from_db()
+        self.sp_1.refresh_from_db()
+        self.sp_2.refresh_from_db()
+        self.assertEqual(blocked.status_id, self.status_planned.id)
+        self.assertIsNone(blocked.exec_start)
+        self.assertIsNone(self.sp_1.status_id)
+        self.assertEqual(safe.status_id, self.status_active.id)
+        self.assertIsNotNone(safe.exec_start)
+        self.assertEqual(self.sp_2.status_id, cut_point_status.id)

@@ -153,7 +153,7 @@ const saveCauseChange = async () => {
       causeVulnerableConfirmation.value = '';
       return;
     }
-    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || t('common.error_save'));
+    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || err?.data?.detail || err?.data?.message || err?.data?.error || t('common.error_save'));
   } finally {
     savingCauseChange.value = false;
   }
@@ -240,6 +240,7 @@ const getData = async () => {
 }
 
 watch(() => props.id, () => {
+  savingLifecycleAction.value = false;
   closeStartVulnerable();
   causeConfirmRequired.value = false;
   causeVulnerableConfirmation.value = '';
@@ -410,7 +411,7 @@ const onWorkOrderSelected = async (orderType) => {
     }
   } catch (err) {
     console.error('Error creating order:', err?.data || err?.response?.data || err);
-    toast.error(t('common.error_save'));
+    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || err?.data?.detail || err?.data?.message || err?.data?.error || t('common.error_save'));
   } finally {
     savingOrder.value = false;
   }
@@ -473,7 +474,7 @@ const clickRemoveSupplyPoint = async (item) => {
     notifyChanged();
   } catch (err) {
     console.error(err);
-    toast.error(t('common.error_save'));
+    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || err?.data?.detail || err?.data?.message || err?.data?.error || t('common.error_save'));
   } finally {
     removingSupplyPoint.value = null;
   }
@@ -487,7 +488,7 @@ const clickDeleteOrder = async (id) => {
     orders.value = orders.value.filter(order => order.id != id);
   } catch (err) {
     console.error(err);
-    toast.error(t('common.error'));
+    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || err?.data?.detail || err?.data?.message || err?.data?.error || t('common.error'));
   }
 }
 
@@ -515,35 +516,43 @@ const closeStartVulnerable = () => {
 
 const confirmStartVulnerable = async () => {
   if (!startConfirmWordValid.value || savingLifecycleAction.value) return;
+  const cutId = props.id;
   savingLifecycleAction.value = true;
   try {
-    const result = await $SupplyCutApiService.startCut(props.id, null, { override_vulnerable: true });
+    const result = await $SupplyCutApiService.startCut(cutId, null, { override_vulnerable: true });
+    if (cutId !== props.id) return;
     if (result?.id) data.value = result;
     toast.success(t('common.correct_save'));
     closeStartVulnerable();
     await getOrder();
+    if (cutId !== props.id) return;
     notifyChanged();
   } catch (err) {
+    if (cutId !== props.id) return;
     console.error(err);
-    toast.error(err?.response?.data?.message || err?.response?.data?.error || t('common.error_save'));
+    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || err?.data?.detail || err?.data?.message || err?.data?.error || t('common.error_save'));
   } finally {
-    savingLifecycleAction.value = false;
+    if (cutId === props.id) savingLifecycleAction.value = false;
   }
 };
 
 const runLifecycleAction = async (action, confirmKey) => {
   if (!props.id) return;
   if (!confirm(t(confirmKey))) return;
+  const cutId = props.id;
   savingLifecycleAction.value = true;
   try {
     let result = null;
-    if (action === 'start') result = await $SupplyCutApiService.startCut(props.id);
-    else if (action === 'finish') result = await $SupplyCutApiService.finishCut(props.id);
+    if (action === 'start') result = await $SupplyCutApiService.startCut(cutId);
+    else if (action === 'finish') result = await $SupplyCutApiService.finishCut(cutId);
+    if (cutId !== props.id) return;
     if (result?.id) data.value = result;
     toast.success(t('common.correct_save'));
     await getOrder();
+    if (cutId !== props.id) return;
     notifyChanged();
   } catch (err) {
+    if (cutId !== props.id) return;
     console.error(err);
     const errStatus = err?.response?.status ?? err?.status;
     const errCode = err?.response?.data?.code ?? err?.data?.code;
@@ -556,10 +565,10 @@ const runLifecycleAction = async (action, confirmKey) => {
       startVulnerable.value = err?.response?.data?.vulnerable || err?.data?.vulnerable || [];
       startVulnerableConfirmation.value = '';
     } else {
-      toast.error(err?.response?.data?.message || err?.response?.data?.error || t('common.error_save'));
+      toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || err?.data?.detail || err?.data?.message || err?.data?.error || t('common.error_save'));
     }
   } finally {
-    savingLifecycleAction.value = false;
+    if (cutId === props.id) savingLifecycleAction.value = false;
   }
 }
 
@@ -618,7 +627,7 @@ const saveResolveReview = async () => {
     notifyChanged();
   } catch (err) {
     console.error(err);
-    toast.error(err?.response?.data?.message || t('common.error_save'));
+    toast.error(err?.response?.data?.detail || err?.response?.data?.message || err?.response?.data?.error || err?.data?.detail || err?.data?.message || err?.data?.error || t('common.error_save'));
   } finally {
     savingLifecycleAction.value = false;
   }

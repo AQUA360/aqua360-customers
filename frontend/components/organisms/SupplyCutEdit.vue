@@ -597,6 +597,10 @@ const handleBulkBack = () => {
   bulkVulnerableConfirmation.value = '';
 };
 
+watch([supply_point_ids, contract_ids], () => {
+  if (stage.value === 'preview') handleBulkBack();
+}, { deep: true });
+
 const handleBulkCreate = async () => {
   if (!canCreateBulk.value || bulkSaving.value) return;
   bulkSaving.value = true;
