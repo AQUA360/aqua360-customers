@@ -14,6 +14,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         fields = ['email_daily_tasks', 'has_email']
 
     def get_has_email(self, obj):
+        """Return whether the preference owner has an email address."""
         return bool(obj.user.email)
 
 
@@ -22,13 +23,16 @@ class NotificationPreferenceView(APIView):
     permission_classes = [IsAuthenticated]
 
     def _preference(self, request):
+        """Get or create notification preferences for the authenticated user."""
         preference, _created = NotificationPreference.objects.get_or_create(user=request.user)
         return preference
 
     def get(self, request):
+        """Return the authenticated user notification preferences."""
         return Response(NotificationPreferenceSerializer(self._preference(request)).data)
 
     def put(self, request):
+        """Validate and partially update the authenticated user preferences."""
         serializer = NotificationPreferenceSerializer(self._preference(request), data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()

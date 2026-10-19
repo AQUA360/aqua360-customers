@@ -13,6 +13,7 @@ const emit = defineEmits(['add']);
 
 const { t } = useI18n();
 
+/** Emit the selected catalog card and close the catalog modal. */
 const add = (card) => {
   emit('add', card);
   open.value = false;

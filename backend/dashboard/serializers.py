@@ -36,6 +36,7 @@ class LayoutSerializer(serializers.Serializer):
     layout = serializers.ListField(child=serializers.DictField(), allow_empty=True, max_length=MAX_CARDS)
 
     def validate_layout(self, value):
+        """Reject unknown card keys and normalize the submitted layout."""
         for item in value:
             if not get_card(item.get('key')):
                 raise serializers.ValidationError(f"Unknown card '{item.get('key')}'")

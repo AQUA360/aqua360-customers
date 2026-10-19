@@ -15,6 +15,7 @@ const { t } = useI18n();
 const activeSupplyPointToken = ref(localStorage.getItem('config_supply_point_status_activate_token'));
 const pendingContractTerminationToken = ref(1);
 
+/** Navigate to a configured shortcut with its optional query values. */
 const showPage = (path, variables, advance_filters, search) => {
   navigateTo({
     path: path,

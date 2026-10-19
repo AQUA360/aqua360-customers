@@ -12,7 +12,9 @@ const TASK_COLOR_CLASSES = {
 };
 const DEFAULT_COLOR = { dot: 'bg-sky-500', chip: 'border-sky-400 bg-sky-50' };
 
+/** Return the task dot color class, falling back to sky for unknown colors. */
 export const taskDotClass = (color) => (TASK_COLOR_CLASSES[color] || DEFAULT_COLOR).dot;
+/** Return task chip border and background classes with a sky fallback. */
 export const taskChipClass = (color) => (TASK_COLOR_CLASSES[color] || DEFAULT_COLOR).chip;
 
 export const RECURRENCE_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'];

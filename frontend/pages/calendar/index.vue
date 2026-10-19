@@ -20,6 +20,7 @@ const { $CalendarTaskApiService } = useNuxtApp();
 const sidebarStore = useSidebarStore();
 
 // ?date=YYYY-MM-DD (des d'una notificació o una card); si no és una data vàlida, s'ignora
+/** Parse a valid ISO date query string, returning null for invalid input. */
 const queryDate = (value) => {
   if (typeof value !== 'string') return null;
   const date = parseISO(value);
@@ -46,8 +47,10 @@ const savingPreference = ref(false);
 const regionDate = ref(null);
 const isSubRegionOpen = ref(false);
 
+/** Format a date as the local calendar date key YYYY-MM-DD. */
 const dateKey = (date) => format(date, 'yyyy-MM-dd');
 // getDay(): 0 = diumenge; WEEKDAY_KEYS comença en dilluns
+/** Map a date to its translation key using Monday as the first weekday. */
 const weekdayKey = (date) => WEEKDAY_KEYS[(date.getDay() + 6) % 7];
 
 const range = computed(() => {
@@ -99,6 +102,7 @@ const filters = computed(() => ({
 
 // Si es canvia de mes o de filtre ràpidament, només es pinta la resposta de l'última petició
 let requestId = 0;
+/** Load the visible range and overdue list, accepting only the latest response. */
 const getData = async () => {
   const current = ++requestId;
   pending.value = true;
@@ -119,34 +123,41 @@ const getData = async () => {
   }
 };
 
+/** Move the calendar by weeks or months according to the active view. */
 const move = (direction) => {
   if (view.value === 'week') currentDate.value = addWeeks(currentDate.value, direction);
   else currentDate.value = addMonths(currentDate.value, direction);
 };
 
+/** Reset the calendar focus to today. */
 const goToday = () => {
   currentDate.value = new Date();
 };
 
+/** Reopen the task region for a day after clearing its previous selection. */
 const openDay = (key) => {
   regionDate.value = null;
   isSubRegionOpen.value = false;
   nextTick(() => { regionDate.value = key; });
 };
 
+/** Clear the selected day and close the nested task region. */
 const closeRegion = () => {
   regionDate.value = null;
   isSubRegionOpen.value = false;
 };
 
+/** Toggle task completion and refresh the calendar and sidebar counts. */
 const toggleDone = async (task) => {
   await $CalendarTaskApiService.setDone(task.id, !task.task_done);
   sidebarStore.tasksChanged();
   getData();
 };
 
+/** Return task time as HH:mm, or an empty string when absent. */
 const taskTime = (task) => task.time ? task.time.slice(0, 5) : '';
 
+/** Load the current user task email preference. */
 const loadPreference = async () => {
   try {
     preference.value = await $CalendarTaskApiService.getNotificationPreference();
@@ -155,6 +166,7 @@ const loadPreference = async () => {
   }
 };
 
+/** Persist the opposite daily task email preference and update local state. */
 const toggleEmailPreference = async () => {
   savingPreference.value = true;
   try {

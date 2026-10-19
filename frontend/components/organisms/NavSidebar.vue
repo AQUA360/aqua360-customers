@@ -52,6 +52,7 @@ const { $CalendarTaskApiService } = useNuxtApp();
 const route = useRoute();
 const tasksSummary = ref({ today: 0, overdue: 0 });
 const pendingTasks = computed(() => (tasksSummary.value.today || 0) + (tasksSummary.value.overdue || 0));
+/** Refresh pending task counts, retaining existing counts if the request fails. */
 const loadTasksSummary = async () => {
   try {
     tasksSummary.value = await $CalendarTaskApiService.getSummary();

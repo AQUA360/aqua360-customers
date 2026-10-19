@@ -17,4 +17,5 @@ DEFAULT_LAYOUT = [
 
 
 def default_layout():
+    """Return an independent copy of the default dashboard layout."""
     return [{'id': str(uuid.uuid4()), 'config': {}, **item} for item in DEFAULT_LAYOUT]

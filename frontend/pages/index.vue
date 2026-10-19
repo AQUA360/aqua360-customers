@@ -87,8 +87,10 @@ const readToken = () => {
     try { return localStorage.getItem('auth_token'); } catch (e) { return null; }
 };
 let sessionToken = null;
+/** Check that the active token still belongs to the loaded dashboard session. */
 const isSameSession = () => !!sessionToken && readToken() === sessionToken;
 
+/** Load the current user layout and available card catalog together. */
 const loadDashboard = async () => {
     loading.value = true;
     loadFailed.value = false;
@@ -109,6 +111,7 @@ const loadDashboard = async () => {
 };
 
 let saveTimeout = null;
+/** Persist the layout only while the loaded user session is still active. */
 const saveLayout = async () => {
     saveTimeout = null;
     if (!isSameSession()) return;
@@ -122,11 +125,13 @@ const saveLayout = async () => {
     }
 };
 // Es desa poc després de cada canvi, sense botó de desar
+/** Debounce automatic layout saves after local edits. */
 const scheduleSave = () => {
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(saveLayout, 600);
 };
 
+/** Append a card with default size and configuration, then schedule a save. */
 const addCard = (card) => {
     layout.value.push({
         id: newCardId(),
@@ -137,16 +142,19 @@ const addCard = (card) => {
     scheduleSave();
 };
 
+/** Remove the selected card instance and schedule a layout save. */
 const removeCard = (item) => {
     layout.value = layout.value.filter(current => current.id !== item.id);
     scheduleSave();
 };
 
+/** Replace the edited card instance and schedule a layout save. */
 const updateCard = (updated) => {
     layout.value = layout.value.map(item => item.id === updated.id ? updated : item);
     scheduleSave();
 };
 
+/** Confirm and restore defaults for the currently loaded user session. */
 const resetLayout = async () => {
     if (!confirm(t('home_dashboard.reset_confirm'))) return;
     clearTimeout(saveTimeout);
@@ -155,6 +163,7 @@ const resetLayout = async () => {
     layout.value = response.layout;
 };
 
+/** Leave editing mode and flush any pending layout save. */
 const finishEditing = async () => {
     editing.value = false;
     if (saveTimeout) {
@@ -165,6 +174,7 @@ const finishEditing = async () => {
 
 // Canvi de sessió en una altra pestanya del mateix navegador (logout o un altre usuari):
 // es descarten els canvis pendents i es carrega el dashboard del nou usuari.
+/** Discard pending edits and reload or redirect after a cross-tab session change. */
 const handleStorage = (event) => {
     if (event.key !== null && event.key !== 'auth_token' && event.key !== 'user_username') return;
     if (readToken() === sessionToken) {

@@ -146,6 +146,7 @@ const filterNotifications = (filter) => {
   notificationFilterOpen.value = false;
 };
 
+/** Open the notification target, including calendar dates for task reminders. */
 const redirectNotification = async (result) => {
   if (!result) return;
   let save_data = {

@@ -22,6 +22,7 @@ const { data, loading, error } = useDashboardCardData(props.item.key, config, re
 
 const subtitle = computed(() => props.item.config?.scope === 'mine' ? t('home_dashboard.config.scope.mine') : null);
 
+/** Mark a task done and reload the card even if the update fails. */
 const markDone = async (task) => {
   try {
     await $CalendarTaskApiService.setDone(task.id, true);

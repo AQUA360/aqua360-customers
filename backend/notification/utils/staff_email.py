@@ -11,6 +11,7 @@ from service.models import CompanyConfig
 
 
 def _company_config():
+    """Return a company with default email settings, or any configured email."""
     return (
         CompanyConfig.objects.filter(company_config_emails__is_default=True).distinct().first()
         or CompanyConfig.objects.filter(company_config_emails__isnull=False).distinct().first()

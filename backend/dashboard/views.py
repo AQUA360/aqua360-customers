@@ -16,6 +16,7 @@ class DashboardLayoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        """Return the user layout or defaults, filtered by current permissions."""
         dashboard = UserDashboard.objects.filter(user=request.user).first()
         layout = dashboard.layout if dashboard else default_layout()
         return Response({
@@ -24,6 +25,7 @@ class DashboardLayoutView(APIView):
         })
 
     def put(self, request):
+        """Validate and save the authenticated user dashboard layout."""
         serializer = LayoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         dashboard, _created = UserDashboard.objects.update_or_create(
@@ -48,6 +50,7 @@ class DashboardCardListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        """Return catalog metadata for cards the authenticated user may use."""
         return Response([card.describe() for card in available_cards(request.user)])
 
 
@@ -59,6 +62,7 @@ class DashboardCardDataView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, key):
+        """Check card access and return data using validated configuration."""
         card = get_card(key)
         if not card or not card.has_data:
             return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)

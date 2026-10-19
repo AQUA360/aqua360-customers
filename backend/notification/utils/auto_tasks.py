@@ -29,6 +29,7 @@ DEFAULT_CHANGE_METER_ORDER_TYPES = ['change_meter', 'install_meter']
 
 
 def _auto_tasks_of(source_key, order=None, contract=None):
+    """Find automatic tasks by source key and order, or contract without an order."""
     # Les tasques es lliguen a l'ordre si n'hi ha (encara que en canviï el contracte); si no, al contracte
     lookup = {'order': order} if order is not None else {'contract': contract}
     return CalendarTask.objects.filter(source=CalendarTask.SOURCE_AUTO, source_key=source_key, **lookup)
@@ -68,6 +69,7 @@ def close_auto_tasks(source_key, *, order=None, contract=None, user=None):
 
 
 def change_meter_order_types():
+    """Return configured meter change type tokens or the default types."""
     config = ConfigProject.objects.filter(token='order_type_change_meter_tokens').first()
     if not config or not config.value:
         return DEFAULT_CHANGE_METER_ORDER_TYPES
@@ -79,6 +81,7 @@ def change_meter_order_types():
 
 
 def is_change_meter_order(order):
+    """Return whether the order type matches a configured meter change type."""
     return bool(order.type and (order.type.token or '').lower() in change_meter_order_types())
 
 

@@ -6,6 +6,7 @@ from django.db import migrations, models
 
 
 def mark_past_tasks_notified(apps, schema_editor):
+    """Mark existing tasks due today or earlier as already notified."""
     # Fins ara les tasques es notificaven cada dia; les que ja tenien data passada
     # o d'avui ja s'han avisat, i no cal tornar-les a notificar en desplegar.
     from django.utils import timezone

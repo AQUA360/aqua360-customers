@@ -24,6 +24,7 @@ export const DASHBOARD_SIZE_CLASSES = {
   lg: 'col-span-6',
 };
 
+/** Generate an ID for a new dashboard card, using a UUID when available. */
 export const newCardId = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;

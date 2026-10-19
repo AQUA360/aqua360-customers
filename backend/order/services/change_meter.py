@@ -144,6 +144,7 @@ class OrderChangeMeterValidationService:
         }
 
     def apply(self, user):
+        """Apply validated meter readings and replacement, then close follow-up tasks."""
         result = self.validate()
         if not result['can_apply']:
             raise ValueError(result['missing_fields'])

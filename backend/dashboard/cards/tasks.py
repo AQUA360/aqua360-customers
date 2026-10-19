@@ -23,6 +23,7 @@ class TasksTodayCard(DashboardCard):
     ]
 
     def get_data(self, user, config):
+        """Return today and overdue counts and pending tasks visible in the scope."""
         today = timezone.localdate()
         qs = CalendarTask.objects.filter(is_active=True, task_done=False, set_date__lte=today)
         if config['scope'] == 'mine':

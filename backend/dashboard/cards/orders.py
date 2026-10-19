@@ -6,6 +6,7 @@ ITEMS_LIMIT = 5
 
 
 def _order_item(order):
+    """Return the order fields displayed in dashboard lists."""
     return {
         'id': order.id,
         'token': order.token,
@@ -31,6 +32,7 @@ class OrdersToValidateCard(DashboardCard):
     ]
 
     def get_data(self, user, config):
+        """Return the count and latest orders awaiting validation for the scope."""
         token = config_value('for_validate_order_status_token', '2')
         status = OrderStatus.objects.filter(token=token).first()
         qs = Order.objects.filter(is_active=True, status__token=token)
@@ -52,6 +54,7 @@ class ChangeMeterPendingCard(DashboardCard):
     default_size = 'md'
 
     def get_data(self, user, config):
+        """Return completed meter change orders whose changes remain unapplied."""
         from notification.utils.auto_tasks import change_meter_order_types
 
         completed_token = config_value('order_status_completed_token', '10')

@@ -26,6 +26,7 @@ class CalendarTaskViewSet(viewsets.ModelViewSet):
   ordering_fields = ['token','name','set_date','time','created_at']
 
   def get_queryset(self):
+    """Return active tasks assigned to the request user or shared with everyone."""
     qs = super().get_queryset().select_related('user', 'contract', 'order__type', 'recurrence')
     user = self.request.user
 
@@ -36,6 +37,7 @@ class CalendarTaskViewSet(viewsets.ModelViewSet):
     return CalendarTaskSerializer
 
   def get_serializer_context(self):
+    """Add the request to serializer context for assignment and ownership checks."""
     context = super().get_serializer_context()
     context['request'] = self.request
     return context

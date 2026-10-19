@@ -38,6 +38,7 @@ const groups = computed(() => {
   return Object.entries(byDay).map(([key, results]) => ({ key, results }));
 });
 
+/** Return a localized today, yesterday or date label for a history group. */
 const dayLabel = (key) => {
   const date = new Date(`${key}T00:00:00`);
   if (isToday(date)) return t('calendar_tasks.today');
@@ -45,6 +46,7 @@ const dayLabel = (key) => {
   return formatDate(key);
 };
 
+/** Update scroll arrow visibility from the current container bounds. */
 const updateArrows = () => {
   const el = scroller.value;
   if (!el) return;
@@ -52,12 +54,14 @@ const updateArrows = () => {
   canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
 };
 
+/** Scroll the history row one step in the requested direction. */
 const scrollBy = (direction) => {
   scroller.value?.scrollBy({ left: direction * SCROLL_STEP, behavior: 'smooth' });
 };
 
 // La roda vertical desplaça la fila mentre hi hagi on anar; als extrems es deixa
 // passar l'esdeveniment perquè la pàgina continuï fent scroll.
+/** Scroll history horizontally with the wheel while there is room to move. */
 const handleWheel = (event) => {
   const el = scroller.value;
   if (!el || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
@@ -67,6 +71,7 @@ const handleWheel = (event) => {
   el.scrollLeft += event.deltaY;
 };
 
+/** Load search history, reset its scroll position and observe its container. */
 const getHistoryData = async () => {
   loading.value = true;
   try {
@@ -86,9 +91,12 @@ const getHistoryData = async () => {
   }
 };
 
+/** Return the category translation for a found search field. */
 const getItemTranslation = (result) => foundItemTranslation(result, 'cat').cat;
+/** Return the search entity icon or the generic search icon. */
 const entityIcon = (result) => searchValues[result.entity]?.[1] || 'fa6-solid:magnifying-glass';
 
+/** Open the selected search history item in its entity detail view. */
 const handleClick = (result) => {
   try {
     const pathName = '/' + result.app.toLowerCase() + '/' + searchValues[result.entity][0] + '/';

@@ -12,6 +12,7 @@ export function useDashboardCardData(key, config, refreshKey) {
   const error = ref(null);
   let requestId = 0;
 
+  /** Fetch card data and update state only for the most recent request. */
   const load = async () => {
     const current = ++requestId;
     loading.value = true;

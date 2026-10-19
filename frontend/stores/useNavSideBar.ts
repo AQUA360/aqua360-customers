@@ -73,6 +73,7 @@ export const useSidebarStore = defineStore('sidebar', {
     newDailyDocumentsFound(dailyDocumentsFound: number){
       this.newDailyDocuments = dailyDocumentsFound;
     },
+    /** Signal task mutations so sidebar counters reload. */
     tasksChanged() {
       this.tasksVersion++;
     },

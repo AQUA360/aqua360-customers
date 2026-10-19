@@ -22,6 +22,7 @@ _REGISTRY = {}
 
 
 def register(card_class):
+    """Register a card instance, rejecting duplicate keys; return its class."""
     card = card_class()
     if card.key in _REGISTRY:
         raise ValueError(f"Dashboard card '{card.key}' already registered")
@@ -30,14 +31,17 @@ def register(card_class):
 
 
 def get_card(key):
+    """Return the registered card for a string key, or None if unknown."""
     return _REGISTRY.get(key) if isinstance(key, str) else None
 
 
 def all_cards():
+    """Return all registered dashboard card instances."""
     return list(_REGISTRY.values())
 
 
 def available_cards(user):
+    """Return cards allowed by the user permissions."""
     permissions = PermissionManager.get_user_permissions(user)
     return [card for card in _REGISTRY.values() if card.is_allowed(user, permissions)]
 
@@ -53,6 +57,7 @@ class DashboardCard:
     config_schema = []
 
     def is_allowed(self, user, permissions=None):
+        """Check the card permission, optionally using preloaded permissions."""
         if not self.permission:
             return True
         if permissions is None:
@@ -73,9 +78,11 @@ class DashboardCard:
         return cleaned
 
     def get_data(self, user, config):
+        """Return card data for the user and cleaned config; subclasses must implement."""
         raise NotImplementedError
 
     def describe(self):
+        """Return catalog metadata describing sizes and configuration options."""
         return {
             'key': self.key,
             'default_size': self.default_size,
@@ -122,6 +129,7 @@ def period_range(period, today=None):
 
 
 def config_value(token, default=None):
+    """Return a project configuration value, falling back when missing or empty."""
     from coredata.models import ConfigProject
 
     config = ConfigProject.objects.filter(token=token).first()

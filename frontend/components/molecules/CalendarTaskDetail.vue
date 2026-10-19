@@ -48,6 +48,7 @@ const fetchData = async () => {
 
 };
 
+/** Save the task completion flag and refresh the sidebar task counts. */
 const handleTaskCheck = async (event) => {
   local_checked.value = event.target.checked;
   let local_save = {
@@ -92,6 +93,7 @@ const edit = function () {
   emit('edit', 'CalendarTaskEdit', localData.value.id);
 }
 
+/** Confirm and delete one task or its future pending series occurrences. */
 const deleteItem = async function () {
   let series = false;
   if (localData.value.recurrence) {

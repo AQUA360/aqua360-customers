@@ -19,4 +19,5 @@ class UserDashboard(models.Model):
         verbose_name_plural = "User Dashboards"
 
     def __str__(self):
+        """Return a dashboard label identifying its user."""
         return "Dashboard of {}".format(self.user_id)

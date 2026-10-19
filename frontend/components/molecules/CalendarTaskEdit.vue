@@ -80,6 +80,7 @@ const originalNotifiedAt = ref(null);
 const originalDate = ref(null);
 const originalDone = ref(false);
 
+/** Clear series state and restore the default recurrence form values. */
 const resetRecurrenceForm = () => {
   isRecurring.value = false;
   frequency.value = 'weekly';
@@ -91,12 +92,14 @@ const resetRecurrenceForm = () => {
   applyToSeries.value = false;
 };
 
+/** Toggle a weekday in the recurrence selection, using Monday as zero. */
 const toggleWeekday = (index) => {
   weekdays.value = weekdays.value.includes(index)
     ? weekdays.value.filter(day => day !== index)
     : [...weekdays.value, index].sort();
 };
 
+/** Build the recurrence payload from the form, omitting nonweekly weekdays. */
 const currentRule = () => ({
   frequency: frequency.value,
   interval: Number(interval.value) || 1,
@@ -104,8 +107,10 @@ const currentRule = () => ({
   end_date: endDate.value || null,
 });
 
+/** Compare the current recurrence payload with the originally loaded rule. */
 const ruleChanged = () => JSON.stringify(currentRule()) !== JSON.stringify(originalRule.value);
 
+/** Load available task assignees with display labels and user IDs. */
 const getUsers = async () => {
   const response = await $UserApiService.getAll();
   users.value = response.results.map(user => ({
@@ -116,6 +121,7 @@ const getUsers = async () => {
 };
 
 // Per defecte, una tasca privada s'assigna a l'usuari que la crea
+/** Select the signed-in user as assignee when present in the loaded users. */
 const selectCurrentUser = () => {
   let currentUsername = null;
   try {
@@ -125,11 +131,13 @@ const selectCurrentUser = () => {
   if (me) selectedUser.value = me;
 };
 
+/** Set shared visibility and default private tasks to the current user. */
 const setVisibility = (showToAll) => {
   all_users.value = showToAll;
   if (!showToAll && !selectedUser.value) selectCurrentUser();
 };
 
+/** Load task details and populate assignment, recurrence and notification state. */
 const fetchData = async () => {
   isLoading.value = true;
   try {
@@ -177,6 +185,7 @@ const updateSelect = (event, entity) => {
   }
 }
 
+/** Validate and save the task, optionally updating its series and linked object. */
 const save = async () => {
 
   attemptedSave.value = true;
@@ -215,6 +224,7 @@ const save = async () => {
 
 };
 
+/** Require a name, date and an assignee for private tasks. */
 const isValid = () => {
   if (name.value == '') return false;
   if (!all_users.value && !selectedUser.value) return false;

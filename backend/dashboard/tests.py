@@ -18,6 +18,7 @@ CARDS_URL = '/dashboard/cards/'
 
 
 def data_url(key, **params):
+    """Build a dashboard card data URL with optional query parameters."""
     query = '&'.join(f'{k}={v}' for k, v in params.items())
     return f'{CARDS_URL}{key}/data/' + (f'?{query}' if query else '')
 
@@ -25,6 +26,7 @@ def data_url(key, **params):
 class DashboardTestCase(TestCase):
 
     def setUp(self):
+        """Create dashboard permissions, users and an authenticated API client."""
         for key, models in [('order', 'order.order'), ('billing', 'billing.invoice'), ('reading', 'billing.reading')]:
             MainPermission.objects.create(name=key, view_key=f'view_{key}', change_key=f'change_{key}', affected_models=models)
         self.admin = User.objects.create_superuser(username='admin', password='x')
@@ -36,6 +38,7 @@ class DashboardTestCase(TestCase):
 class TestPeriodRange(TestCase):
 
     def test_ranges(self):
+        """Check inclusive bounds for daily, weekly, monthly, quarterly and yearly periods."""
         today = datetime.date(2026, 8, 19)  # dimecres
         self.assertEqual(period_range('today', today), (today, today))
         self.assertEqual(period_range('week', today), (datetime.date(2026, 8, 17), datetime.date(2026, 8, 23)))
@@ -48,6 +51,7 @@ class TestPeriodRange(TestCase):
 class TestLayout(DashboardTestCase):
 
     def test_default_layout_filtered_by_permissions(self):
+        """Check that default cards are filtered by the requesting user permissions."""
         response = self.client.get(LAYOUT_URL)
         self.assertTrue(response.data['is_default'])
         self.assertEqual([c['key'] for c in response.data['layout']], [c['key'] for c in DEFAULT_LAYOUT])
@@ -60,6 +64,7 @@ class TestLayout(DashboardTestCase):
         self.assertIn('tasks_today', keys)
 
     def test_save_layout_cleans_size_and_config(self):
+        """Check that saving normalizes card size, IDs and configuration."""
         response = self.client.put(LAYOUT_URL, {'layout': [
             {'key': 'invoices_issued', 'size': 'xl', 'config': {'period': 'year', 'unknown': 1}},
             {'id': 'abc', 'key': 'calendar', 'size': 'sm'},
@@ -73,10 +78,12 @@ class TestLayout(DashboardTestCase):
         self.assertFalse(self.client.get(LAYOUT_URL).data['is_default'])
 
     def test_unknown_card_is_rejected(self):
+        """Check that an unknown card key causes a validation error."""
         response = self.client.put(LAYOUT_URL, {'layout': [{'key': 'nope'}]}, format='json')
         self.assertEqual(response.status_code, 400)
 
     def test_reset_layout(self):
+        """Check that resetting deletes the saved layout and restores defaults."""
         UserDashboard.objects.create(user=self.admin, layout=[{'key': 'calendar'}])
         response = self.client.delete(LAYOUT_URL)
         self.assertTrue(response.data['is_default'])
@@ -86,6 +93,7 @@ class TestLayout(DashboardTestCase):
 class TestCards(DashboardTestCase):
 
     def test_catalog_by_permission(self):
+        """Check that the card catalog excludes cards without permission."""
         keys = {c['key'] for c in self.client.get(CARDS_URL).data}
         self.assertIn('rebillings', keys)
         basic = APIClient()
@@ -94,6 +102,7 @@ class TestCards(DashboardTestCase):
         self.assertNotIn('rebillings', keys)
 
     def test_card_data_permission_and_unknown(self):
+        """Check forbidden, unknown and frontend-only card data responses."""
         basic = APIClient()
         basic.force_authenticate(self.basic)
         self.assertEqual(basic.get(data_url('invoices_issued')).status_code, 403)
@@ -101,12 +110,14 @@ class TestCards(DashboardTestCase):
         self.assertEqual(self.client.get(data_url('calendar')).status_code, 404)
 
     def test_user_with_group_permission_sees_card(self):
+        """Check that a user granted order permission can fetch the order card."""
         self.basic.user_permissions.add(Permission.objects.get(codename='view_order'))
         basic = APIClient()
         basic.force_authenticate(self.basic)
         self.assertEqual(basic.get(data_url('orders_to_validate')).status_code, 200)
 
     def test_invoice_kpis(self):
+        """Check invoice, cancellation and rebilling totals and user scope."""
         invoice_type = InvoiceType.objects.create(token='F', name='Factura')
         today = timezone.localdate()
         last_month = today.replace(day=1) - datetime.timedelta(days=1)
@@ -136,6 +147,7 @@ class TestCards(DashboardTestCase):
         self.assertEqual((data['count'], data['amount']), (1, Decimal('20')))
 
     def test_orders_to_validate(self):
+        """Check validation counts and filtering to orders created by the user."""
         to_validate = OrderStatus.objects.create(token='2', name='Per validar')
         other = OrderStatus.objects.create(token='1', name='Pendent')
         Order.objects.create(token='o1', status=to_validate, created_by=self.admin)
@@ -149,6 +161,7 @@ class TestCards(DashboardTestCase):
         self.assertEqual([o['token'] for o in data['items']], ['o1'])
 
     def test_reading_batches_progress(self):
+        """Check pending batch progress excludes control readings."""
         pending = ReadingBatchStatus.objects.create(token='1', name='Pendent')
         billed = ReadingBatchStatus.objects.create(token='3', name='Facturat')
         batch = ReadingBatch.objects.create(name='Lot actual', status=pending)
@@ -171,6 +184,7 @@ class TestUserIsolation(DashboardTestCase):
     """Cada usuari té la seva disposició; cap usuari veu ni modifica la d'un altre."""
 
     def test_layout_is_per_user(self):
+        """Check that saving and resetting layouts affect only their owner."""
         other = User.objects.create_superuser(username='admin_b', password='x')
         other_client = APIClient()
         other_client.force_authenticate(other)
@@ -191,6 +205,7 @@ class TestUserIsolation(DashboardTestCase):
         self.assertEqual([c['id'] for c in self.client.get(LAYOUT_URL).data['layout']], ['a1'])
 
     def test_same_layout_from_any_session(self):
+        """Check that another session for the same user retrieves the saved layout."""
         # La disposició és al servidor: una sessió nova (pestanya, incògnit, altre equip) la recupera
         self.client.put(LAYOUT_URL, {'layout': [{'id': 'a1', 'key': 'calendar', 'size': 'md'}]}, format='json')
         new_session = APIClient()
@@ -198,18 +213,21 @@ class TestUserIsolation(DashboardTestCase):
         self.assertEqual(new_session.get(LAYOUT_URL).data['layout'], [{'id': 'a1', 'key': 'calendar', 'size': 'md', 'config': {}}])
 
     def test_stored_card_without_permission_is_hidden(self):
+        """Check that saved cards are hidden when their permission is absent."""
         UserDashboard.objects.create(user=self.basic, layout=[{'key': 'rebillings'}, {'key': 'calendar'}])
         basic = APIClient()
         basic.force_authenticate(self.basic)
         self.assertEqual([c['key'] for c in basic.get(LAYOUT_URL).data['layout']], ['calendar'])
 
     def test_anonymous_is_rejected(self):
+        """Check that dashboard endpoints reject unauthenticated requests."""
         anonymous = APIClient()
         for url in [LAYOUT_URL, CARDS_URL, data_url('tasks_today')]:
             self.assertIn(anonymous.get(url).status_code, (401, 403))
         self.assertIn(anonymous.put(LAYOUT_URL, {'layout': []}, format='json').status_code, (401, 403))
 
     def test_tasks_card_only_shows_visible_tasks(self):
+        """Check that task cards include only personal or shared tasks for the scope."""
         from notification.models import CalendarTask
         today = timezone.localdate()
         CalendarTask.objects.create(name='De l\'admin', set_date=today, user=self.admin)
@@ -225,6 +243,7 @@ class TestUserIsolation(DashboardTestCase):
 class TestLayoutValidation(DashboardTestCase):
 
     def test_malformed_items_do_not_crash(self):
+        """Check malformed configuration is normalized and invalid keys are rejected."""
         response = self.client.put(LAYOUT_URL, {'layout': [
             {'key': 'invoices_issued', 'config': 'no és un diccionari'},
             {'key': 'calendar', 'config': ['llista']},

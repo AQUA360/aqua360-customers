@@ -100,14 +100,17 @@ export default defineNuxtPlugin(nuxtApp => {
       return await $apiManager.fetch(`${apiHost}${entity}summary/${query}`, 'GET', null, null, true);
     }
 
+    /** Update a task completion flag without changing its other fields. */
     const setDone = async (id, taskDone) => {
       return await $apiManager.fetch(`${apiHost}${entity}${id}/`, 'PATCH', { task_done: taskDone }, { 'Content-Type': 'application/json' });
     }
 
+    /** Fetch the current user task notification preferences. */
     const getNotificationPreference = async () => {
       return await $apiManager.fetch(`${apiHost}/notification/preference/`, 'GET');
     }
 
+    /** Update the current user task notification preferences. */
     const saveNotificationPreference = async (data) => {
       return await $apiManager.fetch(`${apiHost}/notification/preference/`, 'PUT', data, { 'Content-Type': 'application/json' });
     }

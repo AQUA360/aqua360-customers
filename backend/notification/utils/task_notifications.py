@@ -17,6 +17,7 @@ from notification.models import CalendarTask, Notification
 
 
 def _task_list_text(tasks, limit=5):
+    """Join task names up to the limit and summarize any remaining tasks."""
     names = [t.name or '-' for t in tasks[:limit]]
     text = ', '.join(names)
     if len(tasks) > limit:
@@ -63,6 +64,7 @@ def notify_tasks(tasks):
 
 
 def pending_unnotified(queryset):
+    """Restrict a queryset to active unfinished tasks not yet notified."""
     return queryset.filter(is_active=True, task_done=False, notified_at__isnull=True)
 
 
@@ -77,6 +79,7 @@ def notify_due_today(task_ids):
         return
 
     def _notify():
+        """Notify the selected tasks still due today and unnotified after commit."""
         tasks = pending_unnotified(
             CalendarTask.objects.filter(id__in=task_ids, set_date=timezone.localdate())
         ).select_related('user')

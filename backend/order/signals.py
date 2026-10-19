@@ -79,6 +79,7 @@ def detect_status_change(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Order)
 def after_order_save(sender, instance, created, **kwargs):
+    """Process completed orders and synchronize their automatic follow-up tasks."""
     global order_save_flag
     if order_save_flag:
         return  # Prevent recursive call

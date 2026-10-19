@@ -23,6 +23,7 @@ class CalendarTaskRecurrenceSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'start_date', 'is_active']
 
     def validate_weekdays(self, value):
+        """Return sorted unique weekday numbers, rejecting values outside 0 to 6."""
         try:
             days = sorted({int(d) for d in (value or [])})
         except (TypeError, ValueError):
@@ -60,9 +61,11 @@ class CalendarTaskSerializer(serializers.ModelSerializer):
         read_only_fields = ['token', 'source', 'source_key', 'done_at', 'done_by', 'notified_at']
 
     def get_is_overdue(self, obj):
+        """Return whether an unfinished task is dated before today."""
         return bool(not obj.task_done and obj.set_date and obj.set_date < timezone.localdate())
 
     def validate(self, attrs):
+        """Require a recurring task start date and reject an earlier end date."""
         rule = attrs.get('recurrence_rule')
         if rule is not None and not self.instance and not attrs.get('set_date'):
             raise serializers.ValidationError({'set_date': 'A recurring task needs a start date'})
@@ -77,6 +80,7 @@ class CalendarTaskSerializer(serializers.ModelSerializer):
         return Q(user=user) | Q(user__isnull=True)
 
     def _check_can_manage_series(self, recurrence):
+        """Deny changes to a private recurrence owned by another user."""
         # Una sèrie privada d'un altre usuari no es pot modificar encara que alguna
         # de les seves ocurrències s'hagi fet visible per a tothom.
         user = self._request_user()
@@ -84,6 +88,7 @@ class CalendarTaskSerializer(serializers.ModelSerializer):
             raise PermissionDenied('This series belongs to another user')
 
     def _request_user(self):
+        """Return the authenticated request user, or None without one."""
         request = self.context.get('request')
         return request.user if request and request.user.is_authenticated else None
 
@@ -105,6 +110,7 @@ class CalendarTaskSerializer(serializers.ModelSerializer):
         # else: validated_data['user'] already holds the chosen user_id
 
     def _apply_done(self, instance, validated_data):
+        """Update completion time and user when marking a task done or reopening it."""
         if 'task_done' not in validated_data:
             return
         was_done = instance.task_done if instance else False
@@ -116,6 +122,7 @@ class CalendarTaskSerializer(serializers.ModelSerializer):
             validated_data['done_by'] = None
 
     def _new_recurrence(self, rule, template):
+        """Create a recurrence from the rule and task template for the request user."""
         return CalendarTaskRecurrence.objects.create(
             token=str(uuid.uuid4()),
             created_by=self._request_user(),
@@ -125,6 +132,7 @@ class CalendarTaskSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        """Create a task or recurrence and notify tasks due today after commit."""
         rule = validated_data.pop('recurrence_rule', None)
         validated_data.pop('apply_to_series', None)
         self._apply_assignment(validated_data)
@@ -156,6 +164,7 @@ class CalendarTaskSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        """Update a task and optionally its future pending series occurrences."""
         has_rule = 'recurrence_rule' in validated_data
         rule = validated_data.pop('recurrence_rule', None)
         apply_to_series = validated_data.pop('apply_to_series', False)

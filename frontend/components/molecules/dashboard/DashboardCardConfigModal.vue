@@ -21,6 +21,7 @@ watch(open, (isOpen) => {
   config.value = { ...(props.item.config || {}) };
 });
 
+/** Emit the edited card size and configuration, then close the modal. */
 const save = () => {
   emit('save', { ...props.item, size: size.value, config: { ...config.value } });
   open.value = false;

@@ -12,6 +12,7 @@ export default defineNuxtPlugin(nuxtApp => {
     return await $apiManager.fetch(`${apiHost}${entity}layout/`, 'GET');
   };
 
+  /** Persist the current user dashboard layout as JSON. */
   const saveLayout = async (layout) => {
     return await $apiManager.fetch(`${apiHost}${entity}layout/`, 'PUT', { layout }, { 'Content-Type': 'application/json' });
   };

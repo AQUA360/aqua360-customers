@@ -15,6 +15,7 @@ class ReadingBatchesInProgressCard(DashboardCard):
     default_size = 'lg'
 
     def get_data(self, user, config):
+        """Return active reading batches with reading counts, alerts and progress."""
         tokens = [
             config_value('reading_batch_pending_token', '1'),
             config_value('reading_batch_pending_processing_token', '4'),

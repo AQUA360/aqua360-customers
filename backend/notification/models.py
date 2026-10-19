@@ -105,6 +105,7 @@ class CalendarTaskRecurrence(models.Model):
         verbose_name_plural = "Calendar Task Recurrences"
 
     def __str__(self):
+        """Return the recurrence name or a label containing its ID."""
         return self.name if self.name else "Calendar Task Recurrence ID {}".format(self.id)
 
 
@@ -169,6 +170,7 @@ class NotificationPreference(models.Model):
         verbose_name_plural = "Notification Preferences"
 
     def __str__(self):
+        """Return a notification preference label identifying its user."""
         return "Notification Preference of {}".format(self.user_id)
 
 

@@ -6,5 +6,6 @@ class DashboardConfig(AppConfig):
     name = 'dashboard'
 
     def ready(self):
+        """Import card modules to register the available dashboard cards."""
         # Registra les cards disponibles
         from . import cards  # noqa: F401

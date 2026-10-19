@@ -53,6 +53,7 @@ def occurrence_dates(recurrence, date_from, date_to):
 
 
 def _task_from_template(recurrence, set_date):
+    """Build an unsaved task from the recurrence template for the given date."""
     return CalendarTask(
         token=str(uuid.uuid4()),
         name=recurrence.name,

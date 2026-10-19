@@ -35,6 +35,7 @@ class CalendarTaskFilter(filters.FilterSet):
         return queryset
 
     def filter_assigned(self, queryset, name, value):
+        """Filter tasks assigned to the current user or shared with everyone."""
         if value == 'me':
             return queryset.filter(user=self.request.user)
         if value == 'all_users':
@@ -42,5 +43,6 @@ class CalendarTaskFilter(filters.FilterSet):
         return queryset
 
     def filter_overdue(self, queryset, name, value):
+        """Include or exclude unfinished tasks dated before today."""
         overdue = Q(task_done=False, set_date__lt=timezone.localdate())
         return queryset.filter(overdue) if value else queryset.exclude(overdue)

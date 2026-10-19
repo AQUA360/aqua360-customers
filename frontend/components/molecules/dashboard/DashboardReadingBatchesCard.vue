@@ -16,6 +16,7 @@ const refreshKey = ref(0);
 const config = toRef(() => props.item.config);
 const { data, loading, error } = useDashboardCardData(props.item.key, config, refreshKey);
 
+/** Return an inline status background color when one is configured. */
 const statusStyle = (status) => status?.color ? { backgroundColor: status.color } : {};
 </script>
 
