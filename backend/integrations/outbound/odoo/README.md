@@ -9,6 +9,8 @@ Integració outbound del Programa d'Abonats amb **Odoo 19 Community** (ERP Compt
 | Document | Ubicació |
 |----------|----------|
 | Contracte de dades | [`docs/integrations/odoo/data-contract.md`](../../../docs/integrations/odoo/data-contract.md) |
+| Contracte de dades (castellà) | [`docs/integrations/odoo/data-contract.es.md`](../../../docs/integrations/odoo/data-contract.es.md) |
+| OpenAPI | [`docs/integrations/odoo/openapi.yaml`](../../../docs/integrations/odoo/openapi.yaml) |
 | Pla d'implementació | [`docs/integrations/odoo/plan.md`](../../../docs/integrations/odoo/plan.md) |
 
 ## Estructura

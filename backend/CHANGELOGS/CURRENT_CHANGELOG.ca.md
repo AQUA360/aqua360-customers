@@ -1,5 +1,11 @@
 # Changelog Backend
 
+## [19-10-2026]
+### DOCS
+#### INTEGRATIONS (`docs/integrations/odoo/` — OpenAPI del connector i contracte en castellà)
+    - Nova especificació OpenAPI 3.0 (`docs/integrations/odoo/openapi.yaml`) dels `POST /invoices` i `POST /payments` que Aqua360 envia al connector Odoo. Descripcions i textos dels exemples en castellà. Autenticació documentada amb la capçalera `Aqua360-Api-Key` i resposta `{ "id", "aqua_id" }`.
+    - El contracte narratiu en castellà és `data-contract.es.md` (mateixa estructura, literals dels JSON en castellà). El català (`data-contract.md`) continua sent la versió de treball i enllaça l'OpenAPI. La nota d'`amount` al pagament queda alineada amb v1.1: positiu en un cobrament, negatiu en una devolució, sense canviar `payment_type`.
+
 ## [16-10-2026]
 ### FEAT
 #### CLAIMREQUEST (`claimrequest/tasks.py` — filtre per devolució de remesa SEPA a la cerca de pagaments per a gestions d'impagats)

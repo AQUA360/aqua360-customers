@@ -4,6 +4,8 @@ Contracte de dades **push** des d'Aqua360 (Aventec) cap a **Odoo 19 Community**.
 
 Aqua360 empeny factures, rectificatives i moviments (pagaments). Odoo actua com a receptor: no renumera, no genera Verifactu propi (viu a Aqua360) i no origina pagaments ni remeses. La resolució del JSON custom es fa amb OCA fastapi (`rest-framework`), amb `get_or_create` per `aqua_id` a cada model relacionat.
 
+**OpenAPI (per a integradors):** [`openapi.yaml`](openapi.yaml) — importable a [Swagger Editor](https://editor.swagger.io), Postman o Redoc. Especificació OpenAPI 3.0 amb les descripcions en castellà. El mateix contracte, en castellà: [`data-contract.es.md`](data-contract.es.md).
+
 > **Font:** `Contracte_de_dades__Interfcie_Aqua360__Odoo.pdf`  
 > **Especificació tècnica del connector Odoo (PoC):** document separat al costat d'Odoo (mòdul `aqua360_connector`).
 
@@ -201,7 +203,7 @@ Mateix JSON que v1. Només canvien aquests casos:
 | `aqua_id` (pagament) | `aqua_id` (custom) | `account.payment` | |
 | `payment_type` | `payment_type` | `account.payment` | `inbound` |
 | `partner_id` | `partner_id` | `account.payment` | |
-| `amount` | `amount` | `account.payment` | Positiu; signe pel `payment_type` |
+| `amount` | `amount` | `account.payment` | Positiu en un cobrament; negatiu en una devolució (v1.1). El `payment_type` no canvia |
 | `date` | `date` | `account.payment` | |
 | `memo` | `memo` | `account.payment` | Text lliure (correcte a 19) |
 | `payment_mode_id` | `payment_mode_id` | `account.payment` | OCA; preexisteix |

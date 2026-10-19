@@ -15,7 +15,7 @@ La documentació detallada per integració viu a [`docs/integrations/`](integrat
 |------------|----------|------|--------------|
 | Giswater | Outbound + Inbound | `integrations/outbound/giswater/`, `integrations/inbound/giswater/` | [`integrations/outbound/giswater/README.md`](../integrations/outbound/giswater/README.md) |
 | Aqua360 Sign | Outbound + Inbound | `integrations/outbound/signing/`, `integrations/inbound/signing/` | [`docs/integrations/signing/`](integrations/signing/data-contract.md) |
-| Odoo (ERP Comptabilitat) | Outbound | `integrations/outbound/odoo/` | [`docs/integrations/odoo/`](integrations/odoo/data-contract.md) · [`integrations/outbound/odoo/README.md`](../integrations/outbound/odoo/README.md) |
+| Odoo (ERP Comptabilitat) | Outbound | `integrations/outbound/odoo/` | [`docs/integrations/odoo/`](integrations/odoo/data-contract.md) · [`openapi.yaml`](integrations/odoo/openapi.yaml) · [`integrations/outbound/odoo/README.md`](../integrations/outbound/odoo/README.md) |
 | Smartmetering | Inbound | `integrations/inbound/smartmetering/` | [`docs/integrations/smartmetering/`](integrations/smartmetering/data-contract.md) · aquest document (secció Smartmetering) |
 
 ---
@@ -471,6 +471,8 @@ Integració **outbound** per enviar factures, rectificatives i moviments de paga
 | Document | Descripció |
 |----------|------------|
 | [`docs/integrations/odoo/data-contract.md`](integrations/odoo/data-contract.md) | Contracte de dades (JSON, mapatges, principis) |
+| [`docs/integrations/odoo/data-contract.es.md`](integrations/odoo/data-contract.es.md) | Mateix contracte, en castellà |
+| [`docs/integrations/odoo/openapi.yaml`](integrations/odoo/openapi.yaml) | OpenAPI 3.0 del connector (descripcions en castellà) |
 | [`docs/integrations/odoo/plan.md`](integrations/odoo/plan.md) | Pla d'implementació (fases, mapatge des de `billing`) |
 | [`integrations/outbound/odoo/README.md`](../integrations/outbound/odoo/README.md) | Resum operatiu al repositori de codi |
 

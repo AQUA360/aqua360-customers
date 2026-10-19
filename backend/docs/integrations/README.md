@@ -6,7 +6,7 @@
 |------------|----------|--------------|
 | Giswater | Outbound + Inbound | [`integrations/outbound/giswater/README.md`](../../integrations/outbound/giswater/README.md) |
 | Aqua360 Sign | Outbound + Inbound | [`signing/data-contract.md`](signing/data-contract.md) · [`../integrations.md`](../integrations.md#aqua360-sign) |
-| Odoo (ERP Comptabilitat) | Outbound (Fase 1) | [`odoo/data-contract.md`](odoo/data-contract.md) · [`odoo/plan.md`](odoo/plan.md) · [`integrations/outbound/odoo/README.md`](../../integrations/outbound/odoo/README.md) |
+| Odoo (ERP Comptabilitat) | Outbound (Fase 1) | [`odoo/data-contract.md`](odoo/data-contract.md) · [`odoo/data-contract.es.md`](odoo/data-contract.es.md) · [`odoo/openapi.yaml`](odoo/openapi.yaml) · [`odoo/plan.md`](odoo/plan.md) · [`integrations/outbound/odoo/README.md`](../../integrations/outbound/odoo/README.md) |
 | Smartmetering | Inbound | [`smartmetering/data-contract.md`](smartmetering/data-contract.md) · [`smartmetering/openapi.yaml`](smartmetering/openapi.yaml) · [`../integrations.md`](../integrations.md#smartmetering) |
 
 ## Convenció
