@@ -1,0 +1,661 @@
+openapi: 3.0.3
+info:
+  title: Aqua360 — API del conector Odoo
+  description: |
+    Contrato **push** de Aqua360 (Programa de Abonados) hacia **Odoo 19 Community**.
+
+    Aqua360 es el cliente: envía facturas, rectificativas y movimientos (pagos).
+    Odoo es el receptor. Esta especificación describe la API que debe exponer
+    el conector `aqua360_connector` (OCA fastapi / `rest-framework`).
+
+    Es **OpenAPI 3.0** (el estándar que sucedió a Swagger). Se puede importar en
+    [Swagger Editor](https://editor.swagger.io), Postman o Redoc.
+    El relato del contrato, con el mapeo a modelos de Odoo, está en
+    [`data-contract.es.md`](data-contract.es.md) (castellano) y
+    [`data-contract.md`](data-contract.md) (catalán).
+
+    ## Qué no hace Odoo
+
+    - No renumera: el diario queda con numeración externa y se respeta `name`.
+    - No genera Verifactu propio (vive en Aqua360) ni declara por SII/Verifactu.
+    - No origina pagos ni remesas.
+    - No recibe cuentas contables. Odoo deriva la contrapartida del pago y las
+      cuentas de línea a partir del partner y del producto.
+
+    ## `aqua_id`
+
+    Identificador propio de Aqua360. Es el ancla de idempotencia y de mapeo:
+    el upsert busca por este campo, nunca por `name`. Repetir un `POST` con el
+    mismo `aqua_id` debe devolver el mismo documento, sin duplicarlo.
+
+    La respuesta devuelve el `id` interno de Odoo junto con el `aqua_id`.
+
+    ## Resolución de relacionados
+
+    Se crean al vuelo (`get_or_create` por `aqua_id`):
+
+    - partner (`partner_id`)
+    - diario (`journal_id`)
+    - producto (`product_id`)
+
+    Si falta el `aqua_id` de un relacionado que hay que crear, el conector
+    **rechaza** el documento (evita duplicados sin ancla).
+
+    Deben **preexistir** en Odoo; se resuelven por código o la petición falla:
+
+    - impuestos (`tax_ids`): array de códigos
+    - modos de pago (`payment_mode_id.id`)
+
+    Por eso llevan `id` o código, no `aqua_id`.
+
+    ## Totales de control
+
+    Las líneas llevan `price_subtotal`, `price_tax` y `price_total`.
+    La cabecera lleva `amount_untaxed`, `amount_tax` y `amount_total`.
+    Odoo recalcula y **rechaza** el documento si no cuadran.
+
+    ## Autenticación
+
+    Cabecera `Aqua360-Api-Key` con la clave configurada en Aqua360 (`ODOO_API_KEY`).
+
+    ## URL base
+
+    `ODOO_BASE_URL` ya incluye el prefijo del conector, por ejemplo
+    `https://odoo.ejemplo.cat/aqua360/v1`. Las rutas de esta especificación
+    (`/invoices`, `/payments`) son relativas a esa base.
+
+    ## Versión del contrato
+
+    - Facturas y rectificativas: contrato v1.
+    - Pagos v1: un emparejamiento pago ↔ factura, `amount` positivo.
+    - Pagos v1.1: el mismo JSON. Una devolución lleva `amount` negativo y
+      `payment_type` sigue siendo `inbound`. Sin factura, `invoice_aqua_id`
+      va vacío (`""`) y el movimiento entra en la bolsa del cliente.
+
+    Queda fuera (v2): compromisos, conciliación de un pago contra varias
+    facturas, acuse de estado y deshacer la conciliación en devoluciones SEPA.
+  version: 1.1.0
+  contact:
+    name: Aqua360 — Programa de Abonados
+
+servers:
+  - url: https://odoo.ejemplo.cat/aqua360/v1
+    description: |
+      URL base del conector (variable `ODOO_BASE_URL`). Sustituir por el dominio real.
+
+tags:
+  - name: Facturas
+    description: |
+      Facturas de cliente (`out_invoice`) y rectificativas (`out_refund`)
+      sobre `account.move`.
+  - name: Pagos
+    description: |
+      Movimientos de cobro (`account.payment`) y conciliación con la factura.
+
+paths:
+  /invoices:
+    post:
+      tags:
+        - Facturas
+      summary: Crear o actualizar una factura o rectificativa
+      description: |
+        Upsert de un `account.move` de cliente. La clave es `aqua_id`.
+
+        `move_type` distingue el documento:
+
+        - `out_invoice`: factura.
+        - `out_refund`: rectificativa. Obligatorio `reversed_aqua_id` con el
+          `aqua_id` de la factura original.
+
+        `partner_id.aqua_id` es el token del contrato. Si no hay contrato, es
+        el token de cliente. `partner_id.name` es el nombre del cliente.
+        `partner_id.vat` es siempre el token de cliente que envía Aqua360
+        (no tiene por qué ser un NIF/CIF fiscal).
+
+        `name` es el número externo (`serie_final`). Odoo no lo renumera.
+      operationId: upsertInvoice
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceRequest"
+            examples:
+              factura:
+                summary: Factura
+                value:
+                  aqua_id: 2026Q3-000123
+                  move_type: out_invoice
+                  name: FA2026/000123
+                  invoice_date: "2026-07-15"
+                  invoice_date_due: "2026-08-15"
+                  partner_id:
+                    aqua_id: CTR-004521
+                    name: Joan Puig Vidal
+                    vat: ABON-004521
+                  journal_id:
+                    aqua_id: VENT-AGUA
+                    name: Facturación agua
+                  payment_mode_id:
+                    id: SEPA-DOM
+                    name: Domiciliación SEPA
+                  invoice_line_ids:
+                    - product_id:
+                        aqua_id: CONS-AGUA-B1
+                        name: Consumo agua bloque 1
+                      name: Consumo agua bloque 1 (0-10 m³)
+                      quantity: 10.0
+                      price_unit: 0.65
+                      discount: 0.0
+                      tax_ids:
+                        - IVA10
+                      price_subtotal: 6.50
+                      price_tax: 0.65
+                      price_total: 7.15
+                    - product_id:
+                        aqua_id: CUOTA-SERV
+                        name: Cuota de servicio
+                      name: Cuota de servicio trimestral
+                      quantity: 1.0
+                      price_unit: 18.50
+                      discount: 0.0
+                      tax_ids:
+                        - IVA10
+                      price_subtotal: 18.50
+                      price_tax: 1.85
+                      price_total: 20.35
+                  amount_untaxed: 25.00
+                  amount_tax: 2.50
+                  amount_total: 27.50
+              rectificativa:
+                summary: Rectificativa
+                description: |
+                  Mismo cuerpo que la factura. Cambian `move_type` y
+                  `reversed_aqua_id`.
+                value:
+                  aqua_id: 2026Q3-000123-R
+                  move_type: out_refund
+                  reversed_aqua_id: 2026Q3-000123
+                  name: FR2026/000123
+                  invoice_date: "2026-07-18"
+                  partner_id:
+                    aqua_id: CTR-004521
+                    name: Joan Puig Vidal
+                    vat: ABON-004521
+                  journal_id:
+                    aqua_id: VENT-AGUA
+                    name: Facturación agua
+                  payment_mode_id:
+                    id: SEPA-DOM
+                    name: Domiciliación SEPA
+                  invoice_line_ids:
+                    - product_id:
+                        aqua_id: CONS-AGUA-B1
+                        name: Consumo agua bloque 1
+                      name: Consumo agua bloque 1 (0-10 m³)
+                      quantity: 10.0
+                      price_unit: 0.65
+                      discount: 0.0
+                      tax_ids:
+                        - IVA10
+                      price_subtotal: 6.50
+                      price_tax: 0.65
+                      price_total: 7.15
+                  amount_untaxed: 6.50
+                  amount_tax: 0.65
+                  amount_total: 7.15
+      responses:
+        "200":
+          description: Documento aceptado (creado o actualizado por `aqua_id`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpsertResponse"
+              example:
+                id: 4821
+                aqua_id: 2026Q3-000123
+        "400":
+          $ref: "#/components/responses/Rejected"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /payments:
+    post:
+      tags:
+        - Pagos
+      summary: Crear o actualizar un movimiento de pago
+      description: |
+        Upsert de un `account.payment`. La clave es `aqua_id`.
+        En v1 hay un solo emparejamiento pago ↔ factura.
+
+        `payment_type` es siempre `inbound`. El signo va en `amount`:
+
+        - cobro: `amount` positivo;
+        - devolución (v1.1): `amount` negativo.
+
+        `journal_id` es opcional. Si no viene, el conector usa su diario
+        por defecto. No se envía ninguna cuenta contable.
+
+        `reconcile.invoice_aqua_id` apunta a la factura ya enviada.
+        En v1.1 puede ir vacío (`""`): no es un error; el movimiento entra
+        en la bolsa del cliente y no se concilia.
+      operationId: upsertPayment
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRequest"
+            examples:
+              cobro:
+                summary: Cobro conciliado con una factura
+                value:
+                  aqua_id: MOV-0007-000123
+                  payment_type: inbound
+                  partner_id:
+                    aqua_id: CTR-004521
+                    name: Joan Puig Vidal
+                    vat: ABON-004521
+                  amount: 27.50
+                  date: "2026-07-20"
+                  memo: Cobro recibido FA2026/000123 - remesa REM-2026-0007
+                  payment_mode_id:
+                    id: SEPA-DOM
+                    name: Domiciliación SEPA
+                  journal_id:
+                    aqua_id: BANC-SABADELL
+                    name: Banco Sabadell
+                  reconcile:
+                    invoice_aqua_id: 2026Q3-000123
+              devolucion:
+                summary: Devolución (v1.1)
+                description: |
+                  Mismo JSON. `amount` negativo y `payment_type` sigue siendo
+                  `inbound`.
+                value:
+                  aqua_id: MOV-0007-000124
+                  payment_type: inbound
+                  partner_id:
+                    aqua_id: CTR-004521
+                    name: Joan Puig Vidal
+                    vat: ABON-004521
+                  amount: -27.50
+                  date: "2026-07-22"
+                  memo: Devolución FA2026/000123 - remesa REM-2026-0007
+                  payment_mode_id:
+                    id: SEPA-DOM
+                    name: Domiciliación SEPA
+                  reconcile:
+                    invoice_aqua_id: 2026Q3-000123
+              sinFactura:
+                summary: Movimiento sin factura (v1.1)
+                description: |
+                  `invoice_aqua_id` vacío. El movimiento va a la bolsa del cliente.
+                value:
+                  aqua_id: MOV-0007-000125
+                  payment_type: inbound
+                  partner_id:
+                    aqua_id: ABON-004521
+                    name: Joan Puig Vidal
+                    vat: ABON-004521
+                  amount: 27.50
+                  date: "2026-07-20"
+                  memo: Cobro recibido
+                  payment_mode_id:
+                    id: SEPA-DOM
+                    name: Domiciliación SEPA
+                  reconcile:
+                    invoice_aqua_id: ""
+      responses:
+        "200":
+          description: Movimiento aceptado (creado o actualizado por `aqua_id`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpsertResponse"
+              example:
+                id: 9102
+                aqua_id: MOV-0007-000123
+        "400":
+          $ref: "#/components/responses/Rejected"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: Aqua360-Api-Key
+      description: |
+        Clave compartida con Aqua360 (`ODOO_API_KEY`).
+        Cabecera: `Aqua360-Api-Key: <clave>`.
+
+  responses:
+    Rejected:
+      description: |
+        Documento rechazado. Casos previstos: falta el `aqua_id` de un
+        relacionado que hay que crear; el impuesto o el modo de pago no
+        existen; los totales de control no cuadran; la rectificativa no
+        resuelve la factura original; el pago no resuelve la factura a conciliar
+        cuando `invoice_aqua_id` viene informado.
+
+        El cuerpo no está cerrado. Aqua360 guarda el JSON (o el texto) tal cual
+        y trata cualquier estado fuera de 2xx como error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example:
+            detail: Los totales no cuadran con las líneas.
+    Unauthorized:
+      description: Falta la cabecera `Aqua360-Api-Key` o la clave no es válida.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example:
+            detail: API key ausente o inválida.
+    Unprocessable:
+      description: |
+        Cuerpo JSON inválido (validación del esquema, típico de FastAPI `422`).
+        Aqua360 lo trata igual que un rechazo: no reintenta como éxito.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+  schemas:
+    UpsertResponse:
+      type: object
+      description: |
+        Respuesta esperada tras aceptar el documento. El `id` es el identificador
+        interno de Odoo (`account.move` o `account.payment`).
+      required:
+        - id
+        - aqua_id
+      properties:
+        id:
+          type: integer
+          description: Identificador interno de Odoo.
+          example: 4821
+        aqua_id:
+          type: string
+          description: Misma ancla enviada en la petición.
+          example: 2026Q3-000123
+
+    ErrorBody:
+      type: object
+      description: |
+        Forma no fijada. Se documenta `detail` como campo habitual de FastAPI;
+        el conector puede añadir otros. Aqua360 no depende de una estructura concreta.
+      properties:
+        detail:
+          description: Mensaje de error o lista de errores de validación.
+          oneOf:
+            - type: string
+            - type: array
+              items: {}
+      additionalProperties: true
+
+    AquaRef:
+      type: object
+      description: |
+        Relacionado que Odoo crea al vuelo si no existe, buscando por `aqua_id`.
+      required:
+        - aqua_id
+        - name
+      properties:
+        aqua_id:
+          type: string
+          description: Ancla de Aqua360. Obligatoria; si falta, se rechaza el documento.
+        name:
+          type: string
+          description: Nombre visible. No se usa para buscar el registro.
+
+    PartnerRef:
+      allOf:
+        - $ref: "#/components/schemas/AquaRef"
+        - type: object
+          required:
+            - vat
+          properties:
+            aqua_id:
+              type: string
+              description: |
+                Token del contrato. Sin contrato, token de cliente.
+            name:
+              type: string
+              description: Nombre del cliente.
+            vat:
+              type: string
+              description: |
+                Token de cliente que envía Aqua360. En factura es siempre ese
+                token, no necesariamente un NIF/CIF fiscal.
+
+    PaymentModeRef:
+      type: object
+      description: |
+        Modo de pago OCA (`account_payment_mode`). Debe preexistir.
+        Se resuelve por `id` (código), no por `aqua_id`.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Código del modo de pago ya existente en Odoo (p. ej. `SEPA-DOM`).
+          example: SEPA-DOM
+        name:
+          type: string
+          description: Nombre informativo. No se usa para resolver el registro.
+          example: Domiciliación SEPA
+
+    InvoiceLine:
+      type: object
+      required:
+        - product_id
+        - name
+        - quantity
+        - price_unit
+        - discount
+        - tax_ids
+        - price_subtotal
+        - price_tax
+        - price_total
+      properties:
+        product_id:
+          allOf:
+            - $ref: "#/components/schemas/AquaRef"
+          description: Producto. `get_or_create` por `aqua_id`.
+        name:
+          type: string
+          description: Descripción de la línea (`account.move.line.name`).
+        quantity:
+          type: number
+          description: Cantidad.
+          example: 10.0
+        price_unit:
+          type: number
+          description: Precio unitario.
+          example: 0.65
+        discount:
+          type: number
+          description: |
+            Descuento en porcentaje, no en importe. En v1 Aqua360 envía `0.0`.
+          example: 0.0
+        tax_ids:
+          type: array
+          description: |
+            Códigos de impuesto que deben preexistir en Odoo.
+            Relación many2many; se resuelven por código.
+          minItems: 1
+          items:
+            type: string
+          example:
+            - IVA10
+        price_subtotal:
+          type: number
+          description: Base imponible de la línea. Total de control.
+          example: 6.50
+        price_tax:
+          type: number
+          description: Cuota de impuesto de la línea. Total de control.
+          example: 0.65
+        price_total:
+          type: number
+          description: Total de la línea con impuesto. Total de control.
+          example: 7.15
+
+    InvoiceRequest:
+      type: object
+      description: |
+        Factura (`move_type = out_invoice`) o rectificativa
+        (`move_type = out_refund`). En la rectificativa, `reversed_aqua_id`
+        es obligatorio.
+      required:
+        - aqua_id
+        - move_type
+        - name
+        - invoice_date
+        - partner_id
+        - journal_id
+        - payment_mode_id
+        - invoice_line_ids
+        - amount_untaxed
+        - amount_tax
+        - amount_total
+      properties:
+        aqua_id:
+          type: string
+          description: Ancla de idempotencia del `account.move` (token de la factura en Aqua360).
+          example: 2026Q3-000123
+        move_type:
+          type: string
+          description: Tipo de asiento de cliente.
+          enum:
+            - out_invoice
+            - out_refund
+        name:
+          type: string
+          description: |
+            Número externo de la factura. Odoo lo respeta y no renumera.
+          example: FA2026/000123
+        reversed_aqua_id:
+          type: string
+          description: |
+            `aqua_id` de la factura original. Obligatorio si `move_type` es
+            `out_refund`. El conector resuelve el `account.move` original.
+          example: 2026Q3-000123
+        invoice_date:
+          type: string
+          format: date
+          description: Fecha de factura (`YYYY-MM-DD`).
+          example: "2026-07-15"
+        invoice_date_due:
+          type: string
+          format: date
+          description: Fecha de vencimiento (`YYYY-MM-DD`). Opcional.
+          example: "2026-08-15"
+        partner_id:
+          $ref: "#/components/schemas/PartnerRef"
+        journal_id:
+          allOf:
+            - $ref: "#/components/schemas/AquaRef"
+          description: |
+            Diario de facturación. `get_or_create` por `aqua_id`.
+            Numeración externa.
+        payment_mode_id:
+          $ref: "#/components/schemas/PaymentModeRef"
+        invoice_line_ids:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/InvoiceLine"
+        amount_untaxed:
+          type: number
+          description: Base imponible de la cabecera. Total de control.
+          example: 25.00
+        amount_tax:
+          type: number
+          description: Cuota total de impuesto. Total de control.
+          example: 2.50
+        amount_total:
+          type: number
+          description: Total con impuesto. Total de control.
+          example: 27.50
+
+    Reconcile:
+      type: object
+      required:
+        - invoice_aqua_id
+      properties:
+        invoice_aqua_id:
+          type: string
+          description: |
+            `aqua_id` de la factura a conciliar (apunte a cobrar).
+            Cadena vacía (`""`) en v1.1: el movimiento no se concilia y va
+            a la bolsa del cliente.
+          example: 2026Q3-000123
+
+    PaymentRequest:
+      type: object
+      description: |
+        Movimiento de pago. v1 concilia un pago con una factura.
+        v1.1 admite `amount` negativo (devolución) y `invoice_aqua_id` vacío.
+      required:
+        - aqua_id
+        - payment_type
+        - partner_id
+        - amount
+        - date
+        - memo
+        - payment_mode_id
+        - reconcile
+      properties:
+        aqua_id:
+          type: string
+          description: Ancla de idempotencia del `account.payment`.
+          example: MOV-0007-000123
+        payment_type:
+          type: string
+          description: |
+            Siempre `inbound`. El signo del movimiento va en `amount`,
+            también en las devoluciones.
+          enum:
+            - inbound
+        partner_id:
+          $ref: "#/components/schemas/PartnerRef"
+        amount:
+          type: number
+          description: |
+            Importe del movimiento. Positivo en un cobro. Negativo en una
+            devolución (v1.1). No se envía cuenta contable: Odoo deriva la
+            contrapartida del partner.
+          example: 27.50
+        date:
+          type: string
+          format: date
+          description: Fecha del movimiento (`YYYY-MM-DD`).
+          example: "2026-07-20"
+        memo:
+          type: string
+          description: Texto libre (`account.payment.memo` en Odoo 19).
+          example: Cobro recibido FA2026/000123 - remesa REM-2026-0007
+        payment_mode_id:
+          $ref: "#/components/schemas/PaymentModeRef"
+        journal_id:
+          allOf:
+            - $ref: "#/components/schemas/AquaRef"
+          description: |
+            Diario bancario. Opcional. `get_or_create` por `aqua_id`.
+            Si no viene, el conector usa el diario por defecto.
+        reconcile:
+          $ref: "#/components/schemas/Reconcile"
