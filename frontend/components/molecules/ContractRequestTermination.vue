@@ -137,7 +137,10 @@ const fetchMeterData = async () => {
 }
 
 watch(selectedMeter, fetchMeterData, { immediate: true });
-watch(selectedMeter, () => { editingInitialReading.value = false; });
+watch(selectedMeter, () => {
+  editingInitialReading.value = false;
+  resetInitialSmartMetering();
+});
 
 const meterPermissions = ref(null);
 const continueWithoutMeter = ref(false); // Comptador fictici (Aforament / Incendis)
@@ -161,11 +164,76 @@ const startEditInitialReading = () => {
 const cancelEditInitialReading = () => {
   request_reading.value = last_reading.value?.reading_value ?? request_reading.value;
   editingInitialReading.value = false;
+  //resetInitialSmartMetering();
 }
 
 const fetchingSmartMetering = ref({});
 const smartMeteringResult = ref({});
 const smartMeteringPendingSave = ref({});
+
+const fetchingInitialSmartMetering = ref(false);
+const initialSmartMeteringResult = ref(null);
+const initialSmartMeteringPendingSave = ref(false);
+const initialSmartMeteringDate = ref(null);
+
+const canFetchInitialReadingFromSmartMetering = computed(() => {
+  return Boolean(
+    selectedMeter.value
+    && !continueWithoutMeter.value
+    && !withoutMeter.value
+    && meterData.value?.has_remote_reading
+    && meterData.value?.remote_reading_type === 'SMART_METERING'
+  );
+});
+
+const resetInitialSmartMetering = () => {
+  fetchingInitialSmartMetering.value = false;
+  initialSmartMeteringResult.value = null;
+  initialSmartMeteringPendingSave.value = false;
+  initialSmartMeteringDate.value = null;
+};
+
+const fetchInitialReadingFromSmartMetering = async () => {
+  if (!canFetchInitialReadingFromSmartMetering.value) return;
+
+  fetchingInitialSmartMetering.value = true;
+  initialSmartMeteringResult.value = null;
+  initialSmartMeteringPendingSave.value = false;
+  initialSmartMeteringDate.value = null;
+
+  try {
+    const response = await $SmartMeteringApiService.getMeterReading({
+      meter: meterData.value?.code || null,
+      meter_id: selectedMeter.value,
+      date: format(new Date(), 'yyyy-MM-dd'),
+      margin: 5,
+    });
+
+    if (response?.found && response.reading_value != null) {
+      request_reading.value = response.reading_value;
+      initialSmartMeteringDate.value = response.reading_date
+        ? format(new Date(response.reading_date), 'yyyy-MM-dd')
+        : format(new Date(), 'yyyy-MM-dd');
+      initialSmartMeteringResult.value = 'found';
+      initialSmartMeteringPendingSave.value = true;
+      toast.success(
+        t('billing_block.smart_metering_reading_found', {
+          value: response.reading_value,
+          date: response.reading_date ? formatDate(response.reading_date) : formatDate(initialSmartMeteringDate.value),
+        })
+      );
+    } else {
+      initialSmartMeteringResult.value = 'not_found';
+      toast.warning(t('billing_block.smart_metering_reading_not_found'));
+    }
+  } catch (error) {
+    console.error('Error fetching smart metering initial reading:', error);
+    initialSmartMeteringResult.value = 'error';
+    toast.error(error?.data?.error || t('billing_block.smart_metering_fetch_error'));
+  } finally {
+    fetchingInitialSmartMetering.value = false;
+  }
+};
 
 const isSmartMeteringSupplyPoint = (supplyPoint) => {
   return Boolean(supplyPoint?.is_telecontrol && supplyPoint?.meter_code);
@@ -763,11 +831,15 @@ const saveRequestReading = async () => {
       reading_value: request_reading.value,
       meter_mode: continueWithoutMeter.value ? 'fictional' : 'real',
     }
+    if (initialSmartMeteringDate.value) {
+      save_data.reading_date = initialSmartMeteringDate.value;
+    }
     const response = await $ReadingApiService.saveRequestReading(save_data);
     if (response) {
       last_reading.value = response.reading;
       last_is_initial.value = true;
       editingInitialReading.value = false;
+      initialSmartMeteringPendingSave.value = false;
       // Es notifica al component pare perquè actualitzi les seves dades del punt de
       // subministrament (last_meter_reading) i pugui revalidar el pas de finalització.
       emit('change-sp', { ...props.supply_point, last_meter_reading: response.reading });
@@ -1110,26 +1182,73 @@ watch(billCutReading, async (newVal) => {
                 </div>
               </div>
 
-              <div v-if="!initialReadingLocked" class="flex items-center gap-2">
-                <input
-                  type="number"
-                  v-model="request_reading"
-                  class="input w-full"
-                  inputmode="decimal"
-                  :disabled="loading || saving"
-                  :placeholder="t('reading')"
-                />
-                <button
-                  class="button-primary"
-                  @click="saveRequestReading"
-                  :disabled="loading || saving"
+              <div v-if="!initialReadingLocked" class="flex flex-col gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="number"
+                    v-model="request_reading"
+                    class="input w-full"
+                    inputmode="decimal"
+                    :disabled="loading || saving"
+                    :placeholder="t('reading')"
+                  />
+                  <button
+                    class="button-primary transition-all"
+                    :class="initialSmartMeteringPendingSave
+                      ? 'ring-2 ring-amber-400 ring-offset-2 shadow-md animate-pulse'
+                      : ''"
+                    @click="saveRequestReading"
+                    :disabled="loading || saving"
+                  >
+                    {{ t('common.save') }}
+                  </button>
+                  <button v-if="editingInitialReading" type="button" class="button-default"
+                    :disabled="loading || saving" @click="cancelEditInitialReading">
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    v-if="canFetchInitialReadingFromSmartMetering"
+                    type="button"
+                    class="button-default"
+                    :disabled="loading || saving || fetchingInitialSmartMetering"
+                    @click="fetchInitialReadingFromSmartMetering"
+                  >
+                    <Icon
+                      v-if="fetchingInitialSmartMetering"
+                      name="fa6-solid:spinner"
+                      class="animate-spin mr-1"
+                    />
+                    <Icon v-else name="fa6-solid:satellite-dish" class="mr-1 text-sky-500" />
+                    {{ t('billing_block.fetch_initial_reading_smart_metering') }}
+                  </button>
+                </div>
+                <div v-if="initialSmartMeteringResult === 'found'">
+                  <p class="text-sm font-medium text-green-700">
+                    {{ t('billing_block.smart_metering_reading_found', {
+                      value: request_reading,
+                      date: formatDate(initialSmartMeteringDate)
+                    }) }}
+                  </p>
+                  <p
+                    v-if="initialSmartMeteringPendingSave"
+                    class="mt-1 text-sm font-medium text-amber-700 flex items-start gap-1.5"
+                  >
+                    <Icon name="fa6-solid:circle-exclamation" class="mt-0.5 shrink-0" />
+                    <span>{{ t('billing_block.smart_metering_reading_not_saved') }}</span>
+                  </p>
+                </div>
+                <p
+                  v-else-if="initialSmartMeteringResult === 'not_found'"
+                  class="text-sm font-medium text-amber-700"
                 >
-                  {{ t('common.save') }}
-                </button>
-                <button v-if="editingInitialReading" type="button" class="button-default"
-                  :disabled="loading || saving" @click="cancelEditInitialReading">
-                  {{ t('common.cancel') }}
-                </button>
+                  {{ t('billing_block.smart_metering_reading_not_found') }}
+                </p>
+                <p
+                  v-else-if="initialSmartMeteringResult === 'error'"
+                  class="text-sm font-medium text-red-700"
+                >
+                  {{ t('billing_block.smart_metering_fetch_error') }}
+                </p>
               </div>
 
               <div v-if="transferable_reading && !last_is_initial && !continueWithoutMeter"
