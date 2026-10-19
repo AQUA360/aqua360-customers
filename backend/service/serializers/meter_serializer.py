@@ -118,6 +118,14 @@ class MeterLogSerializer(serializers.ModelSerializer):
             "user": user_data
         }
 
+def _street_only(address):
+    """Només el carrer ('C. NOM'), sense número ni municipi."""
+    street = address.street if address and address.street_id else None
+    if not street:
+        return None
+    abbreviation = street.type.abbreviation if street.type_id else ''
+    return f"{abbreviation}. {street.name}" if abbreviation else street.name
+
 class MeterSerializer(serializers.ModelSerializer):
     status = serializers.IntegerField(write_only=True)
     supply_point = serializers.SerializerMethodField()
@@ -432,6 +440,7 @@ class MeterSerializer(serializers.ModelSerializer):
                 "name": supply_point.name,
                 "token": supply_point.token,
                 "address_complete": str(supply_point.address) if supply_point.address else None,
+                "street_complete": _street_only(supply_point.address),
                 "meter": supply_point.meter.code if supply_point.meter else None,
                 "meter_id": supply_point.meter.id,
                 "status_name": supply_point.status.name if supply_point.status else None,
