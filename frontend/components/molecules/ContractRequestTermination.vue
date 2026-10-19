@@ -1226,7 +1226,7 @@ watch(billCutReading, async (newVal) => {
                       ? 'ring-2 ring-amber-400 ring-offset-2 shadow-md animate-pulse'
                       : ''"
                     @click="saveRequestReading"
-                    :disabled="loading || saving"
+                    :disabled="loading || saving || fetchingInitialSmartMetering"
                   >
                     {{ t('common.save') }}
                   </button>
