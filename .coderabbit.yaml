@@ -8,3 +8,6 @@ reviews:
     base_branches:
       - "develop"
       - "main"
+    # Per defecte es pausa després de 5 commits revisats a la mateixa PR i cal demanar-li la
+    # revisió a mà. Com que la revisió és obligatòria per fusionar, no es pausa mai.
+    auto_pause_after_reviewed_commits: 0
