@@ -37,7 +37,7 @@ class TestAdjustmentService(TestCase):
 
         try:
             # Load your fixtures
-            call_command('loaddata', 'coredata/fixtures/tests/all_data.json')
+            call_command('loaddata', 'initial_data/ca/coredata.StreetType.json', 'coredata/fixtures/tests/all_data.json')
             
             # Verificar que els ClaimRequestStatus s'han carregat correctament
             from coredata.models import ConfigProject
@@ -135,7 +135,8 @@ class TestAdjustmentService(TestCase):
         variables, variable_types = generate_variables(self.contract, self.consumption, self.consumption_days, self.consumption_leakage,self.consumption_responsible)
         result = adjustment_eval_conditions(adjustment, variables, variable_types)
         logger.debug("Test is_false_condition result: %s", result)
-        self.assertFalse(result)
+        # Torna (es compleix, és vulnerable).
+        self.assertFalse(result[0])
 
     def test_gt_condition(self):
         adjustment = Adjustment.objects.create()
