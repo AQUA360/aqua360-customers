@@ -3707,7 +3707,7 @@ export default {
     role_owner: 'Propietario',
     level_1: 'En riesgo',
     level_2: 'Vulnerable',
-  }
+  },
   home_dashboard: {
     yesterday: 'Onte',
     customize: 'Personalizar',
