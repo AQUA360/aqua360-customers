@@ -1803,14 +1803,14 @@ class TestMeterBulkUpdateCsvEscape(TestCase):
 
     def test_reimportar_treu_la_proteccio_de_formules(self):
         import io as _io
-        from documentmanager.utils.csv_safety import SafeCsvWriter
+        from documentmanager.utils.csv_safety import CSV_ESCAPE_MARKER, SafeCsvWriter
         from service.utils.meter_bulk_update_service import _parse_csv_bytes
 
         buffer = _io.StringIO()
         writer = SafeCsvWriter(buffer, delimiter=';')
-        writer.writerow(['code', 'model', 'manufacturer'])
-        writer.writerow(['C-1', '-DN15', 'Itron'])
+        writer.writerow(['code', 'model', 'manufacturer', CSV_ESCAPE_MARKER])
+        writer.writerow(['C-1', '-DN15', "'=1+1", ''])
         self.assertIn("'-DN15", buffer.getvalue())
 
         rows = _parse_csv_bytes(('﻿' + buffer.getvalue()).encode('utf-8'))
-        self.assertEqual(rows[1], ['C-1', '-DN15', 'Itron'])
+        self.assertEqual(rows, [['code', 'model', 'manufacturer'], ['C-1', '-DN15', "'=1+1"]])

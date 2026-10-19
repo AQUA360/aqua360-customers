@@ -8,7 +8,7 @@ from datetime import datetime
 
 from django.db import transaction
 
-from documentmanager.utils.csv_safety import csv_unescape_value
+from documentmanager.utils.csv_safety import CSV_ESCAPE_MARKER, csv_unescape_value
 
 from service.models import Meter, MeterCaliber, MeterStatus
 
@@ -281,10 +281,16 @@ def _parse_csv_bytes(content):
         delimiter = ';' if sample.count(';') >= sample.count(',') else ','
 
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    # L'exportació de comptadors posa una `'` davant dels textos que Excel llegiria com a fórmula: es treu.
-    rows = [[csv_unescape_value(cell) for cell in row] for row in reader]
+    rows = list(reader)
     if not rows:
         raise MeterBulkUpdateError("El fitxer CSV està buit.")
+    # Només les exportacions identificades usen el nostre escapament reversible.
+    if CSV_ESCAPE_MARKER in rows[0]:
+        marker_index = rows[0].index(CSV_ESCAPE_MARKER)
+        rows = [
+            [csv_unescape_value(cell) for index, cell in enumerate(row) if index != marker_index]
+            for row in rows
+        ]
     return rows
 
 

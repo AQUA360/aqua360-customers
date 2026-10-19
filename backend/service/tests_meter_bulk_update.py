@@ -1,5 +1,6 @@
 """Tests per l'update massiva de Meter (preview + confirm)."""
 import io
+from unittest.mock import patch
 
 from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
@@ -82,6 +83,48 @@ class TestMeterBulkUpdateService(TestCase):
         self.assertEqual(self.meter_a.code2, 'UPDATED')
         self.assertEqual(self.meter_a.manufacturer, 'Acme')  # cel·la buida = no tocar
         self.assertEqual(self.meter_a.status_id, self.status_baixa.id)
+
+    def test_external_csv_preserves_original_apostrophes(self):
+        for delimiter in (';', ','):
+            with self.subTest(delimiter=delimiter):
+                content = delimiter.join(['code', 'code2', 'model']) + '\n'
+                content += delimiter.join(['M-001', "'=1+1", "''=1+1"]) + '\n'
+                result = apply_updates(_csv_file(content))
+                self.assertEqual(result['stats']['errors'], 0)
+                self.meter_a.refresh_from_db()
+                self.assertEqual(self.meter_a.code2, "'=1+1")
+                self.assertEqual(self.meter_a.model, "''=1+1")
+
+    def test_meter_export_identifies_reversible_encoding(self):
+        from documentmanager.utils.csv_safety import CSV_ESCAPE_MARKER
+        from service.tasks import export_meters_csv_task
+        from service.utils.meter_bulk_update_service import _parse_csv_bytes
+
+        self.meter_a.code2 = "'=1+1"
+        self.meter_a.model = '=1+1'
+        self.meter_a.save()
+        with patch('documentmanager.utils.main_utils.upload_document') as upload:
+            result = export_meters_csv_task()
+        self.assertEqual(result['status'], 'success', result)
+        content = upload.call_args.kwargs['file'].read()
+        self.assertIn(CSV_ESCAPE_MARKER.encode(), content)
+        rows = _parse_csv_bytes(content)
+        row = next(row for row in rows[1:] if row[rows[0].index('code')] == 'M-001')
+        self.assertEqual(row[rows[0].index('code2')], "'=1+1")
+        self.assertEqual(row[rows[0].index('model')], '=1+1')
+
+    def test_lookup_export_identifies_reversible_encoding(self):
+        from documentmanager.utils.csv_safety import CSV_ESCAPE_MARKER
+        from service.utils.meter_bulk_update_service import _parse_csv_bytes
+        from service.utils.meter_lookup_service import build_meter_lookup_csv_bytes
+
+        self.meter_a.manufacturer = "'=1+1"
+        self.meter_a.save()
+        content, found, not_found = build_meter_lookup_csv_bytes(['M-001'])
+        self.assertEqual((found, not_found), (1, 0))
+        self.assertIn(CSV_ESCAPE_MARKER.encode(), content)
+        rows = _parse_csv_bytes(content)
+        self.assertEqual(rows[1][rows[0].index('Manufacturer')], "'=1+1")
 
     def test_unknown_column_raises(self):
         csv_content = "code;foo_bar\nM-001;x\n"

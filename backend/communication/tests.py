@@ -1,6 +1,9 @@
 """Tests for the supply cut <-> communication process link and its guard policy."""
 
-from django.test import TestCase
+from smtplib import SMTPRecipientsRefused
+from unittest.mock import Mock, patch
+
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.serializers import ValidationError
 
 from communication import process_policy
@@ -25,6 +28,37 @@ from contract.models import Contract, ContractStatus
 from coredata.models import Address, City, ConfigProject, Country, Person, PersonContact, Street, StreetNumber
 from coredata.serializers import PersonCommunicationSerializer
 from service.models import SupplyCut, SupplyCutCause, SupplyCutStatus, SupplyPoint
+
+
+class EmailFailureLoggingTests(SimpleTestCase):
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.smtp.EmailBackend')
+    def test_rejected_addresses_are_not_logged(self):
+        from communication.utils import communication_service as service
+
+        pending, sent, rejected = Mock(), Mock(), Mock()
+        comm = Mock(pk=42, id=42, status=pending, person=None,
+                    used_email='rejected@example.com;other@example.com', always_attach=False)
+        comm.files.all.return_value.filter.return_value = []
+        comm.company_config.company_configs.all.return_value = []
+        error = SMTPRecipientsRefused({'rejected@example.com': (550, b'Recipient refused')})
+        with patch.object(service.CommunicationStatus.objects, 'get', side_effect=[sent, pending, rejected]), \
+                patch.object(service.ConfigProject.objects, 'get'), \
+                patch.object(service.MessageType.objects, 'get'), \
+                patch.object(service.Communication.objects, 'get', return_value=comm), \
+                patch.object(service, 'get_all_documents', return_value=[Mock()]), \
+                patch.object(service, 'get_com_values'), \
+                patch.object(service, 'refactor_text', return_value='Subject'), \
+                patch.object(service, '_send_via_smtp', side_effect=error), \
+                self.assertLogs(service.logger, level='WARNING') as captured:
+            service.send_electronic_mail(comm)
+
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn('42 (2 destinataris, 1 adjunts): SMTPRecipientsRefused', captured.output[0])
+        self.assertNotIn('rejected@example.com', captured.output[0])
+        self.assertNotIn('other@example.com', captured.output[0])
+        self.assertNotIn('Recipient refused', captured.output[0])
+        self.assertEqual(comm.status, rejected)
+        comm.save.assert_called_once()
 
 
 class SupplyCutProcessTestCase(TestCase):

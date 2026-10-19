@@ -294,7 +294,7 @@ class CsvSafetyTest(TestCase):
 
     def test_textos_amb_prefix_de_formula_s_escapen(self):
         from documentmanager.utils.csv_safety import csv_safe_value
-        for value in ("=1+1", "+cmd", "-1+1", "@SUM(A1)", "\tx", "-"):
+        for value in ("=1+1", "+cmd", "-1+1", "@SUM(A1)", "\tx", "\rx", "\nx", "\n=1+1", "\n123", "\n", "-"):
             self.assertEqual(csv_safe_value(value), "'" + value)
 
     def test_numeros_i_textos_normals_no_es_toquen(self):
@@ -312,7 +312,11 @@ class CsvSafetyTest(TestCase):
 
     def test_la_importacio_recupera_el_valor_original(self):
         from documentmanager.utils.csv_safety import csv_safe_value, csv_unescape_value
-        for value in ("=1+1", "-DN15", "@x", "DN15", "'text normal", "-12,50", None, 7):
+        for value in ("=1+1", "'=1+1", "''=1+1", "'", "''", "\n=1+1", "-DN15", "@x", "DN15", "'text normal", "-12,50", None, 7):
             self.assertEqual(csv_unescape_value(csv_safe_value(value)), value)
         # Una `'` que no protegeix cap fórmula es conserva.
         self.assertEqual(csv_unescape_value("'text normal"), "'text normal")
+
+    def test_els_apostrofs_originals_s_escapen(self):
+        from documentmanager.utils.csv_safety import csv_safe_value
+        self.assertEqual(csv_safe_value("'=1+1"), "''=1+1")

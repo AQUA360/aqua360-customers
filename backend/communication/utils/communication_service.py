@@ -633,7 +633,7 @@ def send_electronic_mail(comm):
     error_msg = f"Error sending email: {str(e)}"
     logger.warning(
       "Error enviant la comunicació %s (%s destinataris, %s adjunts): %s",
-      comm.pk, len(comm_emails), len(document_files or []), e,
+      comm.pk, len(comm_emails), len(document_files or []), type(e).__name__,
     )
     comm.rejection_reason = error_msg
     comm.status = status_rejected

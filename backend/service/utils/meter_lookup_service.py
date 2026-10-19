@@ -1,7 +1,7 @@
 """
 Lookup de comptadors per llista de meter.code: found / not_found + builders CSV.
 """
-from documentmanager.utils.csv_safety import SafeCsvWriter
+from documentmanager.utils.csv_safety import CSV_ESCAPE_MARKER, SafeCsvWriter
 from io import StringIO
 
 from django.db.models import Prefetch
@@ -304,10 +304,10 @@ def build_meter_lookup_csv_bytes(codes):
     buffer = StringIO()
     buffer.write('\ufeff')
     writer = SafeCsvWriter(buffer, delimiter=';')
-    writer.writerow(build_meter_lookup_csv_headers(max_contracts))
+    writer.writerow(build_meter_lookup_csv_headers(max_contracts) + [CSV_ESCAPE_MARKER])
 
     for code in normalized:
         meter_dict = found_by_code.get(code)
-        writer.writerow(build_meter_lookup_csv_row(code, meter_dict, max_contracts))
+        writer.writerow(build_meter_lookup_csv_row(code, meter_dict, max_contracts) + [''])
 
     return buffer.getvalue().encode('utf-8'), len(found), len(not_found)

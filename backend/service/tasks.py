@@ -1,4 +1,4 @@
-from documentmanager.utils.csv_safety import SafeCsvWriter
+from documentmanager.utils.csv_safety import CSV_ESCAPE_MARKER, SafeCsvWriter
 import datetime
 import io
 import uuid
@@ -324,7 +324,7 @@ def export_meters_csv_task(status_param=None, ordering_param='code', exploitatio
             'last_reading_updated_at',
         ]
         
-        writer.writerow(headers)
+        writer.writerow(headers + [CSV_ESCAPE_MARKER])
         
         for meter in meters:
             last_reading = last_readings_dict.get(meter.id)
@@ -384,7 +384,7 @@ def export_meters_csv_task(status_param=None, ordering_param='code', exploitatio
                 last_reading.created_at.strftime('%Y-%m-%d %H:%M:%S') if last_reading and last_reading.created_at else '',
                 last_reading.updated_at.strftime('%Y-%m-%d %H:%M:%S') if last_reading and last_reading.updated_at else '',
             ]
-            writer.writerow(row)
+            writer.writerow(row + [''])
             
         csv_data = csv_buffer.getvalue()
         csv_bytes = csv_data.encode('utf-8')
