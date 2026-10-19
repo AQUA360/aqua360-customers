@@ -136,6 +136,7 @@ OWN_APPS = [
     "verifactu",
     "watchdog",
     "integrations",
+    "dashboard",
 ]
 
 EXTRA_APPS = [

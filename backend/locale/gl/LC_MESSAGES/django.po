@@ -4328,3 +4328,40 @@ msgstr "de novembro"
 msgctxt "date month with preposition"
 msgid "of December"
 msgstr "de decembro"
+
+#: notification/utils/auto_tasks.py
+msgid "Apply meter change"
+msgstr "Aplicar o cambio de contador"
+
+#: notification/utils/auto_tasks.py
+#, python-format
+msgid "Order %(token)s is closed but the meter change has not been applied to the system yet."
+msgstr "A orde %(token)s está pechada pero aínda non se aplicou o cambio de contador no sistema."
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "and %(count)s more"
+msgstr "e %(count)s máis"
+
+#: notification/utils/task_notifications.py
+msgid "Pending tasks for today"
+msgstr "Tarefas pendentes do día"
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "You have %(count)s pending tasks: %(tasks)s"
+msgstr "Tes %(count)s tarefas pendentes: %(tasks)s"
+
+#: notification/tasks.py
+#, python-format
+msgid "You have %(count)s pending tasks"
+msgstr "Tes %(count)s tarefas pendentes"
+
+#: notification/tasks.py
+msgid "These are your pending tasks for today, and the overdue ones:"
+msgstr "Estas son as túas tarefas pendentes de hoxe e as atrasadas:"
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "You have a pending task: %(task)s"
+msgstr "Tes unha tarefa pendente: %(task)s"

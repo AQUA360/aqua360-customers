@@ -3002,6 +3002,15 @@ export default {
     friday: 'Viernes',
     saturday: 'Sábado',
     sunday: 'Domingo',
+    weekdays_short: {
+      monday: 'Lu',
+      tuesday: 'Ma',
+      wednesday: 'Mi',
+      thursday: 'Ju',
+      friday: 'Vi',
+      saturday: 'Sá',
+      sunday: 'Do'
+    },
     this_week: 'Esta semana',
     this_month: 'Este mes',
     months: 'Meses',
@@ -3845,5 +3854,145 @@ supply_cut_actions:   {
       reading_value: 'Valor de lectura',
       contract_id: 'ID de contrato'
     }
+  },
+  home_dashboard: {
+    yesterday: 'Ayer',
+    customize: 'Personalizar',
+    done: 'Hecho',
+    reset: 'Restablecer',
+    saving: 'Guardando',
+    reset_confirm: '¿Quieres volver a la disposición por defecto? Se perderán las tarjetas y la configuración que has elegido.',
+    empty: 'No tienes ninguna tarjeta en la página de inicio.',
+    add_card: 'Añadir tarjeta',
+    already_added: 'ya añadida',
+    move: 'Mover',
+    configure: 'Configurar',
+    remove: 'Quitar',
+    size: 'Tamaño',
+    sizes: {
+      sm: 'Pequeña',
+      md: 'Mediana',
+      lg: 'Ancha'
+    },
+    invoices: 'facturas',
+    orders: 'órdenes',
+    vs_previous: 'respecto al período anterior',
+    previous_period: 'Período anterior: {count}',
+    see_all: 'Verlas todas ({count})',
+    readings_read: '{read} de {total} lecturas',
+    readings_alerts: '{count} alertas',
+    config: {
+      period: {
+        label: 'Período',
+        today: 'Hoy',
+        week: 'Esta semana',
+        month: 'Este mes',
+        quarter: 'Este trimestre',
+        year: 'Este año'
+      },
+      scope: {
+        label: 'Mostrar',
+        all: 'Todas',
+        created_by_me: 'Creadas por mí',
+        visible: 'Mías y de todos',
+        mine: 'Solo las mías'
+      },
+      only_mine: {
+        label: 'Solo las que he anulado yo'
+      }
+    },
+    cards: {
+      daily_activity: {
+        title: 'Mi actividad de hoy',
+        description: 'Resumen de lo que has hecho hoy: cobros, órdenes, gestiones de contrato...'
+      },
+      tasks_today: {
+        title: 'Tareas pendientes',
+        description: 'Tareas de hoy y atrasadas, para marcarlas como hechas.'
+      },
+      orders_to_validate: {
+        title: 'OT pendientes de validar',
+        description: 'Órdenes de trabajo que esperan validación.',
+        empty: 'No hay ninguna orden pendiente de validar.'
+      },
+      change_meter_pending: {
+        title: 'Cambios de contador por aplicar',
+        description: 'OT de cambio de contador cerradas sin haber aplicado el cambio en el sistema.',
+        empty: 'No hay ningún cambio de contador pendiente.'
+      },
+      reading_batches_in_progress: {
+        title: 'Lotes de lecturas en curso',
+        description: 'Lotes no facturados con el progreso y las alertas de las lecturas.',
+        empty: 'No hay ningún lote de lecturas en curso.'
+      },
+      invoices_issued: {
+        title: 'Facturación emitida',
+        description: 'Número e importe de las facturas emitidas en el período.'
+      },
+      invoice_cancellations: {
+        title: 'Anulaciones',
+        description: 'Abonos emitidos al anular facturas (importe negativo).'
+      },
+      rebillings: {
+        title: 'Refacturaciones',
+        description: 'Facturas emitidas que sustituyen a otra.'
+      },
+      recent_searches: {
+        title: 'Visitados recientemente',
+        description: 'Lo que has abierto desde el buscador en los últimos días.'
+      },
+      calendar: {
+        title: 'Calendario',
+        description: 'Calendario mensual de tareas.'
+      },
+      quick_access: {
+        title: 'Accesos rápidos',
+        description: 'Enlaces a las acciones más habituales.'
+      }
+    }
+  },
+  calendar_tasks: {
+    notified_today: 'Se ha avisado de la tarea «{name}» para hoy',
+    title: 'Calendario',
+    open_calendar: 'Abrir el calendario',
+    today: 'Hoy',
+    overdue: 'Atrasadas',
+    nothing_pending: 'No hay tareas pendientes.',
+    mark_done: 'Marcar como hecha',
+    recurring: 'Tarea recurrente',
+    automatic: 'Automática',
+    next_days: 'Próximos {count} días',
+    filter_visible: 'Mías y de todos',
+    filter_mine: 'Solo las mías',
+    filter_all_users: 'Solo las de todos',
+    show_done: 'Mostrar las hechas',
+    views: {
+      month: 'Mes',
+      week: 'Semana',
+      list: 'Lista'
+    },
+    more: '+{count} más',
+    email_daily: 'Resumen diario por correo',
+    email_daily_info: 'Cada mañana recibirás un correo con tus tareas pendientes del día y las atrasadas.',
+    email_missing: 'Tu usuario no tiene ningún correo configurado.',
+    everyone: 'Todos',
+    time: 'Hora',
+    recurring_task: 'Tarea recurrente',
+    repeat_every: 'Repetir cada',
+    frequencies: {
+      daily: 'día(s)',
+      weekly: 'semana(s)',
+      monthly: 'mes(es)',
+      yearly: 'año(s)'
+    },
+    same_weekday: 'Si no se elige ninguno, el mismo día de la semana que la fecha inicial.',
+    end_date: 'Hasta (opcional)',
+    apply_to_series: 'Aplicar los cambios también a las ocurrencias siguientes',
+    only_this_occurrence: 'Los cambios solo se aplicarán a esta ocurrencia.',
+    delete_series_confirm: 'Esta tarea es recurrente. ¿Quieres borrar también todas las ocurrencias pendientes siguientes? (Cancelar para borrar solo esta)',
+    delete_occurrence_confirm: '¿Borrar solo esta ocurrencia?',
+    delete_confirm: '¿Seguro que quieres borrar esta tarea?',
+    order: 'Orden de trabajo',
+    badge_title: '{today} para hoy, {overdue} atrasadas'
   }
 }

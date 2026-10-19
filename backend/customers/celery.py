@@ -45,9 +45,18 @@ beat_schedule = {
         'task': 'statistics.tasks.calculate_median_consumption',
         'schedule': crontab(minute=0, hour=0, day_of_month=1)
     },
+    'generate-recurring-calendar-tasks': {
+        'task': 'notification.tasks.generate_recurring_tasks',
+        'schedule': crontab(minute=22, hour=0)
+    },
     'check-today-tasks': {
-        'task': 'billing.tasks.check_today_tasks',
+        'task': 'notification.tasks.notify_today_tasks',
         'schedule': crontab(minute=25, hour=0)
+    },
+    # El resum per correu surt a primera hora del matí, no de matinada.
+    'send-daily-tasks-email': {
+        'task': 'notification.tasks.send_daily_tasks_email',
+        'schedule': crontab(minute=0, hour=7)
     },
     'expire-vulnerability-requests': {
         'task': 'claimrequest.tasks.set_expired_vulnerability_request', 

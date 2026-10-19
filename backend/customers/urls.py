@@ -25,6 +25,7 @@ app_urls = [
     path('search/', include('search.urls')),
     path('documentmanager/', include('documentmanager.urls')),
     path('notification/', include('notification.urls')),
+    path('dashboard/', include('dashboard.urls')),
     path('statistics/', include('statistics.urls')),
     path('fraud/', include('fraud.urls')),
     path('communication/', include('communication.urls')),
