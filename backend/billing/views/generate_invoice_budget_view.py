@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 import uuid
 from django.conf import settings
 from django.db import transaction
@@ -24,6 +25,8 @@ from billing.utils.invoice_service import (
     invoice_contract_generate,
     generate_empty_invoice,
 )
+
+logger = logging.getLogger(__name__)
 
 class GenerateInvoiceBudgetView(APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -103,7 +106,7 @@ class GenerateInvoiceBudgetView(APIView):
             
             print("contract_termination_request")
             # Find linked contract request for surrogation/alta cases (Alta + Baixa vinculades)
-            linked_contract_request = contract_termination_request.contract_requests_termination_requests.filter(bill_cut_reading=True, is_active=True).first()
+            linked_contract_request = contract_termination_request.get_billing_contract_request()
 
             # Save bill_cut_reading if provided in the request.
             # Qui decideix si la lectura de tall es cobra a l'alta és la ContractRequest: la
@@ -121,6 +124,17 @@ class GenerateInvoiceBudgetView(APIView):
             # de manera que la factura tornava a sortir a nom del titular que es dona de baixa.
             if linked_contract_request:
                 bill_termination_requester = False
+
+            logger.info(
+                "Termination %s invoice (is_budget=%s, user=%s): linked contract requests (id, bill_cut_reading, is_active) %s, "
+                "billed contract request=%s, bill_termination_requester=%s (requested %s), "
+                "payment_bank from dialog=%s, terminated contract payment bank=%s",
+                contract_termination_request.id, is_budget, request.user.id,
+                list(contract_termination_request.contract_requests_termination_requests.values_list('id', 'bill_cut_reading', 'is_active')),
+                linked_contract_request.id if linked_contract_request else None,
+                bill_termination_requester, request.data.get('bill_termination_requester', False),
+                payment_bank, contract.payment.IBAN_id if contract and contract.payment else None,
+            )
 
             budget_type_token = ConfigProject.objects.get(token='invoice_type_budget_token').value
 
@@ -181,6 +195,12 @@ class GenerateInvoiceBudgetView(APIView):
             # Save bill_cut_reading if provided in the request and propagate to terminations
             bill_cut_reading = request.data.get('bill_cut_reading', None)
             if bill_cut_reading is not None:
+                if bool(contract_request.bill_cut_reading) != bool(bill_cut_reading):
+                    logger.info(
+                        "Contract request %s bill_cut_reading %s -> %s from billing dialog (user=%s), propagated to terminations %s",
+                        contract_request.id, contract_request.bill_cut_reading, bill_cut_reading, request.user.id,
+                        list(contract_request.contract_termination_requests.values_list('id', flat=True)),
+                    )
                 contract_request.bill_cut_reading = bill_cut_reading
                 contract_request.save()
                 # Propagate to linked termination requests
