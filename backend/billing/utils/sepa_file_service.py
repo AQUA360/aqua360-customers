@@ -357,8 +357,11 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
         pmtTpInf = ET.SubElement(pmtInf, "PmtTpInf")
         svcLvl = ET.SubElement(pmtTpInf, "SvcLvl")
         ET.SubElement(svcLvl, "Cd").text = "SEPA"  
-        lclinstrm = ET.SubElement(pmtTpInf, "LclInstrm")
-        ET.SubElement(lclinstrm, "Cd").text = "CORE" if not is_return else "DIVI"
+        # Les transferències SEPA no porten LclInstrm: "DIVI" és un codi de
+        # propòsit (dividends) i no un instrument local.
+        if not is_return:
+            lclinstrm = ET.SubElement(pmtTpInf, "LclInstrm")
+            ET.SubElement(lclinstrm, "Cd").text = "CORE"
         # ET.SubElement(pmtTpInf, "SeqTp").text = "OOFF" if is_unique else "RCUR"
         if not is_return:
             ET.SubElement(pmtTpInf, "SeqTp").text = "RCUR"
