@@ -709,6 +709,146 @@ def export_readings_task(reading_ids, columns=None):
         }
 
 
+def _yes_no(value):
+    return _("Sí") if value else ""
+
+
+def _date_str(value):
+    return value.strftime("%Y-%m-%d") if value else ""
+
+
+def _reading_alert_label(alert):
+    # Els noms de ReadingAlert són claus de traducció (el front les tradueix amb billing_block.<nom>).
+    if not alert:
+        return ""
+    labels = {
+        "reading_alert_turn": _("Volta comptador"),
+        "reading_alert_zero": _("Lectura 0"),
+        "reading_alert_negative": _("Lectura negativa"),
+        "reading_alert_estimated": _("Lectura estimada"),
+        "reading_alert_unusual": _("Lectura inusual"),
+        "reading_alert_low_consumption": _("Consum inusualment baix"),
+    }
+    return labels.get(alert.name, alert.name)
+
+
+def _reading_alert_notes(reading):
+    # Mateix criteri que ReadingByBatchMinimalSerializer: si no hi ha notes, l'alerta del lector o la remota.
+    if reading.alert_notes:
+        return reading.alert_notes
+    if reading.reader_alert:
+        return reading.reader_alert.name
+    if reading.remote_alert:
+        return reading.remote_alert.name
+    return ""
+
+
+def _batch_reading_export_columns():
+    prev = lambda r: r.previous_reading
+    return [
+        ("contract", _("Contracte"), lambda r: r.contract.token if r.contract else ""),
+        ("address", _("Adreça"), lambda r: str(r.supply_point.address) if r.supply_point and r.supply_point.address else ""),
+        ("route_position", _("Posició de ruta"), lambda r: r.supply_point.property.route_position.token
+            if r.supply_point and r.supply_point.property and r.supply_point.property.route_position else ""),
+        ("meter", _("Comptador"), lambda r: r.meter.code if r.meter else ""),
+        ("origin", _("Tipus"), lambda r: r.origin or ""),
+        ("previous_leak", _("Fuita anterior"), lambda r: prev(r).leak_value if prev(r) else None),
+        ("previous_reading_date", _("Data lectura anterior"), lambda r: _date_str(prev(r).reading_date) if prev(r) else ""),
+        ("previous_reading", _("Lectura anterior"), lambda r: prev(r).reading_value if prev(r) else None),
+        ("reading_date", _("Data lectura"), lambda r: _date_str(r.reading_date)),
+        ("reading_value", _("Lectura"), lambda r: r.reading_value),
+        ("leak_value", _("Fuita"), lambda r: r.leak_value),
+        # Mateix valor que mostra el llistat (get_existing_reading).
+        ("consumption", _("Consum"), lambda r: r.real_consumption if r.real_consumption else r.calculated_value),
+        ("is_general", _("General"), lambda r: _yes_no(r.meter and r.meter.is_general)),
+        ("is_estimated", _("Estimada"), lambda r: _yes_no(r.is_estimated)),
+        ("consumption_days", _("Dies"), lambda r: r.consumption_days),
+        ("alert", _("Avís"), lambda r: _reading_alert_label(r.alert)),
+        ("alert_notes", _("Observacions"), _reading_alert_notes),
+    ]
+
+
+def _billing_invoice_export_columns():
+    return [
+        ("contract", _("Contracte"), lambda i: i.contract.token if i.contract else ""),
+        ("customer", _("Client"), lambda i: i.customer_final or ""),
+        ("address", _("Adreça"), lambda i: i.address_final or ""),
+        ("use_type", _("Tipus d'ús"), lambda i: i.contract.use_type.name if i.contract and i.contract.use_type else ""),
+        ("payment_type", _("Forma de pagament"), lambda i: i.payment_type_final or ""),
+        ("total_final", _("Total"), lambda i: i.total_final),
+        ("left_to_pay", _("Pendent"), lambda i: i.left_to_pay),
+        ("consumption", _("Consum"), lambda i: i.consumption),
+        ("consumption_days", _("Dies"), lambda i: i.consumption_days),
+        ("warning", _("Avís"), lambda i: i.warning.name if i.warning else ""),
+    ]
+
+
+def _upload_export_xlsx(file_bytes, prefix, document_entity):
+    filename = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    document = upload_document(
+        file=ContentFile(file_bytes, name=filename),
+        entity=document_entity,
+        field="EXPORT",
+        entity_id=0,
+        entity_token=f"{document_entity}_EXPORT",
+        folder="",
+        service=settings.DOCUMENT_MANAGER_SERVICES.get("billing", "hdd"),
+        document_name=filename,
+        date=datetime.now(),
+    )
+    return {
+        "status": "success",
+        "message": f"{prefix} export generated successfully",
+        "document_id": document.id,
+        "document_name": filename,
+    }
+
+
+@shared_task
+def export_batch_readings_task(reading_ids):
+    """
+    Exporta les lectures del detall del resum del lot de lectures (avisos, correctes...).
+    `reading_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    """
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
+
+    try:
+        queryset = Reading.objects.select_related(
+            "contract", "meter", "alert", "reader_alert", "remote_alert", "previous_reading",
+            "supply_point__address", "supply_point__property__route_position",
+        )
+        file_bytes = build_export_xlsx_bytes_from_objects(
+            iter_objects_by_ids(queryset, reading_ids or []), _batch_reading_export_columns(),
+        )
+        return _upload_export_xlsx(file_bytes, "readings", "READING")
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error generating readings export: {str(e)}",
+        }
+
+
+@shared_task
+def export_billing_invoices_task(invoice_ids):
+    """
+    Exporta les factures del detall del resum de pre-factures (avisos, correctes...).
+    `invoice_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    """
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
+
+    try:
+        queryset = Invoice.objects.select_related("contract__use_type", "warning")
+        file_bytes = build_export_xlsx_bytes_from_objects(
+            iter_objects_by_ids(queryset, invoice_ids or []), _billing_invoice_export_columns(),
+        )
+        return _upload_export_xlsx(file_bytes, "invoices", "INVOICE")
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error generating invoices export: {str(e)}",
+        }
+
+
 def _reading_document_cell_to_str(cell_value):
     if cell_value is None:
         return ""

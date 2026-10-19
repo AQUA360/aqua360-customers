@@ -43,8 +43,9 @@ from contract.models import Contract, ContractRequest, ContractTerminationReques
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
 from service.serializers.meter_serializer import MeterListSerializer
-from billing.tasks import export_readings_task
+from billing.tasks import export_batch_readings_task, export_readings_task
 from documentmanager.utils.export_jobs import enqueue_export, export_job_response
+from documentmanager.utils.export_permissions import export_permission_class
 from communication.utils.communication_process_service import add_reading_to_communication_process
 class ReadingViewSet(viewsets.ModelViewSet):
   """
@@ -194,7 +195,43 @@ class ReadingViewSet(viewsets.ModelViewSet):
     batch_id = request.query_params.get('batch')
     if not batch_id:
       return Response({"error": "Batch ID is required"}, status=400)
-    
+
+    queryset, median, global_count_above_margin = self._by_batch_minimal_queryset(request, batch_id)
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 50
+    result_page = paginator.paginate_queryset(queryset, request)
+    serializer = ReadingByBatchMinimalSerializer(result_page, many=True)
+
+    response = paginator.get_paginated_response(serializer.data)
+    response.data['date_range_median'] = median
+    response.data['date_range_above_margin_count'] = global_count_above_margin
+    return response
+
+  @action(
+    detail=False, methods=['post'], url_path='by-batch-minimal/export',
+    permission_classes=[IsAuthenticated, export_permission_class('billing', 'reading')],
+  )
+  def export_by_batch_minimal(self, request):
+    # Exporta a Excel les lectures del llistat by-batch-minimal amb els mateixos filtres (query params).
+    batch_id = request.query_params.get('batch')
+    if not batch_id:
+      return Response({"error": "Batch ID is required"}, status=400)
+
+    queryset, _median, _count = self._by_batch_minimal_queryset(request, batch_id)
+    # dict.fromkeys: treu ids repetits i conserva l'ordre del llistat.
+    reading_ids = list(dict.fromkeys(queryset.values_list('id', flat=True)))
+
+    job = enqueue_export(
+        request, export_batch_readings_task, kind="readings",
+        name=request.query_params.get('export_name') or str(_("Readings")),
+        args=[reading_ids],
+        params={"batch": batch_id, "total": len(reading_ids)},
+    )
+    return Response(export_job_response(job), status=status.HTTP_202_ACCEPTED)
+
+  def _by_batch_minimal_queryset(self, request, batch_id):
+    """Lectures del llistat by-batch-minimal (filtres, cerca i ordenació), la mediana de dies i el nº fora de marge."""
     batch_readings = Reading.objects.filter(batch_id=batch_id, is_close=False, is_control=False)
     
     # Calculate global median for this batch
@@ -227,16 +264,8 @@ class ReadingViewSet(viewsets.ModelViewSet):
         margin_low = median * 0.75
         queryset = queryset.filter(Q(consumption_days__gt=margin_high) | Q(consumption_days__lt=margin_low))
 
-    paginator = PageNumberPagination()
-    paginator.page_size = 50
-    result_page = paginator.paginate_queryset(queryset, request)
-    serializer = ReadingByBatchMinimalSerializer(result_page, many=True)
-    
-    response = paginator.get_paginated_response(serializer.data)
-    response.data['date_range_median'] = median
-    response.data['date_range_above_margin_count'] = global_count_above_margin
-    return response
-  
+    return queryset, median, global_count_above_margin
+
   @action(detail=False, methods=['post'], url_path='estimate')
   def estimate_reading(self, request):
     supply_points = SupplyPoint.objects.filter(id__in=request.data.get('supply_points'))
