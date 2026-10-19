@@ -1,92 +1,137 @@
 from django.test import TestCase
 from django.utils import timezone
-from coredata.models import ConfigProject
-from service.models import SupplyPoint, Meter, MeterStatus, Exploitation, Company
-from contract.models import Contract, ContractPriceRate
-from pricing.models import PriceRate, Product, BillingRange, LineItemType, Tax, BillingPeriod
-from billing.models import Reading, Invoice, InvoiceSerie, InvoiceType, InvoiceStatus, InvoiceClass
+
+from unittest.mock import patch
+
+from billing.models import InvoiceClass, InvoiceSerie, InvoiceStatus, InvoiceType, Reading
 from billing.utils.invoice_service import generate_consumption_invoice_multiple
+from contract.models import Contract, ContractPriceRate, ContractStatus
+from coredata.models import ConfigProject, Person
+from pricing.models import (
+    BillingPeriod,
+    BillingRange,
+    LineItemType,
+    PriceRate,
+    Product,
+    ProductOrigin,
+    Tax,
+    VariableCalculation,
+)
+from service.models import Company, Exploitation, Meter, MeterStatus, SupplyPoint, SupplyPointStatus
+
 
 class TestMultiMeterBilling(TestCase):
+    """Un contracte amb dos punts de subministrament, cadascun amb el seu comptador.
+
+    El muntatge segueix el de `test_general_meter_fanout.py`, amb els models d'ara: el punt de
+    subministrament porta el comptador i l'estat, i el contracte, l'estat, el titular i el punt
+    per defecte.
+    """
+
     @classmethod
     def setUpTestData(cls):
-        # Create general setup objects
-        cls.company = Company.objects.create(name="Test Company", token="test_company")
-        cls.exploitation = Exploitation.objects.create(name="Test Exploitation", company=cls.company)
-        
-        # Setup config project variables if needed
-        ConfigProject.objects.get_or_create(token='token_pre_invoice_serie', defaults={'value': 'PRE'})
-        ConfigProject.objects.get_or_create(token='invoice_type_budget_token', defaults={'value': 'BUDGET'})
-        
-        # Create standard status/types for billing
-        cls.invoice_type, _ = InvoiceType.objects.get_or_create(token="1", name="Factura")
-        cls.invoice_status_pending, _ = InvoiceStatus.objects.get_or_create(token="1", name="Pendent")
-        cls.invoice_class_oo, _ = InvoiceClass.objects.get_or_create(token="OO", name="Ordinària")
-        cls.invoice_serie_pre, _ = InvoiceSerie.objects.get_or_create(token="PRE", name="Pre-factura")
+        cls.company = Company.objects.create(name="Test Company MM")
+        cls.exploitation = Exploitation.objects.create(
+            name="Test Exploitation MM", company=cls.company, token="expl-mm"
+        )
 
-        # Create meter status
-        cls.meter_status_active, _ = MeterStatus.objects.get_or_create(token="1", name="Actiu")
+        for token, value in [
+            ('contract_active_token', 'ACTIVE'),
+            ('contract_terminated_status', 'TERMINATED'),
+            ('supply_point_status_activate_token', 'SP_ACTIVE'),
+            ('token_pre_invoice_serie', 'PRE'),
+            ('invoice_type_budget_token', 'BUDGET'),
+            ('reading_estimated', 'false'),
+            ('origin_reading_token', 'aigua'),
+            ('invoice_type_invoice_token', '1'),
+            ('invoice_status_pending_token', '1'),
+            ('invoice_class_token', 'OO'),
+            ('invoice_status_paid_token', 'PAID'),
+            ('invoice_status_cancelled_token', 'CANCELLED'),
+        ]:
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': value})
+        InvoiceStatus.objects.get_or_create(token='PAID', defaults={'name': 'Pagada'})
+        InvoiceStatus.objects.get_or_create(token='CANCELLED', defaults={'name': 'Cancel·lada'})
+        ContractStatus.objects.get_or_create(token='TERMINATED', defaults={'name': 'Baixa'})
+        origin, _ = ProductOrigin.objects.get_or_create(token='aigua', defaults={'name': 'Aigua'})
+        holder = Person.objects.create(name="Holder", surname="MM", token="holder-mm")
 
-        # Create Contract
+        contract_status, _ = ContractStatus.objects.get_or_create(
+            token='ACTIVE', defaults={'name': 'Actiu'}
+        )
+        sp_status, _ = SupplyPointStatus.objects.get_or_create(
+            token='SP_ACTIVE', defaults={'name': 'Actiu'}
+        )
+        meter_status, _ = MeterStatus.objects.get_or_create(token="1", defaults={'name': "Actiu"})
+
+        InvoiceType.objects.get_or_create(token="1", defaults={'name': "Factura"})
+        InvoiceStatus.objects.get_or_create(token="1", defaults={'name': "Pendent"})
+        InvoiceClass.objects.get_or_create(token="OO", defaults={'name': "Ordinària"})
+        InvoiceSerie.objects.get_or_create(
+            token="PRE", defaults={'name': "Pre-factura", 'is_default': True}
+        )
+        InvoiceSerie.objects.filter(token="PRE").update(is_default=True)
+
+        cls.meter1 = Meter.objects.create(code="METER-0001", status=meter_status)
+        cls.meter2 = Meter.objects.create(code="METER-0002", status=meter_status)
+        cls.supply_point1 = SupplyPoint.objects.create(
+            name="Supply Point 1", token="SP-0001", meter=cls.meter1, status=sp_status
+        )
+        cls.supply_point2 = SupplyPoint.objects.create(
+            name="Supply Point 2", token="SP-0002", meter=cls.meter2, status=sp_status
+        )
         cls.contract = Contract.objects.create(
             company=cls.company,
             token="CON-0001",
             total_persons=3,
-            registration_date=timezone.now().date()
+            registration_date=timezone.now().date() - timezone.timedelta(days=400),
+            status=contract_status,
+            is_active=True,
+            supply_point_default=cls.supply_point1,
+            holder=holder,
         )
-
-        # Create 2 Supply Points with active meters
-        cls.supply_point1 = SupplyPoint.objects.create(
-            name="Supply Point 1",
-            token="SP-0001",
-            exploitation=cls.exploitation
-        )
-        cls.meter1 = Meter.objects.create(
-            code="METER-0001",
-            status=cls.meter_status_active
-        )
-        cls.supply_point1.meter = cls.meter1
-        cls.supply_point1.save()
-
-        cls.supply_point2 = SupplyPoint.objects.create(
-            name="Supply Point 2",
-            token="SP-0002",
-            exploitation=cls.exploitation
-        )
-        cls.meter2 = Meter.objects.create(
-            code="METER-0002",
-            status=cls.meter_status_active
-        )
-        cls.supply_point2.meter = cls.meter2
-        cls.supply_point2.save()
-
-        # Link supply points to contract
         cls.contract.supply_points.add(cls.supply_point1, cls.supply_point2)
 
-        # Create common Product and Price Rate
-        cls.product = Product.objects.create(name="Aigua", token="water", exploitation=cls.exploitation)
-        cls.price_rate = PriceRate.objects.create(name="Tarifa Aigua", product=cls.product, is_active=True)
-        
-        # Link Price Rate to Contract for both supply points
-        ContractPriceRate.objects.create(contract=cls.contract, price_rate=cls.price_rate, supply_point=cls.supply_point1)
-        ContractPriceRate.objects.create(contract=cls.contract, price_rate=cls.price_rate, supply_point=cls.supply_point2)
-
-        # Create Billing Range & Line Item Type
-        cls.billing_range = BillingRange.objects.create(
-            price_rate=cls.price_rate,
-            start=timezone.now().date() - timezone.timedelta(days=100)
+        product = Product.objects.create(
+            name="Aigua", token="water_mm", exploitation=cls.exploitation, origin=origin
         )
-        cls.tax = Tax.objects.create(name="IVA 10%", percent=10.0)
-        cls.billing_period = BillingPeriod.objects.create(token="trimestral", name="Trimestral", days=90)
-        cls.line_item_type = LineItemType.objects.create(
+        price_rate = PriceRate.objects.create(name="Tarifa Aigua", product=product, is_active=True)
+        for sp in (cls.supply_point1, cls.supply_point2):
+            cls.contract.price_rates.add(
+                ContractPriceRate.objects.create(price_rate=price_rate, supply_point=sp)
+            )
+        billing_range = BillingRange.objects.create(
+            price_rate=price_rate, start=timezone.now().date() - timezone.timedelta(days=400)
+        )
+        quantity, _ = VariableCalculation.objects.get_or_create(
+            token='consum', defaults={'name': 'Consum'}
+        )
+        LineItemType.objects.create(
             name="Consum Aigua",
-            billing_range=cls.billing_range,
-            billing_period=cls.billing_period,
-            tax=cls.tax,
-            proportional_price=1.5,  # 1.5€ per m3
+            billing_range=billing_range,
+            billing_period=BillingPeriod.objects.create(
+                token="trimestral", name="Trimestral", days=90
+            ),
+            tax=Tax.objects.create(name="IVA 10%", percent=10.0),
+            quantity=quantity,
+            proportional_price=1.5,  # 1.5 € per m3
             is_positive=True,
-            is_active=True
+            is_active=True,
         )
+
+    def setUp(self):
+        # El servei de factures guarda algunes configuracions en memòria entre proves.
+        import billing.utils.invoice_service as invoice_service_mod
+        for name in ('_active_supply_point_status', 'origin_reading', 'invoice_type_invoice',
+                     'invoice_pending_status', 'invoice_class', 'default_serie'):
+            setattr(invoice_service_mod, name, None)
+        try:
+            del invoice_service_mod._reading_estimated_cached
+        except AttributeError:
+            pass
+        patcher = patch('billing.utils.invoice_service.confirm_invoice', return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_combined_consumption_calculation_multiple_meters(self):
         # Create readings for both meters
@@ -158,6 +203,52 @@ class TestMultiMeterBilling(TestCase):
         self.assertIn(reading2, invoice_readings)
         self.assertEqual(invoice_readings.count(), 2)
 
+    def test_close_reading_consumption_is_added_once_per_meter(self):
+        reading_date = timezone.now().date()
+        for close_depth in (1, 2):
+            with self.subTest(close_depth=close_depth):
+                close = Reading.objects.create(
+                    supply_point=self.supply_point1,
+                    meter=self.meter1,
+                    contract=self.contract,
+                    reading_date=reading_date - timezone.timedelta(days=2),
+                    reading_value=4,
+                    calculated_value=4,
+                    real_consumption=4,
+                    is_close=True,
+                )
+                previous = close
+                if close_depth == 2:
+                    previous = Reading.objects.create(
+                        supply_point=self.supply_point1,
+                        meter=self.meter1,
+                        contract=self.contract,
+                        reading_date=reading_date - timezone.timedelta(days=1),
+                        reading_value=0,
+                        calculated_value=0,
+                        previous_reading=close,
+                    )
+                reading = Reading.objects.create(
+                    supply_point=self.supply_point1,
+                    meter=self.meter1,
+                    contract=self.contract,
+                    reading_date=reading_date,
+                    reading_value=previous.reading_value + 10,
+                    calculated_value=10,
+                    previous_reading=previous,
+                    consumption_days=90,
+                )
+                invoice = generate_consumption_invoice_multiple(
+                    contract=self.contract,
+                    readings=[reading],
+                    title='Close reading consumption',
+                    period_months=3,
+                )
+
+                self.assertIsNotNone(invoice)
+                self.assertEqual(invoice.consumption, 14.0)
+                self.assertEqual(invoice.line_items.get(is_active=True).units, 14.0)
+
     def test_combined_consumption_with_control_reading_modification(self):
         # Create a control reading and a modified active reading to simulate UI editing of close reading
         reading_date = timezone.now().date()
@@ -170,6 +261,7 @@ class TestMultiMeterBilling(TestCase):
             reading_value=100,
             reading_date=prev_reading_date,
             calculated_value=0,
+            real_consumption=0,
             contract=self.contract
         )
         # Original close reading: 4 m3, but marked as control (obsolete)
@@ -179,6 +271,7 @@ class TestMultiMeterBilling(TestCase):
             reading_value=104,
             reading_date=reading_date,
             calculated_value=4,
+            real_consumption=4,
             previous_reading=prev_reading1,
             contract=self.contract,
             consumption_days=90,
@@ -192,6 +285,7 @@ class TestMultiMeterBilling(TestCase):
             reading_value=108,
             reading_date=reading_date,
             calculated_value=8,
+            real_consumption=8,
             previous_reading=prev_reading1,
             contract=self.contract,
             consumption_days=90,
@@ -209,6 +303,7 @@ class TestMultiMeterBilling(TestCase):
             reading_value=0,
             reading_date=reading_date,
             calculated_value=0,
+            real_consumption=0,
             previous_reading=reading_control,
             contract=self.contract,
             is_control=False
@@ -219,14 +314,16 @@ class TestMultiMeterBilling(TestCase):
             reading_value=10,
             reading_date=reading_date + timezone.timedelta(days=2),
             calculated_value=10,
+            real_consumption=10,
             previous_reading=reading_new_init,
             contract=self.contract,
             consumption_days=2,
             is_control=False
         )
 
-        # Generate invoice passing the original selected list of readings (which contains control/unresolved ones)
-        readings_list = [reading_control, reading_new_act]
+        # La facturació passa les lectures que no són de control (filtra is_control=False): la
+        # modificada, no la de control que substitueix.
+        readings_list = [reading_modified, reading_new_act]
         invoice = generate_consumption_invoice_multiple(
             contract=self.contract,
             readings=readings_list,
