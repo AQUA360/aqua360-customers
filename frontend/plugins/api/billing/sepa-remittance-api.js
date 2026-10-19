@@ -216,10 +216,12 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
-    const validateFile = async (file) => {
+    // type: 'sepa' (rebuts, pain.008) o 'trf' (transferències, pain.001)
+    const validateFile = async (file, type = 'sepa') => {
       const apiUrl = `${apiHost}/billing/sepa-validate/`;
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('type', type);
       try {
         // 400 with { valid: false, errors, error } is an expected validation result, not a toast error.
         return await $apiManager.fetch(apiUrl, 'POST', formData, null, true);

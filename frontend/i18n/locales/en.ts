@@ -1900,6 +1900,8 @@ export default {
     sepa_xml_only: 'Only XML files are accepted',
     sepa_file_valid: 'The SEPA file is valid',
     sepa_file_invalid: 'The SEPA file is not valid',
+    trf_file_valid: 'The transfer file is valid',
+    trf_file_invalid: 'The transfer file is not valid',
     short_mng_trf: 'TRF creation',
     send_sepa: 'SEPA sending',
     sepa_not_sent_yet: 'The SEPA file has not been sent yet.',

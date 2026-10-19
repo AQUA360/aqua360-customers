@@ -13,11 +13,13 @@ import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import { checkPermission } from '~/middleware/permission';
+import SepaValidateModal from '~/components/molecules/SepaValidateModal.vue';
 
 const sidebarStore = useSidebarStore();
 const { t } = useI18n();
 const toast = useToast();
 const showRegion = ref(false);
+const validateModalOpen = ref(false);
 
 const detail = ref(null);
 const selectedItemId = ref(null);
@@ -264,6 +266,9 @@ watch(() => route.query, () => {
     <div class="flex justify-between items-center mb-2">
       <H1 class="mb-2">{{ $t('common.trf_managements') }}</H1>
       <div class="flex gap-2">
+        <button type="button" class="button-primary" @click="validateModalOpen = true">
+          {{ $t('billing_block.validate_file') }}
+        </button>
         <NuxtLink v-if="objectPermissions?.can_change" to="/billing/transfer/manage" class="button-primary">{{
           $t('billing_block.short_mng_trf') }}</NuxtLink>
       </div>
@@ -412,5 +417,7 @@ watch(() => route.query, () => {
         @close-subregion="reload()" :isReturn="true" />
     </div>
   </div>
+
+  <SepaValidateModal type="trf" :show="validateModalOpen" @close="validateModalOpen = false" />
 
 </template>

@@ -1957,6 +1957,8 @@ export default {
     sepa_xml_only: 'Només s\'accepten fitxers XML',
     sepa_file_valid: 'El fitxer SEPA és vàlid',
     sepa_file_invalid: 'El fitxer SEPA no és vàlid',
+    trf_file_valid: 'El fitxer de transferències és vàlid',
+    trf_file_invalid: 'El fitxer de transferències no és vàlid',
     short_mng_trf: 'Creació fitxer TRF',
     send_sepa: 'Enviament SEPA',
     sepa_not_sent_yet: 'El fitxer SEPA no ha estat enviat encara.',

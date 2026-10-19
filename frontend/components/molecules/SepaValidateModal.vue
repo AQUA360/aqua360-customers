@@ -11,6 +11,11 @@ const props = defineProps({
   show: {
     type: Boolean,
     default: false
+  },
+  // 'sepa' (rebuts) o 'trf' (transferències): decideix contra quin XSD es valida.
+  type: {
+    type: String,
+    default: 'sepa'
   }
 });
 
@@ -70,7 +75,7 @@ const handleFileChange = async (event) => {
   selectedFile.value = file;
   validating.value = true;
   try {
-    const response = await $SepaRemittanceApiService.validateFile(file);
+    const response = await $SepaRemittanceApiService.validateFile(file, props.type);
     result.value = response;
     resultText.value = JSON.stringify(response, null, 2);
   } catch (err) {
@@ -128,7 +133,7 @@ const handleFileChange = async (event) => {
             :class="result.valid ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'"
           >
             <Icon :name="result.valid ? 'fa6-solid:circle-check' : 'fa6-solid:circle-xmark'" />
-            {{ result.valid ? t('billing_block.sepa_file_valid') : t('billing_block.sepa_file_invalid') }}
+            {{ result.valid ? t(`billing_block.${type}_file_valid`) : t(`billing_block.${type}_file_invalid`) }}
           </div>
 
           <p v-if="result.error" class="mb-3 text-sm text-red-700">{{ result.error }}</p>
