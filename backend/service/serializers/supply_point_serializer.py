@@ -33,7 +33,8 @@ def _get_active_contract_status():
 def _supply_cut_alert(supply_point):
     """Alerta de tall vigent per a un PP.
     Es mostra si està Actiu (sempre, independentment de la data).
-    Es mostra si està Planificat fins a 30 minuts després de la seva fi prevista.
+    Es mostra si està Planificat fins a 30 minuts després de la seva fi prevista; si no en té
+    (un tall indefinit, per exemple per impagament), sempre.
     """
     cuts = getattr(supply_point, '_prefetched_supply_cuts', None)
     if not cuts:
@@ -47,8 +48,9 @@ def _supply_cut_alert(supply_point):
             continue
             
         if cut.status.token == '0':
-            # Si està Planificat, apliquem el marge de 30 minuts un cop superada la data de fi
-            if not cut.date_end or cut.date_end < margin_time:
+            # Si està Planificat, apliquem el marge de 30 minuts un cop superada la data de fi.
+            # Sense data de fi (indefinit) no caduca: es mostra.
+            if cut.date_end and cut.date_end < margin_time:
                 continue
                 
         # Si està Actiu ('1'), no fem cap comprovació de data. 
