@@ -1,4 +1,5 @@
-# Passa les proves del backend i construeix el frontend a cada PR cap a main o develop.
+# Passa les proves del backend i construeix el frontend a cada PR cap a main o develop, i a la cua
+# de fusió (merge_group), on es proven les PR juntes amb el develop més nou abans de fusionar-les.
 #
 # Seguretat: el repositori és públic. Aquí no hi ha cap secret ni cap dada real: la base de dades
 # és buida i la crea l'acció mateixa.
@@ -9,6 +10,7 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
+  merge_group:
 
 permissions:
   contents: read
