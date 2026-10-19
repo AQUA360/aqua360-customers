@@ -42,6 +42,7 @@ class BulkPlannerFixtureMixin:
 
     @classmethod
     def make_person(cls, token, vulnerability_level=0, name='Persona', surname='Test'):
+        """Create a test person with the requested vulnerability level."""
         return Person.objects.create(
             token=token, name=name, surname=surname,
             vulnerability_level=vulnerability_level,
@@ -49,6 +50,7 @@ class BulkPlannerFixtureMixin:
 
     @classmethod
     def make_contract(cls, token, supply_point=None, holder=None, tenant=None, owner=None, is_active=True):
+        """Create a test contract with the supplied people and supply point links."""
         contract = Contract.objects.create(
             token=token, supply_point_default=supply_point,
             holder=holder, tenant=tenant, owner=owner, is_active=is_active,
@@ -214,10 +216,12 @@ class TestSupplyCutBulkPlannerService(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(bulk_planner.detect_conflicts([self.sp_a.id], exclude_cut_id=cut.id), [])
 
     def test_detect_vulnerable_empty_ids_returns_empty(self):
+        """An empty point selection has no vulnerable people."""
         self.assertEqual(bulk_planner.detect_vulnerable([]), [])
 
     def test_detect_vulnerable_flags_any_nonzero_level_in_any_role(self):
         # Holder level 2 (Vulnerable) via the M2M relation.
+        """Detect vulnerable holders, tenants and owners through both contract relations."""
         holder = self.make_person('P-VULN-1', vulnerability_level=2)
         self.make_contract('CT-VULN-1', supply_point=self.sp_a, holder=holder)
         # Tenant level 1 (En Risc) via the default FK relation.
@@ -239,6 +243,7 @@ class TestSupplyCutBulkPlannerService(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(by_sp[self.sp_d.id][0]['vulnerability_level'], 2)
 
     def test_detect_vulnerable_ignores_level_zero_and_inactive_contracts(self):
+        """Exclude safe people and vulnerable people on inactive contracts."""
         safe_holder = self.make_person('P-SAFE', vulnerability_level=0)
         self.make_contract('CT-SAFE', supply_point=self.sp_a, holder=safe_holder)
 
@@ -249,6 +254,7 @@ class TestSupplyCutBulkPlannerService(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(bulk_planner.detect_vulnerable([self.sp_a.id, self.sp_b.id]), [])
 
     def test_detect_vulnerable_dedupes_same_person_and_role_across_contracts(self):
+        """Report a shared holder only once per supply point across linked contracts."""
         holder = self.make_person('P-DEDUP', vulnerability_level=2)
         self.make_contract('CT-DEDUP-1', supply_point=self.sp_a, holder=holder)
         self.make_contract('CT-DEDUP-2', supply_point=self.sp_a, holder=holder)
@@ -268,6 +274,7 @@ class TestSupplyCutBulkPlannerService(BulkPlannerFixtureMixin, TestCase):
             bulk_planner.detect_vulnerable([self.sp_a.id, self.sp_b.id, self.sp_c.id, self.sp_d.id])
 
     def test_build_preview_stats_and_vulnerable_flags(self):
+        """Expose vulnerability counts, affected people and per-row flags in previews."""
         holder = self.make_person('P-PREVIEW', vulnerability_level=2)
         self.make_contract('CT-PREVIEW', supply_point=self.sp_a, holder=holder)
 
@@ -311,6 +318,7 @@ class TestSupplyCutBulkPlannerService(BulkPlannerFixtureMixin, TestCase):
 class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
+        """Seed streets, points, planned and active statuses, and both cause types for API tests."""
         super().setUpTestData()
         cls.country = Country.objects.create(name='Espanya', iso_code='ES')
         cls.city = City.objects.create(name='Barcelona', token='BCN')
@@ -434,6 +442,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_create_over_vulnerable_without_override_is_409(self):
+        """Reject a temporary bulk cut over vulnerable people without an override."""
         holder = self.make_person('P-EP-VULN', vulnerability_level=2)
         self.make_contract('CT-EP-VULN', supply_point=self.sp, holder=holder)
 
@@ -449,6 +458,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(SupplyCut.objects.count(), 0)
 
     def test_create_permanent_over_vulnerable_is_400_even_with_override(self):
+        """Block permanent bulk cuts over vulnerable people even with an override."""
         holder = self.make_person('P-EP-VULN-PERM', vulnerability_level=2)
         self.make_contract('CT-EP-VULN-PERM', supply_point=self.sp, holder=holder)
 
@@ -465,6 +475,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(SupplyCut.objects.count(), 0)
 
     def test_create_over_vulnerable_with_override_succeeds(self):
+        """Allow a temporary bulk cut over vulnerable people with an explicit override."""
         holder = self.make_person('P-EP-VULN2', vulnerability_level=2)
         self.make_contract('CT-EP-VULN2', supply_point=self.sp, holder=holder)
 
@@ -481,6 +492,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(SupplyCut.objects.count(), 1)
 
     def test_create_safe_points_still_succeeds_without_override(self):
+        """Create a bulk cut without an override when all linked people are safe."""
         safe_holder = self.make_person('P-EP-SAFE', vulnerability_level=0)
         self.make_contract('CT-EP-SAFE', supply_point=self.sp, holder=safe_holder)
 
@@ -494,6 +506,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(response.data['vulnerable_count'], 0)
 
     def test_preview_endpoint_surfaces_vulnerable_points(self):
+        """Include vulnerable point details and counts in the preview endpoint response."""
         holder = self.make_person('P-EP-PREVIEW', vulnerability_level=1)
         self.make_contract('CT-EP-PREVIEW', supply_point=self.sp, holder=holder)
 
@@ -507,6 +520,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertTrue(response.data['resolved'][0]['has_vulnerable_person'])
 
     def test_preview_merges_manual_supply_points_and_identifiers(self):
+        """Merge manual points with text matches and label the manual row origin."""
         response = self._preview({
             'identifier_type': 'street_id',
             'identifiers': [str(self.street.id)],
@@ -521,6 +535,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(manual_row['matched_by'], ['manual'])
 
     def test_preview_dedupes_manual_duplicate_of_identifier(self):
+        """Include a point selected both manually and through text only once."""
         response = self._preview({
             'identifier_type': 'street_id',
             'identifiers': [str(self.street.id)],
@@ -531,6 +546,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(len(response.data['resolved']), 1)
 
     def test_preview_reports_unknown_manual_ids_as_not_found(self):
+        """Report missing numeric and malformed manual point IDs without losing valid matches."""
         response = self._preview({
             'identifier_type': 'street_id',
             'identifiers': [str(self.street.id)],
@@ -542,6 +558,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertIn('not-a-number', response.data['not_found'])
 
     def test_preview_expands_manual_contract_ids(self):
+        """Expand selected contracts into points without reporting resolved contracts as misses."""
         contract = self.make_contract('CT-EP-MANUAL', supply_point=self.sp2)
         response = self._preview({
             'identifier_type': 'street_id',
@@ -556,6 +573,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(response.data['not_found'], [])
 
     def test_preview_contract_without_points_reports_token_as_not_found(self):
+        """Report the commercial token of a selected contract with no supply points."""
         contract = self.make_contract('CT-EP-NOSP', supply_point=None)
         response = self._preview({
             'identifier_type': 'street_id',
@@ -567,6 +585,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(response.data['not_found'], ['CT-EP-NOSP'])
 
     def test_preview_unknown_contract_id_reports_raw_id_as_not_found(self):
+        """Use the raw ID as the missing label when the selected contract does not exist."""
         response = self._preview({
             'identifier_type': 'street_id',
             'identifiers': [str(self.street.id)],
@@ -577,6 +596,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(response.data['not_found'], ['999999'])
 
     def test_create_hybrid_saves_combined_list(self):
+        """Persist the union of text-resolved and manually selected supply points."""
         response = self._create({
             'identifier_type': 'street_id',
             'identifiers': [str(self.street.id)],
@@ -590,6 +610,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(response.data['resolved_count'], 2)
 
     def test_create_hybrid_vulnerable_manual_point_is_409_then_override(self):
+        """Require an override for vulnerable manual points in a temporary hybrid cut."""
         holder = self.make_person('P-EP-HYBRID', vulnerability_level=2)
         self.make_contract('CT-EP-HYBRID', supply_point=self.sp2, holder=holder)
 
@@ -620,6 +641,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(set(cut.supply_points.values_list('id', flat=True)), {self.sp.id, self.sp2.id})
 
     def test_create_hybrid_permanent_vulnerable_manual_point_is_400(self):
+        """Block permanent hybrid cuts when a manual point has vulnerable people."""
         holder = self.make_person('P-EP-HYBRID-PERM', vulnerability_level=2)
         self.make_contract('CT-EP-HYBRID-PERM', supply_point=self.sp2, holder=holder)
 
@@ -637,6 +659,7 @@ class TestSupplyCutBulkPlannerEndpoints(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(SupplyCut.objects.count(), 0)
 
     def test_create_hybrid_conflict_on_manual_point_is_409(self):
+        """Detect an existing open cut on a manually selected point in a hybrid request."""
         now = timezone.now()
         open_cut = SupplyCut.objects.create(
             token='OPEN-EP-HY', status=self.status_active, cause=self.cause, date_start=now,
@@ -719,6 +742,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        """Seed points, cause types and statuses for membership and activation tests."""
         super().setUpTestData()
         cls.country = Country.objects.create(name='Espanya', iso_code='ES')
         cls.city = City.objects.create(name='Barcelona', token='BCN')
@@ -743,6 +767,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         cls.sp_2 = cls.make_point(addr_b, token='SP-LC-2')
 
     def setUp(self):
+        """Create an authenticated request factory and grant the required cut permissions."""
         self.factory = APIRequestFactory()
         self.user = User.objects.create_user(username='lifecycle', password='password')
         ct = ContentType.objects.get_for_model(SupplyCut)
@@ -752,6 +777,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         )
 
     def _make_cut(self, points, cause=None, status=None):
+        """Create a cut with the requested points, defaulting to planned and temporary."""
         cut = SupplyCut.objects.create(
             token='LC-CUT-{}'.format(SupplyCut.objects.count()),
             status=status or self.status_planned,
@@ -763,12 +789,14 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         return cut
 
     def _make_active_contract(self, token, supply_point, holder):
+        """Create a linked contract and assign the fixture active status."""
         contract = self.make_contract(token, supply_point=supply_point, holder=holder)
         contract.status = self.contract_status
         contract.save()
         return contract
 
     def _put(self, cut, payload):
+        """Submit an authenticated update request for the given cut."""
         view = SupplyCutViewSet.as_view({'put': 'update'})
         request = self.factory.put(
             '/service/supplycut/{}/'.format(cut.id), payload, format='json',
@@ -777,6 +805,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         return view(request, pk=str(cut.id))
 
     def _start(self, cut, payload=None):
+        """Submit an authenticated activation request with optional override data."""
         view = SupplyCutViewSet.as_view({'post': 'start_cut'})
         request = self.factory.post(
             '/service/supplycut/{}/start-cut/'.format(cut.id), payload or {}, format='json',
@@ -785,6 +814,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         return view(request, pk=str(cut.id))
 
     def test_put_adding_supply_points_is_400(self):
+        """Reject adding points to an existing cut and preserve its membership."""
         cut = self._make_cut([self.sp_1])
         original_token = cut.token
         response = self._put(cut, {
@@ -798,6 +828,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(cut.token, original_token)
 
     def test_put_removing_supply_points_is_400(self):
+        """Reject removing points through update and preserve the existing membership."""
         cut = self._make_cut([self.sp_1, self.sp_2])
         response = self._put(cut, {'supply_points': [self.sp_1.id]})
         self.assertEqual(response.status_code, 400)
@@ -806,6 +837,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(set(cut.supply_points.values_list('id', flat=True)), {self.sp_1.id, self.sp_2.id})
 
     def test_put_identical_supply_points_is_noop_200(self):
+        """Accept an unchanged point selection without altering membership."""
         cut = self._make_cut([self.sp_1])
         response = self._put(cut, {'supply_points': [self.sp_1.id]})
         self.assertEqual(response.status_code, 200)
@@ -813,6 +845,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(list(cut.supply_points.all()), [self.sp_1])
 
     def test_put_cause_flip_to_permanent_with_vulnerable_is_400(self):
+        """Block changing a vulnerable cut to permanent and preserve its previous cause."""
         holder = self.make_person('P-LC-BLOCK', vulnerability_level=2)
         self._make_active_contract('CT-LC-BLOCK', self.sp_1, holder)
         cut = self._make_cut([self.sp_1])
@@ -824,6 +857,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(cut.cause_id, self.cause_temporary.id)
 
     def test_put_cause_flip_to_temporary_requires_confirmation(self):
+        """Require the confirmation word before changing a vulnerable cut to temporary."""
         holder = self.make_person('P-LC-CONFIRM', vulnerability_level=1)
         self._make_active_contract('CT-LC-CONFIRM', self.sp_1, holder)
         cut = self._make_cut([self.sp_1], cause=self.cause_permanent)
@@ -842,6 +876,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(cut.cause_id, self.cause_temporary.id)
 
     def test_put_cause_change_without_vulnerable_people_succeeds(self):
+        """Allow a cause change when no linked people are vulnerable."""
         cut = self._make_cut([self.sp_1])
         response = self._put(cut, {'cause_id': self.cause_permanent.id})
         self.assertEqual(response.status_code, 200)
@@ -849,6 +884,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(cut.cause_id, self.cause_permanent.id)
 
     def test_start_cut_with_vulnerable_is_409(self):
+        """Keep a vulnerable temporary cut planned until an override is provided."""
         holder = self.make_person('P-LC-START', vulnerability_level=2)
         self._make_active_contract('CT-LC-START', self.sp_1, holder)
         cut = self._make_cut([self.sp_1])
@@ -861,6 +897,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(cut.status_id, self.status_planned.id)
 
     def test_start_cut_with_vulnerable_and_override_succeeds(self):
+        """Activate a vulnerable temporary cut when an explicit override is provided."""
         holder = self.make_person('P-LC-START2', vulnerability_level=2)
         self._make_active_contract('CT-LC-START2', self.sp_1, holder)
         cut = self._make_cut([self.sp_1])
@@ -873,6 +910,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
     def test_start_cut_permanent_with_vulnerable_is_400_even_with_override(self):
         # Vulnerability may have been registered AFTER the cut was created:
         # re-validation at start-cut must apply the strict permanent rule.
+        """Recheck vulnerability at activation and block permanent cuts despite overrides."""
         holder = self.make_person('P-LC-START-PERM', vulnerability_level=2)
         self._make_active_contract('CT-LC-START-PERM', self.sp_1, holder)
         cut = self._make_cut([self.sp_1], cause=self.cause_permanent)
@@ -885,6 +923,7 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         self.assertEqual(cut.status_id, self.status_planned.id)
 
     def test_start_cut_without_vulnerable_people_succeeds(self):
+        """Activate a cut without an override when no linked people are vulnerable."""
         safe_holder = self.make_person('P-LC-SAFE', vulnerability_level=0)
         self._make_active_contract('CT-LC-SAFE', self.sp_1, safe_holder)
         cut = self._make_cut([self.sp_1])

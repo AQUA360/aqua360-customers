@@ -790,6 +790,7 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
         # Nivells de vulnerabilitat de les persones del contracte perquè la
         # pantalla de tall manual pugui avaluar les regles de protecció
         # (holder, tenant o owner > 0) en seleccionar contractes.
+        """Include nullable holder, tenant and owner vulnerability levels in the contract summary."""
         representation = super().to_representation(instance)
         representation['holder_vulnerability_level'] = (
             instance.holder.vulnerability_level if instance.holder else None

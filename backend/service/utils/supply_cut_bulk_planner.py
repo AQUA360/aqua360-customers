@@ -118,6 +118,7 @@ def _resolve_supply_point_ids(ids):
 
 
 def _resolve_contract_ids(contract_ids):
+    """Return distinct supply points linked by M2M or default FK to the contract IDs."""
     if not contract_ids:
         return SupplyPoint.objects.none()
     return (

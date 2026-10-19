@@ -128,6 +128,7 @@ class SupplyCutSerializer(serializers.ModelSerializer):
         return self._save_supply_cut(instance, validated_data)
 
     def _save_supply_cut(self, instance, validated_data):
+        """Save the cut, reject membership changes on existing cuts, and sync status logs."""
         supply_points = validated_data.pop('supply_points', None)
         
         cause_id = validated_data.pop('cause_id', None)

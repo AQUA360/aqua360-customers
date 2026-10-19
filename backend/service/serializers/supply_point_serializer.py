@@ -187,6 +187,7 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
 
 
     def to_representation(self, instance):
+        """Build a supply point summary with active contract vulnerability levels and latest readings."""
         representation = super().to_representation(instance)
         representation['address_complete'] = str(instance.address)
         
@@ -444,6 +445,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         return True if frauds.exists() else False
     
     def to_representation(self, instance):
+        """Build supply point details with active contract debts, vulnerability levels and related data."""
         representation = super().to_representation(instance)
         from contract.serializers.contract_serializer import ContractMinimalSerializer
 

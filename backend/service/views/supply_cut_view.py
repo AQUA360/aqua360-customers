@@ -153,6 +153,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         return None
 
     def create(self, request, *args, **kwargs):
+        """Validate manual vulnerability rules, create the cut, and return its full representation."""
         blocked = self._enforce_vulnerability_rules(request.data)
         if blocked is not None:
             return blocked
@@ -165,6 +166,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def update(self, request, *args, **kwargs):
+        """Validate cause changes, update the cut, and return its full representation."""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         blocked = self._enforce_cause_flip_rules(instance, request.data)
@@ -178,6 +180,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         return Response(read_serializer.data)
 
     def _enforce_cause_flip_rules(self, instance, data):
+        """Return a blocking response for unsafe cause changes, or None when allowed."""
         cause_id = data.get('cause_id')
         if not cause_id:
             return None
