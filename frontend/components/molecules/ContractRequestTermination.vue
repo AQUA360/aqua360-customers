@@ -121,26 +121,30 @@ watch(() => termination_request.value?.contract?.supply_points, async (newVal) =
   }
 }, { immediate: true, deep: true });
 
+let meterDataRequestId = 0;
+
 const fetchMeterData = async () => {
-  if (!selectedMeter.value) {
-    meterData.value = null;
-    return;
-  }
-  loadingMeterData.value = true;
+  const requestId = ++meterDataRequestId;
+  const meterId = selectedMeter.value;
+  meterData.value = null;
+  loadingMeterData.value = Boolean(meterId);
+  if (!meterId) return;
+
   try {
-    meterData.value = await $MeterApiService.getDetail(selectedMeter.value);
+    const response = await $MeterApiService.getDetail(meterId);
+    if (requestId !== meterDataRequestId || selectedMeter.value !== meterId) return;
+    meterData.value = response;
   } catch (error) {
+    if (requestId !== meterDataRequestId || selectedMeter.value !== meterId) return;
     console.error('Error fetching meter details:', error);
   } finally {
-    loadingMeterData.value = false;
+    if (requestId === meterDataRequestId && selectedMeter.value === meterId) {
+      loadingMeterData.value = false;
+    }
   }
 }
 
-watch(selectedMeter, fetchMeterData, { immediate: true });
-watch(selectedMeter, () => {
-  editingInitialReading.value = false;
-  resetInitialSmartMetering();
-});
+watch(selectedMeter, fetchMeterData, { immediate: true, flush: 'sync' });
 
 const meterPermissions = ref(null);
 const continueWithoutMeter = ref(false); // Comptador fictici (Aforament / Incendis)
@@ -175,33 +179,43 @@ const fetchingInitialSmartMetering = ref(false);
 const initialSmartMeteringResult = ref(null);
 const initialSmartMeteringPendingSave = ref(false);
 const initialSmartMeteringDate = ref(null);
+let initialSmartMeteringRequestId = 0;
 
 const canFetchInitialReadingFromSmartMetering = computed(() => {
   return Boolean(
     selectedMeter.value
     && !continueWithoutMeter.value
     && !withoutMeter.value
+    && !loadingMeterData.value
+    && meterData.value?.id === selectedMeter.value
     && meterData.value?.has_remote_reading
     && meterData.value?.remote_reading_type === 'SMART_METERING'
   );
 });
 
 const resetInitialSmartMetering = () => {
+  initialSmartMeteringRequestId++;
   fetchingInitialSmartMetering.value = false;
   initialSmartMeteringResult.value = null;
   initialSmartMeteringPendingSave.value = false;
   initialSmartMeteringDate.value = null;
 };
 
+watch(selectedMeter, () => {
+  editingInitialReading.value = false;
+  resetInitialSmartMetering();
+}, { flush: 'sync' });
+
+watch([continueWithoutMeter, withoutMeter], resetInitialSmartMetering, { flush: 'sync' });
+
 const handleInitialReadingInput = () => {
-  initialSmartMeteringResult.value = null;
-  initialSmartMeteringPendingSave.value = false;
-  initialSmartMeteringDate.value = null;
+  resetInitialSmartMetering();
 };
 
 const fetchInitialReadingFromSmartMetering = async () => {
   if (!canFetchInitialReadingFromSmartMetering.value) return;
 
+  const requestId = ++initialSmartMeteringRequestId;
   const meterId = selectedMeter.value;
   fetchingInitialSmartMetering.value = true;
   initialSmartMeteringResult.value = null;
@@ -216,7 +230,7 @@ const fetchInitialReadingFromSmartMetering = async () => {
       margin: 5,
     });
 
-    if (selectedMeter.value !== meterId) return;
+    if (requestId !== initialSmartMeteringRequestId || selectedMeter.value !== meterId) return;
 
     if (response?.found && response.reading_value != null) {
       request_reading.value = response.reading_value;
@@ -236,13 +250,13 @@ const fetchInitialReadingFromSmartMetering = async () => {
       toast.warning(t('billing_block.smart_metering_reading_not_found'));
     }
   } catch (error) {
-    if (selectedMeter.value !== meterId) return;
+    if (requestId !== initialSmartMeteringRequestId || selectedMeter.value !== meterId) return;
 
     console.error('Error fetching smart metering initial reading:', error);
     initialSmartMeteringResult.value = 'error';
     toast.error(error?.data?.error || t('billing_block.smart_metering_fetch_error'));
   } finally {
-    if (selectedMeter.value === meterId) {
+    if (requestId === initialSmartMeteringRequestId && selectedMeter.value === meterId) {
       fetchingInitialSmartMetering.value = false;
     }
   }
