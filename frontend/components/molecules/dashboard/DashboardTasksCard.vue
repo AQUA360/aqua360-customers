@@ -23,9 +23,14 @@ const { data, loading, error } = useDashboardCardData(props.item.key, config, re
 const subtitle = computed(() => props.item.config?.scope === 'mine' ? t('home_dashboard.config.scope.mine') : null);
 
 const markDone = async (task) => {
-  await $CalendarTaskApiService.setDone(task.id, true);
-  sidebarStore.tasksChanged();
-  refreshKey.value++;
+  try {
+    await $CalendarTaskApiService.setDone(task.id, true);
+    sidebarStore.tasksChanged();
+  } catch (err) {
+    console.error(err);
+  } finally {
+    refreshKey.value++;
+  }
 };
 </script>
 
