@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, subMonths, addMonths, isSameMonth, isSameDay, isToday } from 'date-fns';
 import CalendarTaskRegion from '../organisms/CalendarTaskRegion.vue';
+import { WEEKDAY_KEYS } from '~/utils/calendarTasks';
 
 const { t } = useI18n()
 
@@ -168,13 +169,10 @@ onMounted(() => {
         </div>
 
         <div class="grid grid-cols-7 gap-2 p-4">
-            <div class="text-center font-medium text-gray-600">{{ t('date.monday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.tuesday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.wednesday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.thursday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.friday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.saturday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.sunday') }}</div>
+            <!-- Abreviats: la card del calendari pot ser estreta i els noms sencers no hi caben -->
+            <div v-for="weekday in WEEKDAY_KEYS" :key="weekday" class="text-center font-medium text-gray-600" :title="t(`date.${weekday}`)">
+                {{ t(`date.weekdays_short.${weekday}`) }}
+            </div>
 
             <button v-if="!pending" v-for="day in daysInMonth" :key="day.date" @click="selectDate(day)"
                 class="relative text-center py-2 rounded-md focus:outline-none hover:bg-gray-200" :class="{

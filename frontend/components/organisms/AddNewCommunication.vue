@@ -204,7 +204,7 @@ watch(isOnlyElectronicInvoice, (onlyElectronic) => {
         </div>
 
         <div v-if="!loading"
-            class="fixed right-0 bottom-0 z-[9999] border-t border-gray-200 py-4 px-4 shadow-lg bg-[#FAE2DA] z-40"
+            class="fixed right-0 bottom-0 z-[90] border-t border-gray-200 py-4 px-4 shadow-lg bg-[#FAE2DA]"
             style="width: calc(100% - 250px)">
             <div class="flex justify-between items-center">
                 <button v-if="currentStep > 0" type="button" @click="previousStep"

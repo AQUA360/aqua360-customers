@@ -1909,6 +1909,8 @@ export default {
     sepa_xml_only: 'Só se aceptan ficheiros XML',
     sepa_file_valid: 'O ficheiro SEPA é válido',
     sepa_file_invalid: 'O ficheiro SEPA non é válido',
+    trf_file_valid: 'O ficheiro de transferencias é válido',
+    trf_file_invalid: 'O ficheiro de transferencias non é válido',
     short_mng_trf: 'Creación TRF',
     send_sepa: 'Envío SEPA',
     sepa_not_sent_yet: 'O ficheiro SEPA aínda non foi enviado.',
@@ -2887,6 +2889,15 @@ export default {
     friday: 'Venres',
     saturday: 'Sábado',
     sunday: 'Domingo',
+    weekdays_short: {
+      monday: 'Lu',
+      tuesday: 'Ma',
+      wednesday: 'Mé',
+      thursday: 'Xo',
+      friday: 'Ve',
+      saturday: 'Sá',
+      sunday: 'Do'
+    },
     this_week: 'Esta semana',
     this_month: 'Este mes',
     months: 'Meses',
@@ -3696,5 +3707,144 @@ export default {
     role_owner: 'Propietario',
     level_1: 'En riesgo',
     level_2: 'Vulnerable',
+  home_dashboard: {
+    yesterday: 'Onte',
+    customize: 'Personalizar',
+    done: 'Feito',
+    reset: 'Restablecer',
+    saving: 'Gardando',
+    reset_confirm: 'Queres volver á disposición por defecto? Perderanse as tarxetas e a configuración que escolliches.',
+    empty: 'Non tes ningunha tarxeta na páxina de inicio.',
+    add_card: 'Engadir tarxeta',
+    already_added: 'xa engadida',
+    move: 'Mover',
+    configure: 'Configurar',
+    remove: 'Quitar',
+    size: 'Tamaño',
+    sizes: {
+      sm: 'Pequena',
+      md: 'Mediana',
+      lg: 'Ancha'
+    },
+    invoices: 'facturas',
+    orders: 'ordes',
+    vs_previous: 'respecto ao período anterior',
+    previous_period: 'Período anterior: {count}',
+    see_all: 'Velas todas ({count})',
+    readings_read: '{read} de {total} lecturas',
+    readings_alerts: '{count} alertas',
+    config: {
+      period: {
+        label: 'Período',
+        today: 'Hoxe',
+        week: 'Esta semana',
+        month: 'Este mes',
+        quarter: 'Este trimestre',
+        year: 'Este ano'
+      },
+      scope: {
+        label: 'Amosar',
+        all: 'Todas',
+        created_by_me: 'Creadas por min',
+        visible: 'Miñas e de todos',
+        mine: 'Só as miñas'
+      },
+      only_mine: {
+        label: 'Só as que anulei eu'
+      }
+    },
+    cards: {
+      daily_activity: {
+        title: 'A miña actividade de hoxe',
+        description: 'Resumo do que fixeches hoxe: cobros, ordes, xestións de contrato...'
+      },
+      tasks_today: {
+        title: 'Tarefas pendentes',
+        description: 'Tarefas de hoxe e atrasadas, para marcalas como feitas.'
+      },
+      orders_to_validate: {
+        title: 'OT pendentes de validar',
+        description: 'Ordes de traballo que agardan validación.',
+        empty: 'Non hai ningunha orde pendente de validar.'
+      },
+      change_meter_pending: {
+        title: 'Cambios de contador por aplicar',
+        description: 'OT de cambio de contador pechadas sen aplicar o cambio no sistema.',
+        empty: 'Non hai ningún cambio de contador pendente.'
+      },
+      reading_batches_in_progress: {
+        title: 'Lotes de lecturas en curso',
+        description: 'Lotes non facturados co progreso e as alertas das lecturas.',
+        empty: 'Non hai ningún lote de lecturas en curso.'
+      },
+      invoices_issued: {
+        title: 'Facturación emitida',
+        description: 'Número e importe das facturas emitidas no período.'
+      },
+      invoice_cancellations: {
+        title: 'Anulacións',
+        description: 'Abonos emitidos ao anular facturas (importe negativo).'
+      },
+      rebillings: {
+        title: 'Refacturacións',
+        description: 'Facturas emitidas que substitúen outra.'
+      },
+      recent_searches: {
+        title: 'Visitados recentemente',
+        description: 'O que abriches desde o buscador nos últimos días.'
+      },
+      calendar: {
+        title: 'Calendario',
+        description: 'Calendario mensual de tarefas.'
+      },
+      quick_access: {
+        title: 'Accesos rápidos',
+        description: 'Ligazóns ás accións máis habituais.'
+      }
+    }
+  },
+  calendar_tasks: {
+    notified_today: 'Avisouse da tarefa «{name}» para hoxe',
+    title: 'Calendario',
+    open_calendar: 'Abrir o calendario',
+    today: 'Hoxe',
+    overdue: 'Atrasadas',
+    nothing_pending: 'Non hai tarefas pendentes.',
+    mark_done: 'Marcar como feita',
+    recurring: 'Tarefa recorrente',
+    automatic: 'Automática',
+    next_days: 'Próximos {count} días',
+    filter_visible: 'Miñas e de todos',
+    filter_mine: 'Só as miñas',
+    filter_all_users: 'Só as de todos',
+    show_done: 'Amosar as feitas',
+    views: {
+      month: 'Mes',
+      week: 'Semana',
+      list: 'Lista'
+    },
+    more: '+{count} máis',
+    email_daily: 'Resumo diario por correo',
+    email_daily_info: 'Cada mañá recibirás un correo coas túas tarefas pendentes do día e as atrasadas.',
+    email_missing: 'O teu usuario non ten ningún correo configurado.',
+    everyone: 'Todos',
+    time: 'Hora',
+    recurring_task: 'Tarefa recorrente',
+    repeat_every: 'Repetir cada',
+    frequencies: {
+      daily: 'día(s)',
+      weekly: 'semana(s)',
+      monthly: 'mes(es)',
+      yearly: 'ano(s)'
+    },
+    same_weekday: 'Se non se escolle ningún, o mesmo día da semana que a data inicial.',
+    end_date: 'Ata (opcional)',
+    apply_to_series: 'Aplicar os cambios tamén ás ocorrencias seguintes',
+    only_this_occurrence: 'Os cambios só se aplicarán a esta ocorrencia.',
+    delete_series_confirm: 'Esta tarefa é recorrente. Queres borrar tamén todas as ocorrencias pendentes seguintes? (Cancelar para borrar só esta)',
+    delete_occurrence_confirm: 'Borrar só esta ocorrencia?',
+    delete_confirm: 'Seguro que queres borrar esta tarefa?',
+    order: 'Orde de traballo',
+    badge_title: '{today} para hoxe, {overdue} atrasadas'
   }
 }

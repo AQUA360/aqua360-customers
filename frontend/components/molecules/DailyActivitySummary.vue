@@ -12,6 +12,11 @@ import { formatMoneyWithCurrency } from '~/utils/money';
  * ha d'haver un bloc d'error per una dada informativa.
  */
 
+const props = defineProps({
+  // Dins d'una card del dashboard: sense capçalera ni marc propis (els posa la card)
+  embedded: { type: Boolean, default: false },
+});
+
 const { t } = useI18n();
 const { $DailyActivityApiService } = useNuxtApp();
 
@@ -50,8 +55,11 @@ onMounted(load);
 </script>
 
 <template>
+  <div v-if="embedded && failed" class="text-sm text-slate-400">
+    {{ t('common.error_load') }}
+  </div>
   <div v-if="!failed">
-    <div class="flex items-center justify-between gap-3 px-6 mb-4">
+    <div v-if="!embedded" class="flex items-center justify-between gap-3 px-6 mb-4">
       <span class="text-sm text-slate-500 flex gap-3 items-center">
         <Icon name="fa6-solid:list-check" class="text-slate-500" />
         {{ t('daily_activity_block.dashboard_title') }}
@@ -71,11 +79,11 @@ onMounted(load);
       <AtomsSkeleton class="w-full" :height="4" :has_icon="false" />
     </div>
 
-    <div v-else-if="!hasActivity" class="customers-shadow rounded-lg bg-white p-6 text-center text-slate-500">
+    <div v-else-if="!hasActivity" class="text-center text-slate-500" :class="embedded ? 'py-4' : 'customers-shadow rounded-lg bg-white p-6'">
       {{ t('daily_activity_block.dashboard_empty') }}
     </div>
 
-    <div v-else class="customers-shadow rounded-lg bg-white p-4">
+    <div v-else :class="embedded ? '' : 'customers-shadow rounded-lg bg-white p-4'">
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-3">
         <NuxtLink to="/billing/reports/daily-activity-summary"
           class="rounded-lg p-3 hover:bg-slate-50 transition-colors">

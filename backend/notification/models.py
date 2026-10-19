@@ -60,7 +60,63 @@ class Notification(models.Model):
         return self.name if self.name else "Notification ID {}".format(self.token)
 
 
+class CalendarTaskRecurrence(models.Model):
+    """
+    Regla d'una tasca recurrent. Les ocurrències són CalendarTask normals que es
+    generen per endavant (vegeu notification.utils.recurrence), de manera que cada
+    una es pot marcar com a feta o editar per separat. Els camps name/description/
+    color/user són la plantilla de les ocurrències que es generin a partir d'ara.
+    """
+    FREQUENCY_DAILY = 'daily'
+    FREQUENCY_WEEKLY = 'weekly'
+    FREQUENCY_MONTHLY = 'monthly'
+    FREQUENCY_YEARLY = 'yearly'
+    FREQUENCY_CHOICES = [
+        (FREQUENCY_DAILY, 'Diària'),
+        (FREQUENCY_WEEKLY, 'Setmanal'),
+        (FREQUENCY_MONTHLY, 'Mensual'),
+        (FREQUENCY_YEARLY, 'Anual'),
+    ]
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    token = models.CharField(max_length=255, null=True, blank=True)
+
+    frequency = models.CharField(max_length=10, choices=FREQUENCY_CHOICES, default=FREQUENCY_WEEKLY)
+    interval = models.PositiveIntegerField(default=1)
+    # Dies de la setmana (0=dilluns ... 6=diumenge), només per a la freqüència setmanal.
+    weekdays = models.JSONField(default=list, blank=True)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    # Última data per a la qual ja s'han generat ocurrències.
+    generated_until = models.DateField(null=True, blank=True)
+
+    name = models.CharField(max_length=255, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    color = models.CharField(max_length=255, null=True, blank=True)
+    time = models.TimeField(null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='calendar_task_recurrences')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Calendar Task Recurrence"
+        verbose_name_plural = "Calendar Task Recurrences"
+
+    def __str__(self):
+        """Return the recurrence name or a label containing its ID."""
+        return self.name if self.name else "Calendar Task Recurrence ID {}".format(self.id)
+
+
 class CalendarTask(models.Model):
+    SOURCE_MANUAL = 'manual'
+    SOURCE_AUTO = 'auto'
+    SOURCE_CHOICES = [
+        (SOURCE_MANUAL, 'Manual'),
+        (SOURCE_AUTO, 'Automàtica'),
+    ]
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     token = models.CharField(max_length=255, null=True, blank=True)
@@ -75,7 +131,22 @@ class CalendarTask(models.Model):
     #contract
     contract = models.ForeignKey(Contract, on_delete=models.SET_NULL, null=True, blank=True, related_name='calendar_tasks')
     
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='calendar_tasks')
+
     set_date = models.DateField(null=True, blank=True)
+    time = models.TimeField(null=True, blank=True)
+    recurrence = models.ForeignKey(CalendarTaskRecurrence, on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
+
+    # Les tasques automàtiques les crea el sistema (p. ex. un canvi de comptador
+    # pendent d'aplicar) i es tanquen soles quan es resol el que les ha originat.
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
+    source_key = models.CharField(max_length=100, null=True, blank=True)
+
+    done_at = models.DateTimeField(null=True, blank=True)
+    done_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    # Quan se n'ha avisat (notificació/correu), per no repetir l'avís cada dia.
+    notified_at = models.DateTimeField(null=True, blank=True)
+
     is_active = models.BooleanField(default=True)
     
     class Meta:
@@ -85,6 +156,23 @@ class CalendarTask(models.Model):
     def __str__(self):
         return self.name if self.name else "Calendar Task ID {}".format(self.id)
     
+
+class NotificationPreference(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='notification_preference')
+    # Correu diari amb les tasques pendents del dia i les endarrerides.
+    email_daily_tasks = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Notification Preference"
+        verbose_name_plural = "Notification Preferences"
+
+    def __str__(self):
+        """Return a notification preference label identifying its user."""
+        return "Notification Preference of {}".format(self.user_id)
+
 
 class GeneralNote(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)

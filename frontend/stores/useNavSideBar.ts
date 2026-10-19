@@ -13,6 +13,8 @@ export const useSidebarStore = defineStore('sidebar', {
     newNotifications: 0,
     newGeneralNotes: 0,
     newDailyDocuments: 0,
+    // S'incrementa quan es creen o modifiquen tasques, perquè el comptador del menú es refresqui
+    tasksVersion: 0,
   }),
   getters: {
     /** Current sidebar width in px (0 when closed, 56 when collapsed, 250 when expanded). */
@@ -70,6 +72,10 @@ export const useSidebarStore = defineStore('sidebar', {
     },
     newDailyDocumentsFound(dailyDocumentsFound: number){
       this.newDailyDocuments = dailyDocumentsFound;
+    },
+    /** Signal task mutations so sidebar counters reload. */
+    tasksChanged() {
+      this.tasksVersion++;
     },
     togglePinnedContract() {
       this.isPinnedContractOpen = !this.isPinnedContractOpen;

@@ -1909,6 +1909,8 @@ export default {
     sepa_xml_only: 'Only XML files are accepted',
     sepa_file_valid: 'The SEPA file is valid',
     sepa_file_invalid: 'The SEPA file is not valid',
+    trf_file_valid: 'The transfer file is valid',
+    trf_file_invalid: 'The transfer file is not valid',
     short_mng_trf: 'TRF creation',
     send_sepa: 'SEPA sending',
     sepa_not_sent_yet: 'The SEPA file has not been sent yet.',
@@ -2887,6 +2889,15 @@ export default {
     friday: 'Friday',
     saturday: 'Saturday',
     sunday: 'Sunday',
+    weekdays_short: {
+      monday: 'Mo',
+      tuesday: 'Tu',
+      wednesday: 'We',
+      thursday: 'Th',
+      friday: 'Fr',
+      saturday: 'Sa',
+      sunday: 'Su'
+    },
     this_week: 'This week',
     this_month: 'This month',
     months: 'Months',
@@ -3696,5 +3707,144 @@ export default {
     role_owner: 'Owner',
     level_1: 'At risk',
     level_2: 'Vulnerable',
+  home_dashboard: {
+    yesterday: 'Yesterday',
+    customize: 'Customize',
+    done: 'Done',
+    reset: 'Reset',
+    saving: 'Saving',
+    reset_confirm: 'Go back to the default layout? The cards and settings you chose will be lost.',
+    empty: 'Your home page has no cards.',
+    add_card: 'Add card',
+    already_added: 'already added',
+    move: 'Move',
+    configure: 'Configure',
+    remove: 'Remove',
+    size: 'Size',
+    sizes: {
+      sm: 'Small',
+      md: 'Medium',
+      lg: 'Wide'
+    },
+    invoices: 'invoices',
+    orders: 'orders',
+    vs_previous: 'vs previous period',
+    previous_period: 'Previous period: {count}',
+    see_all: 'See all ({count})',
+    readings_read: '{read} of {total} readings',
+    readings_alerts: '{count} alerts',
+    config: {
+      period: {
+        label: 'Period',
+        today: 'Today',
+        week: 'This week',
+        month: 'This month',
+        quarter: 'This quarter',
+        year: 'This year'
+      },
+      scope: {
+        label: 'Show',
+        all: 'All',
+        created_by_me: 'Created by me',
+        visible: 'Mine and everyone\'s',
+        mine: 'Only mine'
+      },
+      only_mine: {
+        label: 'Only the ones I cancelled'
+      }
+    },
+    cards: {
+      daily_activity: {
+        title: 'My activity today',
+        description: 'Summary of what you did today: payments, orders, contract changes...'
+      },
+      tasks_today: {
+        title: 'Pending tasks',
+        description: 'Today\'s and overdue tasks, to mark them as done.'
+      },
+      orders_to_validate: {
+        title: 'Work orders to validate',
+        description: 'Work orders waiting for validation.',
+        empty: 'No work orders waiting for validation.'
+      },
+      change_meter_pending: {
+        title: 'Meter changes to apply',
+        description: 'Closed meter change orders whose change has not been applied to the system.',
+        empty: 'No pending meter changes.'
+      },
+      reading_batches_in_progress: {
+        title: 'Reading batches in progress',
+        description: 'Batches not yet billed, with reading progress and alerts.',
+        empty: 'No reading batches in progress.'
+      },
+      invoices_issued: {
+        title: 'Issued invoices',
+        description: 'Number and amount of the invoices issued in the period.'
+      },
+      invoice_cancellations: {
+        title: 'Cancellations',
+        description: 'Credit notes issued when cancelling invoices (negative amount).'
+      },
+      rebillings: {
+        title: 'Re-billings',
+        description: 'Issued invoices that replace another one.'
+      },
+      recent_searches: {
+        title: 'Recently visited',
+        description: 'What you opened from the search in the last days.'
+      },
+      calendar: {
+        title: 'Calendar',
+        description: 'Monthly task calendar.'
+      },
+      quick_access: {
+        title: 'Quick access',
+        description: 'Links to the most common actions.'
+      }
+    }
+  },
+  calendar_tasks: {
+    notified_today: 'Notification sent for today\'s task "{name}"',
+    title: 'Calendar',
+    open_calendar: 'Open calendar',
+    today: 'Today',
+    overdue: 'Overdue',
+    nothing_pending: 'No pending tasks.',
+    mark_done: 'Mark as done',
+    recurring: 'Recurring task',
+    automatic: 'Automatic',
+    next_days: 'Next {count} days',
+    filter_visible: 'Mine and everyone\'s',
+    filter_mine: 'Only mine',
+    filter_all_users: 'Only everyone\'s',
+    show_done: 'Show done',
+    views: {
+      month: 'Month',
+      week: 'Week',
+      list: 'List'
+    },
+    more: '+{count} more',
+    email_daily: 'Daily email summary',
+    email_daily_info: 'Every morning you will get an email with your pending tasks for the day and the overdue ones.',
+    email_missing: 'Your user has no email address.',
+    everyone: 'Everyone',
+    time: 'Time',
+    recurring_task: 'Recurring task',
+    repeat_every: 'Repeat every',
+    frequencies: {
+      daily: 'day(s)',
+      weekly: 'week(s)',
+      monthly: 'month(s)',
+      yearly: 'year(s)'
+    },
+    same_weekday: 'If none is chosen, the same weekday as the start date.',
+    end_date: 'Until (optional)',
+    apply_to_series: 'Also apply the changes to the following occurrences',
+    only_this_occurrence: 'The changes will only apply to this occurrence.',
+    delete_series_confirm: 'This task is recurring. Delete all the following pending occurrences too? (Cancel to delete only this one)',
+    delete_occurrence_confirm: 'Delete only this occurrence?',
+    delete_confirm: 'Are you sure you want to delete this task?',
+    order: 'Work order',
+    badge_title: '{today} for today, {overdue} overdue'
   }
 }

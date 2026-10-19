@@ -51,7 +51,7 @@ from coredata.serializers import PersonSerializer
 from documentmanager.utils.main_utils import upload_document
 from documentmanager.utils.sign_certificate_service import sign_pdf
 from logger.models import LogInvoiceChangeStatus
-from notification.models import CalendarTask, Notification
+from notification.models import Notification
 from service.models import CompanyBank, Exploitation, Meter, Route, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
 from verifactu.utils.save_verifactu_info import notify_verifactu_unsent_batches
@@ -3106,28 +3106,6 @@ def export_wincen_task(self, billing_id, queue_item_id=None):
     if q_item:
       _close_billing_queue_item(q_item.id, self.request.id, status='failed', completed_at=timezone.now(), error_message=str(e))
     raise Exception(f"Error in export_wincen_task: {e}")
-
-
-@shared_task
-def check_today_tasks():
-  try:
-      tasks = CalendarTask.objects.filter(task_done=False, set_date__lte=timezone.now().date()).distinct()
-
-      for task in tasks:
-        notification_save = {
-          'token': uuid.uuid4(),
-          'name': f"Tasca del dia pendent",
-          'description': f"Tasca: '{task.name}' pendent de finalització",
-          'module': '',
-          'entity': '',
-          'object_id': None,
-          'is_active': True,
-          'user': task.user,
-        }
-        notification = Notification.objects.create(**notification_save)
-  except Exception as e:
-      print(f"Error checking today's tasks: {e}")
-      return None
 
 
 @shared_task

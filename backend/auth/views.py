@@ -13,6 +13,7 @@ from django.contrib.auth.models import Group, User, Permission
 from auth.filters import UserFilter, GroupFilter
 from auth.serializers import GroupSerializer, UserSerializer, PermissionSerializer
 from auth.permissions import PermissionManager
+from coredata.permissions import can_edit_config_project
 
 
 class CustomAuthToken(ObtainAuthToken):
@@ -110,6 +111,7 @@ class UserPermissionsView(viewsets.ViewSet):
     
     @action(detail=False, methods=['get'], url_path='my-permissions')
     def my_permissions(self, request):
+        """Return the current user's identity, groups, and configuration edit permission."""
         user_permissions = PermissionManager.get_user_permissions(request.user)
         
         response_data = {
@@ -121,7 +123,8 @@ class UserPermissionsView(viewsets.ViewSet):
                 'email': request.user.email,
             },
             'permissions': user_permissions,
-            'groups': list(request.user.groups.values_list('name', flat=True))
+            'groups': list(request.user.groups.values_list('name', flat=True)),
+            'can_edit_config_project': can_edit_config_project(request.user),
         }
         
         return Response(response_data, status=status.HTTP_200_OK)

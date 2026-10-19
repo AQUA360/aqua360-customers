@@ -1266,7 +1266,7 @@ watch(() => selectedZones.value, () => {
       </div>
     </div>
     <!-- Barra de navegació fixada al footer -->
-    <div class="fixed right-0 bottom-0 z-[9999] border-t border-gray-200 py-4 px-4 shadow-lg bg-[#FAE2DA]"
+    <div class="fixed right-0 bottom-0 z-[90] border-t border-gray-200 py-4 px-4 shadow-lg bg-[#FAE2DA]"
       style="width: calc(100% - 250px)" :class="{ 'animate-stats-box-ping': statsBoxPinging }">
       <div class="mx-auto flex justify-between items-center px-4">
         <div class="grid auto-cols-max grid-flow-col items-center gap-x-10">
@@ -1325,7 +1325,7 @@ watch(() => selectedZones.value, () => {
 
     <!-- Regió lateral -->
     <div role="region" id="right_page"
-      class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
+      class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-[100]"
       :class="{
         'translate-x-0': showRegion,
         'translate-x-full': !showRegion,

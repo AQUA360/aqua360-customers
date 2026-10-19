@@ -79,6 +79,7 @@ def detect_status_change(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Order)
 def after_order_save(sender, instance, created, **kwargs):
+    """Process completed orders and synchronize their automatic follow-up tasks."""
     global order_save_flag
     if order_save_flag:
         return  # Prevent recursive call
@@ -164,6 +165,13 @@ def after_order_save(sender, instance, created, **kwargs):
                             print("saved connection request")
                     except Exception as e:
                         print(f"Error creating connection: {e}")
+
+                # OT de canvi de comptador tancada sense aplicar el canvi: tasca al calendari
+                try:
+                    from notification.utils.auto_tasks import sync_change_meter_task
+                    sync_change_meter_task(instance, current_user)
+                except Exception as e:
+                    print(f"Error creating change meter task: {e}")
 
             finally:
                 order_save_flag = False # Reset the flag after the function execution
