@@ -10,14 +10,20 @@ from communication.models import (
     CommunicationProcess,
     CommunicationProcessStatus,
     CommunicationUseType,
+    MessageOrigin,
+    MessageTemplate,
+    MessageType,
 )
 from communication.serializers.communication_process_serializer import (
     CommunicationProcessSaveSerializer,
     CommunicationProcessSerializer,
+    save_process_exclusions,
 )
+from communication.views.manage_communication_process_view import _CONFIG_CACHE, filter_by_supply_cut
 from communication.utils.communication_service import get_com_values, refactor_text
-from contract.models import Contract
-from coredata.models import Address, City, ConfigProject, Country, Person, Street, StreetNumber
+from contract.models import Contract, ContractStatus
+from coredata.models import Address, City, ConfigProject, Country, Person, PersonContact, Street, StreetNumber
+from coredata.serializers import PersonCommunicationSerializer
 from service.models import SupplyCut, SupplyCutCause, SupplyCutStatus, SupplyPoint
 
 
@@ -528,6 +534,21 @@ class SupplyCutMessageVariableTests(TestCase):
                     'supplycut.exec_start', 'supplycut.exec_end'):
             self.assertEqual(values[key], '')
 
+    def test_start_and_end_times_are_in_local_time(self):
+        # A la BD les dates són UTC: un tall a les 00:30 (hora local) no pot sortir
+        # amb la data del dia abans ni amb l'hora UTC.
+        from datetime import datetime, timezone as dt_timezone
+        cut = self.make_cut(
+            date_start=datetime(2026, 10, 4, 22, 30, tzinfo=dt_timezone.utc),
+            date_end=datetime(2026, 10, 5, 12, 0, tzinfo=dt_timezone.utc),
+        )
+        values = self.values(self.make_communication([cut]))
+        self.assertEqual(values['supplycut.date_start'], '05/10/2026')
+        self.assertEqual(values['supplycut.time_start'], '00:30')
+        self.assertEqual(values['supplycut.time_end'], '14:00')
+        body = refactor_text('De %supplycut.time_start a %supplycut.time_end', values)
+        self.assertEqual(body, 'De 00:30 a 14:00')
+
     def test_tokens_are_substituted_in_the_body(self):
         cut = self.make_cut(token='CUT-9')
         communication = self.make_communication([cut])
@@ -732,3 +753,176 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
         files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
         self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
         self.assertEqual(self.comm.invoices.count(), 2)
+
+
+class SupplyCutRecipientChannelTests(TestCase):
+    """Destinataris d'un tall segons els canals triats.
+
+    Un fix no pot rebre SMS: qui només té un fix i cap altre canal queda a la
+    llista de descartats amb el motiu, i qui té un altre canal hi continua però
+    amb l'avís del canal que no li arriba.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        for token, value in {
+            'contract_terminated_status': '99',
+            'contract_active_token': '1',
+            'message_type_email_token': 'email',
+            'message_type_letter_token': 'letter',
+            'message_type_sms_token': 'sms',
+        }.items():
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': value})
+        cls.active = ContractStatus.objects.create(token='1', name='Actiu')
+        cls.cut = SupplyCut.objects.create(token='CUT-1')
+        cls.point = SupplyPoint.objects.create(token='SP-1')
+        cls.cut.supply_points.add(cls.point)
+
+    def setUp(self):
+        # get_config_token guarda els valors en un cache de mòdul.
+        _CONFIG_CACHE.clear()
+
+    def make_holder(self, name, phone=None, email=None):
+        person = Person.objects.create(name=name)
+        contact = PersonContact.objects.create(person=person, phone=phone, email=email)
+        contract = Contract.objects.create(holder=person, status=self.active)
+        contract.supply_points.add(self.point)
+        if phone:
+            contract.person_contact_sms.add(contact)
+        if email:
+            contract.person_contact_email = contact
+            contract.save()
+        return person
+
+    def search(self, message_types):
+        excluded = []
+        persons = filter_by_supply_cut(
+            {'supply_cuts': [{'id': self.cut.id}], 'message_types': message_types},
+            [],
+            excluded=excluded,
+        )
+        return {p['id']: p for p in persons}, {e['id']: e for e in excluded}
+
+    def test_landline_only_is_excluded_with_the_reason(self):
+        landline = self.make_holder('Fix', phone='972123456')
+        no_phone = self.make_holder('Sense telèfon')
+        mobile = self.make_holder('Mòbil', phone='612345678')
+
+        persons, excluded = self.search(['sms'])
+
+        self.assertEqual(set(persons), {mobile.id})
+        self.assertTrue(persons[mobile.id]['has_sms'])
+        self.assertEqual(excluded[landline.id]['reasons'], ['sms_landline'])
+        self.assertEqual(excluded[no_phone.id]['reasons'], ['sms_no_phone'])
+        self.assertEqual(excluded[landline.id]['person_type'], 'holder')
+
+    def test_landline_with_email_keeps_email_as_alternative(self):
+        person = self.make_holder('Fix amb correu', phone='972123456', email='abonat@example.com')
+
+        persons, excluded = self.search(['sms', 'email'])
+
+        self.assertNotIn(person.id, excluded)
+        self.assertFalse(persons[person.id]['has_sms'])
+        self.assertEqual(persons[person.id]['unavailable_channels'], ['sms_landline'])
+        # Tots els canals, no només els triats: el pas 6 ho necessita per als canals del pas 4.
+        self.assertEqual(
+            sorted(persons[person.id]['missing_channels']),
+            ['electronic_inv_missing', 'letter_missing', 'sms_landline'],
+        )
+        self.assertEqual(persons[person.id]['contracts'][0]['communication_type'], 'DIGITAL')
+
+    def test_contract_email_of_the_holder_does_not_reach_the_tenant(self):
+        # El correu del contracte és del titular: l'arrendatari no el rep (com en
+        # crear la comunicació), així que amb només correu queda descartat.
+        holder = self.make_holder('Titular', email='titular@example.com')
+        contract = Contract.objects.get(holder=holder)
+        tenant = Person.objects.create(name='Arrendatari')
+        contract.tenant = tenant
+        contract.save()
+
+        persons, excluded = self.search(['email'])
+
+        self.assertIn(holder.id, persons)
+        self.assertEqual(excluded[tenant.id]['reasons'], ['email_missing'])
+        self.assertEqual(excluded[tenant.id]['person_type'], 'tenant')
+
+    def test_sms_phone_only_returns_mobiles(self):
+        person = self.make_holder('Dos telèfons', phone='972123456')
+        contract = Contract.objects.get(holder=person)
+        mobile = PersonContact.objects.create(person=person, phone='+34 612 345 678')
+        contract.person_contact_sms.add(mobile)
+        person.contract_ids = [contract.id]
+        person.invoice_ids = []
+        person.reading_ids = []
+        self.assertEqual(PersonCommunicationSerializer(person).data['sms_phone'], '+34 612 345 678')
+
+    def test_exclusions_are_saved_on_the_process(self):
+        person = self.make_holder('Fix', phone='972123456')
+        contract = Contract.objects.get(holder=person)
+        process = CommunicationProcess.objects.create(token='PROC-1')
+
+        save_process_exclusions(process, [
+            {'id': person.id, 'person_type': 'holder', 'contracts': [contract.id], 'reasons': ['sms_landline']},
+            {'id': 999999, 'reasons': ['manual']},  # persona inexistent: s'ignora
+        ])
+
+        exclusion = process.exclusions.get()
+        self.assertEqual(exclusion.person, person)
+        self.assertEqual(exclusion.reasons, ['sms_landline'])
+        self.assertEqual(list(exclusion.contracts.all()), [contract])
+        data = CommunicationProcessSerializer(process).data
+        self.assertEqual(data['exclusions'][0]['reasons'], ['sms_landline'])
+
+
+class SupplyCutTemplateMigrationTests(TestCase):
+    """La migració 0034 crea l'origen i la plantilla d'avís de tall a les instal·lacions existents."""
+
+    def run_migration(self):
+        from importlib import import_module
+        from django.apps import apps
+        migration = import_module('communication.migrations.0034_supplycut_origin_and_template')
+        migration.create_supplycut_origin_and_template(apps, None)
+        return migration
+
+    def test_creates_origin_and_one_template_per_existing_channel(self):
+        MessageOrigin.objects.create(token='other', name='Altres', position=4)
+        # Un origen sense posició no pot fer que el nou vagi el primer (NULL primer a Postgres).
+        MessageOrigin.objects.create(token='custom', name='Personalitzat', position=None)
+        for config_token, value in (('message_type_email_token', 'email'), ('message_type_letter_token', 'letter'),
+                                    ('message_type_sms_token', 'sms')):
+            ConfigProject.objects.get_or_create(token=config_token, defaults={'value': value})
+        MessageType.objects.create(token='email', name='Correu')
+        MessageType.objects.create(token='letter', name='Carta')
+        # Sense tipus 'sms' a la BD: no se'n crea la plantilla d'SMS.
+
+        from django.test import override_settings
+        with override_settings(LANGUAGE='ca'):
+            self.run_migration()
+            self.run_migration()  # idempotent
+
+        origin = MessageOrigin.objects.get(token='supplycut')
+        self.assertEqual(origin.position, 5)
+        template = MessageTemplate.objects.get(token='supplycut_notice')
+        self.assertEqual(template.origin, origin)
+        self.assertEqual(sorted(template.templates.values_list('type__token', flat=True)), ['email', 'letter'])
+        self.assertIn('%supplycut.affected_addresses', template.templates.get(type__token='email').body)
+        self.assertEqual(origin.name, 'Tall de subministrament')
+
+    def test_template_follows_the_installation_language(self):
+        from django.test import override_settings
+        MessageOrigin.objects.create(token='other', name='Otros', position=4)
+        ConfigProject.objects.get_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        MessageType.objects.create(token='email', name='Correo')
+
+        with override_settings(LANGUAGE='es'):
+            self.run_migration()
+
+        self.assertEqual(MessageOrigin.objects.get(token='supplycut').name, 'Corte de suministro')
+        template = MessageTemplate.objects.get(token='supplycut_notice')
+        self.assertEqual(template.name, 'Aviso de corte de suministro')
+        self.assertTrue(template.templates.get().body.startswith('Estimado/a %person.name'))
+
+    def test_fresh_database_is_left_to_initial_data(self):
+        self.run_migration()
+        self.assertFalse(MessageOrigin.objects.exists())
+        self.assertFalse(MessageTemplate.objects.exists())

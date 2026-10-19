@@ -840,10 +840,13 @@ def get_communication_process_data(request_data):
     group_same = request_data.get('group_same', [])
 
     persons = []
+    # Persones que no poden rebre cap dels canals triats, amb el motiu. Només les
+    # informen els filtres basats en contractes (contracte, punt i tall).
+    excluded = []
     time_start = time.time()
 
     if filter_type == 'CONTRACT':
-        persons = filter_by_contract(filter_data, group_same)
+        persons = filter_by_contract(filter_data, group_same, excluded=excluded)
     elif filter_type == 'BILLING':
         persons = filter_by_billing(filter_data, group_same)
     elif filter_type == 'CONTRACTREQUEST':
@@ -853,9 +856,9 @@ def get_communication_process_data(request_data):
     elif filter_type == 'PERSON':
         persons = filter_by_person(filter_data, group_same)
     elif filter_type == 'SUPPLYPOINT':
-        persons = filter_by_supply_point(filter_data, group_same)
+        persons = filter_by_supply_point(filter_data, group_same, excluded=excluded)
     elif filter_type == 'SUPPLYCUT':
-        persons = filter_by_supply_cut(filter_data, group_same)
+        persons = filter_by_supply_cut(filter_data, group_same, excluded=excluded)
     elif filter_type == 'COMMUNICATION':
         persons = filter_by_communication(filter_data, group_same)
     elif filter_type == 'DRAFT':
@@ -874,11 +877,14 @@ def get_communication_process_data(request_data):
         fixed_filter = fixed_filters.get(entity, None)
         if fixed_filter is None:
             raise ValueError(f"Unknown fixed_data entity: {entity!r}")
-        persons = fixed_filter(filter_data, group_same)
+        if fixed_filter is filter_by_supply_cut:
+            persons = fixed_filter(filter_data, group_same, excluded=excluded)
+        else:
+            persons = fixed_filter(filter_data, group_same)
 
     time_end = time.time()
     print(f"Time taken: {time_end - time_start} seconds")
-    return {"persons": persons}
+    return {"persons": persons, "excluded": excluded}
 
 
 COMMUNICATION_EXPORT_COLUMNS = {
