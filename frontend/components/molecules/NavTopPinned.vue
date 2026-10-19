@@ -222,7 +222,7 @@ watch(sideIsPinnedContractOpen, (newVal) => {
         class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 w-[40%] z-20 ease py-2 text-base bg-white overflow-x-hidden overflow-y-auto scrollbar-hide"
         :class="{
             'translate-x-0': showRegion,
-            'translate-x-[2000px]': !showRegion,
+            'translate-x-full': !showRegion,
             'w-[40%]': showRegion && isNotesOpen,
             'w-[94%]': showRegion && isContractPinnedOpen,
         }">

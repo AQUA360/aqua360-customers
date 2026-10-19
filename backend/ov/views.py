@@ -2,8 +2,6 @@ from django.http import FileResponse
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
-from django.shortcuts import redirect
-from django.urls import reverse
 from django.utils.dateparse import parse_date
 import csv
 import re
@@ -50,15 +48,27 @@ logger = logging.getLogger(__name__)
 
 
 class ContractOVView(APIView):
-    """Alias legacy de `GET /ov/contract-detail/`.
+    """Detalle completo del contrato por `contract_token` (query string).
 
-    Redirige (302) al endpoint por token `contract-detail-by-token-ov`
-    (`/ov/contract/{token}/`), conservando el resto de parámetros de query
-    (p. ej. `dni`). No consulta la base de datos: la vista destino devuelve
-    `404` si el contrato no existe.
+    `GET /ov/contract-detail/?contract_token=<token>` devuelve directamente
+    los datos del contrato (mismo esquema `ContractFullDetail` que
+    `GET /ov/contract/{token}/`), sin redirigir. El token puede contener
+    barra (`/`), por lo que no puede resolverse como parámetro de ruta
+    `<str:token>`: se busca por consulta a la base de datos. `400` si falta
+    el parámetro, `404` si el contrato no existe.
     """
 
     permission_classes = [IsAuthenticated]
+    queryset = Contract.objects.select_related(
+        "holder",
+        "status",
+        "payment__type",
+        "payment__IBAN",
+        "payment__IBAN__person",
+        "supply_point_default",
+        "supply_point_default__address",
+        "use_type",
+    )
 
     def get(self, request):
         contract_token = request.query_params.get("contract_token", None)
@@ -68,13 +78,17 @@ class ContractOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        query = request.query_params.copy()
-        query.pop("contract_token", None)
-        target = reverse("contract-detail-by-token-ov", kwargs={"token": contract_token})
-        query_string = query.urlencode()
-        if query_string:
-            target = f"{target}?{query_string}"
-        return redirect(target)
+        contract = self.queryset.filter(token=contract_token).first()
+        if contract is None:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        self.check_object_permissions(request, contract)
+
+        serializer = ContractFullDetailSerializer(
+            contract, context={"request": request}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class BillingDataOVView(APIView):

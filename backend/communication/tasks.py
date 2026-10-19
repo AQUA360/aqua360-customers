@@ -360,7 +360,8 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                     and claim_request.current_step.step_template.group_payments
                 )
 
-                if not claim_payments.exists() or add_joined_payments:
+                # Amb pagaments agrupats també s'adjunten les factures; el rebut és el document agrupat
+                if not claim_payments.exists():
                     print(f"No ClaimRequestPayment found for contract {contract.id}")
                 else:
                     for cr_payment in claim_payments:

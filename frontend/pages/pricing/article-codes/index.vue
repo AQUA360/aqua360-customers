@@ -17,7 +17,7 @@ const toast = useToast();
 const { t } = useI18n();
 const showRegion = ref(false);
 const showRegionClass = computed(() => {
-  return showRegion.value ? 'translate-x-0' : 'translate-x-[2000px]';
+  return showRegion.value ? 'translate-x-0' : 'translate-x-full';
 });
 const selectedItemId = ref(null);
 const toggleRegion = (force) => {

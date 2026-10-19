@@ -63,6 +63,7 @@ const selectedRejectionReasons = ref([])
 const selectedExploitation = ref(null)
 const selectedStep = ref(null)
 const selectedAddedContracts = ref([])
+const selectedSepaReturn = ref(null)
 const minPendingInvoices = ref(0)
 const maxPendingInvoices = ref(0)
 const totalExpiredInvoices = ref(0)
@@ -176,6 +177,7 @@ const allowSearch = computed(() => {
   if (selectedAddedContracts.value.length > 0) return true;
   if (selectedExploitation.value) return true;
   if (selectedRejectionReasons.value.length > 0) return true;
+  if (selectedSepaReturn.value) return true;
   return false;
 })
 
@@ -453,6 +455,7 @@ const getClaimData = async () => {
       filter_return_end: filter_return_end.value,
       rejection_motives: selectedRejectionReasons.value.map(el => el.code),
       selected_contracts_id: selectedAddedContracts.value.map(el => el.id),
+      payment_remittance_return_id: selectedSepaReturn.value?.id ?? null,
       exclude_return_fee_invoices: excludeReturnFeeInvoices.value,
       name: claimName.value,
       max_pending_invoices: maxPendingInvoices.value,
@@ -794,10 +797,15 @@ onMounted(async () => {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
   }
-  loadData()
   if (route?.query?.contract_id) {
     selectedAddedContracts.value = [{ id: parseInt(route.query.contract_id), token: route.query.contract_token }]
   }
+  if (route?.query?.sepa_return_id) {
+    selectedSepaReturn.value = { id: parseInt(route.query.sepa_return_id), token: route.query.sepa_return_token }
+  }
+  await loadData()
+  // Si venim d'una devolució SEPA, cerquem directament els seus pagaments
+  if (selectedSepaReturn.value) getClaimData()
 });
 
 // Watchers
@@ -915,6 +923,18 @@ watch(() => selectedZones.value, () => {
 
             <span v-else>
             </span>
+            <div v-if="selectedSepaReturn" class="col-span-2">
+              <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('billing_block.return_sepa') }}</label>
+              <span
+                class="group relative inline-flex bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-sm border border-slate-300 items-center gap-2">
+                <span>{{ selectedSepaReturn.token || selectedSepaReturn.id }}</span>
+                <button v-if="!filteringTaskId" @click="selectedSepaReturn = null"
+                  class="absolute right-0 top-0 h-4 w-4 bg-white rounded-full text-slate-500 opacity-0 hover:text-slate-700 hover:underline group-hover:opacity-100 transition-all duration-300">
+                  <Icon name="fa6-solid:xmark"
+                    class="text-red-500 text-sm m-auto opacity-0 group-hover:opacity-100 m-auto" />
+                </button>
+              </span>
+            </div>
             <div>
               <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('exploitation') }}</label>
               <v-select class="block w-full mr-1 custom-select" v-model="selectedExploitation" :options="exploitations"
@@ -1308,7 +1328,7 @@ watch(() => selectedZones.value, () => {
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
       :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[95%]': isSubRegionOpen,
         'w-[55%]': !isSubRegionOpen
       }">

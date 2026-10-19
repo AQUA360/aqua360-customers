@@ -507,6 +507,14 @@ const setValues = async () => {
     };
   }
 
+  // Sense això, en desar s'enviaven el municipi i el codi postal a null i es perdien
+  if (props.meter.address_city) {
+    address_data.value.city = { code: props.meter.address_city.id, label: props.meter.address_city.name };
+  }
+  if (props.meter.address_postal_code) {
+    address_data.value.cp = { code: props.meter.address_postal_code.id, label: props.meter.address_postal_code.code };
+  }
+
   shown_address_data.value = { ...props.meter }
 
 }
@@ -564,10 +572,19 @@ const isStreetNumberMissing = () => {
   return (number == null || number === '') && !address_data.value?.streetNumberSuffix;
 }
 
+const hasAddress = () => {
+  return !!(address_data.value?.streetId || address_data.value?.street_name || address_data.value?.street_type);
+}
+
+/** L'adreça és opcional, però si se n'indica una ha de tenir carrer i tipus de via */
+const isAddressIncomplete = () => {
+  if (!hasAddress()) return false;
+  return address_data.value?.street_name == '' || address_data.value?.street_name == null || address_data.value?.street_type == null;
+}
+
 const isValid = () => {
   if (code.value == '' || code.value == null) return false;
-  if (address_data.value?.street_name == '' || address_data.value?.street_name == null) return false;
-  if (address_data.value?.street_type == null) return false;
+  if (isAddressIncomplete()) return false;
   if (isStreetNumberMissing()) {
     toast.error(t('address_block.error_required_street_number'));
     return false;
@@ -876,10 +893,10 @@ onMounted(() => {
         <hr class="mb-2 col-span-3" />
 
         <div class="mb-2">
-          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.meter_location') }} *</label>
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.meter_location') }}</label>
           <div v-if="address_data.streetId == null" class="footering text-gray-900 rounded shadow">
             <button @click="openRegion('address')"
-              :class="{ 'invalid': attemptedSave && address_data.streetId == null }"
+              :class="{ 'invalid': attemptedSave && isAddressIncomplete() }"
               class="display-block block w-full px-1 py-1 text-base text-slate-400 border-b hover:bg-slate-200 text-left active:bg-slate-300">
               <Icon name="fa6-solid:plus" class="text-slate-400" /> {{ $t('common.assign') }} {{
                 $t('address_block.address') }}
@@ -928,7 +945,7 @@ onMounted(() => {
       class="h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10 overflow-x-hidden"
       :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[95%]': isSubRegionOpen,
         'w-[40%]': !isSubRegionOpen,
         'fixed': true

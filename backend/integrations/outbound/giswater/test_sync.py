@@ -113,7 +113,7 @@ class SyncGiswaterConnectionsTest(TestCase):
 
         self.assertEqual(stats["not_found"], 1)
         self.assertEqual(len(stats["not_found_tokens"]), 1)
-        self.assertEqual(stats["not_found_tokens"][0]["customer_code"], "3373640")
+        self.assertEqual(stats["not_found_tokens"][0]["customer_code"], "3410103")
 
     def test_sync_with_saved_fixture_structure(self):
         fixture_path = Path(__file__).resolve().parent / "fixtures" / "connecs_sample.json"

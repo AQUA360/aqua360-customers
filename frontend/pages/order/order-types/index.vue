@@ -14,7 +14,7 @@ const showRegion = ref(false);
 const toast = useToast();
 const objectPermissions = ref(null);
 const showRegionClass = computed(() => {
-  return showRegion.value ? 'translate-x-0' : 'translate-x-[2000px]';
+  return showRegion.value ? 'translate-x-0' : 'translate-x-full';
 });
 const toggleRegion = (force) => {
   showRegion.value = force !== undefined ? force : !showRegion.value;
@@ -230,7 +230,7 @@ const onSaved = () => {
 
     <div role="region" id="right_page"
         class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white"
-        :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
+        :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
         <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleRegion(false)"
             class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300"><Icon name="fa6-solid:angles-right"

@@ -132,7 +132,7 @@ def download_multiple_documents_from_azure(document_ids):
     blob_service = authenticate_azure()
     files = []  
     
-    documents = Document.objects.filter(id__in=document_ids)
+    documents = Document.in_order(document_ids)
 
     for document in documents:
         try:

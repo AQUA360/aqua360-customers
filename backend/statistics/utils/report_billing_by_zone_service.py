@@ -3,7 +3,7 @@
 Agrupa les línies de factura per:
   - padró (Billing)
   - zona (SupplyPoint.placement / SupplyPointPlacement)
-  - concepte d'aigua (quota de servei, consum per tram, clavegueram)
+  - concepte d'aigua (quota de servei, consum per tram, clavegueram, ensobrat)
   - cànon ACA per tarifa (CANON-DOM, CANON-MUN, CANON-HOTELS, CANON-IND)
     i els seus trams, amb les mateixes columnes (factures, m³, euros)
 """
@@ -116,8 +116,20 @@ def _is_sewer(product_token, product_name):
     return token == 'CLV' or 'CLAVEGUERAM' in name or 'ALCANTARILLADO' in name
 
 
+def _is_ensobrat(product_token, product_name, line_name=None, rate_name=None):
+    token = (product_token or '').upper()
+    blob = ' '.join(filter(None, [product_name, line_name, rate_name])).upper()
+    if token == 'ENSOBRAT' or token.startswith('ENSOBRAT'):
+        return True
+    return 'ENSOBRAT' in blob
+
+
 def _is_water(product_token, product_name, origin_token):
-    if _is_sewer(product_token, product_name) or _is_canon(product_token, product_name):
+    if (
+        _is_sewer(product_token, product_name)
+        or _is_canon(product_token, product_name)
+        or _is_ensobrat(product_token, product_name)
+    ):
         return False
     if _is_excluded_product(product_token, product_name):
         return False
@@ -182,8 +194,10 @@ def _classify_trams(product_name, line_name, type_name, interval, interval_units
 
 
 def classify_line(product_token, product_name, origin_token, line_name, type_name,
-                  interval, interval_units, variable_units):
-    """Retorna ('quota'|'tram'|'sewer'|'canon'|'canon_quota'|'other', tram_number|None)."""
+                  interval, interval_units, variable_units, rate_name=None):
+    """Retorna ('quota'|'tram'|'sewer'|'ensobrat'|'canon'|'canon_quota'|'other', tram_number|None)."""
+    if _is_ensobrat(product_token, product_name, line_name, rate_name):
+        return 'ensobrat', None
     if _is_sewer(product_token, product_name):
         return 'sewer', None
     if _is_canon(product_token, product_name):
@@ -226,6 +240,7 @@ def _empty_zone():
         'tram_limits': {},
         'tram_labels': {},
         'sewer': _empty_concept(),
+        'ensobrat': _empty_concept(),
         'water_other': _empty_concept(),
         'canon': defaultdict(_empty_canon),
         'invoice_ids': set(),
@@ -490,6 +505,7 @@ def aggregate_by_zone(invoices, task=None):
             line.interval,
             line.line_item_type.price_interval.units if line.line_item_type and line.line_item_type.price_interval else None,
             line.line_item_type.price_variable.units if line.line_item_type and line.line_item_type.price_variable else None,
+            line.price_rate_name or (line.price_rate.name if line.price_rate else None),
         )
 
         if kind == 'quota':
@@ -498,6 +514,8 @@ def aggregate_by_zone(invoices, task=None):
             _add_concept(bucket['trams'][tram or 0], invoice.id, units, base, tax, line.price_unit)
         elif kind == 'sewer':
             _add_concept(bucket['sewer'], invoice.id, units, base, tax, line.price_unit)
+        elif kind == 'ensobrat':
+            _add_concept(bucket['ensobrat'], invoice.id, units, base, tax, line.price_unit)
         elif kind in ('canon', 'canon_quota'):
             canon_type = _canon_type_from_rate(line.price_rate, line.price_rate_name)
             canon_bucket = bucket['canon'][canon_type]
@@ -747,9 +765,11 @@ def _write_execution_sheet(sheet, padrones, zones, all_trams, canon_types, data,
     row = 3
     last_col = totals_col + cols_per_padron - 1
 
-    def write_concept_row(label, getter, fill, show_invoices=True, show_m3=True):
+    def write_concept_row(label, getter, fill, show_invoices=True, show_m3=True, bold_label=None):
         nonlocal row
-        _write_cell(sheet, row, 1, label, fill=fill, font=bold if not show_m3 or 'Total' in str(label) else None)
+        if bold_label is None:
+            bold_label = (not show_m3) or ('Total' in str(label))
+        _write_cell(sheet, row, 1, label, fill=fill, font=bold if bold_label else None)
         tot_inv, tot_m3, tot_eur = set(), 0.0, 0.0
         for i, padron in enumerate(padrones):
             col = first_data_col + i * cols_per_padron
@@ -835,6 +855,13 @@ def _write_execution_sheet(sheet, padrones, zones, all_trams, canon_types, data,
             (config or {}).get('sewer_label') or _("Taxa clavegueram"),
             lambda bid: getter(bid, ('sewer',)),
             orange,
+        )
+        write_concept_row(
+            (config or {}).get('ensobrat_label') or _("Ensobrat"),
+            lambda bid: getter(bid, ('ensobrat',)),
+            orange,
+            show_m3=False,
+            bold_label=False,
         )
         write_concept_row(
             _("Consum factura"),
@@ -924,6 +951,12 @@ def _write_execution_sheet(sheet, padrones, zones, all_trams, canon_types, data,
         _("TOTAL CLAVEGUERAM"),
         lambda bid: _sum_all(bid, ('sewer',)),
         yellow,
+    )
+    write_concept_row(
+        _("TOTAL ENSOBRAT"),
+        lambda bid: _sum_all(bid, ('ensobrat',)),
+        yellow,
+        show_m3=False,
     )
     write_concept_row(
         _("TOTAL CÀNON ACA"),
@@ -1063,6 +1096,12 @@ def format_terminal_summary(padrones, zones, data, config=None):
             lines.append(
                 f"    Clavegueram           {sewer['m3']:>10.3f} m³  {sewer['base']:>12.2f} €"
             )
+            ensobrat = bucket['ensobrat']
+            if ensobrat['base'] or ensobrat['invoice_ids']:
+                lines.append(
+                    f"    Ensobrat              {ensobrat['base']:>12.2f} €  "
+                    f"({len(ensobrat['invoice_ids'])} fact.)"
+                )
             for canon_type in canon_types:
                 canon_bucket = bucket['canon'][canon_type]
                 if not canon_bucket['invoice_ids']:

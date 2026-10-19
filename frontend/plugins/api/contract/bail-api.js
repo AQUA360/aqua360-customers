@@ -158,6 +158,21 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  const returnImmediately = async (data) => {
+    const apiUrl = `${apiHost}${entity}return-immediately/`;
+
+    try {
+      const response = await $apiManager.fetch(apiUrl, 'POST', data)
+      if (response) {
+        return response;
+      } else {
+        throw new Error('Error estructura `results` no trobat');
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
   const cancel = async (data) => {
     const apiUrl = `${apiHost}${entity}cancel/`;
 
@@ -206,6 +221,7 @@ export default defineNuxtPlugin(nuxtApp => {
     getFilterContractStatus,
     doReturn,
     liquidate,
+    returnImmediately,
     cancel,
     getPermissions
   };

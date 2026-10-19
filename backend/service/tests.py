@@ -3,7 +3,7 @@ from django.db import connection
 from django.core.management import call_command
 from django.test import TestCase
 from coredata.models import Address
-from service.models import SupplyPoint, SupplyPointStatus, Meter, Connection
+from service.models import SupplyPoint, SupplyPointStatus, Meter, MeterStatus, Connection
 from contract.models import Contract
 from service.utils.supply_point_service import (
     supply_point_activate,
@@ -34,7 +34,7 @@ class TestSupplyPointService(TestCase):
 
         try:
             # Load your fixtures
-            call_command('loaddata', 'coredata/fixtures/tests/all_data.json')
+            call_command('loaddata', 'initial_data/ca/coredata.StreetType.json', 'coredata/fixtures/tests/all_data.json')
             
         finally:
             # Reconnectar el signal
@@ -1422,6 +1422,40 @@ class TestSupplyCutResolveReviewAndAlert(TestCase):
         self.assertEqual(alert['status_token'], '0')
         self.assertIn('supply_cut_alert', SupplyPointListSerializer(obj).data)
 
+    def test_active_cut_alert_takes_priority_over_planned_cut(self):
+        from django.db.models import Prefetch
+
+        from service.models import SupplyCut, SupplyCutStatus
+        from service.serializers.supply_point_serializer import SupplyPointMinimalSerializer
+
+        active = SupplyCut.objects.create(
+            token='q-priority-active',
+            cause=self.indefinite,
+            status=SupplyCutStatus.objects.get(token='1'),
+            date_end=timezone.now() - timezone.timedelta(days=5),
+        )
+        planned = SupplyCut.objects.create(
+            token='q-priority-planned',
+            cause=self.temporary,
+            status=SupplyCutStatus.objects.get(token='0'),
+            date_end=timezone.now() + timezone.timedelta(days=1),
+        )
+        for cut in (active, planned):
+            cut.supply_points.set([self.sp])
+
+        for ordering in ('id', '-id'):
+            with self.subTest(ordering=ordering):
+                obj = SupplyPoint.objects.prefetch_related(
+                    Prefetch(
+                        'supply_cuts',
+                        queryset=SupplyCut.objects.select_related('status', 'cause').order_by(ordering),
+                        to_attr='_prefetched_supply_cuts',
+                    )
+                ).get(id=self.sp.id)
+                alert = SupplyPointMinimalSerializer(obj).data['supply_cut_alert']
+                self.assertEqual(alert['id'], active.id)
+                self.assertEqual(alert['status_token'], '1')
+
     def test_alert_expires_for_past_temporary_cut(self):
         """Un tall puntual (temporal) amb date_end ja superat ja no genera
         alerta, encara que continuï Planificat."""
@@ -1648,3 +1682,117 @@ class TestMeterSerializerStreetNumber(TestCase):
         self.assertNotEqual(meter.address_street_number_id, self.shared.id)
         self.assertEqual(str(meter.address_street_number), '7')
         self.assertEqual(str(self.shared), '13-B')
+
+
+class TestMeterOptionalAddress(TestCase):
+    """L'adreça del comptador és opcional: es pot crear, editar i treure sense carrer."""
+
+    def setUp(self):
+        from coredata.models import Street, StreetNumberType, StreetType
+        from service.models import MeterCaliber, MeterStatus
+
+        self.user = User.objects.create_superuser('admin_meter', 'admin@example.com', 'x')
+        self.caliber = MeterCaliber.objects.create(name='13')
+        self.status = MeterStatus.objects.create(name='Actiu')
+        StreetType.objects.create(abbreviation='C', name='Carrer')
+        StreetNumberType.objects.get_or_create(type='N', defaults={'description': 'N'})
+        self.street = Street.objects.create(name='Carrer de Prova')
+
+    def _payload(self, **extra):
+        # Mateixa forma que envia MeterEdit.vue
+        payload = {
+            'code': 'M-OPT', 'code2': None, 'is_compound': False, 'is_property': False,
+            'is_general': False, 'has_remote_reading': False,
+            'caliber': self.caliber.id, 'status': self.status.id,
+            'address_street': None, 'address_street_number': None,
+            'address_city': None, 'address_postal_code': None,
+            'latitude': None, 'longitude': None,
+            'supply_points': [], 'sub_meters': [], 'remote_reading_type': None,
+        }
+        payload.update(extra)
+        return payload
+
+    def _with_address(self):
+        return {
+            'address_street': {'type': {'abbreviation': 'C'}, 'type_abbreviation': 'C',
+                               'name': self.street.name, 'street_id': self.street.id},
+            'address_street_number': {'number_type': {'type': 'N'}, 'number_type_type': 'N', 'number': 5,
+                                      'number_end': None, 'number_suffix': None, 'number_end_suffix': None},
+        }
+
+    def _call(self, method, data, pk=None):
+        from service.views.meter_view import MeterViewSet
+
+        factory = APIRequestFactory()
+        if pk:
+            request = factory.put(f'/meter/{pk}/', data, format='json')
+            view = MeterViewSet.as_view({'put': 'update'})
+        else:
+            request = factory.post('/meter/', data, format='json')
+            view = MeterViewSet.as_view({'post': 'create'})
+        force_authenticate(request, user=self.user)
+        return view(request, pk=pk) if pk else view(request)
+
+    def test_crear_sense_adreca(self):
+        response = self._call('post', self._payload())
+        self.assertEqual(response.status_code, 201, response.data)
+        meter = Meter.objects.get(code='M-OPT')
+        self.assertIsNone(meter.address_street)
+        self.assertIsNone(meter.address_street_number)
+
+    def test_crear_amb_adreca_continua_funcionant(self):
+        response = self._call('post', self._payload(**self._with_address()))
+        self.assertEqual(response.status_code, 201, response.data)
+        meter = Meter.objects.get(code='M-OPT')
+        self.assertEqual(meter.address_street_id, self.street.id)
+        self.assertEqual(str(meter.address_street_number), '5')
+
+    def test_editar_sense_adreca(self):
+        meter = Meter.objects.create(code='M-OPT', caliber=self.caliber, status=self.status)
+        response = self._call('put', self._payload(code2='X'), pk=meter.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        meter.refresh_from_db()
+        self.assertEqual(meter.code2, 'X')
+        self.assertIsNone(meter.address_street)
+
+    def test_treure_adreca(self):
+        self._call('post', self._payload(**self._with_address()))
+        meter = Meter.objects.get(code='M-OPT')
+        self.assertIsNotNone(meter.address_street)
+
+        response = self._call('put', self._payload(), pk=meter.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        meter.refresh_from_db()
+        self.assertIsNone(meter.address_street)
+        self.assertIsNone(meter.address_street_number)
+
+    def test_afegir_adreca_a_un_comptador_sense(self):
+        meter = Meter.objects.create(code='M-OPT', caliber=self.caliber, status=self.status)
+        response = self._call('put', self._payload(**self._with_address()), pk=meter.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        meter.refresh_from_db()
+        self.assertEqual(meter.address_street_id, self.street.id)
+        self.assertEqual(str(meter.address_street_number), '5')
+
+    def test_editar_conserva_municipi_i_codi_postal(self):
+        """Desant el que retorna el detall (com fa MeterEdit), el municipi i el codi postal no es perden."""
+        from coredata.models import City, PostalCode
+        from service.views.meter_view import MeterViewSet
+
+        city = City.objects.create(name='Població', token='CITY-TEST')
+        postal_code = PostalCode.objects.create(code='00000')
+        meter = Meter.objects.create(code='M-OPT', caliber=self.caliber, status=self.status,
+                                     address_city=city, address_postal_code=postal_code)
+
+        request = APIRequestFactory().get(f'/meter/{meter.id}/')
+        force_authenticate(request, user=self.user)
+        detail = MeterViewSet.as_view({'get': 'retrieve'})(request, pk=meter.id).data
+
+        response = self._call('put', self._payload(
+            address_city=detail['address_city']['id'],
+            address_postal_code=detail['address_postal_code']['id'],
+        ), pk=meter.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        meter.refresh_from_db()
+        self.assertEqual(meter.address_city_id, city.id)
+        self.assertEqual(meter.address_postal_code_id, postal_code.id)

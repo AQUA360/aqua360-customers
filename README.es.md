@@ -74,7 +74,7 @@ Todos los servicios deberían estar en ejecución (y `healthy` donde corresponda
 | `backend` | API Django |
 | `celery-worker` | Tareas en segundo plano |
 | `celery-beat` | Tareas programadas |
-| `gmao-consumer` | Consumidor GMAO (`manage.py run_gmao_consumer`) |
+| `gmao-consumer` | Consumidor GMAO (`manage.py run_gmao_consumer`). Solo con `COMPOSE_PROFILES=gmao` en el `.env` |
 | `frontend` | Interfaz Nuxt |
 
 ### 5. Administración y datos de prueba
@@ -130,6 +130,20 @@ docker compose exec backend python manage.py migrate --noinput
 docker compose up -d celery-worker celery-beat gmao-consumer
 docker compose up -d frontend
 ```
+
+### Imágenes construidas en GitHub
+
+Al publicar una release, la acción `.github/workflows/imatges.yml` construye las imágenes del backend y del frontend y las sube a `ghcr.io/aqua360/aqua360-customers-backend` y `ghcr.io/aqua360/aqua360-customers-frontend` con la etiqueta de la release (por ejemplo, `v1.135.00`) y la del commit. Las imágenes solo llevan el código de este repositorio: la configuración de cada cliente (`.env`) se lee al arrancar el contenedor.
+
+Para usar una versión sin construir nada en el servidor, ponerla en el `.env` y:
+
+```bash
+# .env: CUSTOMERS_VERSION=v1.135.00
+docker compose pull
+docker compose up -d
+```
+
+Volver atrás es poner la versión anterior y repetirlo (las migraciones no se deshacen). Sin `CUSTOMERS_VERSION`, o con `up --build`, se construye en el servidor como siempre (etiqueta `local-<stack>`, una por stack para que los stacks de un mismo servidor no compartan imagen).
 
 ### Despliegue automatizado (Ansible)
 

@@ -10,6 +10,11 @@ x-django-env: &django-env
   DATABASE_PORT: 5432
   CELERY_BROKER_URL: redis://redis:6379/0
 
+# Imatges: cada release es construeix a GitHub (.github/workflows/imatges.yml) i es publica a ghcr.io.
+# Amb CUSTOMERS_VERSION=v1.135.00 al .env, `docker compose pull && docker compose up -d` baixa
+# aquella versió sense construir res. Sense CUSTOMERS_VERSION, o amb `up --build`, es construeix
+# aquí com sempre (etiqueta `local-<stack>`: una per stack, perquè els stacks d'un mateix servidor
+# no comparteixin imatge).
 services:
   db:
     image: postgres:16-bookworm
@@ -40,6 +45,7 @@ services:
       retries: 5
 
   backend:
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -72,6 +78,7 @@ services:
         condition: service_healthy
 
   celery-worker:
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -93,6 +100,7 @@ services:
         condition: service_healthy
 
   celery-beat:
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -114,6 +122,7 @@ services:
         condition: service_healthy
 
   frontend:
+    image: ghcr.io/aqua360/aqua360-customers-frontend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -138,10 +147,14 @@ services:
         condition: service_healthy
 
   gmao-consumer:
+    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
     build:
       context: ./backend
       dockerfile: Dockerfile
     command: python -u manage.py run_gmao_consumer
+    # Només per als clients amb GMAO: s'engega amb COMPOSE_PROFILES=gmao al .env. Sense, l'stack
+    # no el crea ni l'actualitza.
+    profiles: ["gmao"]
     # on-failure: sense RabbitMQ (RABBITMQ_ENABLED=False) la comanda surt amb codi 0 i no s'ha de reiniciar en bucle
     restart: on-failure
     env_file:
@@ -151,7 +164,8 @@ services:
     volumes:
       - ./docker-data/media:/app/media
     healthcheck:
-      test: [ "CMD-SHELL", "ps aux | grep '[r]un_gmao_consumer' || exit 1" ]
+      # La imatge no porta `ps`: es mira l'ordre del procés principal del contenidor.
+      test: [ "CMD-SHELL", "grep -q run_gmao_consumer /proc/1/cmdline || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
