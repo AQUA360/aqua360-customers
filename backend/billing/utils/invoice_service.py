@@ -563,6 +563,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             group_by_supply_point[price_rate.supply_point].append(price_rate.price_rate)
 
         for reading in readings:
+            # El consum de cada lectura és el del seu comptador: amb un contracte de diversos punts de
+            # subministrament amb tarifa per punt, abans s'hi sumava el de les lectures anteriors i
+            # la segona línia facturava el consum acumulat.
+            real_consumption = 0
             added_leak = get_added_leak(added_leak_by_reading, reading)
             reading_calculated_value = reading.calculated_value
             if reading_estimated.lower() == 'true':

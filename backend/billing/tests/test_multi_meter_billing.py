@@ -275,8 +275,9 @@ class TestMultiMeterBilling(TestCase):
             is_control=False
         )
 
-        # Generate invoice passing the original selected list of readings (which contains control/unresolved ones)
-        readings_list = [reading_control, reading_new_act]
+        # La facturació passa les lectures que no són de control (filtra is_control=False): la
+        # modificada, no la de control que substitueix.
+        readings_list = [reading_modified, reading_new_act]
         invoice = generate_consumption_invoice_multiple(
             contract=self.contract,
             readings=readings_list,
