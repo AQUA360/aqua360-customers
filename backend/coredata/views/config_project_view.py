@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from coredata.filters.config_project_filter import ConfigProjectFilter
 from coredata.models import ConfigProject
+from coredata.permissions import ConfigProjectPermission
 from coredata.serializers import ConfigProjectSerializer
 
 
@@ -22,7 +23,7 @@ def _normalize_config_value(value):
 class ConfigProjectViewSet(viewsets.ModelViewSet):
     queryset = ConfigProject.objects.all()
     serializer_class = ConfigProjectSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ConfigProjectPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = ConfigProjectFilter
     search_fields = ['name','token']

@@ -509,3 +509,67 @@ class FillConnectionStreetNumbersTests(TestCase):
         for connection in (explicit_sn, from_sn, conflict):
             connection.refresh_from_db()
             self.assertEqual(connection.address_street_number_id, originals[connection.id])
+
+
+class ConfigProjectPermissionTests(TestCase):
+    """Qualsevol usuari autenticat llegeix els ConfigProject; només `customers` els modifica."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from coredata.models import ConfigProject
+
+        User = get_user_model()
+        self.customers = User.objects.create_user('customers', 'customers@example.com', 'x')
+        self.admin = User.objects.create_superuser('admin', 'admin@example.com', 'x')
+        self.config = ConfigProject.objects.create(token='some_token', name='Some token', value='old')
+        self.client = APIClient()
+
+    def _bulk_update(self, user):
+        self.client.force_authenticate(user)
+        return self.client.post(
+            '/coredata/config-project/bulk-update-values/',
+            [{'token': 'some_token', 'value': 'new'}],
+            format='json',
+        )
+
+    def test_any_authenticated_user_can_read(self):
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.get('/coredata/config-project/').status_code, 200)
+        response = self.client.get('/coredata/config-project/some_token/value/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['value'], 'old')
+
+    def test_anonymous_user_cannot_read(self):
+        self.assertIn(self.client.get('/coredata/config-project/').status_code, (401, 403))
+
+    def test_customers_can_bulk_update(self):
+        response = self._bulk_update(self.customers)
+        self.assertEqual(response.status_code, 200)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.value, 'new')
+
+    def test_other_users_cannot_bulk_update(self):
+        response = self._bulk_update(self.admin)
+        self.assertEqual(response.status_code, 403)
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.value, 'old')
+
+    def test_other_users_cannot_write_through_the_model_endpoints(self):
+        self.client.force_authenticate(self.admin)
+        url = '/coredata/config-project/some_token/'
+        self.assertEqual(self.client.patch(url, {'value': 'new'}, format='json').status_code, 403)
+        self.assertEqual(self.client.put(url, {'token': 'some_token', 'value': 'new'}, format='json').status_code, 403)
+        self.assertEqual(self.client.delete(url).status_code, 403)
+        self.assertEqual(
+            self.client.post('/coredata/config-project/', {'token': 'other', 'value': 'x'}, format='json').status_code,
+            403,
+        )
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.value, 'old')
+
+    def test_my_permissions_exposes_the_flag(self):
+        self.client.force_authenticate(self.customers)
+        self.assertTrue(self.client.get('/auth/permission/my-permissions/').data['can_edit_config_project'])
+        self.client.force_authenticate(self.admin)
+        self.assertFalse(self.client.get('/auth/permission/my-permissions/').data['can_edit_config_project'])
