@@ -3879,7 +3879,7 @@ export default {
     role_owner: 'Propietari',
     level_1: 'En risc',
     level_2: 'Vulnerable',
-  }
+  },
   home_dashboard: {
     yesterday: 'Ahir',
     customize: 'Personalitzar',
