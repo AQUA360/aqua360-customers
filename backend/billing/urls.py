@@ -79,7 +79,7 @@ from .views.epayment_document_generate_view import EPaymentDocumentGenerateViewS
 from .views.detailed_billing_document_generate_view import DetailedBillingDocumentGenerateView
 from .views.generate_sgttxs_document_view import GenerateSgtTxsDocumentView
 from .views.commitment_deposit_pdf_view import CommitmentDepositPDFDownloadViewSet
-from .views.billing_invoices_view import BillingInvoicesViewSet, BillingInvoicesSummaryViewSet, BillingInvoicesPdfViewSet
+from .views.billing_invoices_view import BillingInvoicesViewSet, BillingInvoicesExportView, BillingInvoicesSummaryViewSet, BillingInvoicesPdfViewSet
 from .views.invoice_mark_reviewed_range_view import InvoiceMarkReviewedRangeView
 from .views.invoice_reviewed_range_preview_view import InvoiceReviewedRangePreviewView
 from .views.billing_batch_regenerate_view import BillingBatchRegenerateView
@@ -227,6 +227,7 @@ urlpatterns = [
     path('commitment-deposit-document-generate/<int:id>/', CommitmentDepositPDFDownloadViewSet.as_view(http_method_names=['get']), name='fd-document-generate'),
     path('billing/<int:id>/readings', BillingReadingsViewSet.as_view(http_method_names=['get']), name='billing-readings'),
     path('billing/<int:id>/invoices', BillingInvoicesViewSet.as_view(http_method_names=['get']), name='billing-invoices'),
+    path('billing/<int:id>/invoices/export', BillingInvoicesExportView.as_view(http_method_names=['post']), name='billing-invoices-export'),
     path('billing/<int:id>/invoices/summary', BillingInvoicesSummaryViewSet.as_view(http_method_names=['get']), name='billing-invoices-summary'),
     path('billing/<int:id>/recalculate', BillingBatchRegenerateView.as_view(http_method_names=['post']), name='billing-invoices-recalculate'),
     path('billing/<int:id>/regenerate-pdfs', BillingRegeneratePDFsView.as_view(http_method_names=['post']), name='billing-regenerate-pdfs'),

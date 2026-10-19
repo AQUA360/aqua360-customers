@@ -251,6 +251,11 @@ const sortReadingsBy = (field) => {
   getData(1, search_filter.value, showLeak.value, showLeakCurrent.value)
 }
 
+// Exporta a Excel les lectures del detall obert, amb els mateixos filtres.
+const exportShownReadings = () => $ReadingApiService.exportReadingsByBatchMinimal(
+  batch_id.value, search_filter.value, showLeak.value, showLeakCurrent.value, sortBy.value, sortDesc.value, searchInput.value
+);
+
 const exportCheckReadings = () => {
   showRegionComponent.value = "ExportReadings";
   showRegion.value = true;
@@ -715,12 +720,17 @@ watch(() => props.batch_id, (newVal) => {
 
       <div v-if="showRegionComponent == 'readings'" class="px-10 flex flex-col flex-1 min-h-0">
         <h1 class="text-2xl font-bold mb-4">{{ t('readings') }} {{ translateWarningAlert(title) }}</h1>
-        <span class="input-group flex flex-start items-center gap-2 w-80">
-          <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
-          <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
-            :placeholder="$t('contract_block.search_by_token')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
-            autocomplete="off" />
-        </span>
+        <div class="flex justify-between items-center gap-2">
+          <span class="input-group flex flex-start items-center gap-2 w-80">
+            <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
+            <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
+              :placeholder="$t('contract_block.search_by_token')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
+              autocomplete="off" />
+          </span>
+          <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportShownReadings"
+            :disabled="loadingReadings || !pagination.total"
+            :export-name="`${t('readings')} ${translateWarningAlert(title)}`.trim()" />
+        </div>
         <div class="flex items-center gap-2 mt-3">
           <input type="checkbox" v-model="showLeak" @change="leakFilter()">
           <label>{{ t('billing_block.prev_leaks') }}</label>

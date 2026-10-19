@@ -5799,3 +5799,51 @@ msgstr "Aquestes són les teves tasques pendents d'avui i les endarrerides:"
 #, python-format
 msgid "You have a pending task: %(task)s"
 msgstr "Tens una tasca pendent: %(task)s"
+
+#: billing/tasks.py
+msgid "Posició de ruta"
+msgstr "Posició de ruta"
+
+#: billing/tasks.py
+msgid "Fuita"
+msgstr "Fuita"
+
+#: billing/tasks.py
+msgid "Fuita anterior"
+msgstr "Fuita anterior"
+
+#: billing/tasks.py
+msgid "Lectura anterior"
+msgstr "Lectura anterior"
+
+#: billing/tasks.py
+msgid "General"
+msgstr "General"
+
+#: billing/tasks.py
+msgid "Avís"
+msgstr "Avís"
+
+#: billing/tasks.py
+msgid "Volta comptador"
+msgstr "Volta comptador"
+
+#: billing/tasks.py
+msgid "Lectura 0"
+msgstr "Lectura 0"
+
+#: billing/tasks.py
+msgid "Lectura negativa"
+msgstr "Lectura negativa"
+
+#: billing/tasks.py
+msgid "Lectura estimada"
+msgstr "Lectura estimada"
+
+#: billing/tasks.py
+msgid "Lectura inusual"
+msgstr "Lectura inusual"
+
+#: billing/tasks.py
+msgid "Consum inusualment baix"
+msgstr "Consum inusualment baix"

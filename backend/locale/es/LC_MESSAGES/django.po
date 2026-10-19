@@ -5805,3 +5805,51 @@ msgstr "Estas son tus tareas pendientes de hoy y las atrasadas:"
 #, python-format
 msgid "You have a pending task: %(task)s"
 msgstr "Tienes una tarea pendiente: %(task)s"
+
+#: billing/tasks.py
+msgid "Posició de ruta"
+msgstr "Posición de ruta"
+
+#: billing/tasks.py
+msgid "Fuita"
+msgstr "Fuga"
+
+#: billing/tasks.py
+msgid "Fuita anterior"
+msgstr "Fuga previa"
+
+#: billing/tasks.py
+msgid "Lectura anterior"
+msgstr "Lectura anterior"
+
+#: billing/tasks.py
+msgid "General"
+msgstr "General"
+
+#: billing/tasks.py
+msgid "Avís"
+msgstr "Aviso"
+
+#: billing/tasks.py
+msgid "Volta comptador"
+msgstr "Vuelta contador"
+
+#: billing/tasks.py
+msgid "Lectura 0"
+msgstr "Lectura 0"
+
+#: billing/tasks.py
+msgid "Lectura negativa"
+msgstr "Lectura negativa"
+
+#: billing/tasks.py
+msgid "Lectura estimada"
+msgstr "Lectura estimada"
+
+#: billing/tasks.py
+msgid "Lectura inusual"
+msgstr "Lectura inusual"
+
+#: billing/tasks.py
+msgid "Consum inusualment baix"
+msgstr "Consumo inusualmente bajo"

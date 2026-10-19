@@ -574,18 +574,24 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
-    const getBatchInvoices = async (id, query = '', page = 1, filter = null, sort = null, desc = false, hasPossibleLeakComm = false) => {
-      let apiUrl =  `${apiHost}/billing/billing/${id}/invoices`;
-      apiUrl += `?search=${encodeURIComponent(query)}&page=${page}`;
+    // Filtres del llistat de factures d'una facturació (compartits amb l'exportació).
+    const batchInvoicesParams = (query = '', filter = null, sort = null, desc = false, hasPossibleLeakComm = false) => {
+      let params = `search=${encodeURIComponent(query || '')}`;
       if (filter) {
-        apiUrl += `&${filter}`;
+        params += `&${filter}`;
       }
       if (sort) {
-        apiUrl += `&ordering=${desc ? '-' : ''}${sort}`;
+        params += `&ordering=${desc ? '-' : ''}${sort}`;
       }
       if (hasPossibleLeakComm) {
-        apiUrl += `&has_possible_leak_comm=true`;
+        params += `&has_possible_leak_comm=true`;
       }
+      return params;
+    }
+
+    const getBatchInvoices = async (id, query = '', page = 1, filter = null, sort = null, desc = false, hasPossibleLeakComm = false) => {
+      let apiUrl =  `${apiHost}/billing/billing/${id}/invoices`;
+      apiUrl += `?${batchInvoicesParams(query, filter, sort, desc, hasPossibleLeakComm)}&page=${page}`;
       try {
         const response = await $apiManager.fetch(apiUrl,'GET');
         
@@ -597,6 +603,15 @@ export default defineNuxtPlugin(nuxtApp => {
       } catch (error) {
         throw error;
       }
+    }
+
+    // Exporta a Excel les factures del llistat amb els mateixos filtres (va a la cua de descàrregues).
+    const exportBatchInvoices = async (id, query = '', filter = null, sort = null, desc = false, hasPossibleLeakComm = false) => {
+      let apiUrl = `${apiHost}/billing/billing/${id}/invoices/export`;
+      apiUrl += `?${batchInvoicesParams(query, filter, sort, desc, hasPossibleLeakComm)}`;
+      // Name for the downloads queue (set by useServerExport).
+      if ($apiManager.pendingExportName) apiUrl += `&export_name=${encodeURIComponent($apiManager.pendingExportName)}`;
+      return await $apiManager.fetch(apiUrl, 'POST');
     }
 
     const getBilledInvoices = async (id, detailed = false, type = null) => {
@@ -782,6 +797,7 @@ export default defineNuxtPlugin(nuxtApp => {
       getExpiredInvoices,
       getTemporaryPDF,
       getBatchInvoices,
+      exportBatchInvoices,
       getBatchInvoicesSummary,
       deleteInvoiceBudget,
       downloadInvoice,

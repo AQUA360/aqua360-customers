@@ -3790,3 +3790,51 @@ msgstr "These are your pending tasks for today, and the overdue ones:"
 #, python-format
 msgid "You have a pending task: %(task)s"
 msgstr "You have a pending task: %(task)s"
+
+#: billing/tasks.py
+msgid "Posició de ruta"
+msgstr "Route position"
+
+#: billing/tasks.py
+msgid "Fuita"
+msgstr "Leak"
+
+#: billing/tasks.py
+msgid "Fuita anterior"
+msgstr "Previous leak"
+
+#: billing/tasks.py
+msgid "Lectura anterior"
+msgstr "Previous reading"
+
+#: billing/tasks.py
+msgid "General"
+msgstr "General"
+
+#: billing/tasks.py
+msgid "Avís"
+msgstr "Warning"
+
+#: billing/tasks.py
+msgid "Volta comptador"
+msgstr "Meter rollover"
+
+#: billing/tasks.py
+msgid "Lectura 0"
+msgstr "Zero reading"
+
+#: billing/tasks.py
+msgid "Lectura negativa"
+msgstr "Negative reading"
+
+#: billing/tasks.py
+msgid "Lectura estimada"
+msgstr "Estimated reading"
+
+#: billing/tasks.py
+msgid "Lectura inusual"
+msgstr "Unusual reading"
+
+#: billing/tasks.py
+msgid "Consum inusualment baix"
+msgstr "Unusually low consumption"
