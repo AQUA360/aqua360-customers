@@ -299,56 +299,69 @@ def _payoff_signed_sum(field_name, payoff_status_token, tax_pct=None):
     )
 
 
+def _resolve_billing_summary_invoices(request):
+    """
+    Factures del resum de facturació segons els filtres del formulari (lot, període
+    o rang de sèrie, explotació, pendents i multi-filtres). Compartit pels informes
+    de resum de facturació perquè tots surtin de la mateixa selecció.
+    Retorna (invoices, billing, start_date, end_date, error_response).
+    """
+    date_range = request.data.get('date_range', None)
+    billing_ids = get_billing_ids(request.data)
+    exploitation_id = request.data.get('exploitation_id', None)
+
+    has_serie_range = has_serie_final_range(request.data)
+    if not billing_ids and not date_range and not has_serie_range:
+        return None, None, None, None, Response({"error": "billing id, date range or serie_final range is required."}, status=status.HTTP_400_BAD_REQUEST)
+    print("got id or date range")
+    exploitation = None
+    if exploitation_id:
+        exploitation = Exploitation.objects.get(id=exploitation_id)
+    billing = None
+    start_date = None
+    end_date = None
+
+    if billing_ids:
+        invoices = Invoice.objects.filter(billing_id__in=billing_ids)
+        billing = get_object_or_404(Billing, id=billing_ids[0])
+    elif date_range:
+        start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
+        end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
+        invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
+        invoices = Invoice.objects.filter(issue_date__range=(start_date.date(), end_date.date()), type_final=invoice_type).distinct()
+    elif has_serie_range:
+        # Seleccio nomes pel rang de numero de factura: el rang ja identifica les
+        # factures, sense lot ni periode. filter_pending_invoices hi aplica el rang
+        # (apply_serie_final_range) i el periode surt de les factures resultants,
+        # que es el que fan servir els titols i el nom del fitxer.
+        invoices = filter_pending_invoices(serie_final_range_invoices(), request)
+        start_date, end_date = serie_final_range_period(invoices)
+        if start_date is None:
+            return None, None, None, None, Response({"error": "the serie_final range has no invoices."}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        raise Exception("Error obtaining invoices for report billing summary")
+
+    if exploitation:
+        invoices = invoices.filter(exploitation=exploitation)
+
+    invoices = filter_pending_invoices(invoices, request)
+
+    multi_q = invoice_multi_filter_q(**get_multi_ids(request.data))
+    if multi_q:
+        invoices = invoices.filter(multi_q).distinct()
+
+    return invoices, billing, start_date, end_date, None
+
+
 def get_report_billing_summary(request, black_fill, white_bold_font, task=None):
     try:
         print("getting billing summary")
-        id = request.data.get('id', None)
-        date_range = request.data.get('date_range', None)
-        billing_ids = get_billing_ids(request.data)
         name = request.data.get('name', '')
         type_id = request.data.get('type_id', None)
-        exploitation_id = request.data.get('exploitation_id', None)	
-        
-        has_serie_range = has_serie_final_range(request.data)
-        if not billing_ids and not date_range and not has_serie_range:
-            return Response({"error": "billing id, date range or serie_final range is required."}, status=status.HTTP_400_BAD_REQUEST), None, None
-        print("got id or date range")
-        exploitation = None
-        if exploitation_id:
-            exploitation = Exploitation.objects.get(id=exploitation_id)
-        billing = None
-        billings = []
-        start_date = None
-        end_date = None
-        
-        if billing_ids:
-            invoices = Invoice.objects.filter(billing_id__in=billing_ids)
-            billing = get_object_or_404(Billing, id=billing_ids[0])
-        elif date_range:
-            start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
-            end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
-            invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
-            invoices = Invoice.objects.filter(issue_date__range=(start_date.date(), end_date.date()), type_final=invoice_type).distinct()
-        elif has_serie_range:
-            # Seleccio nomes pel rang de numero de factura: el rang ja identifica les
-            # factures, sense lot ni periode. filter_pending_invoices hi aplica el rang
-            # (apply_serie_final_range) i el periode surt de les factures resultants,
-            # que es el que fan servir els titols i el nom del fitxer.
-            invoices = filter_pending_invoices(serie_final_range_invoices(), request)
-            start_date, end_date = serie_final_range_period(invoices)
-            if start_date is None:
-                return Response({"error": "the serie_final range has no invoices."}, status=status.HTTP_400_BAD_REQUEST), None, None
-        else:
-            raise Exception("Error obtaining invoices for report billing summary")
-        
-        if exploitation:
-            invoices = invoices.filter(exploitation=exploitation)
-        
-        invoices = filter_pending_invoices(invoices, request)
 
-        multi_q = invoice_multi_filter_q(**get_multi_ids(request.data))
-        if multi_q:
-            invoices = invoices.filter(multi_q).distinct()
+        invoices, billing, start_date, end_date, error = _resolve_billing_summary_invoices(request)
+        if error:
+            return error, None, None
 
         payoff_status_token = ConfigProject.objects.get(token="invoice_status_payoff_token").value
 
@@ -432,6 +445,187 @@ def get_report_billing_summary(request, black_fill, white_bold_font, task=None):
         
         os.remove(filename)
         return response, document_id, None
+    except Exception as e:
+        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+
+def _social_adjustment_ids():
+    """
+    Ajustos (bonificacions) de tarifa social: els que exigeixen (is_true / is_not_null)
+    una variable de contracte vulnerable, la configurada a 'tarifa_social' o amb "social"
+    al token o al nom (p.ex. la tarifa social pròpia de l'entitat, que no és vulnerable).
+    Les condicions "sense tarifa social" (is_null, ...) no compten.
+    """
+    from contract.models import VariableType
+    from pricing.models import AdjustmentCondition
+
+    social_token = ConfigProject.objects.filter(token='tarifa_social').values_list('value', flat=True).first()
+    social_variable_tokens = set(
+        VariableType.objects.filter(
+            Q(is_vulnerable=True) | Q(token__icontains='social') | Q(name__icontains='social')
+            | Q(token=social_token or 'tarifa_social')
+        ).values_list('token', flat=True)
+    )
+
+    adjustment_ids = set()
+    conditions = AdjustmentCondition.objects.filter(
+        adjustment__isnull=False, operation__in=('is_true', 'is_not_null'),
+    ).values_list('adjustment_id', 'quantity')
+    for adjustment_id, quantity in conditions:
+        value = quantity.get('value') if isinstance(quantity, dict) else quantity
+        if isinstance(value, str) and value.startswith('variable.') and value[len('variable.'):] in social_variable_tokens:
+            adjustment_ids.add(adjustment_id)
+    return adjustment_ids
+
+
+def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font, task=None):
+    """
+    Resum de facturació (com get_report_billing_summary) desglossat per concepte,
+    tarifa, tram i tarifa social. Els subtotals per producte quadren amb el resum.
+    """
+    try:
+        from django.contrib.postgres.aggregates import StringAgg
+        from django.db.models import OuterRef
+        from openpyxl.styles import Font
+        from billing.models import AppliedAdjustment
+        from statistics.views.reports_views import light_gray_fill
+
+        name = request.data.get('name', '')
+        type_id = request.data.get('type_id', None)
+
+        invoices, billing, start_date, end_date, error = _resolve_billing_summary_invoices(request)
+        if error:
+            return error, None, None
+
+        payoff_status_token = ConfigProject.objects.get(token="invoice_status_payoff_token").value
+
+        # Noms dels ajustos de tarifa social aplicats a cada línia. Subquery (i no join)
+        # perquè el M2M d'ajustos no multipliqui les línies a les sumes.
+        social_names = AppliedAdjustment.objects.filter(
+            Q(is_vulnerable=True) | Q(adjustment_id__in=_social_adjustment_ids()),
+            line_items=OuterRef('pk'),
+        ).order_by().values('line_items').annotate(
+            names=StringAgg('name', delimiter=' + ', distinct=True, ordering='name'),
+        ).values('names')
+
+        active_line_items = InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True).annotate(
+            concept_name=Coalesce('line_item_type__name', 'name'),
+            social_name=Subquery(social_names[:1], output_field=CharField()),
+        )
+        groups = active_line_items.values(
+            'product_name', 'tax_percent', 'concept_name', 'price_rate_name', 'interval', 'social_name',
+        ).annotate(
+            count=Count('invoice', distinct=True),
+            sum_units=_payoff_signed_sum('units', payoff_status_token),
+            sum_price=_payoff_signed_sum('price', payoff_status_token),
+            sum_tax=_payoff_signed_sum('tax_price', payoff_status_token),
+        ).order_by()
+
+        # Mateixa agrupació que el resum de facturació, per als subtotals per producte.
+        product_counts = {
+            (item['product_name'], item['tax_percent']): item['count']
+            for item in active_line_items.values('product_name', 'tax_percent').annotate(
+                count=Count('invoice', distinct=True),
+            ).order_by()
+        }
+
+        groups = sorted(groups, key=lambda item: (
+            item['product_name'] or '',
+            item['tax_percent'] if item['tax_percent'] is not None else Decimal('-1'),
+            item['concept_name'] or '',
+            item['price_rate_name'] or '',
+            item['interval'] or 0,
+            item['social_name'] or '',
+        ))
+
+        wb = openpyxl.Workbook()
+        sheet = wb.active
+        sheet.title = _("Facturació per tarifa")
+
+        row = 0
+        title = _("Facturació per tarifa %(date)s") % {"date": billing.created_at.strftime('%d/%m/%Y')} if billing else _("Facturació per tarifa %(start)s - %(end)s") % {"start": start_date.strftime('%d/%m/%Y'), "end": end_date.strftime('%d/%m/%Y')}
+        row = add_row(sheet, row, [title])
+        row = jump_row(row)
+
+        titles = [
+            _("Nom"), _("Concepte"), _("Tarifa"), _("Tram"), _("Tarifa social"), _("IVA %"),
+            _(" Num. Factures"), _("Unitats"), _("Base"), _("IVA"), _("Totals"),
+        ]
+        row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
+        money_cols = (9, 10, 11)
+
+        def format_numbers(row):
+            sheet.cell(row=row, column=8).number_format = '#,##0.00'
+            for col in money_cols:
+                sheet.cell(row=row, column=col).number_format = '#,##0.00'
+
+        def tax_label(tax_percent):
+            return f"{tax_percent} %" if tax_percent is not None else "- %"
+
+        def add_subtotal(row, key, subtotal):
+            row = add_row(sheet, row, [
+                _("Total %(name)s") % {"name": key[0] or "-"},
+                "", "", "", "",
+                tax_label(key[1]),
+                product_counts.get(key, 0),
+                "",
+                round(subtotal[0], 2),
+                round(subtotal[1], 2),
+                round(subtotal[0] + subtotal[1], 2),
+            ], colored=set(range(len(titles))))
+            for col in range(1, len(titles) + 1):
+                sheet.cell(row=row, column=col).font = Font(bold=True)
+            format_numbers(row)
+            return row
+
+        total_base = 0.0
+        total_tax = 0.0
+        current_key = None
+        subtotal = [0.0, 0.0]
+        for item in groups:
+            key = (item['product_name'], item['tax_percent'])
+            if current_key is not None and key != current_key:
+                row = add_subtotal(row, current_key, subtotal)
+                subtotal = [0.0, 0.0]
+            current_key = key
+
+            base = float(item['sum_price'] or 0)
+            tax = float(item['sum_tax'] or 0)
+            subtotal[0] += base
+            subtotal[1] += tax
+            total_base += base
+            total_tax += tax
+
+            row = add_row(sheet, row, [
+                item['product_name'],
+                item['concept_name'] or "-",
+                item['price_rate_name'] or "-",
+                _("Tram %(num)s") % {"num": item['interval']} if item['interval'] else "-",
+                item['social_name'] or "-",
+                tax_label(item['tax_percent']),
+                item['count'],
+                round(float(item['sum_units'] or 0), 2),
+                round(base, 2),
+                round(tax, 2),
+                round(base + tax, 2),
+            ])
+            format_numbers(row)
+
+        if current_key is not None:
+            row = add_subtotal(row, current_key, subtotal)
+
+        row = add_row(sheet, row, [
+            _("Totals"), "", "", "", "", "", "", "",
+            round(total_base, 2),
+            round(total_tax, 2),
+            round(total_base + total_tax, 2),
+        ], fill=black_fill, font=white_bold_font)
+        format_numbers(row)
+
+        adjust_column_widths(sheet)
+
+        filename = f"billing_by_rate_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
+        return None, document_id, filename
     except Exception as e:
         return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
