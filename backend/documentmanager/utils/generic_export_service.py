@@ -55,6 +55,12 @@ def _append_export_row(worksheet, values):
     cells = []
     for value in values:
         excel_value, number_format = coerce_export_value(value)
+        if isinstance(excel_value, str):
+            # Sempre text: un valor que comenci per `=` no s'ha d'interpretar com a fórmula.
+            cell = WriteOnlyCell(worksheet, value=excel_value)
+            cell.data_type = "s"
+            cells.append(cell)
+            continue
         if number_format is None:
             cells.append(excel_value)
             continue

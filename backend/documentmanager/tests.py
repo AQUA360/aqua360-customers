@@ -234,3 +234,20 @@ class DocumentOrderTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         merged = [call.args[0] for call in download_document.call_args_list]
         self.assertEqual(merged, [self.third, self.first, self.second])
+
+
+class GenericExportXlsxTest(TestCase):
+    """Les cadenes de les exportacions XLSX es desen sempre com a text."""
+
+    def test_text_que_comenca_per_igual_no_es_formula(self):
+        import openpyxl
+        from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects
+
+        columns = [("text", "Text", lambda o: o["text"]), ("number", "Number", lambda o: o["number"])]
+        file_bytes = build_export_xlsx_bytes_from_objects([{"text": "=1+1", "number": 5}], columns)
+
+        row = list(openpyxl.load_workbook(io.BytesIO(file_bytes)).active.iter_rows(min_row=2))[0]
+        self.assertEqual(row[0].value, "=1+1")
+        self.assertEqual(row[0].data_type, "s")
+        self.assertEqual(row[1].value, 5)
+        self.assertEqual(row[1].data_type, "n")

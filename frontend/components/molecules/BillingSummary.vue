@@ -140,6 +140,8 @@ const openDetail = (filter, warningName) => {
   pagination.value.page = 1;
   showRegionComponent.value = 'BillingSummary';
   search_filter.value = ""
+  // El nou detall es carrega sense cerca: el cercador (i l'exportació) també.
+  searchInput.value = '';
   title.value = '';
   filterPossibleLeakComm.value = false;
   switch (filter) {
