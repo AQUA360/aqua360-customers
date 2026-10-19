@@ -251,3 +251,68 @@ class GenericExportXlsxTest(TestCase):
         self.assertEqual(row[0].data_type, "s")
         self.assertEqual(row[1].value, 5)
         self.assertEqual(row[1].data_type, "n")
+
+
+class XlsxStringFormulaSafetyTest(TestCase):
+    """Cap text escrit des del codi es desa com a fórmula (documentmanager.utils.xlsx_safety)."""
+
+    def _reload(self, workbook):
+        import openpyxl
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        return openpyxl.load_workbook(io.BytesIO(buffer.getvalue())).active
+
+    def test_text_amb_igual_es_text_en_mode_normal(self):
+        import openpyxl
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet["A1"] = "=HYPERLINK(\"http://example.com\")"
+        sheet.append(["=1+1", 7, "text"])
+        sheet = self._reload(workbook)
+        self.assertEqual(sheet["A1"].data_type, "s")
+        self.assertEqual(sheet["A2"].data_type, "s")
+        self.assertEqual(sheet["A2"].value, "=1+1")
+        self.assertEqual(sheet["B2"].data_type, "n")
+
+    def test_text_amb_igual_es_text_en_mode_escriptura(self):
+        import openpyxl
+        workbook = openpyxl.Workbook(write_only=True)
+        workbook.create_sheet().append(["=1+1"])
+        self.assertEqual(self._reload(workbook)["A1"].data_type, "s")
+
+    def test_les_formules_dels_fitxers_llegits_es_conserven(self):
+        import openpyxl
+        workbook = openpyxl.Workbook()
+        cell = workbook.active["A1"]
+        cell.value = "=1+1"
+        cell.data_type = "f"  # fórmula d'un fitxer pujat per l'usuari
+        self.assertEqual(self._reload(workbook)["A1"].data_type, "f")
+
+
+class CsvSafetyTest(TestCase):
+    """Els textos que Excel executaria com a fórmula es desen amb una `'` al davant."""
+
+    def test_textos_amb_prefix_de_formula_s_escapen(self):
+        from documentmanager.utils.csv_safety import csv_safe_value
+        for value in ("=1+1", "+cmd", "-1+1", "@SUM(A1)", "\tx", "-"):
+            self.assertEqual(csv_safe_value(value), "'" + value)
+
+    def test_numeros_i_textos_normals_no_es_toquen(self):
+        from documentmanager.utils.csv_safety import csv_safe_value
+        for value in ("-12,50", "+34 600 000 000", "1.234,5", "Carrer Major", "", None, -5, 3.2):
+            self.assertEqual(csv_safe_value(value), value)
+
+    def test_el_writer_escapa_cada_fila(self):
+        from documentmanager.utils.csv_safety import SafeCsvWriter
+        buffer = io.StringIO()
+        writer = SafeCsvWriter(buffer, delimiter=";")
+        writer.writerow(["=1+1", 5])
+        writer.writerows([["-3", "@x"]])
+        self.assertEqual(buffer.getvalue().splitlines(), ["'=1+1;5", "-3;'@x"])
+
+    def test_la_importacio_recupera_el_valor_original(self):
+        from documentmanager.utils.csv_safety import csv_safe_value, csv_unescape_value
+        for value in ("=1+1", "-DN15", "@x", "DN15", "'text normal", "-12,50", None, 7):
+            self.assertEqual(csv_unescape_value(csv_safe_value(value)), value)
+        # Una `'` que no protegeix cap fórmula es conserva.
+        self.assertEqual(csv_unescape_value("'text normal"), "'text normal")

@@ -7,7 +7,7 @@ from rest_framework import status
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils.translation import gettext as _
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import io
 
 from django_filters.rest_framework import DjangoFilterBackend
@@ -229,7 +229,7 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
         
         # Crear el buffer per al CSV
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=';', lineterminator='\n')
+        writer = SafeCsvWriter(output, delimiter=';', lineterminator='\n')
         
         # Escriure capçalera (només les columnes del frontend)
         headers = [

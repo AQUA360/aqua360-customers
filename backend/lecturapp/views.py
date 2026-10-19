@@ -102,8 +102,6 @@ class AuthenticationView(APIView):
             username = serializer.validated_data['username']
             password = serializer.validated_data['password']
             
-            print(f"Authenticating operator with username: {username}")
-            print(f"Password: {password}")
             operator = ReadingOperator.authenticate(username, password)
             if operator:
                 # Generate a new token for this operator
@@ -181,8 +179,6 @@ def operator_logout(request):
 def validate_token(request):
     """Validate a token and return operator info"""
     token = request.GET.get('token') or request.headers.get('X-App-Token')
-    
-    print(f"Token: {token}")
     
     if not token:
         return Response({

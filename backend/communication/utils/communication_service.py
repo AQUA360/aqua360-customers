@@ -1,4 +1,5 @@
 import base64
+import logging
 import json
 import os
 import re
@@ -36,6 +37,8 @@ from logger.models import LogCommunicationStatusChange
 from service.models import CompanyConfig, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
+
+logger = logging.getLogger(__name__)
 
 def get_uploaded_file_from_request(request, field_name='document'):
     """
@@ -593,7 +596,8 @@ def send_electronic_mail(comm):
     comm.save()
     return
 
-  print(f"Attempting to send email from {from_email} to {comm_email}")
+  # Sense adreces ni assumpte: són dades personals dels destinataris.
+  logger.info("Enviant la comunicació %s per correu", comm.pk)
 
   try:
     parts = [e.strip() for e in str(comm_email).split(';')]
@@ -623,18 +627,14 @@ def send_electronic_mail(comm):
     comm.sent_at = timezone.now()
     comm.status = status_sent
     comm.save()
-    print("Email sent successfully")
+    logger.info("Comunicació %s enviada per correu", comm.pk)
 
   except Exception as e:
     error_msg = f"Error sending email: {str(e)}"
-    print(error_msg)
-    print(f"[error debug] email_backend: {email_backend}")
-    print(f"[error debug] comm_config: {comm_config}")
-    print(f"[error debug] comm_emails: {comm_emails}")
-    print(f"[error debug] subject: {subject}")
-    print(f"[error debug] from_email: {from_email}")
-    print(f"[error debug] document_files: {document_files}")
-    print(f"[error debug] status_rejected: {status_rejected}")
+    logger.warning(
+      "Error enviant la comunicació %s (%s destinataris, %s adjunts): %s",
+      comm.pk, len(comm_emails), len(document_files or []), e,
+    )
     comm.rejection_reason = error_msg
     comm.status = status_rejected
     comm.save()

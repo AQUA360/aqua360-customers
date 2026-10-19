@@ -1,4 +1,4 @@
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import datetime
 import io
 import uuid
@@ -302,7 +302,7 @@ def export_meters_csv_task(status_param=None, ordering_param='code', exploitatio
         # Escriure BOM per UTF-8 (per compatibilitat amb Excel)
         csv_buffer.write('\ufeff')
         
-        writer = csv.writer(csv_buffer, delimiter=';')
+        writer = SafeCsvWriter(csv_buffer, delimiter=';')
         
         headers = [
             'id', 'token', 'code', 'code2', 'is_compound', 'is_property', 'is_general',

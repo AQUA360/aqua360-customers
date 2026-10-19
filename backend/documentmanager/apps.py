@@ -7,3 +7,5 @@ class DocumentmanagerConfig(AppConfig):
 
     def ready(self):
         from . import signals  # noqa: F401
+        from .utils.xlsx_safety import disable_string_formulas
+        disable_string_formulas()

@@ -10,7 +10,7 @@ Les "PriceRates seleccionades" les obtenim de Contract.price_rates (ContractPric
 i de cada ContractPriceRate agafem price_rate.product.
 """
 
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 from io import StringIO
 
 from pricing.models import Product
@@ -113,7 +113,7 @@ def build_contract_tariffs_export_csv_bytes(filtered_queryset):
 
     buffer = StringIO()
     buffer.write("\ufeff")
-    writer = csv.writer(buffer, delimiter=";")
+    writer = SafeCsvWriter(buffer, delimiter=";")
     writer.writerow(base_headers + tariff_headers)
 
     for contract in export_qs.iterator(chunk_size=500):

@@ -1796,3 +1796,21 @@ class TestMeterOptionalAddress(TestCase):
         meter.refresh_from_db()
         self.assertEqual(meter.address_city_id, city.id)
         self.assertEqual(meter.address_postal_code_id, postal_code.id)
+
+
+class TestMeterBulkUpdateCsvEscape(TestCase):
+    """Un CSV exportat amb textos protegits (`'` al davant) es reimporta amb el valor original."""
+
+    def test_reimportar_treu_la_proteccio_de_formules(self):
+        import io as _io
+        from documentmanager.utils.csv_safety import SafeCsvWriter
+        from service.utils.meter_bulk_update_service import _parse_csv_bytes
+
+        buffer = _io.StringIO()
+        writer = SafeCsvWriter(buffer, delimiter=';')
+        writer.writerow(['code', 'model', 'manufacturer'])
+        writer.writerow(['C-1', '-DN15', 'Itron'])
+        self.assertIn("'-DN15", buffer.getvalue())
+
+        rows = _parse_csv_bytes(('﻿' + buffer.getvalue()).encode('utf-8'))
+        self.assertEqual(rows[1], ['C-1', '-DN15', 'Itron'])

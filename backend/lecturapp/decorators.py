@@ -11,7 +11,6 @@ def lecturapp_auth_required(view_func):
     @csrf_exempt
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        print("CUSTOM AUTH")
         # Try to get request from args
         request = None
         
@@ -37,8 +36,6 @@ def lecturapp_auth_required(view_func):
         # Check for token in headers
         if not token:
             token = request.headers.get('X-App-Token')
-        
-        print(f"Token: {token}")
         
         # Authenticate the user using token
         if token:
