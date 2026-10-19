@@ -3707,6 +3707,7 @@ export default {
     role_owner: 'Owner',
     level_1: 'At risk',
     level_2: 'Vulnerable',
+  }
   home_dashboard: {
     yesterday: 'Yesterday',
     customize: 'Customize',
