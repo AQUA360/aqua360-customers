@@ -739,6 +739,7 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
     is_pinned = serializers.SerializerMethodField()
     is_checked = serializers.SerializerMethodField()
     person_role = serializers.SerializerMethodField()
+    supply_point_default_id = serializers.IntegerField(read_only=True, allow_null=True)
     previous_daily_consumption = serializers.SerializerMethodField()        # NECESSARY FOR EXTERNAL FUNCTIONS
     previous_period_consumption = serializers.SerializerMethodField()        # NECESSARY FOR EXTERNAL FUNCTIONS
     prefered_communication_type = serializers.SerializerMethodField()        # NECESSARY FOR EXTERNAL FUNCTIONS
@@ -777,6 +778,7 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
             'is_pinned',
             'is_checked',
             'person_role',
+            'supply_point_default_id',
             'important_observations',
             'is_fire',
             'previous_daily_consumption',

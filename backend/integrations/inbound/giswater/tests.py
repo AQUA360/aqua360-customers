@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from billing.models import Reading
 from contract.models import Contract
-from coredata.models import Address, City, Person, Street
+from coredata.models import Address, City, ConfigProject, Person, Street
 from integrations.models import IntegrationRequestLog
 from service.models import Connection, ConnectionDiameter, DMA, Exploitation, Meter, SupplyPoint
 
@@ -23,6 +23,11 @@ class GiswaterInboundAuthMixin:
         self.user.groups.add(self.giswater_group)
         self.token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+        # Desar un contracte passa per un senyal que necessita aquesta configuració.
+        ConfigProject.objects.get_or_create(
+            token="contract_terminated_status",
+            defaults={"name": "Contract status terminated", "value": "-1"},
+        )
 
 
 class GiswaterInboundContractsViewTest(GiswaterInboundAuthMixin, TestCase):

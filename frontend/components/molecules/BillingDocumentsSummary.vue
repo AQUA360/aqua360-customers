@@ -724,7 +724,7 @@ watch(() => props.load_invoices, (newValue) => {
     </div>
     <div role="region"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[90%] z-20 overflow-hidden"
-      :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[90%]': showRegionComponent === 'BillingSummary', 'w-[75%]': showRegionComponent != 'BillingSummary' }">
+      :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[90%]': showRegionComponent === 'BillingSummary', 'w-[75%]': showRegionComponent != 'BillingSummary' }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
@@ -810,7 +810,7 @@ watch(() => props.load_invoices, (newValue) => {
     </div>
     <div role="region" id="right_over_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[75%] z-30 shadow"
-      :class="{ 'translate-x-0': showSubRegion, 'translate-x-[2000px]': !showSubRegion }">
+      :class="{ 'translate-x-0': showSubRegion, 'translate-x-full': !showSubRegion }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleSubRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />

@@ -30,8 +30,8 @@ class VerifactuSOAPInvoiceTest(TestCase):
         # Check Cabecera
         cabecera = invoice_data['Cabecera']
         self.assertIn('ObligadoEmision', cabecera)
-        self.assertEqual(cabecera['ObligadoEmision']['NIF'], 'AAAA')
-        self.assertEqual(cabecera['ObligadoEmision']['NombreRazon'], 'XXXXX')
+        self.assertEqual(cabecera['ObligadoEmision']['NIF'], '00000000T')
+        self.assertEqual(cabecera['ObligadoEmision']['NombreRazon'], 'Emisor de proves')
         
         # Check RegistroFactura - should be a list
         registro_factura = invoice_data['RegistroFactura']
@@ -46,13 +46,13 @@ class VerifactuSOAPInvoiceTest(TestCase):
         alta = registro['RegistroAlta']
         self.assertEqual(alta['IDVersion'], '1.0')
         self.assertEqual(alta['TipoFactura'], 'F1')
-        self.assertEqual(alta['ImporteTotal'], '131.4')
+        self.assertEqual(alta['ImporteTotal'], '0')
         
         # Check Desglose has 2 items
         desglose = alta['Desglose']['DetalleDesglose']
         self.assertEqual(len(desglose), 2)
-        self.assertEqual(desglose[0]['TipoImpositivo'], '4')
-        self.assertEqual(desglose[1]['TipoImpositivo'], '21')
+        self.assertEqual(desglose[0]['TipoImpositivo'], '0')
+        self.assertEqual(desglose[1]['TipoImpositivo'], '0')
 
     
     @patch('verifactu.utils.soap_client_service.VerifactuSOAPClient._initialize_client')

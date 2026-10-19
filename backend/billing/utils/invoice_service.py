@@ -563,6 +563,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             group_by_supply_point[price_rate.supply_point].append(price_rate.price_rate)
 
         for reading in readings:
+            # El consum de cada lectura és el del seu comptador: amb un contracte de diversos punts de
+            # subministrament amb tarifa per punt, abans s'hi sumava el de les lectures anteriors i
+            # la segona línia facturava el consum acumulat.
+            real_consumption = 0
             added_leak = get_added_leak(added_leak_by_reading, reading)
             reading_calculated_value = reading.calculated_value
             if reading_estimated.lower() == 'true':
@@ -573,12 +577,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             # Evitem duplicar si la lectura de tancament ja està en la llista a facturar
             close_prev = get_close_previous_reading(reading)
             if close_prev and close_prev not in readings:
-                real_consumption = float(real_consumption) + float(close_prev.real_consumption) if close_prev.real_consumption > 0 else float(real_consumption)
                 if added_leak == 0:
                     added_leak += get_leak_value(close_prev)
             close_prev_prev = get_close_previous_previous_reading(reading)
             if close_prev_prev and close_prev_prev not in readings:
-                real_consumption = float(real_consumption) + float(close_prev_prev.real_consumption) if close_prev_prev.real_consumption > 0 else float(real_consumption)
                 if added_leak == 0:
                     added_leak += get_leak_value(close_prev_prev)
             leak_reading = None
@@ -1184,7 +1186,7 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
     return invoice
 
 
-def invoice_generate_return_bail(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None):
+def invoice_generate_return_bail(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None, bails=None):
     # print("creating invoice from contract")
     # print(invoice_type_token)
     try:
@@ -1192,9 +1194,9 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
         if not contract:
             raise Exception("Contract not found")
         
-        
-        unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
-        bails = Bail.objects.filter(contract=contract, is_active=True, status__token=unreturned_bail_token)
+        if bails is None:
+            unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
+            bails = Bail.objects.filter(contract=contract, is_active=True, status__token=unreturned_bail_token)
         if not bails:
             return None
         
@@ -1990,7 +1992,7 @@ def recalc_consumption_gen_meter(reading, consumption_og, supply_point_instance,
     pass  # log removed
     if consumption_sub_meters > 0:
         if not reading.is_revised:
-            consumption = float(consumption_og) - consumption_sub_meters if float(consumption_og) - consumption_sub_meters > 0 else 0
+            consumption = max(float(consumption) - consumption_sub_meters, 0)
             pass  # log removed
     return consumption, added_leak_by_reading
 
