@@ -193,9 +193,16 @@ const resetInitialSmartMetering = () => {
   initialSmartMeteringDate.value = null;
 };
 
+const handleInitialReadingInput = () => {
+  initialSmartMeteringResult.value = null;
+  initialSmartMeteringPendingSave.value = false;
+  initialSmartMeteringDate.value = null;
+};
+
 const fetchInitialReadingFromSmartMetering = async () => {
   if (!canFetchInitialReadingFromSmartMetering.value) return;
 
+  const meterId = selectedMeter.value;
   fetchingInitialSmartMetering.value = true;
   initialSmartMeteringResult.value = null;
   initialSmartMeteringPendingSave.value = false;
@@ -204,10 +211,12 @@ const fetchInitialReadingFromSmartMetering = async () => {
   try {
     const response = await $SmartMeteringApiService.getMeterReading({
       meter: meterData.value?.code || null,
-      meter_id: selectedMeter.value,
+      meter_id: meterId,
       date: format(new Date(), 'yyyy-MM-dd'),
       margin: 5,
     });
+
+    if (selectedMeter.value !== meterId) return;
 
     if (response?.found && response.reading_value != null) {
       request_reading.value = response.reading_value;
@@ -227,11 +236,15 @@ const fetchInitialReadingFromSmartMetering = async () => {
       toast.warning(t('billing_block.smart_metering_reading_not_found'));
     }
   } catch (error) {
+    if (selectedMeter.value !== meterId) return;
+
     console.error('Error fetching smart metering initial reading:', error);
     initialSmartMeteringResult.value = 'error';
     toast.error(error?.data?.error || t('billing_block.smart_metering_fetch_error'));
   } finally {
-    fetchingInitialSmartMetering.value = false;
+    if (selectedMeter.value === meterId) {
+      fetchingInitialSmartMetering.value = false;
+    }
   }
 };
 
@@ -1187,6 +1200,7 @@ watch(billCutReading, async (newVal) => {
                   <input
                     type="number"
                     v-model="request_reading"
+                    @input="handleInitialReadingInput"
                     class="input w-full"
                     inputmode="decimal"
                     :disabled="loading || saving"
