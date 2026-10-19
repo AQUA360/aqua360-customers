@@ -1,3 +1,6 @@
+/**
+ * Fetch permissions on mount and expose reactive state and a manual refresh function.
+ */
 export function usePermissions() {
     const config = useRuntimeConfig();
     const permissions = ref(null);

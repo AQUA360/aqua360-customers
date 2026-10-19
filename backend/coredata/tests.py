@@ -515,6 +515,7 @@ class ConfigProjectPermissionTests(TestCase):
     """Qualsevol usuari autenticat llegeix els ConfigProject; només `customers` els modifica."""
 
     def setUp(self):
+        """Create the configuration, API client, and customers and admin accounts."""
         from django.contrib.auth import get_user_model
         from rest_framework.test import APIClient
         from coredata.models import ConfigProject
@@ -526,6 +527,7 @@ class ConfigProjectPermissionTests(TestCase):
         self.client = APIClient()
 
     def _bulk_update(self, user):
+        """Submit a configuration value update as the supplied user."""
         self.client.force_authenticate(user)
         return self.client.post(
             '/coredata/config-project/bulk-update-values/',
@@ -534,6 +536,7 @@ class ConfigProjectPermissionTests(TestCase):
         )
 
     def test_any_authenticated_user_can_read(self):
+        """Verify an authenticated admin can list and read configuration values."""
         self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.get('/coredata/config-project/').status_code, 200)
         response = self.client.get('/coredata/config-project/some_token/value/')
@@ -541,21 +544,25 @@ class ConfigProjectPermissionTests(TestCase):
         self.assertEqual(response.data['value'], 'old')
 
     def test_anonymous_user_cannot_read(self):
+        """Verify anonymous requests cannot list configuration values."""
         self.assertIn(self.client.get('/coredata/config-project/').status_code, (401, 403))
 
     def test_customers_can_bulk_update(self):
+        """Verify the customers account can persist configuration value updates."""
         response = self._bulk_update(self.customers)
         self.assertEqual(response.status_code, 200)
         self.config.refresh_from_db()
         self.assertEqual(self.config.value, 'new')
 
     def test_other_users_cannot_bulk_update(self):
+        """Verify an admin cannot bulk update configuration values."""
         response = self._bulk_update(self.admin)
         self.assertEqual(response.status_code, 403)
         self.config.refresh_from_db()
         self.assertEqual(self.config.value, 'old')
 
     def test_other_users_cannot_write_through_the_model_endpoints(self):
+        """Verify an admin cannot create, update, or delete configuration entries."""
         self.client.force_authenticate(self.admin)
         url = '/coredata/config-project/some_token/'
         self.assertEqual(self.client.patch(url, {'value': 'new'}, format='json').status_code, 403)
@@ -569,6 +576,7 @@ class ConfigProjectPermissionTests(TestCase):
         self.assertEqual(self.config.value, 'old')
 
     def test_my_permissions_exposes_the_flag(self):
+        """Verify configuration edit permission is true only for the customers account."""
         self.client.force_authenticate(self.customers)
         self.assertTrue(self.client.get('/auth/permission/my-permissions/').data['can_edit_config_project'])
         self.client.force_authenticate(self.admin)

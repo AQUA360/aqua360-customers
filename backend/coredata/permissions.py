@@ -12,12 +12,14 @@ CONFIG_PROJECT_EDITOR_USERNAME = 'customers'
 
 
 def can_edit_config_project(user):
+    """Return whether the user is authenticated as the customers account."""
     return bool(user and user.is_authenticated and user.username == CONFIG_PROJECT_EDITOR_USERNAME)
 
 
 class ConfigProjectPermission(permissions.BasePermission):
 
     def has_permission(self, request, view):
+        """Allow authenticated reads and reserve writes for the customers account."""
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in permissions.SAFE_METHODS:

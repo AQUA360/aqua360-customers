@@ -111,6 +111,7 @@ class UserPermissionsView(viewsets.ViewSet):
     
     @action(detail=False, methods=['get'], url_path='my-permissions')
     def my_permissions(self, request):
+        """Return the current user's identity, groups, and configuration edit permission."""
         user_permissions = PermissionManager.get_user_permissions(request.user)
         
         response_data = {
