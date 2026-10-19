@@ -203,6 +203,52 @@ class TestMultiMeterBilling(TestCase):
         self.assertIn(reading2, invoice_readings)
         self.assertEqual(invoice_readings.count(), 2)
 
+    def test_close_reading_consumption_is_added_once_per_meter(self):
+        reading_date = timezone.now().date()
+        for close_depth in (1, 2):
+            with self.subTest(close_depth=close_depth):
+                close = Reading.objects.create(
+                    supply_point=self.supply_point1,
+                    meter=self.meter1,
+                    contract=self.contract,
+                    reading_date=reading_date - timezone.timedelta(days=2),
+                    reading_value=4,
+                    calculated_value=4,
+                    real_consumption=4,
+                    is_close=True,
+                )
+                previous = close
+                if close_depth == 2:
+                    previous = Reading.objects.create(
+                        supply_point=self.supply_point1,
+                        meter=self.meter1,
+                        contract=self.contract,
+                        reading_date=reading_date - timezone.timedelta(days=1),
+                        reading_value=0,
+                        calculated_value=0,
+                        previous_reading=close,
+                    )
+                reading = Reading.objects.create(
+                    supply_point=self.supply_point1,
+                    meter=self.meter1,
+                    contract=self.contract,
+                    reading_date=reading_date,
+                    reading_value=previous.reading_value + 10,
+                    calculated_value=10,
+                    previous_reading=previous,
+                    consumption_days=90,
+                )
+                invoice = generate_consumption_invoice_multiple(
+                    contract=self.contract,
+                    readings=[reading],
+                    title='Close reading consumption',
+                    period_months=3,
+                )
+
+                self.assertIsNotNone(invoice)
+                self.assertEqual(invoice.consumption, 14.0)
+                self.assertEqual(invoice.line_items.get(is_active=True).units, 14.0)
+
     def test_combined_consumption_with_control_reading_modification(self):
         # Create a control reading and a modified active reading to simulate UI editing of close reading
         reading_date = timezone.now().date()

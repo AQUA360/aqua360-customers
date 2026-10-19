@@ -577,12 +577,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             # Evitem duplicar si la lectura de tancament ja està en la llista a facturar
             close_prev = get_close_previous_reading(reading)
             if close_prev and close_prev not in readings:
-                real_consumption = float(real_consumption) + float(close_prev.real_consumption) if close_prev.real_consumption > 0 else float(real_consumption)
                 if added_leak == 0:
                     added_leak += get_leak_value(close_prev)
             close_prev_prev = get_close_previous_previous_reading(reading)
             if close_prev_prev and close_prev_prev not in readings:
-                real_consumption = float(real_consumption) + float(close_prev_prev.real_consumption) if close_prev_prev.real_consumption > 0 else float(real_consumption)
                 if added_leak == 0:
                     added_leak += get_leak_value(close_prev_prev)
             leak_reading = None
@@ -1994,7 +1992,7 @@ def recalc_consumption_gen_meter(reading, consumption_og, supply_point_instance,
     pass  # log removed
     if consumption_sub_meters > 0:
         if not reading.is_revised:
-            consumption = float(consumption_og) - consumption_sub_meters if float(consumption_og) - consumption_sub_meters > 0 else 0
+            consumption = max(float(consumption) - consumption_sub_meters, 0)
             pass  # log removed
     return consumption, added_leak_by_reading
 

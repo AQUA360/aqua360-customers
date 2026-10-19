@@ -43,7 +43,7 @@ def _supply_cut_alert(supply_point):
     now = timezone.now()
     margin_time = now - timedelta(minutes=30)
     
-    for cut in cuts:
+    for cut in sorted(cuts, key=lambda cut: cut.status is None or cut.status.token != '1'):
         if cut.requires_review or cut.status is None or cut.status.token not in ('0', '1'):
             continue
             

@@ -1422,6 +1422,40 @@ class TestSupplyCutResolveReviewAndAlert(TestCase):
         self.assertEqual(alert['status_token'], '0')
         self.assertIn('supply_cut_alert', SupplyPointListSerializer(obj).data)
 
+    def test_active_cut_alert_takes_priority_over_planned_cut(self):
+        from django.db.models import Prefetch
+
+        from service.models import SupplyCut, SupplyCutStatus
+        from service.serializers.supply_point_serializer import SupplyPointMinimalSerializer
+
+        active = SupplyCut.objects.create(
+            token='q-priority-active',
+            cause=self.indefinite,
+            status=SupplyCutStatus.objects.get(token='1'),
+            date_end=timezone.now() - timezone.timedelta(days=5),
+        )
+        planned = SupplyCut.objects.create(
+            token='q-priority-planned',
+            cause=self.temporary,
+            status=SupplyCutStatus.objects.get(token='0'),
+            date_end=timezone.now() + timezone.timedelta(days=1),
+        )
+        for cut in (active, planned):
+            cut.supply_points.set([self.sp])
+
+        for ordering in ('id', '-id'):
+            with self.subTest(ordering=ordering):
+                obj = SupplyPoint.objects.prefetch_related(
+                    Prefetch(
+                        'supply_cuts',
+                        queryset=SupplyCut.objects.select_related('status', 'cause').order_by(ordering),
+                        to_attr='_prefetched_supply_cuts',
+                    )
+                ).get(id=self.sp.id)
+                alert = SupplyPointMinimalSerializer(obj).data['supply_cut_alert']
+                self.assertEqual(alert['id'], active.id)
+                self.assertEqual(alert['status_token'], '1')
+
     def test_alert_expires_for_past_temporary_cut(self):
         """Un tall puntual (temporal) amb date_end ja superat ja no genera
         alerta, encara que continuï Planificat."""
