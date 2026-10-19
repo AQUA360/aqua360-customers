@@ -4,7 +4,7 @@ Equivalent funcional a la vista vw_contract_termination_last_reading_invoice,
 però resolt via ORM.
 """
 
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import datetime
 from io import StringIO
 
@@ -88,7 +88,7 @@ def _build_contract_termination_export_csv_bytes(task=None, request=None):
 
     buffer = StringIO()
     buffer.write('\ufeff')
-    writer = csv.writer(buffer, delimiter=';')
+    writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(_headers())
 
     total = queryset.count()

@@ -1,7 +1,7 @@
 """
 Generació de files CSV per exportació de contractes (acció export/excel).
 """
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 from decimal import Decimal
 from io import StringIO
 
@@ -326,7 +326,7 @@ def build_contract_export_csv_bytes(filtered_queryset):
 
     buffer = StringIO()
     buffer.write('\ufeff')
-    writer = csv.writer(buffer, delimiter=';')
+    writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(build_contract_export_headers(variable_names))
     for contract in export_qs.iterator(chunk_size=500):
         writer.writerow(

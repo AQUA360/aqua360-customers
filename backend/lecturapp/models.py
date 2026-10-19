@@ -1,3 +1,5 @@
+import logging
+
 from django.db import models
 from django.contrib.auth.hashers import make_password, check_password
 from django.core.exceptions import ValidationError
@@ -5,6 +7,8 @@ import re
 import uuid
 from django.utils import timezone
 from datetime import timedelta
+
+logger = logging.getLogger(__name__)
 
 # Create your models here.
 
@@ -61,14 +65,12 @@ class ReadingOperator(models.Model):
         """Authenticate a user with username and password"""
         try:
             operator = cls.objects.get(username=username, is_active=True)
-            print(f"Operator: {operator}")
-            print(f"Password: {password}")
-            print(f"Operator password: {operator.password}")
-            print(f"Operator check password: {operator.check_password(password)}")
+            # Mai escriure al log la contrasenya ni el hash.
             if operator.check_password(password):
                 return operator
+            logger.info("Lecturapp: contrasenya incorrecta per a l'operari %s", operator.pk)
         except cls.DoesNotExist:
-            pass
+            logger.info("Lecturapp: intent d'autenticació amb un usuari inexistent o inactiu")
         return None
 
     def generate_token(self):

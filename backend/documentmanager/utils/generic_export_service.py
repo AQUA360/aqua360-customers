@@ -1,4 +1,4 @@
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import io
 from decimal import Decimal
 
@@ -111,7 +111,7 @@ def build_export_csv_bytes(queryset, columns):
     Retorna els bytes del CSV (amb BOM UTF-8) llest per pujar via upload_document.
     """
     buffer = io.StringIO()
-    writer = csv.writer(buffer, delimiter=";")
+    writer = SafeCsvWriter(buffer, delimiter=";")
     writer.writerow([header for _, header, _ in columns])
     # chunk_size explícit: obligatori quan el queryset porta `prefetch_related`
     # (p. ex. l'export de Meter), si no `iterator()` llença ValueError.

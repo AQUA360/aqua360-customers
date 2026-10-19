@@ -1,4 +1,5 @@
 import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import re
 from decimal import Decimal
 from html import escape
@@ -590,7 +591,7 @@ def export_reading_batch_task(self, reading_batch_id, file_format="csv"):
 
     if fmt == "csv":
         buffer = io.StringIO()
-        writer = csv.writer(buffer, delimiter=";")
+        writer = SafeCsvWriter(buffer, delimiter=";")
         writer.writerow(headers)
         writer.writerows(rows)
         csv_text = "\ufeff" + buffer.getvalue()
@@ -3734,7 +3735,7 @@ def export_readings_by_batch_csv_task(batch_id):
         # Add BOM for UTF-8
         buffer.write('\ufeff')
         
-        writer = csv.writer(buffer, delimiter=';')
+        writer = SafeCsvWriter(buffer, delimiter=';')
         
         # Headers
         headers = [
@@ -3917,17 +3918,14 @@ def fix_invoices_persons_task():
       pass
       Invoice.objects.bulk_update(updating_invoices, ['person'])
 
+  # Només ids: noms de clients i números de factura no s'escriuen al log.
   print(f"FIXED {counter - len(not_found_person) - len(person_multiple_times)} INVOICES")
-  for invoice in invoices[:5]:
-      print(invoice.serie_final)
   print(f"NOT FOUND PERSON: {len(not_found_person)}")
   for invoice in not_found_person:
-      print(f"Invoice {invoice.id}: {invoice.serie_final}, customer final: {invoice.customer_final}, customer token final: {invoice.customer_token_final}")
+      print(f"Invoice id {invoice.id}")
   print(f"MULTIPLE PERSONS FOUND: {len(person_multiple_times)}")
   for invoice in person_multiple_times[:5]:
-      print(invoice['invoice'].serie_final)
-      print(invoice['person'].name)
-      print(invoice['others'])
+      print(f"Invoice id {invoice['invoice'].id}: person id {invoice['person'].id}, others {[p.id for p in invoice['others']]}")
 
 
 @shared_task

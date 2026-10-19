@@ -2,7 +2,7 @@
 Export CSV amb la mateixa lògica que docs/sql/vw_contract_invoice_reading_summary.sql
 (sense usar la vista a la BD): contractes actius, última factura F, cadena de lectures.
 """
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 from datetime import date, datetime
 from decimal import Decimal
 from io import StringIO
@@ -191,7 +191,7 @@ def build_invoice_reading_summary_csv_bytes():
 
     buffer = StringIO()
     buffer.write('\ufeff')
-    writer = csv.writer(buffer, delimiter=';')
+    writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(invoice_reading_summary_csv_headers())
 
     for c in contracts_qs.iterator(chunk_size=500):
