@@ -3,7 +3,7 @@ from django.db import connection
 from django.core.management import call_command
 from django.test import TestCase
 from coredata.models import Address
-from service.models import SupplyPoint, SupplyPointStatus, Meter, Connection
+from service.models import SupplyPoint, SupplyPointStatus, Meter, MeterStatus, Connection
 from contract.models import Contract
 from service.utils.supply_point_service import (
     supply_point_activate,
@@ -34,7 +34,7 @@ class TestSupplyPointService(TestCase):
 
         try:
             # Load your fixtures
-            call_command('loaddata', 'coredata/fixtures/tests/all_data.json')
+            call_command('loaddata', 'initial_data/ca/coredata.StreetType.json', 'coredata/fixtures/tests/all_data.json')
             
         finally:
             # Reconnectar el signal

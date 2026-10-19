@@ -47,7 +47,12 @@ class ContractUnitTest(TestCase):
 
         try:
             # Load your fixtures
-            call_command('loaddata', 'coredata/fixtures/tests/all_data.json')
+            call_command('loaddata', 'initial_data/ca/coredata.StreetType.json', 'coredata/fixtures/tests/all_data.json')
+            # El fixture és d'abans que crear un contracte necessités l'estat actiu del comptador.
+            ConfigProject.objects.get_or_create(
+                token='meter_status_active_token',
+                defaults={'name': 'Estat del comptador actiu', 'value': '1'},
+            )
             
         finally:
             # Reconnectar tots els signals
