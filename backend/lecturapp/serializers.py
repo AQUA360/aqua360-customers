@@ -12,6 +12,22 @@ from service.serializers.route_serializer import RouteZoneSerializer
 from statistics.models import ContractConsumption
 from .models import ReadingOperator
 
+
+def _reading_mode_flags(context):
+    include_telecontrol = bool(context.get('include_telecontrol', False))
+    include_manual = context.get('include_manual', True)
+    return include_telecontrol, bool(include_manual)
+
+
+def _meter_included_for_reading_mode(meter, include_telecontrol, include_manual):
+    is_telecontrol = bool(getattr(meter, 'has_remote_reading', False)) and not bool(getattr(meter, 'force_manual_reading', False))
+    if not include_telecontrol:
+        return not is_telecontrol
+    if not include_manual:
+        return is_telecontrol
+    return True
+
+
 # App users and authentication
 
 class ReadingOperatorSerializer(serializers.ModelSerializer):
@@ -274,10 +290,15 @@ class RouteAppDetailSerializer(serializers.ModelSerializer):
         
     def get_positions(self, obj):
         # Pass context down to RoutePositionAppSerializer
-        exclude_telecontrol = not self.context.get('include_telecontrol', False)
+        include_telecontrol, include_manual = _reading_mode_flags(self.context)
         token_meter_status_no_meter = ConfigProject.objects.get(token='token_meter_status_no_meter').value
-        if exclude_telecontrol:
+        if not include_telecontrol:
             positions = obj.positions.filter(Q(properties__supply_points__meter__has_remote_reading=False) | Q(properties__supply_points__meter__force_manual_reading=True)).distinct()
+        elif not include_manual:
+            positions = obj.positions.filter(
+                properties__supply_points__meter__has_remote_reading=True,
+                properties__supply_points__meter__force_manual_reading=False,
+            ).distinct()
         else:
             positions = obj.positions.distinct()
 
@@ -288,12 +309,14 @@ class RouteAppDetailSerializer(serializers.ModelSerializer):
         positions_list = list(positions)
 
         def position_has_valid_meter(position):
-            """True if at least one meter (main) is neither no_meter (aforament) nor inactive (-1)."""
+            """True if at least one included meter is neither no_meter (aforament) nor inactive (-1)."""
             for prop in position.properties.all():
                 for sp in prop.supply_points.all():
-                    if sp.meter:
-                        if sp.meter.status and sp.meter.status.token not in [token_meter_status_no_meter, '-1']:
-                            return True
+                    meter = sp.meter
+                    if not meter or not meter.status or meter.status.token in [token_meter_status_no_meter, '-1']:
+                        continue
+                    if _meter_included_for_reading_mode(meter, include_telecontrol, include_manual):
+                        return True
             return False
 
         positions_filtered = [p for p in positions_list if position_has_valid_meter(p)]
@@ -316,9 +339,13 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
         
         # Build a set of meter IDs from the instance (excluding meters with status token_meter_status_no_meter)
         meter_ids = set()
-        exclude_telecontrol = not self.context.get('include_telecontrol', False)
-        if exclude_telecontrol:
+        include_telecontrol, include_manual = _reading_mode_flags(self.context)
+        if not include_telecontrol:
             supply_points = instance.supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
+        elif not include_manual:
+            supply_points = instance.supply_points.filter(
+                meter__has_remote_reading=True, meter__force_manual_reading=False
+            ).distinct()
         else:
             supply_points = instance.supply_points.distinct()
         
@@ -349,11 +376,15 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
         global_seen = self.context.get('seen_meter_ids', set())
         local_seen_meter_ids = set()  # Track unique meter IDs in this property to avoid duplicates
         
-        exclude_telecontrol = not self.context.get('include_telecontrol', False)
+        include_telecontrol, include_manual = _reading_mode_flags(self.context)
         token_meter_status_no_meter = ConfigProject.objects.get(token='token_meter_status_no_meter').value
         
-        if exclude_telecontrol:
+        if not include_telecontrol:
             supply_points = obj.supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
+        elif not include_manual:
+            supply_points = obj.supply_points.filter(
+                meter__has_remote_reading=True, meter__force_manual_reading=False
+            ).distinct()
         else:
             supply_points = obj.supply_points.distinct()
         
