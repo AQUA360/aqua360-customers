@@ -93,6 +93,9 @@ class StreetSerializer(serializers.ModelSerializer):
             data = data.copy()
             if 'city' in data and isinstance(data['city'], dict):
                 data['city'] = data['city'].get('id') or data['city'].get('code') or data['city'].get('pk')
+            # Ciutat escrita a mà (països estrangers o províncies 98/99): el carrer queda sense ciutat
+            if isinstance(data.get('city'), str) and not data['city'].isdigit():
+                data.pop('city')
                 
         return super().to_internal_value(data)
 
@@ -346,20 +349,22 @@ class AddressSerializer(serializers.ModelSerializer):
             # Normalitzem per evitar duplicats per espais o NULL vs ''
             street_name = street_data.get('name', '').strip()
             street_name_2 = street_data.get('name_2') or ''
+            # Les ciutats escrites a mà no són una City: el carrer queda sense ciutat
+            street_city = validated_data.get('city') if isinstance(validated_data.get('city'), City) else None
 
             try:
                 street, created_street = Street.objects.get_or_create(
                     type=street_type,
                     name=street_name,
                     name_2=street_name_2,
-                    city=validated_data.get('city')
+                    city=street_city
                 )
             except:
                 street = Street.objects.filter(
                     type=street_type,
                     name=street_name,
                     name_2=street_name_2,
-                    city=validated_data.get('city')
+                    city=street_city
                 ).first()
 
         street_number = None
@@ -450,20 +455,22 @@ class AddressSerializer(serializers.ModelSerializer):
                 # Normalitzem per evitar duplicats per espais o NULL vs ''
                 street_name = street_data.get('name', '').strip()
                 street_name_2 = street_data.get('name_2') or ''
+                # Les ciutats escrites a mà no són una City: el carrer queda sense ciutat
+                street_city = validated_data.get('city') if isinstance(validated_data.get('city'), City) else None
 
                 try:
                     street, created_street = Street.objects.get_or_create(
                         type=street_type,
                         name=street_name,
                         name_2=street_name_2,
-                        city=validated_data.get('city')
+                        city=street_city
                     )
                 except:
                     street = Street.objects.filter(
                         type=street_type,
                         name=street_name,
                         name_2=street_name_2,
-                        city=validated_data.get('city')
+                        city=street_city
                     ).first()
                 instance.street = street
 

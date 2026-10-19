@@ -10,8 +10,8 @@ from coredata.aca_street_types import (
     code_from_street_name,
     code_from_token,
 )
-from coredata.models import StreetType
-from coredata.serializers import StreetSerializer, StreetTypeSerializer
+from coredata.models import City, Country, Province, StreetType
+from coredata.serializers import AddressSerializer, StreetSerializer, StreetTypeSerializer
 from coredata.street_types import resolve_street_type
 
 
@@ -130,6 +130,49 @@ class StreetTypeSerializerTests(ResolveStreetTypeTests):
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
         self.assertEqual(serializer.validated_data["type"].id, carrer.id)
+
+
+class ManualCityAddressTests(ResolveStreetTypeTests):
+    """Amb la ciutat escrita a mà (país estranger o províncies 98/99) el carrer nou
+    arriba amb `city` en text: abans era un 400 niat ({street: {city: [...]}})
+    i, sense aquest camp, un ValueError en crear el carrer amb una FK de text."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.spain = Country.objects.create(name="Espanya", iso_code="ES")
+        cls.france = Country.objects.create(name="França", iso_code="FR")
+        province = Province.objects.create(name="Girona", country=cls.spain)
+        cls.city = City.objects.create(name="Girona", token="tests-girona", province=province)
+
+    def _address(self, **extra):
+        return {
+            "postal_code": "00000",
+            "street_number": {"number_type": {"type": "N"}, "number_type_type": "N", "number": 7},
+            **extra,
+        }
+
+    def test_ciutat_manual_crea_el_carrer_sense_ciutat(self):
+        serializer = AddressSerializer(data=self._address(
+            country=self.france.id, city="Ciutat Estrangera",
+            street={"type_abbreviation": "CR", "name": "Rue Exemple", "city": "Ciutat Estrangera"},
+        ))
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        address = serializer.save()
+        self.assertEqual(address.city_name, "Ciutat Estrangera")
+        self.assertIsNone(address.city)
+        self.assertEqual(address.street.name, "Rue Exemple")
+        self.assertIsNone(address.street.city)
+
+    def test_ciutat_del_cataleg_es_desa_al_carrer(self):
+        serializer = AddressSerializer(data=self._address(
+            country=self.spain.id, province=self.city.province_id, city=self.city.id,
+            street={"type_abbreviation": "CR", "name": "Major", "city": self.city.id},
+        ))
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        address = serializer.save()
+        self.assertEqual(address.city, self.city)
+        self.assertEqual(address.street.city, self.city)
 
 
 class StreetTypeCatalogFixtureTests(TestCase):
