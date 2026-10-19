@@ -119,7 +119,6 @@ class ContractRequestSerializer(serializers.ModelSerializer):
         from .contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
         if instance.contract_termination_requests.all():
             representation['contract_termination_requests'] = ContractTerminationRequestMinimalSerializer(instance.contract_termination_requests.all(), many=True, context=self.context).data
-        print("person", instance.person)
         representation['person_full_name'] = f"{instance.person.name} {instance.person.surname}" if instance.person else None
         if instance.owner:
             representation['owner_full_name'] = f"{instance.owner.name} {instance.owner.surname}" if instance.owner else None

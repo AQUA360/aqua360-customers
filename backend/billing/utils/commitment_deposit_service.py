@@ -181,7 +181,6 @@ def add_wallet_payment(commitment_payment, user, is_paid, wallet_payment_date=No
             "payment_date": wallet_payment_date if wallet_payment_date else commitment_payment.payment_date,
             "due_date": commitment_payment.due_date if commitment_payment.is_guide else commitment_payment.payment_date,
         }
-        print("payment data: ", payment_data)
         payment = Payment.objects.create(**payment_data)
         if is_paid:
             payment.status = payment_pending

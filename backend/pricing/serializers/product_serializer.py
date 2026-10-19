@@ -45,7 +45,6 @@ class ProductSaveSerializer(TranslatableFieldMixin, serializers.ModelSerializer)
         fields = '__all__'
 
     def create(self, validated_data):
-        print(validated_data)
         if 'exploitation_id' in validated_data and validated_data['exploitation_id']:
             exploitation = Exploitation.objects.get(id=validated_data.pop('exploitation_id'))
             validated_data['exploitation'] = exploitation

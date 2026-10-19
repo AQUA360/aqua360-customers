@@ -84,7 +84,6 @@ class ContractManageMassivelyViewSet(APIView):
                         bonification._skip_variable = True
                     bonification.is_active = False
                     bonification.save()
-                    print(bonification, "contract: ", bonification.contract)
                     
             if product_ids:
                 products = Product.objects.filter(id__in=product_ids)

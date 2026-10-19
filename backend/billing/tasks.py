@@ -1490,10 +1490,6 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
     except Exception as e:
       print(f"Error creating reading document not found: {e}")
         
-    print("Last reading close: ", last_reading_close)
-    for reading in last_reading_close:
-        print(f"Reading: {reading.reading_date} - {reading.reading_value} - {reading.contract.token}")
-      
     for error in errors:  
         print(f"Error: {error}")
 
@@ -2956,7 +2952,6 @@ def assign_batches_to_invoices(billing_batch_ids):
                 for contract in supply_point.contracts.all():  # Multiple contracts
                   for invoice in contract.invoices.all():  # Invoices linked to contract
                     print("ASSIGN BATCH TO INVOICE:")
-                    print(invoice)
                     invoice.batch = batch  # Assign batch
                     invoice.save(update_fields=['batch'])  # Save efficiently
 
@@ -3931,7 +3926,6 @@ def fix_invoices_persons_task():
 @shared_task
 @billing_run_cache_scope()
 def process_selected_contracts_task(billing_id, contract_ids):
-    print(f"Start process_selected_contracts_task for billing={billing_id}, contracts={contract_ids}")
     try:
         billing = Billing.objects.get(id=billing_id)
     except Billing.DoesNotExist:
@@ -4137,7 +4131,6 @@ def process_selected_contracts_task(billing_id, contract_ids):
         invoice.billing = billing
         invoice.save()
 
-    print(f"Finished process_selected_contracts_task for billing={billing_id}")
 def process_next_queue_item():
   from billing.models import BillingQueue
   from django.utils import timezone

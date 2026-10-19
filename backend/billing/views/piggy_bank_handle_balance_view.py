@@ -25,10 +25,7 @@ class PiggyBankHandleBalanceViewSet(generics.ListAPIView):
             is_person = request.data.get('is_person', False)
             user = request.user
             
-            print("related_piggy_banks", related_piggy_banks)
             print("total_to_transfer", total_to_transfer)
-            print("is_person", is_person)
-            print("piggy_bank_id", piggy_bank_id)
             
             calculated_total_to_transfer = 0
             

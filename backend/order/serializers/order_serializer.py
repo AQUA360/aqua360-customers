@@ -151,7 +151,6 @@ class OrderSaveSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         mutable_data = data.copy()
         address_input = mutable_data.pop('address', None) or mutable_data.pop('address_id', None)
-        print("address_input", address_input)
         if address_input:
             if isinstance(address_input, dict):
                 addr_id = address_input.get('id')
@@ -168,7 +167,6 @@ class OrderSaveSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        print(validated_data)
         operators_data = validated_data.pop("operators", [])
 
         default_status = OrderStatus.objects.get(is_default=True)
@@ -325,7 +323,6 @@ class OrderSaveSerializer(serializers.ModelSerializer):
         operators_present = "operators" in self.initial_data
         operators_data = validated_data.pop("operators", [])
         print("-----update-----")
-        print(validated_data)
         order_closed_status_token = ConfigProject.objects.get(token="order_status_completed_token").value
         order_validate_status_token = ConfigProject.objects.get(token="for_validate_order_status_token").value
         order_status = validated_data.get("status", None)

@@ -195,7 +195,6 @@ class MeterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         print("CREATING")
-        print(validated_data)
         sub_meters_data = validated_data.pop('sub_meters', [])
         supply_points_data = validated_data.pop('supply_points', [])
         street_data = validated_data.pop('address_street', None)

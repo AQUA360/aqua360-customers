@@ -57,7 +57,6 @@ except ImportError:
 
 def get_payment_SEPA_data(payments, payment_data):
     print("\n\nGET PAYMENT SEPA DATA (DEPRECATED)")
-    print(payments)
     try:
         lines = DocumentSEPALine.objects.filter(payments__in=payments)
         document = DocumentSEPA.objects.filter(lines__in=lines).first()
@@ -98,7 +97,6 @@ def get_payment_SEPA_data(payments, payment_data):
 
     for payment_id in payments:
         print("\n\nPAYMENT ID")
-        print(payment_id)
         payment = Payment.objects.get(id=payment_id)
         address = ""
         location = ""

@@ -1007,7 +1007,6 @@ def check_unusual_consumption(reading, calc_value):
     if last_val is None:
       continue
     diff_last = percent_difference(last_val, calc_value)
-    print(f"diff between {last_val} and {calc_value} is {diff_last}")
     if diff_last is not None and diff_last < 50:
       return False
   

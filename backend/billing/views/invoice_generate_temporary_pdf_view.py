@@ -29,7 +29,6 @@ class InvoiceGenerateTemporaryPDFView(views.APIView):
                 return Response({"error": "No s'ha pogut generar el PDF. El fitxer no s'ha guardat correctament."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Get the full URL including host
-            print(new_invoice.invoice_file_template)
             try:
                 file_url = request.build_absolute_uri(new_invoice.invoice_file_template.url)
             except ValueError as e:

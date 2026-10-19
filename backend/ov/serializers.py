@@ -615,9 +615,6 @@ class InvoicePaidSerializer(serializers.Serializer):
         return data
 
     def update(self, validated_data):
-        print(validated_data)
-        print(validated_data["invoice_token"])
-        print(validated_data["contract_token"])
         print("--------------------------------")
         #invoice type invoice to avoid getting budgets
         invoice_type_invoice_token = ConfigProject.objects.get(token="invoice_type_invoice_token").value
@@ -626,7 +623,6 @@ class InvoicePaidSerializer(serializers.Serializer):
             contract__token=validated_data["contract_token"],
             type_final=invoice_type_invoice_token
         ).first()
-        print(invoice)
         print("--------------------------------")
         if not invoice:
             raise serializers.ValidationError(

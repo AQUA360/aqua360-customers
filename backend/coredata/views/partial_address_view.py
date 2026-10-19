@@ -17,7 +17,6 @@ class PartialAddressViewSet(APIView):
   def post(self, request, *args, **kwargs):
     # Extract data for each child model from the request
     
-    print(request.data)
     
     street_data = request.data.get('address_street', {})
     street_number_data = request.data.get('address_street_number', {})

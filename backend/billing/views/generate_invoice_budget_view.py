@@ -141,7 +141,6 @@ class GenerateInvoiceBudgetView(APIView):
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
                 invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester)
             print("invoice")
-            print(invoice)
         
         elif entity == "connection_request":
             connection_request = ConnectionRequest.objects.get(id=object_id)
@@ -163,7 +162,6 @@ class GenerateInvoiceBudgetView(APIView):
                 # invoice = invoice_connection_generate(None, object_id, 'SOL·LICITUD D\'ESCOMESA', payment_type, payment_bank, company_bank, is_budget, electronic_data)
                 invoice = generate_empty_invoice(None, connection_request, connection_request.person, 'SOL·LICITUD D\'ESCOMESA', payment_data, connection_request.exploitation)
             print("invoice")
-            print(invoice)
         
         elif entity == "invoice":
             if is_budget:
@@ -446,7 +444,6 @@ class GenerateInvoiceBudgetView(APIView):
             print("updating payment budget")
             payment_type_instance = PaymentType.objects.get(id = payment_type)
             print("payment type")
-            print(payment_type_instance)
             payment_bank_instance = PersonBank.objects.get(id = payment_bank) if payment_bank else None
             payment_comp_bank_instance = CompanyBank.objects.get(id = company_bank) if company_bank else None
             iban = None

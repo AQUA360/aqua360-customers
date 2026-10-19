@@ -27,7 +27,6 @@ class ExcludeBillingView(views.APIView):
     queryset = Billing.objects.all().order_by('-created_at')
     def post(self, request, *args, **kwargs):
         try:
-            print(request.data)
             billing_id = request.data.get('billing_id')
             reading_id = request.data.get('reading_id')
             

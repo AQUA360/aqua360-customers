@@ -32,7 +32,6 @@ class CompanyBankSerializer(serializers.ModelSerializer):
         
     def create(self, validated_data):
         print("create bank company")
-        print(validated_data)
         
         country_id = validated_data.pop('country_id', None)
         bank_id = validated_data.pop('bank_id', None)
@@ -64,7 +63,6 @@ class CompanyBankSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         print("update bank company")
-        print(validated_data)
         
         country_id = validated_data.pop('country_id', None)
         bank_id = validated_data.pop('bank_id', None)

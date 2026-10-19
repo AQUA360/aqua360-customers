@@ -25,7 +25,6 @@ class FraudReportSaveSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         print("creating fraud report")
-        print(validated_data)
         now = datetime.date.today().strftime('%Y%m%d')
         fraud = validated_data.get('fraud')
         fraud_reports = FraudReport.objects.filter(fraud=fraud).count()

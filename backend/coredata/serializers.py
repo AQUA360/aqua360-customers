@@ -1128,7 +1128,6 @@ class PersonSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         print("\n\ncreating person")
-        print(validated_data)
         addresses_data = validated_data.pop('addresses') if 'addresses' in validated_data else []
         contacts_data = validated_data.pop('contacts') if 'contacts' in validated_data else []
         banks_data = validated_data.pop('banks') if 'banks' in validated_data else []

@@ -76,7 +76,6 @@ class AdjustmentSaveSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def update(self, instance, validated_data):
         print('in update')
-        print(validated_data)
         operation = validated_data.pop('operation_token', None)
         variable_calculation = validated_data.pop('variable_calculation_token', None)
         line_item_type_id = validated_data.pop('line_item_type_id', None)

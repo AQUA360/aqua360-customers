@@ -28,7 +28,6 @@ class InvoiceContractGenerateView(views.APIView):
             
             is_return = request.data.get('is_return')
             print("PAYMENT ID")
-            print(payment_bank)
             invoice_type_token = request.data.get('invoice_type_token')
             company_id = request.data.get('company_id')
             category_id = request.data.get('category_id')
