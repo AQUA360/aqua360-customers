@@ -327,7 +327,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
     generate_order_time_summary, generate_bails_report, generate_mini_register_billing_summary, generate_sii_report
   )
   from statistics.utils.report_billing_service import (
-    get_report_billing_summary, generate_aca_summary_report, generate_detailed_billing_summary,
+    get_report_billing_summary, generate_billing_summary_by_rate_report, generate_aca_summary_report, generate_detailed_billing_summary,
     generate_billing_summary_by_supply_type, generate_billing_summary_by_rates, generate_billing_taxes_summary,
     generate_billing_taxes_detailed_summary, generate_billing_detailed_consumption_summary, generate_aca_summary_report_second_ver,
     generate_report_billing_total_by_person, generate_report_billing_347,
@@ -367,6 +367,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
     'aqua_remittance_report': generate_aqua_remittance_report,
     'register_billing_summary': generate_register_billing_summary,
     'get_report_billing_summary': get_report_billing_summary,
+    'billing_summary_by_rate_report': generate_billing_summary_by_rate_report,
     'aca_summary_report': generate_aca_summary_report,
     'aca_summary_report_second_ver': generate_aca_summary_report_second_ver,
     'bails_report': generate_bails_report,
