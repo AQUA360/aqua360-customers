@@ -1957,6 +1957,8 @@ export default {
     sepa_xml_only: 'Solo se aceptan ficheros XML',
     sepa_file_valid: 'El fichero SEPA es válido',
     sepa_file_invalid: 'El fichero SEPA no es válido',
+    trf_file_valid: 'El fichero de transferencias es válido',
+    trf_file_invalid: 'El fichero de transferencias no es válido',
     short_mng_trf: 'Creación TRF',
     send_sepa: 'Envío SEPA',
     sepa_not_sent_yet: 'El fichero SEPA no ha sido enviado todavía.',
