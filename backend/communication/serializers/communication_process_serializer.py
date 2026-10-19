@@ -8,11 +8,12 @@ from communication.serializers.message_serializer import MessageSerializer
 from communication.serializers.message_template_serializer import MessageTemplateSerializer
 from communication.serializers.value_objects_serializer import CommunicationProcessStatusSerializer, CommunicationUseTypeSerializer
 from communication.tasks import generate_claim_document_pdf_task, generate_communication_files, process_communication_creation_task
-from coredata.models import ConfigProject
+from coredata.models import ConfigProject, Person
 from coredata.utils.name_utils import generate_token
 from logger.models import LogCommunicationProcessStatusChange
 from service.models import Company, CompanyConfig, CompanyConfigEmail
-from ..models import Communication, CommunicationProcessObservation, CommunicationProcessStatus, CommunicationStatus, CommunicationProcess, CommunicationUseType, MessageTemplate, MessageType, Message, MessageTypeTemplate
+from contract.models import Contract
+from ..models import Communication, CommunicationProcessExclusion, CommunicationProcessObservation, CommunicationProcessStatus, CommunicationStatus, CommunicationProcess, CommunicationUseType, MessageTemplate, MessageType, Message, MessageTypeTemplate
 
 class CommunicationProcessObservationSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(required=False, allow_null=True)
@@ -102,6 +103,20 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
         data['whatsapp_coms'] = instance.communications.filter(is_active=True, types__token='whatsapp').count()
         data['email_coms'] = instance.communications.filter(is_active=True, types__token='email').count()
         data['letter_coms'] = instance.communications.filter(is_active=True, types__token='letter').count()
+        data['exclusions'] = [
+            {
+                'id': exclusion.id,
+                'person': {
+                    'id': exclusion.person.id,
+                    'token': exclusion.person.token,
+                    'full_name': f"{exclusion.person.name or ''} {exclusion.person.surname or ''}".strip(),
+                } if exclusion.person else None,
+                'person_type': exclusion.person_type,
+                'contracts': [{'id': contract.id, 'token': contract.token} for contract in exclusion.contracts.all()],
+                'reasons': exclusion.reasons,
+            }
+            for exclusion in instance.exclusions.select_related('person').prefetch_related('contracts').order_by('id')
+        ]
         
         from billing.models import Billing
         billing = Billing.objects.filter(communication_process=instance).first()
@@ -163,6 +178,28 @@ class CommunicationProcessListSerializer(serializers.ModelSerializer):
         if obj.readings.exists():
             return obj.readings.first().supply_point.connection.exploitation.name
         return None
+def save_process_exclusions(process, excluded_persons):
+    """Desa (substituint les anteriors) les persones que queden fora del procés."""
+    def _id(value):
+        return value.get('id') if isinstance(value, dict) else value
+
+    process.exclusions.all().delete()
+    person_ids = {_id(item) for item in excluded_persons if _id(item) is not None}
+    existing_person_ids = set(Person.objects.filter(id__in=person_ids).values_list('id', flat=True))
+    for item in excluded_persons:
+        person_id = _id(item)
+        if person_id not in existing_person_ids:
+            continue
+        exclusion = CommunicationProcessExclusion.objects.create(
+            process=process,
+            person_id=person_id,
+            person_type=item.get('person_type') if isinstance(item, dict) else None,
+            reasons=list(item.get('reasons') or []) if isinstance(item, dict) else [],
+        )
+        contract_ids = [_id(contract) for contract in (item.get('contracts') or [] if isinstance(item, dict) else [])]
+        if contract_ids:
+            exclusion.contracts.set(Contract.objects.filter(id__in=contract_ids))
+
 class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
     persons = serializers.ListField(write_only=True, required=False, allow_null=True)
     fixed_data = serializers.CharField(write_only=True, required=False, allow_null=True)
@@ -185,6 +222,9 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
     # Per defecte `True`, per no canviar el comportament dels clients que no enviïn el camp.
     attach_claim_documents = serializers.BooleanField(write_only=True, required=False, allow_null=True)
     og_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    # Destinataris que queden fora del procés, amb els motius ({id, person_type,
+    # contracts, reasons}). El wizard l'envia només al primer lot.
+    excluded_persons = serializers.ListField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = CommunicationProcess
@@ -193,6 +233,7 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         persons = validated_data.pop('persons', None)
+        excluded_persons = validated_data.pop('excluded_persons', None)
         
         attach_letter = validated_data.pop('attach_letter', False)
         message_types_ids = validated_data.pop('message_types_ids', None)
@@ -341,6 +382,8 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
         instance.save()
         if supply_cut_ids:
             instance.supply_cuts.set(supply_cut_ids)
+        if excluded_persons is not None:
+            save_process_exclusions(instance, excluded_persons)
         
         if comm_ids:
             communications = Communication.objects.filter(id__in=comm_ids)

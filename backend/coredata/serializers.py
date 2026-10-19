@@ -11,6 +11,7 @@ from .models import CallRegister, ConfigProject, Address, Person, PersonAddress,
 from django.apps import apps
 from .street_types import resolve_street_type
 from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
+from .utils.phone_utils import is_mobile_phone
 
 
 
@@ -809,11 +810,13 @@ class PersonCommunicationSerializer(serializers.ModelSerializer):
             phones = instance.contacts.filter(is_active=True, contract_contact_sms__id__in=instance.contract_ids).values_list('phone', flat=True).distinct()
         else:
             phones = instance.contacts.filter(is_active=True).values_list('phone', flat=True).distinct()
+        # Només els mòbils: un fix no pot rebre SMS.
+        phones = [phone for phone in phones if is_mobile_phone(phone)]
         if phones:
             return ','.join(phones)
         else:
             return None
-    
+
     def get_address(self, instance):
         if instance.contract_ids and len(instance.contract_ids) > 0:
             addresses = instance.addresses.filter(is_active=True, contracts_contact__id__in=instance.contract_ids).distinct()

@@ -14,6 +14,7 @@ from contract.serializers.contract_tenant_change_serializer import ContractTenan
 from contract.serializers.contract_minimal_serializer import ContractMinimalSerializer
 from contract.serializers.piggy_bank_serializer import PiggyBankSerializer
 from coredata.models import Person, PersonAddress, PersonContact, ConfigProject
+from coredata.utils.phone_utils import non_mobile_sms_phones
 from documentmanager.serializers import DocumentSerializer
 from contract.management.commands.fill_contract_use_aca import fill_contract_use_aca
 from notification.models import CalendarTask
@@ -406,6 +407,13 @@ class ContractSerializer(serializers.ModelSerializer):
                 _("El nombre de persones a l'habitatge ha de ser com a mínim 1. "
                   "Si cal reflectir un cas especial, afegiu-ho com a variable del contracte.")
             )
+        return value
+
+    def validate_sms_phone_ids(self, value):
+        current_ids = self.instance.person_contact_sms.values_list('id', flat=True) if self.instance else []
+        phones = non_mobile_sms_phones(value, current_ids)
+        if phones:
+            raise serializers.ValidationError(_("Aquests telèfons no són mòbils i no poden rebre SMS: %(phones)s") % {'phones': ', '.join(phones)})
         return value
 
     def update(self, instance, validated_data):

@@ -417,8 +417,16 @@ def _supply_cut_values(person, communication):
     def joined(getter):
         return SEP.join(str(value) for value in (getter(cut) for cut in cuts) if value)
 
+    def local(value):
+        # Les dates del tall són datetime amb zona (UTC a la BD): es mostren en
+        # hora local, o un tall a les 00:30 sortiria amb la data del dia abans.
+        return timezone.localtime(value) if timezone.is_aware(value) else value
+
     def date(value):
-        return value.strftime('%d/%m/%Y') if value else ''
+        return local(value).strftime('%d/%m/%Y') if value else ''
+
+    def hour(value):
+        return local(value).strftime('%H:%M') if value else ''
 
     return {
         'supplycut.token': joined(lambda cut: cut.token),
@@ -426,6 +434,11 @@ def _supply_cut_values(person, communication):
         'supplycut.status': joined(lambda cut: cut.status.name if cut.status else ''),
         'supplycut.date_start': joined(lambda cut: date(cut.date_start)),
         'supplycut.date_end': joined(lambda cut: date(cut.date_end)),
+        # Hora prevista d'inici i fi. Noms sense prefix comú amb date_start/date_end:
+        # refactor_text substitueix per ordre i '%supplycut.date_start' trencaria
+        # una variable '%supplycut.date_start_time'.
+        'supplycut.time_start': joined(lambda cut: hour(cut.date_start)),
+        'supplycut.time_end': joined(lambda cut: hour(cut.date_end)),
         'supplycut.exec_start': joined(lambda cut: date(cut.exec_start)),
         'supplycut.exec_end': joined(lambda cut: date(cut.exec_end)),
         # Full address per affected supply point: for a non-payment cut the exact

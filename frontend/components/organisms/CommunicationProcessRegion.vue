@@ -16,6 +16,7 @@ import BillingRegion from './BillingRegion.vue';
 import ClaimRequestRegion from './ClaimRequestRegion.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import { usePermissions } from '~/middleware/permission';
+import { exclusionReasonLabel } from '~/utils/communication-exclusion';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -491,6 +492,14 @@ onMounted(async () => {
             {{ $t("common.general_messages") }}
           </a>
         </li>
+        <li v-if="data.exclusions?.length > 0" class="me-2">
+          <a href="#tab_exclusions" @click.prevent="setActiveTab('exclusions')"
+            :class="{ 'text-sky-600 border-sky-600': activeTab === 'exclusions', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'exclusions' }"
+            aria-current="page">
+            <Icon name="fa6-solid:user-slash" class="display-inline mr-2" />
+            {{ $t('customer_service_block.unreachable_persons') }} ({{ data.exclusions.length }})
+          </a>
+        </li>
         <li class="me-2">
           <a href="#tab_history" @click.prevent="setActiveTab('history')"
             :class="{ 'text-sky-600 border-sky-600': activeTab === 'history', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'history' }"
@@ -532,6 +541,29 @@ onMounted(async () => {
           <CommunicationMiniDetail :id="props.id" :reload="reloadChild" @update:count="updateCommunicationCount"
             @show-detail="showDetail" :max_height="'calc(100vh - 380px)'"
             :isSubRegion="data.status?.token == processing_status_token" />
+        </div>
+      </section>
+
+      <!-- Qui ha quedat fora del procés i per què, per avisar-los per un altre canal -->
+      <section v-if="data.exclusions?.length > 0" v-show="activeTab === 'exclusions'" role="tabpanel" id="tab_exclusions"
+        class="bg-white antialiased p-1 h-[50vh] overflow-y-auto">
+        <div class="grid grid-cols-[100px,1fr,150px,1fr] gap-2 px-2 py-2 font-semibold text-sm">
+          <span class="col-span-2">{{ $t('customer_service_block.recipient') }}</span>
+          <span>{{ $t('contracts') }}</span>
+          <span>{{ $t('customer_service_block.exclusion_reason') }}</span>
+        </div>
+        <div v-for="(exclusion, index) in data.exclusions" :key="`exclusion-${exclusion.id}`"
+          class="grid grid-cols-[100px,1fr,150px,1fr] gap-2 px-2 py-2 items-center text-sm"
+          :class="index % 2 === 0 ? 'bg-sky-50' : 'bg-white'">
+          <span>{{ exclusion.person?.token || '-' }}</span>
+          <span class="truncate">{{ exclusion.person?.full_name || '-' }}</span>
+          <span class="truncate">{{ exclusion.contracts.map(c => c.token).join(', ') }}</span>
+          <span class="flex flex-wrap gap-1">
+            <span v-for="reason in exclusion.reasons" :key="reason"
+              class="px-2 py-0.5 text-xs rounded-full bg-red-50 text-red-700 border border-red-200">
+              {{ exclusionReasonLabel($t, reason) }}
+            </span>
+          </span>
         </div>
       </section>
 

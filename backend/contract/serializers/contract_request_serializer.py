@@ -5,7 +5,9 @@ from claimrequest.models import VulnerabilityRequest
 from contract.serializers.bonification_serializer import BonificationSerializer
 from contract.serializers.contract_clause_serializer import ContractClauseSerializer
 from contract.serializers.contract_request_representative_serializer import ContractRequestRepresentativeSerializer
+from django.utils.translation import gettext_lazy as _
 from coredata.models import PersonCNAE, PersonContact
+from coredata.utils.phone_utils import non_mobile_sms_phones
 from coredata.serializers import PersonAddressSerializer, PersonCNAESerializer, PersonContactSerializer, PersonSerializer
 from auth.serializers import UserMinimalSerializer
 from documentmanager.serializers import DocumentSerializer
@@ -401,6 +403,13 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
 
         return instance
     
+    def validate_sms_phones(self, value):
+        current_ids = self.instance.person_contact_sms.values_list('id', flat=True) if self.instance else []
+        phones = non_mobile_sms_phones(value, current_ids)
+        if phones:
+            raise serializers.ValidationError(_("Aquests telèfons no són mòbils i no poden rebre SMS: %(phones)s") % {'phones': ', '.join(phones)})
+        return value
+
     def validate(self, data):
         if not self.instance and 'token' not in data:
             raise serializers.ValidationError({"token": "This field is required."})

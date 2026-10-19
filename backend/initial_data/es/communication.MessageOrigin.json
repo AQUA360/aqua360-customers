@@ -34,5 +34,14 @@
             "name": "Otros",
             "position": 4
         }
+    },
+    {
+        "model": "communication.messageorigin",
+        "pk": 5,
+        "fields": {
+            "token": "supplycut",
+            "name": "Corte de suministro",
+            "position": 5
+        }
     }
 ]
