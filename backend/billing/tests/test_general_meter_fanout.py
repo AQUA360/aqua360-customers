@@ -245,6 +245,37 @@ class TestGeneralMeterFanout(TestCase):
             # 300 / 2 billable targets (not / 3 SPs)
             self.assertEqual(divided, 150.0)
 
+    def test_submeter_subtraction_preserves_close_reading_consumption(self):
+        import billing.utils.invoice_service as invoice_service_mod
+        invoice_service_mod._active_supply_point_status = None
+
+        reading = self._create_canonical_reading(100)
+        close = reading.previous_reading
+        close.is_close = True
+        close.real_consumption = 20
+        close.save()
+
+        child_meter = Meter.objects.create(code='SUB-CLOSE', status=self.meter_status_active)
+        self.meter.sub_meters.add(child_meter)
+        child_sp = SupplyPoint.objects.create(
+            token='SP-SUB-CLOSE', meter=child_meter, status=self.sp_status_active,
+        )
+        Reading.objects.create(
+            supply_point=child_sp,
+            meter=child_meter,
+            reading_date=reading.reading_date,
+            reading_value=30,
+            calculated_value=30,
+            batch=self.reading_batch,
+            billing=self.billing,
+        )
+
+        consumption, _ = recalc_consumption_gen_meter(
+            reading, 100, self.supply_points[0],
+        )
+
+        self.assertEqual(consumption, 90.0)  # 100 + 20 (close) - 30 (child).
+
     def test_fanout_is_idempotent(self):
         canonical = self._create_canonical_reading(300)
         first = fanout_general_meter_readings(self.billing)
