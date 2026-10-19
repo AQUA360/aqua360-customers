@@ -18,7 +18,7 @@ export function usePermissions() {
         await fetchPermissions();
     });
 
-    return { permissions, loading };
+    return { permissions, loading, fetchPermissions };
 }
 
 export const checkPermission = async (service) => {
