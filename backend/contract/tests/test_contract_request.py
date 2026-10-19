@@ -46,7 +46,7 @@ class ContractRequestFinalizeUnitTest(TestCase):
 
         try:
             # Load your fixtures
-            call_command('loaddata', 'coredata/fixtures/tests/all_data.json')
+            call_command('loaddata', 'initial_data/ca/coredata.StreetType.json', 'coredata/fixtures/tests/all_data.json')
             
         finally:
             # Reconnectar tots els signals

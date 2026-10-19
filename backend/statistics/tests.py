@@ -3,8 +3,9 @@ from decimal import Decimal
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
-from billing.models import Invoice
+from billing.models import Invoice, Payment, PaymentStatus
 from contract.models import Contract
+from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
 from coredata.models import ConfigProject
 from pricing.models import ProductOrigin
 from service.models import Exploitation
@@ -468,3 +469,34 @@ class HighAmountWaterInvoicesTests(TestCase):
         self.assertTrue(is_high_amount_for_period(Decimal('95'), [self.contract], 2026, 10))
         cache = TotalAmountAvgCache([self.contract.id])
         self.assertEqual(cache.seasonal_avg(self.contract.id, 2026, 10), 20.0)
+
+
+class ContractDebtViewTests(TestCase):
+    """vw_contract_debt: els pagaments "En saldo" estan cobrats amb el saldo i no són deute."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.contract = Contract.objects.bulk_create([Contract(
+            token='DEBT-VIEW', registration_date=timezone.now().date(), is_active=True,
+        )])[0]
+        cls.invoice = Invoice.objects.bulk_create([Invoice(contract=cls.contract, total_final=Decimal('50'))])[0]
+
+    def _payment(self, status_token, amount):
+        status, _ = PaymentStatus.objects.get_or_create(token=status_token, defaults={'name': status_token})
+        # bulk_create: sense els signals de Payment, que necessiten tot el ConfigProject.
+        Payment.objects.bulk_create([Payment(invoice=self.invoice, status=status, amount=Decimal(amount))])
+
+    def _debt(self):
+        return contract_debt_amounts_by_contract_id([self.contract.id]).get(self.contract.id, Decimal('0'))
+
+    def test_balance_payment_is_not_debt(self):
+        self._payment('5', '12.02')
+
+        self.assertEqual(self._debt(), Decimal('0'))
+
+    def test_balance_payment_does_not_hide_unpaid_payments(self):
+        self._payment('5', '12.02')
+        self._payment('-1', '30.00')
+        self._payment('0', '20.00')
+
+        self.assertEqual(self._debt(), Decimal('30.00'))
