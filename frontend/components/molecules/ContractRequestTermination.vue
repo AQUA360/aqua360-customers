@@ -168,7 +168,7 @@ const startEditInitialReading = () => {
 const cancelEditInitialReading = () => {
   request_reading.value = last_reading.value?.reading_value ?? request_reading.value;
   editingInitialReading.value = false;
-  //resetInitialSmartMetering();
+  resetInitialSmartMetering();
 }
 
 const fetchingSmartMetering = ref({});
