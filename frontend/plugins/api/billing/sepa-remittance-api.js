@@ -216,7 +216,12 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
-    // type: 'sepa' (rebuts, pain.008) o 'trf' (transferències, pain.001)
+    /**
+     * Envia un XML a validar i retorna el resultat, també si la validació respon amb 400.
+     * @param {File} file Fitxer XML que es vol validar.
+     * @param {'sepa'|'trf'} [type='sepa'] Rebuts (pain.008) o transferències (pain.001).
+     * @returns {Promise<object>} Resultat de validació amb valid, errors i error.
+     */
     const validateFile = async (file, type = 'sepa') => {
       const apiUrl = `${apiHost}/billing/sepa-validate/`;
       const formData = new FormData();

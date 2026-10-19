@@ -17,6 +17,7 @@ class SepaXsdValidateView(APIView):
     queryset = PaymentRemittance.objects.all()
 
     def post(self, request, *args, **kwargs):
+        """Valida el fitxer amb l'XSD del tipus indicat i retorna 200 o 400 segons el resultat."""
         uploaded = request.FILES.get('file') or request.data.get('file')
         if not uploaded:
             return Response(
