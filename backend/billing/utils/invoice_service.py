@@ -2221,6 +2221,14 @@ def invoice_contract_termination_generate(
     bill_termination_requester=False,
     company_bank=None
 ):
+    """Create and return a termination invoice or budget from closing readings.
+
+    Bill the linked request's holder when supplied unless the termination
+    requester is explicitly billed. Resolve payment accounts from that billing
+    source and dialog overrides, discarding the old contract's bank when the
+    linked request has a different one. Derive payer details from the selected
+    bank account, falling back to the customer when no account is available.
+    """
     # print("creating invoice from connection request")
     #TODO REFACTOR SINCE THERE COULD BE MORE THAN ONE SP
     exploitation = None

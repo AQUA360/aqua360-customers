@@ -34,6 +34,12 @@ class GenerateInvoiceBudgetView(APIView):
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
+        """Generate a budget or convert one to an invoice for the requested entity.
+
+        For terminations, prioritize the active linked request that bills the
+        closing reading. Apply the requested payment dates and return the
+        serialized document, or an error response if generation produces none.
+        """
         
         entity = request.data.get('entity', None)
         object_id = request.data.get('object_id', None)

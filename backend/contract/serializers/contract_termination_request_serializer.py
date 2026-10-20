@@ -90,6 +90,11 @@ class ContractTerminationRequestSerializer(serializers.ModelSerializer):
         
     
     def to_representation(self, instance):
+        """Return nested termination details and the linked billing request's payment.
+
+        Set billing_contract_request_payment to None when no active linked
+        request bills the closing reading or that request has no payment.
+        """
         representation = super().to_representation(instance)
         ContractSerializer = import_string('contract.serializers.contract_serializer.ContractSerializer')
         
