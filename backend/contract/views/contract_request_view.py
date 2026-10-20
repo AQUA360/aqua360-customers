@@ -224,8 +224,10 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
                 force=str(request.data.get('force', '')).lower() in ('true', '1', 'yes'),
             )
             return Response(result, status=status.HTTP_201_CREATED)
-        except SigningApiError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SigningApiError:
+            # El detall (resposta del servei extern) queda al log, no al client.
+            logger.exception("Error del servei de signatura")
+            return Response({"error": "No s'ha pogut completar l'operació amb el servei de signatura."}, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=True, methods=['get'], url_path='validate-data')
     def validate_data(self, request, pk=None):

@@ -64,8 +64,11 @@ class InvoiceReportPDFDownloadViewSet(APIView):
     return JsonResponse({"pdf_url": file_url, "document_id": document_id})
 
 def resolve_invoice_template_name(base_name, lang):
+    templates_dir = os.path.join(os.path.abspath(settings.BASE_DIR), 'billing', 'templates')
     for candidate in build_template_candidates(base_name, lang=lang):
-        if os.path.exists(os.path.join(settings.BASE_DIR, 'billing', 'templates', candidate)):
+        # L'idioma ve del contracte: cap variant pot sortir de la carpeta de plantilles.
+        candidate_path = os.path.normpath(os.path.join(templates_dir, candidate))
+        if candidate_path.startswith(templates_dir + os.sep) and os.path.exists(candidate_path):
             return candidate
     return base_name
 

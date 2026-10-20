@@ -22,10 +22,13 @@ def split_serie_final(value):
     amb `invoice_range_utils_personalized.split_serie_final` (veure el hook al
     final d'aquest modul)."""
     # Sense regex: '^(.*?)(\d+)$' es quadratica amb cadenes llargues de digits.
+    # Equivalent: \d son els caracters decimals Unicode i '.' no accepta salts de linia.
     text = str(value).strip()
-    prefix = text.rstrip('0123456789')
-    number = text[len(prefix):]
-    if not number:
+    end = len(text)
+    while end > 0 and text[end - 1].isdecimal():
+        end -= 1
+    prefix, number = text[:end], text[end:]
+    if not number or '\n' in prefix:
         return None, None
     return prefix, number
 

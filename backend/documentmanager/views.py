@@ -273,8 +273,10 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
             result = create_document_sign_session(
                 document_sign, callback_url=callback_url, force=force
             )
-        except SigningApiError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SigningApiError:
+            # El detall (resposta del servei extern) queda al log, no al client.
+            logger.exception("Error del servei de signatura")
+            return Response({"error": "No s'ha pogut completar l'operació amb el servei de signatura."}, status=status.HTTP_400_BAD_REQUEST)
 
         document_sign.refresh_from_db()
         serializer = self.get_serializer(document_sign, context={'request': request})
@@ -322,11 +324,12 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
 
         try:
             retrieve_signed_document(document_sign)
-        except SigningApiError as exc:
+        except SigningApiError:
+            logger.exception("Error del servei de signatura")
             document_sign.refresh_from_db()
             return Response(
                 {
-                    "error": str(exc),
+                    "error": "No s'ha pogut completar l'operació amb el servei de signatura.",
                     "status": document_sign.status,
                     "error_report": document_sign.error_report,
                 },

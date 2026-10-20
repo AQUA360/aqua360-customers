@@ -12,6 +12,10 @@ from statistics.permissions import ReportViewPermission
 from statistics.tasks import run_report_task, process_next_report_queue_item, apply_report_queue_action
 from customers.queue_utils import QueueTaskRevokeError
 from statistics.utils.report_filters import request_payload_as_dict, resolve_filter_labels
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class AvailableReportViewSet(viewsets.ModelViewSet):
@@ -237,9 +241,10 @@ class ReportQueueActionView(APIView):
 
         try:
             apply_report_queue_action(q_item, action_name)
-        except QueueTaskRevokeError as e:
+        except QueueTaskRevokeError:
+            logger.exception("No s'ha pogut aturar la tasca a Celery")
             return Response(
-                {"error": f"No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat. {e}"},
+                {"error": "No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         q_item.refresh_from_db()

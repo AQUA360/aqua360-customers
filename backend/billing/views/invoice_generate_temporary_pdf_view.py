@@ -34,8 +34,9 @@ class InvoiceGenerateTemporaryPDFView(views.APIView):
             # Get the full URL including host
             try:
                 file_url = request.build_absolute_uri(new_invoice.invoice_file_template.url)
-            except ValueError as e:
-                return Response({"error": f"No s'ha pogut obtenir l'URL del PDF: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except ValueError:
+                logger.exception("No s'ha pogut obtenir l'URL del PDF")
+                return Response({"error": "No s'ha pogut obtenir l'URL del PDF."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             return Response({"url": file_url}, status=status.HTTP_200_OK)
         

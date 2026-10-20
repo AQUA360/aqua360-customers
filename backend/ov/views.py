@@ -4,7 +4,6 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils.dateparse import parse_date
 import csv
-import re
 import zipfile
 import logging
 from io import BytesIO, StringIO
@@ -603,7 +602,11 @@ class ContractDetailByTokenOVView(RetrieveAPIView):
         return contract
 
 
-NIC_PATTERN = re.compile(r"\d+(?:/\d+){1,2}")
+def is_valid_nic(nic):
+    r"""Equivale a re.fullmatch(r"\d+(?:/\d+){1,2}", nic) sin regex: de 2 a 3
+    grupos de dígitos separados por «/» (CodeQL marca la regex como ReDoS)."""
+    parts = nic.split("/")
+    return 2 <= len(parts) <= 3 and all(part.isdecimal() for part in parts)
 
 
 class ContractByNicView(RetrieveAPIView):
@@ -630,7 +633,7 @@ class ContractByNicView(RetrieveAPIView):
 
     def get_object(self):
         nic = (self.kwargs.get("nic") or "").strip()
-        if not NIC_PATTERN.fullmatch(nic):
+        if not is_valid_nic(nic):
             raise ValidationError({"error": "Invalid NIC format"})
         contract = (
             self.queryset.filter(supply_point_default__token=nic)

@@ -197,9 +197,10 @@ class BillingQueueActionView(APIView):
 
         try:
             apply_billing_queue_action(q_item, action_name)
-        except QueueTaskRevokeError as e:
+        except QueueTaskRevokeError:
+            logger.exception("No s'ha pogut aturar la tasca a Celery")
             return Response(
-                {"error": f"No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat. {e}"},
+                {"error": "No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         q_item.refresh_from_db()
