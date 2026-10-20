@@ -48,7 +48,6 @@ def upload_to_ftp(file, entity, field, entity_id, entity_token, folder, document
     except ftplib.error_perm as e:
         print(f"Error checking for existing files: {e}") """            
                 
-    print(f"Uploading file to {remote_file_path}")
     ftp.storbinary(f'STOR {document_name}', file)
 
     ftp.quit()
@@ -72,14 +71,12 @@ def download_document_from_ftp(document):
 
     try:
         ftp.cwd(remote_folder)
-        print(f"Changing to directory: {remote_folder}")
 
         file_data = []
 
         def callback(data):
             file_data.append(data)
 
-        print(f"Downloading file: {document_name}")
         ftp.retrbinary(f'RETR {document_name}', callback)
 
         file_data = b''.join(file_data)

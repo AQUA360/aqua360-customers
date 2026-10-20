@@ -16,8 +16,6 @@ def download_document_from_alfresco(document):
     
     location = document.location
     folder_id = decode_token(location)
-    print("folder_id")
-    print(folder_id)
     
     folder = check_folder_exists_by_id(encoded_token, folder_id)
     if not folder:
@@ -204,7 +202,7 @@ def check_folder_exists_by_id(ticket, folder_id):
             # Folder does not exist
             return None
     else:
-        print(f"Error checking folder: {response.status_code} - {response.text}")
+        print(f"Error checking folder: {response.status_code}")
         return None
 
 def create_folder(ticket, folder, parent_folder='-my-', description=''):
@@ -341,7 +339,6 @@ def upload_versioned_document(
         return parent_folder
     else:
         print(f"Failed to upload versioned document. Status code: {response.status_code}")
-        print(f"Response text: {response.text}") 
         raise Exception(
             f"Failed to upload versioned document.  Status code: {response.status_code}, Response: {response.text}"
         )

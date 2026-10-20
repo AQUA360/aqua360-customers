@@ -3929,7 +3929,7 @@ def process_selected_contracts_task(billing_id, contract_ids):
     try:
         billing = Billing.objects.get(id=billing_id)
     except Billing.DoesNotExist:
-        print(f"Billing {billing_id} not found.")
+        print("process_selected_contracts_task: billing not found.")
         return
 
     fanout_general_meter_readings(billing)
@@ -4060,7 +4060,6 @@ def process_selected_contracts_task(billing_id, contract_ids):
         ).order_by('reading_date').distinct())
 
         if not contract_readings:
-            print(f"No active readings for contract {contract_id} in billing {billing_id}")
             continue
 
         # Deduplicate readings

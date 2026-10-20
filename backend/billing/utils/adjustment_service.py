@@ -23,13 +23,15 @@ def calc_consumption_responsible(contract, consumption):
 def evaluate_formula(formula, variables):
     # Sort variables by length (longest first) to avoid partial replacements
     sorted_variables = sorted(variables.items(), key=lambda x: len(x[0]), reverse=True)
+    expression = formula
     for key, value in sorted_variables:
-        formula = formula.replace(f'%{key}', str(value))
+        expression = expression.replace(f'%{key}', str(value))
     try:
-        result = eval(formula)
+        result = eval(expression)
         # logger.debug("Evaluated formula '%s' with result: %s", formula, result)
         return result
     except Exception as e:
+        # La fórmula sense substituir: els valors són dades del contracte.
         logger.error(f"Error evaluating adj formula {formula}: {e}")
         return False
 

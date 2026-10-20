@@ -912,9 +912,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                         price = float(price_unit) * float(units)
                         if corrected_price_tram:
                             price = corrected_price_tram
-                        print("add new line item: ", name)
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
-                        print(linies)
                     elif price_proporcional_original is not None:
                         price_unit = tram.proportional_price
                         units = quantitat
