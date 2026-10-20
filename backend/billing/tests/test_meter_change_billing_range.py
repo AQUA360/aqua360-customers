@@ -30,6 +30,7 @@ class TestMeterChangeBillingRange(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        """Crea el contracte, els comptadors i dos rangs separats per un canvi de tarifa."""
         company = Company.objects.create(name="Test Company MC")
         exploitation = Exploitation.objects.create(
             name="Test Exploitation MC", company=company, token="expl-mc"
@@ -122,6 +123,7 @@ class TestMeterChangeBillingRange(TestCase):
             )
 
     def setUp(self):
+        """Reinicia la memòria cau, simula la confirmació i crea les lectures del canvi."""
         # El servei de factures guarda algunes configuracions en memòria entre proves.
         import billing.utils.invoice_service as invoice_service_mod
         for name in ('_active_supply_point_status', 'origin_reading', 'invoice_type_invoice',
@@ -157,6 +159,7 @@ class TestMeterChangeBillingRange(TestCase):
         )
 
     def _generate(self):
+        """Genera la factura trimestral del contracte amb la lectura actual."""
         return generate_consumption_invoice_multiple(
             contract=self.contract,
             readings=[self.reading],
@@ -165,6 +168,7 @@ class TestMeterChangeBillingRange(TestCase):
         )
 
     def test_already_billed_meter_change_does_not_rebill_previous_range(self):
+        """Comprova que un canvi ja facturat només factura el consum dins del rang nou."""
         # La lectura del canvi de comptador ja es va facturar: el període comença en ella
         # i queda tot dins del rang nou.
         billed = Invoice.objects.create(contract=self.contract, status=self.issued_status)
@@ -181,6 +185,7 @@ class TestMeterChangeBillingRange(TestCase):
         self.assertEqual(sum(item.units for item in line_items), 42.0)
 
     def test_unbilled_meter_change_starts_at_old_meter_reading(self):
+        """Comprova que un canvi pendent de facturar inclou els dos rangs de tarifa."""
         # Sense facturar el canvi de comptador, el període comença a l'última lectura del
         # comptador antic i travessa el canvi de tarifa.
         invoice = self._generate()
