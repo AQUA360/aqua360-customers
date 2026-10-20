@@ -632,6 +632,11 @@ class ContractByNicView(RetrieveAPIView):
     )
 
     def get_object(self):
+        """Valida el NIC, busca el contrato más reciente y comprueba los permisos.
+
+        Prioriza el punto de suministro por defecto y después busca en los demás.
+        Lanza ValidationError si el NIC es inválido o NotFound si no hay contrato.
+        """
         nic = (self.kwargs.get("nic") or "").strip()
         if not is_valid_nic(nic):
             raise ValidationError({"error": "Invalid NIC format"})

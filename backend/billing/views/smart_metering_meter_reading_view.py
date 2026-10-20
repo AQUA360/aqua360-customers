@@ -27,6 +27,11 @@ class SmartMeteringMeterReadingView(APIView):
     permission_classes = [IsAuthenticated, ReadingPermission]
 
     def get(self, request):
+        """Return a reading for a meter code or ID with optional date and margin.
+
+        Return HTTP 400 for invalid inputs and HTTP 502 for provider failures,
+        logging provider errors and returning a generic message.
+        """
         meter_code = request.query_params.get('meter')
         meter_id = request.query_params.get('meter_id')
         reading_date = request.query_params.get('date')

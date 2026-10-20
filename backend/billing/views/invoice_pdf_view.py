@@ -64,6 +64,11 @@ class InvoiceReportPDFDownloadViewSet(APIView):
     return JsonResponse({"pdf_url": file_url, "document_id": document_id})
 
 def resolve_invoice_template_name(base_name, lang):
+    """Choose an existing personalized or localized invoice template name.
+
+    Candidates must normalize to a path under billing/templates. Return
+    base_name when no candidate matches.
+    """
     templates_dir = os.path.join(os.path.abspath(settings.BASE_DIR), 'billing', 'templates')
     for candidate in build_template_candidates(base_name, lang=lang):
         # L'idioma ve del contracte: cap variant pot sortir de la carpeta de plantilles.

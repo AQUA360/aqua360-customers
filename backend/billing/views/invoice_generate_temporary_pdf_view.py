@@ -16,6 +16,11 @@ class InvoiceGenerateTemporaryPDFView(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Invoice.objects.all().order_by('-created_at')
     def get(self, request, id):
+        """Generate a temporary invoice PDF and return its absolute URL.
+
+        Return HTTP 500 if generation or URL resolution fails, logging internal
+        errors and returning a generic message.
+        """
         try:
             if not id:
                 return Response({"error": "Invoice id is required."}, status=status.HTTP_400_BAD_REQUEST)

@@ -237,6 +237,7 @@ class BillingQueueActionTests(TestCase):
     # --- vista ------------------------------------------------------------
 
     def test_la_vista_retorna_503_si_no_pot_matar_la_tasca(self):
+        """Comprova el 503 i el log sense exposar l'error ni modificar la cua."""
         item = self.enqueue()
         client = APIClient()
         client.force_authenticate(User.objects.create(username='queue-kill'))

@@ -227,6 +227,11 @@ class ReportQueueActionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, queue_item_id):
+        """Aplica kill, skip o restart i retorna l'estat de l'ítem d'informes.
+
+        Si falla la revocació a Celery, retorna 503 sense modificar la cua
+        i registra el detall de l'error.
+        """
         action_name = request.data.get('action')
         if action_name not in ('kill', 'skip', 'restart'):
             return Response(

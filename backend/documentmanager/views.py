@@ -256,6 +256,12 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def send(self, request, pk=None):
+        """Envia el document a signar i retorna el resultat i el registre actualitzat.
+
+        Accepta callback_url i force al cos de la petició. Retorna 400 si la
+        signatura està deshabilitada o falla el servei; el detall del servei
+        es registra al log.
+        """
         from integrations.outbound.signing.exceptions import SigningApiError
         from integrations.outbound.signing.services import create_document_sign_session
 

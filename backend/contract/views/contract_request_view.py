@@ -209,6 +209,12 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='send-for-signing')
     def send_for_signing(self, request, pk=None):
+        """Crea una sessió de signatura per a la sol·licitud i retorna 201.
+
+        Accepta dades del destinatari, callback_url i force al cos de la petició.
+        Si falla el servei de signatura, registra el detall i retorna un error
+        genèric amb estat 400.
+        """
         from integrations.outbound.signing.exceptions import SigningApiError
         from integrations.outbound.signing.services import create_contract_request_signing_session
 

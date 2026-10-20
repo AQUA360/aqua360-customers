@@ -61,6 +61,11 @@ class ExportJobViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
+        """Atura una exportació activa i retorna el registre serialitzat.
+
+        Retorna 400 si ja no està activa, o 503 si no es pot revocar la tasca;
+        el detall de l'error de revocació es registra al log.
+        """
         job = self.get_object()
         if not job.is_active:
             return Response({"detail": "Export is not running"}, status=status.HTTP_400_BAD_REQUEST)

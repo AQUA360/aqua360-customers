@@ -21,6 +21,11 @@ class ReturnSEPADocument(APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Reading.objects.all().order_by('-created_at')
     def put(self, request, *args, **kwargs):
+        """Process an uploaded SEPA status report and return payment rejections.
+
+        Return HTTP 400 for missing uploads, unsupported namespaces or malformed
+        XML; log parse errors and return a generic message.
+        """
         file = request.data.get("file")
         print("in sepa return")
         if not file:
