@@ -1,6 +1,7 @@
 import datetime
 from decimal import Decimal
 from datetime import date
+import logging
 import math
 import os
 import time
@@ -33,6 +34,8 @@ from billing.utils.adjustment_service import calc_consumption_responsible
 from .invoice_line_item_service import create_from_lineitemtype, create_from_lineitemtype_connection, constrain_total_value, get_last_reading
 from faker import Faker
 fake = Faker()
+
+logger = logging.getLogger(__name__)
 
 origin_reading = None
 invoice_type_invoice = None
@@ -2185,6 +2188,27 @@ def invoice_claim_paid_generate(invoice_id, title):
         raise Exception("Error creating invoice")
     return invoice
 
+def termination_payment_bank_for_contract_request(payment_bank, contract_request, contract, contract_termination_id=None):
+    """
+    Compte bancari (PersonBank id) d'una factura de baixa que cobra l'alta vinculada.
+
+    El diàleg de facturació de la baixa proposava per defecte el compte del contracte que es
+    dona de baixa, i la factura sortia a nom del titular de l'alta amb el compte de l'antic.
+    Si el compte rebut és el del contracte de baixa i l'alta en té un altre, es descarta
+    (retorna None) perquè es faci servir el de l'alta.
+    """
+    request_bank_id = contract_request.payment.IBAN_id if contract_request.payment else None
+    terminated_bank_id = contract.payment.IBAN_id if contract.payment else None
+    if payment_bank and request_bank_id and terminated_bank_id \
+            and int(payment_bank) == terminated_bank_id and terminated_bank_id != request_bank_id:
+        logger.warning(
+            "Termination %s billed to contract request %s: ignoring the terminated contract's bank sent by the dialog, "
+            "using the contract request's one",
+            contract_termination_id, contract_request.id,
+        )
+        return None
+    return payment_bank
+
 def invoice_contract_termination_generate(
     user, 
     contract_termination_id, 
@@ -2429,8 +2453,24 @@ def invoice_contract_termination_generate(
             address = contract.address_billing.address if contract.address_billing else None
             payment_source = contract
 
+        if payment_source is not contract:
+            payment_bank = termination_payment_bank_for_contract_request(payment_bank, payment_source, contract, contract_termination.id)
+
         payment_bank_instance = PersonBank.objects.get(id = payment_bank) if payment_bank else (payment_source.payment.IBAN if payment_source.payment and payment_source.payment.IBAN else None)
         payment_company_bank_instance = CompanyBank.objects.get(id = company_bank) if company_bank else (payment_source.payment.company_iban if payment_source.payment and payment_source.payment.company_iban else None)
+        # Sense valors de comptes al log: només d'on surt el compte que es cobra
+        if not payment_bank_instance:
+            bank_origin = None
+        elif payment_bank:
+            bank_origin = "dialog"
+        else:
+            bank_origin = "contract request" if payment_source is billing_entity else "contract"
+        logger.info(
+            "Termination %s invoice (is_budget=%s): billed to %s, person=%s, bank from %s, company bank=%s",
+            contract_termination.id, is_budget,
+            f"contract request {billing_entity.id}" if payment_source is billing_entity else f"contract {contract.id}",
+            person.id if person else None, bank_origin, payment_company_bank_instance is not None,
+        )
 
         # year = datetime.datetime.now().year
         #total_invoices = Invoice.objects.filter(issue_date__year=year).count()
@@ -2456,9 +2496,10 @@ def invoice_contract_termination_generate(
         from uuid import uuid4
         serie_final_provisional = f"{serie.token}/PROV/{uuid4().hex}"
         
-        if payment_source.payment and payment_source.payment.IBAN and payment_source.payment.IBAN:
-            payer_final = f"{payment_source.payment.IBAN.name}"
-            payer_token_final = payment_source.payment.IBAN.dni
+        # El pagador és el titular del compte que es cobra, no el del pagament per defecte.
+        if payment_bank_instance:
+            payer_final = f"{payment_bank_instance.name}"
+            payer_token_final = payment_bank_instance.dni
         else:
             payer_final = customer_final
             payer_token_final = customer_token_final

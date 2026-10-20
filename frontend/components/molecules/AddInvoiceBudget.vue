@@ -361,9 +361,10 @@ const getData = async (load = true) => {
         }
       }
 
-      // Baixa: el pagament és al contracte (la sol·licitud no en té). Alta: a la sol·licitud.
+      // Baixa: el pagament és al contracte (la sol·licitud no en té), o al de l'alta vinculada
+      // si és ella qui cobra la lectura de tall. Alta: a la sol·licitud.
       const paymentSource = props.entity === 'contract_termination_request'
-        ? (data.value.contract?.payment || data.value.payment)
+        ? (data.value.billing_contract_request_payment || data.value.contract?.payment || data.value.payment)
         : data.value.payment;
 
       if (paymentSource && !selectedPaymentType.value) {

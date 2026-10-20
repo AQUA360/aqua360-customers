@@ -1,3 +1,4 @@
+import logging
 from django.db import transaction
 from rest_framework import serializers
 from billing.serializers.general_payment_serializer import GeneralPaymentSerializer
@@ -25,6 +26,7 @@ from .variable_serializer import VariableSerializer
 from .contract_request_type_serializer import ContractRequestTypeSerializer
 from .contract_request_base_serializer import ContractRequestSerializer
 
+logger = logging.getLogger(__name__)
 
 class ContractRequestRepresentativeSerializer(serializers.ModelSerializer):
     person = PersonSerializer(required=False, allow_null=True)
@@ -257,6 +259,14 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
         # Important: Do not update person if it's None in the request data
         if 'person' in validated_data and validated_data['person'] is None:
             validated_data.pop('person')
+        
+        if 'bill_cut_reading' in validated_data and bool(validated_data['bill_cut_reading']) != bool(instance.bill_cut_reading):
+            request = self.context.get('request')
+            logger.info(
+                "Contract request %s bill_cut_reading %s -> %s (user=%s)",
+                instance.id, instance.bill_cut_reading, validated_data['bill_cut_reading'],
+                request.user.id if request else None,
+            )
         
         # Actualitzar camps de ContractRequest
         for attr, value in validated_data.items():
