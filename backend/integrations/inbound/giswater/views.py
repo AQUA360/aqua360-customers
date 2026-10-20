@@ -12,6 +12,9 @@ from .services import (
     fetch_contracts_export,
     log_inbound_request,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GiswaterContractsView(APIView):
@@ -37,6 +40,7 @@ class GiswaterContractsView(APIView):
             )
             return Response(data, status=status.HTTP_200_OK)
         except Exception as exc:
+            logger.exception("Error inesperat")
             log_inbound_request(
                 endpoint=self.endpoint,
                 method="GET",
@@ -47,7 +51,7 @@ class GiswaterContractsView(APIView):
                 error_message=str(exc),
                 object_id=str(request.user.pk),
             )
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class GiswaterContractReadingsView(APIView):
@@ -86,6 +90,7 @@ class GiswaterContractReadingsView(APIView):
             )
             return Response({"detail": exc.detail}, status=exc.status_code)
         except Exception as exc:
+            logger.exception("Error inesperat")
             log_inbound_request(
                 endpoint=endpoint,
                 method="GET",
@@ -97,4 +102,4 @@ class GiswaterContractReadingsView(APIView):
                 object_type="contract_readings",
                 object_id=contract_token,
             )
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)

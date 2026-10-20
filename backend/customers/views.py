@@ -47,8 +47,10 @@ def protected_media_view(request, path):
     if user is None and request.user.is_authenticated:
         user = request.user
 
-    file_path = os.path.join(settings.MEDIA_ROOT, path)
-    if not os.path.exists(file_path):
+    # La ruta no pot sortir de MEDIA_ROOT (p. ex. amb '..' o una ruta absoluta).
+    media_root = os.path.abspath(settings.MEDIA_ROOT)
+    file_path = os.path.normpath(os.path.join(media_root, path))
+    if not file_path.startswith(media_root + os.sep) or not os.path.exists(file_path):
         raise Http404
 
     content_type, _ = mimetypes.guess_type(file_path)

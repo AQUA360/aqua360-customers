@@ -5,6 +5,9 @@ from django.db import transaction
 
 from billing.models import Billing, BillingStatus, Invoice, InvoiceLineItem, InvoiceLog, Payment
 from coredata.models import ConfigProject
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _delete_pre_invoice(invoice):
@@ -111,4 +114,5 @@ class ExcludeInvoiceView(views.APIView):
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

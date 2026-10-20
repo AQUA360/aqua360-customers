@@ -33,6 +33,9 @@ from .serializers import (
     AuthenticationSerializer
 )
 from .decorators import lecturapp_auth_required, get_authenticated_operator
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ReadingOperatorViewSet(ModelViewSet):
     """
@@ -403,9 +406,10 @@ def reading_batch_routes_detailed_status(request, task_id):
             }, status=500)
             
     except Exception as e:
+        logger.exception("Error inesperat")
         return JsonResponse({
             'status': 'error',
-            'message': f'Error checking task status: {str(e)}',
+            'message': 'Error checking task status.',
             'progress': {
                 'current': 0,
                 'total': 100,

@@ -13,6 +13,9 @@ from coredata.models import StreetType
 from statistics.utils.incasol import resolve_incasol_num
 from statistics.utils.report_filters import get_multi_ids, contract_multi_filter_q
 from statistics.views.reports_views import save_report
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Sufix de canvi de nom que el sistema afegeix al contracte antic: "<base_token>/0001".
 # Un Bail pot quedar vinculat a la fila de Contract que originalment tenia el token
@@ -119,7 +122,8 @@ def generate_incasol_liquidation_report(request, black_fill=None, white_bold_fon
             start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
             end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
         multi_ids = get_multi_ids(request.data)
         multi_q = contract_multi_filter_q(person_ids=multi_ids['person_ids'], contract_ids=multi_ids['contract_ids'])
@@ -207,4 +211,5 @@ def generate_incasol_liquidation_report(request, black_fill=None, white_bold_fon
 
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

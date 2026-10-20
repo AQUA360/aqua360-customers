@@ -22,6 +22,9 @@ from contract.serializers.bail_serializer import (BailSerializer, BailListSerial
 
 from logger.models import LogBailStatus
 from django.contrib.auth.models import Group
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BailViewSet(viewsets.ModelViewSet):
     queryset = Bail.objects.all().order_by('-status', 'payment_date')
@@ -59,8 +62,11 @@ class BailViewSet(viewsets.ModelViewSet):
         try:
             for bail_id in bail_ids:
                 immediate_return_bail(user, bail_id)
-        except Exception as e:
+        except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'message': 'Bail returned successfully'}, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['post'], url_path='cancel')

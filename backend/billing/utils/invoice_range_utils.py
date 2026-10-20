@@ -3,7 +3,6 @@ import re
 from django.db.models import BigIntegerField
 from django.db.models.functions import Cast, Substr
 
-SERIE_FINAL_PARTS_RE = re.compile(r'^(?P<prefix>.*?)(?P<number>\d+)$')
 
 
 def split_serie_final(value):
@@ -22,10 +21,13 @@ def split_serie_final(value):
     ValueError. Els clients que necessitin una altra regla ho poden personalitzar
     amb `invoice_range_utils_personalized.split_serie_final` (veure el hook al
     final d'aquest modul)."""
-    match = SERIE_FINAL_PARTS_RE.match(str(value).strip())
-    if not match:
+    # Sense regex: '^(.*?)(\d+)$' es quadratica amb cadenes llargues de digits.
+    text = str(value).strip()
+    prefix = text.rstrip('0123456789')
+    number = text[len(prefix):]
+    if not number:
         return None, None
-    return match.group('prefix'), match.group('number')
+    return prefix, number
 
 
 def filter_invoices_by_serie_final_range(queryset, serie_final_from=None, serie_final_to=None, prefix=None):

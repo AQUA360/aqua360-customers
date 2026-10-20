@@ -4,6 +4,9 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 
 from billing.models import Invoice
 from billing.utils.invoice_range_utils import filter_invoices_by_serie_final_range, split_serie_final
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class InvoiceMarkReviewedRangeView(views.APIView):
@@ -49,4 +52,5 @@ class InvoiceMarkReviewedRangeView(views.APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

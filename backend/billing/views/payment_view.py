@@ -26,6 +26,9 @@ from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestS
 from contract.models import Contract, PaymentType, PiggyBankMovement
 from coredata.models import ConfigProject, PersonPiggyBankMovement
 from logger.models import LogCommitmentDepositMovement
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PaymentOrderingFilter(OrderingFilter):
     def filter_queryset(self, request, queryset, view):
@@ -367,8 +370,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
                                 due_date=payment.due_date,
                                 )
                             except Exception as e:
+                                logger.exception("Error inesperat")
                                 return Response(
-                                    {"detail": "Error returning payment: " + str(e)},
+                                    {"detail": "Error returning payment."},
                                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                                 )
                             PaymentCommitment.objects.create(
@@ -684,8 +688,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
             return Response({"pdf_url": file_url}, status=status.HTTP_200_OK)
         except Exception as e:
+            logger.exception("Error inesperat")
             traceback.print_exc()
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def get_permissions(self):
         if self.action == 'permissions':

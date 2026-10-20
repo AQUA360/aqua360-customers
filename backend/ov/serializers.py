@@ -21,6 +21,9 @@ from coredata.models import ConfigProject, Person, PersonAddress, PersonBank, Pe
 from django.utils import timezone
 from django.db import transaction
 from django.utils.dateparse import parse_date
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ContractSerializer(serializers.ModelSerializer):
@@ -402,8 +405,9 @@ class UpdateBillingDataOVSerializer(serializers.Serializer):
             return instance
 
         except Exception as e:
+            logger.exception("Error inesperat")
             raise serializers.ValidationError(
-                {"error": f"Failed to update billing data: {str(e)}"}
+                {"error": "Failed to update billing data."}
             )
 
 
@@ -509,8 +513,9 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
             return instance
 
         except Exception as e:
+            logger.exception("Error inesperat")
             raise serializers.ValidationError(
-                {"error": f"Failed to update IBAN data: {str(e)}"}
+                {"error": "Failed to update IBAN data."}
             )
 
 
@@ -661,8 +666,9 @@ class InvoicePaidSerializer(serializers.Serializer):
             return invoice
 
         except Exception as e:
+            logger.exception("Error inesperat")
             raise serializers.ValidationError(
-                {"error": f"Failed to mark invoice as paid: {str(e)}"}
+                {"error": "Failed to mark invoice as paid."}
             )
 
 

@@ -8,6 +8,9 @@ from django.db.models import Subquery, OuterRef, Max, Prefetch
 
 from service.models import Meter, SupplyPoint
 from billing.models import Reading
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MeterExportViewSet(viewsets.ViewSet):
@@ -48,8 +51,9 @@ class MeterExportViewSet(viewsets.ViewSet):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error en iniciar l'exportació: {str(e)}"},
+                {"error": "Error en iniciar l'exportació."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

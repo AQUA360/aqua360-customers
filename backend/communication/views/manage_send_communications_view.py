@@ -6,6 +6,9 @@ from rest_framework.views import APIView
 from communication.models import Communication, CommunicationProcessStatus, CommunicationStatus, CommunicationProcess
 from communication.tasks import send_communications_task
 from coredata.models import ConfigProject
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ManageSendCommunicationsViewSet(APIView):
@@ -49,7 +52,8 @@ class ManageSendCommunicationsViewSet(APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
     
     def get(self, request, *args, **kwargs):
@@ -75,6 +79,7 @@ class ManageSendCommunicationsViewSet(APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
+            logger.exception("Error inesperat")
             print(f"error: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
         

@@ -59,6 +59,16 @@ const hasCamera = computed(() => {
   return 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
 });
 
+// Com l'atribut accept de l'input: llista separada per comes de tipus MIME
+// ("image/*", "application/pdf") o extensions (".pdf").
+const isAcceptedType = (file) => {
+  return props.accept.split(',').map(t => t.trim().toLowerCase()).filter(Boolean).some(type => {
+    if (type.startsWith('.')) return file.name.toLowerCase().endsWith(type);
+    if (type.endsWith('/*')) return file.type.toLowerCase().startsWith(type.slice(0, -1));
+    return file.type.toLowerCase() === type;
+  });
+};
+
 const handleFileSelect = (event) => {
   const selectedFiles = Array.from(event.target.files || []);
   errorMessage.value = '';
@@ -78,7 +88,7 @@ const handleFileSelect = (event) => {
     }
 
     // Validate file type
-    if (props.accept !== '*' && !file.type.match(new RegExp(props.accept.replace('*', '.*')))) {
+    if (props.accept !== '*' && !isAcceptedType(file)) {
       errorMessage.value = `File ${file.name} is not an accepted type`;
       return;
     }

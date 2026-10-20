@@ -25,6 +25,9 @@ from django.db.models.functions import Abs
 from django.utils import translation
 from django.utils.translation import gettext as _
 from billing.permissions import BillingPermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BillingQueueListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -256,7 +259,8 @@ class BillingBatchSummaryView(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     def get(self, request):
         try:
             # Validar les dades rebudes
@@ -276,7 +280,8 @@ class BillingBatchSummaryView(views.APIView):
             
             return Response(response, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def serialize_decimal(value):
     """Recursively converts Decimal values to float or str."""
@@ -373,4 +378,5 @@ class BillingBatchDocumentsView(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -24,6 +24,9 @@ from service.utils.meter_bulk_update_service import (
     apply_updates,
     build_preview,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MeterViewSet(viewsets.ModelViewSet):
     """
@@ -195,9 +198,10 @@ class MeterViewSet(viewsets.ModelViewSet):
                 serializer = MeterSerializer(meter)
                 return Response(serializer.data, status=status.HTTP_200_OK)
             except Exception as e:
+                logger.exception("Error inesperat")
                 print(e)
                 return Response(
-                    {"error": str(e)}, 
+                    {"error": "Ha ocorregut un error inesperat."}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
         except Meter.DoesNotExist:

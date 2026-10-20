@@ -22,6 +22,9 @@ from coredata.models import ConfigProject
 from coredata.utils.pdf_utils import merge_pdfs
 from documentmanager.utils.export_jobs import enqueue_export, export_job_response
 from documentmanager.utils.export_permissions import export_permission_class
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BillingInvoicesViewSet(generics.ListAPIView):  # Changed to generics.ListAPIView
@@ -191,7 +194,8 @@ class BillingInvoicesSummaryViewSet(views.APIView):
             return Response({'counters': counters}, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BillingInvoicesPdfViewSet(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -214,4 +218,5 @@ class BillingInvoicesPdfViewSet(views.APIView):
             return response
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

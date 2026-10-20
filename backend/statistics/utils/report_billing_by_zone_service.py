@@ -37,6 +37,9 @@ from statistics.views.reports_views import (
     filter_pending_invoices,
     save_report,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 # "CONSUM - 1R TRAM", "PART VARIABLE - 4T TRAM", "Aigua Potable Bloc 2"
 _TRAM_RE = re.compile(
@@ -1149,9 +1152,10 @@ def generate_billing_by_zone_report(request, black_fill=None, white_bold_font=No
         )
         return None, document_id, filename
     except Exception as exc:
+        logger.exception("Error inesperat")
         print(f"Error in generate_billing_by_zone_report: {exc}")
         traceback.print_exc()
         return Response(
-            {"error": f"Ha ocorregut un error inesperat: {exc}"},
+            {"error": "Ha ocorregut un error inesperat."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         ), None, None

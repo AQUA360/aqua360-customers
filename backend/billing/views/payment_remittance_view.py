@@ -21,6 +21,9 @@ from billing.serializers.payment_serializer import PaymentSerializer, PaymentSEP
 from coredata.models import ConfigProject
 from billing.tasks import send_payment_remittances
 from billing.permissions import PaymentPermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentRemittanceViewSet(viewsets.ModelViewSet):
@@ -133,8 +136,9 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"detail": f"Error eliminant la relació: {str(e)}"},
+                {"detail": "Error eliminant la relació."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

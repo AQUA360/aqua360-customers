@@ -18,6 +18,9 @@ from coredata.models import Address, ConfigProject, Person, PersonAddress, Perso
 from coredata.utils.phone_utils import is_mobile_phone
 from service.models import SupplyCut, SupplyPoint
 from billing.models import Invoice, Payment
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Cache for config tokens to avoid repeated DB queries
 _CONFIG_CACHE = {}
@@ -93,7 +96,8 @@ class ManageCommunicationProcessViewSet(APIView):
             task = get_communication_process_data.delay(request.data)
             return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
         # persons = []
         # time_start = time.time()

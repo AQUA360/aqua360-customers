@@ -25,6 +25,9 @@ from statistics.utils.daily_activity_service import (
     get_excluded_activity_usernames,
     parse_activity_dates,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _can_view_other_users(user):
@@ -179,4 +182,5 @@ class ReportDailyActivitySummary(views.APIView):
             task = run_report_task.delay('daily_activity_summary_report', data)
             return Response({'task_id': task.id, 'status': 'pending'}, status=status.HTTP_202_ACCEPTED)
         except Exception as error:
-            return Response({'error': str(error)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

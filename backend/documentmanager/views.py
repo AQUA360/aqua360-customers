@@ -28,6 +28,11 @@ from django.core.files.base import ContentFile
 import threading
 
 from PyPDF2 import PdfMerger
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
@@ -161,8 +166,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return response
 
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error processing download: {str(e)}"},
+                {"error": "Error processing download."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -222,8 +228,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             
             return response
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error processing download: {str(e)}"},
+                {"error": "Error processing download."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
     
