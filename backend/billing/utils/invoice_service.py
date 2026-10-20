@@ -366,6 +366,13 @@ def pre_check_readings(readings):
         return readings.exclude(id__in=reading_to_remove)
 
 def generate_consumption_invoice_multiple(contract, readings, title, refactor_invoice=None, is_budget=False, extra_payment_data=None, billing=None, billing_batch=None, period_months=None, new_holder=None):
+    """Genera i confirma una factura de consum a partir de les lectures del contracte.
+
+    Aplica les tarifes dels períodes corresponents, respectant els canvis de
+    comptador ja facturats. Retorna la factura creada o None si no hi ha cap
+    comptador, les lectures són anteriors a l'alta sense excepció aplicable o no
+    es generen línies de factura.
+    """
     if not any(reading.meter for reading in readings):
         print("[generate_consumption_invoice_multiple] FAILED: No meter found in readings or readings list is empty.")
         return None
@@ -641,8 +648,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
                 prev_reading_date = prev_reading.reading_date if prev_reading else None
 
                 # Fix for meter changes: ensure we go back to the very first reading of the period
+                # Si la lectura anterior ja està facturada, el període comença en ella: el tram
+                # del comptador antic ja es va facturar amb ella i no s'ha de tornar a comptar.
                 actual_pr = prev_reading
-                close_prev = get_close_previous_reading(actual_pr) if actual_pr else None
+                close_prev = get_close_previous_reading(actual_pr) if actual_pr and not reading_has_blocking_invoices(actual_pr) else None
                 if close_prev:
                     actual_pr = close_prev
                 while actual_pr and actual_pr.is_close and not reading_has_blocking_invoices(actual_pr):
