@@ -187,6 +187,7 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
 
 
     def to_representation(self, instance):
+        """Build a supply point summary with active contract vulnerability levels and latest readings."""
         representation = super().to_representation(instance)
         representation['address_complete'] = str(instance.address)
         
@@ -211,6 +212,9 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
                 'status_color': contract.status.color,
                 'status_token': contract.status.token,
                 'holder': holder_str,
+                'holder_vulnerability_level': contract.holder.vulnerability_level if contract.holder else None,
+                'tenant_vulnerability_level': contract.tenant.vulnerability_level if contract.tenant else None,
+                'owner_vulnerability_level': contract.owner.vulnerability_level if contract.owner else None,
             })
         representation['contracts'] = contracts
         
@@ -441,6 +445,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         return True if frauds.exists() else False
     
     def to_representation(self, instance):
+        """Build supply point details with active contract debts, vulnerability levels and related data."""
         representation = super().to_representation(instance)
         from contract.serializers.contract_serializer import ContractMinimalSerializer
 
@@ -484,6 +489,9 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 'status_token': contract.status.token,
                 'holder': holder_str, 
                 'holder_token': contract.holder.token if contract.holder else None,
+                'holder_vulnerability_level': contract.holder.vulnerability_level if contract.holder else None,
+                'tenant_vulnerability_level': contract.tenant.vulnerability_level if contract.tenant else None,
+                'owner_vulnerability_level': contract.owner.vulnerability_level if contract.owner else None,
                 'total_debt': payments_amount
                 })
                 

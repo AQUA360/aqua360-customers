@@ -159,6 +159,12 @@ def activate_supply_cut():
 
     affected = 0
     for supply_cut in supply_cut_service.supply_cuts_due_to_activate(now):
+        try:
+            # Temporal cuts retain their automatic schedule; permanent cuts
+            # can never bypass the vulnerability block.
+            supply_cut_service.validate_activation(supply_cut, override_vulnerable=True)
+        except supply_cut_service.SupplyCutActivationError:
+            continue
         affected += supply_cut_service.cut_supply_points(supply_cut.id)
         supply_cut.status = status_instance
         supply_cut.save(update_fields=['status', 'updated_at'])

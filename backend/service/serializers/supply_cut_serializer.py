@@ -61,7 +61,7 @@ class SupplyCutSerializer(serializers.ModelSerializer):
             ),
             Prefetch(
                 'contracts',
-                queryset=Contract.objects.select_related('status', 'holder').filter(is_active=True),
+                queryset=Contract.objects.select_related('status', 'holder', 'tenant', 'owner').filter(is_active=True),
                 to_attr='_active_contracts',
             ),
             Prefetch(
@@ -128,6 +128,7 @@ class SupplyCutSerializer(serializers.ModelSerializer):
         return self._save_supply_cut(instance, validated_data)
 
     def _save_supply_cut(self, instance, validated_data):
+        """Save the cut, reject membership changes on existing cuts, and sync status logs."""
         supply_points = validated_data.pop('supply_points', None)
         
         cause_id = validated_data.pop('cause_id', None)
@@ -157,18 +158,8 @@ class SupplyCutSerializer(serializers.ModelSerializer):
                 setattr(instance, attr, value)
             instance.save()
 
-        if supply_points is not None:
-            # Supply points leaving the cut must recover the active state:
-            # before, only set() was done and they stayed cut forever.
-            removed = list(instance.supply_points.exclude(id__in=supply_points)) if not created else []
+        if created and supply_points is not None:
             instance.supply_points.set(supply_points)
-            if removed:
-                supply_cut_service.restore_supply_points(
-                    instance.id,
-                    supply_points=removed,
-                    user=self._request_user(),
-                    observation=self.initial_data.get('observation') if hasattr(self, 'initial_data') else None,
-                )
 
         observation = self.initial_data.get('observation') if hasattr(self, 'initial_data') else None
 
@@ -206,6 +197,14 @@ class SupplyCutSerializer(serializers.ModelSerializer):
         start/finish i les tasques)."""
 
         instance = self.instance
+        supply_points = attrs.get('supply_points')
+        if instance is not None and supply_points is not None:
+            current_ids = set(instance.supply_points.values_list('id', flat=True))
+            new_ids = {int(value) for value in supply_points}
+            if new_ids != current_ids:
+                raise serializers.ValidationError({
+                    'supply_points': "Els punts de subministrament no es poden modificar un cop creat el tall.",
+                })
 
         # -- Transicions d'estat --
         new_status = attrs.get('status')

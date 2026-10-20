@@ -768,7 +768,7 @@ const addWalletBalance = () => {
             </div>
             <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span class="text-sm font-semibold text-amber-900 leading-snug">
-                {{ $t('service_block.supply_cut_notice') }}
+                {{ $t('service_block.supply_with_cut') }}
               </span>
               <span class="text-sm text-amber-800 leading-snug">
                 {{ supplyCutAlert.status_name }}

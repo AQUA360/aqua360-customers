@@ -345,13 +345,39 @@ def _cut_status(token):
     return SupplyCutStatus.objects.get(token=token)
 
 
-def start_cut(supply_cut, user=None, observation=None):
+class SupplyCutActivationError(ValueError):
+    def __init__(self, message, code, vulnerable, status_code):
+        super().__init__(message)
+        self.detail = {'error': message, 'code': code, 'vulnerable': vulnerable}
+        self.status_code = status_code
+
+
+def validate_activation(supply_cut, *, override_vulnerable=False):
+    """Recheck current vulnerability before manual or scheduled activation."""
+    from .supply_cut_bulk_planner import detect_vulnerable
+
+    point_ids = list(supply_cut.supply_points.values_list('id', flat=True))
+    vulnerable = detect_vulnerable(point_ids)
+    if vulnerable and not is_temporary_cause(supply_cut):
+        raise SupplyCutActivationError(
+            "Activació bloquejada: el tall és permanent i afecta persones vulnerables.",
+            'vulnerability_blocked', vulnerable, 400,
+        )
+    if vulnerable and not override_vulnerable:
+        raise SupplyCutActivationError(
+            'Hi ha punts de subministrament associats a persones vulnerables.',
+            'vulnerable', vulnerable, 409,
+        )
+
+
+def start_cut(supply_cut, user=None, observation=None, *, override_vulnerable=False):
     """Converteix un tall PLANIFICAT en ACTIU: stampa l'execució real i talla
     els PP si el tall altera el seu estat (indefinit; els temporals no).
 
     És l'única via legítima d'entrar a Actiu des d'un pla. Qualsevol altre
     estat d'origen (terminal, Conflicte) es rebutja.
     """
+    validate_activation(supply_cut, override_vulnerable=override_vulnerable)
     if supply_cut.status is None or supply_cut.status.token != PLANNED_STATUS_TOKEN:
         raise ValueError("Només un tall Planificat es pot iniciar.")
 

@@ -1310,8 +1310,6 @@ export default {
     bulk_plan_file_hint: 'Formatos aceptados: .csv, .txt. O contido do ficheiro cárgase na lista de arriba.',
     bulk_plan_preview: 'Previsualizar',
     bulk_plan_back: 'Atrás',
-    bulk_plan_stat_unique: 'Únicos',
-    bulk_plan_stat_duplicates: 'Duplicados',
     bulk_plan_stat_resolved: 'Resoltos',
     bulk_plan_stat_not_found: 'Non atopados',
     bulk_plan_stat_conflicts: 'Conflitos',
@@ -1324,6 +1322,17 @@ export default {
     bulk_plan_column_conflict: 'Conflito',
     bulk_plan_or_select: '...ou seleccionar dunha lista',
     bulk_plan_created: 'Corte creado con {count} puntos de subministro',
+    bulk_plan_created_vulnerable: 'Corte creado con {count} puntos de subministro ({vulnerable} con persoas vulnerables)',
+    bulk_plan_stat_vulnerable: 'Vulnerables',
+    bulk_plan_vulnerable_title: '{count} punto(s) con persoas vulnerables',
+    bulk_plan_vulnerable_hint: 'Para continuar, escriba {word} no campo de confirmación.',
+    bulk_plan_column_vulnerable: 'Persoa vulnerable',
+    bulk_plan_column_origin: 'Origen',
+    bulk_plan_origin_list: 'Lista',
+    bulk_plan_origin_manual: 'Manual',
+    start_cut_vulnerable_title: 'O corte afecta a persoas vulnerables',
+    start_cut_vulnerable_hint: 'Revise a lista e escriba {word} para confirmar o inicio do corte.',
+    cause_change_vulnerable_confirm: 'O cambio de motivo afecta a persoas vulnerables xa incluídas no corte. Escriba CONFIRMAR para confirmar.',
   },
   contract_block:   {
     no_standalone_variable_types: 'Non hai variables personalizadas dispoñibles. As variables deste contrato engádense a través das bonificacións.',
@@ -3704,6 +3713,22 @@ export default {
       contract_id: 'ID de contrato'
     }
   },
+  vulnerability_block: {
+    blocked_title: 'Corte permanente bloqueado',
+    blocked_message: 'Esta acción está bloqueada: o motivo do corte é permanente e afecta a persoas vulnerables. Non se pode crear o corte.',
+    blocked_message_start: 'Esta acción está bloqueada: o motivo do corte é permanente e afecta a persoas vulnerables. Non se pode iniciar o corte.',
+    warning_title: 'Atención: corte temporal sobre persoas vulnerables',
+    warning_message: "Este motivo de corte é temporal e afecta a persoas vulnerables. Escriba '{word}' para continuar.",
+    confirm_label: 'Confirmación',
+    confirm_placeholder: 'CONFIRMAR',
+    confirm_invalid: "Escriba 'CONFIRMAR' para continuar.",
+    affected_label: 'Contratos afectados con persoas vulnerables:',
+    role_holder: 'Titular',
+    role_tenant: 'Inquilino',
+    role_owner: 'Propietario',
+    level_1: 'En risco',
+    level_2: 'Vulnerable',
+  },
   home_dashboard: {
     yesterday: 'Onte',
     customize: 'Personalizar',
@@ -3845,3 +3870,4 @@ export default {
     badge_title: '{today} para hoxe, {overdue} atrasadas'
   }
 }
+   
