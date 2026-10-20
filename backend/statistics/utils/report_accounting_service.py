@@ -15,6 +15,9 @@ from billing.models import Billing, Invoice
 from coredata.models import ConfigProject
 from pricing.utils.accounting_service import generate_general_accounting
 from statistics.views.reports_views import add_row, adjust_column_widths, save_report, jump_row
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -46,7 +49,8 @@ def generate_general_accounting_report(request, black_fill=None, white_bold_font
         return response, document_id, None
         
     except Exception as e:
+        logger.exception("Error inesperat")
         import traceback
         print("Error in generate_no_register_aca_contracts_report: ", e)
         traceback.print_exc()
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

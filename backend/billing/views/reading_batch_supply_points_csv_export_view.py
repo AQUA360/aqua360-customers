@@ -4,6 +4,9 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from billing.tasks import export_reading_batch_supply_points_csv_task
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ReadingBatchSupplyPointsCSVExportView(APIView):
@@ -29,7 +32,8 @@ class ReadingBatchSupplyPointsCSVExportView(APIView):
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error intern del servidor: {str(e)}"},
+                {"error": "Error intern del servidor."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

@@ -35,6 +35,9 @@ from billing.models import (
     Reading
 )
 from billing.serializers.billing_serializer import BillingListSerializer, BillingSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BillingViewSet(viewsets.ModelViewSet):
   """
@@ -520,7 +523,8 @@ class BillingViewSet(viewsets.ModelViewSet):
       
         return Response({'new_reading_batch': new_reading_batch.id}, status=status.HTTP_200_OK)
       except Exception as e:
-        return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.exception("Error inesperat")
+        return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     
   @action(detail=True, methods=['put'], url_path='cancel')
@@ -985,7 +989,8 @@ class BillingRoutesView(views.APIView):
     
       return Response(response, status=status.HTTP_200_OK)
     except Exception as e:
-      return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      logger.exception("Error inesperat")
+      return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 class BillingBadgesView(views.APIView):
   permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -1088,8 +1093,9 @@ class BillingBadgesView(views.APIView):
       return Response(response, status=status.HTTP_200_OK)
 
     except Exception as e:
+      logger.exception("Error inesperat")
       print(f"Error en obtenir les rutes de facturació: {str(e)}")
-      return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 def add_badges(response, billing, key):
   token_found = False
@@ -1166,5 +1172,6 @@ class StartBillingView(views.APIView):
       return Response({"message": "Billing process started.", "id": billing.id}, status=status.HTTP_200_OK)
 
     except Exception as e:
+      logger.exception("Error inesperat")
       print(f"Error en obtenir les rutes de facturació: {str(e)}")
-      return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

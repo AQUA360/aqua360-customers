@@ -13,6 +13,9 @@ from verifactu.models import VerifactuNotification, VerifactuNotificationLog, Ve
 from verifactu.serializers.verifactu_serializer import VerifactuBatchSerializer, VerifactuNotificationLogSerializer, VerifactuNotificationSerializer
 from verifactu.filters.verifactu_notification_filter import VerifactuNotificationFilter
 from verifactu.utils.save_verifactu_info import create_verifactu_invoice
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class VerifactuNotificationViewSet(viewsets.ModelViewSet):
@@ -59,8 +62,9 @@ class VerifactuNotificationViewSet(viewsets.ModelViewSet):
                 "batch_status": verifactu_notification.batch.response_status if verifactu_notification.batch else None
             }, status=status.HTTP_200_OK)
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"detail": f"Error creating/notifying Verifactu: {str(e)}"},
+                {"detail": "Error creating/notifying Verifactu."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     

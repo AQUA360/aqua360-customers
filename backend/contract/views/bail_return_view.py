@@ -6,6 +6,9 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from contract.models import Bail
 from contract.serializers.bail_serializer import BailSerializer
 from contract.utils.bail_service import return_bail
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BailReturnViewSet(APIView):
   permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -20,5 +23,6 @@ class BailReturnViewSet(APIView):
     except Bail.DoesNotExist:
         return Response({"error": "Bail no trobat"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)  
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)  
     

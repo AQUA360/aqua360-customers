@@ -8,6 +8,9 @@ from billing.utils.smart_metering_service import (
     SmartMeteringApiError,
     fetch_smart_metering_meter_reading,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SmartMeteringMeterReadingView(APIView):
@@ -48,7 +51,8 @@ class SmartMeteringMeterReadingView(APIView):
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Unexpected error occurred: {exc}"},
+                {"error": "Unexpected error occurred."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

@@ -26,6 +26,9 @@ from documentmanager.utils.main_utils import upload_document
 from django.contrib.auth.models import User
 from auth.permissions import PermissionManager
 from service.models import MeterCaliber
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ContractRequestViewSet(viewsets.ModelViewSet):
@@ -276,4 +279,5 @@ class ContractRequestCreateContractView(APIView):
         except ContractRequest.DoesNotExist:
             return Response({"error": "ContractRequest not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -20,6 +20,9 @@ from logger.models import LogCommitmentDepositMovement
 from billing.utils.payment_service import log_payment_status, generate_payment_movement
 from django.db import transaction
 from billing.utils.commitment_deposit_service import add_wallet_payment
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PaymentCommitmentViewSet(viewsets.ModelViewSet):
   queryset = PaymentCommitment.objects.all().order_by('due_date')
@@ -131,8 +134,9 @@ class PaymentCommitmentViewSet(viewsets.ModelViewSet):
           due_date=payment.due_date,
         )
       except Exception as e:
+          logger.exception("Error inesperat")
           return Response(
-            {"detail": "Error returning payment: " + str(e)},
+            {"detail": "Error returning payment."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
           )
       print("here")

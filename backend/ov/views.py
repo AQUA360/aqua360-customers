@@ -151,8 +151,9 @@ class BillingDataOVView(APIView):
             )
 
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to update billing data: {str(e)}"},
+                {"error": "Failed to update billing data."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -196,8 +197,9 @@ class BillingDataOVUpdateIBANView(APIView):
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to update IBAN: {str(e)}"},
+                {"error": "Failed to update IBAN."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -448,9 +450,10 @@ class InvoicePDFView(APIView):
             )
 
         except Exception as e:
+            logger.exception("Error inesperat")
             # Step 12: Handle any errors during document retrieval or conversion
             return Response(
-                {"error": f"Failed to retrieve invoice PDF: {str(e)}"},
+                {"error": "Failed to retrieve invoice PDF."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1272,8 +1275,9 @@ class BatchInvoiceDownloadView(APIView):
                     used_names.add(name)
                     zip_file.writestr(name, pdf_buffer.getvalue())
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to retrieve invoice PDF: {str(e)}"},
+                {"error": "Failed to retrieve invoice PDF."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

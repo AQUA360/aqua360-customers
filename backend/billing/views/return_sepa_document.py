@@ -12,6 +12,9 @@ from billing.utils.sepa_service import (
     extract_company_data,
     extract_clients_data,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ReturnSEPADocument(APIView):
@@ -64,8 +67,9 @@ class ReturnSEPADocument(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error processing file: {str(e)}"},
+                {"error": "Error processing file."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

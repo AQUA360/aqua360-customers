@@ -35,6 +35,9 @@ from statistics.views.reports_views import add_row, adjust_column_widths, filter
 from statistics.utils.report_filters import (contract_multi_filter_q, get_billing_ids, get_multi_ids, has_serie_final_range,
                                              invoice_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
 from billing.utils.invoice_range_utils import filter_invoices_by_serie_final_range
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def delete_file_later(path: str, delay_seconds: int = 100) -> None:
@@ -2347,7 +2350,8 @@ def generate_order_time_summary(request, black_fill=None, white_bold_font=None, 
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def get_order_address(order):
     order_address = ""
@@ -2400,7 +2404,8 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
             )
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
         
         wb = openpyxl.Workbook()
         sheet = wb.active
@@ -2576,7 +2581,8 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
     
 def generate_sii_report(request, black_fill=None, white_bold_font=None, task=None):
@@ -2740,8 +2746,9 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
         # os.remove(filename)
         return response, document_id, filename
     except Exception as e:
+        logger.exception("Error inesperat")
         print("error: ", e)
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
     

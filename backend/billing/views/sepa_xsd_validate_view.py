@@ -5,6 +5,9 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 
 from billing.models import PaymentRemittance
 from billing.validators.sepa_xsd_validator import XSD_PATHS_BY_TYPE, validate_sepa_xml
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SepaXsdValidateView(APIView):
@@ -28,8 +31,9 @@ class SepaXsdValidateView(APIView):
         try:
             content = uploaded.read()
         except Exception as exc:
+            logger.exception("Error inesperat")
             return Response(
-                {'error': f'Could not read file: {exc}'},
+                {'error': 'Could not read file.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

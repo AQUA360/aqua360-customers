@@ -16,9 +16,13 @@ def upload_to_hdd(file, entity, field, entity_id, entity_token, folder, document
     month_folder_name = (f'{field}_{month_name}').upper()
     
     #file_path = os.path.join(settings.DOCUMENT_STORAGE_PATH, f"{field}/{date_year}/{date_month}", f"{folder}_{entity_token}", entity, document_name)
-    file_path = os.path.join(settings.DOCUMENT_STORAGE_PATH, 
+    storage_path = os.path.abspath(settings.DOCUMENT_STORAGE_PATH)
+    file_path = os.path.normpath(os.path.join(storage_path, 
                              f"{field}/{entity}/{date_year}/{month_folder_name}", 
-                             document_name)
+                             document_name))
+    # El nom del document no pot sortir de la carpeta de documents (p. ex. amb '..').
+    if not file_path.startswith(storage_path + os.sep):
+        raise ValueError("Invalid document path")
     folder_path = os.path.dirname(file_path)
     os.makedirs(folder_path, exist_ok=True)
     

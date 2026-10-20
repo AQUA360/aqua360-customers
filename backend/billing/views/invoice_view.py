@@ -30,6 +30,9 @@ from contract.models import PiggyBankMovement, Contract
 from coredata.utils.name_utils import generate_token
 from billing.views.epayment_document_generate_view import generate_xml
 from statistics.utils.report_service import delete_file_later
+import logging
+
+logger = logging.getLogger(__name__)
 
 class InvoiceViewSet(viewsets.ModelViewSet):
   """
@@ -539,8 +542,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         new_invoice = recalculate_invoice_smart(invoice.id)
         serializer = InvoiceFullSerializer(new_invoice, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
-    except Exception as e:
+    except ValueError as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.exception("Error inesperat")
+        return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
   @action(detail=False, methods=['get'], url_path='permissions')
 

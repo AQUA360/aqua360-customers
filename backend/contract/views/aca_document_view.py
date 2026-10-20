@@ -11,6 +11,9 @@ from ..utils.aca_exchange_file_parser import details_to_changes, looks_like_exch
 from datetime import datetime
 from auth.permissions import PermissionManager
 from contract.permissions import ContractPermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 ACA_DOCUMENT_TYPES = {'AT': 'Ampliació de trams', 'CS': 'Canon Social'}
 
@@ -107,6 +110,7 @@ class ACADocumentViewSet(viewsets.ModelViewSet):
                 return Response({"data": ACADocumentSerializer(doc).data}, status=status.HTTP_201_CREATED)
 
             except Exception as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                logger.exception("Error inesperat")
+                return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

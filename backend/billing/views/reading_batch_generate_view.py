@@ -16,6 +16,9 @@ from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint
 from billing.utils.reading_filters import PENDING_READING_FILTER, BILLED_READING_FILTER
 from billing.utils.reading_batch_service import get_setup_filter_supply_point_ids
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ReadingBatchSummaryView(viewsets.ViewSet):
@@ -40,7 +43,8 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def list(self, request):
         try:
@@ -365,7 +369,8 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     @action(detail=True, methods=['post'], url_path='assign-readings')
     def assign_readings(self, request, pk=None):
@@ -464,7 +469,8 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def serialize_decimal(value):
     """Recursively converts Decimal values to float or str."""
@@ -510,7 +516,8 @@ class ReadingBatchRegenerateView(views.APIView):
             return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ReadingBatchRevertView(views.APIView):
@@ -597,7 +604,8 @@ class ReadingBatchRevertView(views.APIView):
             )
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         
 class TaskProgressView(APIView):

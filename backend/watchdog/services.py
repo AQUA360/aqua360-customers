@@ -765,7 +765,8 @@ class DataIntegrityService:
         for pb in person_banks:
             if not pb.iban or not validate_iban(pb.iban):
                 issues.append(
-                    f"PersonBank ID {pb.id} for Person ID {pb.person_id} has invalid or null IBAN: '{pb.iban}'"
+                    # Sense el valor: l'informe es desa a disc i l'IBAN és una dada bancària.
+                    f"PersonBank ID {pb.id} for Person ID {pb.person_id} has {'invalid' if pb.iban else 'null'} IBAN"
                 )
 
         # Check CompanyBank IBANs
@@ -773,7 +774,7 @@ class DataIntegrityService:
         for cb in company_banks:
             if not cb.iban or not validate_iban(cb.iban):
                 issues.append(
-                    f"CompanyBank ID {cb.id} for Company ID {cb.company_id} has invalid or null IBAN: '{cb.iban}'"
+                    f"CompanyBank ID {cb.id} for Company ID {cb.company_id} has {'invalid' if cb.iban else 'null'} IBAN"
                 )
 
         return issues

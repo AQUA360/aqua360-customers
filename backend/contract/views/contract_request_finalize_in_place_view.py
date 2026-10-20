@@ -9,6 +9,9 @@ from coredata.models import ConfigProject
 from order.models import OrderStatus
 from contract.utils.contract_request_service import contract_request_finalize_in_place
 from contract.serializers.contract_request_serializer import ContractRequestSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FinalizeContractRequestInPlaceView(views.APIView):
@@ -38,5 +41,6 @@ class FinalizeContractRequestInPlaceView(views.APIView):
         except OrderStatus.DoesNotExist:
             return Response({"error": "OrderStatus 'PENDING' no trobat."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            logger.exception("Error inesperat")
             print(f"Ha ocorregut un error inesperat: {e}")
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

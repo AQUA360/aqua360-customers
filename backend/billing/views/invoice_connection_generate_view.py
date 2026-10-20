@@ -4,6 +4,9 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from service.models import ConnectionRequest
 from billing.serializers.invoice_serializer import InvoiceSerializer
 from billing.utils.invoice_service import invoice_connection_generate
+import logging
+
+logger = logging.getLogger(__name__)
 
 class InvoiceConnectionGenerateView(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -26,4 +29,5 @@ class InvoiceConnectionGenerateView(views.APIView):
             #return Response({"error": "Invoice not generated yet."}, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

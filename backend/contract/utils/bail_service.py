@@ -121,7 +121,7 @@ def immediate_return_bail(user, bail_id):
         bail = Bail.objects.select_for_update().get(id=bail_id)
         unreturned_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
         if not bail.status or bail.status.token != unreturned_token:
-            raise Exception("Bail is not unreturned")
+            raise ValueError("Bail is not unreturned")
 
         contract = (
             Contract.objects.filter(bails=bail)
@@ -130,15 +130,15 @@ def immediate_return_bail(user, bail_id):
             .first()
         )
         if not contract:
-            raise Exception("Contract not found for this bail")
+            raise ValueError("Contract not found for this bail")
         if not contract.piggy_bank:
-            raise Exception("Contract balance not found")
+            raise ValueError("Contract balance not found")
 
         payment_type_id = contract.payment.type_id if contract.payment else None
         if not payment_type_id:
             default_payment_type = PaymentType.objects.filter(is_default=True).first()
             if not default_payment_type:
-                raise Exception("Contract has no payment method")
+                raise ValueError("Contract has no payment method")
             payment_type_id = default_payment_type.id
 
         payment_bank = contract.payment.IBAN.id if contract.payment and contract.payment.IBAN else None
@@ -152,7 +152,7 @@ def immediate_return_bail(user, bail_id):
             bails=[bail],
         )
         if not invoice:
-            raise Exception("Could not generate return invoice")
+            raise ValueError("Could not generate return invoice")
 
         prev_status = bail.status
         pending_status = BailStatus.objects.get(
