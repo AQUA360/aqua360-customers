@@ -28,7 +28,7 @@ permissions:
 
 # En una branca, només compta l'últim commit: si n'entra un altre, el d'abans es deixa de construir.
 concurrency:
-  group: imatges-${{ github.ref }}
+  group: imatges-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.versio || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
