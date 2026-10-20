@@ -291,6 +291,11 @@ const save = async () => {
       navigateTo('/service/supply-cut/');
     } catch (error) {
       console.error('Error saving supply cuts:', error);
+      toast.error(error?.data?.error || error?.response?.data?.error || t('common.error_save'));
+      const code = error?.data?.code || error?.response?.data?.code;
+      if (code === 'vulnerability_confirm_required') {
+        await getAffectedSupplyPoints();
+      }
     } finally {
       saving.value = false;
     }

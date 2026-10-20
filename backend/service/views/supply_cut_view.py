@@ -111,14 +111,6 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
 
         contract_ids = data.get('contract_ids') or []
         supply_point_ids = data.get('supply_points') or []
-        # Tolerància a ids mal formats: el guard corre abans de la validació
-        # del serializer, i un valor no llista no ha de poder espetegar aquí.
-        if not isinstance(contract_ids, (list, tuple)):
-            contract_ids = []
-        if not isinstance(supply_point_ids, (list, tuple)):
-            supply_point_ids = []
-        contract_ids = [value for value in contract_ids if str(value).lstrip('-').isdigit()]
-        supply_point_ids = [value for value in supply_point_ids if str(value).lstrip('-').isdigit()]
         if not contract_ids and not supply_point_ids:
             return None
 
@@ -154,11 +146,16 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Validate manual vulnerability rules, create the cut, and return its full representation."""
-        blocked = self._enforce_vulnerability_rules(request.data)
-        if blocked is not None:
-            return blocked
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        blocked = self._enforce_vulnerability_rules({
+            'cause_id': serializer.validated_data.get('cause_id'),
+            'supply_points': serializer.validated_data.get('supply_points'),
+            'contract_ids': serializer.validated_data.get('contract_ids'),
+            'vulnerable_confirmation': request.data.get('vulnerable_confirmation'),
+        })
+        if blocked is not None:
+            return blocked
         self.perform_create(serializer)
         instance = serializer.instance
         read_serializer = SupplyCutSerializer(instance, context=self.get_serializer_context())
