@@ -100,7 +100,6 @@ def upload_to_azure(file, entity, field, entity_id, entity_token, folder, docume
     #blob_client = container_client.get_blob_client(blob_name)
     try:
         blob_client.upload_blob(data=file, overwrite=True, tags=sample_tags) 
-        print(f"Uploaded blob: {blob_name}")
     except Exception as e:
         raise Exception(f"Failed to upload blob: {e}")
 

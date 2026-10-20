@@ -31,9 +31,7 @@ def upload_to_aws(file, document, name, field, entity):
     print("got s3_client")
     print(s3_client)
     bucket_name = settings.AWS_STORAGE_BUCKET_NAME  
-    print(bucket_name)
     s3_file_path = f"{field}/{entity}/{date_year}/{month_folder_name}/{name}"  
-    print(s3_file_path)
     
     current_user = get_current_user()
     

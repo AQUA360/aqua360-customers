@@ -62,7 +62,7 @@ def delete_document_from_hdd(document):
     try:
         if document.location and os.path.exists(document.location):
             os.remove(document.location)
-            print(f"Document deleted from HDD: {document.location}")
+            print(f"Document {document.id} deleted from HDD")
         else:
             print(f"Document not found on HDD or location is not set.")
     except Exception as e:
