@@ -237,15 +237,19 @@ class BillingQueueActionTests(TestCase):
     # --- vista ------------------------------------------------------------
 
     def test_la_vista_retorna_503_si_no_pot_matar_la_tasca(self):
+        """Comprova el 503 i el log sense exposar l'error ni modificar la cua."""
         item = self.enqueue()
         client = APIClient()
         client.force_authenticate(User.objects.create(username='queue-kill'))
 
-        with mock.patch(REVOKE, side_effect=ConnectionError('redis no respon')):
+        with mock.patch(REVOKE, side_effect=ConnectionError('redis no respon')), \
+                self.assertLogs('billing.views.billing_batch_generate_view', level='ERROR') as logs:
             response = client.post(f'/billing/billing-queue/{item.id}/action/', {'action': 'kill'}, format='json')
 
         self.assertEqual(response.status_code, 503)
-        self.assertIn('redis no respon', response.data['error'])
+        # L'error del broker va al log, no a la resposta.
+        self.assertNotIn('redis no respon', response.data['error'])
+        self.assertIn('redis no respon', str(logs.records[0].exc_info[1]))
         item.refresh_from_db()
         self.assertEqual(item.status, 'running')
 

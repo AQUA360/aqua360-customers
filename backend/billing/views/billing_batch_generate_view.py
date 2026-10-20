@@ -183,6 +183,11 @@ class BillingQueueActionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, queue_item_id):
+        """Aplica kill, skip o restart i retorna l'estat de l'ítem de facturació.
+
+        Si falla la revocació a Celery, retorna 503 sense modificar la cua
+        i registra el detall de l'error.
+        """
         action_name = request.data.get('action')
         if action_name not in ('kill', 'skip', 'restart'):
             return Response(
@@ -197,9 +202,10 @@ class BillingQueueActionView(APIView):
 
         try:
             apply_billing_queue_action(q_item, action_name)
-        except QueueTaskRevokeError as e:
+        except QueueTaskRevokeError:
+            logger.exception("No s'ha pogut aturar la tasca a Celery")
             return Response(
-                {"error": f"No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat. {e}"},
+                {"error": "No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         q_item.refresh_from_db()

@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from cryptography.fernet import Fernet
 from django.test import TestCase, override_settings
+from rest_framework.exceptions import ValidationError
 
 from communication.models import CommunicationUseType
 from communication.serializers.communication_serializer import CommunicationSerializer
@@ -135,8 +136,12 @@ class SmtpPasswordPerEmailTest(TestCase):
         with override_settings(SMTP_PASSWORD_ENCRYPTION_KEY=''):
             serializer = CompanyConfigSerializer(self.config, data=self._payload(password='new-password'), partial=True)
             serializer.is_valid(raise_exception=True)
-            with self.assertRaisesMessage(Exception, 'SMTP_PASSWORD_ENCRYPTION_KEY'):
+            with self.assertRaises(ValidationError) as cm, \
+                    self.assertLogs('service.serializers.value_objects_serializer', level='ERROR') as logs:
                 serializer.save()
+            # El nom de la variable de configuració va al log, no a la resposta.
+            self.assertNotIn('SMTP_PASSWORD_ENCRYPTION_KEY', str(cm.exception))
+            self.assertIn('SMTP_PASSWORD_ENCRYPTION_KEY', str(logs.records[0].exc_info[1]))
 
     def test_api_keeps_a_single_default_email(self):
         payload = self._payload(is_default=True)

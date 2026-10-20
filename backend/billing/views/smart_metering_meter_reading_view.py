@@ -27,6 +27,11 @@ class SmartMeteringMeterReadingView(APIView):
     permission_classes = [IsAuthenticated, ReadingPermission]
 
     def get(self, request):
+        """Return a reading for a meter code or ID with optional date and margin.
+
+        Return HTTP 400 for invalid inputs and HTTP 502 for provider failures,
+        logging provider errors and returning a generic message.
+        """
         meter_code = request.query_params.get('meter')
         meter_id = request.query_params.get('meter_id')
         reading_date = request.query_params.get('date')
@@ -46,8 +51,10 @@ class SmartMeteringMeterReadingView(APIView):
                 margin=int(margin) if margin else None,
             )
             return Response(payload, status=status.HTTP_200_OK)
-        except SmartMeteringApiError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        except SmartMeteringApiError:
+            # El detall (configuració o resposta de l'API externa) queda al log.
+            logger.exception("Error del servei de telelectura")
+            return Response({"error": "No s'ha pogut obtenir la lectura del servei de telelectura."}, status=status.HTTP_502_BAD_GATEWAY)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:

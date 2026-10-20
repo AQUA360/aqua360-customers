@@ -7,6 +7,10 @@ from communication.models import CommunicationUseType
 from communication.serializers.value_objects_serializer import CommunicationUseTypeSerializer
 from documentmanager.serializers import DocumentSerializer
 from ..models import *
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ConnectionStatusSerializer(serializers.ModelSerializer):
     class Meta:
@@ -128,8 +132,9 @@ def apply_config_email_password(config_email, password=None, clear_password=Fals
     if password:
         try:
             config_email.set_password(password)
-        except ImproperlyConfigured as exc:
-            raise serializers.ValidationError({'password': str(exc)})
+        except ImproperlyConfigured:
+            logger.exception("No s'ha pogut xifrar la contrasenya del correu")
+            raise serializers.ValidationError({'password': "Falta configurar el xifratge de contrasenyes al servidor."})
     elif clear_password:
         config_email.encrypted_password = None
 
