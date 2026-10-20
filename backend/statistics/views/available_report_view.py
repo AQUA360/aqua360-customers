@@ -254,9 +254,9 @@ class ReportQueueActionView(APIView):
             )
         q_item.refresh_from_db()
 
+        # Sense error_message: pot portar l'excepció de Celery. L'operador el veu a la llista de la cua.
         return Response({
             "id": q_item.id,
             "status": q_item.status,
             "task_id": q_item.task_id,
-            "error_message": q_item.error_message,
         }, status=status.HTTP_200_OK)
