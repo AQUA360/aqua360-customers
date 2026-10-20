@@ -3926,6 +3926,7 @@ def fix_invoices_persons_task():
 @shared_task
 @billing_run_cache_scope()
 def process_selected_contracts_task(billing_id, contract_ids):
+    """Processes readings and generates line items for the given contracts within a billing run."""
     try:
         billing = Billing.objects.get(id=billing_id)
     except Billing.DoesNotExist:

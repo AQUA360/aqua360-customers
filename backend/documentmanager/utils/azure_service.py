@@ -33,6 +33,7 @@ def authenticate_azure():
     return blob_service_client
 
 def upload_to_azure(file, entity, field, entity_id, entity_token, folder, document_name, document, date=None):
+    """Uploads a file as a blob to Azure Blob Storage, ensuring a unique blob name, and updates the document record."""
     print("\n\nUploading to Azure")
     try:
         locale.setlocale(locale.LC_TIME, 'ca_ES.UTF-8')

@@ -456,6 +456,7 @@ def return_billing_months_for_lineitemtype(billing_period_token):
 
 # Create Contract from ContractRequest
 def create_from_lineitemtype(contract, line_item_type, reading, consumption, consumption_days, existing_line_items=None, change_date=None, prev_invoice = None, leak_reading=None, is_termination=False, billing_correction=None, prev_date = None, period_months=None):
+    """Builds the invoice line items for a contract's line item type based on the given reading and consumption."""
     # log removed
     # print(f"Contract: {contract}")
     # print(f"Reading: {reading}")

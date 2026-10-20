@@ -12,6 +12,7 @@ from order.middleware import get_current_user
 from documentmanager.models import Document
 
 def upload_to_aws(file, document, name, field, entity):
+    """Uploads a file to the AWS S3 bucket, ensuring a unique object key, and updates the document record."""
     print("going in service aws")
     s3_client = boto3.client(
         's3',

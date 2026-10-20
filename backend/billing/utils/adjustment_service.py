@@ -21,6 +21,7 @@ def calc_consumption_responsible(contract, consumption):
     return True if ( (consumption / contract.total_persons) < 100) else False
 
 def evaluate_formula(formula, variables):
+    """Substitutes variables into the formula and evaluates the resulting expression."""
     # Sort variables by length (longest first) to avoid partial replacements
     sorted_variables = sorted(variables.items(), key=lambda x: len(x[0]), reverse=True)
     expression = formula
