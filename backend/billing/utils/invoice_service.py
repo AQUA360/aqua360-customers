@@ -641,8 +641,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
                 prev_reading_date = prev_reading.reading_date if prev_reading else None
 
                 # Fix for meter changes: ensure we go back to the very first reading of the period
+                # Si la lectura anterior ja està facturada, el període comença en ella: el tram
+                # del comptador antic ja es va facturar amb ella i no s'ha de tornar a comptar.
                 actual_pr = prev_reading
-                close_prev = get_close_previous_reading(actual_pr) if actual_pr else None
+                close_prev = get_close_previous_reading(actual_pr) if actual_pr and not reading_has_blocking_invoices(actual_pr) else None
                 if close_prev:
                     actual_pr = close_prev
                 while actual_pr and actual_pr.is_close and not reading_has_blocking_invoices(actual_pr):
