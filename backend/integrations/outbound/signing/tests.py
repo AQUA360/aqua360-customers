@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 
 from integrations.models import ContractSigningSession, IntegrationRequestLog
 from integrations.outbound.signing.client import SigningClient
-from integrations.outbound.signing.exceptions import SigningApiError
+from integrations.outbound.signing.exceptions import SIGNING_SERVICE_ERROR, SigningApiError
 
 
 @override_settings(
@@ -219,12 +219,15 @@ class DocumentSignRetrieveTest(TestCase):
 
         client = MagicMock()
         client.get_session.side_effect = SigningApiError("Aqua360 no respon")
-        with self.assertRaises(SigningApiError):
+        with self.assertRaises(SigningApiError), \
+                self.assertLogs("integrations.outbound.signing.polling", level="ERROR") as logs:
             retrieve_signed_document(self.document_sign, client=client)
 
         self.document_sign.refresh_from_db()
         self.assertEqual(self.document_sign.status, self.DocumentSign.STATUS_ERROR)
-        self.assertIn("Aqua360 no respon", self.document_sign.error_report)
+        # L'usuari veu un text genèric; la resposta del servei queda al log.
+        self.assertEqual(self.document_sign.error_report, SIGNING_SERVICE_ERROR)
+        self.assertIn("Aqua360 no respon", str(logs.records[0].exc_info[1]))
 
     def test_poll_still_swallows_errors(self):
         from integrations.outbound.signing.polling import poll_document_sign

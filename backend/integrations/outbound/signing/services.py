@@ -21,7 +21,7 @@ from documentmanager.utils.main_utils import download_document, upload_document
 from integrations.models import ContractSigningSession
 
 from .client import SigningClient
-from .exceptions import SigningApiError
+from .exceptions import SIGNING_SERVICE_ERROR, SigningApiError
 
 
 def _resolve_recipient(
@@ -294,9 +294,10 @@ def create_document_sign_session(document_sign, *, callback_url=None, force=Fals
             object_type="document_sign",
             object_id=str(document_sign.id),
         )
-    except SigningApiError as exc:
+    except SigningApiError:
+        # El detall arriba al log amb l'excepció, que es torna a llançar.
         document_sign.status = DocumentSign.STATUS_ERROR
-        document_sign.error_report = (str(exc) or "")[:255] or None
+        document_sign.error_report = SIGNING_SERVICE_ERROR
         document_sign.save(update_fields=["status", "error_report", "updated_at"])
         raise
 
