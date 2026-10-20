@@ -7,6 +7,7 @@ from django.http import Http404, HttpResponse
 
 
 def upload_to_ftp(file, entity, field, entity_id, entity_token, folder, document_name, document, date=None):
+    """Uploads a file to the FTP server, creating the destination folder if needed, and updates the document record."""
     print("Uploading to FTP")
     try:
         locale.setlocale(locale.LC_TIME, 'ca_ES.UTF-8')
@@ -60,6 +61,7 @@ def upload_to_ftp(file, entity, field, entity_id, entity_token, folder, document
     return document
 
 def download_document_from_ftp(document):
+    """Downloads a document from the FTP server and returns it as an HTTP response."""
     print("Downloading from FTP")
 
     remote_file_path = document.location_url.replace("ftp://", "").split("/", 1)[1]
