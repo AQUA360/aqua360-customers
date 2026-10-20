@@ -28,6 +28,7 @@ import PriceRateRegionDetail from './PriceRateRegionDetail.vue';
 import PriceIntervalRegion from './PriceIntervalRegion.vue';
 import CalendarTaskEdit from '../molecules/CalendarTaskEdit.vue';
 import PiggyBankRegion from './PiggyBankRegion.vue';
+import ContractDebtRegion from './ContractDebtRegion.vue';
 import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
@@ -765,6 +766,8 @@ const setActiveTab = (tab) => {
                 :isSubRegion="true" @changed="handleChange" />
             <PiggyBankRegion v-if="showRegionDetailComponent === 'PiggyBankRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" @changed="handleChange" @show-subregion="handleSubRegionEvent" />
+            <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
+                :isSubRegion="true" @changed="getContractData(false)" @show-subregion="handleSubRegionEvent" />
             <AddReading v-if="showRegionDetailComponent === 'AddReading'" :contract="contract"
                 :contract_ids="[contract.id]" :isSubRegion="true" />
             <AddInvoiceBudget v-if="showRegionDetailComponent === 'AddInvoiceBudget'" :isSubRegion="true"

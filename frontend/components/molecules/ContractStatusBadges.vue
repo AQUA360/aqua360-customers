@@ -10,6 +10,11 @@ const props = defineProps({
         type: Boolean,
         default: true
     },
+    // Debt badge opens ContractDebtRegion (only where the parent handles it)
+    showDebtDetail: {
+        type: Boolean,
+        default: false
+    },
 });
 
 const emit = defineEmits(['show-detail']);
@@ -71,13 +76,23 @@ function removeUselessZero(value) {
             </span>
             <Icon v-if="!isSubRegion" name="fa6-solid:chevron-right" class="text-sky-400 text-[10px] ml-1 group-hover:translate-x-0.5 transition-transform" />
         </button>
-        <div class="flex items-center gap-2 rounded px-2 py-1 border truncate transition-colors"
-            :class="contract.debt_amount > 0 ? 'bg-red-50 border-red-300' : 'border-slate-300'">
+        <component :is="showDebtDetail ? 'button' : 'div'"
+            @click="showDebtDetail && !isSubRegion && showDetail('ContractDebtRegion', contract.id)"
+            :disabled="showDebtDetail ? isSubRegion : undefined"
+            class="flex items-center gap-2 rounded px-2 py-1 border truncate transition-colors group"
+            :class="[
+                contract.debt_amount > 0 ? 'bg-red-50 border-red-300' : 'border-slate-300',
+                { 'shadow-sm enabled:hover:border-red-400 enabled:hover:bg-red-100 disabled:cursor-default': showDebtDetail },
+            ]"
+            :title="showDebtDetail && !isSubRegion ? t('common.view_details') : ''">
             <Icon name="fa6-solid:money-bill-wave" :class="contract.debt_amount > 0 ? 'text-red-500' : 'text-slate-400'" />
             <span class="text-sm font-medium" :class="contract.debt_amount > 0 ? 'text-red-700' : 'text-slate-500'">
                 {{ t('common.debt') }}: {{ formatMoneyWithCurrency(contract.debt_amount) }}
             </span>
-        </div>
+            <Icon v-if="showDebtDetail && !isSubRegion" name="fa6-solid:chevron-right"
+                class="text-[10px] ml-1 group-hover:translate-x-0.5 transition-transform"
+                :class="contract.debt_amount > 0 ? 'text-red-400' : 'text-slate-400'" />
+        </component>
         <div v-if="showExtra && contract.total_in_commitment_deposits && parseFloat(contract.total_in_commitment_deposits) > 0" class="flex items-center gap-2 rounded px-2 py-1 border border-slate-300 truncate">
             <Icon name="fa6-solid:wallet" class="text-slate-400" />
             <span class="text-slate-500 text-sm">

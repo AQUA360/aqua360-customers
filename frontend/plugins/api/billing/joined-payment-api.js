@@ -113,6 +113,16 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  const getContractDebt = async (contractId) => {
+    const apiUrl = `${apiHost}${entity}contract-debt/`;
+    try {
+      const response = await $apiManager.fetch(apiUrl, 'POST', { contract: contractId }, { 'Content-Type': 'application/json' })
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   const generatePaymentProofDoc = async (data) => {
     const apiUrl = `${apiHost}${entity}payment-proof/`;
     try {
@@ -144,6 +154,7 @@ export default defineNuxtPlugin(nuxtApp => {
     getDetail,
     save,
     getPendingClientData,
+    getContractDebt,
     generatePaymentProofDoc,
     generatePDF,
   };

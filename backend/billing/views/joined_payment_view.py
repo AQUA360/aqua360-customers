@@ -14,7 +14,7 @@ from billing.filter.joined_payment_filter import JoinedPaymentFilter
 from billing.models import JoinedPayment
 from billing.permissions import PaymentPermission
 from billing.serializers.joined_payment_serializer import JoinedPaymentListSerializer, JoinedPaymentSerializer, JoinedPaymentSaveSerializer
-from billing.utils.joined_payment_service import get_pending_client_data, generate_report_joined_payment_pdf
+from billing.utils.joined_payment_service import get_contract_debt_detail, get_pending_client_data, generate_report_joined_payment_pdf
 from billing.utils.payment_proof_service import get_payments_from_request_data, render_payment_proof_pdf
 from statistics.utils.report_service import delete_file_later
 
@@ -53,6 +53,13 @@ class JoinedPaymentViewSet(viewsets.ModelViewSet):
       data = request.data
       client_data = get_pending_client_data(data)
       return Response({"client_data": client_data}, status=status.HTTP_200_OK)
+  
+  @action(detail=False, methods=['post'], url_path='contract-debt')
+  def obtain_contract_debt(self, request):
+      contract_id = request.data.get('contract', None)
+      if not contract_id:
+          return Response({"error": "contract is required"}, status=status.HTTP_400_BAD_REQUEST)
+      return Response(get_contract_debt_detail(contract_id), status=status.HTTP_200_OK)
   
   
   @action(detail=False, methods=['post'], url_path='payment-proof')

@@ -653,8 +653,9 @@ const onPhoneSelected = (phoneContact) => {
   if (!selectedPhones.value.find(phone => phone.id === phoneContact.id)) {
     selectedPhones.value.push(phoneContact);
   }
-  // En afegir un telèfon de contacte, s'habilita l'SMS automàticament sense pas manual.
-  if (!selectedSMSPhones.value.find(phone => phone.id === phoneContact.id)) {
+  // En afegir un telèfon de contacte, s'habilita l'SMS automàticament sense pas manual,
+  // excepte si és un fix (no pot rebre SMS i el backend el rebutjaria en desar).
+  if (isMobilePhone(phoneContact?.phone) && !selectedSMSPhones.value.find(phone => phone.id === phoneContact.id)) {
     selectedSMSPhones.value.push(phoneContact);
   }
   emitChange();
