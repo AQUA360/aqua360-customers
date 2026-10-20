@@ -104,6 +104,8 @@ def _select_invoices(request):
     name = data.get('name', '')
     type_id = data.get('type_id', None)
     exploitation_id = data.get('exploitation_id', None)
+    if exploitation_id == 'all':
+        exploitation_id = None
 
     has_serie_range = has_serie_final_range(data)
     if not billing_ids and not date_range and not has_serie_range:
@@ -146,7 +148,7 @@ def _select_invoices(request):
     multi_q = invoice_multi_filter_q(**get_multi_ids(data))
     if multi_q:
         invoices = invoices.filter(multi_q).distinct()
-    return invoices, (start_date, end_date, name, type_id, data.get('exploitation_id')), None
+    return invoices, (start_date, end_date, name, type_id, exploitation_id), None
 
 
 def _load_invoices(invoices):
