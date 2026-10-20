@@ -160,7 +160,7 @@ class GenerateInvoiceBudgetView(APIView):
                     ContractTerminationRequest.objects.filter(id=contract_termination_request.id).update(ignore_invoice=False)
                 Invoice.objects.filter(contract_termination=contract_termination_request, type__token=budget_type_token).delete()
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
-                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester)
+                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
             print("invoice")
             print(invoice)
         
