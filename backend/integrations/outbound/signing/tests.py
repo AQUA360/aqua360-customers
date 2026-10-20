@@ -215,6 +215,7 @@ class DocumentSignRetrieveTest(TestCase):
         self.assertIsNone(self.document_sign.error_report)
 
     def test_remote_error_marks_error_and_raises(self):
+        """Si Aqua360 falla, l'usuari rep un error genèric i el detall queda al log."""
         from integrations.outbound.signing.polling import retrieve_signed_document
 
         client = MagicMock()
