@@ -3,7 +3,12 @@
 # releases es fusionen a mà. Les PR en esborrany i les que vénen d'un fork no la tenen. Es pot
 # desactivar a cada PR amb «Disable auto-merge».
 #
-# Seguretat: el repositori és públic. Cap secret: només el GITHUB_TOKEN de l'acció.
+# Fa servir el token FUSIO_TOKEN (un token d'usuari), no el GITHUB_TOKEN de l'acció: GitHub no
+# engega cap workflow per un push fet amb el GITHUB_TOKEN, i la fusió es feia amb ell. Sense
+# FUSIO_TOKEN, develop no passava les proves ni construïa les imatges després de fusionar.
+#
+# Seguretat: el repositori és públic. El secret no arriba mai a les PR que vénen d'un fork (ni
+# aquest job s'hi executa) i no s'escriu enlloc.
 name: Fusió automàtica
 
 on:
@@ -22,6 +27,6 @@ jobs:
     steps:
       - name: Activar la fusió automàtica
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.FUSIO_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto --merge "$PR_URL"
