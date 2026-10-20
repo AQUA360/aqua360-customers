@@ -2,8 +2,9 @@
 # GitHub (ghcr.io) amb l'etiqueta de la versió i la del commit. Els servidors dels clients només les
 # baixen.
 #
-# També a cada commit de develop, amb l'etiqueta `develop` i la del commit: els clients que segueixen
-# develop reben els canvis sense esperar cap release i sense construir les imatges al seu servidor.
+# També a cada commit de main i de develop, amb l'etiqueta de la branca i la del commit: una
+# instal·lació que segueix una branca rep els canvis sense esperar cap release i sense construir les
+# imatges al seu servidor. Cada imatge porta el commit, i per això main i develop no es trepitgen.
 #
 # Seguretat: el registre és públic, igual que aquest repositori. Aquí només es construeix el codi
 # del repositori: cap .env, servidor, domini ni contrasenya. La configuració de cada client es posa
@@ -14,7 +15,7 @@ on:
   release:
     types: [published]
   push:
-    branches: [develop]
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       versio:
@@ -25,14 +26,14 @@ permissions:
   contents: read
   packages: write
 
-# A develop, només compta l'últim commit: si n'entra un altre, el d'abans es deixa de construir.
+# En una branca, només compta l'últim commit: si n'entra un altre, el d'abans es deixa de construir.
 concurrency:
   group: imatges-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
-  VERSIO: ${{ github.event.release.tag_name || inputs.versio || 'develop' }}
-  # El codi que es construeix: la release, la versió demanada o el commit exacte de develop.
+  VERSIO: ${{ github.event.release.tag_name || inputs.versio || github.ref_name }}
+  # El codi que es construeix: la release, la versió demanada o el commit exacte de la branca.
   CODI: ${{ github.event.release.tag_name || inputs.versio || github.sha }}
 
 jobs:
