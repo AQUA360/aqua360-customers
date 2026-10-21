@@ -31,7 +31,9 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 
 from documentmanager.utils.main_utils import upload_document
 from service.models import Company, Exploitation
+from service.serializers.company_bank_serializer import CompanyBankSerializer
 from service.serializers.company_serializer import CompanySerializer
+from service.utils.company_bank_service import get_company_bank
 from verifactu.utils.qr_service import generate_qr_base64
 fake = Faker()
 
@@ -358,6 +360,7 @@ def generate(context, invoice, exploitation, temporary=False):
         # Adjust if falls on weekend
         while tomorrow.weekday() >= 5:  
             tomorrow += timedelta(days=1)
+        company_bank_obj = get_company_bank(company_obj, invoice)
         if invoice.payment_type_token_final != 'DIRECT_DEBIT' and invoice.payment_type_token_final != 'BANK_TRANSFER':
             ident = invoice.due_date.strftime("%d%m%y") if invoice.due_date else "000000"
             #ident = tomorrow.strftime("%d%m%y")
@@ -365,6 +368,7 @@ def generate(context, invoice, exploitation, temporary=False):
                 'reference': invoice.token,
                 'total_final': invoice.left_to_pay,
                 'company': company_obj if company_obj else None,
+                'company_bank': company_bank_obj,
                 'ident': ident,
             }
             barcode = generate_barcode(barcode_data)
@@ -558,22 +562,7 @@ def generate(context, invoice, exploitation, temporary=False):
         except:
             pass
 
-        company_bank = None
-        if getattr(invoice, 'payment_company_bank', None):
-            from service.serializers.company_bank_serializer import CompanyBankSerializer
-            company_bank = CompanyBankSerializer(invoice.payment_company_bank).data
-        elif company and company.get("company_banks"):
-            for cb in company.get("company_banks"):
-                if cb.get("is_default") and cb.get("is_active"):
-                    company_bank = cb
-                    break
-            if not company_bank:
-                for cb in company.get("company_banks"):
-                    if cb.get("is_active"):
-                        company_bank = cb
-                        break
-            if not company_bank:
-                company_bank = company.get("company_banks")[0]
+        company_bank = CompanyBankSerializer(company_bank_obj).data if company_bank_obj else None
 
         print(f"[utils/invoice_pdf.py] logo: {logo}")
         print(f"[utils/invoice_pdf.py] exploitation_image: {exploitation_image}")

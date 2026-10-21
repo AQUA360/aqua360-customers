@@ -30,6 +30,8 @@ from ..models import Invoice, InvoiceLineItem, InvoiceTemplate, Reading
 from service.utils.exploitation_logo import exploitation_logo_path
 from coredata.models import ConfigProject
 from billing.utils.barcode_service import generate_barcode, get_barcode_values
+from service.serializers.company_bank_serializer import CompanyBankSerializer
+from service.utils.company_bank_service import get_company_bank
 import base64
 from verifactu.utils.qr_service import generate_qr_base64
 
@@ -174,6 +176,8 @@ def get_invoice_for_pdf(invoice_id=None, invoice=None):
         'connection_request__address_billing__address',
         'connection_request__address_billing__address__city',
         'connection_request__person',
+        'payment_company_bank',
+        'payment_company_bank__bank',
     ).prefetch_related(
         Prefetch('readings', queryset=reading_qs),
         Prefetch('line_items', queryset=line_item_qs),
@@ -327,6 +331,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
         # Adjust if falls on weekend
         while tomorrow.weekday() >= 5:  
             tomorrow += timedelta(days=1)
+        company_bank_obj = get_company_bank(company_obj, invoice)
         if invoice.payment_type_token_final != 'DIRECT_DEBIT' and invoice.payment_type_token_final != 'BANK_TRANSFER':
             ident = invoice.due_date.strftime("%d%m%y") if invoice.due_date else "000000"
             if company_obj:
@@ -335,6 +340,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                     'reference': invoice.token,
                     'total_final': invoice.left_to_pay,
                     'company': company_obj,
+                    'company_bank': company_bank_obj,
                     'ident': ident,
                 }
                 barcode = generate_barcode(barcode_data)
@@ -544,9 +550,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
         except Exception as e:
             print(f"Error en obtenir les lectures de canvi de metre: {str(e)}")
             meter_change_readings = []
-        company_bank = None
-        if company_serialized:
-            company_bank = company_serialized.get("company_banks")[0] if company_serialized.get("company_banks") else None
+        company_bank = CompanyBankSerializer(company_bank_obj).data if company_bank_obj else None
 
         num_habitatges = None
         if contract and hasattr(contract, 'variables'):
