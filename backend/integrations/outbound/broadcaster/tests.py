@@ -58,6 +58,19 @@ class BroadcasterClientTest(TestCase):
         self.assertEqual(log.request_payload, {})
 
     @patch("integrations.outbound.broadcaster.client.requests.post")
+    def test_duplicated_phones_are_sent_once(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
+
+        BroadcasterClient().send_sms(
+            recipient_name="Anna",
+            phones=["612345678", "+34 612 34 56 78", "0034612345678", "698765432"],
+            text="Hola",
+        )
+
+        values = [recipient["value"] for recipient in mock_post.call_args.kwargs["json"]["recipients"]]
+        self.assertEqual(values, ["34612345678", "34698765432"])
+
+    @patch("integrations.outbound.broadcaster.client.requests.post")
     def test_http_error(self, mock_post):
         mock_post.return_value = MagicMock(status_code=403, text="Forbidden")
 

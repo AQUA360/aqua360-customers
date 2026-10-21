@@ -66,6 +66,9 @@ class BroadcasterClient:
             value = to_broadcaster_format(phone)
             if not value:
                 raise BroadcasterError(f"El telèfon {phone} no pot rebre SMS.")
+            # El mateix número escrit de maneres diferents només rep un SMS.
+            if any(recipient["value"] == value for recipient in recipients):
+                continue
             recipients.append({
                 "name": recipient_name or "",
                 "value": value,

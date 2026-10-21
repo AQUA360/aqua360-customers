@@ -4,6 +4,7 @@ import json
 import os
 import re
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.template.loader import render_to_string
 from django.http import JsonResponse
@@ -569,6 +570,7 @@ def _set_sms_rejected(comm, sms_error):
   comm.save()
 
 
+@transaction.atomic
 def send_sms(comm):
   """
   Envia l'SMS de la comunicació via Broadcaster. Retorna el motiu si no s'ha pogut enviar.
@@ -587,8 +589,9 @@ def send_sms(comm):
     rejected_token = '-2'
   status_rejected = CommunicationStatus.objects.get(token=rejected_token)
 
-  # Re-check status from DB to avoid double sending in concurrent task chains
-  comm = Communication.objects.get(id=comm.id)
+  # Bloqueja la comunicació fins que es desa sms_sent_at: si dues tasques l'envien
+  # alhora, la segona espera i veu que l'SMS ja ha sortit.
+  comm = Communication.objects.select_for_update().get(id=comm.id)
   if comm.status not in (pending_status, status_rejected) or comm.sms_sent_at:
     return None
 
