@@ -224,6 +224,9 @@ class Communication(models.Model):
     always_attach = models.BooleanField(default=False)
     due_date = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    # Data d'enviament de l'SMS: amb correu i SMS alhora, un reintent per error
+    # del correu no ha de tornar a enviar l'SMS.
+    sms_sent_at = models.DateTimeField(null=True, blank=True)
     
     rejection_reason = models.TextField(null=True, blank=True)
     
