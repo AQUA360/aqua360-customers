@@ -147,7 +147,14 @@ const fieldLabel = (field) => {
       <FieldDetail :label='$t("common.name")' :value=localData.name />
 
       <FieldDetail :label="$t('common.expires_in')">
-        {{ localData.days_to_complete }} {{ t('common.days') }}
+        <div class="flex items-center gap-x-2">
+          <span>
+            {{ localData.days_to_complete }} {{ t('common.days') }}
+          </span>
+          <span class="px-2 bg-slate-100 rounded font-medium text-slate-600">
+            {{ localData.is_work_days ? t('common.work') : t('common.natural') }}
+          </span>
+        </div>
       </FieldDetail>
 
       <FieldDetail class="col-span-2" :label='$t("common.description")' :value="localData.description || '-'" />

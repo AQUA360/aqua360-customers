@@ -281,6 +281,7 @@ class DailyDocumentTemplate(models.Model):
     
     available_report = models.ForeignKey(AvailableReport, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_document_templates')
     days_to_complete = models.IntegerField(null=True, blank=True)
+    is_work_days = models.BooleanField(default=False)
     
     is_active = models.BooleanField(default=True)
     def __str__(self):
