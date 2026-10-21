@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase
 
-from coredata.utils.phone_utils import is_mobile_phone, normalize_phone
+from coredata.utils.phone_utils import is_mobile_phone, normalize_phone, to_broadcaster_format
 
 
 class PhoneUtilsTests(SimpleTestCase):
@@ -29,3 +29,11 @@ class PhoneUtilsTests(SimpleTestCase):
         self.assertEqual(normalize_phone('0034 612345678'), '+34612345678')
         self.assertEqual(normalize_phone('+34 612345678'), '+34612345678')
         self.assertEqual(normalize_phone(None), '')
+
+    def test_to_broadcaster_format(self):
+        # Broadcaster vol el prefix de país sense '+', com a Aqua360 Sign.
+        self.assertEqual(to_broadcaster_format('612 34 56 78'), '34612345678')
+        self.assertEqual(to_broadcaster_format('+34 612345678'), '34612345678')
+        self.assertEqual(to_broadcaster_format('0033 6 12 34 56 78'), '33612345678')
+        self.assertEqual(to_broadcaster_format('972123456'), '')
+        self.assertEqual(to_broadcaster_format(None), '')
