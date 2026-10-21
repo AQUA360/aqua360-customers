@@ -215,6 +215,11 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
     
     @transaction.atomic
     def update(self, instance, validated_data):
+        """Save and return the request with its submitted related data.
+
+        Update contacts, representatives, rates and payment details, log status
+        changes, and save any supplied closing reading on linked terminations.
+        """
         # Verificar si 'representatives' i 'contacts' han estat enviats en les dades d'entrada
         representatives_present = 'representatives' in self.initial_data
         representatives_data = validated_data.pop('representatives', None)

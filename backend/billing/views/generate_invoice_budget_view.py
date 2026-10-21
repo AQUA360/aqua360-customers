@@ -34,6 +34,12 @@ class GenerateInvoiceBudgetView(APIView):
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
+        """Generate a budget or convert one to an invoice for the requested entity.
+
+        For terminations, prioritize the active linked request that bills the
+        closing reading. Apply the requested payment dates and return the
+        serialized document, or an error response if generation produces none.
+        """
         
         entity = request.data.get('entity', None)
         object_id = request.data.get('object_id', None)
@@ -129,10 +135,10 @@ class GenerateInvoiceBudgetView(APIView):
                 "Termination %s invoice (is_budget=%s, user=%s): linked contract requests (id, bill_cut_reading, is_active) %s, "
                 "billed contract request=%s, bill_termination_requester=%s (requested %s), "
                 "dialog sent a bank=%s, it is the terminated contract's bank=%s",
-                contract_termination_request.id, is_budget, request.user.id,
+                contract_termination_request.id, bool(is_budget), request.user.id,
                 list(contract_termination_request.contract_requests_termination_requests.values_list('id', 'bill_cut_reading', 'is_active')),
                 linked_contract_request.id if linked_contract_request else None,
-                bill_termination_requester, request.data.get('bill_termination_requester', False),
+                bill_termination_requester, bool(request.data.get('bill_termination_requester', False)),
                 payment_bank is not None,
                 payment_bank is not None and contract.payment is not None and str(payment_bank) == str(contract.payment.IBAN_id),
             )
@@ -154,7 +160,7 @@ class GenerateInvoiceBudgetView(APIView):
                     ContractTerminationRequest.objects.filter(id=contract_termination_request.id).update(ignore_invoice=False)
                 Invoice.objects.filter(contract_termination=contract_termination_request, type__token=budget_type_token).delete()
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
-                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester)
+                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
             print("invoice")
         
         elif entity == "connection_request":

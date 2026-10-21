@@ -580,7 +580,7 @@ class ContractTerminationRequest(models.Model):
         return f'ContractSurrogation {self.token} '
 
     def get_billing_contract_request(self):
-        # Alta vinculada que cobra la lectura de tall d'aquesta baixa (Alta + Baixa vinculades)
+        """Return the first active linked request billing the closing reading, or None."""
         return self.contract_requests_termination_requests.filter(bill_cut_reading=True, is_active=True).first()
 
 class ContractRepresentative(models.Model):
