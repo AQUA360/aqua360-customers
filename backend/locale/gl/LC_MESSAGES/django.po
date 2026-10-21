@@ -4332,3 +4332,87 @@ msgstr "de decembro"
 #: pricing/utils/accounting_service.py
 msgid "No values found to generate accounting"
 msgstr "Non se atoparon valores para xerar a contabilidade"
+#: notification/utils/auto_tasks.py
+msgid "Apply meter change"
+msgstr "Aplicar o cambio de contador"
+
+#: notification/utils/auto_tasks.py
+#, python-format
+msgid "Order %(token)s is closed but the meter change has not been applied to the system yet."
+msgstr "A orde %(token)s está pechada pero aínda non se aplicou o cambio de contador no sistema."
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "and %(count)s more"
+msgstr "e %(count)s máis"
+
+#: notification/utils/task_notifications.py
+msgid "Pending tasks for today"
+msgstr "Tarefas pendentes do día"
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "You have %(count)s pending tasks: %(tasks)s"
+msgstr "Tes %(count)s tarefas pendentes: %(tasks)s"
+
+#: notification/tasks.py
+#, python-format
+msgid "You have %(count)s pending tasks"
+msgstr "Tes %(count)s tarefas pendentes"
+
+#: notification/tasks.py
+msgid "These are your pending tasks for today, and the overdue ones:"
+msgstr "Estas son as túas tarefas pendentes de hoxe e as atrasadas:"
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "You have a pending task: %(task)s"
+msgstr "Tes unha tarefa pendente: %(task)s"
+
+#: billing/tasks.py
+msgid "Posició de ruta"
+msgstr "Posición de ruta"
+
+#: billing/tasks.py
+msgid "Fuita"
+msgstr "Fuga"
+
+#: billing/tasks.py
+msgid "Fuita anterior"
+msgstr "Fuga previa"
+
+#: billing/tasks.py
+msgid "Lectura anterior"
+msgstr "Lectura anterior"
+
+#: billing/tasks.py
+msgid "General"
+msgstr "Xeral"
+
+#: billing/tasks.py
+msgid "Avís"
+msgstr "Aviso"
+
+#: billing/tasks.py
+msgid "Volta comptador"
+msgstr "Volta contador"
+
+#: billing/tasks.py
+msgid "Lectura 0"
+msgstr "Lectura 0"
+
+#: billing/tasks.py
+msgid "Lectura negativa"
+msgstr "Lectura negativa"
+
+#: billing/tasks.py
+msgid "Lectura estimada"
+msgstr "Lectura estimada"
+
+#: billing/tasks.py
+msgid "Lectura inusual"
+msgstr "Lectura inusual"
+
+#: billing/tasks.py
+msgid "Consum inusualment baix"
+msgstr "Consumo inusualmente baixo"

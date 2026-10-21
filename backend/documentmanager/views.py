@@ -28,6 +28,11 @@ from django.core.files.base import ContentFile
 import threading
 
 from PyPDF2 import PdfMerger
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
@@ -92,7 +97,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def delete_documents(self, request):
         print("deleting documents")
-        print(request.data)
         
         doc_ids = request.data['doc_ids']
         print(doc_ids)
@@ -162,8 +166,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return response
 
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error processing download: {str(e)}"},
+                {"error": "Error processing download."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -174,8 +179,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         print(doc_ids)
         try:
             service = None
-            documents = Document.objects.filter(id__in=doc_ids)
-            if not documents.exists():
+            # L'ordre dels ids és el del PDF (p. ex. agrupat per persona a les comunicacions)
+            documents = Document.in_order(doc_ids)
+            if not documents:
                 return Response(
                     {"error": "No documents found with the provided IDs"},
                     status=status.HTTP_404_NOT_FOUND,
@@ -222,8 +228,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             
             return response
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error processing download: {str(e)}"},
+                {"error": "Error processing download."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
     
@@ -249,6 +256,12 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def send(self, request, pk=None):
+        """Envia el document a signar i retorna el resultat i el registre actualitzat.
+
+        Accepta callback_url i force al cos de la petició. Retorna 400 si la
+        signatura està deshabilitada o falla el servei; el detall del servei
+        es registra al log.
+        """
         from integrations.outbound.signing.exceptions import SigningApiError
         from integrations.outbound.signing.services import create_document_sign_session
 
@@ -266,8 +279,10 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
             result = create_document_sign_session(
                 document_sign, callback_url=callback_url, force=force
             )
-        except SigningApiError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SigningApiError:
+            # El detall (resposta del servei extern) queda al log, no al client.
+            logger.exception("Error del servei de signatura")
+            return Response({"error": "No s'ha pogut completar l'operació amb el servei de signatura."}, status=status.HTTP_400_BAD_REQUEST)
 
         document_sign.refresh_from_db()
         serializer = self.get_serializer(document_sign, context={'request': request})
@@ -315,11 +330,12 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
 
         try:
             retrieve_signed_document(document_sign)
-        except SigningApiError as exc:
+        except SigningApiError:
+            logger.exception("Error del servei de signatura")
             document_sign.refresh_from_db()
             return Response(
                 {
-                    "error": str(exc),
+                    "error": "No s'ha pogut completar l'operació amb el servei de signatura.",
                     "status": document_sign.status,
                     "error_report": document_sign.error_report,
                 },

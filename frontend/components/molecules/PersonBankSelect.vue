@@ -85,29 +85,16 @@ const toggleRegion = (value) => {
 };
 
 /**
- * Camps del titular que l'usuari escriu al formulari (country/bank són selects amb forma variable).
- * El SWIFT no hi és: si l'IBAN no canvia, el backend sí que l'aplica al compte (`swift_updated`).
- */
-const HOLDER_FIELDS = ['name', 'dni', 'role', 'account_number'];
-
-/** True si l'usuari ha tocat alguna dada del titular respecte del compte que editava. */
-const hasHolderChanges = (originalBank, formBank) => {
-  if (!originalBank) return false;
-  return HOLDER_FIELDS.some(field => (originalBank[field] ?? '') !== (formBank[field] ?? ''));
-};
-
-/**
  * Desa el compte editat o afegit i el selecciona.
  *
  * Aquest selector sempre s'obre des d'un contracte, una factura o un compromís,
  * mai des de la fitxa de la persona. Un PersonBank penja de la PERSONA i el
- * poden compartir diversos contractes (Contract.payment -> GeneralPayment.IBAN),
- * així que editar-lo en lloc canviaria l'IBAN de tots alhora. Per això aquí mai
- * s'hi fa PUT: el backend resol el compte i, si l'IBAN ja existeix en aquesta
- * persona, reaprofita el compte existent (només n'actualitza el SWIFT/BIC, que és
- * del mateix compte); si no, en crea un de nou i deixa l'original intacte.
- *
- * Per corregir de debò les dades d'un compte cal anar a la fitxa de la persona.
+ * poden compartir diversos contractes (Contract.payment -> GeneralPayment.IBAN).
+ * Per això aquí mai s'hi fa PUT: el backend resol el compte i, si l'IBAN ja
+ * existeix en aquesta persona, reaprofita el compte existent i hi desa les dades
+ * editades (titular, DNI, SWIFT...), que valen per a tots els contractes perquè
+ * és el mateix compte bancari; si l'IBAN és nou, en crea un altre i deixa
+ * l'original intacte.
  *
  * @param {Object} newBank - Dades del formulari
  */
@@ -134,18 +121,11 @@ const onNewBank = async (newBank) => {
     if (!bankSaved) return;
 
     const isSameAccount = !!editedBank && bankSaved.id === editedBank.id;
-    if (bankSaved.swift_updated) {
-      toast.success(t('informative_block.person_bank_swift_updated'));
-    }
-    if (bankSaved.reused && isSameAccount) {
-      // L'IBAN no ha canviat: només s'hi aplica el SWIFT. Si l'usuari havia
-      // tocat altres dades del titular, cal dir-li que no s'han desat.
-      if (hasHolderChanges(editedBank, newBank)) {
-        toast.info(t('informative_block.person_bank_edit_not_applied'));
-      }
-    } else if (bankSaved.reused) {
+    if (bankSaved.updated) {
+      toast.success(t('informative_block.person_bank_updated'));
+    } else if (bankSaved.reused && !isSameAccount) {
       toast.info(t('informative_block.person_bank_reused'));
-    } else if (editedBank) {
+    } else if (!bankSaved.reused && editedBank) {
       toast.info(t('informative_block.person_bank_copied_on_edit'));
     }
 
@@ -234,7 +214,7 @@ onMounted(() => {
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10 overflow-y-auto overflow-x-hidden"
       :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-1/2': halfRegion,
         'w-[95%]': !halfRegion
       }">

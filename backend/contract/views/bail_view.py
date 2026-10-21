@@ -7,12 +7,8 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 
 from auth.permissions import PermissionManager
-from billing.models import InvoiceStatus, Payment, PaymentStatus
-from billing.utils.confirm_invoice_service import confirm_invoice
-from billing.utils.payment_service import generate_payment_movement, log_payment_status
-from contract.utils.bail_service import check_unpaid_invoices
+from contract.utils.bail_service import immediate_return_bail, liquidate_bail as liquidate_bail_service
 from coredata.models import ConfigProject
-from coredata.utils.name_utils import generate_token
 
 
 from ..filters import BailFilter
@@ -21,12 +17,14 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 from django.db.models import Q
 
-from contract.models import (Bail, BailStatus, Contract, PiggyBankMovement)
-from contract.models import (Bail)
+from contract.models import (Bail, BailStatus, Contract)
 from contract.serializers.bail_serializer import (BailSerializer, BailListSerializer)
 
 from logger.models import LogBailStatus
 from django.contrib.auth.models import Group
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BailViewSet(viewsets.ModelViewSet):
     queryset = Bail.objects.all().order_by('-status', 'payment_date')
@@ -48,59 +46,28 @@ class BailViewSet(viewsets.ModelViewSet):
         
     @action(detail=False, methods=['post'], url_path='liquidate')
     def liquidate_bail(self, request):
-        """ 
-        # used for testing purposes
-        payments_unpaid = Payment.objects.exclude(status__token__in=['-6','5','0'])
-        for payment in payments_unpaid:
-            payment.status = PaymentStatus.objects.get(token="-1")
-            payment.save() """
-            
         user = request.user
-        
         bail_ids = request.data.get('bail_ids', [])
-        bail_status_returned_token = ConfigProject.objects.get(token='bail_status_returned_token').value
-        returned_status = BailStatus.objects.get(token=bail_status_returned_token)
-        status_invoice_confirmed = InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_confirmed_token').value)
-        payment_status_piggy = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_piggy_token').value)
         contracts = Contract.objects.filter(bails__id__in=bail_ids)
         bails = Bail.objects.filter(contract__in=contracts)
-        bails.update(status=returned_status, return_date=timezone.now(), payment_date=timezone.now())
-        for bail in bails:
-            invoice = bail.invoice
-            if invoice:
-                invoice.status = status_invoice_confirmed
-                invoice.save()
-                confirm_invoice(invoice)
-            
-            invoice_payments = Payment.objects.filter(invoice=invoice)
-            for payment in invoice_payments:
-                log_payment_status(
-                    payment, payment_status_piggy, user
-                )
-                
-                generate_payment_movement(
-                    payment, payment_status_piggy, 
-                    payment.payment_date, "BALANCE", 
-                    None, user,
-                    None, 
-                    None
-                    )
-                payment.status = payment_status_piggy
-                payment.save()
-                payment.refresh_from_db()
-            
-            piggy_bank_movement = PiggyBankMovement.objects.create(
-                token=generate_token(PiggyBankMovement),
-                piggy_bank=bail.contract.piggy_bank,
-                amount=bail.amount,
-                is_positive=True,
-                movement_date=timezone.now(),
-                bail=bail,
-            )
-            bail.contract.piggy_bank.amount += bail.amount
-            bail.contract.piggy_bank.save()
-        #check_unpaid_invoices(contracts)
+        liquidate_bail_service(user, bails)
         return Response({'message': 'Invoice returned successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='return-immediately')
+    def return_bail_immediately(self, request):
+        user = request.user
+        bail_ids = request.data.get('bail_ids', [])
+        if not bail_ids:
+            return Response({'error': 'No bail provided'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            for bail_id in bail_ids:
+                immediate_return_bail(user, bail_id)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'message': 'Bail returned successfully'}, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['post'], url_path='cancel')
     def cancel_bail(self, request):

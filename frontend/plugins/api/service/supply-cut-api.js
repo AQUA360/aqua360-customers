@@ -120,9 +120,10 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
-    const startCut = async (id, observation = null) => {
+    /** Activate a planned cut, forwarding vulnerability overrides and an optional observation. */
+    const startCut = async (id, observation = null, overrides = {}) => {
       const apiUrl = `${apiHost}${entity}${id}/start-cut/`;
-      const payload = {};
+      const payload = { ...overrides };
       if (observation) payload.observation = observation;
       try {
         return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(payload), { 'Content-Type': 'application/json' });
@@ -183,6 +184,34 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const bulkPlanPreview = async (payload) => {
+      const apiUrl = `${apiHost}${entity}bulk-plan/preview/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(payload), { 'Content-Type': 'application/json' });
+        if (response) {
+          return response;
+        } else {
+          throw new Error('Error estructura no trobada');
+        }
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    const bulkPlanCreate = async (payload) => {
+      const apiUrl = `${apiHost}${entity}bulk-plan/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(payload), { 'Content-Type': 'application/json' });
+        if (response) {
+          return response;
+        } else {
+          throw new Error('Error estructura no trobada');
+        }
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const apiService = {
       getData,
       getFilterStatus,
@@ -193,7 +222,9 @@ export default defineNuxtPlugin(nuxtApp => {
       getPermissions,
       startCut,
       finishCut,
-      resolveReview
+      resolveReview,
+      bulkPlanPreview,
+      bulkPlanCreate
     };
   
     nuxtApp.provide(provideName, apiService);

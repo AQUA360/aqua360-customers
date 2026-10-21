@@ -79,6 +79,7 @@ def detect_status_change(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Order)
 def after_order_save(sender, instance, created, **kwargs):
+    """Process completed orders and synchronize their automatic follow-up tasks."""
     global order_save_flag
     if order_save_flag:
         return  # Prevent recursive call
@@ -165,6 +166,13 @@ def after_order_save(sender, instance, created, **kwargs):
                     except Exception as e:
                         print(f"Error creating connection: {e}")
 
+                # OT de canvi de comptador tancada sense aplicar el canvi: tasca al calendari
+                try:
+                    from notification.utils.auto_tasks import sync_change_meter_task
+                    sync_change_meter_task(instance, current_user)
+                except Exception as e:
+                    print(f"Error creating change meter task: {e}")
+
             finally:
                 order_save_flag = False # Reset the flag after the function execution
         
@@ -180,6 +188,11 @@ def publish_order_created_event(sender, instance, created, **kwargs):
     Publica esdeveniment RabbitMQ quan es crea una Order.
     """
     from django.conf import settings
+
+    # Orders originating in GMAO (inbound order.created) must not be
+    # echoed back to GMAO
+    if getattr(instance, "_skip_publish", False):
+        return
 
     if not created:
         config = ConfigProject.objects.filter(token="for_validate_order_status_token").first()

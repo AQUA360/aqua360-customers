@@ -52,6 +52,8 @@ const filter_types = ref([]);
 const filter_status = ref([]);
 
 const selectedDateRangeArr = ref([]);
+// Les cancel·lades s'amaguen per defecte (un filtre d'estat explícit les mostra igualment).
+const showCancelled = ref(false);
 const date_range = ref({});
 
 const isFilterOpen = ref(false);
@@ -94,7 +96,7 @@ const exportColumns = computed(() => [
 ]);
 
 const exportCommunications = (columns) => $CommunicationApiService.exportData(
-  searchInput.value, statuses.value, sortBy.value, sortDesc.value, null, [], is_individual.value, types.value, null, date_range.value, columns
+  searchInput.value, statuses.value, sortBy.value, sortDesc.value, null, [], is_individual.value, types.value, null, date_range.value, columns, !showCancelled.value
 );
 
 const getData = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, is_individual = null, types = []) => {
@@ -106,7 +108,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
   error.value = null;
 
   try {
-    const data = await $CommunicationApiService.getAll(searchQuery, filters, page, sort, desc, null, [], is_individual, types, null, date_range.value);
+    const data = await $CommunicationApiService.getAll(searchQuery, filters, page, sort, desc, null, [], is_individual, types, null, date_range.value, !showCancelled.value);
 
     items.value = data.results;
     Object.assign(pagination.value, {
@@ -253,6 +255,7 @@ const resetFilters = () => {
   is_individual.value = null;
   selectedDateRangeArr.value = [];
   date_range.value = {};
+  showCancelled.value = false;
   getData();
 };
 
@@ -345,6 +348,10 @@ watch(() => route.query, () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <label class="text-slate-800 text-base flex items-center gap-1">
+        <input type="checkbox" v-model="showCancelled" @change="handleFilterChange" /> {{ $t('customer_service_block.show_cancelled') }}
+      </label>
 
       <span>
         <button id="filterShow" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
@@ -460,7 +467,7 @@ watch(() => route.query, () => {
 
   <div role="region" id="right_page"
     class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white overflow-x-hidden"
-    :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-[55%]': !isSubRegionOpen }">
+    :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-[55%]': !isSubRegionOpen }">
     <div id="region_nav" class="mb-3 px-3">
       <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
         <Icon name="fa6-solid:angles-right" class="text-slate-500" />

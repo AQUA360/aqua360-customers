@@ -132,7 +132,8 @@ const showDetail = (component, id) => {
                 </div>
             </div>
         </div><!-- end relative avisos -->
-        <ContractStatusBadges :contract="contract" :isSubRegion="isSubRegion" @show-detail="showDetail" />
+        <ContractStatusBadges :contract="contract" :isSubRegion="isSubRegion" :showDebtDetail="true"
+            @show-detail="showDetail" />
     </div>
     <div class="grid grid-cols-3 gap-4" @click="showAddresses = false; showComms = false; showContacts = false">
 
@@ -199,12 +200,10 @@ const showDetail = (component, id) => {
                             v-if="contract.payment?.IBAN && contract.payment?.IBAN?.dni != contract.holder.token"
                             class="col-span-2" :label="$t('contract_block.holder')"
                             :value="`${contract.payment?.IBAN?.name} (${contract.payment?.IBAN?.dni})`" />
-                        <FieldDetail :label="$t('common.payment_method')">
-                            <abbr class="truncate"
+                        <FieldDetail :label="$t('common.payment_method')" wrap-label>
+                            <abbr class="break-words"
                                 :title="contract.payment?.type?.name || $t('common.no_payment_method')">
-                                <span class="truncate">
-                                    {{ contract.payment?.type?.name || $t('common.no_payment_method') }}
-                                </span>
+                                {{ contract.payment?.type?.name || $t('common.no_payment_method') }}
                             </abbr>
                         </FieldDetail>
                         <FieldDetail v-if="contract.payment?.IBAN?.updated_at" :label="$t('common.updated')"
@@ -255,7 +254,7 @@ const showDetail = (component, id) => {
                         </div>
                         <FieldDetail :label="$t('common.send_address')" :value="contract.general_invoice.address_send">
                         </FieldDetail>
-                        <FieldDetail :label="$t('common.payment_method')"
+                        <FieldDetail :label="$t('common.payment_method')" wrap-label
                             :value="contract.general_invoice.payment_type">
                         </FieldDetail>
                         <AtomsIBAN v-if="contract.general_invoice.payment_iban"

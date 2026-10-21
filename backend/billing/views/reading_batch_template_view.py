@@ -13,6 +13,11 @@ from billing.models import ReadingBatchTemplate
 from billing.serializers.reading_batch_serializer import ReadingBatchTemplateSerializer
 from billing.permissions import ReadingPermission
 from billing.utils.reading_batch_service import get_meters_from_file
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class ReadingBatchTemplateViewSet(viewsets.ModelViewSet):
   """
   API endpoint that allows reading batches to be viewed or edited.
@@ -33,6 +38,17 @@ class ReadingBatchTemplateViewSet(viewsets.ModelViewSet):
             return ReadingBatchTemplateSerializer
     return ReadingBatchTemplateSerializer
   
+  def get_queryset(self):
+    queryset = super().get_queryset()
+    # Filtres opcionals per a selectors (p. ex. reclamació d'impagats):
+    # plantilles amb rutes de les zones indicades i/o només les que tenen rutes.
+    route_zone = self.request.query_params.get('route_zone')
+    if route_zone:
+      queryset = queryset.filter(routes__route_zone__id__in=route_zone.split(',')).distinct()
+    if self.request.query_params.get('has_routes') == 'true':
+      queryset = queryset.filter(routes__isnull=False).distinct()
+    return queryset
+
   def get_serializer_context(self):
     context = super().get_serializer_context()
     context['request'] = self.request
@@ -45,7 +61,8 @@ class ReadingBatchTemplateViewSet(viewsets.ModelViewSet):
           meters, readings, not_found_meters = get_meters_from_file(file)
           return Response({"meters": meters, "readings": readings, "not_found_meters": not_found_meters}, status=status.HTTP_200_OK)
       except Exception as e:
+          logger.exception("Error inesperat")
           return Response(
-              {"error": str(e)}, 
+              {"error": "Ha ocorregut un error inesperat."}, 
               status=status.HTTP_500_INTERNAL_SERVER_ERROR
           )

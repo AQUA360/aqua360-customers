@@ -10,6 +10,9 @@ from coredata.models import ConfigProject
 from billing.models import Invoice
 from billing.serializers.invoice_serializer import InvoiceSerializer
 from billing.utils.invoice_service import invoice_contract_generate, invoice_generate_return_bail
+import logging
+
+logger = logging.getLogger(__name__)
 
 class InvoiceContractGenerateView(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -28,7 +31,6 @@ class InvoiceContractGenerateView(views.APIView):
             
             is_return = request.data.get('is_return')
             print("PAYMENT ID")
-            print(payment_bank)
             invoice_type_token = request.data.get('invoice_type_token')
             company_id = request.data.get('company_id')
             category_id = request.data.get('category_id')
@@ -42,4 +44,5 @@ class InvoiceContractGenerateView(views.APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

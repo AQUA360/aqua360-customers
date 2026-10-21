@@ -24,6 +24,9 @@ from documentmanager.utils.main_utils import upload_document
 from service.models import Company, CompanyConfig
 
 from ..models import GeneralPaymentSepaDocument
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SepaDocumentSendEmailView(APIView):
@@ -205,8 +208,9 @@ class SepaDocumentSendEmailView(APIView):
 
                 create_email_template(comm)
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error creant la comunicació: {str(e)}"},
+                {"error": "Error creant la comunicació."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -214,12 +218,13 @@ class SepaDocumentSendEmailView(APIView):
         try:
             send_electronic_mail(comm)
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
                 {
                     "detail": "No s'ha pogut enviar el correu.",
                     "sent": False,
                     "communication_id": comm.id,
-                    "error": str(e),
+                    "error": "Ha ocorregut un error inesperat.",
                 },
                 status=status.HTTP_502_BAD_GATEWAY,
             )

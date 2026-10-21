@@ -7,7 +7,6 @@ import ReadingBatchSummary from '~/components/molecules/ReadingBatchSummary.vue'
 import ReadingBatchReadingsSummary from '~/components/molecules/ReadingBatchReadingsSummary.vue';
 import ReadingBatchRouteDownload from '~/components/molecules/ReadingBatchRouteDownload.vue';
 import ReaderAlertRegion from '~/components/molecules/ReaderAlertRegion.vue';
-import SmartMeteringReadingsDialog from '~/components/molecules/SmartMeteringReadingsDialog.vue';
 import EstimateReadingsDialog from '~/components/molecules/EstimateReadingsDialog.vue';
 import WizardStatusNav from '../molecules/WizardStatusNav.vue';
 import StatusesNav from '~/components/atoms/StatusesNav.vue';
@@ -16,7 +15,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const { $ConfiglistApiService, $ConfigProjectApiService, $ReadingBatchApiService, $SmartMeteringApiService, $apiManager } = useNuxtApp();
+const { $ConfiglistApiService, $ConfigProjectApiService, $ReadingBatchApiService, $apiManager } = useNuxtApp();
 const toast = useToast();
 
 const props = defineProps({
@@ -99,14 +98,6 @@ const onSetupShowSubregion = (payload) => {
 const setupData = ref(null);
 const creationData = ref(null);
 const defaultReadingDate = ref(null);
-const smartMeteringMode = ref(false);
-const smartMeteringPreview = ref(null);
-const smartMeteringDate = ref(null);
-const smartMeteringAssigned = ref(false);
-const showSmartMeteringDialog = ref(false);
-const smartMeteringSaving = ref(false);
-const smartMeteringPreviewLoading = ref(false);
-const smartMeteringPreviewTaskId = ref(null);
 
 const counters = ref(null);
 const countersSetup = ref(null);
@@ -127,9 +118,6 @@ const processingStatusToken = ref(null);
 let itvl = null;
 
 const isAssigningReadings = computed(() => !!assignReadingsTaskId.value);
-const isSmartMeteringBusy = computed(
-  () => smartMeteringPreviewLoading.value || smartMeteringSaving.value || !!smartMeteringPreviewTaskId.value
-);
 
 /** Only blocks advancing from setup if there is truly nothing to read (all counters at 0 except pending ones). */
 const hasSetupReadings = computed(() => {
@@ -276,117 +264,9 @@ const waitForAssignTask = (taskId) => {
   });
 };
 
-/** assign-readings must run when setup still has a source besides smart metering. */
-const needsAssignReadingsFromSetup = (setup) => {
-  if (!setup) return false;
-  const hasReadingFiles = Array.isArray(setup.reading_files) && setup.reading_files.length > 0;
-  const notBilled = setup.not_billed === true;
-  const byDate = Boolean(setup.reading_date);
-  return hasReadingFiles || notBilled || byDate;
-};
-
-const openSmartMeteringDialog = async (readingDate) => {
-  const date = readingDate || setupData.value?.reading_date;
-  if (!date) {
-    toast.error(t('billing_block.reading_date'));
-    return false;
-  }
-
-  smartMeteringPreviewLoading.value = true;
-  try {
-    smartMeteringMode.value = true;
-    smartMeteringDate.value = date;
-    smartMeteringAssigned.value = false;
-    const response = await $SmartMeteringApiService.previewBatchReadings(props.id, {
-      reading_date: date,
-    });
-
-    // Legacy sync payload (before Celery preview).
-    if (response?.readings) {
-      smartMeteringPreview.value = response;
-      showSmartMeteringDialog.value = true;
-      smartMeteringPreviewLoading.value = false;
-      return true;
-    }
-
-    if (!response?.task_id) {
-      throw new Error(t('common.error'));
-    }
-
-    // Progress bar via ProcessColorBadge; dialog opens on @refresh.
-    smartMeteringPreviewTaskId.value = response.task_id;
-    smartMeteringPreviewLoading.value = false;
-    return true;
-  } catch (error) {
-    console.error(error);
-    toast.error(error?.data?.error || error?.message || t('common.error'));
-    smartMeteringPreviewLoading.value = false;
-    return false;
-  }
-};
-
-const onSmartMeteringPreviewTaskRefresh = async () => {
-  const previewTaskId = smartMeteringPreviewTaskId.value;
-  smartMeteringPreviewTaskId.value = null;
-  if (!previewTaskId) {
-    smartMeteringPreviewLoading.value = false;
-    return;
-  }
-
-  try {
-    const res = await $apiManager.checkTask(previewTaskId);
-    if (res?.state === 'SUCCESS' && res.result) {
-      smartMeteringPreview.value = res.result;
-      showSmartMeteringDialog.value = true;
-    } else if (res?.state === 'FAILURE') {
-      toast.error(res.error || t('common.error'));
-    }
-  } catch (error) {
-    console.error(error);
-    toast.error(error?.data?.error || error?.message || t('common.error'));
-  } finally {
-    smartMeteringPreviewLoading.value = false;
-  }
-};
-
-const onOpenSmartMetering = async ({ reading_date }) => {
-  defaultReadingDate.value = reading_date;
-  await openSmartMeteringDialog(reading_date);
-};
-
-const handleSmartMeteringClose = () => {
-  if (smartMeteringSaving.value) return;
-  showSmartMeteringDialog.value = false;
-};
-
-const handleSmartMeteringSave = async () => {
-  smartMeteringSaving.value = true;
-  try {
-    const results = await $SmartMeteringApiService.assignBatchReadings(props.id, {
-      reading_date: smartMeteringDate.value,
-      preview: smartMeteringPreview.value,
-    });
-    if (!results?.task_id) {
-      throw new Error(t('common.error'));
-    }
-
-    showSmartMeteringDialog.value = false;
-
-    // Poll locally: do not set assignReadingsTaskId or ProcessColorBadge will
-    // also advance the wizard via fullRefresh() on SUCCESS (double step jump).
-    const counters = await waitForAssignTask(results.task_id);
-    countersSetup.value = counters;
-    smartMeteringAssigned.value = true;
-    await refresh();
-    toast.success(t('common.correct_save'));
-  } catch (error) {
-    console.error(error);
-    assignReadingsTaskId.value = null;
-    toast.error(error?.data?.error || error?.message || t('common.error'));
-  } finally {
-    smartMeteringSaving.value = false;
-  }
-};
+// La càrrega de lectures de Smart Metering s'ha mogut a «Introduir lectures»
+// (pages/reading/readings): genera un document de lectures que el lot selecciona
+// com qualsevol altre fitxer.
 
 const openEstimateAllDialog = () => {
   showEstimateAllDialog.value = true;
@@ -439,7 +319,7 @@ const nextStep = async (doSave = true) => {
           toast.error(t('reading_block.no_readings_detected_warning') || t('common.error'));
           return;
         }
-        if (countersSetup.value?.['assigned_readings'] > 0 && !smartMeteringAssigned.value) {
+        if (countersSetup.value?.['assigned_readings'] > 0) {
           if (!confirm(t('confirmation_text_block.confirm_assign_reading_batch'))) {
             return;
           }
@@ -450,14 +330,8 @@ const nextStep = async (doSave = true) => {
           return;
         }
       }
-      const skipAssignSave =
-        currentStep.value === 1
-        && smartMeteringAssigned.value
-        && !needsAssignReadingsFromSetup(setupData.value);
-      if (!skipAssignSave) {
-        await save();
-        if (assignReadingsTaskId.value) return;
-      }
+      await save();
+      if (assignReadingsTaskId.value) return;
     }
 
     if (currentStep.value < steps.value.length - 1) {
@@ -564,20 +438,11 @@ const save = async () => {
     if (!data) data = {};
     data.id = props.id;
 
-    smartMeteringMode.value = false;
-    smartMeteringPreview.value = null;
-    const hadSmartMetering = smartMeteringAssigned.value;
-    smartMeteringAssigned.value = false;
     const results = await $ReadingBatchApiService.assignReadings(data);
     if (results.task_id) {
       assignReadingsTaskId.value = results.task_id;
       try {
         countersSetup.value = await waitForAssignTask(results.task_id);
-      } catch (error) {
-        if (hadSmartMetering) {
-          smartMeteringAssigned.value = true;
-        }
-        throw error;
       } finally {
         assignReadingsTaskId.value = null;
       }
@@ -654,9 +519,6 @@ const onRevertTaskDone = async () => {
   revertTaskId.value = null;
   taskId.value = null;
   counters.value = null;
-  if (revertTargetStep.value === 1) {
-    smartMeteringAssigned.value = false;
-  }
   await refresh();
   currentStep.value = revertTargetStep.value ?? 2;
   maxStep.value = currentStep.value;
@@ -718,10 +580,6 @@ watch(() => props.activeStatus, (newVal) => {
         <ReadingBatchSetup :num_supplies="num_supplies" :num_contracts="num_contracts" :num_no_meters="num_no_meters"
           :counters="countersSetup" @change="onSetupChanged" :missing_billing_data="missing_billing_data"
           :batch_id="props.id"
-          :smart-metering-loading="isSmartMeteringBusy"
-          :smart-metering-task-id="smartMeteringPreviewTaskId"
-          @open-smart-metering="onOpenSmartMetering"
-          @smart-metering-preview-refresh="onSmartMeteringPreviewTaskRefresh"
           @show-subregion="onSetupShowSubregion" />
       </div>
 
@@ -762,16 +620,16 @@ watch(() => props.activeStatus, (newVal) => {
           <AtomsProcessColorBadge class="w-fit flex items-center" v-if="isAssigningReadings" @refresh="onAssignReadingsTaskRefresh"
             :value="t('common.loading')" :color="'blue'" :taskId="assignReadingsTaskId" />
           <button v-if="currentStep === 1" @click="openEstimateAllDialog"
-            :disabled="nextStepLoading || isAssigningReadings || isSmartMeteringBusy"
+            :disabled="nextStepLoading || isAssigningReadings"
             class="px-4 py-2 bg-white text-slate-600 border border-gray-300 rounded enabled:hover:bg-slate-100 disabled:opacity-70 disabled:cursor-not-allowed flex items-center">
             <Icon name="fa6-solid:wand-magic-sparkles" class="mr-2" />
             {{ t('billing_block.estimate_readings') }}
           </button>
           <button v-if="currentStep !== steps.length - 1" @click="nextStep"
-            :disabled="nextStepLoading || nextStepAllowed || isAssigningReadings || isSmartMeteringBusy"
+            :disabled="nextStepLoading || nextStepAllowed || isAssigningReadings"
             class="px-4 py-2 bg-green-500 text-white rounded enabled:hover:bg-green-600 disabled:opacity-70 disabled:cursor-not-allowed flex items-center">
-            <Icon v-if="nextStepLoading || isSmartMeteringBusy" name="fa6-solid:spinner" class="animate-spin mr-2" />
-            {{ nextStepLoading || isSmartMeteringBusy ? $t('common.processing') : $t('common.next') }} &nbsp;&rarr;
+            <Icon v-if="nextStepLoading" name="fa6-solid:spinner" class="animate-spin mr-2" />
+            {{ nextStepLoading ? $t('common.processing') : $t('common.next') }} &nbsp;&rarr;
           </button>
           <div v-else class="flex gap-3">
             <button @click="clickFinalize"
@@ -783,14 +641,6 @@ watch(() => props.activeStatus, (newVal) => {
       </div><!-- end contingut botons -->
 
     </div><!--end contingut pas actual -->
-
-    <SmartMeteringReadingsDialog
-      :show="showSmartMeteringDialog"
-      :preview="smartMeteringPreview"
-      :loading="smartMeteringSaving"
-      @close="handleSmartMeteringClose"
-      @save="handleSmartMeteringSave"
-    />
 
     <EstimateReadingsDialog
       :show="showEstimateAllDialog"
@@ -831,7 +681,7 @@ watch(() => props.activeStatus, (newVal) => {
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-20"
       :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[90%]': showReaderAlertRegion,
         'w-1/2': !showReaderAlertRegion
       }">

@@ -236,7 +236,6 @@ class ClusterSaveSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
 
-        print(validated_data)
 
         connection_data = validated_data.pop('connection', None)
         

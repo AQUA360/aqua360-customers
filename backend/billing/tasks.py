@@ -1,4 +1,5 @@
 import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import re
 from decimal import Decimal
 from html import escape
@@ -51,7 +52,7 @@ from coredata.serializers import PersonSerializer
 from documentmanager.utils.main_utils import upload_document
 from documentmanager.utils.sign_certificate_service import sign_pdf
 from logger.models import LogInvoiceChangeStatus
-from notification.models import CalendarTask, Notification
+from notification.models import Notification
 from service.models import CompanyBank, Exploitation, Meter, Route, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
 from verifactu.utils.save_verifactu_info import notify_verifactu_unsent_batches
@@ -67,7 +68,7 @@ from django.utils.translation import gettext as _
 from django.db.models import Count, Sum, Q, Min, Max, F, ExpressionWrapper, fields, Avg, Prefetch
 from django.db.models.functions import Abs
 from statistics.tasks import update_billing_consumption
-from billing.utils.smart_metering_service import assign_smart_metering_readings, build_smart_metering_preview, _json_safe, SMART_METERING_PREVIEW_API_TIMEOUT
+from billing.utils.smart_metering_service import import_smart_metering_readings, build_smart_metering_preview, _json_safe, SMART_METERING_PREVIEW_API_TIMEOUT
 from billing.utils.reading_filters import PENDING_READING_FILTER
 
 class ExportReadingBatchTaskError(ValueError):
@@ -590,7 +591,7 @@ def export_reading_batch_task(self, reading_batch_id, file_format="csv"):
 
     if fmt == "csv":
         buffer = io.StringIO()
-        writer = csv.writer(buffer, delimiter=";")
+        writer = SafeCsvWriter(buffer, delimiter=";")
         writer.writerow(headers)
         writer.writerows(rows)
         csv_text = "\ufeff" + buffer.getvalue()
@@ -706,6 +707,146 @@ def export_readings_task(reading_ids, columns=None):
         return {
             "status": "error",
             "message": f"Error generating readings export: {str(e)}",
+        }
+
+
+def _yes_no(value):
+    return _("Sí") if value else ""
+
+
+def _date_str(value):
+    return value.strftime("%Y-%m-%d") if value else ""
+
+
+def _reading_alert_label(alert):
+    # Els noms de ReadingAlert són claus de traducció (el front les tradueix amb billing_block.<nom>).
+    if not alert:
+        return ""
+    labels = {
+        "reading_alert_turn": _("Volta comptador"),
+        "reading_alert_zero": _("Lectura 0"),
+        "reading_alert_negative": _("Lectura negativa"),
+        "reading_alert_estimated": _("Lectura estimada"),
+        "reading_alert_unusual": _("Lectura inusual"),
+        "reading_alert_low_consumption": _("Consum inusualment baix"),
+    }
+    return labels.get(alert.name, alert.name)
+
+
+def _reading_alert_notes(reading):
+    # Mateix criteri que ReadingByBatchMinimalSerializer: si no hi ha notes, l'alerta del lector o la remota.
+    if reading.alert_notes:
+        return reading.alert_notes
+    if reading.reader_alert:
+        return reading.reader_alert.name
+    if reading.remote_alert:
+        return reading.remote_alert.name
+    return ""
+
+
+def _batch_reading_export_columns():
+    prev = lambda r: r.previous_reading
+    return [
+        ("contract", _("Contracte"), lambda r: r.contract.token if r.contract else ""),
+        ("address", _("Adreça"), lambda r: str(r.supply_point.address) if r.supply_point and r.supply_point.address else ""),
+        ("route_position", _("Posició de ruta"), lambda r: r.supply_point.property.route_position.token
+            if r.supply_point and r.supply_point.property and r.supply_point.property.route_position else ""),
+        ("meter", _("Comptador"), lambda r: r.meter.code if r.meter else ""),
+        ("origin", _("Tipus"), lambda r: r.origin or ""),
+        ("previous_leak", _("Fuita anterior"), lambda r: prev(r).leak_value if prev(r) else None),
+        ("previous_reading_date", _("Data lectura anterior"), lambda r: _date_str(prev(r).reading_date) if prev(r) else ""),
+        ("previous_reading", _("Lectura anterior"), lambda r: prev(r).reading_value if prev(r) else None),
+        ("reading_date", _("Data lectura"), lambda r: _date_str(r.reading_date)),
+        ("reading_value", _("Lectura"), lambda r: r.reading_value),
+        ("leak_value", _("Fuita"), lambda r: r.leak_value),
+        # Mateix valor que mostra el llistat (get_existing_reading).
+        ("consumption", _("Consum"), lambda r: r.real_consumption if r.real_consumption else r.calculated_value),
+        ("is_general", _("General"), lambda r: _yes_no(r.meter and r.meter.is_general)),
+        ("is_estimated", _("Estimada"), lambda r: _yes_no(r.is_estimated)),
+        ("consumption_days", _("Dies"), lambda r: r.consumption_days),
+        ("alert", _("Avís"), lambda r: _reading_alert_label(r.alert)),
+        ("alert_notes", _("Observacions"), _reading_alert_notes),
+    ]
+
+
+def _billing_invoice_export_columns():
+    return [
+        ("contract", _("Contracte"), lambda i: i.contract.token if i.contract else ""),
+        ("customer", _("Client"), lambda i: i.customer_final or ""),
+        ("address", _("Adreça"), lambda i: i.address_final or ""),
+        ("use_type", _("Tipus d'ús"), lambda i: i.contract.use_type.name if i.contract and i.contract.use_type else ""),
+        ("payment_type", _("Forma de pagament"), lambda i: i.payment_type_final or ""),
+        ("total_final", _("Total"), lambda i: i.total_final),
+        ("left_to_pay", _("Pendent"), lambda i: i.left_to_pay),
+        ("consumption", _("Consum"), lambda i: i.consumption),
+        ("consumption_days", _("Dies"), lambda i: i.consumption_days),
+        ("warning", _("Avís"), lambda i: i.warning.name if i.warning else ""),
+    ]
+
+
+def _upload_export_xlsx(file_bytes, prefix, document_entity):
+    filename = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    document = upload_document(
+        file=ContentFile(file_bytes, name=filename),
+        entity=document_entity,
+        field="EXPORT",
+        entity_id=0,
+        entity_token=f"{document_entity}_EXPORT",
+        folder="",
+        service=settings.DOCUMENT_MANAGER_SERVICES.get("billing", "hdd"),
+        document_name=filename,
+        date=datetime.now(),
+    )
+    return {
+        "status": "success",
+        "message": f"{prefix} export generated successfully",
+        "document_id": document.id,
+        "document_name": filename,
+    }
+
+
+@shared_task
+def export_batch_readings_task(reading_ids):
+    """
+    Exporta les lectures del detall del resum del lot de lectures (avisos, correctes...).
+    `reading_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    """
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
+
+    try:
+        queryset = Reading.objects.select_related(
+            "contract", "meter", "alert", "reader_alert", "remote_alert", "previous_reading",
+            "supply_point__address", "supply_point__property__route_position",
+        )
+        file_bytes = build_export_xlsx_bytes_from_objects(
+            iter_objects_by_ids(queryset, reading_ids or []), _batch_reading_export_columns(),
+        )
+        return _upload_export_xlsx(file_bytes, "readings", "READING")
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error generating readings export: {str(e)}",
+        }
+
+
+@shared_task
+def export_billing_invoices_task(invoice_ids):
+    """
+    Exporta les factures del detall del resum de pre-factures (avisos, correctes...).
+    `invoice_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    """
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
+
+    try:
+        queryset = Invoice.objects.select_related("contract__use_type", "warning")
+        file_bytes = build_export_xlsx_bytes_from_objects(
+            iter_objects_by_ids(queryset, invoice_ids or []), _billing_invoice_export_columns(),
+        )
+        return _upload_export_xlsx(file_bytes, "invoices", "INVOICE")
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error generating invoices export: {str(e)}",
         }
 
 
@@ -1349,10 +1490,6 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
     except Exception as e:
       print(f"Error creating reading document not found: {e}")
         
-    print("Last reading close: ", last_reading_close)
-    for reading in last_reading_close:
-        print(f"Reading: {reading.reading_date} - {reading.reading_value} - {reading.contract.token}")
-      
     for error in errors:  
         print(f"Error: {error}")
 
@@ -1851,15 +1988,13 @@ def assign_readings_task(self, reading_batch_id, payload=None):
 
 
 @shared_task(bind=True)
-def preview_smart_metering_task(self, reading_batch_id, reading_date):
+def preview_smart_metering_task(self, reading_date):
   progress_recorder = ProgressRecorder(self)
-  reading_batch = ReadingBatch.objects.get(id=reading_batch_id)
 
   def on_progress(current, total, description=""):
     progress_recorder.set_progress(current, total, description)
 
   result = build_smart_metering_preview(
-      reading_batch,
       reading_date,
       api_timeout=SMART_METERING_PREVIEW_API_TIMEOUT,
       progress_callback=on_progress,
@@ -1868,16 +2003,17 @@ def preview_smart_metering_task(self, reading_batch_id, reading_date):
 
 
 @shared_task(bind=True)
-def assign_smart_metering_task(self, reading_batch_id, reading_date, preview=None):
-
+def import_smart_metering_document_task(self, reading_document_id, preview=None):
+  """Loads the Smart Metering readings into a reading document (Introduir lectures)."""
   progress_recorder = ProgressRecorder(self)
-  reading_batch = ReadingBatch.objects.get(id=reading_batch_id)
+  reading_document = ReadingDocument.objects.get(id=reading_document_id)
   progress_recorder.set_progress(0, 1)
   try:
-    result = assign_smart_metering_readings(reading_batch, reading_date, preview=preview)
+    with transaction.atomic():
+      result = import_smart_metering_readings(reading_document, preview=preview)
   except Exception:
-    reading_batch.assign_readings_task_id = None
-    reading_batch.save(update_fields=['assign_readings_task_id'])
+    reading_document.status = ReadingDocument.STATUS_FAILED
+    reading_document.save(update_fields=['status'])
     raise
   progress_recorder.set_progress(1, 1)
   return result
@@ -2816,7 +2952,6 @@ def assign_batches_to_invoices(billing_batch_ids):
                 for contract in supply_point.contracts.all():  # Multiple contracts
                   for invoice in contract.invoices.all():  # Invoices linked to contract
                     print("ASSIGN BATCH TO INVOICE:")
-                    print(invoice)
                     invoice.batch = batch  # Assign batch
                     invoice.save(update_fields=['batch'])  # Save efficiently
 
@@ -3107,28 +3242,6 @@ def export_wincen_task(self, billing_id, queue_item_id=None):
     if q_item:
       _close_billing_queue_item(q_item.id, self.request.id, status='failed', completed_at=timezone.now(), error_message=str(e))
     raise Exception(f"Error in export_wincen_task: {e}")
-
-
-@shared_task
-def check_today_tasks():
-  try:
-      tasks = CalendarTask.objects.filter(task_done=False, set_date__lte=timezone.now().date()).distinct()
-
-      for task in tasks:
-        notification_save = {
-          'token': uuid.uuid4(),
-          'name': f"Tasca del dia pendent",
-          'description': f"Tasca: '{task.name}' pendent de finalització",
-          'module': '',
-          'entity': '',
-          'object_id': None,
-          'is_active': True,
-          'user': task.user,
-        }
-        notification = Notification.objects.create(**notification_save)
-  except Exception as e:
-      print(f"Error checking today's tasks: {e}")
-      return None
 
 
 @shared_task
@@ -3617,7 +3730,7 @@ def export_readings_by_batch_csv_task(batch_id):
         # Add BOM for UTF-8
         buffer.write('\ufeff')
         
-        writer = csv.writer(buffer, delimiter=';')
+        writer = SafeCsvWriter(buffer, delimiter=';')
         
         # Headers
         headers = [
@@ -3800,27 +3913,24 @@ def fix_invoices_persons_task():
       pass
       Invoice.objects.bulk_update(updating_invoices, ['person'])
 
+  # Només ids: noms de clients i números de factura no s'escriuen al log.
   print(f"FIXED {counter - len(not_found_person) - len(person_multiple_times)} INVOICES")
-  for invoice in invoices[:5]:
-      print(invoice.serie_final)
   print(f"NOT FOUND PERSON: {len(not_found_person)}")
   for invoice in not_found_person:
-      print(f"Invoice {invoice.id}: {invoice.serie_final}, customer final: {invoice.customer_final}, customer token final: {invoice.customer_token_final}")
+      print(f"Invoice id {invoice.id}")
   print(f"MULTIPLE PERSONS FOUND: {len(person_multiple_times)}")
   for invoice in person_multiple_times[:5]:
-      print(invoice['invoice'].serie_final)
-      print(invoice['person'].name)
-      print(invoice['others'])
+      print(f"Invoice id {invoice['invoice'].id}: person id {invoice['person'].id}, others {[p.id for p in invoice['others']]}")
 
 
 @shared_task
 @billing_run_cache_scope()
 def process_selected_contracts_task(billing_id, contract_ids):
-    print(f"Start process_selected_contracts_task for billing={billing_id}, contracts={contract_ids}")
+    """Processes readings and generates line items for the given contracts within a billing run."""
     try:
         billing = Billing.objects.get(id=billing_id)
     except Billing.DoesNotExist:
-        print(f"Billing {billing_id} not found.")
+        print("process_selected_contracts_task: billing not found.")
         return
 
     fanout_general_meter_readings(billing)
@@ -3951,7 +4061,6 @@ def process_selected_contracts_task(billing_id, contract_ids):
         ).order_by('reading_date').distinct())
 
         if not contract_readings:
-            print(f"No active readings for contract {contract_id} in billing {billing_id}")
             continue
 
         # Deduplicate readings
@@ -4022,7 +4131,6 @@ def process_selected_contracts_task(billing_id, contract_ids):
         invoice.billing = billing
         invoice.save()
 
-    print(f"Finished process_selected_contracts_task for billing={billing_id}")
 def process_next_queue_item():
   from billing.models import BillingQueue
   from django.utils import timezone

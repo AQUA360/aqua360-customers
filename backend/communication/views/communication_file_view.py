@@ -17,6 +17,9 @@ from communication.serializers.value_objects_serializer import CommunicationFile
 from communication.filters.communication_file_filter import CommunicationFileFilter
 from communication.permissions import CommunicationPermission
 from communication.utils.communication_service import get_uploaded_file_from_request, upload_communication_document
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CommunicationFileViewSet(viewsets.ModelViewSet):
     queryset = CommunicationFile.objects.all().filter(is_active=True).order_by('id')
@@ -63,8 +66,9 @@ class CommunicationFileViewSet(viewsets.ModelViewSet):
         try:
             comm_file = upload_communication_document(uploaded_file, communication, is_letter=False)
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error en pujar el document: {str(e)}"}, 
+                {"error": "Error en pujar el document."}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         

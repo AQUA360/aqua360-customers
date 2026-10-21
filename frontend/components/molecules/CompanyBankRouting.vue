@@ -6,12 +6,23 @@ import { useNuxtApp } from '#app';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 
 // Mapa d'encaminament de remeses de l'empresa: per cada entitat bancària del
-// PAGADOR, a quin compte de l'empresa s'ha de remesar. Sense cap assignació,
-// tot va al compte de la fila "Per defecte".
+// client, a quin compte de l'empresa es cobren les remeses (`collection`) i des
+// de quin es fan les transferències de retorn (`transfer`). Cada operació té
+// el seu mapa i es mostra en una columna. Sense cap assignació, tot va al
+// compte de la fila "Per defecte" de l'operació.
+const OPERATIONS = ['collection', 'transfer'];
+
 const props = defineProps({
   company_id: {
     type: [Number, String],
     default: null
+  },
+  // Operacions que s'ensenyen. A la pantalla de remeses només interessa la de
+  // la remesa que s'està preparant. (Literal: `defineProps` no pot fer
+  // referència a `OPERATIONS`.)
+  operations: {
+    type: Array,
+    default: () => ['collection', 'transfer'],
   },
 });
 
@@ -19,19 +30,31 @@ const { t } = useI18n();
 const toast = useToast();
 const { $ExploitationApiService } = useNuxtApp();
 
+const shownOperations = computed(() => OPERATIONS.filter(operation => props.operations.includes(operation)));
+const operationLabel = (operation) => t(operation === 'transfer' ? 'billing_block.transfer_from' : 'billing_block.remit_to');
+
+const emptySpecial = () => ({ foreign: {}, default: {} });
+const emptyByOperation = (factory) => Object.fromEntries(OPERATIONS.map(operation => [operation, factory()]));
+
 const loading = ref(false);
 const saving = ref(false);
+// Cada fila porta `routes`: `{collection: id_compte|null, transfer: id_compte|null}`.
 const rows = ref([]);
 const companyBanks = ref([]);
-const special = ref({ foreign: {}, default: {} });
-// Compte on va tot el que no està assignat. El calcula el backend amb la
-// mateixa funció que la generació de la remesa, per no divergir-ne.
-const effectiveDefault = ref(null);
-const effectiveDefaultIsExplicit = ref(true);
+const special = ref(emptyByOperation(emptySpecial));
+// Compte on va tot el que no està assignat, per operació. El calcula el
+// backend amb la mateixa funció que la generació de la remesa, per no
+// divergir-ne.
+const effectiveDefault = ref(emptyByOperation(() => ({ bank: null, explicit: true })));
 const onlyUsed = ref(true);
 const search = ref('');
 const selected = ref(new Set());
 const bulkBank = ref('');
+const bulkOperation = ref('all');
+
+// El backend torna les claus de cobrament a l'arrel (com abans que hi hagués
+// transferències) i les de transferència dins de `transfer`.
+const operationData = (result, operation) => (operation === 'transfer' ? result.transfer || {} : result);
 
 // De 572 entitats del catàleg només se'n fan servir unes desenes: per defecte
 // només es mostren les que té algun client, i el commutador ensenya la resta.
@@ -43,11 +66,22 @@ const load = async () => {
       only_used: onlyUsed.value,
       search: search.value,
     });
-    rows.value = result.banks || [];
+    rows.value = (result.banks || []).map(row => ({
+      ...row,
+      routes: {
+        collection: row.company_bank || null,
+        transfer: row.transfer?.company_bank || null,
+      },
+    }));
     companyBanks.value = result.company_banks || [];
-    special.value = result.special || { foreign: {}, default: {} };
-    effectiveDefault.value = result.effective_default || null;
-    effectiveDefaultIsExplicit.value = result.effective_default_is_explicit !== false;
+    OPERATIONS.forEach(operation => {
+      const data = operationData(result, operation);
+      special.value[operation] = data.special || emptySpecial();
+      effectiveDefault.value[operation] = {
+        bank: data.effective_default || null,
+        explicit: data.effective_default_is_explicit !== false,
+      };
+    });
     selected.value = new Set();
   } catch (error) {
     console.error(error);
@@ -63,32 +97,50 @@ const bankLabel = (companyBank) => {
   return name + tail + (companyBank.is_default ? ` (${t('billing_block.by_default')})` : '');
 };
 
-const assignedCount = computed(() => rows.value.filter(row => row.company_bank).length);
+const assignedCount = computed(() => rows.value.filter(
+  row => shownOperations.value.some(operation => row.routes[operation])
+).length);
 
 const clientsByBank = computed(() => {
-  // Quants clients quedarien a cada compte segons el mapa actual. Els que no
-  // tenen assignació expressa cauen a la fila "Per defecte".
-  const totals = {};
-  let unassigned = 0;
-  rows.value.forEach(row => {
-    if (row.company_bank) {
-      totals[row.company_bank] = (totals[row.company_bank] || 0) + (row.clients || 0);
-    } else {
-      unassigned += row.clients || 0;
-    }
-  });
-  const fallback = special.value?.default?.company_bank || effectiveDefault.value;
-  if (fallback) totals[fallback] = (totals[fallback] || 0) + unassigned;
-  return { totals, unassigned, fallback };
+  // Quants clients quedarien a cada compte segons el mapa de cada operació.
+  // Els que no tenen assignació expressa cauen a la fila "Per defecte".
+  return Object.fromEntries(shownOperations.value.map(operation => {
+    const totals = {};
+    let unassigned = 0;
+    rows.value.forEach(row => {
+      const companyBank = row.routes[operation];
+      if (companyBank) {
+        totals[companyBank] = (totals[companyBank] || 0) + (row.clients || 0);
+      } else {
+        unassigned += row.clients || 0;
+      }
+    });
+    const fallback = special.value[operation]?.default?.company_bank || effectiveDefault.value[operation].bank;
+    if (fallback) totals[fallback] = (totals[fallback] || 0) + unassigned;
+    return [operation, { totals, unassigned, fallback }];
+  }));
 });
 
-const setRowBank = async (row, companyBankId) => {
+const estimateWarnings = computed(() => shownOperations.value
+  .map(operation => {
+    const estimate = clientsByBank.value[operation];
+    if (!estimate.fallback && estimate.unassigned) {
+      return { operation, text: `${estimate.unassigned} ${t('billing_block.info_clients_without_routing')}` };
+    }
+    if (!effectiveDefault.value[operation].explicit) {
+      return { operation, text: t('billing_block.info_default_not_chosen') };
+    }
+    return null;
+  })
+  .filter(Boolean));
+
+const setRowBank = async (row, operation, companyBankId) => {
   saving.value = true;
   try {
     await $ExploitationApiService.saveBankRoutingBulk(
-      props.company_id, companyBankId || null, [row.bank]
+      props.company_id, companyBankId || null, [row.bank], operation
     );
-    row.company_bank = companyBankId || null;
+    row.routes[operation] = companyBankId || null;
   } catch (error) {
     console.error(error);
     toast.error(t('common.error'));
@@ -102,12 +154,15 @@ const applyBulk = async () => {
   saving.value = true;
   try {
     const banks = Array.from(selected.value);
-    await $ExploitationApiService.saveBankRoutingBulk(
-      props.company_id, bulkBank.value || null, banks
-    );
-    rows.value.forEach(row => {
-      if (selected.value.has(row.bank)) row.company_bank = bulkBank.value || null;
-    });
+    const operations = bulkOperation.value === 'all' ? shownOperations.value : [bulkOperation.value];
+    for (const operation of operations) {
+      await $ExploitationApiService.saveBankRoutingBulk(
+        props.company_id, bulkBank.value || null, banks, operation
+      );
+      rows.value.forEach(row => {
+        if (selected.value.has(row.bank)) row.routes[operation] = bulkBank.value || null;
+      });
+    }
     selected.value = new Set();
     toast.success(t('billing_block.routing_saved'));
   } catch (error) {
@@ -118,22 +173,21 @@ const applyBulk = async () => {
   }
 };
 
-const setSpecial = async (matchType, companyBankId) => {
+const setSpecial = async (operation, matchType, companyBankId) => {
   saving.value = true;
   try {
     await $ExploitationApiService.saveBankRoutingSpecial(
-      props.company_id, matchType, companyBankId || null
+      props.company_id, matchType, companyBankId || null, operation
     );
-    special.value = {
-      ...special.value,
-      [matchType]: { ...(special.value[matchType] || {}), company_bank: companyBankId || null },
+    special.value[operation] = {
+      ...special.value[operation],
+      [matchType]: { ...(special.value[operation][matchType] || {}), company_bank: companyBankId || null },
     };
     if (matchType === 'default') {
       // Treure la fila torna el per defecte al compte marcat a la fitxa, que
       // només sap el backend: es rellegeix en comptes d'endevinar-lo.
       if (companyBankId) {
-        effectiveDefault.value = companyBankId;
-        effectiveDefaultIsExplicit.value = true;
+        effectiveDefault.value[operation] = { bank: companyBankId, explicit: true };
       } else {
         await load();
       }
@@ -168,6 +222,11 @@ const allSelected = computed(() => rows.value.length > 0 && selected.value.size 
 const toggleAll = () => {
   selected.value = allSelected.value ? new Set() : new Set(rows.value.map(row => row.bank));
 };
+
+// Una columna de 220px per operació, al costat de la descripció.
+const specialGridStyle = computed(() => ({
+  gridTemplateColumns: `1fr repeat(${shownOperations.value.length}, 220px)`,
+}));
 
 let searchTimer = null;
 watch(search, () => {
@@ -207,26 +266,35 @@ onMounted(load);
 
     <!-- Files especials: manen menys que una entitat concreta i més que res més -->
     <div class="mb-4 border border-slate-200 rounded bg-white divide-y divide-slate-100">
-      <div class="grid grid-cols-[1fr,220px] items-center gap-2 px-3 py-2">
+      <div v-if="shownOperations.length > 1" class="grid items-center gap-2 px-3 py-1.5 bg-slate-100"
+        :style="specialGridStyle">
+        <span></span>
+        <span v-for="operation in shownOperations" :key="operation" class="text-xs font-medium text-slate-600">
+          {{ operationLabel(operation) }}
+        </span>
+      </div>
+      <div class="grid items-center gap-2 px-3 py-2" :style="specialGridStyle">
         <div>
           <span class="text-sm font-medium text-slate-700">{{ t('billing_block.foreign_iban') }}</span>
           <p class="text-xs text-slate-500">{{ t('billing_block.info_foreign_iban') }}</p>
         </div>
-        <select class="input py-1 text-sm" :value="special.foreign?.company_bank || ''"
-          @change="setSpecial('foreign', $event.target.value ? Number($event.target.value) : null)">
+        <select v-for="operation in shownOperations" :key="operation" class="input py-1 text-sm"
+          :value="special[operation].foreign?.company_bank || ''" :title="operationLabel(operation)"
+          @change="setSpecial(operation, 'foreign', $event.target.value ? Number($event.target.value) : null)">
           <option value="">{{ t('billing_block.use_default_routing') }}</option>
           <option v-for="companyBank in companyBanks" :key="companyBank.id" :value="companyBank.id">
             {{ bankLabel(companyBank) }}
           </option>
         </select>
       </div>
-      <div class="grid grid-cols-[1fr,220px] items-center gap-2 px-3 py-2 bg-sky-50/60">
+      <div class="grid items-center gap-2 px-3 py-2 bg-sky-50/60" :style="specialGridStyle">
         <div>
           <span class="text-sm font-medium text-slate-700">{{ t('billing_block.default_routing') }}</span>
           <p class="text-xs text-slate-500">{{ t('billing_block.info_default_routing') }}</p>
         </div>
-        <select class="input py-1 text-sm" :value="special.default?.company_bank || ''"
-          @change="setSpecial('default', $event.target.value ? Number($event.target.value) : null)">
+        <select v-for="operation in shownOperations" :key="operation" class="input py-1 text-sm"
+          :value="special[operation].default?.company_bank || ''" :title="operationLabel(operation)"
+          @change="setSpecial(operation, 'default', $event.target.value ? Number($event.target.value) : null)">
           <option value="">{{ t('billing_block.company_default_bank') }}</option>
           <option v-for="companyBank in companyBanks" :key="companyBank.id" :value="companyBank.id">
             {{ bankLabel(companyBank) }}
@@ -249,6 +317,12 @@ onMounted(load);
       </label>
       <div v-if="selected.size" class="flex items-center gap-2 ml-auto">
         <span class="text-xs text-slate-500">{{ selected.size }} {{ t('common.selected') }}</span>
+        <select v-if="shownOperations.length > 1" v-model="bulkOperation" class="input py-1 text-sm max-w-[200px]">
+          <option value="all">{{ t('billing_block.all_routing_operations') }}</option>
+          <option v-for="operation in shownOperations" :key="operation" :value="operation">
+            {{ operationLabel(operation) }}
+          </option>
+        </select>
         <select v-model="bulkBank" class="input py-1 text-sm max-w-[200px]">
           <option value="">{{ t('billing_block.use_default_routing') }}</option>
           <option v-for="companyBank in companyBanks" :key="companyBank.id" :value="companyBank.id">
@@ -275,12 +349,14 @@ onMounted(load);
               <th class="text-left py-1.5 px-2 whitespace-nowrap">{{ t('billing_block.bank_entity') }}</th>
               <th class="text-left py-1.5 px-2">{{ t('common.name') }}</th>
               <th class="text-right py-1.5 px-2 whitespace-nowrap">{{ t('billing_block.clients_count') }}</th>
-              <th class="text-left py-1.5 px-2 w-[230px]">{{ t('billing_block.remit_to') }}</th>
+              <th v-for="operation in shownOperations" :key="operation" class="text-left py-1.5 px-2 w-[230px]">
+                {{ operationLabel(operation) }}
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!rows.length">
-              <td colspan="5" class="py-4 px-2 text-center text-slate-500">{{ t('common.no_data_found') }}</td>
+              <td :colspan="4 + shownOperations.length" class="py-4 px-2 text-center text-slate-500">{{ t('common.no_data_found') }}</td>
             </tr>
             <tr v-for="row in rows" :key="row.bank" class="border-b border-slate-100"
               :class="{ 'bg-sky-50/60': selected.has(row.bank) }">
@@ -296,9 +372,9 @@ onMounted(load);
                   class="w-full bg-transparent px-1 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-sky-400 focus:bg-white focus:outline-none placeholder:italic placeholder:text-slate-400" />
               </td>
               <td class="py-1 px-2 text-right text-slate-500">{{ row.clients }}</td>
-              <td class="py-1 px-2">
-                <select class="input py-0.5 text-sm w-full" :value="row.company_bank || ''" :disabled="saving"
-                  @change="setRowBank(row, $event.target.value ? Number($event.target.value) : null)">
+              <td v-for="operation in shownOperations" :key="operation" class="py-1 px-2">
+                <select class="input py-0.5 text-sm w-full" :value="row.routes[operation] || ''" :disabled="saving"
+                  @change="setRowBank(row, operation, $event.target.value ? Number($event.target.value) : null)">
                   <option value="">{{ t('billing_block.use_default_routing') }}</option>
                   <option v-for="companyBank in companyBanks" :key="companyBank.id" :value="companyBank.id">
                     {{ bankLabel(companyBank) }}
@@ -317,16 +393,26 @@ onMounted(load);
       <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
         {{ t('billing_block.routing_estimate') }}
       </p>
-      <div v-for="companyBank in companyBanks" :key="companyBank.id"
-        class="flex justify-between text-sm text-slate-700 py-0.5">
-        <span>{{ bankLabel(companyBank) }}</span>
-        <span class="font-medium">{{ clientsByBank.totals[companyBank.id] || 0 }}</span>
-      </div>
-      <p v-if="!clientsByBank.fallback && clientsByBank.unassigned" class="text-xs text-amber-700 mt-1">
-        {{ clientsByBank.unassigned }} {{ t('billing_block.info_clients_without_routing') }}
-      </p>
-      <p v-else-if="!effectiveDefaultIsExplicit" class="text-xs text-amber-700 mt-1">
-        {{ t('billing_block.info_default_not_chosen') }}
+      <table class="w-full text-sm text-slate-700">
+        <thead v-if="shownOperations.length > 1">
+          <tr class="text-xs text-slate-500">
+            <th></th>
+            <th v-for="operation in shownOperations" :key="operation" class="text-right font-medium py-0.5 pl-3">
+              {{ operationLabel(operation) }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="companyBank in companyBanks" :key="companyBank.id">
+            <td class="py-0.5">{{ bankLabel(companyBank) }}</td>
+            <td v-for="operation in shownOperations" :key="operation" class="py-0.5 pl-3 text-right font-medium">
+              {{ clientsByBank[operation].totals[companyBank.id] || 0 }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-for="warning in estimateWarnings" :key="warning.operation" class="text-xs text-amber-700 mt-1">
+        <template v-if="shownOperations.length > 1">{{ operationLabel(warning.operation) }}: </template>{{ warning.text }}
       </p>
     </div>
     </template>

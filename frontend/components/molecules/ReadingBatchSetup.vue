@@ -2,15 +2,13 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { format } from 'date-fns';
-import { useToast } from 'vue-toastification';
 import ReadingFileSelect from '~/components/molecules/ReadingFileSelect.vue';
 
 const PENDING_READING_DOCUMENT_KEY = 'avsis.pendingReadingDocument';
 
 const { t } = useI18n();
-const toast = useToast();
 const route = useRoute();
-const { $ConfigProjectApiService, $ReadingDocumentApiService } = useNuxtApp();
+const { $ReadingDocumentApiService } = useNuxtApp();
 
 const props = defineProps({
   batch_id: Number,
@@ -19,17 +17,9 @@ const props = defineProps({
   num_no_meters: Number,
   counters: Object,
   missing_billing_data: Object,
-  smartMeteringLoading: {
-    type: Boolean,
-    default: false,
-  },
-  smartMeteringTaskId: {
-    type: String,
-    default: null,
-  },
 });
 
-const emit = defineEmits(['change', 'show-subregion', 'open-smart-metering', 'smart-metering-preview-refresh']);
+const emit = defineEmits(['change', 'show-subregion']);
 
 const readingFiles = ref([]);
 
@@ -40,8 +30,6 @@ const selectingFile = ref(false);
 
 const selectedOriginType = ref(null);
 const reading_date = ref(null);
-const smart_metering_date = ref(null);
-const smartMeteringEnabled = ref(false);
 const minimum_date = ref(null);
 const has_missing_billing_data = ref(false);
 
@@ -139,27 +127,9 @@ const removeFile = async (item) => {
   }
 };
 
-const openSmartMetering = () => {
-  if (!smart_metering_date.value) {
-    toast.error(t('billing_block.reading_date'));
-    return;
-  }
-  emit('open-smart-metering', { reading_date: smart_metering_date.value });
-};
-
 const loadData = async () => {
   if (props.counters) {
     selectedOriginType.value = 'APP';
-  }
-};
-
-const checkSmartMeteringEnabled = async () => {
-  try {
-    const configs = await $ConfigProjectApiService.getAll('smart_metering_authentication_token');
-    const smartMeteringConfig = configs.find((item) => item.token === 'smart_metering_authentication_token');
-    smartMeteringEnabled.value = Boolean(String(smartMeteringConfig?.value ?? '').trim());
-  } catch {
-    smartMeteringEnabled.value = false;
   }
 };
 
@@ -169,9 +139,7 @@ onMounted(async () => {
     selectedOriginType.value = 'MISSING_BILLING';
   }
   minimum_date.value = format(new Date(new Date().setMonth(new Date().getMonth() - 4)), 'yyyy-MM-dd');
-  smart_metering_date.value = format(new Date(), 'yyyy-MM-dd');
   loadData();
-  checkSmartMeteringEnabled();
   await applyPendingReadingDocument();
 });
 
@@ -222,39 +190,9 @@ watch([selectedOriginType, reading_date, readingFiles, minimum_date], () => {
       </div>
     </div>
 
-    <div
-      v-if="!has_missing_billing_data && smartMeteringEnabled"
-      class="flex justify-start items-end gap-2 mb-3"
-    >
-      <AtomsInputDate
-        v-model="smart_metering_date"
-        :label="t('billing_block.reading_date')"
-        class="max-w-[11rem] !mb-0 shrink-0"
-        :disabled="!!smartMeteringTaskId || smartMeteringLoading"
-      />
-      <AtomsProcessColorBadge
-        v-if="smartMeteringTaskId"
-        class="!inline-flex items-center h-[42px] px-4 text-sm font-medium shrink-0"
-        :value="t('billing_block.smart_metering_loading_preview')"
-        color="blue"
-        :taskId="smartMeteringTaskId"
-        @refresh="emit('smart-metering-preview-refresh')"
-      />
-      <button
-        v-else
-        type="button"
-        class="inline-flex items-center h-[42px] px-4 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-md shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
-        :disabled="smartMeteringLoading"
-        @click="openSmartMetering"
-      >
-        <Icon
-          :name="smartMeteringLoading ? 'fa6-solid:spinner' : 'fa6-solid:tower-broadcast'"
-          class="mr-2 shrink-0"
-          :class="{ 'animate-spin': smartMeteringLoading }"
-        />
-        {{ $t('billing_block.smart_metering') }}
-      </button>
-    </div>
+    <!-- La càrrega de lectures de Smart Metering s'ha mogut a «Introduir lectures»
+         (pages/reading/readings): genera un document de lectures que aquí es
+         selecciona amb «Carrega per fitxer». -->
 
     <!-- Selecció de Tipus -->
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 py-2">
@@ -377,7 +315,7 @@ watch([selectedOriginType, reading_date, readingFiles, minimum_date], () => {
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
       :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[95%]': isSubRegionOpen,
         'w-1/2': !isSubRegionOpen
       }">

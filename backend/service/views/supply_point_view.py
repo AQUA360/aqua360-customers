@@ -21,11 +21,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from ..utils.supply_point_service import supply_point_activate, supply_point_change_address, supply_point_change_meter, supply_point_deactivate, supply_point_change_property
+from service.services.meter_change_service import set_meter_change_dates
 from fraud.models import Fraud, FraudStatus
 from coredata.models import ConfigProject
 from service.permissions import SupplyPointPermission
 from contract.permissions import ContractPermission, ContractRequestPermission
 from fraud.permissions import FraudPermission
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class SupplyPointViewSet(viewsets.ModelViewSet):
     serializer_class = SupplyPointSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -238,11 +244,15 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
             new_meter.status = meter_status_active
             new_meter.save()
         
+        released_meter = None
         if current_meter:
             current_meter_supply_points = SupplyPoint.objects.filter(meter=current_meter)
             if current_meter_supply_points.count() == 0:
                 current_meter.status = meter_status_inactive
                 current_meter.save()
+                released_meter = current_meter
+
+        set_meter_change_dates(new_meter, released_meter, change_date_instance)
         
         supply_point_change_meter(request.user, supply_point.id, current_meter, new_meter)
         
@@ -404,7 +414,8 @@ class SupplyPointActivateView(APIView):
         except SupplyPoint.DoesNotExist:
             return Response({"error": "SupplyPoint not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SupplyPointDeactivateView(APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -425,7 +436,8 @@ class SupplyPointDeactivateView(APIView):
         except SupplyPoint.DoesNotExist:
             return Response({"error": "SupplyPoint not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class SupplyPointChangeAddressView(APIView):
@@ -446,4 +458,5 @@ class SupplyPointChangeAddressView(APIView):
         except SupplyPoint.DoesNotExist:
             return Response({"error": "SupplyPoint not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -13,6 +13,9 @@ from coredata.utils.language_utils import use_default_language
 from billing.models import Billing, Invoice
 from billing.serializers.invoice_serializer import InvoiceMinimalListSerializer
 from django.shortcuts import get_object_or_404
+import logging
+
+logger = logging.getLogger(__name__)
 
 def simple_row(row, sheet, dict):
     for i, (key, value) in enumerate(dict.items()):
@@ -127,4 +130,5 @@ class BillingPreInvoicesSummaryXLSViewSet(views.APIView):
             
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

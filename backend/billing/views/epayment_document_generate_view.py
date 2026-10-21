@@ -18,6 +18,7 @@ from billing.serializers.invoice_serializer import InvoiceFullSerializer
 from billing.serializers.payment_serializer import PaymentSEPASerializer
 from billing.signals import create_payment_invoice
 from billing.utils.payment_service import get_payment_SEPA_data
+from billing.utils.aca_company_service import use_multiple_companies
 from django.db.models import Sum
 import xml.etree.ElementTree as ET
 from django.core.files.base import ContentFile
@@ -239,7 +240,6 @@ def generate_xml(payment, invoice_inst=None):
             person = contract.holder
         else:
             person = find_person_for_invoice_customer(invoice)
-    print("person: ", person)
     direct_debit_token = ConfigProject.objects.get(token='direct_debit_token').value
     bank_transfer_token = ConfigProject.objects.get(token='bank_transfer_token').value
     cash_token = ConfigProject.objects.get(token='cash_token').value
@@ -257,8 +257,6 @@ def generate_xml(payment, invoice_inst=None):
         taxes_base.update({'0.00': total_left})
         taxes.update({'0.00': 0.00})
     
-    print(invoice)
-    print(invoice.serie_final)
     invoices = None
     residenceTypeCode = None
     #TODO: GET CURRENT USED EXPLOITATION
@@ -269,13 +267,19 @@ def generate_xml(payment, invoice_inst=None):
     if not exploitation and contract:
         exploitation = contract.supply_point_default.connection.exploitation
         
-    if (exploitation and exploitation.company.company_banks.count() == 0):
-        raise Exception("Company has no banks")
-    if not exploitation:
-        main_company_token = ConfigProject.objects.get(token='main_company_token').value
-        main_company = Company.objects.get(vat=main_company_token)
+    # Amb múltiples empreses, l'emissora és l'empresa de la factura
+    if use_multiple_companies() and invoice.company:
+        main_company = invoice.company
+        if main_company.company_banks.count() == 0:
+            raise Exception("Company has no banks")
     else:
-        main_company = exploitation.company
+        if (exploitation and exploitation.company.company_banks.count() == 0):
+            raise Exception("Company has no banks")
+        if not exploitation:
+            main_company_token = ConfigProject.objects.get(token='main_company_token').value
+            main_company = Company.objects.get(vat=main_company_token)
+        else:
+            main_company = exploitation.company
     invoice_line_items = InvoiceLineItem.objects.filter(invoice=invoice, is_active=True)
     batchIdent = f"ES{main_company.vat}{invoice.serie_final}"
     # COMPANY BANK LATER SELECTED
@@ -288,7 +292,6 @@ def generate_xml(payment, invoice_inst=None):
     lang = settings.LANGUAGE_CODE
     country_company = Country.objects.get(iso_code=main_company.address.country.iso_code)
     print("gotten country_company")
-    print(invoice.country_final)
     country = Country.objects.get(iso_code=invoice.country_final)
     if country.iso_code == 'ES':
         residenceTypeCode = 'R'

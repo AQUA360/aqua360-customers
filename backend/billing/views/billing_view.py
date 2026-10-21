@@ -35,6 +35,9 @@ from billing.models import (
     Reading
 )
 from billing.serializers.billing_serializer import BillingListSerializer, BillingSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BillingViewSet(viewsets.ModelViewSet):
   """
@@ -143,7 +146,6 @@ class BillingViewSet(viewsets.ModelViewSet):
       new_termination = 0
       no_price_rate = 0
       excluded_billing = 0
-      block_billing = 0
       unprocessed_invoice = 0
       no_meter = 0
 
@@ -244,6 +246,17 @@ class BillingViewSet(viewsets.ModelViewSet):
         Q(readings__reading_date__range=(first_start_reading, last_end_reading)) |
         Q(readings__isnull=True, issue_date__range=(first_start_reading, last_end_reading))
       ).values_list('contract_id', flat=True).distinct())
+
+      # Els contractes no facturables no són avisos: es compten a part i no surten a la llista.
+      block_billing = Contract.objects.filter(
+        Q(id__in=route_contracts.values('id')) |
+        Q(id__in=exploitation_contracts.values('id')),
+        block_billing=True
+      ).exclude(
+        id__in=invoiced_in_period_contract_ids
+      ).distinct().count()
+      route_contracts = route_contracts.exclude(block_billing=True)
+      exploitation_contracts = exploitation_contracts.exclude(block_billing=True)
 
       missing_by_route = route_contracts.exclude(id__in=invoiced_in_period_contract_ids).distinct()
       missing_by_exploitation = exploitation_contracts.exclude(id__in=invoiced_in_period_contract_ids).distinct()
@@ -352,8 +365,6 @@ class BillingViewSet(viewsets.ModelViewSet):
           no_price_rate += 1
         if 'excluded_billing' in missing_reasons:
           excluded_billing += 1
-        if 'block_billing' in missing_reasons:
-          block_billing += 1
         if 'unprocessed_invoice' in missing_reasons:
           unprocessed_invoice += 1
         if 'no_meter' in missing_reasons:
@@ -512,7 +523,8 @@ class BillingViewSet(viewsets.ModelViewSet):
       
         return Response({'new_reading_batch': new_reading_batch.id}, status=status.HTTP_200_OK)
       except Exception as e:
-        return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.exception("Error inesperat")
+        return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     
   @action(detail=True, methods=['put'], url_path='cancel')
@@ -977,7 +989,8 @@ class BillingRoutesView(views.APIView):
     
       return Response(response, status=status.HTTP_200_OK)
     except Exception as e:
-      return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      logger.exception("Error inesperat")
+      return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 class BillingBadgesView(views.APIView):
   permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -1080,8 +1093,9 @@ class BillingBadgesView(views.APIView):
       return Response(response, status=status.HTTP_200_OK)
 
     except Exception as e:
+      logger.exception("Error inesperat")
       print(f"Error en obtenir les rutes de facturació: {str(e)}")
-      return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 def add_badges(response, billing, key):
   token_found = False
@@ -1158,5 +1172,6 @@ class StartBillingView(views.APIView):
       return Response({"message": "Billing process started.", "id": billing.id}, status=status.HTTP_200_OK)
 
     except Exception as e:
+      logger.exception("Error inesperat")
       print(f"Error en obtenir les rutes de facturació: {str(e)}")
-      return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

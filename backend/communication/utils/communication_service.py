@@ -1,8 +1,10 @@
 import base64
+import logging
 import json
 import os
 import re
 from django.conf import settings
+from django.db.models import Q
 from django.template.loader import render_to_string
 from django.http import JsonResponse
 import fitz
@@ -32,9 +34,11 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 from documentmanager.utils.main_utils import upload_document
 from documentmanager.views import get_all_documents
 from logger.models import LogCommunicationStatusChange
-from service.models import CompanyConfig
+from service.models import CompanyConfig, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
+
+logger = logging.getLogger(__name__)
 
 def get_uploaded_file_from_request(request, field_name='document'):
     """
@@ -369,6 +373,83 @@ def format_letter_body(body):
 
   return mark_safe(''.join(html_paragraphs))
 
+def _supply_cut_values(person, communication):
+    """Values for the `%supplycut.*` variables of a communication.
+
+    A process usually links exactly one cut, but the relation is M2M, so every
+    value is joined across the linked cuts instead of silently picking one.
+    `SEP` degrades to a bare value when there is a single cut and to a
+    newline-separated bullet list when there are several.
+
+    GDPR: `affected_addresses` only lists the supply points the recipient is the
+    holder, owner or tenant of — never a neighbour's. With no person the list is
+    empty (fail-safe) rather than over-disclosing.
+    """
+    SEP = '\n- '
+    cuts = list(
+        # `order_by('id')` keeps the join deterministic (creation order).
+        communication.process.supply_cuts.select_related('cause', 'status').order_by('id')
+        if communication.process_id else []
+    )
+    person_id = person.get('id') if person else None
+    if person_id is None:
+        addresses = []
+    else:
+        # `.distinct()` is required: a person can be both the holder and the
+        # owner of the same contract, which would otherwise duplicate the id.
+        owned_ids = (
+            SupplyPoint.objects.filter(
+                Q(contracts__holder_id=person_id)
+                | Q(contracts__owner_id=person_id)
+                | Q(contracts__tenant_id=person_id)
+                | Q(default_contracts__holder_id=person_id)
+                | Q(default_contracts__owner_id=person_id)
+                | Q(default_contracts__tenant_id=person_id)
+            )
+            .distinct()
+            .values_list('id', flat=True)
+        )
+        # Ordered by id so a legal notice lists the same addresses in the same
+        # order on every re-send.
+        addresses = []
+        for cut in cuts:
+            for address in cut.supply_points.filter(id__in=owned_ids).select_related('address').order_by('id'):
+                if address.address:
+                    addresses.append(str(address.address))
+
+    def joined(getter):
+        return SEP.join(str(value) for value in (getter(cut) for cut in cuts) if value)
+
+    def local(value):
+        # Les dates del tall són datetime amb zona (UTC a la BD): es mostren en
+        # hora local, o un tall a les 00:30 sortiria amb la data del dia abans.
+        return timezone.localtime(value) if timezone.is_aware(value) else value
+
+    def date(value):
+        return local(value).strftime('%d/%m/%Y') if value else ''
+
+    def hour(value):
+        return local(value).strftime('%H:%M') if value else ''
+
+    return {
+        'supplycut.token': joined(lambda cut: cut.token),
+        'supplycut.cause_name': joined(lambda cut: cut.cause.name if cut.cause else ''),
+        'supplycut.status': joined(lambda cut: cut.status.name if cut.status else ''),
+        'supplycut.date_start': joined(lambda cut: date(cut.date_start)),
+        'supplycut.date_end': joined(lambda cut: date(cut.date_end)),
+        # Hora prevista d'inici i fi. Noms sense prefix comú amb date_start/date_end:
+        # refactor_text substitueix per ordre i '%supplycut.date_start' trencaria
+        # una variable '%supplycut.date_start_time'.
+        'supplycut.time_start': joined(lambda cut: hour(cut.date_start)),
+        'supplycut.time_end': joined(lambda cut: hour(cut.date_end)),
+        'supplycut.exec_start': joined(lambda cut: date(cut.exec_start)),
+        'supplycut.exec_end': joined(lambda cut: date(cut.exec_end)),
+        # Full address per affected supply point: for a non-payment cut the exact
+        # street, number and door are what make the notice legally actionable.
+        'supplycut.affected_addresses': SEP.join(addresses),
+    }
+
+
 def get_com_values(person, communication, company):
     return {
         'person.token': person.get('token') if person else '',
@@ -414,6 +495,8 @@ def get_com_values(person, communication, company):
         'reading.leak_value': str(int(communication.readings.first().leak_value)) if communication.readings.first() and communication.readings.first().leak_value else '',
         'reading.previous_reading_value': str(int(communication.readings.first().previous_reading.reading_value)) if communication.readings.first() and communication.readings.first().previous_reading and communication.readings.first().previous_reading.reading_value else '',
         'reading.previous_reading_date': communication.readings.first().previous_reading.reading_date.strftime('%d/%m/%Y') if communication.readings.first() and communication.readings.first().previous_reading and communication.readings.first().previous_reading.reading_date else '',
+
+        **_supply_cut_values(person, communication),
     }
 
 def handle_communication(comm, comm_types):
@@ -513,7 +596,8 @@ def send_electronic_mail(comm):
     comm.save()
     return
 
-  print(f"Attempting to send email from {from_email} to {comm_email}")
+  # Sense adreces ni assumpte: són dades personals dels destinataris.
+  logger.info("Enviant la comunicació %s per correu", comm.pk)
 
   try:
     parts = [e.strip() for e in str(comm_email).split(';')]
@@ -543,31 +627,68 @@ def send_electronic_mail(comm):
     comm.sent_at = timezone.now()
     comm.status = status_sent
     comm.save()
-    print("Email sent successfully")
+    logger.info("Comunicació %s enviada per correu", comm.pk)
 
   except Exception as e:
     error_msg = f"Error sending email: {str(e)}"
-    print(error_msg)
-    print(f"[error debug] email_backend: {email_backend}")
-    print(f"[error debug] comm_config: {comm_config}")
-    print(f"[error debug] comm_emails: {comm_emails}")
-    print(f"[error debug] subject: {subject}")
-    print(f"[error debug] from_email: {from_email}")
-    print(f"[error debug] document_files: {document_files}")
-    print(f"[error debug] status_rejected: {status_rejected}")
+    logger.warning(
+      "Error enviant la comunicació %s (%s destinataris, %s adjunts): %s",
+      comm.pk, len(comm_emails), len(document_files or []), e,
+    )
     comm.rejection_reason = error_msg
     comm.status = status_rejected
     comm.save()
     
     
 
+SMTP_PASSWORD_ENV_PREFIX = 'EMAIL_PASSWORD_'
+
+
+def get_smtp_password(*tokens):
+  """
+  Contrasenya SMTP del primer token que en tingui, en ordre de prioritat (correu, configuració);
+  si cap en té, EMAIL_HOST_PASSWORD.
+
+  Un token és el nom d'una variable d'entorn EMAIL_PASSWORD_*. Només es llegeixen aquestes perquè el
+  token es configura des de la pantalla i no ha de poder apuntar a altres secrets (SECRET_KEY, etc.).
+  """
+  from decouple import config as env_config
+
+  for token in tokens:
+    if token and token.startswith(SMTP_PASSWORD_ENV_PREFIX):
+      password = env_config(token, default=None)
+      if password:
+        return password
+  return getattr(settings, "EMAIL_HOST_PASSWORD", "")
+
+
+def resolve_smtp_password(comm_config, smtp_config_email):
+  """
+  Contrasenya SMTP, per ordre: la desada (xifrada) del correu, el token del correu, el token de la
+  configuració i EMAIL_HOST_PASSWORD.
+  """
+  if smtp_config_email:
+    stored_password = smtp_config_email.get_password()
+    if stored_password:
+      return stored_password
+  return get_smtp_password(smtp_config_email.token if smtp_config_email else None, comm_config.token)
+
+
+def get_smtp_config_email(comm_config, comm_config_email=None):
+  """Correu amb què s'autentica l'SMTP: el de la comunicació o, si no en té, el per defecte o el primer."""
+  if comm_config_email and comm_config_email.mail_send_mail:
+    return comm_config_email
+  config_emails = comm_config.company_config_emails
+  return config_emails.filter(is_default=True).first() or config_emails.first()
+
+
 def _send_via_smtp(comm_emails, subject, html_content, from_email, document_files, comm_config, comm_config_email):
   smtp_server = comm_config.mail_send_smtp_server
   smtp_port = comm_config.mail_send_smtp_port
-  smtp_user = comm_config_email.mail_send_mail if comm_config_email and comm_config_email.mail_send_mail else comm_config.company_config_emails.filter(is_default=True).first().mail_send_mail if comm_config.company_config_emails.filter(is_default=True).first() else comm_config.company_config_emails.first()
-  smtp_password = getattr(settings, comm_config.token, None) if comm_config.token else settings.EMAIL_HOST_PASSWORD
-  if not smtp_password:
-    smtp_password = getattr(settings, "EMAIL_HOST_PASSWORD", "")
+  # Cada correu pot tenir la seva contrasenya (desada o token del correu); si no, la de la configuració.
+  smtp_config_email = get_smtp_config_email(comm_config, comm_config_email)
+  smtp_user = smtp_config_email.mail_send_mail if smtp_config_email else None
+  smtp_password = resolve_smtp_password(comm_config, smtp_config_email)
   use_tls = comm_config.use_TLS if comm_config.use_TLS is not None else getattr(settings, "EMAIL_USE_TLS", True)
   use_ssl = comm_config.use_SSL if comm_config.use_SSL is not None else getattr(settings, "EMAIL_USE_SSL", False)
 

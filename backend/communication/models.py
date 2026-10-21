@@ -29,6 +29,10 @@ class MessageOrigin(models.Model):
     def __str__(self):
         return self.name if self.name else "MessageOrigin ID {}".format(self.token)
 
+# Token de l'estat cancel·lat, compartit per CommunicationStatus i
+# CommunicationProcessStatus.
+CANCELLED_STATUS_TOKEN = '-1'
+
 class CommunicationStatus(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
@@ -160,6 +164,28 @@ class CommunicationProcess(models.Model):
     
     def __str__(self):
         return self.token if self.token else "CommunicationProcess ID {}".format(self.token)
+
+class CommunicationProcessExclusion(models.Model):
+    """Destinatari que ha quedat fora d'un procés i per què.
+
+    Es desa en crear el procés: les persones que no poden rebre cap dels canals
+    triats (p. ex. només tenen un telèfon fix i no tenen correu) i les excloses
+    manualment al wizard. Serveix per avisar-les per un canal alternatiu.
+    """
+    REASON_MANUAL = 'manual'
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    process = models.ForeignKey(CommunicationProcess, on_delete=models.CASCADE, related_name='exclusions')
+    person = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True, related_name='communication_exclusions')
+    contracts = models.ManyToManyField(Contract, blank=True, related_name='communication_exclusions')
+    person_type = models.CharField(max_length=20, null=True, blank=True)  # holder / tenant / owner
+    # Codis de motiu (sms_no_phone, sms_landline, email_missing, letter_missing,
+    # electronic_inv_missing, email_paper_contract, communication_none o manual);
+    # el frontend els tradueix.
+    reasons = models.JSONField(default=list, blank=True)
+
+    def __str__(self):
+        return f"Exclusion {self.person_id} ({self.process_id})"
 
 class Communication(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)

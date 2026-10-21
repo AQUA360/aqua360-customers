@@ -1,6 +1,7 @@
 import datetime
 from decimal import Decimal
 from datetime import date
+import logging
 import math
 import os
 import time
@@ -33,6 +34,8 @@ from billing.utils.adjustment_service import calc_consumption_responsible
 from .invoice_line_item_service import create_from_lineitemtype, create_from_lineitemtype_connection, constrain_total_value, get_last_reading
 from faker import Faker
 fake = Faker()
+
+logger = logging.getLogger(__name__)
 
 origin_reading = None
 invoice_type_invoice = None
@@ -363,6 +366,13 @@ def pre_check_readings(readings):
         return readings.exclude(id__in=reading_to_remove)
 
 def generate_consumption_invoice_multiple(contract, readings, title, refactor_invoice=None, is_budget=False, extra_payment_data=None, billing=None, billing_batch=None, period_months=None, new_holder=None):
+    """Genera i confirma una factura de consum a partir de les lectures del contracte.
+
+    Aplica les tarifes dels períodes corresponents, respectant els canvis de
+    comptador ja facturats. Retorna la factura creada o None si no hi ha cap
+    comptador, les lectures són anteriors a l'alta sense excepció aplicable o no
+    es generen línies de factura.
+    """
     if not any(reading.meter for reading in readings):
         print("[generate_consumption_invoice_multiple] FAILED: No meter found in readings or readings list is empty.")
         return None
@@ -563,6 +573,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             group_by_supply_point[price_rate.supply_point].append(price_rate.price_rate)
 
         for reading in readings:
+            # El consum de cada lectura és el del seu comptador: amb un contracte de diversos punts de
+            # subministrament amb tarifa per punt, abans s'hi sumava el de les lectures anteriors i
+            # la segona línia facturava el consum acumulat.
+            real_consumption = 0
             added_leak = get_added_leak(added_leak_by_reading, reading)
             reading_calculated_value = reading.calculated_value
             if reading_estimated.lower() == 'true':
@@ -573,12 +587,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             # Evitem duplicar si la lectura de tancament ja està en la llista a facturar
             close_prev = get_close_previous_reading(reading)
             if close_prev and close_prev not in readings:
-                real_consumption = float(real_consumption) + float(close_prev.real_consumption) if close_prev.real_consumption > 0 else float(real_consumption)
                 if added_leak == 0:
                     added_leak += get_leak_value(close_prev)
             close_prev_prev = get_close_previous_previous_reading(reading)
             if close_prev_prev and close_prev_prev not in readings:
-                real_consumption = float(real_consumption) + float(close_prev_prev.real_consumption) if close_prev_prev.real_consumption > 0 else float(real_consumption)
                 if added_leak == 0:
                     added_leak += get_leak_value(close_prev_prev)
             leak_reading = None
@@ -636,8 +648,10 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
                 prev_reading_date = prev_reading.reading_date if prev_reading else None
 
                 # Fix for meter changes: ensure we go back to the very first reading of the period
+                # Si la lectura anterior ja està facturada, el període comença en ella: el tram
+                # del comptador antic ja es va facturar amb ella i no s'ha de tornar a comptar.
                 actual_pr = prev_reading
-                close_prev = get_close_previous_reading(actual_pr) if actual_pr else None
+                close_prev = get_close_previous_reading(actual_pr) if actual_pr and not reading_has_blocking_invoices(actual_pr) else None
                 if close_prev:
                     actual_pr = close_prev
                 while actual_pr and actual_pr.is_close and not reading_has_blocking_invoices(actual_pr):
@@ -1184,7 +1198,7 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
     return invoice
 
 
-def invoice_generate_return_bail(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None):
+def invoice_generate_return_bail(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None, bails=None):
     # print("creating invoice from contract")
     # print(invoice_type_token)
     try:
@@ -1192,9 +1206,9 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
         if not contract:
             raise Exception("Contract not found")
         
-        
-        unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
-        bails = Bail.objects.filter(contract=contract, is_active=True, status__token=unreturned_bail_token)
+        if bails is None:
+            unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
+            bails = Bail.objects.filter(contract=contract, is_active=True, status__token=unreturned_bail_token)
         if not bails:
             return None
         
@@ -1990,7 +2004,7 @@ def recalc_consumption_gen_meter(reading, consumption_og, supply_point_instance,
     pass  # log removed
     if consumption_sub_meters > 0:
         if not reading.is_revised:
-            consumption = float(consumption_og) - consumption_sub_meters if float(consumption_og) - consumption_sub_meters > 0 else 0
+            consumption = max(float(consumption) - consumption_sub_meters, 0)
             pass  # log removed
     return consumption, added_leak_by_reading
 
@@ -2183,6 +2197,27 @@ def invoice_claim_paid_generate(invoice_id, title):
         raise Exception("Error creating invoice")
     return invoice
 
+def termination_payment_bank_for_contract_request(payment_bank, contract_request, contract, contract_termination_id=None):
+    """
+    Compte bancari (PersonBank id) d'una factura de baixa que cobra l'alta vinculada.
+
+    El diàleg de facturació de la baixa proposava per defecte el compte del contracte que es
+    dona de baixa, i la factura sortia a nom del titular de l'alta amb el compte de l'antic.
+    Si el compte rebut és el del contracte de baixa i l'alta en té un altre, es descarta
+    (retorna None) perquè es faci servir el de l'alta.
+    """
+    request_bank_id = contract_request.payment.IBAN_id if contract_request.payment else None
+    terminated_bank_id = contract.payment.IBAN_id if contract.payment else None
+    if payment_bank and request_bank_id and terminated_bank_id \
+            and int(payment_bank) == terminated_bank_id and terminated_bank_id != request_bank_id:
+        logger.warning(
+            "Termination %s billed to contract request %s: ignoring the terminated contract's bank sent by the dialog, "
+            "using the contract request's one",
+            contract_termination_id, contract_request.id,
+        )
+        return None
+    return payment_bank
+
 def invoice_contract_termination_generate(
     user, 
     contract_termination_id, 
@@ -2195,6 +2230,14 @@ def invoice_contract_termination_generate(
     bill_termination_requester=False,
     company_bank=None
 ):
+    """Create and return a termination invoice or budget from closing readings.
+
+    Bill the linked request's holder when supplied unless the termination
+    requester is explicitly billed. Resolve payment accounts from that billing
+    source and dialog overrides, discarding the old contract's bank when the
+    linked request has a different one. Derive payer details from the selected
+    bank account, falling back to the customer when no account is available.
+    """
     # print("creating invoice from connection request")
     #TODO REFACTOR SINCE THERE COULD BE MORE THAN ONE SP
     exploitation = None
@@ -2427,8 +2470,24 @@ def invoice_contract_termination_generate(
             address = contract.address_billing.address if contract.address_billing else None
             payment_source = contract
 
+        if payment_source is not contract:
+            payment_bank = termination_payment_bank_for_contract_request(payment_bank, payment_source, contract, contract_termination.id)
+
         payment_bank_instance = PersonBank.objects.get(id = payment_bank) if payment_bank else (payment_source.payment.IBAN if payment_source.payment and payment_source.payment.IBAN else None)
         payment_company_bank_instance = CompanyBank.objects.get(id = company_bank) if company_bank else (payment_source.payment.company_iban if payment_source.payment and payment_source.payment.company_iban else None)
+        # Sense valors de comptes al log: només d'on surt el compte que es cobra
+        if not payment_bank_instance:
+            bank_origin = None
+        elif payment_bank:
+            bank_origin = "dialog"
+        else:
+            bank_origin = "contract request" if payment_source is billing_entity else "contract"
+        logger.info(
+            "Termination %s invoice (is_budget=%s): billed to %s, person=%s, bank from %s, company bank=%s",
+            contract_termination.id, is_budget,
+            f"contract request {billing_entity.id}" if payment_source is billing_entity else f"contract {contract.id}",
+            person.id if person else None, bank_origin, payment_company_bank_instance is not None,
+        )
 
         # year = datetime.datetime.now().year
         #total_invoices = Invoice.objects.filter(issue_date__year=year).count()
@@ -2454,9 +2513,10 @@ def invoice_contract_termination_generate(
         from uuid import uuid4
         serie_final_provisional = f"{serie.token}/PROV/{uuid4().hex}"
         
-        if payment_source.payment and payment_source.payment.IBAN and payment_source.payment.IBAN:
-            payer_final = f"{payment_source.payment.IBAN.name}"
-            payer_token_final = payment_source.payment.IBAN.dni
+        # El pagador és el titular del compte que es cobra, no el del pagament per defecte.
+        if payment_bank_instance:
+            payer_final = f"{payment_bank_instance.name}"
+            payer_token_final = payment_bank_instance.dni
         else:
             payer_final = customer_final
             payer_token_final = customer_token_final

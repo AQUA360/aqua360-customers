@@ -1,4 +1,5 @@
 import base64
+import math
 from django.utils import timezone
 from datetime import timedelta 
 from rest_framework import serializers
@@ -32,7 +33,8 @@ def _get_active_contract_status():
 def _supply_cut_alert(supply_point):
     """Alerta de tall vigent per a un PP.
     Es mostra si està Actiu (sempre, independentment de la data).
-    Es mostra si està Planificat fins a 30 minuts després de la seva fi prevista.
+    Es mostra si està Planificat fins a 30 minuts després de la seva fi prevista; si no en té
+    (un tall indefinit, per exemple per impagament), sempre.
     """
     cuts = getattr(supply_point, '_prefetched_supply_cuts', None)
     if not cuts:
@@ -41,13 +43,14 @@ def _supply_cut_alert(supply_point):
     now = timezone.now()
     margin_time = now - timedelta(minutes=30)
     
-    for cut in cuts:
+    for cut in sorted(cuts, key=lambda cut: cut.status is None or cut.status.token != '1'):
         if cut.requires_review or cut.status is None or cut.status.token not in ('0', '1'):
             continue
             
         if cut.status.token == '0':
-            # Si està Planificat, apliquem el marge de 30 minuts un cop superada la data de fi
-            if not cut.date_end or cut.date_end < margin_time:
+            # Si està Planificat, apliquem el marge de 30 minuts un cop superada la data de fi.
+            # Sense data de fi (indefinit) no caduca: es mostra.
+            if cut.date_end and cut.date_end < margin_time:
                 continue
                 
         # Si està Actiu ('1'), no fem cap comprovació de data. 
@@ -184,6 +187,7 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
 
 
     def to_representation(self, instance):
+        """Build a supply point summary with active contract vulnerability levels and latest readings."""
         representation = super().to_representation(instance)
         representation['address_complete'] = str(instance.address)
         
@@ -208,6 +212,9 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
                 'status_color': contract.status.color,
                 'status_token': contract.status.token,
                 'holder': holder_str,
+                'holder_vulnerability_level': contract.holder.vulnerability_level if contract.holder else None,
+                'tenant_vulnerability_level': contract.tenant.vulnerability_level if contract.tenant else None,
+                'owner_vulnerability_level': contract.owner.vulnerability_level if contract.owner else None,
             })
         representation['contracts'] = contracts
         
@@ -330,6 +337,17 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 # Si és un ID (int o string numeric)
                 mutable_data['address'] = address_input
 
+        # connection_id buit, "NaN" o no finit → None: a l'update es tracta com
+        # «sense canvis» i no esborra l'escomesa actual
+        if 'connection_id' in mutable_data:
+            connection_id_value = mutable_data['connection_id']
+            if (
+                connection_id_value == ''
+                or (isinstance(connection_id_value, str) and connection_id_value.strip().lower() == 'nan')
+                or (isinstance(connection_id_value, float) and not math.isfinite(connection_id_value))
+            ):
+                mutable_data['connection_id'] = None
+
         return super().to_internal_value(mutable_data)
     
     def _get_active_reading_batch_status_tokens(self):
@@ -427,6 +445,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         return True if frauds.exists() else False
     
     def to_representation(self, instance):
+        """Build supply point details with active contract debts, vulnerability levels and related data."""
         representation = super().to_representation(instance)
         from contract.serializers.contract_serializer import ContractMinimalSerializer
 
@@ -470,6 +489,9 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 'status_token': contract.status.token,
                 'holder': holder_str, 
                 'holder_token': contract.holder.token if contract.holder else None,
+                'holder_vulnerability_level': contract.holder.vulnerability_level if contract.holder else None,
+                'tenant_vulnerability_level': contract.tenant.vulnerability_level if contract.tenant else None,
+                'owner_vulnerability_level': contract.owner.vulnerability_level if contract.owner else None,
                 'total_debt': payments_amount
                 })
                 
@@ -512,7 +534,6 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         cluster_id = validated_data.pop('cluster_id', None)
         
         validated_data['cadastral'] = property_cadastral
-        print(f"address_data: {address_data}")
         if address_data:
             print(f"address_data found")
             street = Street.objects.get(id=address_data['street']['street_id'])
@@ -548,7 +569,6 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 print(f"Error getting or creating address: {e}")
                 address = Address.objects.filter(street=street, street_number=street_number, **address_data).first()
             
-            print(f"address: {address}")
             
         if connection_id:
             connection = Connection.objects.get(id = connection_id)
@@ -732,13 +752,14 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 supply_point_change_meter(user, instance.id, previous_meter, meter)
         
         ## change connection
-        if validated_data.get('connection_id'):
-            previous_connection = instance.connection
-            connection = Connection.objects.get(id=validated_data.get('connection_id'))
-            validated_data['connection'] = connection
-            validated_data.pop('connection_id')
-            if previous_connection != connection:
-                supply_point_change_connection(user, instance.id, previous_connection, connection)
+        if 'connection_id' in validated_data:
+            connection_id = validated_data.pop('connection_id')
+            if connection_id:
+                previous_connection = instance.connection
+                connection = Connection.objects.get(id=connection_id)
+                validated_data['connection'] = connection
+                if previous_connection != connection:
+                    supply_point_change_connection(user, instance.id, previous_connection, connection)
         
         if validated_data.get('property_id'):
             previous_property = instance.property

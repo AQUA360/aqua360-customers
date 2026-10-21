@@ -26,7 +26,7 @@ def clean_street_name_for_search(street_name):
     clean_name = street_name.strip()
     if ',' in clean_name:
         clean_name = clean_name.split(',', 1)[0].strip()
-    combined_pattern = r'^\s*(C|AV|AVENIDA|CARRER|PL|PLAZA|PG|PASSEIG|PS)\s*[./\s]+\s*(D\'|DE\s+|DEL\s+|DE\s+LA\s+|DE\s+LES\s+|DE\s+ELS\s+)'
+    combined_pattern = r'^\s*(C|AV|AVENIDA|CARRER|PL|PLAZA|PG|PASSEIG|PS)[./\s]+(D\'|DE\s+|DEL\s+|DE\s+LA\s+|DE\s+LES\s+|DE\s+ELS\s+)'
     clean_name = re.sub(combined_pattern, '', clean_name, flags=re.IGNORECASE)
     if '/' in clean_name or '.' in clean_name:
         part = clean_name.split('/', 1)[1].strip() if '/' in clean_name else clean_name.split('.', 1)[1].strip()

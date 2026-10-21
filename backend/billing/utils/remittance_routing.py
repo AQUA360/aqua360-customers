@@ -4,6 +4,10 @@ Encaminament de remeses SEPA: decideix a quin compte de l'empresa emissora
 
 El mapa el configura cada empresa a `service.models.CompanyBankRouting` (pàgina
 d'empresa, pestanya d'encaminament de remeses). Aquí només s'aplica.
+
+Les remeses de cobrament i les de transferències de retorn tenen cadascuna el
+seu mapa (`CompanyBankRouting.operation`). A les de retorn, l'IBAN que mana és
+el del client que rep els diners.
 """
 
 from collections import defaultdict
@@ -67,15 +71,16 @@ def build_payments_values(payments):
     )
 
 
-def get_company_routing_maps(company_ids):
+def get_company_routing_maps(company_ids, operation=CompanyBankRouting.OPERATION_COLLECTION):
     """
-    Per cada empresa, el seu mapa d'encaminament ja resolt en diccionaris:
+    Per cada empresa, el seu mapa d'encaminament de l'operació demanada ja
+    resolt en diccionaris:
     `{company_id: {'banks': {bank_id: company_bank_id}, 'foreign': id, 'default': id}}`.
     """
     maps = defaultdict(lambda: {'banks': {}, 'foreign': None, 'default': None})
 
     routings = CompanyBankRouting.objects.filter(
-        company_id__in=company_ids, is_active=True
+        company_id__in=company_ids, operation=operation, is_active=True
     ).values('company_id', 'bank_id', 'company_bank_id', 'match_type')
 
     for routing in routings:
@@ -132,7 +137,7 @@ def get_bank_entity_map(entity_codes):
     )
 
 
-def resolve_payment_banks(payments, manual_assignments=None, companies=None):
+def resolve_payment_banks(payments, manual_assignments=None, companies=None, is_return=False):
     """
     Decideix el compte de cada rebut i torna `(assignacions, avisos)`:
 
@@ -150,6 +155,9 @@ def resolve_payment_banks(payments, manual_assignments=None, companies=None):
     `companies` (ids de les empreses emissores seleccionades) només serveix per
     avisar dels rebuts que són d'una altra empresa: no els deixa fora, perquè
     qui tria les factures de la remesa és l'usuari.
+
+    `is_return` tria el mapa de transferències de retorn en lloc del de
+    cobraments.
     """
     manual_assignments = manual_assignments or {}
     selected_companies = {str(c) for c in companies} if companies else None
@@ -158,10 +166,24 @@ def resolve_payment_banks(payments, manual_assignments=None, companies=None):
     if not rows:
         return {}, []
 
-    company_ids = {get_payment_company_id(row) for row in rows}
+    single_company_id = (
+        int(next(iter(selected_companies)))
+        if selected_companies and len(selected_companies) == 1 else None
+    )
+    # Rebuts sense factura ni contracte (p. ex. devolucions a una persona) no
+    # tenen d'on treure l'empresa. Si la remesa és d'una sola empresa no hi ha
+    # cap ambigüitat i s'hi atribueixen, en lloc de quedar-se fora sense que
+    # ningú se n'adoni. S'ha de fer abans de carregar els mapes, perquè també
+    # se'n carreguin el d'aquesta empresa i el seu compte per defecte.
+    payment_companies = {
+        row['id']: get_payment_company_id(row) or single_company_id for row in rows
+    }
+    company_ids = set(payment_companies.values())
     company_ids.discard(None)
 
-    routing_maps = get_company_routing_maps(company_ids)
+    routing_maps = get_company_routing_maps(
+        company_ids, operation=CompanyBankRouting.operation_for(is_return)
+    )
     fallback_banks = get_company_fallback_banks(company_ids)
 
     parsed = {row['id']: parse_payer_iban(row['payment_bank']) for row in rows}
@@ -179,13 +201,7 @@ def resolve_payment_banks(payments, manual_assignments=None, companies=None):
             assignments[payment_id] = int(manual_bank)
             continue
 
-        company_id = get_payment_company_id(row)
-        if not company_id and selected_companies and len(selected_companies) == 1:
-            # Rebuts sense factura ni contracte (p. ex. devolucions a una
-            # persona) no tenen d'on treure l'empresa. Si la remesa és d'una
-            # sola empresa no hi ha cap ambigüitat i s'hi atribueixen, en lloc
-            # de quedar-se fora sense que ningú se n'adoni.
-            company_id = int(next(iter(selected_companies)))
+        company_id = payment_companies[row['id']]
         if not company_id:
             warnings['payment_without_company'].append(row['id'])
             continue

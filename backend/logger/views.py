@@ -44,6 +44,9 @@ from logger.models import LogBailStatus, LogClaimRequestContractChange, LogCommi
 from logger.serializers import LogCommitmentDepositMovementSerializer, LogCommunicationChangeSerializer, LogCommunicationProcessStatusChangeSerializer, LogCommunicationStatusChangeSerializer, LogConnectionStatusSerializer, LogConnectionRequestStatusSerializer, LogIncidentStatusChangeSerializer, LogInvoiceDataChangeSerializer, LogOrderStatusSerializer, LogPaymentStatusChangeSerializer, LogSupplyCutStatusSerializer, LogSupplyPointChangeSerializer, LogContractRequestStatusSerializer, LogBailStatusSerializer, LogContractTotalMembersSerializer, LogContractPhonesSerializer, LogContractBonificationsVariablesChangeSerializer, LogContractExpiredBonificationsVariablesSerializer, LogClaimRequestContractChangeSerializer, LogInvoiceChangeStatusSerializer, LogFraudStatusChangeSerializer, LogReadingChangeSerializer
 from logger.models import LogBailStatus, LogClaimRequestContractChange, LogCommitmentDepositMovement, LogCommunicationProcessStatusChange, LogCommunicationStatusChange, LogConnectionStatus,LogConnectionRequestStatus, LogIncidentStatusChange, LogInvoiceDataChange, LogOrderStatus, LogPaymentStatusChange, LogSupplyCutStatus, LogSupplyPointChange, LogContractRequestStatus, LogContractTotalMembers, LogContractBonificationsVariablesChange, LogContractExpiredBonificationsVariables, LogInvoiceChangeStatus, LogFraudStatusChange, LogJoinedPaymentStatusChange
 from logger.serializers import LogCommitmentDepositMovementSerializer, LogCommunicationProcessStatusChangeSerializer, LogCommunicationStatusChangeSerializer, LogConnectionStatusSerializer, LogConnectionRequestStatusSerializer, LogIncidentStatusChangeSerializer, LogInvoiceDataChangeSerializer, LogOrderStatusSerializer, LogPaymentStatusChangeSerializer, LogSupplyCutStatusSerializer, LogSupplyPointChangeSerializer, LogContractRequestStatusSerializer, LogBailStatusSerializer, LogContractTotalMembersSerializer, LogContractBonificationsVariablesChangeSerializer, LogContractExpiredBonificationsVariablesSerializer, LogClaimRequestContractChangeSerializer, LogInvoiceChangeStatusSerializer, LogFraudStatusChangeSerializer, LogJoinedPaymentStatusChangeSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class LogConnectionStatusViewSet(viewsets.ModelViewSet):
@@ -372,7 +375,8 @@ class OVLogsAPIView(APIView):
                     "user_name": obj.user.username if hasattr(obj, 'user') and obj.user else "System"
                 })
             except Exception as e:
-                return Response({"detail": str(e)}, status=500)
+                logger.exception("Error inesperat")
+                return Response({"detail": "Ha ocorregut un error inesperat."}, status=500)
 
         # Handle list request
         start_date = request.query_params.get('start_date')

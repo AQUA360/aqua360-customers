@@ -57,8 +57,13 @@ def resolve_template_path(default_rel_path, lang=None):
     if not default_rel_path:
         return default_rel_path
 
+    base_dir = os.path.realpath(settings.BASE_DIR)
     for candidate in build_template_candidates(default_rel_path, lang=lang):
-        abs_candidate = candidate if os.path.isabs(candidate) else os.path.join(settings.BASE_DIR, candidate)
+        # L'idioma ve del contracte: cap variant pot sortir del projecte, tampoc
+        # a través d'un enllaç simbòlic (per això realpath i no només normpath).
+        abs_candidate = os.path.realpath(candidate if os.path.isabs(candidate) else os.path.join(base_dir, candidate))
+        if not abs_candidate.startswith(base_dir + os.sep):
+            continue
         if os.path.exists(abs_candidate):
             return abs_candidate
 

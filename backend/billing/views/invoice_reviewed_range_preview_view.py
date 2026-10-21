@@ -5,6 +5,9 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from billing.models import Invoice
 from billing.utils.invoice_range_utils import filter_invoices_by_serie_final_range, split_serie_final
 from coredata.models import ConfigProject
+import logging
+
+logger = logging.getLogger(__name__)
 
 GENERAL_BILLING_SUMMARY_PREVIEW_CONFIG_TOKEN = 'general_billing_summary_preview_enabled'
 
@@ -109,4 +112,5 @@ class InvoiceReviewedRangePreviewView(views.APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -46,6 +46,9 @@ from django.core.cache import cache
 from documentmanager.utils.main_utils import upload_document
 from billing.utils.payment_service import generate_payment_movement
 from statistics.utils.report_service import delete_file_later
+import logging
+
+logger = logging.getLogger(__name__)
 
 CONTRACT_LIST_CACHE_KEY_PREFIX = "contract_list"
 CONTRACT_LIST_CACHE_TIMEOUT = getattr(settings, "CONTRACT_LIST_CACHE_TIMEOUT", 1500)
@@ -590,8 +593,9 @@ class ContractViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error en iniciar l'exportació: {str(e)}"},
+                {"error": "Error en iniciar l'exportació."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

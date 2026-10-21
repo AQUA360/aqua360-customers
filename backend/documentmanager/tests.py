@@ -1,3 +1,4 @@
+import io
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -187,3 +188,131 @@ class DocumentSignApiTest(TestCase):
         self.client.force_authenticate(user=None)
         response = self.client.post(reverse("documentsign-retrieve", args=[document_sign.id]))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+def _blank_pdf():
+    from PyPDF2 import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+class DocumentOrderTest(TestCase):
+    """El PDF únic respecta l'ordre dels ids rebuts, no l'ordre de creació."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_superuser(
+            username="docorder", email="docorder@example.com", password="secret"
+        )
+        self.client.force_authenticate(user=self.user)
+        self.first = Document.objects.create(entity_id=1, service="hdd", document_name="first.pdf")
+        self.second = Document.objects.create(entity_id=1, service="hdd", document_name="second.pdf")
+        self.third = Document.objects.create(entity_id=1, service="hdd", document_name="third.pdf")
+
+    def test_in_order_keeps_requested_order_without_duplicates(self):
+        ids = [self.third.id, str(self.first.id), self.third.id, self.second.id, 999999]
+        self.assertEqual(Document.in_order(ids), [self.third, self.first, self.second])
+
+    @patch("documentmanager.views.sign_pdf", side_effect=lambda buffer, *args: buffer)
+    @patch("documentmanager.views.CompanySerializer")
+    @patch("documentmanager.views.Exploitation")
+    @patch("documentmanager.views.download_document")
+    def test_single_pdf_merges_in_requested_order(self, download_document, *mocks):
+        download_document.side_effect = lambda document: _blank_pdf()
+
+        response = self.client.post(
+            reverse("download_single_pdf_document"),
+            {"doc_ids": [self.third.id, self.first.id, self.second.id]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        merged = [call.args[0] for call in download_document.call_args_list]
+        self.assertEqual(merged, [self.third, self.first, self.second])
+
+
+class GenericExportXlsxTest(TestCase):
+    """Les cadenes de les exportacions XLSX es desen sempre com a text."""
+
+    def test_text_que_comenca_per_igual_no_es_formula(self):
+        import openpyxl
+        from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects
+
+        columns = [("text", "Text", lambda o: o["text"]), ("number", "Number", lambda o: o["number"])]
+        file_bytes = build_export_xlsx_bytes_from_objects([{"text": "=1+1", "number": 5}], columns)
+
+        row = list(openpyxl.load_workbook(io.BytesIO(file_bytes)).active.iter_rows(min_row=2))[0]
+        self.assertEqual(row[0].value, "=1+1")
+        self.assertEqual(row[0].data_type, "s")
+        self.assertEqual(row[1].value, 5)
+        self.assertEqual(row[1].data_type, "n")
+
+
+class XlsxStringFormulaSafetyTest(TestCase):
+    """Cap text escrit des del codi es desa com a fórmula (documentmanager.utils.xlsx_safety)."""
+
+    def _reload(self, workbook):
+        import openpyxl
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        return openpyxl.load_workbook(io.BytesIO(buffer.getvalue())).active
+
+    def test_text_amb_igual_es_text_en_mode_normal(self):
+        import openpyxl
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet["A1"] = "=HYPERLINK(\"http://example.com\")"
+        sheet.append(["=1+1", 7, "text"])
+        sheet = self._reload(workbook)
+        self.assertEqual(sheet["A1"].data_type, "s")
+        self.assertEqual(sheet["A2"].data_type, "s")
+        self.assertEqual(sheet["A2"].value, "=1+1")
+        self.assertEqual(sheet["B2"].data_type, "n")
+
+    def test_text_amb_igual_es_text_en_mode_escriptura(self):
+        import openpyxl
+        workbook = openpyxl.Workbook(write_only=True)
+        workbook.create_sheet().append(["=1+1"])
+        self.assertEqual(self._reload(workbook)["A1"].data_type, "s")
+
+    def test_les_formules_dels_fitxers_llegits_es_conserven(self):
+        import openpyxl
+        workbook = openpyxl.Workbook()
+        cell = workbook.active["A1"]
+        cell.value = "=1+1"
+        cell.data_type = "f"  # fórmula d'un fitxer pujat per l'usuari
+        self.assertEqual(self._reload(workbook)["A1"].data_type, "f")
+
+
+class CsvSafetyTest(TestCase):
+    """Els textos que Excel executaria com a fórmula es desen amb una `'` al davant."""
+
+    def test_textos_amb_prefix_de_formula_s_escapen(self):
+        from documentmanager.utils.csv_safety import csv_safe_value
+        for value in ("=1+1", "+cmd", "-1+1", "@SUM(A1)", "\tx", "-"):
+            self.assertEqual(csv_safe_value(value), "'" + value)
+
+    def test_numeros_i_textos_normals_no_es_toquen(self):
+        from documentmanager.utils.csv_safety import csv_safe_value
+        for value in ("-12,50", "+34 600 000 000", "1.234,5", "Carrer Major", "", None, -5, 3.2):
+            self.assertEqual(csv_safe_value(value), value)
+
+    def test_el_writer_escapa_cada_fila(self):
+        from documentmanager.utils.csv_safety import SafeCsvWriter
+        buffer = io.StringIO()
+        writer = SafeCsvWriter(buffer, delimiter=";")
+        writer.writerow(["=1+1", 5])
+        writer.writerows([["-3", "@x"]])
+        self.assertEqual(buffer.getvalue().splitlines(), ["'=1+1;5", "-3;'@x"])
+
+    def test_la_importacio_recupera_el_valor_original(self):
+        from documentmanager.utils.csv_safety import csv_safe_value, csv_unescape_value
+        for value in ("=1+1", "-DN15", "@x", "DN15", "'text normal", "-12,50", None, 7):
+            self.assertEqual(csv_unescape_value(csv_safe_value(value)), value)
+        # Una `'` que no protegeix cap fórmula es conserva.
+        self.assertEqual(csv_unescape_value("'text normal"), "'text normal")

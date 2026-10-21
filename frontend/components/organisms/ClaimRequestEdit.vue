@@ -31,7 +31,7 @@ const props = defineProps({
 
 const toast = useToast()
 const { t } = useI18n();
-const { $ConfiglistApiService, $InvoiceApiService, $ContractApiService, $ConfigProjectApiService, $RouteApiService, $ProductApiService, $ClaimRequestApiService, $ExploitationApiService } = useNuxtApp();
+const { $ConfiglistApiService, $InvoiceApiService, $ContractApiService, $ConfigProjectApiService, $RouteApiService, $ProductApiService, $ClaimRequestApiService, $ExploitationApiService, $ReadingBatchTemplateApiService } = useNuxtApp();
 
 // Estats generals
 const currentStep = ref(0);
@@ -54,6 +54,7 @@ const maxStep = computed(() => {
 const selectedClientTypes = ref([])
 const selectedUseTypes = ref([])
 const selectedZones = ref([])
+const selectedReadingBatchTemplates = ref([])
 const selectedDebtMngs = ref([])
 const selectedOrigins = ref([])
 const selectedContractStatuses = ref([])
@@ -62,6 +63,7 @@ const selectedRejectionReasons = ref([])
 const selectedExploitation = ref(null)
 const selectedStep = ref(null)
 const selectedAddedContracts = ref([])
+const selectedSepaReturn = ref(null)
 const minPendingInvoices = ref(0)
 const maxPendingInvoices = ref(0)
 const totalExpiredInvoices = ref(0)
@@ -93,6 +95,7 @@ const isPaymentExcluded = (payment) => paymentsToIgnore.value.some(p => p.id ===
 const clientTypes = ref([])
 const useTypes = ref([])
 const zones = ref([])
+const readingBatchTemplates = ref([])
 const debtManagements = ref([])
 const origins = ref([])
 const contractStatuses = ref([])
@@ -109,6 +112,7 @@ const loading_contracts = ref(true)
 const loadingUseTypesIds = ref(false)
 const loadingClientTypesIds = ref(false)
 const loadingZonesIds = ref(false)
+const loadingReadingBatchTemplates = ref(false)
 const loadingDebtMngsIds = ref(false)
 const loadingOriginsIds = ref(false)
 const loadingContractStatuses = ref(false)
@@ -173,6 +177,7 @@ const allowSearch = computed(() => {
   if (selectedAddedContracts.value.length > 0) return true;
   if (selectedExploitation.value) return true;
   if (selectedRejectionReasons.value.length > 0) return true;
+  if (selectedSepaReturn.value) return true;
   return false;
 })
 
@@ -280,6 +285,25 @@ const getUseTypes = async () => {
     console.error('Error loading use types:', error);
   } finally {
     loadingUseTypesIds.value = false
+  }
+}
+
+// Plantilles de lot de lectura (lots dins d'una zona); si hi ha zones
+// seleccionades, només les que tenen rutes d'aquestes zones.
+const getReadingBatchTemplates = async () => {
+  loadingReadingBatchTemplates.value = true
+  try {
+    const fetchData = await $ReadingBatchTemplateApiService.getAllWithRoutes(selectedZones.value.map(el => el.code))
+    readingBatchTemplates.value = fetchData.map(item => ({
+      label: item.name,
+      code: item.id
+    }))
+    const availableIds = readingBatchTemplates.value.map(el => el.code)
+    selectedReadingBatchTemplates.value = selectedReadingBatchTemplates.value.filter(el => availableIds.includes(el.code))
+  } catch (error) {
+    console.error('Error loading reading batch templates:', error);
+  } finally {
+    loadingReadingBatchTemplates.value = false
   }
 }
 
@@ -419,6 +443,7 @@ const getClaimData = async () => {
       selectedExploitationId: selectedExploitation.value.code,
       selectedClientTypesIds: selectedClientTypes.value.map(el => el.code),
       selectedZonesIds: selectedZones.value.map(el => el.code),
+      selectedReadingBatchTemplatesIds: selectedReadingBatchTemplates.value.map(el => el.code),
       selectedDebtMngsIds: selectedDebtMngs.value.map(el => el.code),
       selectedContractStatusesIds: selectedContractStatuses.value.map(el => el.code),
       selectedOriginsIds: selectedOrigins.value.map(el => el.code),
@@ -430,6 +455,7 @@ const getClaimData = async () => {
       filter_return_end: filter_return_end.value,
       rejection_motives: selectedRejectionReasons.value.map(el => el.code),
       selected_contracts_id: selectedAddedContracts.value.map(el => el.id),
+      payment_remittance_return_id: selectedSepaReturn.value?.id ?? null,
       exclude_return_fee_invoices: excludeReturnFeeInvoices.value,
       name: claimName.value,
       max_pending_invoices: maxPendingInvoices.value,
@@ -472,6 +498,7 @@ const onContractSelected = async (item) => {
   selectedDebtMngs.value = []
   selectedOrigins.value = []
   selectedZones.value = []
+  selectedReadingBatchTemplates.value = []
   selectedRejectionReasons.value = []
   filter_date_start.value = null
   filter_date_end.value = null
@@ -770,15 +797,24 @@ onMounted(async () => {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
   }
-  loadData()
   if (route?.query?.contract_id) {
     selectedAddedContracts.value = [{ id: parseInt(route.query.contract_id), token: route.query.contract_token }]
   }
+  if (route?.query?.sepa_return_id) {
+    selectedSepaReturn.value = { id: parseInt(route.query.sepa_return_id), token: route.query.sepa_return_token }
+  }
+  await loadData()
+  // Si venim d'una devolució SEPA, cerquem directament els seus pagaments
+  if (selectedSepaReturn.value) getClaimData()
 });
 
 // Watchers
 watch(() => selectedExploitation.value, () => {
   getRouteZones()
+}, { immediate: true });
+
+watch(() => selectedZones.value, () => {
+  getReadingBatchTemplates()
 }, { immediate: true });
 
 </script>
@@ -887,6 +923,18 @@ watch(() => selectedExploitation.value, () => {
 
             <span v-else>
             </span>
+            <div v-if="selectedSepaReturn" class="col-span-2">
+              <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('billing_block.return_sepa') }}</label>
+              <span
+                class="group relative inline-flex bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-sm border border-slate-300 items-center gap-2">
+                <span>{{ selectedSepaReturn.token || selectedSepaReturn.id }}</span>
+                <button v-if="!filteringTaskId" @click="selectedSepaReturn = null"
+                  class="absolute right-0 top-0 h-4 w-4 bg-white rounded-full text-slate-500 opacity-0 hover:text-slate-700 hover:underline group-hover:opacity-100 transition-all duration-300">
+                  <Icon name="fa6-solid:xmark"
+                    class="text-red-500 text-sm m-auto opacity-0 group-hover:opacity-100 m-auto" />
+                </button>
+              </span>
+            </div>
             <div>
               <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('exploitation') }}</label>
               <v-select class="block w-full mr-1 custom-select" v-model="selectedExploitation" :options="exploitations"
@@ -897,6 +945,12 @@ watch(() => selectedExploitation.value, () => {
               <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('service_block.zone') }}</label>
               <v-select multiple class="block w-full mr-1 custom-select" v-model="selectedZones" :options="zones"
                 :loading="loadingZonesIds" />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('billing_block.reading_batch_template') }}</label>
+              <v-select multiple class="block w-full mr-1 custom-select" v-model="selectedReadingBatchTemplates"
+                :options="readingBatchTemplates" :loading="loadingReadingBatchTemplates" />
             </div>
 
             <div>
@@ -1212,7 +1266,7 @@ watch(() => selectedExploitation.value, () => {
       </div>
     </div>
     <!-- Barra de navegació fixada al footer -->
-    <div class="fixed right-0 bottom-0 z-[9999] border-t border-gray-200 py-4 px-4 shadow-lg bg-[#FAE2DA]"
+    <div class="fixed right-0 bottom-0 z-[90] border-t border-gray-200 py-4 px-4 shadow-lg bg-[#FAE2DA]"
       style="width: calc(100% - 250px)" :class="{ 'animate-stats-box-ping': statsBoxPinging }">
       <div class="mx-auto flex justify-between items-center px-4">
         <div class="grid auto-cols-max grid-flow-col items-center gap-x-10">
@@ -1271,10 +1325,10 @@ watch(() => selectedExploitation.value, () => {
 
     <!-- Regió lateral -->
     <div role="region" id="right_page"
-      class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
+      class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-[100]"
       :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[95%]': isSubRegionOpen,
         'w-[55%]': !isSubRegionOpen
       }">

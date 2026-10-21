@@ -532,7 +532,7 @@ const save = async () => {
         },
         type_abbreviation: abbreviation,
         name: street_name.value,
-        city: !isManualCity.value ? city.value.code : city.value
+        city: !isManualCity.value ? city.value.code : null
       };
     }
     else {

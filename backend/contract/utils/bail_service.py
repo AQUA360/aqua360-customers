@@ -1,11 +1,81 @@
 import datetime
-from billing.models import Invoice, Payment, PaymentStatus
-from contract.models import Bail, BailStatus, PiggyBankMovement
+from billing.models import Invoice, InvoiceStatus, Payment, PaymentStatus
+from billing.utils.confirm_invoice_service import confirm_invoice
+from billing.utils.payment_service import generate_payment_movement, log_payment_status
+from contract.models import Bail, BailStatus, Contract, PaymentType, PiggyBankMovement
 from coredata.models import ConfigProject
+from django.db import transaction
 from django.utils import timezone
 from coredata.utils.name_utils import generate_token
 from logger.models import LogBailStatus
 from billing.utils.invoice_service import generate_payment_id, invoice_generate_return_bail
+
+
+def liquidate_bail(user, bails, balance_contract=None):
+    bail_status_returned_token = ConfigProject.objects.get(token='bail_status_returned_token').value
+    returned_status = BailStatus.objects.get(token=bail_status_returned_token)
+    status_invoice_confirmed = InvoiceStatus.objects.get(
+        token=ConfigProject.objects.get(token='invoice_status_confirmed_token').value
+    )
+    payment_status_piggy = PaymentStatus.objects.get(
+        token=ConfigProject.objects.get(token='payment_status_piggy_token').value
+    )
+    processed_invoice_ids = set()
+
+    for bail in bails:
+        prev_status = bail.status
+        bail.status = returned_status
+        bail.return_date = timezone.now()
+        bail.payment_date = timezone.now()
+        bail.save()
+
+        LogBailStatus.objects.create(
+            object=bail,
+            previous_status=prev_status,
+            current_status=bail.status,
+            user=user,
+            timestamp=timezone.now(),
+            observation=None,
+        )
+
+        invoice = bail.invoice
+        if invoice and invoice.id not in processed_invoice_ids:
+            processed_invoice_ids.add(invoice.id)
+            invoice.status = status_invoice_confirmed
+            invoice.save()
+            confirm_invoice(invoice)
+
+            invoice_payments = Payment.objects.filter(invoice=invoice)
+            for payment in invoice_payments:
+                log_payment_status(payment, payment_status_piggy, user)
+                generate_payment_movement(
+                    payment, payment_status_piggy,
+                    payment.payment_date, "BALANCE",
+                    None, user,
+                    None,
+                    None,
+                )
+                payment.status = payment_status_piggy
+                payment.save()
+                payment.refresh_from_db()
+
+        # Termination credits bail.contract. An immediate return of one bail credits
+        # the contract that lists it in Contract.bails.
+        contract = balance_contract or bail.contract
+        if not contract or not contract.piggy_bank:
+            raise Exception("Contract balance not found")
+
+        PiggyBankMovement.objects.create(
+            token=generate_token(PiggyBankMovement),
+            piggy_bank=contract.piggy_bank,
+            amount=bail.amount,
+            is_positive=True,
+            movement_date=timezone.now(),
+            bail=bail,
+        )
+        contract.piggy_bank.amount += bail.amount
+        contract.piggy_bank.save()
+
 
 def pending_bail_contract_termination(user, instance):
     if instance.payment:
@@ -17,13 +87,13 @@ def pending_bail_contract_termination(user, instance):
         if bails.count() > 0:
             invoice = invoice_generate_return_bail(user, instance.id, 'RETORN FIANÇA', instance.payment.type.id, payment_bank, True)
             pending_bail_token = ConfigProject.objects.get(token='bail_status_pending_token').value
+            pending_bails = []
             for bail in bails:
                 prev_status = bail.status
                 
                 bail.status = BailStatus.objects.get(token=pending_bail_token)
                 bail.invoice = invoice
                 
-                #TODO: GENERATE AND SET INVOICE
                 bail.save()
                 
                 LogBailStatus.objects.create(
@@ -34,8 +104,77 @@ def pending_bail_contract_termination(user, instance):
                     timestamp = datetime.datetime.now(),
                     observation = None
                 )
+                pending_bails.append(bail)
+
+            liquidate_bail(user, pending_bails)
     
     
+
+def immediate_return_bail(user, bail_id):
+    """Return one unreturned bail the same way a contract termination does.
+
+    The contract is the one that includes this bail in Contract.bails, not Bail.contract.
+    Unreturned becomes pending with a pre-invoice, then returned, and the bail amount
+    is added to that contract's balance.
+    """
+    with transaction.atomic():
+        bail = Bail.objects.select_for_update().get(id=bail_id)
+        unreturned_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
+        if not bail.status or bail.status.token != unreturned_token:
+            raise ValueError("Bail is not unreturned")
+
+        contract = (
+            Contract.objects.filter(bails=bail)
+            .select_related('payment', 'payment__IBAN', 'payment__type', 'piggy_bank')
+            .order_by('id')
+            .first()
+        )
+        if not contract:
+            raise ValueError("Contract not found for this bail")
+        if not contract.piggy_bank:
+            raise ValueError("Contract balance not found")
+
+        payment_type_id = contract.payment.type_id if contract.payment else None
+        if not payment_type_id:
+            default_payment_type = PaymentType.objects.filter(is_default=True).first()
+            if not default_payment_type:
+                raise ValueError("Contract has no payment method")
+            payment_type_id = default_payment_type.id
+
+        payment_bank = contract.payment.IBAN.id if contract.payment and contract.payment.IBAN else None
+        invoice = invoice_generate_return_bail(
+            user,
+            contract.id,
+            'RETORN FIANÇA',
+            payment_type_id,
+            payment_bank,
+            True,
+            bails=[bail],
+        )
+        if not invoice:
+            raise ValueError("Could not generate return invoice")
+
+        prev_status = bail.status
+        pending_status = BailStatus.objects.get(
+            token=ConfigProject.objects.get(token='bail_status_pending_token').value
+        )
+        bail.status = pending_status
+        bail.invoice = invoice
+        bail.save()
+
+        LogBailStatus.objects.create(
+            object=bail,
+            previous_status=prev_status,
+            current_status=bail.status,
+            user=user,
+            timestamp=timezone.now(),
+            observation=None,
+        )
+
+        liquidate_bail(user, [bail], balance_contract=contract)
+        bail.refresh_from_db()
+        return bail
+
 
 def return_bail(user, bail_id):
     bail = Bail.objects.get(id= bail_id)

@@ -28,6 +28,8 @@ from billing.utils.request_initial_reading_service import (
 )
 from billing.utils.reading_service import (
     check_billing_period,
+    get_copy_calculated_value,
+    get_reading_copy_group,
     get_estimated_reading_minimal_object,
     get_estimated_reading,
     READING_ESTIMATE_PERIOD_CHOICES,
@@ -41,8 +43,9 @@ from contract.models import Contract, ContractRequest, ContractTerminationReques
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
 from service.serializers.meter_serializer import MeterListSerializer
-from billing.tasks import export_readings_task
+from billing.tasks import export_batch_readings_task, export_readings_task
 from documentmanager.utils.export_jobs import enqueue_export, export_job_response
+from documentmanager.utils.export_permissions import export_permission_class
 from communication.utils.communication_process_service import add_reading_to_communication_process
 class ReadingViewSet(viewsets.ModelViewSet):
   """
@@ -86,6 +89,52 @@ class ReadingViewSet(viewsets.ModelViewSet):
     context['request'] = self.request
     return context
 
+  # Fields that belong to the physical reading and must stay equal on all the
+  # readings of a copy group (copied_from)
+  COPY_GROUP_SYNC_FIELDS = ('reading_date', 'reading_value', 'leak_value')
+
+  def perform_update(self, serializer):
+    tracked_fields = self.COPY_GROUP_SYNC_FIELDS + ('calculated_value',)
+    previous_values = {f: getattr(serializer.instance, f) for f in tracked_fields}
+    with transaction.atomic():
+      reading = serializer.save()
+      changed_fields = [
+        f for f in tracked_fields
+        if f in serializer.validated_data and not self._same_value(f, previous_values[f], serializer.validated_data[f])
+      ]
+      if changed_fields:
+        self._sync_copy_group(reading, serializer, changed_fields)
+
+  @staticmethod
+  def _same_value(field, current, new):
+    # No leak and a leak of 0 are the same for the reading
+    if field == 'leak_value':
+      return (current or 0) == (new or 0)
+    return current == new
+
+  def _sync_copy_group(self, reading, serializer, changed_fields):
+    validated_data = serializer.validated_data
+    sync_fields = [f for f in changed_fields if f in self.COPY_GROUP_SYNC_FIELDS]
+
+    for copy in get_reading_copy_group(reading):
+      targets = {f: validated_data[f] for f in sync_fields}
+      if 'reading_value' in changed_fields or 'calculated_value' in changed_fields:
+        targets['calculated_value'] = get_copy_calculated_value(
+          copy.previous_reading, reading.reading_value, reading.calculated_value, reading.previous_reading
+        )
+      # Only send what actually differs: saving a copy has side effects
+      # (estimated bag, alerts), so an unchanged copy must not be touched
+      data = {
+        f: serializer.fields[f].to_representation(value) if value is not None else None
+        for f, value in targets.items()
+        if not self._same_value(f, getattr(copy, f), value)
+      }
+      if not data:
+        continue
+      copy_serializer = ReadingSerializer(copy, data=data, partial=True, context=self.get_serializer_context())
+      copy_serializer.is_valid(raise_exception=True)
+      copy_serializer.save()
+
   def filter_queryset(self, queryset):
     queryset = super().filter_queryset(queryset)
     if queryset.ordered:
@@ -96,7 +145,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
             ordering.append('id')
         return queryset.order_by(*ordering)
     return queryset.order_by('-reading_date', 'contract__token', 'id')
-  
+
   @action(detail=False, methods=['get'], url_path='by-batch')
   def list_by_batch(self, request):
     #GET /api/readings/by-batch/?batch=1
@@ -146,7 +195,43 @@ class ReadingViewSet(viewsets.ModelViewSet):
     batch_id = request.query_params.get('batch')
     if not batch_id:
       return Response({"error": "Batch ID is required"}, status=400)
-    
+
+    queryset, median, global_count_above_margin = self._by_batch_minimal_queryset(request, batch_id)
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 50
+    result_page = paginator.paginate_queryset(queryset, request)
+    serializer = ReadingByBatchMinimalSerializer(result_page, many=True)
+
+    response = paginator.get_paginated_response(serializer.data)
+    response.data['date_range_median'] = median
+    response.data['date_range_above_margin_count'] = global_count_above_margin
+    return response
+
+  @action(
+    detail=False, methods=['post'], url_path='by-batch-minimal/export',
+    permission_classes=[IsAuthenticated, export_permission_class('billing', 'reading')],
+  )
+  def export_by_batch_minimal(self, request):
+    # Exporta a Excel les lectures del llistat by-batch-minimal amb els mateixos filtres (query params).
+    batch_id = request.query_params.get('batch')
+    if not batch_id:
+      return Response({"error": "Batch ID is required"}, status=400)
+
+    queryset, _median, _count = self._by_batch_minimal_queryset(request, batch_id)
+    # dict.fromkeys: treu ids repetits i conserva l'ordre del llistat.
+    reading_ids = list(dict.fromkeys(queryset.values_list('id', flat=True)))
+
+    job = enqueue_export(
+        request, export_batch_readings_task, kind="readings",
+        name=request.query_params.get('export_name') or str(_("Readings")),
+        args=[reading_ids],
+        params={"batch": batch_id, "total": len(reading_ids)},
+    )
+    return Response(export_job_response(job), status=status.HTTP_202_ACCEPTED)
+
+  def _by_batch_minimal_queryset(self, request, batch_id):
+    """Lectures del llistat by-batch-minimal (filtres, cerca i ordenació), la mediana de dies i el nº fora de marge."""
     batch_readings = Reading.objects.filter(batch_id=batch_id, is_close=False, is_control=False)
     
     # Calculate global median for this batch
@@ -179,16 +264,8 @@ class ReadingViewSet(viewsets.ModelViewSet):
         margin_low = median * 0.75
         queryset = queryset.filter(Q(consumption_days__gt=margin_high) | Q(consumption_days__lt=margin_low))
 
-    paginator = PageNumberPagination()
-    paginator.page_size = 50
-    result_page = paginator.paginate_queryset(queryset, request)
-    serializer = ReadingByBatchMinimalSerializer(result_page, many=True)
-    
-    response = paginator.get_paginated_response(serializer.data)
-    response.data['date_range_median'] = median
-    response.data['date_range_above_margin_count'] = global_count_above_margin
-    return response
-  
+    return queryset, median, global_count_above_margin
+
   @action(detail=False, methods=['post'], url_path='estimate')
   def estimate_reading(self, request):
     supply_points = SupplyPoint.objects.filter(id__in=request.data.get('supply_points'))
@@ -649,14 +726,11 @@ class ReadingViewSet(viewsets.ModelViewSet):
                 reading_value__isnull=False,
                 reading_date__lt=reading_date_date).exclude(is_control=True).order_by('-reading_date').first()
           
-      print("previous_reading", previous_reading)
-      print("supply_point", supply_point)
       print("meter", meter)
       print("reading_date", reading_date_date)
       
       allow_by_period = check_billing_period(reading_date_date, supply_point, meter, contract, previous_reading)
       
-      print("allow_by_period", allow_by_period)
       
       return Response({'allow': allow_by_period}, status=status.HTTP_200_OK)
     

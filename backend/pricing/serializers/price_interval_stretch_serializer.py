@@ -21,7 +21,6 @@ class PriceIntervalStretchSerializer(TranslatableFieldMixin, serializers.ModelSe
         fields = '__all__'
 
     def create(self, validated_data):
-        print(validated_data)
         end_stretch = validated_data.pop('name', None)
         price_interval_id = validated_data.pop('related_id', None)
         validated_data["name_stretch"] = end_stretch

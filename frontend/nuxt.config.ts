@@ -217,6 +217,9 @@ export default defineNuxtConfig({
     '~/plugins/api/notification/incident-report-api.js',
     '~/plugins/api/notification/general-note-api.js',
 
+    //dashboard
+    '~/plugins/api/dashboard/dashboard-api.js',
+
     //fraud
     '~/plugins/api/fraud/fraud-api.js',
     '~/plugins/api/fraud/fraud-report-api.js',

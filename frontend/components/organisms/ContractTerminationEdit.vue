@@ -21,6 +21,7 @@ import AddInvoiceBudget from '../molecules/AddInvoiceBudget.vue';
 import InvoiceView from './InvoiceView.vue';
 import ReadingDetail from '../molecules/ReadingDetail.vue';
 import WizardStatusNav from '../molecules/WizardStatusNav.vue';
+import WorkOrderTypeSelectorModal from '../molecules/WorkOrderTypeSelectorModal.vue';
 
 const { t } = useI18n();
 const route = useRoute()
@@ -99,11 +100,15 @@ const token_pending = ref(null);
 const terminationTypes = ref([]);
 const terminationType = ref(null);
 
-const ordersRemoveMeter = ref([]);
-const ordersReadMeter = ref([]);
+const ordersAll = ref([]);
 const orderStatuses = ref([]);
 const orderTypes = ref([]);
-const orderTypeReadMeter = ref(null);
+
+const workOrderSelectorOpen = ref(false);
+const workOrderTargetSupplyPointId = ref(null);
+
+const orderReasonId = ref(null);
+const reasonResolved = ref(false);
 
 const last_reading_values = ref([]);
 const supply_point = ref(null);
@@ -201,7 +206,7 @@ const finalStep = async () => {
 
         let payload = {
           'status': statusSelected.value.value,
-          'status_name': statusSelected.value.name,
+          'status_name': statusSelected.value.label,
         }
         /* for (const supply_point of supply_points.value) {
           //let statusSelected = statuses.value.find(s => s.token === supply_point.status_token) || statuses.value[0];
@@ -258,9 +263,12 @@ const getStatuses = async () => {
     data.forEach(item => {
       statuses.value.push({
         value: item.id,
-        label: item.name
+        label: item.name,
+        token: item.token,
+        is_default: item.is_default,
       })
     })
+    selectDefaultStatus();
 
   } catch (error) {
     console.error(error);
@@ -289,7 +297,7 @@ const getSupplyPoint = async () => {
       ...new Set(supply_point.value.contracts.map((c) => c.id)),
     ];
     supply_point_has_contracts.value = distinctContracts.length > 1;
-    statusSelected.value = statuses.value.find(s => s.token === supply_point.value.status?.token) || statuses.value[0];
+    selectDefaultStatus();
   } catch (err) {
     console.log(err);
   } finally {
@@ -311,36 +319,103 @@ const openBudgetForm = async (component, id) => {
   showRegion.value = true;
 };
 
-const generateWorkOrder = async (type, supply_point_id) => {
-  await createOrdersMeter(type, supply_point_id);
-  loadData();
+const openWorkOrderSelector = async (supply_point_id) => {
+  await getContractTerminationReasonId();
+  workOrderTargetSupplyPointId.value = supply_point_id;
+  workOrderSelectorOpen.value = true;
 };
 
-const createOrdersMeter = async (type, supply_point_id) => {
-  const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+const ordersForSupplyPoint = (supply_point_id) =>
+  ordersAll.value.filter(order => order.supply_point?.id == supply_point_id);
 
-  orderTypeReadMeter.value = null;
-  if (type === 'remove_meter') {
-    const order_type_token = await $ConfigProjectApiService.get('order_type_remove_meter_token');
-    orderTypeReadMeter.value = orderTypes.value.find(item => item.token == order_type_token);
+const excludedOrderTypeIds = computed(() => {
+  if (workOrderTargetSupplyPointId.value == null) return [];
+  return ordersForSupplyPoint(workOrderTargetSupplyPointId.value)
+    .map(order => order.type?.id)
+    .filter(id => id != null);
+});
+
+const linkedOrderTypes = computed(() => {
+  if (!reasonResolved.value || orderReasonId.value == null) return null;
+  return orderTypes.value.filter(orderType =>
+    orderType.reasons?.some(reason => reason.id == orderReasonId.value)
+  );
+});
+
+const availableOrderTypes = computed(() =>
+  linkedOrderTypes.value?.length ? linkedOrderTypes.value : orderTypes.value
+);
+
+const showAllTypesWarning = computed(() =>
+  reasonResolved.value
+  && orderReasonId.value != null
+  && !(linkedOrderTypes.value && linkedOrderTypes.value.length)
+);
+
+const onWorkOrderSelected = async (orderType) => {
+  workOrderSelectorOpen.value = false;
+  const order_saved = await createWorkOrder(orderType, workOrderTargetSupplyPointId.value);
+  if (order_saved) {
+    loadData();
   }
-  else if (type === 'read_meter') {
-    const order_type_token = await $ConfigProjectApiService.get('order_type_read_meter_token');
-    orderTypeReadMeter.value = orderTypes.value.find(item => item.token == order_type_token);
+};
+
+const getContractTerminationReasonId = async () => {
+  if (reasonResolved.value) return orderReasonId.value;
+
+  let reason_token = null;
+  try {
+    reason_token = await $ConfigProjectApiService.get('order_reason_contract_termination');
+  } catch (error) {
+    console.warn("ConfigProject 'order_reason_contract_termination' not found; order will be created without reason", error);
+    reasonResolved.value = true;
+    return null;
   }
+  if (!reason_token) {
+    reasonResolved.value = true;
+    return null;
+  }
+
+  try {
+    const reasons = await $ConfiglistApiService.getAll('order/order-reason');
+    const reason = reasons.results?.find(item => item.token == reason_token)
+      || (/^\d+$/.test(String(reason_token)) ? reasons.results?.find(item => item.id == Number(reason_token)) : null);
+    orderReasonId.value = reason?.id || null;
+  } catch (error) {
+    console.error('Error resolving contract termination order reason:', error);
+  } finally {
+    reasonResolved.value = true;
+  }
+  return orderReasonId.value;
+};
+
+const createWorkOrder = async (orderType, supply_point_id) => {
+  const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderType?.id || !statusId) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return null;
+  }
+
+  const reason_id = await getContractTerminationReasonId();
 
   const order_data = {
     token: format(new Date(), 'yyyyMMddHHmmss'),
     contract_termination_request: props.request ? props.request.id : route.query.contract,
     supply_point: supply_point_id,
-    type: orderTypeReadMeter.value.id,
-    status: defaultOrderStatus.id || orderStatuses.value[0].id,
+    type: orderType.id,
+    status: statusId,
     requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+  };
+
+  if (reason_id) {
+    order_data.reason = reason_id;
   }
 
   const order_saved = await $OrderApiService.save(order_data);
   return order_saved;
-}
+};
 
 const clickDeleteOrder = async (id) => {
   if (id) {
@@ -352,10 +427,9 @@ const clickDeleteOrder = async (id) => {
 const getOrder = async () => {
   try {
     const order_response = await $OrderApiService.getFilterContractTermination(props.request ? props.request.id : route.query.contract);
-    ordersRemoveMeter.value = order_response.filter(item => item.type.token == 'remove_meter');
-    ordersReadMeter.value = order_response.filter(item => item.type.token == 'read_meter');
+    ordersAll.value = order_response;
   } catch (err) {
-    error.value = err;
+    console.error(err);
   } finally {
     loading.value = false;
   }
@@ -462,6 +536,13 @@ const clickGuardarLectura = async (id) => {
     console.log(error)
   }
 }
+
+// Després de la baixa el punt queda, per defecte, en l'estat marcat com a predeterminat
+// (pendent de contractació). Els estats i el punt es carreguen en paral·lel.
+const selectDefaultStatus = () => {
+  if (statusSelected.value || !statuses.value.length) return;
+  statusSelected.value = statuses.value.find(s => s.is_default) || statuses.value[0];
+};
 
 const updateSelect = async (ev) => {
   statusSelected.value = ev;
@@ -733,46 +814,22 @@ watch(() => props.request, async () => {
                 </div>
                 </div>
 
-                <div class="mb-2" v-if="supply_point && !supply_point.is_telecontrol">
-                  <div v-if="ordersReadMeter && ordersReadMeter.find(item => item.supply_point.id == supply_point.id)"
-                    class="flex items-center justify-between max-w-xl bg-green-100 py-1 px-2 my-2">
-                    <OrderTypeDetail :data="ordersReadMeter.find(item => item.supply_point.id == supply_point.id).type"
-                      :order="ordersReadMeter.find(item => item.supply_point.id == supply_point.id)"
-                      @show-detail="openBudgetForm('OrderRegion', ordersReadMeter.find(item => item.supply_point.id == supply_point.id).id)" />
-                    <button
-                      @click="clickDeleteOrder(ordersReadMeter.find(item => item.supply_point.id == supply_point.id).id)"
-                      class="text-slate-500 ml-2">
+                <div class="my-2">
+                  <div v-for="order in ordersForSupplyPoint(supply_point.id)" :key="order.id"
+                    class="flex items-center justify-between max-w-xl bg-green-100 py-1 px-2 mb-2">
+                    <OrderTypeDetail :data="order.type" :order="order"
+                      @show-detail="openBudgetForm('OrderRegion', order.id)" />
+                    <button @click="clickDeleteOrder(order.id)" class="text-slate-500 ml-2">
                       <Icon name="fa6-solid:trash" />
                     </button>
                   </div>
-
-                  <ButtonOutline v-else class="my-2" @click="generateWorkOrder('read_meter', supply_point.id)">
-                    {{ t('common.generate') }} {{ t('common.work_order') }}: {{ t('order_block.meter_reading') }}
+                  <ButtonOutline class="my-2" @click="openWorkOrderSelector(supply_point.id)">
+                    {{ t('common.generate') }} {{ t('common.work_order') }}
                   </ButtonOutline>
                 </div>
               </div>
 
 
-              <!-- <div class="flex justify-between items-center">
-                <span class="text-sm text-gray-500">
-                  {{ $t('Retirada de comptador') }}
-                </span>
-              </div> -->
-
-              <div v-if="ordersRemoveMeter && ordersRemoveMeter.find(item => item.supply_point.id == supply_point.id)"
-                class="flex items-center justify-between max-w-xl bg-green-100 py-1 px-2 mb-2">
-                <OrderTypeDetail :data="ordersRemoveMeter.find(item => item.supply_point.id == supply_point.id).type"
-                  :order="ordersRemoveMeter.find(item => item.supply_point.id == supply_point.id)"
-                  @show-detail="openBudgetForm('OrderRegion', ordersRemoveMeter.find(item => item.supply_point.id == supply_point.id).id)" />
-                <button
-                  @click="clickDeleteOrder(ordersRemoveMeter.find(item => item.supply_point.id == supply_point.id).id)"
-                  class="text-slate-500 ml-2">
-                  <Icon name="fa6-solid:trash" />
-                </button>
-              </div>
-              <ButtonOutline v-else class="my-3" @click="generateWorkOrder('remove_meter', supply_point.id)">{{
-                $t('common.generate') }} {{ $t('common.work_order') }}: {{ $t('order_block.remove_meter') }}
-              </ButtonOutline>
               <hr class="my-2 border-gray-300">
             </div>
 
@@ -832,7 +889,7 @@ watch(() => props.request, async () => {
     <!-- Regió Dreta per l'edició/creació -->
     <div role="region" id="right_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-1/2 z-20 overflow-x-hidden"
-      :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
+      :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
@@ -853,5 +910,10 @@ watch(() => props.request, async () => {
           :persons="props.request?.contract?.holder ? [props.request.contract.holder] : []" @change="emit('refresh', true)" @show-subregion="handleSubRegionEvent" />
       </div>
     </div>
+
+    <WorkOrderTypeSelectorModal v-model:open="workOrderSelectorOpen" :order-types="availableOrderTypes"
+      :excluded-type-ids="excludedOrderTypeIds"
+      :warning="showAllTypesWarning ? t('order_block.viewing_all_order_types_warning') : null"
+      @select="onWorkOrderSelected" />
   </div>
 </template>

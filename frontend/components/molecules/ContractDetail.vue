@@ -38,6 +38,11 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  // Debt badge opens ContractDebtRegion (the parent must handle it)
+  showDebtDetail: {
+    type: Boolean,
+    default: false
+  },
   canChange: Boolean
 });
 
@@ -499,7 +504,8 @@ watch(() => props.data, (newValue) => {
       <div>
         <hr class="my-2" />
         <div role="row" class="mb-2">
-          <ContractStatusBadges :contract="localData" :isSubRegion="isSubRegion" @show-detail="showDetail" />
+          <ContractStatusBadges :contract="localData" :isSubRegion="isSubRegion" :showDebtDetail="showDebtDetail"
+            @show-detail="showDetail" />
         </div>
         <div role="row" class="grid grid-cols-3 gap-x-3">
           <FieldDetail :label="$t('contract_block.client_type')"
@@ -602,11 +608,9 @@ watch(() => props.data, (newValue) => {
                   v-else-if="localData.payment?.IBAN && localData.payment?.IBAN?.person.token != localData.holder.token"
                   class="col-span-2" :label="$t('contract_block.holder')"
                   :value="`${localData.payment?.IBAN?.person?.name} (${localData.payment?.IBAN?.person?.token})`" />
-                <FieldDetail class="col-span-2" :label="$t('common.payment_method')">
-                  <abbr class="truncate" :title="localData.payment?.type?.name">
-                    <span class="truncate">
-                      {{ localData.payment?.type?.name }}
-                    </span>
+                <FieldDetail class="col-span-2" :label="$t('common.payment_method')" wrap-label>
+                  <abbr class="break-words" :title="localData.payment?.type?.name">
+                    {{ localData.payment?.type?.name }}
                   </abbr>
                 </FieldDetail>
                 <FieldDetail class="col-span-2" v-if="localData.payment?.IBAN?.updated_at" :label="$t('common.updated')"
@@ -621,8 +625,9 @@ watch(() => props.data, (newValue) => {
                   </template>
                 </BankDetail>
                 <span v-if="localData.payment?.mandate_id" class="flex items-center gap-x-1">
-                  <FieldDetail class="flex-1 min-w-0" :label="$t('common.mandate_id')"
-                    :value="localData.payment?.mandate_id" />
+                  <FieldDetail class="flex-1 min-w-0" :label="$t('common.mandate_id')" wrap-label>
+                    <span class="text-black-900 break-all">{{ localData.payment?.mandate_id }}</span>
+                  </FieldDetail>
                   <div class="relative flex-shrink-0 " >
                     <button ref="mandateHistoryAnchor" type="button"
                       class="px-1.5 py-1 text-slate-400 hover:text-sky-600 rounded bg-white/80 border-2 border-slate-400 flex items-center justify-center hover:bg-white hover:border-sky-600"

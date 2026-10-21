@@ -37,7 +37,6 @@ const causes = [
   { key: 'no_meter', label: 'billing_block.cause_no_meter' },
   { key: 'no_price_rate', label: 'billing_block.cause_no_price_rate' },
   { key: 'excluded_billing', label: 'billing_block.cause_excluded_billing' },
-  { key: 'block_billing', label: 'billing_block.cause_block_billing' },
   { key: 'unprocessed_invoice', label: 'billing_block.cause_unprocessed_invoice' }
 ];
 
@@ -102,6 +101,13 @@ const locationBreakdown = [
           </div>
         </li>
       </ul>
+    </div>
+
+    <!-- Els contractes no facturables no són avisos: el backend els compta a part. -->
+    <div v-if="!loading && info.block_billing > 0"
+      class="flex items-center justify-between border-t border-slate-200 px-4 py-2 text-sm text-slate-500">
+      <span>{{ t('billing_block.non_billable_contracts') }}:</span>
+      <span class="font-semibold">{{ info.block_billing }}</span>
     </div>
 
     <div v-if="readingBatches.length > 0" class="border-t border-slate-200 px-4 py-3">

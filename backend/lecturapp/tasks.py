@@ -10,6 +10,16 @@ from coredata.models import ConfigProject
 from .serializers import RouteAppDetailSerializer, MeterAppSerializer
 
 
+def meter_included_for_batch(meter, include_telecontrol, include_manual):
+    """Telecontrol is remote reading that is not forced back to manual."""
+    is_telecontrol = bool(getattr(meter, 'has_remote_reading', False)) and not bool(getattr(meter, 'force_manual_reading', False))
+    if not include_telecontrol:
+        return not is_telecontrol
+    if not include_manual:
+        return is_telecontrol
+    return True
+
+
 @shared_task(bind=True)
 def process_reading_batch_routes_detailed(self, reading_batch_id):
     """
@@ -26,7 +36,10 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
         
         progress_recorder.set_progress(5, 100, "Fetching routes and optimizing queries...")
         
-        exclude_telecontrol = not reading_batch.include_telecontrol
+        include_telecontrol = reading_batch.include_telecontrol
+        include_manual = reading_batch.include_manual
+        exclude_telecontrol = not include_telecontrol
+        exclude_manual = not include_manual
         
         # Check if routes exist
         routes = reading_batch.routes.all()
@@ -35,16 +48,18 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
         # Pre-fetch batch readings to avoid N+1 queries
         progress_recorder.set_progress(10, 100, "Fetching batch readings...")
         
-        if exclude_telecontrol:
-            batch_readings = Reading.objects.filter(batch=reading_batch_id).filter(
+        batch_readings = Reading.objects.filter(batch=reading_batch_id).exclude(
+            meter__sub_meters__status__token=token_meter_status_no_meter
+        ).select_related('meter', 'reader_alert')
+        if not include_telecontrol:
+            batch_readings = batch_readings.filter(
                 Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)
-                ).exclude(meter__sub_meters__status__token=token_meter_status_no_meter).select_related(
-                'meter', 'reader_alert'
             )
-        else:
-            batch_readings = Reading.objects.filter(batch=reading_batch_id).exclude(meter__sub_meters__status__token=token_meter_status_no_meter).select_related(
-                'meter', 'reader_alert'
+        elif not include_manual:
+            batch_readings = batch_readings.filter(
+                meter__has_remote_reading=True, meter__force_manual_reading=False
             )
+            
         
         # Handle fix_meters case (when no routes exist)
         if not routes and num_fix_meters > 0:
@@ -82,9 +97,11 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
                 'batch_readings': batch_readings,
                 'batch_readings_by_meter': {reading.meter_id: reading for reading in batch_readings if reading.meter_id},
                 'exclude_telecontrol': exclude_telecontrol,
+                'exclude_manual': exclude_manual,
                 'total_meters': total_meters,
                 'month': reading_batch.created_at.month,
-                'include_telecontrol': reading_batch.include_telecontrol,
+                'include_telecontrol': include_telecontrol,
+                'include_manual': include_manual,
                 'progress_recorder': progress_recorder,
                 'seen_meter_ids': set(),
                 'serialized_meters_cache': {}
@@ -110,8 +127,8 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
                     property_meters[property_obj.id] = []
                 
                 # Add main meter if status is valid (ignore sub_meters)
-                if meter.status and meter.status.token != '-1':
-                    if (not exclude_telecontrol) or (exclude_telecontrol and (not getattr(meter, 'has_remote_reading', False) or getattr(meter, 'force_manual_reading', False))):
+                if meter.status and meter.status.token not in [token_meter_status_no_meter, '-1']:
+                    if meter_included_for_batch(meter, include_telecontrol, include_manual):
                         property_meters[property_obj.id].append(meter)
             
             # Second pass: build positions and properties with only fix_meters
@@ -240,16 +257,18 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
                             continue
                         # Main meter filters
                         if getattr(meter, 'status', None) and getattr(meter.status, 'token', None) != '-1' and getattr(meter.status, 'token', None) != token_meter_status_no_meter:
-                            if (not exclude_telecontrol) or (exclude_telecontrol and (not getattr(meter, 'has_remote_reading', False) or getattr(meter, 'force_manual_reading', False))):
+                            if meter_included_for_batch(meter, include_telecontrol, include_manual):
                                 distinct_meter_ids.add(meter.id)
                         # Sub-meters
                         if hasattr(meter, 'sub_meters'):
                             for sub_meter in meter.sub_meters.all():
                                 if getattr(sub_meter, 'status', None) and getattr(sub_meter.status, 'token', None) != '-1' and getattr(sub_meter.status, 'token', None) != token_meter_status_no_meter:
-                                    if (not exclude_telecontrol) or (exclude_telecontrol and (not getattr(sub_meter, 'has_remote_reading', False) or getattr(sub_meter, 'force_manual_reading', False))):
+                                    if meter_included_for_batch(sub_meter, include_telecontrol, include_manual):
                                         distinct_meter_ids.add(sub_meter.id)
         
         total_meters = len(distinct_meter_ids)
+        print("total_meters: ", total_meters)
+        print("\n\n\n")
         
         # Create a context with pre-fetched data
         context = {
@@ -257,7 +276,9 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
             'batch_readings': batch_readings,
             'batch_readings_by_meter': {reading.meter_id: reading for reading in batch_readings if reading.meter_id},
             'exclude_telecontrol': exclude_telecontrol,
-            'include_telecontrol': reading_batch.include_telecontrol,
+            'exclude_manual': exclude_manual,
+            'include_telecontrol': include_telecontrol,
+            'include_manual': include_manual,
             'total_meters': total_meters,
             'month': reading_batch.created_at.month
         }

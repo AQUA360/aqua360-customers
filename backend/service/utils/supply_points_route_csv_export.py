@@ -2,7 +2,7 @@
 CSV de SupplyPoints d'una Route (o d'un ReadingBatch via les seves Routes)
 amb lectura opcional i contractes.
 """
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 from io import StringIO
 
 from django.db.models import Prefetch
@@ -212,7 +212,7 @@ def build_supply_points_csv_bytes(supply_points, readings_by_sp=None, empty_mess
 
     buffer = StringIO()
     buffer.write('\ufeff')
-    writer = csv.writer(buffer, delimiter=';')
+    writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(build_supply_points_export_headers(max_contracts))
 
     for supply_point, reading, contracts in prepared_rows:

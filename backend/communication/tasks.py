@@ -360,7 +360,8 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                     and claim_request.current_step.step_template.group_payments
                 )
 
-                if not claim_payments.exists() or add_joined_payments:
+                # Amb pagaments agrupats també s'adjunten les factures; el rebut és el document agrupat
+                if not claim_payments.exists():
                     print(f"No ClaimRequestPayment found for contract {contract.id}")
                 else:
                     for cr_payment in claim_payments:
@@ -839,10 +840,13 @@ def get_communication_process_data(request_data):
     group_same = request_data.get('group_same', [])
 
     persons = []
+    # Persones que no poden rebre cap dels canals triats, amb el motiu. Només les
+    # informen els filtres basats en contractes (contracte, punt i tall).
+    excluded = []
     time_start = time.time()
 
     if filter_type == 'CONTRACT':
-        persons = filter_by_contract(filter_data, group_same)
+        persons = filter_by_contract(filter_data, group_same, excluded=excluded)
     elif filter_type == 'BILLING':
         persons = filter_by_billing(filter_data, group_same)
     elif filter_type == 'CONTRACTREQUEST':
@@ -852,9 +856,9 @@ def get_communication_process_data(request_data):
     elif filter_type == 'PERSON':
         persons = filter_by_person(filter_data, group_same)
     elif filter_type == 'SUPPLYPOINT':
-        persons = filter_by_supply_point(filter_data, group_same)
+        persons = filter_by_supply_point(filter_data, group_same, excluded=excluded)
     elif filter_type == 'SUPPLYCUT':
-        persons = filter_by_supply_cut(filter_data, group_same)
+        persons = filter_by_supply_cut(filter_data, group_same, excluded=excluded)
     elif filter_type == 'COMMUNICATION':
         persons = filter_by_communication(filter_data, group_same)
     elif filter_type == 'DRAFT':
@@ -873,11 +877,14 @@ def get_communication_process_data(request_data):
         fixed_filter = fixed_filters.get(entity, None)
         if fixed_filter is None:
             raise ValueError(f"Unknown fixed_data entity: {entity!r}")
-        persons = fixed_filter(filter_data, group_same)
+        if fixed_filter is filter_by_supply_cut:
+            persons = fixed_filter(filter_data, group_same, excluded=excluded)
+        else:
+            persons = fixed_filter(filter_data, group_same)
 
     time_end = time.time()
     print(f"Time taken: {time_end - time_start} seconds")
-    return {"persons": persons}
+    return {"persons": persons, "excluded": excluded}
 
 
 COMMUNICATION_EXPORT_COLUMNS = {
@@ -908,7 +915,7 @@ def export_communications_csv_task(query_params):
             build_export_csv_bytes, parse_columns_param, resolve_columns,
         )
 
-        base_queryset = Communication.objects.all().order_by('-created_at', '-status', '-sent_at')
+        base_queryset = Communication.objects.filter(is_active=True).order_by('-created_at', '-status', '-sent_at')
         filterset = CommunicationFilter(data=query_params, queryset=base_queryset)
         queryset = filterset.qs.select_related('person', 'status', 'process', 'use_type')
 

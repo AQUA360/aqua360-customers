@@ -12,6 +12,7 @@ from .views import (
     CreateReadingOVView,
     ContractsListOVView,
     ContractDetailByTokenOVView,
+    ContractByNicView,
     InvoiceDetailByTokenOVView,
     MeterDetailByTokenOVView,
     ConsumptionHistoryOVView,
@@ -21,6 +22,7 @@ from .views import (
     SepaDocumentUploadView,
     CancelDirectDebitView,
     ContactDataOVView,
+    BatchInvoiceDownloadView,
 )
 
 urlpatterns = [
@@ -44,6 +46,12 @@ urlpatterns = [
     ),  # Get method
     # /ov/invoices/?contract_token=<token>
     path("invoices/", BillingContractInvoicesOVView.as_view(), name="invoices-ov"),
+    # /ov/invoices/download/?contract_token=<token>  body: {invoice_tokens: [...]}
+    path(
+        "invoices/download/",
+        BatchInvoiceDownloadView.as_view(),
+        name="batch-invoice-download-ov",
+    ),
     # /ov/invoice/?contract_token=<token>&invoice_token=<token>
     path("invoice/", BillingContractInvoiceOVView.as_view(), name="invoice-ov"),
     # post -> body
@@ -83,6 +91,14 @@ urlpatterns = [
     path("billing-periods/", BillingPeriodsOVView.as_view(), name="billing-periods-ov"),
     # /ov/contracts/?dni=<DNI>&estado=<status_token>&page=<n>&limit=<n>
     path("contracts/", ContractsListOVView.as_view(), name="contracts-ov"),
+    # /ov/contract/by-nic/<nic>/   (nic conté «/» amb 1 o 2 barres, p. ex.
+    # 12345/1234 o 012345/654321/12345678; <path:nic>
+    # evita que el ruter retalli el NIC i acabi en 404 de ruta)
+    path(
+        "contract/by-nic/<path:nic>/",
+        ContractByNicView.as_view(),
+        name="contract-by-nic-ov",
+    ),
     # /ov/contract/<token>/
     path(
         "contract/<str:token>/",

@@ -17,7 +17,7 @@ const props = defineProps({
     },
 })
 
-const emit = defineEmits(['change', 'load', 'remove-fix'])
+const emit = defineEmits(['change', 'load', 'remove-fix', 'change-unreachable'])
 const { t } = useI18n();
 const { $ConfiglistApiService, $CommunicationProcessApiService, $apiManager } = useNuxtApp();
 
@@ -130,6 +130,8 @@ const refreshData = async () => {
         const response = await $apiManager.checkTask(filteringTaskId.value)
         persons_data.value = response.result.persons
         showNoPersonsWarning.value = response.result.persons.length === 0
+        // Persones que no poden rebre cap dels canals triats, amb el motiu.
+        emit('change-unreachable', response.result.excluded || [])
         emit('change', persons_data.value, null, false, attachReadings.value)
         filteringTaskId.value = null;
     } catch (error) {

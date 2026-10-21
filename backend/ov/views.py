@@ -2,8 +2,6 @@ from django.http import FileResponse
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
-from django.shortcuts import redirect
-from django.urls import reverse
 from django.utils.dateparse import parse_date
 import csv
 import zipfile
@@ -17,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from contract.models import Contract, ContractLog, ContractObservation, PaymentType
 from billing.models import Invoice, InvoiceStatus, Reading
@@ -31,6 +29,7 @@ from ov.serializers import (
     InvoicePDFSerializer,
     ContractListItemOVSerializer,
     ContractFullDetailSerializer,
+    ContractByNicSerializer,
     InvoiceFullDetailSerializer,
     MeterDetailSerializer,
     ConsumptionHistoryItemSerializer,
@@ -39,6 +38,7 @@ from ov.serializers import (
     SepaDocumentUploadSerializer,
     CancelDirectDebitSerializer,
     ContactDataOVSerializer,
+    BatchInvoiceDownloadSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
 from ov.throttles import DniEnumerationThrottle
@@ -47,15 +47,27 @@ logger = logging.getLogger(__name__)
 
 
 class ContractOVView(APIView):
-    """Alias legacy de `GET /ov/contract-detail/`.
+    """Detalle completo del contrato por `contract_token` (query string).
 
-    Redirige (302) al endpoint por token `contract-detail-by-token-ov`
-    (`/ov/contract/{token}/`), conservando el resto de parámetros de query
-    (p. ej. `dni`). No consulta la base de datos: la vista destino devuelve
-    `404` si el contrato no existe.
+    `GET /ov/contract-detail/?contract_token=<token>` devuelve directamente
+    los datos del contrato (mismo esquema `ContractFullDetail` que
+    `GET /ov/contract/{token}/`), sin redirigir. El token puede contener
+    barra (`/`), por lo que no puede resolverse como parámetro de ruta
+    `<str:token>`: se busca por consulta a la base de datos. `400` si falta
+    el parámetro, `404` si el contrato no existe.
     """
 
     permission_classes = [IsAuthenticated]
+    queryset = Contract.objects.select_related(
+        "holder",
+        "status",
+        "payment__type",
+        "payment__IBAN",
+        "payment__IBAN__person",
+        "supply_point_default",
+        "supply_point_default__address",
+        "use_type",
+    )
 
     def get(self, request):
         contract_token = request.query_params.get("contract_token", None)
@@ -65,13 +77,17 @@ class ContractOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        query = request.query_params.copy()
-        query.pop("contract_token", None)
-        target = reverse("contract-detail-by-token-ov", kwargs={"token": contract_token})
-        query_string = query.urlencode()
-        if query_string:
-            target = f"{target}?{query_string}"
-        return redirect(target)
+        contract = self.queryset.filter(token=contract_token).first()
+        if contract is None:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        self.check_object_permissions(request, contract)
+
+        serializer = ContractFullDetailSerializer(
+            contract, context={"request": request}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class BillingDataOVView(APIView):
@@ -134,8 +150,9 @@ class BillingDataOVView(APIView):
             )
 
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to update billing data: {str(e)}"},
+                {"error": "Failed to update billing data."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -179,8 +196,9 @@ class BillingDataOVUpdateIBANView(APIView):
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to update IBAN: {str(e)}"},
+                {"error": "Failed to update IBAN."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -431,9 +449,10 @@ class InvoicePDFView(APIView):
             )
 
         except Exception as e:
+            logger.exception("Error inesperat")
             # Step 12: Handle any errors during document retrieval or conversion
             return Response(
-                {"error": f"Failed to retrieve invoice PDF: {str(e)}"},
+                {"error": "Failed to retrieve invoice PDF."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -577,6 +596,58 @@ class ContractDetailByTokenOVView(RetrieveAPIView):
     def get_object(self):
         token = self.kwargs.get(self.lookup_url_kwarg)
         contract = self.get_queryset().filter(**{self.lookup_field: token}).first()
+        if contract is None:
+            raise NotFound({"error": "Contract not found"})
+        self.check_object_permissions(self.request, contract)
+        return contract
+
+
+def is_valid_nic(nic):
+    r"""Equivale a re.fullmatch(r"\d+(?:/\d+){1,2}", nic) sin regex: de 2 a 3
+    grupos de dígitos separados por «/» (CodeQL marca la regex como ReDoS)."""
+    parts = nic.split("/")
+    return 2 <= len(parts) <= 3 and all(part.isdecimal() for part in parts)
+
+
+class ContractByNicView(RetrieveAPIView):
+    """GET /ov/contract/by-nic/<nic>/ — detalle del contrato por NIC (token del
+    punto de suministro). El NIC incluye «/» con una o dos barras (p. ej.
+    `12345/1234` o `012345/654321/12345678`), por eso la
+    ruta usa `<path:nic>`; el formato se valida con regex ANTES de consultar la
+    BD. Si el punto de suministro es el por defecto de varios contratos se
+    devuelve el más reciente (`created_at` desc)."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [DniEnumerationThrottle]
+    serializer_class = ContractByNicSerializer
+    queryset = Contract.objects.select_related(
+        "holder",
+        "status",
+        "payment__type",
+        "payment__IBAN",
+        "payment__IBAN__person",
+        "supply_point_default",
+        "supply_point_default__address",
+        "use_type",
+    )
+
+    def get_object(self):
+        """Valida el NIC, busca el contrato más reciente y comprueba los permisos.
+
+        Prioriza el punto de suministro por defecto y después busca en los demás.
+        Lanza ValidationError si el NIC es inválido o NotFound si no hay contrato.
+        """
+        nic = (self.kwargs.get("nic") or "").strip()
+        if not is_valid_nic(nic):
+            raise ValidationError({"error": "Invalid NIC format"})
+        contract = (
+            self.queryset.filter(supply_point_default__token=nic)
+            .order_by("-created_at")
+            .first()
+            or self.queryset.filter(supply_points__token=nic)
+            .order_by("-created_at")
+            .first()
+        )
         if contract is None:
             raise NotFound({"error": "Contract not found"})
         self.check_object_permissions(self.request, contract)
@@ -1124,3 +1195,98 @@ class ContactDataOVView(APIView):
 
         serializer = ContactDataOVSerializer(contract)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class BatchInvoiceDownloadView(APIView):
+    """POST /ov/invoices/download/?contract_token=<token>
+
+    Descarga en lote: cos JSON `{"invoice_tokens": [...]}` → ZIP amb un PDF
+    per factura. Reutilitza `generate_report_invoice_pdf` (el mateix servei
+    que `/ov/invoice-pdf/`) amb `save_pdf=False`: bytes idèntics sense
+    registrar documents ni tocar `invoice_file`. Seguretat IDOR: totes les
+    fitxes han de pertanyer al contracte indicat i han de ser definitives
+    (`type_final`), mateix filtre que la descàrrega individual.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        contract_token = request.query_params.get("contract_token", None)
+
+        if not contract_token:
+            return Response(
+                {"error": "Contract token is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        contract = Contract.objects.filter(token=contract_token).first()
+        if not contract:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = BatchInvoiceDownloadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        file_type_value = ConfigProject.objects.filter(
+            token="invoice_type_invoice_token"
+        ).first().value
+        tokens = serializer.validated_data["invoice_tokens"]
+
+        invoices = Invoice.objects.filter(
+            token__in=tokens,
+            contract__token=contract_token,
+            type_final=file_type_value,
+        )
+        found = {invoice.token for invoice in invoices}
+        missing = [token for token in tokens if token not in found]
+        if missing:
+            # Missatge genèric: no revela si la fitxa existeix en un altre contracte.
+            return Response(
+                {
+                    "invoice_tokens": [
+                        f"Invoice not found for this contract: {token}"
+                        for token in missing
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        by_token = {invoice.token: invoice for invoice in invoices}
+        ordered = [by_token[token] for token in tokens]
+
+        buffer = BytesIO()
+        try:
+            with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                used_names = set()
+                for invoice in ordered:
+                    _, _, pdf_buffer = generate_report_invoice_pdf(
+                        invoice,
+                        request,
+                        context={"request": request},
+                        save_pdf=False,
+                    )
+                    raw_name = str(
+                        invoice.serie_final or invoice.token or invoice.id
+                    )
+                    # Noms nets dins del ZIP: cap barra (el `serie_final` pot
+                    # portar «/» com a separador de camps) ni contrabarra,
+                    # perquè no es creïn subcarpetes ni risc de zip-slip.
+                    safe_name = (
+                        raw_name.replace("/", "-").replace("\\", "-").strip("-")
+                        or str(invoice.id)
+                    )
+                    name = f"factura_{safe_name}.pdf"
+                    if name in used_names:
+                        name = f"factura_{safe_name}_{invoice.id}.pdf"
+                    used_names.add(name)
+                    zip_file.writestr(name, pdf_buffer.getvalue())
+        except Exception as e:
+            logger.exception("Error inesperat")
+            return Response(
+                {"error": "Failed to retrieve invoice PDF."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return _download_response(buffer.getvalue(), "application/zip", "facturas.zip")

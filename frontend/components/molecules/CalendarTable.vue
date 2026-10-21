@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, subMonths, addMonths, isSameMonth, isSameDay, isToday } from 'date-fns';
 import CalendarTaskRegion from '../organisms/CalendarTaskRegion.vue';
+import { WEEKDAY_KEYS } from '~/utils/calendarTasks';
 
 const { t } = useI18n()
 
@@ -168,13 +169,10 @@ onMounted(() => {
         </div>
 
         <div class="grid grid-cols-7 gap-2 p-4">
-            <div class="text-center font-medium text-gray-600">{{ t('date.monday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.tuesday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.wednesday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.thursday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.friday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.saturday') }}</div>
-            <div class="text-center font-medium text-gray-600">{{ t('date.sunday') }}</div>
+            <!-- Abreviats: la card del calendari pot ser estreta i els noms sencers no hi caben -->
+            <div v-for="weekday in WEEKDAY_KEYS" :key="weekday" class="text-center font-medium text-gray-600" :title="t(`date.${weekday}`)">
+                {{ t(`date.weekdays_short.${weekday}`) }}
+            </div>
 
             <button v-if="!pending" v-for="day in daysInMonth" :key="day.date" @click="selectDate(day)"
                 class="relative text-center py-2 rounded-md focus:outline-none hover:bg-gray-200" :class="{
@@ -219,7 +217,7 @@ onMounted(() => {
         </div>
         <div v-if="showRegion" role="region" id="right_page"
             class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 z-10 ease py-2 text-base bg-white"
-            :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
+            :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
             <div id="region_nav" class="mb-3 px-3">
                 <button @click="toggleRegion(false)"
                     class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">

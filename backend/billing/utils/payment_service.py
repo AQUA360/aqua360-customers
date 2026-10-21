@@ -1,4 +1,5 @@
 from http.client import PAYMENT_REQUIRED
+import logging
 import re
 from django.utils import timezone
 from billing.models import CommitmentDeposit, DocumentSEPA, DocumentSEPALine, Invoice, Payment, PaymentMovement, PaymentStatus
@@ -10,6 +11,8 @@ from logger.models import LogPaymentStatusChange
 from pricing.models import ProductOrigin
 from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
+
+logger = logging.getLogger(__name__)
 
 def generate_mandate_id(general_payment, mandate_token, overwrite = None):
     # mandate token = contract/connection token
@@ -54,7 +57,6 @@ except ImportError:
 
 def get_payment_SEPA_data(payments, payment_data):
     print("\n\nGET PAYMENT SEPA DATA (DEPRECATED)")
-    print(payments)
     try:
         lines = DocumentSEPALine.objects.filter(payments__in=payments)
         document = DocumentSEPA.objects.filter(lines__in=lines).first()
@@ -95,7 +97,6 @@ def get_payment_SEPA_data(payments, payment_data):
 
     for payment_id in payments:
         print("\n\nPAYMENT ID")
-        print(payment_id)
         payment = Payment.objects.get(id=payment_id)
         address = ""
         location = ""
@@ -204,16 +205,11 @@ def get_payment_SEPA_data(payments, payment_data):
                     line.payments.add(payment)
             document.lines.add(line)
 
-    print("\n\nGrouped payments (sorted with anomalies first):")
-    for iban, customers in grouped_payments.items():
-        print(f"IBAN {iban}")
-        for token, data in customers.items():
-            print(f"Customer {token} - {data['amount']} - {'Anomaly' if data['is_anomaly'] else 'Normal'}")
-            print(data)
-
-    print("\n\nAnomalies:")
-    for key, data in anomalies.items():
-        print(f"IBAN {key.split('_')[0]} - {key.split('_')[1]} - {data['amount']} - {data['count']}")
+    # Només recomptes: IBAN, noms i adreces dels clients no s'escriuen al log.
+    logger.info(
+        "Remesa SEPA %s: %s comptes agrupats, %s anomalies",
+        document.pk, len(grouped_payments), len(anomalies),
+    )
 
     return document, anomalies, grouped_payments
 

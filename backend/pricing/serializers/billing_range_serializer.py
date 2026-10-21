@@ -37,7 +37,6 @@ class BillingRangeSaveSerializer(serializers.ModelSerializer):
     
     @transaction.atomic
     def create(self, validated_data):
-        print(validated_data)
         price_rate_id = validated_data.pop('price_rate_id', None)
         previous_br = None
         price_rate = validated_data.pop('price_rate', None)

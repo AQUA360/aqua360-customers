@@ -1,4 +1,5 @@
 import boto3
+import logging
 from datetime import datetime
 import os
 import ftplib
@@ -14,6 +15,8 @@ from documentmanager.utils.hdd_service import delete_document_from_hdd, download
 from documentmanager.utils.sign_certificate_service import *
 from documentmanager.utils.azure_service import *
 from ..models import Document
+
+logger = logging.getLogger(__name__)
 
 def get_next_version(entity, field, entity_id, folder, base_name):
     latest = Document.objects.filter(
@@ -33,7 +36,8 @@ def delete_document(document):
         return delete_document_from_hdd(document)
     else:
         #raise ValidationError(f"Unsupported service: {document.service}")
-        print(f"Unsupported service: {document.service} Unable to delete document")
+        # Sense el nom del servei: ve de la configuració i CodeQL el tracta com a dada sensible.
+        logger.warning("Unsupported document service: unable to delete document %s", document.id)
 
 def download_document(document):
     if document.service == 'hdd':

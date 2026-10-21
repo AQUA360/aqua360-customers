@@ -11,8 +11,8 @@ REPORT_DEFAULTS = {
         "Ingressos i consums d'aigua desglossats per cada padró "
         "inclòs al filtre (facturació seleccionada o període) i per zona "
         "(placement del punt de subministrament): quota de servei, m³ per "
-        "tram, clavegueram i cànon ACA (CANON-DOM, CANON-MUN, CANON-HOTELS, "
-        "CANON-IND) també per trams."
+        "tram, clavegueram, ensobrat i cànon ACA (CANON-DOM, CANON-MUN, "
+        "CANON-HOTELS, CANON-IND) també per trams."
     ),
     'is_active': True,
     'download_button_name': 'Descarregar Excel',

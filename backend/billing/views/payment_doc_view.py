@@ -46,7 +46,6 @@ class PaymentDocDownloadViewSet(APIView):
         logo = logo.replace('https', 'http')
     
     now_date = datetime.now().date()
-    print("payment_date: ", payment_date)
     tomorrow = now_date + timedelta(days=2) if not payment_date else datetime.strptime(payment_date, '%Y-%m-%d').date()
     # Adjust if falls on weekend
     if not payment_date:
@@ -69,7 +68,6 @@ class PaymentDocDownloadViewSet(APIView):
     if barcode:
         barcode_base64 = base64.b64encode(barcode.getvalue()).decode('utf-8')
 
-    print("barcode_values: ", barcode_values)
     
     main_color = "#074df0"
     secondary_color = "#ffffff"

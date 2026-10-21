@@ -26,7 +26,6 @@ class SepaPDFDownloadViewSet(APIView):
     general_payment = GeneralPayment.objects.get(id=id)
     company = None
     city = None
-    print(request.data)
     request_id = request.data.get('id')
     person_id = request.data.get('person_id')
     value = request.data.get('value')
@@ -94,7 +93,6 @@ class SepaPDFDownloadViewSet(APIView):
       
     now_date = datetime.now().date()
     
-    print(personBank)
     
     if personBank and personBank.iban:
       iban = 'IBAN'+ personBank.iban.upper()

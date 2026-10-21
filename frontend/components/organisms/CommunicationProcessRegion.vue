@@ -16,6 +16,7 @@ import BillingRegion from './BillingRegion.vue';
 import ClaimRequestRegion from './ClaimRequestRegion.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import { usePermissions } from '~/middleware/permission';
+import { exclusionReasonLabel } from '~/utils/communication-exclusion';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -316,6 +317,23 @@ const cancelProcess = async () => {
   }
 }
 
+// Esborrat lògic: el procés cancel·lat i les seves comunicacions cancel·lades
+// deixen de sortir als llistats.
+const deleteCancelledProcess = async () => {
+  if (!confirm(t("confirmation_text_block.confirm_delete_cancelled_process"))) return;
+  try {
+    const response = await $CommunicationProcessApiService.deleteCancelled(props.id);
+    if (response) {
+      toast.success(t('common.deleted_successfully'));
+      emit('close-subregion');
+      emit('changed');
+    }
+  } catch (error) {
+    console.error('Error deleting process:', error);
+    toast.error(t('common.error'));
+  }
+}
+
 const getFiles = async (taskId) => {
   try {
     const response = await $apiManager.checkTask(taskId)
@@ -443,6 +461,10 @@ onMounted(async () => {
           <DropdownOption v-if="['0', '1'].includes(data?.status?.token)" :name="`${t('common.cancel')} ${t('common.comms_process_detail').toLowerCase()}`" @click="cancelProcess()">
             <Icon name="fa6-solid:xmark" class="display-inline mr-2" /> {{ t('common.cancel') }} {{ t('common.comms_process_detail').toLowerCase() }}
           </DropdownOption>
+          <DropdownOption v-if="data?.status?.token === '-1' && objectPermissions?.can_delete" :name="`${t('common.delete')} ${t('common.comms_process_detail').toLowerCase()}`"
+            @click="deleteCancelledProcess()" class="text-red-600">
+            <Icon name="fa6-solid:trash" class="display-inline mr-2 text-red-600" /> {{ t('common.delete') }} {{ t('common.comms_process_detail').toLowerCase() }}
+          </DropdownOption>
         </OptionsDropdown>
       </div>
 
@@ -468,6 +490,14 @@ onMounted(async () => {
             aria-current="page">
             <Icon name="fa6-solid:pen-nib" class="display-inline mr-2" />
             {{ $t("common.general_messages") }}
+          </a>
+        </li>
+        <li v-if="data.exclusions?.length > 0" class="me-2">
+          <a href="#tab_exclusions" @click.prevent="setActiveTab('exclusions')"
+            :class="{ 'text-sky-600 border-sky-600': activeTab === 'exclusions', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'exclusions' }"
+            aria-current="page">
+            <Icon name="fa6-solid:user-slash" class="display-inline mr-2" />
+            {{ $t('customer_service_block.unreachable_persons') }} ({{ data.exclusions.length }})
           </a>
         </li>
         <li class="me-2">
@@ -511,6 +541,29 @@ onMounted(async () => {
           <CommunicationMiniDetail :id="props.id" :reload="reloadChild" @update:count="updateCommunicationCount"
             @show-detail="showDetail" :max_height="'calc(100vh - 380px)'"
             :isSubRegion="data.status?.token == processing_status_token" />
+        </div>
+      </section>
+
+      <!-- Qui ha quedat fora del procés i per què, per avisar-los per un altre canal -->
+      <section v-if="data.exclusions?.length > 0" v-show="activeTab === 'exclusions'" role="tabpanel" id="tab_exclusions"
+        class="bg-white antialiased p-1 h-[50vh] overflow-y-auto">
+        <div class="grid grid-cols-[100px,1fr,150px,1fr] gap-2 px-2 py-2 font-semibold text-sm">
+          <span class="col-span-2">{{ $t('customer_service_block.recipient') }}</span>
+          <span>{{ $t('contracts') }}</span>
+          <span>{{ $t('customer_service_block.exclusion_reason') }}</span>
+        </div>
+        <div v-for="(exclusion, index) in data.exclusions" :key="`exclusion-${exclusion.id}`"
+          class="grid grid-cols-[100px,1fr,150px,1fr] gap-2 px-2 py-2 items-center text-sm"
+          :class="index % 2 === 0 ? 'bg-sky-50' : 'bg-white'">
+          <span>{{ exclusion.person?.token || '-' }}</span>
+          <span class="truncate">{{ exclusion.person?.full_name || '-' }}</span>
+          <span class="truncate">{{ exclusion.contracts.map(c => c.token).join(', ') }}</span>
+          <span class="flex flex-wrap gap-1">
+            <span v-for="reason in exclusion.reasons" :key="reason"
+              class="px-2 py-0.5 text-xs rounded-full bg-red-50 text-red-700 border border-red-200">
+              {{ exclusionReasonLabel($t, reason) }}
+            </span>
+          </span>
         </div>
       </section>
 

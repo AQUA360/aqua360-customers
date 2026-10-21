@@ -9,13 +9,16 @@ from celery.result import AsyncResult
 
 from billing.models import ReadingBatch, ReadingBatchStatus, Reading
 from billing.serializers.reading_batch_serializer import ReadingBatchStatusSerializer
-from billing.tasks import process_reading_batch, assign_readings_task, assign_smart_metering_task, preview_smart_metering_task
+from billing.tasks import process_reading_batch, assign_readings_task
 from django.db.models import Count, F, ExpressionWrapper, fields, Q
 from billing.permissions import ReadingPermission
 from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint
 from billing.utils.reading_filters import PENDING_READING_FILTER, BILLED_READING_FILTER
 from billing.utils.reading_batch_service import get_setup_filter_supply_point_ids
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ReadingBatchSummaryView(viewsets.ViewSet):
@@ -40,7 +43,8 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def list(self, request):
         try:
@@ -365,7 +369,8 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     @action(detail=True, methods=['post'], url_path='assign-readings')
     def assign_readings(self, request, pk=None):
@@ -422,41 +427,10 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
         
         return Response({"success": True}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'], url_path='smart-metering/preview')
-    def smart_metering_preview(self, request, pk=None):
-        reading_batch = ReadingBatch.objects.get(id=pk)
-        reading_date = request.query_params.get('reading_date')
-        if not reading_date:
-            return Response({"error": "reading_date is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        task = preview_smart_metering_task.delay(reading_batch.id, reading_date)
-        return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
-
-    @action(detail=True, methods=['post'], url_path='smart-metering/assign')
-    def smart_metering_assign(self, request, pk=None):
-        reading_batch = ReadingBatch.objects.get(id=pk)
-        reading_date = request.data.get('reading_date')
-        if not reading_date:
-            return Response({"error": "reading_date is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        existing_task_id = reading_batch.assign_readings_task_id
-        if existing_task_id:
-            task_result = AsyncResult(existing_task_id)
-            if task_result.state in ['PENDING', 'STARTED', 'PROGRESS']:
-                return Response({
-                    "task_id": existing_task_id,
-                    "detail": "Assign readings task already in progress."
-                }, status=status.HTTP_409_CONFLICT)
-
-        task = assign_smart_metering_task.delay(
-            reading_batch.id,
-            reading_date,
-            request.data.get('preview'),
-        )
-        reading_batch.assign_readings_task_id = task.id
-        reading_batch.save(update_fields=['assign_readings_task_id'])
-
-        return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
+    # La càrrega de lectures de Smart Metering (smart-metering/preview i
+    # smart-metering/assign) s'ha mogut a «Introduir lectures»: ara genera un
+    # document de lectures (ReadingDocumentViewSet, accions smart-metering/*)
+    # que el lot selecciona com qualsevol altre fitxer de lectures.
 
     @action(detail=False, methods=['get'], url_path='no-route-supply-points')
     def no_route_supply_points(self, request):
@@ -495,7 +469,8 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def serialize_decimal(value):
     """Recursively converts Decimal values to float or str."""
@@ -541,7 +516,8 @@ class ReadingBatchRegenerateView(views.APIView):
             return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ReadingBatchRevertView(views.APIView):
@@ -628,7 +604,8 @@ class ReadingBatchRevertView(views.APIView):
             )
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         
 class TaskProgressView(APIView):

@@ -21,6 +21,9 @@ from coredata.models import ConfigProject, Person, PersonAddress, PersonBank, Pe
 from django.utils import timezone
 from django.db import transaction
 from django.utils.dateparse import parse_date
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ContractSerializer(serializers.ModelSerializer):
@@ -402,8 +405,9 @@ class UpdateBillingDataOVSerializer(serializers.Serializer):
             return instance
 
         except Exception as e:
+            logger.exception("Error inesperat")
             raise serializers.ValidationError(
-                {"error": f"Failed to update billing data: {str(e)}"}
+                {"error": "Failed to update billing data."}
             )
 
 
@@ -509,8 +513,9 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
             return instance
 
         except Exception as e:
+            logger.exception("Error inesperat")
             raise serializers.ValidationError(
-                {"error": f"Failed to update IBAN data: {str(e)}"}
+                {"error": "Failed to update IBAN data."}
             )
 
 
@@ -615,9 +620,6 @@ class InvoicePaidSerializer(serializers.Serializer):
         return data
 
     def update(self, validated_data):
-        print(validated_data)
-        print(validated_data["invoice_token"])
-        print(validated_data["contract_token"])
         print("--------------------------------")
         #invoice type invoice to avoid getting budgets
         invoice_type_invoice_token = ConfigProject.objects.get(token="invoice_type_invoice_token").value
@@ -626,7 +628,6 @@ class InvoicePaidSerializer(serializers.Serializer):
             contract__token=validated_data["contract_token"],
             type_final=invoice_type_invoice_token
         ).first()
-        print(invoice)
         print("--------------------------------")
         if not invoice:
             raise serializers.ValidationError(
@@ -665,8 +666,9 @@ class InvoicePaidSerializer(serializers.Serializer):
             return invoice
 
         except Exception as e:
+            logger.exception("Error inesperat")
             raise serializers.ValidationError(
-                {"error": f"Failed to mark invoice as paid: {str(e)}"}
+                {"error": "Failed to mark invoice as paid."}
             )
 
 
@@ -1094,6 +1096,17 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
         return data
 
 
+class ContractByNicSerializer(ContractFullDetailSerializer):
+    """Detalle del contrato localizado por NIC: `ContractFullDetail` + la clave
+    explícita `contract_token`, el identificador que la frontend necesita para
+    el resto de flujos (`?contract_token=`). Corresponde al esquema `ContractByNic`."""
+
+    contract_token = serializers.CharField(source="token", read_only=True)
+
+    class Meta(ContractFullDetailSerializer.Meta):
+        fields = ContractFullDetailSerializer.Meta.fields + ["contract_token"]
+
+
 class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     """Detalle completo de una factura definitiva. Corresponde al esquema
     `InvoiceFullDetail` del documento OpenAPI (`GET /ov/invoice/{token}/detail/`)."""
@@ -1443,3 +1456,20 @@ class ContactDataOVSerializer(BillingDataOVSerializer):
         return None
 
 
+class BatchInvoiceDownloadSerializer(serializers.Serializer):
+    """Tokens de les factures a descarregar en el ZIP. Els buits es rebutgen
+    (`allow_empty=False`) i es desduplicen preservant l'ordre de la petició
+    per no generar noms d'entrada duplicats dins de l'arxiu."""
+
+    invoice_tokens = serializers.ListField(
+        child=serializers.CharField(), allow_empty=False
+    )
+
+    def validate_invoice_tokens(self, value):
+        seen = set()
+        deduped = []
+        for token in value:
+            if token not in seen:
+                seen.add(token)
+                deduped.append(token)
+        return deduped

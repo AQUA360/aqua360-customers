@@ -791,7 +791,7 @@ onMounted(async () => {
   <!-- Contract Side Region (Standard Floating Region) -->
   <div role="region" id="contract_region"
     class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-50 shadow-2xl"
-    :class="{ 'translate-x-0': showContractRegion, 'translate-x-[2000px]': !showContractRegion, 'w-[95%]': isSubRegionOpen, 'w-[50%]': !isSubRegionOpen }">
+    :class="{ 'translate-x-0': showContractRegion, 'translate-x-full': !showContractRegion, 'w-[95%]': isSubRegionOpen, 'w-[50%]': !isSubRegionOpen }">
     <div id="region_nav" class="mb-3 px-3">
       <button @click="toggleContractRegion(false)" class="p-2 hover:bg-slate-100 rounded-full transition-colors font-black">
         <Icon name="fa6-solid:angles-right" class="text-slate-500" />
@@ -812,7 +812,7 @@ onMounted(async () => {
   <!-- Results Side Region (Fixed) -->
   <div v-if="showResultsRegion" role="region" id="results_region"
     class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-1/3 z-50 shadow-2xl"
-    :class="{ 'translate-x-0': showResultsRegion, 'translate-x-[2000px]': !showResultsRegion }">
+    :class="{ 'translate-x-0': showResultsRegion, 'translate-x-full': !showResultsRegion }">
     <div id="region_nav" class="mb-3 px-3 flex justify-between items-center border-b border-gray-50 pb-2">
       <button @click="showResultsRegion = false" class="p-2 hover:bg-slate-100 rounded-full transition-colors">
         <Icon name="fa6-solid:angles-right" class="text-slate-500" />

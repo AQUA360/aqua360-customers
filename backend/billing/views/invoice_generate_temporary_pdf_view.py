@@ -8,11 +8,19 @@ from billing.models import Invoice
 from billing.utils.invoice_pdf import generate
 from service.models import Exploitation
 from django.shortcuts import get_object_or_404
+import logging
+
+logger = logging.getLogger(__name__)
 
 class InvoiceGenerateTemporaryPDFView(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Invoice.objects.all().order_by('-created_at')
     def get(self, request, id):
+        """Generate a temporary invoice PDF and return its absolute URL.
+
+        Return HTTP 500 if generation or URL resolution fails, logging internal
+        errors and returning a generic message.
+        """
         try:
             if not id:
                 return Response({"error": "Invoice id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -29,13 +37,14 @@ class InvoiceGenerateTemporaryPDFView(views.APIView):
                 return Response({"error": "No s'ha pogut generar el PDF. El fitxer no s'ha guardat correctament."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Get the full URL including host
-            print(new_invoice.invoice_file_template)
             try:
                 file_url = request.build_absolute_uri(new_invoice.invoice_file_template.url)
-            except ValueError as e:
-                return Response({"error": f"No s'ha pogut obtenir l'URL del PDF: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except ValueError:
+                logger.exception("No s'ha pogut obtenir l'URL del PDF")
+                return Response({"error": "No s'ha pogut obtenir l'URL del PDF."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             return Response({"url": file_url}, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

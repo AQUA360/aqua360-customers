@@ -8,6 +8,9 @@ from integrations.inbound.signing.services import (
     handle_signing_callback,
     log_signing_callback,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SigningCallbackView(APIView):
@@ -78,6 +81,7 @@ class SigningCallbackView(APIView):
             )
             return Response({"detail": exc.detail}, status=exc.status_code)
         except Exception as exc:
+            logger.exception("Error inesperat")
             log_signing_callback(
                 payload,
                 success=False,
@@ -85,4 +89,4 @@ class SigningCallbackView(APIView):
                 error_message=str(exc),
                 response_payload={"detail": str(exc)},
             )
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)

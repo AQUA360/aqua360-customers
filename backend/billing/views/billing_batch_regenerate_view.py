@@ -19,6 +19,9 @@ from coredata.models import ConfigProject
 from ..tasks import process_billing_batch, process_invoice_documents
 from django.db.models.functions import Abs
 from billing.permissions import BillingPermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BillingBatchRegenerateView(views.APIView):
     permission_classes = [IsAuthenticated, BillingPermission]
@@ -79,4 +82,5 @@ class BillingBatchRegenerateView(views.APIView):
             # return Response({}, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

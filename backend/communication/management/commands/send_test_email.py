@@ -139,6 +139,7 @@ class Command(BaseCommand):
         config = None
 
         if config_token:
+            from communication.utils.communication_service import get_smtp_config_email, resolve_smtp_password
             from service.models import CompanyConfig
 
             try:
@@ -159,19 +160,14 @@ class Command(BaseCommand):
             if backend != "msgraphbackend.MSGraphBackend":
                 email_host = config.mail_send_smtp_server or email_host
                 email_port = config.mail_send_smtp_port or email_port
-                email_user = config.company_config_emails.filter(is_default=True).first().mail_send_mail or email_user
+                smtp_config_email = get_smtp_config_email(config)
+                email_user = (smtp_config_email.mail_send_mail if smtp_config_email else None) or email_user
                 if config.use_TLS is not None:
                     email_use_tls = config.use_TLS
                 if config.use_SSL is not None:
                     email_use_ssl = config.use_SSL
-                # Igual que _send_via_smtp: contrasenya des d'atribut de settings (token) o EMAIL_HOST_PASSWORD.
-                email_password = (
-                    getattr(settings, config.token, None)
-                    if config.token
-                    else getattr(settings, "EMAIL_HOST_PASSWORD", "")
-                )
-                if not email_password:
-                    email_password = getattr(settings, "EMAIL_HOST_PASSWORD", "")
+                # Igual que _send_via_smtp: contrasenya del correu, de la configuració o EMAIL_HOST_PASSWORD.
+                email_password = resolve_smtp_password(config, smtp_config_email)
 
         if not from_email:
             from_email = default_from

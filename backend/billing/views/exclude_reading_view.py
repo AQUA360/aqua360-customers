@@ -17,6 +17,9 @@ from service.models import SupplyPoint
 from ..utils.reading_service import get_existing_reading
 from django.db.models import F, Value, IntegerField, ExpressionWrapper, fields
 from django.db.models.functions import Abs
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ExcludeReadingView(views.APIView):
@@ -61,4 +64,5 @@ class ExcludeReadingView(views.APIView):
             reading.save()
             return Response({}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

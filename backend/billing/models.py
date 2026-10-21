@@ -530,11 +530,20 @@ class ReadingDocument(models.Model):
         (STATUS_PROCESSED, 'Processed'),
         (STATUS_FAILED, 'Failed'),
     )
+    SOURCE_FILE = 'FILE'
+    SOURCE_SMART_METERING = 'SMART_METERING'
+    SOURCE_CHOICES = (
+        (SOURCE_FILE, 'File'),
+        (SOURCE_SMART_METERING, 'Smart Metering'),
+    )
 
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     token = models.CharField(max_length=255, null=True, blank=True)
     file = models.FileField(upload_to=reading_document_upload_to, null=True, blank=True)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=SOURCE_FILE)
+    # Data de lectura sol·licitada (només per a documents de Smart Metering).
+    reading_date = models.DateField(null=True, blank=True)
     batch = models.ForeignKey(ReadingBatch, on_delete=models.SET_NULL, related_name="documents", null=True, blank=True)
     template = models.ForeignKey(
         'statistics.ReadingBatchImportTemplate',

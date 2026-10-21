@@ -18,7 +18,7 @@ const toast = useToast();
 
 const showRegion = ref(false);
 const showRegionClass = computed(() => {
-  return showRegion.value ? 'translate-x-0' : 'translate-x-[2000px]';
+  return showRegion.value ? 'translate-x-0' : 'translate-x-full';
 });
 
 const toggleRegion = (force) => {
@@ -611,7 +611,7 @@ getConfigProject();
             </template>
             <template v-else>
               <span>{{ item.value }}</span>
-              <button v-if="permissions?.permissions?.change_user" class="text-sky-500 hover:text-sky-700"
+              <button v-if="permissions?.can_edit_config_project" class="text-sky-500 hover:text-sky-700"
                 :title="t('common.edit')" @click="startEditConfigProject(item)">
                 <Icon name="fa6-solid:pen-to-square" />
               </button>

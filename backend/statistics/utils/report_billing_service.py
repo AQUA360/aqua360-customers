@@ -3,7 +3,7 @@ import math
 import os
 import threading
 from django.core.files.base import ContentFile
-from django.db.models import F, Count, Sum, Q, Max, Case, When, Value, CharField, DecimalField, Subquery
+from django.db.models import F, Count, Sum, Q, Max, Case, When, Value, BooleanField, CharField, DecimalField, Subquery
 from decimal import Decimal
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
@@ -22,7 +22,7 @@ from billing.utils.aca_company_service import ACACompanyError, get_records_compa
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
-from contract.models import Contract
+from contract.models import Contract, ContractUseType
 from coredata.models import ConfigProject, Person
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.other_utils import round_ceil
@@ -32,6 +32,10 @@ from service.models import Company, Exploitation, SupplyPointType
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, save_report, jump_row
 from statistics.utils.report_filters import (get_billing_ids, get_multi_ids, has_serie_final_range, invoice_multi_filter_q,
                                              payment_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
+from statistics.utils.report_progress import report_progress
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _get_aca_part_tokens():
@@ -299,56 +303,69 @@ def _payoff_signed_sum(field_name, payoff_status_token, tax_pct=None):
     )
 
 
+def _resolve_billing_summary_invoices(request):
+    """
+    Factures del resum de facturació segons els filtres del formulari (lot, període
+    o rang de sèrie, explotació, pendents i multi-filtres). Compartit pels informes
+    de resum de facturació perquè tots surtin de la mateixa selecció.
+    Retorna (invoices, billing, start_date, end_date, error_response).
+    """
+    date_range = request.data.get('date_range', None)
+    billing_ids = get_billing_ids(request.data)
+    exploitation_id = request.data.get('exploitation_id', None)
+
+    has_serie_range = has_serie_final_range(request.data)
+    if not billing_ids and not date_range and not has_serie_range:
+        return None, None, None, None, Response({"error": "billing id, date range or serie_final range is required."}, status=status.HTTP_400_BAD_REQUEST)
+    print("got id or date range")
+    exploitation = None
+    if exploitation_id:
+        exploitation = Exploitation.objects.get(id=exploitation_id)
+    billing = None
+    start_date = None
+    end_date = None
+
+    if billing_ids:
+        invoices = Invoice.objects.filter(billing_id__in=billing_ids)
+        billing = get_object_or_404(Billing, id=billing_ids[0])
+    elif date_range:
+        start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
+        end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
+        invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
+        invoices = Invoice.objects.filter(issue_date__range=(start_date.date(), end_date.date()), type_final=invoice_type).distinct()
+    elif has_serie_range:
+        # Seleccio nomes pel rang de numero de factura: el rang ja identifica les
+        # factures, sense lot ni periode. filter_pending_invoices hi aplica el rang
+        # (apply_serie_final_range) i el periode surt de les factures resultants,
+        # que es el que fan servir els titols i el nom del fitxer.
+        invoices = filter_pending_invoices(serie_final_range_invoices(), request)
+        start_date, end_date = serie_final_range_period(invoices)
+        if start_date is None:
+            return None, None, None, None, Response({"error": "the serie_final range has no invoices."}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        raise Exception("Error obtaining invoices for report billing summary")
+
+    if exploitation:
+        invoices = invoices.filter(exploitation=exploitation)
+
+    invoices = filter_pending_invoices(invoices, request)
+
+    multi_q = invoice_multi_filter_q(**get_multi_ids(request.data))
+    if multi_q:
+        invoices = invoices.filter(multi_q).distinct()
+
+    return invoices, billing, start_date, end_date, None
+
+
 def get_report_billing_summary(request, black_fill, white_bold_font, task=None):
     try:
         print("getting billing summary")
-        id = request.data.get('id', None)
-        date_range = request.data.get('date_range', None)
-        billing_ids = get_billing_ids(request.data)
         name = request.data.get('name', '')
         type_id = request.data.get('type_id', None)
-        exploitation_id = request.data.get('exploitation_id', None)	
-        
-        has_serie_range = has_serie_final_range(request.data)
-        if not billing_ids and not date_range and not has_serie_range:
-            return Response({"error": "billing id, date range or serie_final range is required."}, status=status.HTTP_400_BAD_REQUEST), None, None
-        print("got id or date range")
-        exploitation = None
-        if exploitation_id:
-            exploitation = Exploitation.objects.get(id=exploitation_id)
-        billing = None
-        billings = []
-        start_date = None
-        end_date = None
-        
-        if billing_ids:
-            invoices = Invoice.objects.filter(billing_id__in=billing_ids)
-            billing = get_object_or_404(Billing, id=billing_ids[0])
-        elif date_range:
-            start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
-            end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
-            invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
-            invoices = Invoice.objects.filter(issue_date__range=(start_date.date(), end_date.date()), type_final=invoice_type).distinct()
-        elif has_serie_range:
-            # Seleccio nomes pel rang de numero de factura: el rang ja identifica les
-            # factures, sense lot ni periode. filter_pending_invoices hi aplica el rang
-            # (apply_serie_final_range) i el periode surt de les factures resultants,
-            # que es el que fan servir els titols i el nom del fitxer.
-            invoices = filter_pending_invoices(serie_final_range_invoices(), request)
-            start_date, end_date = serie_final_range_period(invoices)
-            if start_date is None:
-                return Response({"error": "the serie_final range has no invoices."}, status=status.HTTP_400_BAD_REQUEST), None, None
-        else:
-            raise Exception("Error obtaining invoices for report billing summary")
-        
-        if exploitation:
-            invoices = invoices.filter(exploitation=exploitation)
-        
-        invoices = filter_pending_invoices(invoices, request)
 
-        multi_q = invoice_multi_filter_q(**get_multi_ids(request.data))
-        if multi_q:
-            invoices = invoices.filter(multi_q).distinct()
+        invoices, billing, start_date, end_date, error = _resolve_billing_summary_invoices(request)
+        if error:
+            return error, None, None
 
         payoff_status_token = ConfigProject.objects.get(token="invoice_status_payoff_token").value
 
@@ -433,7 +450,303 @@ def get_report_billing_summary(request, black_fill, white_bold_font, task=None):
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+
+def _social_adjustment_ids():
+    """
+    Ajustos (bonificacions) de tarifa social: els que exigeixen (is_true / is_not_null)
+    una variable de contracte vulnerable, la configurada a 'tarifa_social' o amb "social"
+    al token o al nom (p.ex. la tarifa social pròpia de l'entitat, que no és vulnerable).
+    Les condicions "sense tarifa social" (is_null, ...) no compten.
+    """
+    from contract.models import VariableType
+    from pricing.models import AdjustmentCondition
+
+    social_token = ConfigProject.objects.filter(token='tarifa_social').values_list('value', flat=True).first()
+    social_variable_tokens = set(
+        VariableType.objects.filter(
+            Q(is_vulnerable=True) | Q(token__icontains='social') | Q(name__icontains='social')
+            | Q(token=social_token or 'tarifa_social')
+        ).values_list('token', flat=True)
+    )
+
+    adjustment_ids = set()
+    conditions = AdjustmentCondition.objects.filter(
+        adjustment__isnull=False, operation__in=('is_true', 'is_not_null'),
+    ).values_list('adjustment_id', 'quantity')
+    for adjustment_id, quantity in conditions:
+        value = quantity.get('value') if isinstance(quantity, dict) else quantity
+        if isinstance(value, str) and value.startswith('variable.') and value[len('variable.'):] in social_variable_tokens:
+            adjustment_ids.add(adjustment_id)
+    return adjustment_ids
+
+
+def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font, task=None):
+    """
+    Resum de facturació (com get_report_billing_summary) agrupat per producte i, dins
+    de cada producte, per tipus d'ús del contracte, amb el detall per concepte, tarifa,
+    tram, si el tram està ampliat i si la línia té tarifa social. Els totals per producte quadren amb el resum. Acaba amb el
+    resum de l'IVA.
+    """
+    try:
+        from django.db.models import Exists, Min, OuterRef
+        from openpyxl.styles import Font
+        from statistics.views.reports_views import light_gray_fill
+        from billing.models import AppliedAdjustment
+        from contract.models import Variable
+        from contract.utils.aca_tram_service import MEMBERS_VARIABLE_TOKEN_HINT
+        from pricing.models import PriceIntervalStretch, PriceVariableIntervalStretch
+
+        name = request.data.get('name', '')
+        type_id = request.data.get('type_id', None)
+
+        invoices, billing, start_date, end_date, error = _resolve_billing_summary_invoices(request)
+        if error:
+            return error, None, None
+
+        payoff_status_token = ConfigProject.objects.get(token="invoice_status_payoff_token").value
+
+        # Si la línia té algun ajust de tarifa social. Exists (i no join) perquè el M2M
+        # d'ajustos no multipliqui les línies a les sumes.
+        social_adjustments = AppliedAdjustment.objects.filter(
+            Q(is_vulnerable=True) | Q(adjustment_id__in=_social_adjustment_ids()),
+            line_items=OuterRef('pk'),
+        )
+
+        # Ampliació de trams: el límit del tram de la línia no coincideix amb el configurat
+        # i el contracte té la variable de membres (nombre de persones) vigent a la data de
+        # la factura. Només amb el límit no n'hi ha prou: el prorrateig també el canvia.
+        configured_end_stretch = Coalesce(
+            Subquery(PriceIntervalStretch.objects.filter(
+                price_interval=OuterRef('line_item_type__price_interval'), stretch=OuterRef('interval'),
+            ).order_by('id').values('end_stretch')[:1]),
+            Subquery(PriceVariableIntervalStretch.objects.filter(
+                price_variable_interval=OuterRef('line_item_type__price_variable'), stretch=OuterRef('interval'),
+            ).order_by('id').values('end_stretch')[:1]),
+        )
+        members_variables = Variable.objects.filter(
+            Q(is_active=True) | Q(end_at__isnull=False),
+            Q(start_at__isnull=True) | Q(start_at__lte=OuterRef('invoice__issue_date')),
+            Q(end_at__isnull=True) | Q(end_at__gte=OuterRef('invoice__issue_date')),
+            contract=OuterRef('invoice__contract'),
+            type__token__icontains=MEMBERS_VARIABLE_TOKEN_HINT,
+        ).exclude(value__isnull=True).exclude(value__in=['', '0'])
+
+        active_line_items = InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True).annotate(
+            concept_name=Coalesce('line_item_type__name', 'name'),
+            is_social=Exists(social_adjustments),
+            use_type_id=F('invoice__contract__use_type_id'),
+            configured_end_stretch=configured_end_stretch,
+            has_members_variable=Exists(members_variables),
+        ).annotate(
+            is_extended=Case(
+                When(
+                    Q(interval__isnull=False, end_stretch__isnull=False, configured_end_stretch__isnull=False)
+                    & ~Q(end_stretch=F('configured_end_stretch'))
+                    & Q(has_members_variable=True),
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+        )
+        groups = active_line_items.values(
+            'product_name', 'tax_percent', 'use_type_id', 'concept_name', 'price_rate_name', 'interval', 'is_extended', 'is_social',
+        ).annotate(
+            count=Count('invoice', distinct=True),
+            sum_units=_payoff_signed_sum('units', payoff_status_token),
+            sum_price=_payoff_signed_sum('price', payoff_status_token),
+            sum_tax=_payoff_signed_sum('tax_price', payoff_status_token),
+        ).order_by()
+
+        # Mateixa agrupació que el resum de facturació, per als totals per producte.
+        product_counts = {
+            (item['product_name'], item['tax_percent']): item['count']
+            for item in active_line_items.values('product_name', 'tax_percent').annotate(
+                count=Count('invoice', distinct=True),
+            ).order_by()
+        }
+        use_type_counts = {
+            (item['product_name'], item['tax_percent'], item['use_type_id']): item['count']
+            for item in active_line_items.values('product_name', 'tax_percent', 'use_type_id').annotate(
+                count=Count('invoice', distinct=True),
+            ).order_by()
+        }
+        use_types = {use_type.id: use_type for use_type in ContractUseType.objects.filter(
+            id__in={item['use_type_id'] for item in groups if item['use_type_id']},
+        )}
+
+        def use_type_sort(use_type_id):
+            # Ordre del tipus d'ús; les factures sense tipus d'ús al final.
+            use_type = use_types.get(use_type_id)
+            if use_type is None:
+                return (1, 0, '')
+            return (0, use_type.position if use_type.position is not None else 0, use_type.name or '')
+
+        groups = sorted(groups, key=lambda item: (
+            item['product_name'] or '',
+            item['tax_percent'] if item['tax_percent'] is not None else Decimal('-1'),
+            use_type_sort(item['use_type_id']),
+            item['concept_name'] or '',
+            item['price_rate_name'] or '',
+            item['interval'] or 0,
+            item['is_extended'],
+            item['is_social'],
+        ))
+
+        wb = openpyxl.Workbook()
+        sheet = wb.active
+        sheet.title = _("Facturació per tarifa")
+
+        bold = Font(bold=True)
+        title_font = Font(bold=True, size=14)
+
+        row = 0
+        row = add_row(sheet, row, [_("RESUM DE LA FACTURACIÓ GENERAL")])
+        sheet.cell(row=row, column=1).font = title_font
+        period = billing.created_at.strftime('%d/%m/%Y') if billing else f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
+        row = add_row(sheet, row, [period])
+        sheet.cell(row=row, column=1).font = bold
+        serie_range = invoices.exclude(serie_final__isnull=True).exclude(serie_final='').aggregate(
+            first=Min('serie_final'), last=Max('serie_final'),
+        )
+        if serie_range['first']:
+            row = add_row(sheet, row, [_("Del núm. de factura %(first)s a la %(last)s.") % serie_range])
+        row = jump_row(row)
+
+        titles = [_("Ús"), _("Descripció"), _("Núm. de factures"), _("Unitats"), _("Base IVA"), _("Quota IVA"), _("Total")]
+        row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
+
+        def format_numbers(row):
+            for col in (4, 5, 6, 7):
+                sheet.cell(row=row, column=col).number_format = '#,##0.00'
+
+        def bold_row(row, fill=None):
+            for col in range(1, len(titles) + 1):
+                sheet.cell(row=row, column=col).font = bold
+                if fill:
+                    sheet.cell(row=row, column=col).fill = fill
+
+        def tax_label(tax_percent):
+            return f"{tax_percent} %" if tax_percent is not None else "- %"
+
+        def use_type_label(use_type_id):
+            use_type = use_types.get(use_type_id)
+            if use_type is None:
+                return _("Sense tipus d'ús")
+            return " ".join(part for part in (use_type.token, use_type.name) if part)
+
+        def description(item):
+            parts = [
+                item['concept_name'],
+                item['price_rate_name'],
+                _("Tram %(num)s") % {"num": item['interval']} if item['interval'] else None,
+            ]
+            unique_parts = []
+            for part in parts:
+                if part and part not in unique_parts:
+                    unique_parts.append(part)
+            text = " - ".join(unique_parts) or "-"
+            if item['is_extended']:
+                text = f"{text} {_('AMPLIACIÓ')}"
+            if item['is_social']:
+                text = f"{text} {_('SOCIAL')}"
+            return text
+
+        def amounts(totals):
+            return [round(totals[0], 2), round(totals[1], 2), round(totals[2], 2), round(totals[1] + totals[2], 2)]
+
+        def add_product_header(row, key):
+            row = add_row(sheet, row, [
+                f"{key[0] or '-'} ({_('IVA')} {tax_label(key[1])})", "",
+                _("Factures: %(count)s") % {"count": product_counts.get(key, 0)},
+            ])
+            sheet.cell(row=row, column=1).font = Font(bold=True, size=12)
+            return row
+
+        def add_use_type_header(row, use_type_id):
+            row = add_row(sheet, row, [_("Ús: %(name)s") % {"name": use_type_label(use_type_id)}])
+            sheet.cell(row=row, column=1).font = bold
+            return row
+
+        def add_use_type_total(row, key, totals):
+            row = add_row(sheet, row, ["", "", use_type_counts.get(key, 0), *amounts(totals)])
+            bold_row(row)
+            format_numbers(row)
+            return jump_row(row)
+
+        def add_product_total(row, key, totals):
+            row = add_row(sheet, row, [
+                _("Total %(name)s") % {"name": key[0] or "-"}, "",
+                product_counts.get(key, 0), *amounts(totals),
+            ])
+            bold_row(row, light_gray_fill)
+            format_numbers(row)
+            return jump_row(row)
+
+        # [unitats, base, iva]
+        grand_total = [0.0, 0.0, 0.0]
+        tax_summary = {}
+        current_product = None
+        current_use_type = None
+        product_total = [0.0, 0.0, 0.0]
+        use_type_total = [0.0, 0.0, 0.0]
+        for item in groups:
+            product_key = (item['product_name'], item['tax_percent'])
+            use_type_key = (*product_key, item['use_type_id'])
+            if current_use_type is not None and use_type_key != current_use_type:
+                row = add_use_type_total(row, current_use_type, use_type_total)
+                use_type_total = [0.0, 0.0, 0.0]
+            if current_product is not None and product_key != current_product:
+                row = add_product_total(row, current_product, product_total)
+                product_total = [0.0, 0.0, 0.0]
+            if product_key != current_product:
+                row = add_product_header(row, product_key)
+            if use_type_key != current_use_type:
+                row = add_use_type_header(row, item['use_type_id'])
+            current_product = product_key
+            current_use_type = use_type_key
+
+            values = [float(item['sum_units'] or 0), float(item['sum_price'] or 0), float(item['sum_tax'] or 0)]
+            for totals in (use_type_total, product_total, grand_total):
+                for i, value in enumerate(values):
+                    totals[i] += value
+            tax_totals = tax_summary.setdefault(item['tax_percent'], [0.0, 0.0])
+            tax_totals[0] += values[1]
+            tax_totals[1] += values[2]
+
+            row = add_row(sheet, row, ["", description(item), item['count'], *amounts(values)])
+            format_numbers(row)
+
+        if current_product is not None:
+            row = add_use_type_total(row, current_use_type, use_type_total)
+            row = add_product_total(row, current_product, product_total)
+
+        row = add_row(sheet, row, [_("Totals"), "", "", "", *amounts(grand_total)[1:]], fill=black_fill, font=white_bold_font)
+        format_numbers(row)
+
+        # Resum de l'IVA
+        row = jump_row(row)
+        row = add_row(sheet, row, [_("RESUM DE L'IVA")])
+        sheet.cell(row=row, column=1).font = Font(bold=True, size=12)
+        row = add_row(sheet, row, ["", "", "", _("% IVA"), _("Base IVA"), _("Import IVA"), _("Total")], fill=black_fill, font=white_bold_font)
+        for tax_percent in sorted(tax_summary, key=lambda percent: percent if percent is not None else Decimal('-1')):
+            base, tax = tax_summary[tax_percent]
+            row = add_row(sheet, row, ["", "", "", tax_label(tax_percent), round(base, 2), round(tax, 2), round(base + tax, 2)])
+            format_numbers(row)
+        row = add_row(sheet, row, ["", "", "", "", *amounts(grand_total)[1:]])
+        bold_row(row, light_gray_fill)
+        format_numbers(row)
+
+        adjust_column_widths(sheet)
+
+        filename = f"billing_by_rate_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
+        return None, document_id, filename
+    except Exception as e:
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -570,7 +883,9 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
 
         price_rate_dict = {}
         print("before loop")
-        for exploitation in unique_exploitations:
+        # Cada explotació és una tanda de consultes: el progrés es publica a cada una.
+        for idx_exploitation, exploitation in enumerate(unique_exploitations, start=1):
+            report_progress(task, idx_exploitation, len(unique_exploitations), every=1)
             print(f"exploitation: {exploitation}")
             try:
                 aca_line_items_ex = aca_line_items_qs.filter(invoice__exploitation__name=exploitation).distinct().annotate(
@@ -861,9 +1176,12 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                     lines_part_variable.aggregate(total=Sum('price'))['total'] or 0,
                     aca_line_items_ex.aggregate(total=Sum('price'))['total'] or 0,
                     
-                    _get_signed_invoice_consumption_total(dom_invoices, payoff_status_token),
-                    _get_signed_invoice_consumption_total(ind_invoices, payoff_status_token),
-                    _get_signed_invoice_consumption_total(mun_invoices, payoff_status_token),
+                    total_dom_consumption,
+                    # _get_signed_invoice_consumption_total(dom_invoices, payoff_status_token),
+                    int(ind_lines.filter(line_item_type__quantity__token='diferencia_fuita_consum').exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
+                    # _get_signed_invoice_consumption_total(ind_invoices, payoff_status_token),
+                    int(mun_lines.exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
+                    # _get_signed_invoice_consumption_total(mun_invoices, payoff_status_token),
                     # _get_signed_invoice_consumption_total(keeper_invoices, payoff_status_token),
                     0,
 
@@ -946,7 +1264,8 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
     except ACACompanyError as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
     except Exception as e:
-        error_response = Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.exception("Error inesperat")
+        error_response = Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return error_response, None, None
 
 def _add_invoices_to_sheet(sheet, row, invoices, aca_lines, part_fixa_token, forced_aca = None, is_industrial = False, written_invoice_ids=None):
@@ -1137,7 +1456,9 @@ def generate_aca_summary_report_second_ver(request, black_fill=None, white_bold_
         ]
          #TODO LATER, SEPARATE INVOICES BY ISSUE DATE YEAR IN DIFF DOCUMENTS
 
-        for exploitation in unique_exploitations:
+        # Cada explotació és una tanda de consultes: el progrés es publica a cada una.
+        for idx_exploitation, exploitation in enumerate(unique_exploitations, start=1):
+            report_progress(task, idx_exploitation, len(unique_exploitations), every=1)
             try:
                 # SEPARAR CADA CAMP PER |
                 # SI VALOR DE CAMP CHAR NO TÉ CONTINGUT, EL VALOR SERÀ 'NULL', SI ÉS NUMERIC SERÀ 0
@@ -1447,7 +1768,8 @@ def generate_aca_summary_report_second_ver(request, black_fill=None, white_bold_
     except ACACompanyError as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
     except Exception as e:
-        error_response = Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.exception("Error inesperat")
+        error_response = Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return error_response, None, None
 
 
@@ -1606,7 +1928,8 @@ def generate_detailed_billing_summary(request, black_fill=None, white_bold_font=
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_summary_by_supply_type(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -1812,7 +2135,8 @@ def generate_billing_summary_by_supply_type(request, black_fill=None, white_bold
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -1878,7 +2202,10 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
             sheet = wb.create_sheet(title=_("Sense dades"))
             row = add_row(sheet, 0, [_("No s'han trobat productes per a aquest període")], fill=black_fill, font=white_bold_font)
         else:
-            for product in products:
+            products = list(products)
+            # Cada producte és una tanda de consultes: el progrés es publica a cada un.
+            for idx_product, product in enumerate(products, start=1):
+                report_progress(task, idx_product, len(products), every=1)
                 row = 0
                 # Create a sheet named after the product (keep it <= 31 characters and avoid special chars)
                 sheet_title = str(product.name)[:31]  # Excel has a 31-char limit for sheet names
@@ -1891,7 +2218,6 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
                 line_item_types = LineItemType.objects.filter(line_items__product=product).distinct()
                 
                 for line_item_type in line_item_types:
-                    print(line_item_type)
                     filtered_invoices = invoices.filter(line_items__line_item_type=line_item_type)
                     print(filtered_invoices.count())
                     
@@ -1923,7 +2249,8 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -2116,8 +2443,10 @@ def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=Non
             'contract__token',
             'origin__name'
         ).order_by('serie_final')
-        
-        for invoice in invoices_with_relations:
+
+        total_invoices_progress = invoices_with_relations.count()
+        for idx_invoice, invoice in enumerate(invoices_with_relations, start=1):
+            report_progress(task, idx_invoice, total_invoices_progress)
             # Get contract token - contract is already fetched via select_related
             contract_token = invoice.contract.token if invoice.contract else ""
             origin_name = invoice.origin.name if invoice.origin else ""
@@ -2163,8 +2492,9 @@ def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=Non
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
+        logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 #NAVISION MURCIA
 def generate_billing_taxes_detailed_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -2563,8 +2893,9 @@ def generate_billing_taxes_detailed_summary(request, black_fill=None, white_bold
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
+        logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 def generate_billing_detailed_consumption_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -2778,8 +3109,9 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
+        logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_report_billing_total_by_person(request, black_fill=None, white_bold_font=None, task=None):
     
@@ -2943,7 +3275,8 @@ def generate_report_billing_total_by_person(request, black_fill=None, white_bold
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_report_billing_347(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -3017,7 +3350,9 @@ def generate_report_billing_347(request, black_fill=None, white_bold_font=None, 
         multi_q = invoice_multi_filter_q(**get_multi_ids(request.data))
 
         first = True
-        for comp in companies:
+        # Cada empresa és una consulta agregada: el progrés es publica a cada una.
+        for idx_company, comp in enumerate(companies, start=1):
+            report_progress(task, idx_company, len(companies), every=1)
             company_id = comp['effective_company_id']
             company_name = comp.get('effective_company_alias') or f"Company {company_id}"
             # Invoices that belong to this company (direct or via exploitation)
@@ -3119,8 +3454,9 @@ def generate_report_billing_347(request, black_fill=None, white_bold_font=None, 
         os.remove(filename)
         return response, document_id, filename
     except Exception as e:
+        logger.exception("Error inesperat")
         print("error: ", e)
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_cobraments_report(request, black_fill=None, white_bold_font=None, task=None):
     """
@@ -3146,7 +3482,8 @@ def generate_cobraments_report(request, black_fill=None, white_bold_font=None, t
             start_date = parse_date(date_range[0])
             end_date = parse_date(date_range[1])
     except Exception as e:
-        return Response({"error": f"Invalid date format: {e}"}, status=status.HTTP_400_BAD_REQUEST), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Invalid date format."}, status=status.HTTP_400_BAD_REQUEST), None, None
 
     # Query movements within range
     movements_qs = PaymentMovement.objects.filter(
@@ -4101,10 +4438,11 @@ def generate_recaptacio_conceptes_excel(request, black_fill=None, white_bold_fon
         return response, document_id, filename
 
     except Exception as e:
+        logger.exception("Error inesperat")
         import traceback
         print("Error in generate_recaptacio_conceptes_excel: ", e)
         traceback.print_exc()
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 
@@ -4381,10 +4719,11 @@ def generate_clavegueram_invoices_excel(request, black_fill=None, white_bold_fon
         return response, document_id, filename
 
     except Exception as e:
+        logger.exception("Error inesperat")
         import traceback
         print("Error in generate_clavegueram_invoices_excel: ", e)
         traceback.print_exc()
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_no_register_aca_contracts_report(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -4463,8 +4802,10 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
             _("Consum facturat"),
             ]
         row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
-        
-        for invoice in invoices:
+
+        total_invoices_progress = invoices.count()
+        for idx_invoice, invoice in enumerate(invoices, start=1):
+            report_progress(task, idx_invoice, total_invoices_progress)
             row_data = [
                 str(invoice.contract.supply_point_default.address) if invoice.contract and invoice.contract.supply_point_default and invoice.contract.supply_point_default.address else "",
                 invoice.contract.token if invoice.contract else "",
@@ -4497,10 +4838,11 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
         return response, document_id, filename
 
     except Exception as e:
+        logger.exception("Error inesperat")
         import traceback
         print("Error in generate_no_register_aca_contracts_report: ", e)
         traceback.print_exc()
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 # Permet personalitzar els reports per client: si existeix report_billing_service_personalized,
 # s'usen les seves funcions en lloc de les d'aquest mòdul.

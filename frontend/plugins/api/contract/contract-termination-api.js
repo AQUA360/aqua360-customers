@@ -131,9 +131,12 @@ export default defineNuxtPlugin(nuxtApp => {
 
     // Create a FormData object
     const formData = new FormData();
-    if (data) {
+    if (data?.status) {
       formData.append('status', data.status);
       formData.append('status_name', data.status_name);
+    }
+    if (data?.ignore_invoice) {
+      formData.append('ignore_invoice', 'true');
     }
 
     try {

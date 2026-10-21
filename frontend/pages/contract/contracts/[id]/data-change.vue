@@ -251,6 +251,13 @@ const isTotalPersonsValid = computed(() => {
   return Number.isInteger(value) && value >= 1;
 });
 
+/** Ampliació de trams de l'ACA: el backend només informa el mínim si el contracte en té
+ * la bonificació activa; per sota, en desar es desactivaran la bonificació i les variables. */
+const acaTramWillDeactivate = computed(() => {
+  const minPersons = contract.value?.aca_tram_min_persons;
+  return minPersons != null && isTotalPersonsValid.value && Number(contract.value?.total_persons) < minPersons;
+});
+
 const save = async () => {
   if (isSaving.value) return;
   // Persones a l'habitatge: 0 o negatiu trenca la facturació (divisió per zero)
@@ -624,6 +631,11 @@ onMounted(async () => {
             <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0 text-base" />
             <span>{{ $t('contract_block.total_persons_min') }}</span>
           </div>
+          <div v-if="acaTramWillDeactivate"
+            class="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0 text-base" />
+            <span>{{ $t('contract_block.aca_tram_deactivation_warning', { min: contract.aca_tram_min_persons }) }}</span>
+          </div>
         </div>
 
         <div v-if="allowContractDateEdit" class="max-w-xl mb-5">
@@ -707,7 +719,7 @@ onMounted(async () => {
 
     <div role="region" id="right_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
-      :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
+      :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="showRegion = false" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />

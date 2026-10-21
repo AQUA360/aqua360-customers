@@ -456,6 +456,7 @@ def return_billing_months_for_lineitemtype(billing_period_token):
 
 # Create Contract from ContractRequest
 def create_from_lineitemtype(contract, line_item_type, reading, consumption, consumption_days, existing_line_items=None, change_date=None, prev_invoice = None, leak_reading=None, is_termination=False, billing_correction=None, prev_date = None, period_months=None):
+    """Builds the invoice line items for a contract's line item type based on the given reading and consumption."""
     # log removed
     # print(f"Contract: {contract}")
     # print(f"Reading: {reading}")
@@ -912,9 +913,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                         price = float(price_unit) * float(units)
                         if corrected_price_tram:
                             price = corrected_price_tram
-                        print("add new line item: ", name)
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
-                        print(linies)
                     elif price_proporcional_original is not None:
                         price_unit = tram.proportional_price
                         units = quantitat

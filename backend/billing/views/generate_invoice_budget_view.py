@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 import uuid
 from django.conf import settings
 from django.db import transaction
@@ -25,12 +26,20 @@ from billing.utils.invoice_service import (
     generate_empty_invoice,
 )
 
+logger = logging.getLogger(__name__)
+
 class GenerateInvoiceBudgetView(APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Invoice.objects.all().order_by('-created_at')
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
+        """Generate a budget or convert one to an invoice for the requested entity.
+
+        For terminations, prioritize the active linked request that bills the
+        closing reading. Apply the requested payment dates and return the
+        serialized document, or an error response if generation produces none.
+        """
         
         entity = request.data.get('entity', None)
         object_id = request.data.get('object_id', None)
@@ -103,7 +112,7 @@ class GenerateInvoiceBudgetView(APIView):
             
             print("contract_termination_request")
             # Find linked contract request for surrogation/alta cases (Alta + Baixa vinculades)
-            linked_contract_request = contract_termination_request.contract_requests_termination_requests.filter(bill_cut_reading=True, is_active=True).first()
+            linked_contract_request = contract_termination_request.get_billing_contract_request()
 
             # Save bill_cut_reading if provided in the request.
             # Qui decideix si la lectura de tall es cobra a l'alta és la ContractRequest: la
@@ -122,6 +131,18 @@ class GenerateInvoiceBudgetView(APIView):
             if linked_contract_request:
                 bill_termination_requester = False
 
+            logger.info(
+                "Termination %s invoice (is_budget=%s, user=%s): linked contract requests (id, bill_cut_reading, is_active) %s, "
+                "billed contract request=%s, bill_termination_requester=%s (requested %s), "
+                "dialog sent a bank=%s, it is the terminated contract's bank=%s",
+                contract_termination_request.id, bool(is_budget), request.user.id,
+                list(contract_termination_request.contract_requests_termination_requests.values_list('id', 'bill_cut_reading', 'is_active')),
+                linked_contract_request.id if linked_contract_request else None,
+                bill_termination_requester, bool(request.data.get('bill_termination_requester', False)),
+                payment_bank is not None,
+                payment_bank is not None and contract.payment is not None and str(payment_bank) == str(contract.payment.IBAN_id),
+            )
+
             budget_type_token = ConfigProject.objects.get(token='invoice_type_budget_token').value
 
             if not is_budget:
@@ -134,11 +155,13 @@ class GenerateInvoiceBudgetView(APIView):
                 print("passing from budget to invoice")
                 invoice = pass_budget_to_invoice(budget)
             else:
+                # Una baixa tancada "sense factura" (p. ex. des de l'alta) es pot acabar facturant
+                if contract_termination_request.ignore_invoice:
+                    ContractTerminationRequest.objects.filter(id=contract_termination_request.id).update(ignore_invoice=False)
                 Invoice.objects.filter(contract_termination=contract_termination_request, type__token=budget_type_token).delete()
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
-                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester)
+                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
             print("invoice")
-            print(invoice)
         
         elif entity == "connection_request":
             connection_request = ConnectionRequest.objects.get(id=object_id)
@@ -160,7 +183,6 @@ class GenerateInvoiceBudgetView(APIView):
                 # invoice = invoice_connection_generate(None, object_id, 'SOL·LICITUD D\'ESCOMESA', payment_type, payment_bank, company_bank, is_budget, electronic_data)
                 invoice = generate_empty_invoice(None, connection_request, connection_request.person, 'SOL·LICITUD D\'ESCOMESA', payment_data, connection_request.exploitation)
             print("invoice")
-            print(invoice)
         
         elif entity == "invoice":
             if is_budget:
@@ -178,6 +200,12 @@ class GenerateInvoiceBudgetView(APIView):
             # Save bill_cut_reading if provided in the request and propagate to terminations
             bill_cut_reading = request.data.get('bill_cut_reading', None)
             if bill_cut_reading is not None:
+                if bool(contract_request.bill_cut_reading) != bool(bill_cut_reading):
+                    logger.info(
+                        "Contract request %s bill_cut_reading %s -> %s from billing dialog (user=%s), propagated to terminations %s",
+                        contract_request.id, contract_request.bill_cut_reading, bill_cut_reading, request.user.id,
+                        list(contract_request.contract_termination_requests.values_list('id', flat=True)),
+                    )
                 contract_request.bill_cut_reading = bill_cut_reading
                 contract_request.save()
                 # Propagate to linked termination requests
@@ -443,7 +471,6 @@ class GenerateInvoiceBudgetView(APIView):
             print("updating payment budget")
             payment_type_instance = PaymentType.objects.get(id = payment_type)
             print("payment type")
-            print(payment_type_instance)
             payment_bank_instance = PersonBank.objects.get(id = payment_bank) if payment_bank else None
             payment_comp_bank_instance = CompanyBank.objects.get(id = company_bank) if company_bank else None
             iban = None

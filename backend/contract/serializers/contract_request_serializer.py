@@ -1,3 +1,4 @@
+import logging
 from django.db import transaction
 from rest_framework import serializers
 from billing.serializers.general_payment_serializer import GeneralPaymentSerializer
@@ -5,7 +6,9 @@ from claimrequest.models import VulnerabilityRequest
 from contract.serializers.bonification_serializer import BonificationSerializer
 from contract.serializers.contract_clause_serializer import ContractClauseSerializer
 from contract.serializers.contract_request_representative_serializer import ContractRequestRepresentativeSerializer
+from django.utils.translation import gettext_lazy as _
 from coredata.models import PersonCNAE, PersonContact
+from coredata.utils.phone_utils import non_mobile_sms_phones
 from coredata.serializers import PersonAddressSerializer, PersonCNAESerializer, PersonContactSerializer, PersonSerializer
 from auth.serializers import UserMinimalSerializer
 from documentmanager.serializers import DocumentSerializer
@@ -23,6 +26,7 @@ from .variable_serializer import VariableSerializer
 from .contract_request_type_serializer import ContractRequestTypeSerializer
 from .contract_request_base_serializer import ContractRequestSerializer
 
+logger = logging.getLogger(__name__)
 
 class ContractRequestRepresentativeSerializer(serializers.ModelSerializer):
     person = PersonSerializer(required=False, allow_null=True)
@@ -104,7 +108,11 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
         default_status = ContractRequestStatus.objects.filter(is_default=True).first()
         if default_status:
             validated_data['status'] = default_status
-        
+
+        # Sense sol·licitant, el titular fa de sol·licitant
+        if not validated_data.get('person') and validated_data.get('holder'):
+            validated_data['person'] = validated_data['holder']
+
         # Creem l'objecte ContractRequest sense el camp 'contacts'
         obj = ContractRequest.objects.create(**validated_data)
         
@@ -207,6 +215,11 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
     
     @transaction.atomic
     def update(self, instance, validated_data):
+        """Save and return the request with its submitted related data.
+
+        Update contacts, representatives, rates and payment details, log status
+        changes, and save any supplied closing reading on linked terminations.
+        """
         # Verificar si 'representatives' i 'contacts' han estat enviats en les dades d'entrada
         representatives_present = 'representatives' in self.initial_data
         representatives_data = validated_data.pop('representatives', None)
@@ -252,9 +265,20 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
         if 'person' in validated_data and validated_data['person'] is None:
             validated_data.pop('person')
         
+        if 'bill_cut_reading' in validated_data and bool(validated_data['bill_cut_reading']) != bool(instance.bill_cut_reading):
+            request = self.context.get('request')
+            logger.info(
+                "Contract request %s bill_cut_reading %s -> %s (user=%s)",
+                instance.id, instance.bill_cut_reading, validated_data['bill_cut_reading'],
+                request.user.id if request else None,
+            )
+        
         # Actualitzar camps de ContractRequest
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        # Sense sol·licitant, el titular fa de sol·licitant
+        if instance.person_id is None and instance.holder_id:
+            instance.person = instance.holder
         instance.save()
         
         # Assignar els contacts si estan presents
@@ -394,6 +418,13 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
 
         return instance
     
+    def validate_sms_phones(self, value):
+        current_ids = self.instance.person_contact_sms.values_list('id', flat=True) if self.instance else []
+        phones = non_mobile_sms_phones(value, current_ids)
+        if phones:
+            raise serializers.ValidationError(_("Aquests telèfons no són mòbils i no poden rebre SMS: %(phones)s") % {'phones': ', '.join(phones)})
+        return value
+
     def validate(self, data):
         if not self.instance and 'token' not in data:
             raise serializers.ValidationError({"token": "This field is required."})

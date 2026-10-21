@@ -41,6 +41,8 @@ const sortDesc = ref(false);
 const permissions = ref(null);
 const selectedFilters = ref([]);
 const selected_types = ref([]);
+// Els processos cancel·lats s'amaguen per defecte (un filtre d'estat explícit els mostra igualment).
+const showCancelled = ref(false);
 const types = ref([]);
 const filter_status = ref([]);
 const filter_types = ref([]);
@@ -85,7 +87,7 @@ const exportColumns = computed(() => [
 ]);
 
 const exportProcesses = () => $CommunicationProcessApiService.exportData(
-  searchInput.value, selectedFilters.value, sortBy.value, sortDesc.value, types.value
+  searchInput.value, selectedFilters.value, sortBy.value, sortDesc.value, types.value, !showCancelled.value
 );
 
 const getData = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, types = []) => {
@@ -98,7 +100,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
 
   try {
     processing_status_token.value = await $ConfigProjectApiService.get('communication_process_status_processing_token');
-    const data = await $CommunicationProcessApiService.getAll(searchQuery, filters, page, sort, desc, types);
+    const data = await $CommunicationProcessApiService.getAll(searchQuery, filters, page, sort, desc, types, null, !showCancelled.value);
 
     items.value = data.results;
     Object.assign(pagination.value, {
@@ -203,6 +205,7 @@ const resetFilters = () => {
   selected_types.value = [];
   types.value = [];
   isFilterShown.value = [];
+  showCancelled.value = false;
   debouncedGetData(searchInput.value, selectedFilters.value, sortBy.value, sortDesc.value, types.value);
 };
 
@@ -286,6 +289,10 @@ watch(() => route.query, () => {
             status.name }}
         </label>
       </span>
+      <label class="text-slate-800 text-base flex items-center gap-1">
+        <input type="checkbox" v-model="showCancelled" @change="handleFilterChange" /> {{ $t('customer_service_block.show_cancelled_processes') }}
+      </label>
+
       <span>
         <button id="filterShow" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
           @click="isFilterOpen = !isFilterOpen" title="show">
@@ -394,7 +401,7 @@ watch(() => route.query, () => {
 
   <div role="region" id="right_page"
     class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white"
-    :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-[55%]': !isSubRegionOpen }">
+    :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-[55%]': !isSubRegionOpen }">
     <div id="region_nav" class="mb-3 px-3">
       <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
         <Icon name="fa6-solid:angles-right" class="text-slate-500" />

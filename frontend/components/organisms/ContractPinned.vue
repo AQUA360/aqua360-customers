@@ -23,10 +23,12 @@ import AddInvoiceBudget from '../molecules/AddInvoiceBudget.vue';
 import AddFraud from '../molecules/AddFraud.vue';
 import FraudRegion from './FraudRegion.vue';
 import IncidentRegion from './IncidentRegion.vue';
+import OrderRegion from './OrderRegion.vue';
 import PriceRateRegionDetail from './PriceRateRegionDetail.vue';
 import PriceIntervalRegion from './PriceIntervalRegion.vue';
 import CalendarTaskEdit from '../molecules/CalendarTaskEdit.vue';
 import PiggyBankRegion from './PiggyBankRegion.vue';
+import ContractDebtRegion from './ContractDebtRegion.vue';
 import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
@@ -747,6 +749,8 @@ const setActiveTab = (tab) => {
                 :id="parseInt(regionDetailId)" :isSubRegion="true" />
             <IncidentRegion v-if="showRegionDetailComponent === 'IncidentRegion'"
                 :id="parseInt(regionDetailId)" :isSubRegion="true" />
+            <OrderRegion v-if="showRegionDetailComponent === 'OrderRegion'"
+                :id="parseInt(regionDetailId)" :isSubRegion="true" />
             <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'"
                 :id="regionDetailId" :isSubRegion="true" @update-id="(newId) => regionDetailId = newId"
                 @changed="handleChange(false)" @pdf-generated="onInvoicePdfGenerated" />
@@ -762,6 +766,8 @@ const setActiveTab = (tab) => {
                 :isSubRegion="true" @changed="handleChange" />
             <PiggyBankRegion v-if="showRegionDetailComponent === 'PiggyBankRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" @changed="handleChange" @show-subregion="handleSubRegionEvent" />
+            <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
+                :isSubRegion="true" @changed="getContractData(false)" @show-subregion="handleSubRegionEvent" />
             <AddReading v-if="showRegionDetailComponent === 'AddReading'" :contract="contract"
                 :contract_ids="[contract.id]" :isSubRegion="true" />
             <AddInvoiceBudget v-if="showRegionDetailComponent === 'AddInvoiceBudget'" :isSubRegion="true"

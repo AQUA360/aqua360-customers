@@ -22,6 +22,9 @@ from order.models import Order, OrderStatus, OrderObservation, Operator, OrderTy
 from order.serializers.order_serializer import OrderSerializer
 from lecturapp.decorators import lecturapp_auth_required as token_required
 from lecturapp.models import ReadingOperator
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Form Validation Helpers
@@ -1185,6 +1188,7 @@ def add_order_report(request, order_id):
         return JsonResponse(response_data, status=201)
 
     except Exception as e:
+        logger.exception("Error inesperat")
         # Cleanup photo documents on error
         if photo_document_ids:
             cleanup_photo_documents(photo_document_ids)
@@ -1195,7 +1199,7 @@ def add_order_report(request, order_id):
         print("TRACEBACK:", traceback.format_exc())
 
         return JsonResponse(
-            {"success": False, "message": f"Error creating report: {str(e)}"},
+            {"success": False, "message": "Error creating report."},
             status=500,
         )
 
@@ -1333,12 +1337,13 @@ def upload_form_photo(request, order_id):
         )
 
     except Exception as e:
+        logger.exception("Error inesperat")
         import traceback
 
         print("ERROR:", str(e))
         print("TRACEBACK:", traceback.format_exc())
         return JsonResponse(
-            {"success": False, "message": f"Error uploading photo: {str(e)}"},
+            {"success": False, "message": "Error uploading photo."},
             status=500,
         )
 
@@ -1422,12 +1427,13 @@ def remove_form_photo(request, order_id):
         )
 
     except Exception as e:
+        logger.exception("Error inesperat")
         import traceback
 
         print("ERROR:", str(e))
         print("TRACEBACK:", traceback.format_exc())
         return JsonResponse(
-            {"success": False, "message": f"Error removing photo: {str(e)}"},
+            {"success": False, "message": "Error removing photo."},
             status=500,
         )
 
@@ -1611,12 +1617,13 @@ def add_order_report_document(request, order_id, report_id):
         )
 
     except Exception as e:
+        logger.exception("Error inesperat")
         import traceback
 
         print("ERROR:", str(e))
         print("TRACEBACK:", traceback.format_exc())
         return JsonResponse(
-            {"success": False, "message": f"Error uploading document: {str(e)}"},
+            {"success": False, "message": "Error uploading document."},
             status=500,
         )
 

@@ -251,6 +251,11 @@ const sortReadingsBy = (field) => {
   getData(1, search_filter.value, showLeak.value, showLeakCurrent.value)
 }
 
+// Exporta a Excel les lectures del detall obert, amb els mateixos filtres.
+const exportShownReadings = () => $ReadingApiService.exportReadingsByBatchMinimal(
+  batch_id.value, search_filter.value, showLeak.value, showLeakCurrent.value, sortBy.value, sortDesc.value, searchInput.value
+);
+
 const exportCheckReadings = () => {
   showRegionComponent.value = "ExportReadings";
   showRegion.value = true;
@@ -696,7 +701,7 @@ watch(() => props.batch_id, (newVal) => {
         isEmbedded ? 'h-full flex-1 flex flex-col min-h-0' : 'fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-20 overflow-hidden flex flex-col',
         !isEmbedded ? { 
           'translate-x-0': showRegion, 
-          'translate-x-[2000px]': !showRegion, 
+          'translate-x-full': !showRegion, 
           'w-[90%]': showRegionComponent != 'ExportReadings', 
           'w-[55%]': showRegionComponent == 'ExportReadings' 
         } : ''
@@ -715,12 +720,17 @@ watch(() => props.batch_id, (newVal) => {
 
       <div v-if="showRegionComponent == 'readings'" class="px-10 flex flex-col flex-1 min-h-0">
         <h1 class="text-2xl font-bold mb-4">{{ t('readings') }} {{ translateWarningAlert(title) }}</h1>
-        <span class="input-group flex flex-start items-center gap-2 w-80">
-          <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
-          <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
-            :placeholder="$t('contract_block.search_by_token')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
-            autocomplete="off" />
-        </span>
+        <div class="flex justify-between items-center gap-2">
+          <span class="input-group flex flex-start items-center gap-2 w-80">
+            <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
+            <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
+              :placeholder="$t('contract_block.search_by_token')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
+              autocomplete="off" />
+          </span>
+          <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportShownReadings"
+            :disabled="loadingReadings || !pagination.total"
+            :export-name="`${t('readings')} ${translateWarningAlert(title)}`.trim()" />
+        </div>
         <div class="flex items-center gap-2 mt-3">
           <input type="checkbox" v-model="showLeak" @change="leakFilter()">
           <label>{{ t('billing_block.prev_leaks') }}</label>
@@ -788,7 +798,7 @@ watch(() => props.batch_id, (newVal) => {
     <div role="region" id="right_over_page"
       :class="[
         isEmbedded ? 'h-full border-l border-gray-100 py-2 bg-white w-1/2 overflow-y-auto' : 'fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[60%] z-50 shadow',
-        !isEmbedded ? { 'translate-x-0': showSubRegion, 'translate-x-[2000px]': !showSubRegion } : { 'hidden': !showSubRegion }
+        !isEmbedded ? { 'translate-x-0': showSubRegion, 'translate-x-full': !showSubRegion } : { 'hidden': !showSubRegion }
       ]">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleSubRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
@@ -806,7 +816,7 @@ watch(() => props.batch_id, (newVal) => {
     <!-- Pending Readings Read-only Region -->
     <div role="region"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[80%] z-40 overflow-hidden flex flex-col shadow-lg"
-      :class="{ 'translate-x-0': showPendingRegion, 'translate-x-[2000px]': !showPendingRegion }">
+      :class="{ 'translate-x-0': showPendingRegion, 'translate-x-full': !showPendingRegion }">
       <div class="mb-3 px-3">
         <button @click="showPendingRegion = false" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
@@ -851,7 +861,7 @@ watch(() => props.batch_id, (newVal) => {
     <!-- Fix Reading Error Region -->
     <div role="region"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[30%] z-[60] overflow-hidden flex flex-col shadow-lg"
-      :class="{ 'translate-x-0': showFixRegion, 'translate-x-[2000px]': !showFixRegion }">
+      :class="{ 'translate-x-0': showFixRegion, 'translate-x-full': !showFixRegion }">
       <div class="mb-3 px-3">
         <button @click="closeFixRegion" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />

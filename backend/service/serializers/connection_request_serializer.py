@@ -133,7 +133,6 @@ class ConnectionRequestSaveSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         print("UPDATING CONNECTION REQUEST")
-        print(validated_data)
         previous_status = instance.status
         company = validated_data.pop('company', None)
         person = validated_data.pop('person', None)

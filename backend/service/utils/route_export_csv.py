@@ -1,4 +1,4 @@
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 from io import StringIO
 
 from django.utils.translation import gettext as _
@@ -45,7 +45,7 @@ def build_route_export_csv_bytes(route):
     """
     buffer = StringIO()
     buffer.write('﻿')
-    writer = csv.writer(buffer, delimiter=';')
+    writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(build_route_export_headers())
 
     positions = route.positions.all().order_by('position').prefetch_related('properties__supply_points')

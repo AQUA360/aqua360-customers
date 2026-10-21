@@ -74,7 +74,7 @@ All services should be running (and `healthy` where applicable). All of them use
 | `backend` | Django API |
 | `celery-worker` | Background tasks |
 | `celery-beat` | Scheduled tasks |
-| `gmao-consumer` | GMAO consumer (`manage.py run_gmao_consumer`) |
+| `gmao-consumer` | GMAO consumer (`manage.py run_gmao_consumer`). Only with `COMPOSE_PROFILES=gmao` in `.env` |
 | `frontend` | Nuxt interface |
 
 ### 5. Administration and Test Data
@@ -130,6 +130,20 @@ docker compose exec backend python manage.py migrate --noinput
 docker compose up -d celery-worker celery-beat gmao-consumer
 docker compose up -d frontend
 ```
+
+### Images built on GitHub
+
+When a release is published, the `.github/workflows/imatges.yml` action builds the backend and frontend images and pushes them to `ghcr.io/aqua360/aqua360-customers-backend` and `ghcr.io/aqua360/aqua360-customers-frontend`, tagged with the release (for example, `v1.135.00`) and with the commit. The images only contain this repository's code: each customer's configuration (`.env`) is read when the container starts.
+
+To run a version without building anything on the server, set it in `.env` and:
+
+```bash
+# .env: CUSTOMERS_VERSION=v1.135.00
+docker compose pull
+docker compose up -d
+```
+
+Rolling back means setting the previous version and repeating (migrations are not undone). Without `CUSTOMERS_VERSION`, or with `up --build`, the server builds as before (`local-<stack>` tag, one per stack so stacks on the same server do not share an image).
 
 ### Automated Deployment (Ansible)
 

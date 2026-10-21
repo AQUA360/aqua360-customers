@@ -45,7 +45,7 @@ class GiswaterClientTest(TestCase):
         mock_get.return_value = mock_response
 
         client = GiswaterClient()
-        result = client.get_list(schema="ws", table_name="ve_connec")
+        result = client.get_list(schema="ws", table_name="ve_connec", filter_fields=None)
 
         self.assertEqual(result, {"data": [{"id": 1}]})
         mock_get.assert_called_once_with(
@@ -75,7 +75,7 @@ class GiswaterClientTest(TestCase):
 
         client = GiswaterClient()
         with self.assertRaises(GiswaterApiError):
-            client.get_list(schema="ws", table_name="ve_connec")
+            client.get_list(schema="ws", table_name="ve_connec", filter_fields=None)
 
         log = IntegrationRequestLog.objects.get()
         self.assertFalse(log.success)
@@ -87,7 +87,7 @@ class GiswaterClientTest(TestCase):
 
         client = GiswaterClient()
         with self.assertRaises(GiswaterApiError):
-            client.get_list(schema="ws", table_name="ve_connec")
+            client.get_list(schema="ws", table_name="ve_connec", filter_fields=None)
 
         log = IntegrationRequestLog.objects.get()
         self.assertFalse(log.success)
@@ -108,7 +108,7 @@ class GiswaterClientTest(TestCase):
         mock_get.return_value = mock_response
 
         client = GiswaterClient()
-        client.get_list(schema="ws", table_name="ve_connec")
+        client.get_list(schema="ws", table_name="ve_connec", filter_fields=None)
 
         mock_get_http_auth.assert_called_once()
         mock_get.assert_called_once()
@@ -128,7 +128,7 @@ class GiswaterClientTest(TestCase):
         mock_get.return_value = mock_response
 
         client = GiswaterClient()
-        client.get_list(schema="ws", table_name="ve_connec")
+        client.get_list(schema="ws", table_name="ve_connec", filter_fields=None)
 
         mock_get.assert_called_once()
         self.assertNotIn("Authorization", mock_get.call_args.kwargs["headers"])

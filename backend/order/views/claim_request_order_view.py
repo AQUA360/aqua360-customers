@@ -7,6 +7,9 @@ from order.models import Order
 
 from ..utils.claim_request_order_service import create_orders_from_claim_request
 from order.permissions import ClaimRequestOrderPermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ClaimRequestOrderView(APIView):
     permission_classes = [IsAuthenticated, ClaimRequestOrderPermission]
@@ -42,4 +45,5 @@ class ClaimRequestOrderView(APIView):
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 

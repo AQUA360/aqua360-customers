@@ -317,6 +317,7 @@ const exportColumns = computed(() => [
   { header: t('common.operators'), value: (row) => (row.operators || []).map(o => (o?.name && o?.surname) ? `${o.name} ${o.surname}` : o?.token).join(', ') },
   { header: t('common.completion'), value: (row) => row.completed_at ? formatDate(row.completed_at) : '', key: 'completed_at' },
   { header: t('common.priority'), value: (row) => row.priority?.name || '', key: 'priority' },
+  { header: t('common.description'), value: (row) => row.description || '', key: 'description' },
 ]);
 
 const exportOrders = (columns) => $OrderApiService.exportData(
@@ -568,6 +569,11 @@ const getAddress = (item) => {
 
   return '-';
 }
+
+// Ordres creades a la GMAO que no s'han pogut vincular: porten el flag al
+// començament de la descripció i s'han de ressaltar per a revisió manual.
+const needsManualReview = (item) => !!item.description && item.description.startsWith('[REVISIÓ MANUAL]');
+
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
@@ -730,6 +736,14 @@ watch(() => route.query, () => {
                 </span>
               </div>
 
+              <!-- Description (visible perquè la llista de comandes ara la inclou) -->
+              <div v-if="item.description" class="text-sm whitespace-pre-wrap break-words"
+                :class="needsManualReview(item) ? 'text-amber-800 font-semibold' : 'text-slate-600'"
+                :title="item.description"
+                style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                {{ item.description }}
+              </div>
+
               <div class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                 <span>{{ formatDate(item.created_at) }}</span>
                 <span>{{ item.type?.name }}</span>
@@ -777,7 +791,7 @@ watch(() => route.query, () => {
     <!-- Desktop Grid View -->
     <div class="hidden md:flex md:flex-col md:overflow-x-auto">
       <DataTable
-        grid-template="80px,180px,120px,100px,180px,120px,160px,80px,100px,120px,120px,100px,140px"
+        grid-template="80px,180px,120px,100px,180px,120px,160px,80px,100px,120px,120px,100px,140px,180px"
         :pending="pending"
         :error="error"
         :is-empty="items.length === 0"
@@ -807,6 +821,7 @@ watch(() => route.query, () => {
           <TableHeader :label="$t('common.priority')" sortKey="priority__token" :currentSortBy="sortBy"
             :sortDesc="sortDesc" @sort="handleSort" />
           <div class="p-1 text-base font-semibold">{{ $t('common.related') }}</div>
+          <div class="p-1 text-base font-semibold">{{ $t('common.description') }}</div>
         </template>
 
         <template #default="{ gridStyle }">
@@ -821,8 +836,8 @@ watch(() => route.query, () => {
                 <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
               </button>
             </span>
-            <span class="p-1">{{ item.type?.name }}</span>
-            <span class="p-1">{{ item.reason?.name }}</span>
+            <span class="p-1" :title="item.type?.name">{{ item.type?.name }}</span>
+            <span class="p-1" :title="item.reason?.name">{{ item.reason?.name }}</span>
             <span class="p-1 overflow-hidden text-ellipsis whitespace-nowrap" :title="getAddress(item)">{{
               getAddress(item) }}</span>
             <span class="p-1 truncate"
@@ -867,6 +882,9 @@ watch(() => route.query, () => {
               </template>
               <span v-if="getRelatedBadges(item).length === 0" class="text-gray-400">-</span>
             </span>
+            <span class="p-1 overflow-hidden text-ellipsis whitespace-nowrap" :class="{
+              'text-amber-800 bg-amber-50 font-semibold rounded': needsManualReview(item)
+            }" :title="item.description">{{ item.description || '-' }}</span>
           </div><!-- end for items -->
         </template>
       </DataTable>
@@ -886,7 +904,7 @@ watch(() => route.query, () => {
       'left-0 md:right-0 md:left-auto': true,
       'border-l-0 md:border-l md:border-gray-100': true,
       'translate-x-0': showRegion,
-      '-translate-x-full md:translate-x-[2000px]': !showRegion,
+      '-translate-x-full md:translate-x-full': !showRegion,
       'w-screen max-w-full md:w-[95%]': isSubRegionOpen,
       'w-screen max-w-full md:w-1/2': !isSubRegionOpen
     }" style="max-width: 100vw;">

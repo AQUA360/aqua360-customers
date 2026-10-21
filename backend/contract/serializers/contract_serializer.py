@@ -14,6 +14,7 @@ from contract.serializers.contract_tenant_change_serializer import ContractTenan
 from contract.serializers.contract_minimal_serializer import ContractMinimalSerializer
 from contract.serializers.piggy_bank_serializer import PiggyBankSerializer
 from coredata.models import Person, PersonAddress, PersonContact, ConfigProject
+from coredata.utils.phone_utils import non_mobile_sms_phones
 from documentmanager.serializers import DocumentSerializer
 from contract.management.commands.fill_contract_use_aca import fill_contract_use_aca
 from notification.models import CalendarTask
@@ -223,10 +224,12 @@ class ContractSerializer(serializers.ModelSerializer):
     
     def get_request_invoices(self, obj):
         request_invoices = []
+        if not obj.contract_request_id:
+            return request_invoices
         try:
             type_final = ConfigProject.objects.get(token='invoice_type_invoice_token').value
             invoices = Invoice.objects.filter(
-                contract_request__token=obj.token,
+                contract_request_id=obj.contract_request_id,
                 type_final=type_final
                 ).order_by('-created_at')
             for invoice in invoices:
@@ -404,6 +407,13 @@ class ContractSerializer(serializers.ModelSerializer):
                 _("El nombre de persones a l'habitatge ha de ser com a mínim 1. "
                   "Si cal reflectir un cas especial, afegiu-ho com a variable del contracte.")
             )
+        return value
+
+    def validate_sms_phone_ids(self, value):
+        current_ids = self.instance.person_contact_sms.values_list('id', flat=True) if self.instance else []
+        phones = non_mobile_sms_phones(value, current_ids)
+        if phones:
+            raise serializers.ValidationError(_("Aquests telèfons no són mòbils i no poden rebre SMS: %(phones)s") % {'phones': ', '.join(phones)})
         return value
 
     def update(self, instance, validated_data):
@@ -623,7 +633,6 @@ class ContractSerializer(serializers.ModelSerializer):
         
         if 'is_pinned' in validated_data:
             print("is_pinned")
-            print(validated_data.get('is_pinned'))
             pinned_contract = Contract.objects.filter(user_pinned=user).first()
             if pinned_contract:
                 if pinned_contract.id == instance.id:
@@ -737,6 +746,7 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
     is_pinned = serializers.SerializerMethodField()
     is_checked = serializers.SerializerMethodField()
     person_role = serializers.SerializerMethodField()
+    supply_point_default_id = serializers.IntegerField(read_only=True, allow_null=True)
     previous_daily_consumption = serializers.SerializerMethodField()        # NECESSARY FOR EXTERNAL FUNCTIONS
     previous_period_consumption = serializers.SerializerMethodField()        # NECESSARY FOR EXTERNAL FUNCTIONS
     prefered_communication_type = serializers.SerializerMethodField()        # NECESSARY FOR EXTERNAL FUNCTIONS
@@ -775,13 +785,31 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
             'is_pinned',
             'is_checked',
             'person_role',
+            'supply_point_default_id',
             'important_observations',
             'is_fire',
             'previous_daily_consumption',
             'previous_period_consumption',
             'prefered_communication_type',
         ]
-    
+
+    def to_representation(self, instance):
+        # Nivells de vulnerabilitat de les persones del contracte perquè la
+        # pantalla de tall manual pugui avaluar les regles de protecció
+        # (holder, tenant o owner > 0) en seleccionar contractes.
+        """Include nullable holder, tenant and owner vulnerability levels in the contract summary."""
+        representation = super().to_representation(instance)
+        representation['holder_vulnerability_level'] = (
+            instance.holder.vulnerability_level if instance.holder else None
+        )
+        representation['tenant_vulnerability_level'] = (
+            instance.tenant.vulnerability_level if instance.tenant else None
+        )
+        representation['owner_vulnerability_level'] = (
+            instance.owner.vulnerability_level if instance.owner else None
+        )
+        return representation
+
     def get_prefered_communication_type(self, obj):
         return {
             'type': obj.communication_type,

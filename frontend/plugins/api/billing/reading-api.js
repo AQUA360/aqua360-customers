@@ -222,27 +222,34 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    // Filtres del llistat de lectures d'un lot (compartits amb l'exportació).
+    const byBatchMinimalParams = (batch_id, filter = null, previous_leak = false, leak = false, sort = null, desc = false, search = null) => {
+      let params = '';
+      if (batch_id) {
+        params += `?batch=${batch_id}`;
+      }
+      if (filter) {
+        params += `&${filter}`;
+      }
+      if (previous_leak) {
+        params += `&previous_leak=true`;
+      }
+      if (leak) {
+        params += `&leak=true`;
+      }
+      if (sort) {
+        params += `&ordering=${desc ? '-' : ''}${sort}`;
+      }
+      if (search && search != '') {
+        params += `&search=${encodeURIComponent(search)}`;
+      }
+      return params;
+    }
+
     const getReadingsByBatchMinimal = async (batch_id, page, filter = null, previous_leak = false, leak = false, sort = null, desc = false, search = null) => {
 
       let apiUrl = `${apiHost}${entity}by-batch-minimal/`
-      if (batch_id) {
-        apiUrl += `?batch=${batch_id}`;
-      }
-      if (filter) {
-        apiUrl += `&${filter}`;
-      }
-      if (previous_leak) {
-        apiUrl += `&previous_leak=true`;
-      }
-      if (leak) {
-        apiUrl += `&leak=true`;
-      }
-      if (sort) {
-        apiUrl += `&ordering=${desc ? '-' : ''}${sort}`;
-      }
-      if (search && search != '') {
-        apiUrl += `&search=${search}`;
-      }
+      apiUrl += byBatchMinimalParams(batch_id, filter, previous_leak, leak, sort, desc, search);
       apiUrl += `&page=${page}`;
       try {
         const response = await $apiManager.fetch(apiUrl,'GET');
@@ -266,6 +273,15 @@ export default defineNuxtPlugin(nuxtApp => {
       } catch (error) {
         throw error;
       }
+    }
+
+    // Exporta a Excel les lectures del llistat del lot amb els mateixos filtres (va a la cua de descàrregues).
+    const exportReadingsByBatchMinimal = async (batch_id, filter = null, previous_leak = false, leak = false, sort = null, desc = false, search = null) => {
+      let apiUrl = `${apiHost}${entity}by-batch-minimal/export/`;
+      apiUrl += byBatchMinimalParams(batch_id, filter, previous_leak, leak, sort, desc, search);
+      // Name for the downloads queue (set by useServerExport).
+      if ($apiManager.pendingExportName) apiUrl += `&export_name=${encodeURIComponent($apiManager.pendingExportName)}`;
+      return await $apiManager.fetch(apiUrl, 'POST');
     }
 
     const exportReadings = async (data) => {
@@ -348,6 +364,7 @@ export default defineNuxtPlugin(nuxtApp => {
       getReadingDetail,
       getReadingsByBatch,
       getReadingsByBatchMinimal,
+      exportReadingsByBatchMinimal,
       getModificationData,
       recalculateEstimatedReadings,
       estimateReading,

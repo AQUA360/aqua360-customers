@@ -390,8 +390,8 @@ const showDetail = function (component, id) {
           </label>
         </div>
         <div v-if="canChange && invoicePermissions?.can_change">
-          <ButtonOutline class="my-2" :disabled="ignoreInvoice"
-            @click="showDetail('AddInvoiceContract', null)">
+          <!-- Generar el pressupost treu la marca de "sense factura" (es desa al backend) -->
+          <ButtonOutline class="my-2" @click="showDetail('AddInvoiceContract', null)">
             <span v-if="terminationData.invoices.length == 0">
               {{ t('common.generate') }} {{ t('common.budget_detail') }}
             </span>

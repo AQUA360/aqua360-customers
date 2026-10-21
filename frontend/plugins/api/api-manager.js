@@ -85,13 +85,13 @@ export default defineNuxtPlugin(nuxtApp => {
 
         // If it's an object (field errors), attempt to extract messages
         if (error?.response?._data && typeof error.response._data === 'object' && !error?.response?._data?.message && !error?.response?._data?.error && !error?.response?._data?.detail) {
-          const fieldErrors = error.response._data;
-          message = Object.keys(fieldErrors)
-            .map(key => {
-              const errors = fieldErrors[key];
-              return Array.isArray(errors) ? errors.join(', ') : errors;
-            })
-            .join(' | ');
+          // Errors niats (p. ex. {street: {city: [...]}}) s'aplanen per no mostrar [object Object]
+          const flattenErrors = (errors) => {
+            if (Array.isArray(errors)) return errors.map(flattenErrors).join(', ');
+            if (errors && typeof errors === 'object') return Object.values(errors).map(flattenErrors).join(' | ');
+            return errors;
+          };
+          message = flattenErrors(error.response._data);
         }
 
         logError(`${method} ${url}`, error, { body });

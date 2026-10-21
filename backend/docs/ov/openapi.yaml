@@ -15,6 +15,7 @@ info:
     | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN |
     | `/ov/contact-data/` | GET | Consulta de la configuración del perfil (datos de facturación + dirección del titular) |
     | `/ov/invoices/` | GET | Listado de facturas (excluye pre-facturas) |
+    | `/ov/invoices/download/` | POST | Descarga en lote de facturas seleccionadas (ZIP) |
     | `/ov/invoice/` | GET | Detalle de una factura |
     | `/ov/invoice/{token}/detail/` | GET | Detalle completo de una factura (tarifas y desglose fiscal) |
     | `/ov/invoice/paid/` | POST | Marcar factura como pagada (TPV online) |
@@ -28,6 +29,7 @@ info:
     | `/ov/create-reading/` | POST | Registrar lectura de contador |
     | `/ov/contracts/` | GET | Listado de contratos por titular o pagador (DNI) |
     | `/ov/contract/{token}/` | GET | Detalle del contrato por token (incluye datos de la cuenta) |
+    | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (punto de suministro) |
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
     | `/ov/procedures/{contract_token}/upload-sepa-signed/` | POST | Subir y archivar el mandato SEPA firmado del contrato |
     | `/ov/procedures/{contract_token}/cancel-direct-debit/` | POST | Cancelar la domiciliación (revocación del mandato SEPA) y cambiar el tipo de pago |
@@ -51,7 +53,7 @@ info:
 
     ## Notas generales
 
-    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` devuelve el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, la clave `is_account_holder` no aparece en la respuesta.
+    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` y `/ov/contract-detail/` devuelven el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, la clave `is_account_holder` no aparece en la respuesta.
     - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
     - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
   version: 1.0.0
@@ -125,16 +127,20 @@ paths:
     get:
       tags:
         - Contrato
-      summary: Detalle del contrato (redirige a /ov/contract/{token}/)
+      summary: Detalle del contrato por contract_token de consulta
       description: |
-        Alias legacy de `GET /ov/contract/{token}/`. Recibe el identificador
-        como parámetro de consulta `contract_token` y responde con una
-        redirección `302 Found` al endpoint por token
-        (`contract-detail-by-token-ov`), conservando el resto de parámetros
-        de consulta (p. ej. `dni`).
+        Recibe el identificador como parámetro de consulta `contract_token`
+        y devuelve directamente los datos completos del contrato (mismo
+        esquema `ContractFullDetail` que `GET /ov/contract/{token}/`), sin
+        redirigir. El token puede contener barra (`/`, p. ej.
+        `12345678/001`), algo que un parámetro de ruta `<str:token>` no
+        podría resolver, por eso se busca por consulta a la base de datos.
 
-        Esta vista no consulta la base de datos: si el contrato no existe,
-        el `404 Not Found` lo devuelve la vista destino.
+        `400` si falta `contract_token`; `404` si el contrato no existe.
+
+        Igual que en `/ov/contract/{token}/`, el parámetro opcional `dni`
+        desenmascara el IBAN y expone `is_account_holder` solo cuando
+        coincide con el titular de la cuenta de domiciliación.
       operationId: getContractDetail
       security:
         - tokenAuth: []
@@ -142,18 +148,43 @@ paths:
         - $ref: "#/components/parameters/contractToken"
         - $ref: "#/components/parameters/dniOptional"
       responses:
-        "302":
-          description: Redirección a `/ov/contract/{token}/`, conservando los parámetros de consulta restantes
-          headers:
-            Location:
-              description: Ruta destino
+        "200":
+          description: Datos del contrato
+          content:
+            application/json:
               schema:
-                type: string
-              example: /ov/contract/CTR-001/?dni=12345678A
+                $ref: "#/components/schemas/ContractFullDetail"
+              example:
+                token: CTR-001
+                status_token: "1"
+                status_name: Activo
+                holder_token: "12345678A"
+                payment_type: DOM
+                use_type: Doméstico
+                last_invoice_date: "2026-01-15T10:30:00Z"
+                supply_point_address: "C/ Barcelona, 31, 08000 Barcelona"
+                meter_serial_number: MTR-001
+                meter_caliber: "15"
+                smart_metering: "false"
+                registration_date: "15/03/2020"
+                termination_date: null
+                nif: "12345678A"
+                tenant_name: Anna Garcia
+                holder_name: Anna Garcia
+                city: Barcelona
+                postal_code: "08110"
+                paper_invoice: "false"
+                email: anna.garcia@example.com
+                invoice_language: es
+                phone1: "600000000"
+                iban: "ES12***************7890"
+                holder_address: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /ov/billing-data/:
     get:
@@ -389,6 +420,92 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /ov/invoices/download/:
+    post:
+      tags:
+        - Facturas
+      summary: Descarga en lote de facturas (ZIP)
+      description: |
+        Descarga en un único ZIP los PDFs de las facturas indicadas. El
+        `contract_token` va en la query y la lista de fitxes en el cuerpo
+        JSON (`invoice_tokens`).
+
+        Reutiliza el mismo servicio de generación que
+        `GET /ov/invoice-pdf/` (`generate_report_invoice_pdf`) pero con
+        `save_pdf=False`: los bytes del PDF son idénticos sin registrar el
+        documento ni actualizar `invoice_file`.
+
+        Seguridad IDOR: todas las fitxes solicitadas deben pertenecer al
+        contrato indicado y ser definitivas (`type_final`), el mismo filtro
+        que la descarga individual; cualquier fitxa desconocida o de otro
+        contrato responde `400` con el detalle por token (mensaje genérico,
+        no revela si la fitxa existe en otro contrato).
+
+        Cada PDF se nombra `factura_<serie_final>.pdf` (o
+        `factura_<invoice_token>.pdf` si no tiene número), con las barras del
+        número sustituidas por `-` para que las entradas del ZIP no creen
+        subcarpetas; la respuesta es un fichero adjunto `facturas.zip`.
+      operationId: downloadInvoicesZip
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchInvoiceDownloadRequest"
+            example:
+              invoice_tokens:
+                - "INV-001"
+                - "INV-002"
+      responses:
+        "200":
+          description: ZIP con un PDF por factura solicitada
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: |
+            Falta `contract_token`, el cuerpo no es válido, la lista está
+            vacía o alguna fitxa no pertenece al contrato.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationErrors"
+                  - $ref: "#/components/schemas/ErrorMessage"
+              examples:
+                missingContractToken:
+                  summary: Falta contract_token en la query
+                  value:
+                    error: Contract token is required
+                emptyList:
+                  summary: Lista vacía
+                  value:
+                    invoice_tokens:
+                      - Esta lista no puede estar vacía.
+                unknownTokens:
+                  summary: Fitxa ajena al contrato o desconocida
+                  value:
+                    invoice_tokens:
+                      - Invoice not found for this contract: "FAKE-TOKEN"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          description: Fallo generando alguno de los PDFs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: "Failed to retrieve invoice PDF: ..."
 
   /ov/invoice/:
     get:
@@ -1013,9 +1130,9 @@ paths:
       summary: Detalle del contrato por token
       description: |
         Devuelve los datos del contrato identificado por el `token` incluido en la
-        propia ruta. Es la ruta destino de la redirección del alias legacy
-        `/ov/contract-detail/`, que recibe el identificador como parámetro de
-        consulta `contract_token`.
+        propia ruta. Equivalente a `/ov/contract-detail/`, que recibe el
+        identificador como parámetro de consulta `contract_token` (este admite
+        tokens con barra, que no caben en un parámetro de ruta `<str:token>`).
 
         Expande las estructuras de `/ov/contract-detail/` y `/ov/billing-data/`
         añadiendo los datos de la cuenta de domiciliación: el DNI de su titular,
@@ -1077,6 +1194,84 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /ov/contract/by-nic/{nic}/:
+    get:
+      tags:
+        - Contrato
+      summary: Búsqueda de contrato por NIC
+      description: |
+        Devuelve el contrato asociado a un NIC (token del punto de suministro,
+        `SupplyPoint.token`). Existe para los flujos de acceso directo donde la
+        frontend aún no dispone de `contract_token` y solo conoce el NIC del
+        cliente.
+
+        El NIC lleva «/» con una o dos barras: formato de dos tramos
+        `[num.puntosub]/[numcliente]` (p. ej. `12345/1234`) o de tres tramos
+        `[num.puntosub]/[numcliente]/[num.modificacion]` (p. ej.
+        `012345/654321/12345678`), por eso el parámetro de ruta usa el conversor
+        `path` de Django (si no, el ruter acaba en 404 a nivel de ruta antes de
+        llegar a la vista). El formato se valida con la expresión regular
+        `^\d+(?:/\d+){1,2}$` **antes** de consultar la base de datos.
+
+        Resolución del contrato: primero los puntos de suministro por defecto
+        del contrato (`supply_point_default`); si ningún contrato lo tiene como
+        por defecto, se busca por la relación muchos-a-muchos
+        (`supply_points`). Si el punto es por defecto de varios contratos se
+        devuelve el más reciente (`created_at` descendente).
+
+        El payload del `200` es idéntico al de `/ov/contract/{token}/` más la
+        clave explícita `contract_token` (con el mismo valor que `token`), que
+        la frontend reutiliza en `?contract_token=` del resto de endpoints.
+        Igual que en `/ov/contract/{token}/`, el parámetro opcional `dni`
+        desenmascara el IBAN y expone `is_account_holder` solo cuando coincide
+        con el titular de la cuenta de domiciliación.
+
+        Un `404` significa que el NIC no existe o no está asociado a ningún
+        contrato: la frontend muestra el mensaje «NIC inexistente».
+      operationId: getContractByNic
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/nicPath"
+        - $ref: "#/components/parameters/dniOptional"
+      responses:
+        "200":
+          description: Datos del contrato asociado al NIC
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractByNic"
+              example:
+                token: CTR-001
+                contract_token: CTR-001
+                status_token: "1"
+                status_name: Activo
+                holder_token: "12345678A"
+                payment_type: DOM
+                use_type: Doméstico
+                holder_name: Anna Garcia
+                city: Barcelona
+                postal_code: "08110"
+                iban: "ES12***************7890"
+        "400":
+          description: El NIC no cumple el formato esperado (`^\d+(?:/\d+){1,2}$`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Invalid NIC format
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: NIC inexistente o sin contrato asociado (la frontend muestra «NIC inexistente»)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Contract not found
 
   /ov/meter/{contract_token}/:
     get:
@@ -1350,7 +1545,8 @@ components:
       in: query
       required: false
       description: |
-        DNI/NIF del solicitante. En `/ov/contract/{token}/` determina la
+        DNI/NIF del solicitante. En `/ov/contract/{token}/` y en
+        `/ov/contract/by-nic/{nic}/` determina la
         bandera `is_account_holder` (solo se evalúa y se incluye en la
         respuesta cuando se envía) y desenmascara el IBAN cuando coincide con
         el titular de la cuenta de domiciliación.
@@ -1435,6 +1631,21 @@ components:
       schema:
         type: string
       example: CTR-001
+
+    nicPath:
+      name: nic
+      in: path
+      required: true
+      description: |
+        NIC = token del punto de suministro (`SupplyPoint.token`), con una o
+        dos barras: formato de dos tramos `[num.puntosub]/[numcliente]`
+        (p. ej. `12345/1234`) o de tres tramos
+        `[num.puntosub]/[numcliente]/[num.modificacion]` (p. ej.
+        `012345/654321/12345678`). El «/» forma parte de la propia ruta.
+      schema:
+        type: string
+        pattern: '^\d+(?:/\d+){1,2}$'
+      example: "012345/654321/12345678"
 
     contractTokenMeterPath:
       name: contract_token
@@ -1716,6 +1927,21 @@ components:
               nullable: true
               description: Dirección postal del titular del contrato (`PersonAddress` con `is_billing`); `null` si el titular no tiene dirección de envío
               example: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
+
+    BatchInvoiceDownloadRequest:
+      type: object
+      required:
+        - invoice_tokens
+      properties:
+        invoice_tokens:
+          type: array
+          minItems: 1
+          description: Fitxes de las facturas a incluir en el ZIP (se desduplican; todas deben pertenecer al contrato y ser definitivas)
+          items:
+            type: string
+          example:
+            - "INV-001"
+            - "INV-002"
 
     UpdateBillingDataRequest:
       type: object
@@ -2142,6 +2368,21 @@ components:
         iban:
           type: string
           description: IBAN de la cuenta de domiciliación. Se devuelve sin enmascarar solo cuando se envía el parámetro `dni` y este coincide con el titular de la cuenta (es decir, `is_account_holder` es `true`); en cualquier otro caso aparece enmascarado (8 primeros caracteres + asteriscos + 8 últimos)
+
+    ContractByNic:
+      description: |
+        Respuesta de `GET /ov/contract/by-nic/{nic}/`: el detalle completo del
+        contrato (`ContractFullDetail`) más `contract_token`.
+      allOf:
+        - $ref: "#/components/schemas/ContractFullDetail"
+        - type: object
+          required:
+            - contract_token
+          properties:
+            contract_token:
+              type: string
+              description: Token del contrato (`Contract.token`, idéntico al campo `token`); es el valor que la frontend pasa como `?contract_token=` en el resto de endpoints
+              example: CTR-001
 
     InvoiceFullDetail:
       type: object

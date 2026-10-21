@@ -395,6 +395,12 @@
     return null;
   };
 
+  // Només els informes que demanen l'any (347) l'han de rebre; si no, surt com a filtre a tots els informes.
+  const reportUsesYear = (report) => {
+    return ['model_347', 'report_billing_347'].includes(report.function_name) ||
+      (report.required_fields || []).some(f => ['model_347_year', 'year'].includes(f));
+  };
+
   const sections = computed(() => {
     const map = new Map();
     activeReports.value.forEach(report => {
@@ -478,6 +484,8 @@
     const selectedProdIds = formData.selected_product_ids || [];
     const formattedProductIds = Array.isArray(selectedProdIds) ? selectedProdIds.join(',') : selectedProdIds;
 
+    const reportYear = reportUsesYear(report) ? (formData.model_347_year || model347Year.value || null) : null;
+
     const payload = {
       date_range: formData.date_range || dateRange.value || null,
       start_date: (formData.date_range && formData.date_range[0])
@@ -505,8 +513,8 @@
         : (selectedReportType.value && selectedReportType.value.code !== 'null' ? selectedReportType.value.code : null),
       include_preinvoices: formData.include_preinvoices !== undefined ? formData.include_preinvoices : includePreinvoices.value,
       include_tax_free_lines: formData.include_tax_free_lines !== undefined ? formData.include_tax_free_lines : includeTaxFreeLines.value,
-      model_347_year: formData.model_347_year || model347Year.value || null,
-      year: formData.model_347_year || model347Year.value || null,
+      model_347_year: reportYear,
+      year: reportYear,
       product_ids: formattedProductIds,
       taxes_ids: formattedProductIds,
       payment_type_ids: Array.isArray(formData.selected_payment_type_ids) ? formData.selected_payment_type_ids.join(',') : (formData.selected_payment_type_ids || ''),
@@ -1081,7 +1089,7 @@
 
       <div role="region" id="right_page"
         class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-1/2"
-        :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion }">
+        :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion }">
         <div id="region_nav" class="mb-3 px-3">
           <button @click="closeRegion" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
             <Icon name="fa6-solid:angles-right" class="text-slate-500" />

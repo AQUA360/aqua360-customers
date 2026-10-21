@@ -39,7 +39,7 @@ const persons_no_contracts = computed(() => {
 
 const typeIcons = {
     'default': 'fa6-solid:envelope',
-    // 'sms': 'fa6-solid:phone',
+    'sms': 'fa6-solid:comment-sms',
     'email': 'fa6-solid:at',
     'letter': 'fa6-solid:envelope',
     // 'whatsapp': 'fa6-brands:whatsapp',
@@ -200,16 +200,16 @@ onMounted(async () => {
             </div>
         </div>
 
-        <div v-for="message in messages" :key="message.message_type_id" class="mb-6">
+        <div v-for="message in messages" :key="`message-${message.type?.id}`" class="mb-6">
             <div class="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
 
                 <div class="bg-gradient-to-r from-slate-50 to-slate-50 border-b border-slate-200">
                     <button @click="message.isOpen = !message.isOpen"
                         class="w-full px-6 py-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors duration-200 focus:outline-none"
-                        :aria-expanded="message.isOpen" :aria-controls="`message-content-${message.message_type_id}`">
+                        :aria-expanded="message.isOpen" :aria-controls="`message-content-${message.type?.id}`">
                         <div class="flex items-center space-x-3">
                             <div class="flex-shrink-0">
-                                <Icon :name="message.type.token ? typeIcons[message.type.token] : 'fa6-solid:envelope'"
+                                <Icon :name="typeIcons[message.type?.token] || typeIcons.default"
                                     class="w-5 h-5 text-sky-500" />
                             </div>
                             <div>
@@ -230,7 +230,7 @@ onMounted(async () => {
                 </div>
 
 
-                <div v-show="message.isOpen" :id="`message-content-${message.message_type_id}`"
+                <div v-show="message.isOpen" :id="`message-content-${message.type?.id}`"
                     class="px-6 py-4 bg-white">
                     <div class="border-l-4 border-sky-500 pl-4 mb-4">
                         <p class="text-sm text-slate-600">

@@ -121,23 +121,30 @@ watch(() => termination_request.value?.contract?.supply_points, async (newVal) =
   }
 }, { immediate: true, deep: true });
 
+let meterDataRequestId = 0;
+
 const fetchMeterData = async () => {
-  if (!selectedMeter.value) {
-    meterData.value = null;
-    return;
-  }
-  loadingMeterData.value = true;
+  const requestId = ++meterDataRequestId;
+  const meterId = selectedMeter.value;
+  meterData.value = null;
+  loadingMeterData.value = Boolean(meterId);
+  if (!meterId) return;
+
   try {
-    meterData.value = await $MeterApiService.getDetail(selectedMeter.value);
+    const response = await $MeterApiService.getDetail(meterId);
+    if (requestId !== meterDataRequestId || selectedMeter.value !== meterId) return;
+    meterData.value = response;
   } catch (error) {
+    if (requestId !== meterDataRequestId || selectedMeter.value !== meterId) return;
     console.error('Error fetching meter details:', error);
   } finally {
-    loadingMeterData.value = false;
+    if (requestId === meterDataRequestId && selectedMeter.value === meterId) {
+      loadingMeterData.value = false;
+    }
   }
 }
 
-watch(selectedMeter, fetchMeterData, { immediate: true });
-watch(selectedMeter, () => { editingInitialReading.value = false; });
+watch(selectedMeter, fetchMeterData, { immediate: true, flush: 'sync' });
 
 const meterPermissions = ref(null);
 const continueWithoutMeter = ref(false); // Comptador fictici (Aforament / Incendis)
@@ -161,11 +168,99 @@ const startEditInitialReading = () => {
 const cancelEditInitialReading = () => {
   request_reading.value = last_reading.value?.reading_value ?? request_reading.value;
   editingInitialReading.value = false;
+  resetInitialSmartMetering();
 }
 
 const fetchingSmartMetering = ref({});
 const smartMeteringResult = ref({});
 const smartMeteringPendingSave = ref({});
+
+const fetchingInitialSmartMetering = ref(false);
+const initialSmartMeteringResult = ref(null);
+const initialSmartMeteringPendingSave = ref(false);
+const initialSmartMeteringDate = ref(null);
+let initialSmartMeteringRequestId = 0;
+
+const canFetchInitialReadingFromSmartMetering = computed(() => {
+  return Boolean(
+    selectedMeter.value
+    && !continueWithoutMeter.value
+    && !withoutMeter.value
+    && !loadingMeterData.value
+    && meterData.value?.id === selectedMeter.value
+    && meterData.value?.has_remote_reading
+    && meterData.value?.remote_reading_type === 'SMART_METERING'
+  );
+});
+
+const resetInitialSmartMetering = () => {
+  initialSmartMeteringRequestId++;
+  fetchingInitialSmartMetering.value = false;
+  initialSmartMeteringResult.value = null;
+  initialSmartMeteringPendingSave.value = false;
+  initialSmartMeteringDate.value = null;
+};
+
+watch(selectedMeter, () => {
+  editingInitialReading.value = false;
+  resetInitialSmartMetering();
+}, { flush: 'sync' });
+
+watch([continueWithoutMeter, withoutMeter], resetInitialSmartMetering, { flush: 'sync' });
+
+const handleInitialReadingInput = () => {
+  resetInitialSmartMetering();
+};
+
+const fetchInitialReadingFromSmartMetering = async () => {
+  if (!canFetchInitialReadingFromSmartMetering.value) return;
+
+  const requestId = ++initialSmartMeteringRequestId;
+  const meterId = selectedMeter.value;
+  fetchingInitialSmartMetering.value = true;
+  initialSmartMeteringResult.value = null;
+  initialSmartMeteringPendingSave.value = false;
+  initialSmartMeteringDate.value = null;
+
+  try {
+    const response = await $SmartMeteringApiService.getMeterReading({
+      meter: meterData.value?.code || null,
+      meter_id: meterId,
+      date: format(new Date(), 'yyyy-MM-dd'),
+      margin: 5,
+    });
+
+    if (requestId !== initialSmartMeteringRequestId || selectedMeter.value !== meterId) return;
+
+    if (response?.found && response.reading_value != null) {
+      request_reading.value = response.reading_value;
+      initialSmartMeteringDate.value = response.reading_date
+        ? format(new Date(response.reading_date), 'yyyy-MM-dd')
+        : format(new Date(), 'yyyy-MM-dd');
+      initialSmartMeteringResult.value = 'found';
+      initialSmartMeteringPendingSave.value = true;
+      toast.success(
+        t('billing_block.smart_metering_reading_found', {
+          value: response.reading_value,
+          date: response.reading_date ? formatDate(response.reading_date) : formatDate(initialSmartMeteringDate.value),
+        })
+      );
+    } else {
+      initialSmartMeteringResult.value = 'not_found';
+      toast.warning(t('billing_block.smart_metering_reading_not_found'));
+    }
+  } catch (error) {
+    if (requestId !== initialSmartMeteringRequestId || selectedMeter.value !== meterId) return;
+
+    console.error('Error fetching smart metering initial reading:', error);
+    initialSmartMeteringResult.value = 'error';
+    toast.error(error?.data?.error || t('billing_block.smart_metering_fetch_error'));
+  } finally {
+    if (requestId === initialSmartMeteringRequestId && selectedMeter.value === meterId) {
+      fetchingInitialSmartMetering.value = false;
+    }
+  }
+};
 
 const isSmartMeteringSupplyPoint = (supplyPoint) => {
   return Boolean(supplyPoint?.is_telecontrol && supplyPoint?.meter_code);
@@ -360,9 +455,17 @@ const loadData = async () => {
   const order_statuses = await $ConfiglistApiService.getAll('order/order-status');
   orderStatuses.value = order_statuses.results;
 
-  // agafem el contracte actiu
+  // Estat "Finalitzada" de les baixes, per saber si ja s'ha finalitzat des d'aquí
+  const completedToken = await $ConfigProjectApiService.get('contract_termination_completed_token');
+  const termination_statuses = await $ConfiglistApiService.getAll('contract/contract-termination-request-status');
+  terminationCompletedStatus.value = termination_statuses.results.find(s => s.token == completedToken) || null;
+
+  // agafem el contracte actiu (o el de la baixa d'aquesta sol·licitud, que si ja s'ha
+  // finalitzat ja no està actiu)
   if (props.supply_point && props.supply_point.contracts && props.supply_point.contracts.length > 0) {
-    activeContract.value = props.supply_point.contracts.find(item => item.status_token == contractActiveToken.value);
+    const terminatedContractIds = (props.request?.contract_termination_requests || []).map(item => item.contract?.id);
+    activeContract.value = props.supply_point.contracts.find(item => terminatedContractIds.includes(item.id))
+      || props.supply_point.contracts.find(item => item.status_token == contractActiveToken.value);
     // if active contract is being terminated or there's no active contract
     if (activeContract.value == null || (activeContract.value && props.request?.contract_termination_requests?.length > 0)) {
       emit('on-pending-termination', false);
@@ -432,6 +535,17 @@ const loadData = async () => {
 
 const createOrderReadMeter = async (id) => {
   const defaultOrderStatus = orderStatuses.value.find(s => s.is_default == true);
+  const statusId = defaultOrderStatus?.id || orderStatuses.value?.[0]?.id;
+
+  if (!orderTypeReadMeter.value?.id) {
+    toast.error(t('warning_block.warning_order_type_not_found'));
+    return null;
+  }
+  if (!statusId) {
+    toast.error(t('warning_block.warning_order_status_not_found'));
+    return null;
+  }
+
   // creem un order del tipus lectura, si cal després l'usuari l'eliminarà
   const order_data = {
     token: format(new Date(), 'yyyyMMddHHmmss'),
@@ -439,7 +553,7 @@ const createOrderReadMeter = async (id) => {
     contract_termination_request: termination_request.value.id,
     supply_point: id,
     type: orderTypeReadMeter.value.id,
-    status: defaultOrderStatus.id || orderStatuses.value[0].id,
+    status: statusId,
     requested_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
   }
 
@@ -490,6 +604,42 @@ const terminate = async ({ skipConfirm = false } = {}) => {
   }
 }
 
+const terminationCompletedStatus = ref(null);
+const finalizing_termination = ref(false);
+
+// La resposta del save() porta l'estat com a id; la de la sol·licitud, com a objecte
+const terminationFinalized = computed(() => {
+  const status = termination_request.value?.status;
+  if (status == null || !terminationCompletedStatus.value) return false;
+  return typeof status === 'object'
+    ? status.token == terminationCompletedStatus.value.token
+    : status == terminationCompletedStatus.value.id;
+});
+
+// Finalitza la baixa des de l'alta, sense haver de passar per Baixes de contracte. Queda
+// "sense factura" tret que es facturi la lectura de tall; el pressupost es pot generar després.
+const finalizeTermination = async () => {
+  if (!termination_request.value?.readings?.length && !termination_request.value?.orders?.length) {
+    toast.warning(t('contract_block.cut_reading_required_to_finalize'));
+    return;
+  }
+  if (!confirm(t('confirmation_text_block.confirm_finalize_termination_from_request'))) return;
+  finalizing_termination.value = true;
+  try {
+    const closed = await $ContractTerminationApiService.close(termination_request.value.id, { ignore_invoice: true });
+    if (closed?.id) {
+      termination_request.value = { ...termination_request.value, status: closed.status, ignore_invoice: closed.ignore_invoice };
+      toast.success(t('common.correct_finish'));
+      emit('contract-terminated', { contract_termination_request: closed.id });
+    }
+  } catch (error) {
+    console.error('Error finalizing termination:', error);
+    toast.error(t('contract_block.unexpected_error'));
+  } finally {
+    finalizing_termination.value = false;
+  }
+}
+
 // Es pot donar de baixa el contracte actiu des de fora (mateixes condicions que el botó de la card)
 const canTerminate = computed(() => activeContract.value != null && termination_request.value == null
   && !loading.value && !loading_termination.value && !saving.value
@@ -501,7 +651,9 @@ const clickGenerarOrdreLectura = async (id) => {
   saving.value = true;
   try {
     const order_saved = await createOrderReadMeter(id);
-    emit('contract-terminated', { contract_termination_request: termination_request.value.id });
+    if (order_saved) {
+      emit('contract-terminated', { contract_termination_request: termination_request.value.id });
+    }
   } finally {
     saving.value = false;
   }
@@ -706,11 +858,15 @@ const saveRequestReading = async () => {
       reading_value: request_reading.value,
       meter_mode: continueWithoutMeter.value ? 'fictional' : 'real',
     }
+    if (initialSmartMeteringDate.value) {
+      save_data.reading_date = initialSmartMeteringDate.value;
+    }
     const response = await $ReadingApiService.saveRequestReading(save_data);
     if (response) {
       last_reading.value = response.reading;
       last_is_initial.value = true;
       editingInitialReading.value = false;
+      initialSmartMeteringPendingSave.value = false;
       // Es notifica al component pare perquè actualitzi les seves dades del punt de
       // subministrament (last_meter_reading) i pugui revalidar el pas de finalització.
       emit('change-sp', { ...props.supply_point, last_meter_reading: response.reading });
@@ -1053,26 +1209,74 @@ watch(billCutReading, async (newVal) => {
                 </div>
               </div>
 
-              <div v-if="!initialReadingLocked" class="flex items-center gap-2">
-                <input
-                  type="number"
-                  v-model="request_reading"
-                  class="input w-full"
-                  inputmode="decimal"
-                  :disabled="loading || saving"
-                  :placeholder="t('reading')"
-                />
-                <button
-                  class="button-primary"
-                  @click="saveRequestReading"
-                  :disabled="loading || saving"
+              <div v-if="!initialReadingLocked" class="flex flex-col gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="number"
+                    v-model="request_reading"
+                    @input="handleInitialReadingInput"
+                    class="input w-full"
+                    inputmode="decimal"
+                    :disabled="loading || saving"
+                    :placeholder="t('reading')"
+                  />
+                  <button
+                    class="button-primary transition-all"
+                    :class="initialSmartMeteringPendingSave
+                      ? 'ring-2 ring-amber-400 ring-offset-2 shadow-md animate-pulse'
+                      : ''"
+                    @click="saveRequestReading"
+                    :disabled="loading || saving || fetchingInitialSmartMetering"
+                  >
+                    {{ t('common.save') }}
+                  </button>
+                  <button v-if="editingInitialReading" type="button" class="button-default"
+                    :disabled="loading || saving" @click="cancelEditInitialReading">
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    v-if="canFetchInitialReadingFromSmartMetering"
+                    type="button"
+                    class="button-default"
+                    :disabled="loading || saving || fetchingInitialSmartMetering"
+                    @click="fetchInitialReadingFromSmartMetering"
+                  >
+                    <Icon
+                      v-if="fetchingInitialSmartMetering"
+                      name="fa6-solid:spinner"
+                      class="animate-spin mr-1"
+                    />
+                    <Icon v-else name="fa6-solid:satellite-dish" class="mr-1 text-sky-500" />
+                    {{ t('billing_block.fetch_initial_reading_smart_metering') }}
+                  </button>
+                </div>
+                <div v-if="initialSmartMeteringResult === 'found'">
+                  <p class="text-sm font-medium text-green-700">
+                    {{ t('billing_block.smart_metering_reading_found', {
+                      value: request_reading,
+                      date: formatDate(initialSmartMeteringDate)
+                    }) }}
+                  </p>
+                  <p
+                    v-if="initialSmartMeteringPendingSave"
+                    class="mt-1 text-sm font-medium text-amber-700 flex items-start gap-1.5"
+                  >
+                    <Icon name="fa6-solid:circle-exclamation" class="mt-0.5 shrink-0" />
+                    <span>{{ t('billing_block.smart_metering_reading_not_saved') }}</span>
+                  </p>
+                </div>
+                <p
+                  v-else-if="initialSmartMeteringResult === 'not_found'"
+                  class="text-sm font-medium text-amber-700"
                 >
-                  {{ t('common.save') }}
-                </button>
-                <button v-if="editingInitialReading" type="button" class="button-default"
-                  :disabled="loading || saving" @click="cancelEditInitialReading">
-                  {{ t('common.cancel') }}
-                </button>
+                  {{ t('billing_block.smart_metering_reading_not_found') }}
+                </p>
+                <p
+                  v-else-if="initialSmartMeteringResult === 'error'"
+                  class="text-sm font-medium text-red-700"
+                >
+                  {{ t('billing_block.smart_metering_fetch_error') }}
+                </p>
               </div>
 
               <div v-if="transferable_reading && !last_is_initial && !continueWithoutMeter"
@@ -1131,7 +1335,8 @@ watch(billCutReading, async (newVal) => {
               </div>
               <span v-if="termination_request"
                 class="inline-flex items-center gap-1 w-fit bg-emerald-50 text-emerald-700 px-2 py-1 rounded border border-emerald-200 font-medium">
-                <Icon name="fa6-solid:circle-check" /> {{ t('contract_block.termination_requested') }}
+                <Icon name="fa6-solid:circle-check" />
+                {{ terminationFinalized ? t('contract_block.termination_finalized') : t('contract_block.termination_requested') }}
               </span>
               <span v-else
                 class="inline-flex items-center gap-1 w-fit bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-200 font-medium">
@@ -1145,11 +1350,19 @@ watch(billCutReading, async (newVal) => {
                   <Icon v-if="loading_termination" name="fa6-solid:spinner" class="animate-spin mr-2" />
                   {{ loading_termination ? $t('common.loading') + '...' : $t('common.terminate') }}
                 </button>
-                <button v-else class="button-default flex items-center gap-x-2"
-                  @click="showDetail('ContractTerminationRegion', termination_request.id)">
-                  <Icon name="fa6-solid:eye" class="text-slate-500" />
-                  {{ t('contract_termination_request') }}
-                </button>
+                <template v-else>
+                  <button v-if="!terminationFinalized" :disabled="loading || saving || finalizing_termination"
+                    @click="finalizeTermination" class="button-primary font-bold flex items-center gap-x-2">
+                    <Icon :name="finalizing_termination ? 'fa6-solid:spinner' : 'fa6-solid:circle-check'"
+                      :class="{ 'animate-spin': finalizing_termination }" />
+                    {{ t('contract_block.finalize_termination') }}
+                  </button>
+                  <button class="button-default flex items-center gap-x-2"
+                    @click="showDetail('ContractTerminationRegion', termination_request.id)">
+                    <Icon name="fa6-solid:eye" class="text-slate-500" />
+                    {{ t('contract_termination_request') }}
+                  </button>
+                </template>
               </div>
             </template>
           </div>
@@ -1168,7 +1381,7 @@ watch(billCutReading, async (newVal) => {
             <fieldset v-if="isChangeOfNameRequest" class="mb-4 border px-3 py-2 bg-sky-50">
               <legend class="px-3 font-semibold bg-white shadow">{{ t('contract_block.bill_cut_reading_choice_title') }}</legend>
               <div class="flex items-center gap-4">
-                <button type="button" role="radio" :aria-checked="billCutReading === true" :disabled="saving"
+                <button type="button" role="radio" :aria-checked="billCutReading === true" :disabled="saving || terminationFinalized"
                   @click="billCutReading = true"
                   class="flex-1 text-left px-4 py-3 rounded-lg border-2 transition-all duration-150"
                   :class="billCutReading === true
@@ -1180,7 +1393,7 @@ watch(billCutReading, async (newVal) => {
                     <span class="font-semibold text-sm text-gray-800">{{ t('contract_block.bill_cut_reading_to_termination') }}</span>
                   </div>
                 </button>
-                <button type="button" role="radio" :aria-checked="billCutReading !== true" :disabled="saving"
+                <button type="button" role="radio" :aria-checked="billCutReading !== true" :disabled="saving || terminationFinalized"
                   @click="billCutReading = false"
                   class="flex-1 text-left px-4 py-3 rounded-lg border-2 transition-all duration-150"
                   :class="billCutReading !== true

@@ -23,13 +23,12 @@ const pending = ref(false);
 const localData = ref(props.data? props.data : null);
 
 const address = computed(() => {
-  if (localData.value) {
-    let text = $AddressHelper.getAddressString(localData.value);
-    return text;
+  if (!localData.value) return '';
+  if (localData.value.address_street) {
+    return $AddressHelper.getAddressString(localData.value);
   }
-  else {
-    return '';
-  }
+  // Sense adreça pròpia: la del punt de subministrament associat
+  return localData.value.supply_points?.[0]?.street_complete || '';
 });
 
 const getData = async () => {
@@ -72,7 +71,7 @@ watch(() => props.id, () => {
       <FieldDetail :label='$t("service_block.short_uninstall_date")' :value=formatDate(localData.uninstallation_at)><Time
           :time="localData.uninstallation_at"></Time></FieldDetail>
     </div>
-    <div role="row" class="grid grid-cols-1" v-if="localData.address_street">
+    <div role="row" class="grid grid-cols-1" v-if="address">
       <FieldDetail :label='$t("address_block.address")' :value="address">
       </FieldDetail>
     </div>

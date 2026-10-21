@@ -25,6 +25,9 @@ from django.db.models.functions import Abs
 from django.utils import translation
 from django.utils.translation import gettext as _
 from billing.permissions import BillingPermission
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BillingQueueListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -180,6 +183,11 @@ class BillingQueueActionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, queue_item_id):
+        """Aplica kill, skip o restart i retorna l'estat de l'ítem de facturació.
+
+        Si falla la revocació a Celery, retorna 503 sense modificar la cua
+        i registra el detall de l'error.
+        """
         action_name = request.data.get('action')
         if action_name not in ('kill', 'skip', 'restart'):
             return Response(
@@ -194,18 +202,19 @@ class BillingQueueActionView(APIView):
 
         try:
             apply_billing_queue_action(q_item, action_name)
-        except QueueTaskRevokeError as e:
+        except QueueTaskRevokeError:
+            logger.exception("No s'ha pogut aturar la tasca a Celery")
             return Response(
-                {"error": f"No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat. {e}"},
+                {"error": "No s'ha pogut aturar la tasca a Celery; la cua no s'ha modificat."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
         q_item.refresh_from_db()
 
+        # Sense error_message: pot portar l'excepció de Celery. L'operador el veu a la llista de la cua.
         return Response({
             "id": q_item.id,
             "status": q_item.status,
             "task_id": q_item.task_id,
-            "error_message": q_item.error_message,
         }, status=status.HTTP_200_OK)
 
 
@@ -256,7 +265,8 @@ class BillingBatchSummaryView(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     def get(self, request):
         try:
             # Validar les dades rebudes
@@ -276,7 +286,8 @@ class BillingBatchSummaryView(views.APIView):
             
             return Response(response, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def serialize_decimal(value):
     """Recursively converts Decimal values to float or str."""
@@ -327,7 +338,6 @@ class BillingBatchDocumentsView(views.APIView):
             if not billing_id:
                 return Response({"error": "Billing required."}, status=status.HTTP_400_BAD_REQUEST)
             
-            print(request.data)
             issue_date = request.data.get('issue_date') if 'issue_date' in request.data else None
             end_date = request.data.get('end_date') if 'end_date' in request.data else None
             send_at = request.data.get('send_date') if 'send_date' in request.data else None
@@ -374,4 +384,5 @@ class BillingBatchDocumentsView(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -196,7 +196,13 @@ def get_sepa_payments_and_batches(request):
         filters &= Q(invoice__billing__id=billing)
         
     if contracts:
-        filters &= (Q(invoice__contract__id__in=contracts) | Q(commitment_deposit__contract__id__in=contracts))
+        # Els pagaments sense factura ni dipòsit (p. ex. la devolució del saldo
+        # d'un contracte) van lligats directament al contracte.
+        filters &= (
+            Q(invoice__contract__id__in=contracts) |
+            Q(commitment_deposit__contract__id__in=contracts) |
+            Q(invoice__isnull=True, commitment_deposit__isnull=True, contract__id__in=contracts)
+        )
         
     if invoices:
         filters &= (Q(invoice__id__in=invoices) | Q(commitment_deposit__invoices__id__in=invoices))
@@ -533,11 +539,12 @@ def get_distribution_from_routing(request_data, selected_companies):
     """
     from billing.utils.remittance_routing import resolve_payment_banks
 
-    payments, _, _ = get_sepa_payments_and_batches(RequestData(request_data))
+    payments, _, is_return = get_sepa_payments_and_batches(RequestData(request_data))
     assignments, warnings = resolve_payment_banks(
         payments,
         manual_assignments=request_data.get('bank_assignments') or {},
         companies=selected_companies,
+        is_return=is_return,
     )
 
     payments_by_bank = {}
@@ -689,7 +696,7 @@ class SEPAPaymentInvoicesViewSet(APIView):
     queryset = Payment.objects.all()
     
     def put(self, request, *args, **kwargs):
-        payments, _, _ = get_sepa_payments_and_batches(request)
+        payments, _, is_return = get_sepa_payments_and_batches(request)
         paginator = StandardResultsSetPagination()
         paginated_payments = paginator.paginate_queryset(payments, request)
         serialized_payments = PaymentSEPASerializer(paginated_payments, many=True).data
@@ -708,6 +715,7 @@ class SEPAPaymentInvoicesViewSet(APIView):
                 page_payments,
                 manual_assignments=request.data.get('bank_assignments') or {},
                 companies=selected_companies,
+                is_return=is_return,
             )
             for row in serialized_payments:
                 row['routed_company_bank'] = assignments.get(str(row['id']))

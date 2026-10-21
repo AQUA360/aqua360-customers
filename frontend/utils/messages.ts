@@ -94,6 +94,29 @@ export const getMessageVariableGroups = (t: TranslateFn, noContracts = false) =>
         { token: '%reading.previous_reading_date', label: t('billing_block.previous_reading_date') },
       ],
     },
+    {
+      key: 'supplycut',
+      title: t('customer_service_block.supplycut_variables'),
+      notes: [
+        {
+          text: t('informative_block.info_supplycut_variables'),
+          tone: 'info',
+        },
+      ],
+      warning: true,
+      variables: [
+        { token: '%supplycut.token', label: t('common.identificator') },
+        { token: '%supplycut.cause_name', label: t('order_block.reason') },
+        { token: '%supplycut.status', label: t('common.status') },
+        { token: '%supplycut.date_start', label: t('common.start_date') },
+        { token: '%supplycut.date_end', label: t('common.end_date') },
+        { token: '%supplycut.time_start', label: t('customer_service_block.time_start') },
+        { token: '%supplycut.time_end', label: t('customer_service_block.time_end') },
+        { token: '%supplycut.exec_start', label: t('customer_service_block.exec_start') },
+        { token: '%supplycut.exec_end', label: t('customer_service_block.exec_end') },
+        { token: '%supplycut.affected_addresses', label: t('address_block.addresses') },
+      ],
+    },
   ];
 
   return groups.filter(group => !group.hidden);

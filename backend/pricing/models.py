@@ -479,11 +479,13 @@ class AccountingConcept(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     
     
-    CATEGORY_CHOICES = {
-        ('invoice', 'Invoice'),
+    # Llista (no set): amb un set l'ordre canvia a cada procés i makemigrations hi veu canvis.
+    # Mateix ordre que la migració 0119.
+    CATEGORY_CHOICES = [
         ('lineitem', 'Line Item'),
         ('payment', 'Payment'),
-    }
+        ('invoice', 'Invoice'),
+    ]
     category = models.CharField(choices=CATEGORY_CHOICES, default='invoice')
     type = models.ForeignKey(AccountingType, on_delete=models.CASCADE, related_name='accounting_concepts', null=True, blank=True)
     is_active = models.BooleanField(default=True)

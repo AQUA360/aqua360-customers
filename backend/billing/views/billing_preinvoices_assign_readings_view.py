@@ -8,6 +8,9 @@ from django.db.models import Q
 from billing.models import Billing, ReadingBatch, Reading
 from django.shortcuts import get_object_or_404
 from billing.utils.reading_filters import PENDING_READING_FILTER
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BillingPreInvoicesAssignReadingsViewSet(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -68,4 +71,5 @@ class BillingPreInvoicesAssignReadingsViewSet(views.APIView):
             return Response(response, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

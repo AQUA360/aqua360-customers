@@ -15,9 +15,16 @@ from billing.serializers.invoice_serializer import InvoiceMinimalListSerializer
 from communication.models import CommunicationProcess
 from django.shortcuts import get_object_or_404
 from django.db.models import Exists, OuterRef, Q
+from django.utils.translation import gettext as _
 
+from billing.tasks import export_billing_invoices_task
 from coredata.models import ConfigProject
 from coredata.utils.pdf_utils import merge_pdfs
+from documentmanager.utils.export_jobs import enqueue_export, export_job_response
+from documentmanager.utils.export_permissions import export_permission_class
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BillingInvoicesViewSet(generics.ListAPIView):  # Changed to generics.ListAPIView
@@ -41,6 +48,26 @@ class BillingInvoicesViewSet(generics.ListAPIView):  # Changed to generics.ListA
         return queryset
 
     def list(self, request, *args, **kwargs):
+        queryset, median, global_count_above_margin = self.get_list_queryset(request)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['date_range_median'] = median
+            response.data['date_range_above_margin_count'] = global_count_above_margin
+            return response
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data,
+            'date_range_median': median,
+            'date_range_above_margin_count': global_count_above_margin
+        })
+
+    def get_list_queryset(self, request):
+        """Factures del llistat (filtres, cerca i ordenació), la mediana de dies i el nº fora de marge."""
         billing_id = self.kwargs.get('id')
         billing_invoices = Invoice.objects.filter(billing_id=billing_id, is_active=True) if billing_id else Invoice.objects.none()
         if 'is_excluded' not in request.query_params:
@@ -83,22 +110,27 @@ class BillingInvoicesViewSet(generics.ListAPIView):  # Changed to generics.ListA
             ).filter(Exists(active_processes))
             queryset = queryset.filter(Exists(readings_with_active_process))
 
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            response = self.get_paginated_response(serializer.data)
-            response.data['date_range_median'] = median
-            response.data['date_range_above_margin_count'] = global_count_above_margin
-            return response
+        return queryset, median, global_count_above_margin
 
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'count': queryset.count(),
-            'results': serializer.data,
-            'date_range_median': median,
-            'date_range_above_margin_count': global_count_above_margin
-        })
-        
+
+class BillingInvoicesExportView(BillingInvoicesViewSet):
+    """Exporta a Excel les factures del llistat de pre-factures amb els mateixos filtres (query params)."""
+    permission_classes = [IsAuthenticated, export_permission_class('billing', 'invoice')]
+
+    def post(self, request, *args, **kwargs):
+        queryset, _median, _count = self.get_list_queryset(request)
+        # dict.fromkeys: treu ids repetits (distinct + ordenació) i conserva l'ordre del llistat.
+        invoice_ids = list(dict.fromkeys(queryset.values_list('id', flat=True)))
+
+        job = enqueue_export(
+            request, export_billing_invoices_task, kind="invoices",
+            name=request.query_params.get('export_name') or str(_("Factures")),
+            args=[invoice_ids],
+            params={"billing": self.kwargs.get('id'), "total": len(invoice_ids)},
+        )
+        return Response(export_job_response(job), status=status.HTTP_202_ACCEPTED)
+
+
 class BillingInvoicesSummaryViewSet(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Billing.objects.all().order_by('-created_at')
@@ -162,7 +194,8 @@ class BillingInvoicesSummaryViewSet(views.APIView):
             return Response({'counters': counters}, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BillingInvoicesPdfViewSet(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -185,4 +218,5 @@ class BillingInvoicesPdfViewSet(views.APIView):
             return response
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

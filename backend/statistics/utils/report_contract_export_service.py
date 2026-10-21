@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from contract.filters.contract_filter import ContractFilter
 from contract.utils.contract_csv_export import build_contract_export_csv_bytes
 from contract.utils.contract_list_queryset import default_contract_list_queryset
+from statistics.utils.report_progress import report_progress
 
 
 def _filter_payload(request_data):
@@ -32,7 +33,10 @@ def generate_contracts_export_report(request, black_fill=None, white_bold_font=N
     )
     filtered = filterset.qs
 
-    body = build_contract_export_csv_bytes(filtered)
+    body = build_contract_export_csv_bytes(
+        filtered,
+        progress_callback=(lambda current, total: report_progress(task, current, total, every=500)) if task else None,
+    )
     filename = f"contractes_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
     document_id = save_report(content=body, filename=filename, name=name, type_id=type_id)

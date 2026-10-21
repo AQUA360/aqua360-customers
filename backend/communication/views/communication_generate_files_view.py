@@ -7,6 +7,9 @@ from celery.result import AsyncResult
 from communication.models import Communication
 from communication.tasks import generate_files_task
 from communication.utils.communication_service import get_uploaded_file_from_request, upload_communication_document
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CommunicationGenerateFilesViewSet(APIView):
@@ -46,8 +49,9 @@ class CommunicationGenerateFilesViewSet(APIView):
                 }, status=status.HTTP_201_CREATED)
                 
             except Exception as e:
+                logger.exception("Error inesperat")
                 return Response(
-                    {"error": f"Error en processar el document: {str(e)}"}, 
+                    {"error": "Error en processar el document."}, 
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
         
@@ -71,7 +75,8 @@ class CommunicationGenerateFilesViewSet(APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request, task_id, *args, **kwargs):
         try:
@@ -106,4 +111,5 @@ class CommunicationGenerateFilesViewSet(APIView):
             })
             
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
