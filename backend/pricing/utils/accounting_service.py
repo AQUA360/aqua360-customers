@@ -1999,9 +1999,7 @@ def generate_general_accounting(request):
         is_active=True).exclude(
             status__token=invoice_status_pending_token
             ).distinct()
-    print("total invoices: ", invoices.count())
-    for invoice in invoices:
-        print(invoice.serie_final, invoice.total_final)
+    # print("total invoices: ", invoices.count())
     endowment_invoices = Invoice.objects.filter(endowment_date=date, is_active=True).distinct()
     irrecoverable_invoices = Invoice.objects.filter(irrecoverable_date=date, is_active=True).distinct()
     movements = PaymentMovement.objects.filter(
@@ -2010,15 +2008,15 @@ def generate_general_accounting(request):
         ).exclude(
             payment_type__token = 'BALANCE'
             ).distinct()
-    print("total invoices: ", invoices.count())
-    print("total endowment invoices: ", endowment_invoices.count())
-    print("total irrecoverable invoices: ", irrecoverable_invoices.count())
-    print("total movements: ", movements.count())
+    # print("total invoices: ", invoices.count())
+    # print("total endowment invoices: ", endowment_invoices.count())
+    # print("total irrecoverable invoices: ", irrecoverable_invoices.count())
+    # print("total movements: ", movements.count())
     if invoices.count() == 0 and endowment_invoices.count() == 0 and irrecoverable_invoices.count() == 0 and movements.count() == 0:
         raise Exception(f"{_('No values found to generate accounting')}")
     
     total_invoices = sum(invoice.total_final for invoice in invoices)
-    print("total invoices: ", total_invoices)
+    # print("total invoices: ", total_invoices)
     
     lines = get_accounting_lines(
         accounting_pricings,
@@ -2028,9 +2026,9 @@ def generate_general_accounting(request):
         irrecoverable_invoices,
     )
     
-    print("total lines: ", len(lines))
-    for line in lines:
-        print(line)
+    # print("total lines: ", len(lines))
+    # for line in lines:
+    #     print(line)
     
     # raise Exception("stop here")
     
@@ -2039,8 +2037,8 @@ def generate_general_accounting(request):
         """
         REGISTRE AMB 2126 CHARS A CADA LINIA
         """
-        print("line")
-        print(line)
+        # print("line")
+        # print(line)
         iva_values = line.get('iva')
         
         empty_num_value = 0.00
@@ -2062,7 +2060,7 @@ def generate_general_accounting(request):
         line_content += str(doc_number)
         
         if len(line_content) != 32:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 34")
         
         line_content += '60' # DEFAULT FOR THE MOMENT
@@ -2094,7 +2092,7 @@ def generate_general_accounting(request):
         line_content += have_str
         
         if len(line_content) != 96:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 98")
         
         accounting_account = f"{line.get('accounting_concept')}{'0' * (12 - len(line.get('accounting_concept')) - len(line.get('accounting_pricing')))}{line.get('accounting_pricing')}"
@@ -2108,7 +2106,7 @@ def generate_general_accounting(request):
         line_content += str(doc_number)
         
         if len(line_content) != 116:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 116")
         
         
@@ -2132,7 +2130,7 @@ def generate_general_accounting(request):
             line_content += repeat_to_at_least_length(' ', 49)
             
         if len(line_content) != 320:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 320")
         
         invoices_total = _as_float(iva_tax_total + iva_base_total) if has_iva else 0.00
@@ -2171,7 +2169,7 @@ def generate_general_accounting(request):
         
         
         if len(line_content) != 572:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 572")
         
         line_content += repeat_to_at_least_length(' ', 53)
@@ -2183,7 +2181,7 @@ def generate_general_accounting(request):
             line_content += empty_num_value_str
         
         if len(line_content) != 769:
-            print(line_content)
+            #  print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 769")
         
         if has_iva:
@@ -2198,17 +2196,14 @@ def generate_general_accounting(request):
         len_change_total_str = 12 - len(change_total_str)
         line_content += repeat_to_at_least_length(' ', len_change_total_str)
         line_content += change_total_str
-        print("change total len", len(line_content))
         if center_code:
-            print("center_code")
-            print(center_code)
             len_iva_account_code = 6 - len(center_code)
             line_content += repeat_to_at_least_length('0', len_iva_account_code) + center_code
         else:
             line_content += repeat_to_at_least_length(' ', 6)
         
         if len(line_content) != 802:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 802")
         
         for j in range(8):
@@ -2218,7 +2213,7 @@ def generate_general_accounting(request):
             line_content += empty_num_value_str
         
         if len(line_content) != 930:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 930")
         
         line_content += repeat_to_at_least_length(' ', 33)
@@ -2229,13 +2224,13 @@ def generate_general_accounting(request):
         line_content += change_total_str
         
         if len(line_content) != 975:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 975")
         
         line_content += repeat_to_at_least_length(' ', 147)
         
         if len(line_content) != 1122:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 1122")
         
         for k in range(12):
@@ -2248,7 +2243,7 @@ def generate_general_accounting(request):
         line_content += ' 0'*3
         
         if len(line_content) != 1425:
-            print(line_content)
+            # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 1425")
         
         ###################

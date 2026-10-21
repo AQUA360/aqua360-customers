@@ -233,7 +233,9 @@ watch(() => route.query, () => {
           </span>
           <span class="p-1 truncate">{{ item.description || '-' }}</span>
           <span class="p-1">{{ item.available_report_name || '-' }}</span>
-          <span class="p-1">{{item.days_to_complete > 0 ?  `${item.days_to_complete} ${t('common.days')}`  : t('common.doe_not_expire')}}</span>
+          <span class="p-1">{{ item.days_to_complete > 0
+            ? `${item.days_to_complete} ${t('common.days')} ${item.is_work_days ? t('common.work') : t('common.natural')}`
+            : t('common.doe_not_expire') }}</span>
           <span class="p-1 font-bold text-slate-400">{{ item.is_active ? '' : t('common.inactive') }}</span>
         </div><!-- end for items -->
       </template>

@@ -20,6 +20,25 @@ def execute_available_report(available_report, report_data):
     return Document.objects.get(id=document_id)
 
 
+def add_working_days(start_date, work_days):
+    current_date = start_date
+    added_days = 0
+    while added_days < work_days:
+        current_date += timedelta(days=1)
+        if current_date.weekday() < 5: 
+            added_days += 1
+    return current_date
+
+
+def compute_due_date(start_date, days_to_complete, is_work_days=False):
+    days = days_to_complete if days_to_complete is not None else 2
+    if days <= 0:
+        return None
+    if is_work_days:
+        return add_working_days(start_date, days)
+    return start_date + timedelta(days=days)
+
+
 def generate_daily_document(template, current_time, pending_status):
     try:
         document = None
@@ -35,8 +54,12 @@ def generate_daily_document(template, current_time, pending_status):
         except Exception as e:
             document = None
             error_message = str(e)
-        
-        due_date = current_time.date() + timedelta(days=template.days_to_complete or 2) if template.days_to_complete > 0 else None
+
+        due_date = compute_due_date(
+            current_time.date(),
+            template.days_to_complete,
+            is_work_days=bool(template.is_work_days),
+        )
 
         DailyDocument.objects.create(
             token=f"{template.token}_{current_time.strftime('%Y%m%d')}",
