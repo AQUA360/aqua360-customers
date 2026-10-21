@@ -961,6 +961,27 @@ class SmsSendingTests(TestCase):
         handle_communication(comm, comm.type_tokens.split(','))
         comm.refresh_from_db()
 
+    def make_email_comm(self, type_tokens='email,sms'):
+        from communication.models import Message
+        from service.models import CompanyConfig, CompanyConfigEmail
+
+        config = CompanyConfig.objects.create()
+        config_email = CompanyConfigEmail.objects.create(
+            company_config=config, mail_send_user='sender@example.com',
+            mail_send_mail='sender@example.com', is_default=True,
+        )
+        email_type = MessageType.objects.create(token='email', name='Email')
+        ConfigProject.objects.update_or_create(
+            token='message_type_email_token', defaults={'value': 'email'},
+        )
+        comm = self.make_comm(type_tokens)
+        comm.company_config = config
+        comm.company_config_email = config_email
+        comm.used_email = 'recipient@example.com'
+        comm.save()
+        comm.messages.add(Message.objects.create(type=email_type, subject='Avís', body='Avís de tall'))
+        return comm
+
     def test_get_sms_text(self):
         from communication.utils.communication_service import get_sms_text
 
@@ -1018,6 +1039,63 @@ class SmsSendingTests(TestCase):
             self.handle(comm)
         send_sms.assert_not_called()
         self.assertEqual(comm.status, self.sent)
+
+    def test_retry_after_sms_error_does_not_resend_email(self):
+        from unittest.mock import patch
+        from integrations.outbound.broadcaster.exceptions import BroadcasterError
+
+        comm = self.make_email_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms',
+                   side_effect=[BroadcasterError('HTTP 500'), BroadcasterError('HTTP 500'), None]) as send_sms, \
+                patch('communication.utils.communication_service._send_via_smtp') as send_email:
+            for _ in range(2):
+                self.handle(comm)
+                self.assertEqual(comm.status, self.rejected)
+                self.assertIsNotNone(comm.sent_at)
+                self.assertIsNone(comm.sms_sent_at)
+                self.assertEqual(send_email.call_count, 1)
+            self.handle(comm)
+
+        self.assertEqual(send_sms.call_count, 3)
+        send_email.assert_called_once()
+        self.assertEqual(comm.status, self.sent)
+        self.assertIsNotNone(comm.sms_sent_at)
+
+    def test_retry_sends_failed_email_without_resending_sms(self):
+        from unittest.mock import patch
+
+        comm = self.make_email_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms, \
+                patch('communication.utils.communication_service._send_via_smtp',
+                      side_effect=[Exception('SMTP unavailable'), None]) as send_email:
+            self.handle(comm)
+            self.assertEqual(comm.status, self.rejected)
+            self.assertIsNone(comm.sent_at)
+            self.assertIsNotNone(comm.sms_sent_at)
+            self.handle(comm)
+
+        send_sms.assert_called_once()
+        self.assertEqual(send_email.call_count, 2)
+        self.assertEqual(comm.status, self.sent)
+        self.assertIsNotNone(comm.sent_at)
+
+    def test_email_timestamp_is_rechecked_before_sending(self):
+        from unittest.mock import patch
+        from django.utils import timezone
+
+        comm = self.make_email_comm('email')
+        for status in (self.pending, self.rejected):
+            with self.subTest(status=status.token):
+                comm.sent_at = None
+                sent_at = timezone.now()
+                Communication.objects.filter(id=comm.id).update(status=status, sent_at=sent_at)
+                with patch('communication.utils.communication_service.get_all_documents') as get_documents, \
+                        patch('communication.utils.communication_service._send_via_smtp') as send_email:
+                    self.handle(comm)
+                get_documents.assert_not_called()
+                send_email.assert_not_called()
+                self.assertEqual(comm.status, status)
+                self.assertEqual(comm.sent_at, sent_at)
 
     def test_email_and_sms_errors_keep_both_reasons(self):
         from unittest.mock import patch

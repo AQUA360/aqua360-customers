@@ -507,6 +507,10 @@ def handle_communication(comm, comm_types):
   sms_error = send_sms(comm) if 'sms' in comm_types else None
   if 'email' in comm_types:
     send_electronic_mail(comm)
+    if 'sms' in comm_types and not sms_error:
+      comm_db = Communication.objects.get(id=comm.id)
+      if comm_db.sent_at:
+        _set_communication_sent(comm_db)
   elif 'sms' in comm_types and not sms_error:
     _set_communication_sent(Communication.objects.get(id=comm.id))
   if sms_error:
@@ -642,8 +646,8 @@ def send_electronic_mail(comm):
 
   # Re-check status from DB to avoid double sending in concurrent task chains
   comm_db = Communication.objects.get(id=comm.id)
-  if comm_db.status not in (pending_status, status_rejected):
-    print(f"Skipping send for communication {comm_db.id}: status is not pending/rejected.")
+  if comm_db.status not in (pending_status, status_rejected) or comm_db.sent_at:
+    print(f"Skipping send for communication {comm_db.id}: status is not pending/rejected or email is already sent.")
     return
   comm = comm_db
 
