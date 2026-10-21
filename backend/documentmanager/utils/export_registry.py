@@ -863,6 +863,7 @@ def _order_config():
         "dueDateAt": (_("Data límit"), lambda o: o.dueDateAt.strftime("%Y-%m-%d") if o.dueDateAt else ""),
         "completed_at": (_("Data completat"), lambda o: o.completed_at.strftime("%Y-%m-%d %H:%M:%S") if o.completed_at else ""),
         "created_by": (_("Creat per"), lambda o: o.created_by.username if o.created_by else ""),
+        "description": (_("Descripció"), lambda o: o.description or ""),
     }
 
     return ExportConfig(

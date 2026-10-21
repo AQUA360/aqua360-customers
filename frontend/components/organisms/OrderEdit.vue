@@ -150,7 +150,7 @@ const getData = async () => {
     token.value = item.value.token;
     originalToken.value = token.value
     selectedOperators.value = [];
-    item.value.operators.forEach(operator => {
+    (item.value.operators || []).forEach(operator => {
       // Build label with token, name, and surname
       let labelParts = [];
       if (operator.token) labelParts.push(operator.token);
@@ -162,16 +162,12 @@ const getData = async () => {
         label: labelParts.join(' - ')
       });
     });
-    selectedType.value = [];
-    selectedType.value.push({
-      code: item.value.type.id,
-      label: item.value.type.name
-    });
-    selectedStatus.value = [];
-    selectedStatus.value.push({
-      code: item.value.status.id,
-      label: item.value.status.name
-    });
+    selectedType.value = item.value.type
+      ? [{ code: item.value.type.id, label: item.value.type.name }]
+      : null;
+    selectedStatus.value = item.value.status
+      ? [{ code: item.value.status.id, label: item.value.status.name }]
+      : null;
     if (item.value.reason) {
       selectedReason.value = {
         code: item.value.reason.id,
@@ -267,7 +263,7 @@ const getData = async () => {
   }
 
   getTypes();
-  if (selectedType.value) {
+  if (selectedType.value && selectedType.value.length) {
     let typeId = selectedType.value[0].code
     getReasons(typeId)
   }

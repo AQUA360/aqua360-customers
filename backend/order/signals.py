@@ -189,6 +189,11 @@ def publish_order_created_event(sender, instance, created, **kwargs):
     """
     from django.conf import settings
 
+    # Orders originating in GMAO (inbound order.created) must not be
+    # echoed back to GMAO
+    if getattr(instance, "_skip_publish", False):
+        return
+
     if not created:
         config = ConfigProject.objects.filter(token="for_validate_order_status_token").first()
         if config:
