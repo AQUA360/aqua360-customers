@@ -15,9 +15,6 @@ const { t } = useI18n();
 const refreshKey = ref(0);
 const config = toRef(() => props.item.config);
 const { data, loading, error } = useDashboardCardData(props.item.key, config, refreshKey);
-
-/** Return an inline status background color when one is configured. */
-const statusStyle = (status) => status?.color ? { backgroundColor: status.color } : {};
 </script>
 
 <template>
@@ -37,10 +34,8 @@ const statusStyle = (status) => status?.color ? { backgroundColor: status.color 
           <NuxtLink :to="`/reading/reading-batches?id=${batch.id}`" class="block hover:bg-slate-50 rounded px-1 py-1">
             <div class="flex items-center justify-between gap-2 text-sm">
               <span class="font-medium text-slate-700 truncate">{{ batch.name }}</span>
-              <span v-if="batch.status" class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0"
-                :class="{ 'text-white': batch.status.color }" :style="statusStyle(batch.status)">
-                {{ batch.status.name }}
-              </span>
+              <!-- El color de l'estat és un codi (yellow, green...), no un color CSS -->
+              <AtomsColorBadge v-if="batch.status" :value="batch.status.name" :color="batch.status.color" class="shrink-0" />
             </div>
             <div class="mt-1 h-2 w-full rounded-full bg-slate-100 overflow-hidden">
               <div class="h-full bg-sky-500 transition-all" :style="{ width: `${batch.progress}%` }" />
