@@ -2890,6 +2890,17 @@
             "value": "[{\"name\": \"Tipus d'instal·laci\\u00f3\", \"type\": \"options\", \"token\": \"tipus_dinstallacio\", \"required\": true}, {\"name\": \"Material del comptador\", \"type\": \"options\", \"token\": \"material_del_comptador\", \"required\": true}, {\"name\": \"Tipus lectura\", \"type\": \"options\", \"token\": \"tipus_lectura\", \"required\": true}, {\"name\": \"Di\\u00e0metre comptador (mm)\", \"type\": \"options\", \"token\": \"diametre_comptador_mm\", \"required\": true}, {\"name\": \"N\\u00famero de comptador (sortint)\", \"type\": \"text\", \"token\": \"numero_de_comptador_sortint\", \"required\": true}, {\"name\": \"Lectura comptador (sortint)\", \"type\": \"text\", \"token\": \"lectura_de_comptador_sortint\", \"required\": true}, {\"name\": \"Foto comptador (sortint)\", \"type\": \"photo\", \"token\": \"foto_de_comptador_sortint\", \"required\": false}, {\"name\": \"N\\u00famero de comptador\", \"type\": \"text\", \"token\": \"numero_de_comptador\", \"required\": true}, {\"name\": \"Lectura inicial\", \"type\": \"numeric\", \"token\": \"lectura_inicial\", \"required\": true}, {\"name\": \"Foto del comptador\", \"type\": \"photo\", \"token\": \"foto_de_comptador\", \"required\": false}]",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 242,
+        "fields": {
+            "created_at": "2026-10-21T00:00:00.000Z",
+            "updated_at": "2026-10-21T00:00:00.000Z",
+            "token": "BAIL_RETURN_INVOICE_DISABLED",
+            "name": "No generar factura de retorn de fiança (el retorn es completa sense factura)",
+            "value": "false",
+            "file": null
+        }
     }
-    
 ]
