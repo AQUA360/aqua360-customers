@@ -4340,7 +4340,7 @@ def manage_deliquency(request_data, user_id):
     else:
       filters &= Q(endowment_date__isnull=False)
     
-    print("filters", filters)
+    print("filters applied for invoice selection")
     invoices = Invoice.objects.filter(filters).exclude(status__token__in=invoice_excluded_status_configs).distinct()
     
     contacts_pending_invoices = []
@@ -4363,18 +4363,18 @@ def manage_deliquency(request_data, user_id):
                 pending_invoices_count__lte=max_pending_invoices
             )
         contacts_pending_invoices = pending_invoices_qs.values('id')
-        print("contacts_pending_invoices", contacts_pending_invoices)
+        print("contacts_pending_invoices_count", contacts_pending_invoices.count())
         if contacts_pending_invoices:
           invoices = invoices.filter(Q(contract__id__in=contacts_pending_invoices) | Q(contract_termination__contract__id__in=contacts_pending_invoices) | Q(contract_request__contract__id__in=contacts_pending_invoices))
         else:
           invoices = invoices.none()
     
-    print("invoices", invoices)
+    print("invoices_count", invoices.count())
     contract_ids = set(invoices.filter(contract__isnull=False).values_list('contract__id', flat=True))
     contract_ids.update(invoices.filter(contract_termination__contract__isnull=False).values_list('contract_termination__contract__id', flat=True))
     contract_ids.update(invoices.filter(contract_request__contract__isnull=False).values_list('contract_request__contract__id', flat=True))
     contracts = Contract.objects.filter(id__in=contract_ids)
-    print("contracts", contracts)
+    print("contracts_count", contracts.count())
     serialized_invoices = InvoiceMinimalSerializer(invoices, many=True).data
     serialized_contracts = ContractListSerializer(contracts, many=True).data
 
