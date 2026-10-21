@@ -2854,5 +2854,17 @@
             "value": "3",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 242,
+        "fields": {
+            "created_at": "2026-10-21T00:00:00.000Z",
+            "updated_at": "2026-10-21T00:00:00.000Z",
+            "token": "BAIL_RETURN_INVOICE_DISABLED",
+            "name": "No generar factura de devolución de fianza (la devolución se completa sin factura)",
+            "value": "false",
+            "file": null
+        }
     }
 ]
