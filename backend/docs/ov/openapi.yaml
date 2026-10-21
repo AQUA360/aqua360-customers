@@ -32,6 +32,7 @@ info:
     | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (punto de suministro) |
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
     | `/ov/procedures/{contract_token}/upload-sepa-signed/` | POST | Subir y archivar el mandato SEPA firmado del contrato |
+    | `/ov/procedures/{contract_token}/sepa-signed/` | GET | Descargar el mandato SEPA firmado archivado |
     | `/ov/procedures/{contract_token}/cancel-direct-debit/` | POST | Cancelar la domiciliación (revocación del mandato SEPA) y cambiar el tipo de pago |
 
     ## Autenticación
@@ -53,7 +54,7 @@ info:
 
     ## Notas generales
 
-    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` y `/ov/contract-detail/` devuelven el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, la clave `is_account_holder` no aparece en la respuesta.
+    - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` y `/ov/contract-detail/` devuelven el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, las claves `is_account_holder`, `is_holder` e `is_payer` no aparecen en la respuesta.
     - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
     - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
   version: 1.0.0
@@ -139,8 +140,9 @@ paths:
         `400` si falta `contract_token`; `404` si el contrato no existe.
 
         Igual que en `/ov/contract/{token}/`, el parámetro opcional `dni`
-        desenmascara el IBAN y expone `is_account_holder` solo cuando
-        coincide con el titular de la cuenta de domiciliación.
+        desenmascara el IBAN cuando coincide con el titular de la cuenta de
+        domiciliación y expone `is_account_holder`, `is_holder` e `is_payer`
+        cuando se envía.
       operationId: getContractDetail
       security:
         - tokenAuth: []
@@ -179,6 +181,10 @@ paths:
                 phone1: "600000000"
                 iban: "ES12***************7890"
                 holder_address: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
+                status:
+                  token: "1"
+                  name: Activo
+                has_sepa_document: false
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -219,6 +225,7 @@ paths:
                 payment_type: DOM
                 iban: "ES123456********56789012"
                 holder_name: Anna Garcia
+                has_sepa_document: false
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -273,6 +280,7 @@ paths:
                   payment_type: DOM
                   iban: "ES123456********56789012"
                   holder_name: Anna Garcia
+                  has_sepa_document: false
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -394,6 +402,8 @@ paths:
         (facturas con estado token `1`).
 
         El importe devuelto en `invoice_amount` corresponde al pendiente de pago (`left_to_pay`).
+
+        `404` si el `contract_token` no corresponde a ningún contrato.
       operationId: listInvoices
       security:
         - tokenAuth: []
@@ -415,11 +425,16 @@ paths:
                   invoice_date: "2026-01-15"
                   invoice_amount: 45.50
                   invoice_status: Enviada
+                  status:
+                    token: "3"
+                    name: Enviada
                   pdf_available: true
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /ov/invoices/download/:
     post:
@@ -534,6 +549,9 @@ paths:
                 invoice_date: "2026-01-15"
                 invoice_amount: 45.50
                 invoice_status: Enviada
+                status:
+                  token: "3"
+                  name: Enviada
                 pdf_available: true
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -582,6 +600,9 @@ paths:
                 invoice_number: F-2026-0001
                 invoice_date: "2026-03-05"
                 invoice_status: Enviada
+                status:
+                  token: "3"
+                  name: Enviada
                 due_date: "2026-03-25"
                 invoice_amount: 45.50
                 total_amount: 48.19
@@ -684,6 +705,11 @@ paths:
       summary: Listar facturas impagadas
       description: |
         Devuelve las facturas del contrato filtradas por uno o más estados de factura.
+
+        Aplica los mismos filtros base que `/ov/invoices/`: nunca devuelve
+        pre-facturas (estado con token `1`), aunque el token `1` se incluya en
+        `statuses` (en ese caso la lista puede quedar vacía). Sobre esa base,
+        `statuses` añade el filtro de estados impagados.
 
         El parámetro `statuses` es obligatorio y acepta tokens de `InvoiceStatus` separados por comas.
         Ejemplo: `statuses=-3,2` devuelve facturas en morosidad o confirmadas.
@@ -791,6 +817,9 @@ paths:
         de lectura (`reading_date`, ambos inclusive); si `date_from` es
         posterior a `date_to` responde `400`. Un `contract_token` desconocido
         responde `404`.
+
+        Solo se devuelven los consumos ya facturados: las lecturas que no están
+        vinculadas a ninguna factura se excluyen del historial.
       operationId: listConsumptionHistory
       security:
         - tokenAuth: []
@@ -837,8 +866,9 @@ paths:
         token del contrato al que pertenece la lectura.
 
         El formato se elige con `?format=` (`pdf` por defecto o `csv`).
-        Responde `404` si el contrato no existe o si la lectura no existe o no
-        pertenece al contador del contrato.
+        Responde `404` si el contrato no existe o si la lectura no existe, no
+        pertenece al contador del contrato o no está facturada (sin factura
+        vinculada).
       operationId: downloadConsumption
       security:
         - tokenAuth: []
@@ -875,6 +905,11 @@ paths:
         se descargan únicamente esas lecturas (filas marcadas manualmente). Si
         no, se aplican `date_from`/`date_to` y se devuelve el conjunto completo
         filtrado, sin límite de página, pensado para «Seleccionar todo».
+
+        Solo se incluyen los consumos ya facturados (lecturas vinculadas a al
+        menos una factura). Los `reading_ids` no facturados se omiten del
+        fichero sin devolver error; un `reading_id` fuera del contador del
+        contrato sigue respondiendo `400`.
 
         El formato se elige con `format` en el cuerpo (`pdf` por defecto,
         `csv` o `zip`). Responde `404` si el contrato no existe y `400` con
@@ -1143,6 +1178,12 @@ paths:
         titular de la cuenta de domiciliación. Si `dni` no se envía, la clave
         `is_account_holder` **no aparece** en la respuesta.
 
+        `is_holder` e `is_payer` siguen la misma regla: solo se evalúan si se
+        envía `dni` y se omiten de la respuesta si no se envía. `is_holder`
+        indica si el `dni` corresponde al titular del contrato e `is_payer` si
+        corresponde al titular de la cuenta de domiciliación (misma comprobación
+        que `is_account_holder`).
+
         Excepción a la nota general sobre IBAN: en este endpoint el campo `iban`
         se devuelve sin enmascarar solo si se envía `dni` y este coincide con el
         titular de la cuenta; en cualquier otro caso aparece enmascarado
@@ -1186,8 +1227,14 @@ paths:
                 phone2: "600000001"
                 account_holder_dni: "12345678A"
                 is_account_holder: true
+                is_holder: true
+                is_payer: true
                 holder_address: "C/ de Mallorca, 45, 2-1, 08013 Barcelona"
                 iban: "ES12345678901234567890"
+                status:
+                  token: "1"
+                  name: Activo
+                has_sepa_document: false
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1224,8 +1271,9 @@ paths:
         clave explícita `contract_token` (con el mismo valor que `token`), que
         la frontend reutiliza en `?contract_token=` del resto de endpoints.
         Igual que en `/ov/contract/{token}/`, el parámetro opcional `dni`
-        desenmascara el IBAN y expone `is_account_holder` solo cuando coincide
-        con el titular de la cuenta de domiciliación.
+        desenmascara el IBAN cuando coincide con el titular de la cuenta de
+        domiciliación y expone `is_account_holder`, `is_holder` e `is_payer`
+        (solo se incluyen si se envía `dni`), además del objeto `status`.
 
         Un `404` significa que el NIC no existe o no está asociado a ningún
         contrato: la frontend muestra el mensaje «NIC inexistente».
@@ -1254,6 +1302,10 @@ paths:
                 city: Barcelona
                 postal_code: "08110"
                 iban: "ES12***************7890"
+                status:
+                  token: "1"
+                  name: Activo
+                has_sepa_document: false
         "400":
           description: El NIC no cumple el formato esperado (`^\d+(?:/\d+){1,2}$`)
           content:
@@ -1332,8 +1384,12 @@ paths:
         coincidir con el IBAN activo del contrato (`payment.IBAN.iban`); si no
         coincide se devuelve `400`. Responde `404` si el contrato no existe.
 
-        El almacenamiento definitivo del documento aún no está integrado: la
-        operación se registra como mock y se responde `201`.
+        El documento se archiva en el gestor documental del sistema central
+        (servicio configurado para contratos, por defecto `hdd`) como documento
+        SEPA vinculado a la forma de pago del contrato
+        (`GeneralPaymentSepaDocument`). Si el contrato ya tenía un mandato
+        archivado, se sustituye por el nuevo. La petición y la respuesta
+        (`201`) se mantienen sin cambios.
       operationId: uploadSignedProcedureDocument
       security:
         - tokenAuth: []
@@ -1395,6 +1451,53 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /ov/procedures/{contract_token}/sepa-signed/:
+    get:
+      tags:
+        - Trámites
+      summary: Descargar el mandato SEPA firmado archivado
+      description: |
+        Devuelve el documento del mandato SEPA firmado archivado para la forma
+        de pago del contrato. Responde `404` si el contrato no existe o si no
+        hay ningún mandato archivado (también si el fichero físico no está
+        disponible en el gestor documental).
+      operationId: downloadSignedProcedureDocument
+      security:
+        - tokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/contractTokenSepaPath"
+      responses:
+        "200":
+          description: Fichero del mandato SEPA firmado
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Nombre del fichero archivado (disposición `attachment`)
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: |
+            El contrato no existe o no hay mandato SEPA archivado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              examples:
+                contractNotFound:
+                  summary: Contrato inexistente
+                  value:
+                    error: Contract not found
+                documentNotFound:
+                  summary: Sin mandato archivado
+                  value:
+                    error: SEPA document not found
 
   /ov/procedures/{contract_token}/cancel-direct-debit/:
     post:
@@ -1545,11 +1648,11 @@ components:
       in: query
       required: false
       description: |
-        DNI/NIF del solicitante. En `/ov/contract/{token}/` y en
-        `/ov/contract/by-nic/{nic}/` determina la
-        bandera `is_account_holder` (solo se evalúa y se incluye en la
-        respuesta cuando se envía) y desenmascara el IBAN cuando coincide con
-        el titular de la cuenta de domiciliación.
+        DNI/NIF del solicitante. En `/ov/contract/{token}/`, en
+        `/ov/contract/by-nic/{nic}/` y en `/ov/contract-detail/` determina las
+        banderas `is_account_holder`, `is_holder` e `is_payer` (solo se evalúan
+        y se incluyen en la respuesta cuando se envía) y desenmascara el IBAN
+        cuando coincide con el titular de la cuenta de domiciliación.
       schema:
         type: string
       example: "12345678A"
@@ -1916,6 +2019,12 @@ components:
         holder_name:
           type: string
           description: Nombre completo del titular
+        has_sepa_document:
+          type: boolean
+          description: |
+            `true` si la forma de pago del contrato tiene un mandato SEPA
+            firmado archivado (`GeneralPaymentSepaDocument`); `false` si no hay
+            mandato o el contrato no tiene forma de pago.
 
     ContactData:
       allOf:
@@ -2020,6 +2129,25 @@ components:
         invoice_status:
           type: string
           description: Nombre del estado de la factura
+        status:
+          type: object
+          nullable: true
+          description: |
+            Estado de la factura como objeto `{token, name}`. Se añade en paralelo
+            a `invoice_status`, que se mantiene por compatibilidad. Es `null` si
+            la factura no tiene estado asignado.
+          properties:
+            token:
+              type: string
+              nullable: true
+              description: Token del estado (`InvoiceStatus.token`)
+            name:
+              type: string
+              nullable: true
+              description: Nombre del estado (mismo valor que `invoice_status`)
+          example:
+            token: "3"
+            name: Enviada
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
@@ -2278,6 +2406,25 @@ components:
           type: string
           nullable: true
           description: Nombre del estado del contrato
+        status:
+          type: object
+          nullable: true
+          description: |
+            Estado del contrato como objeto `{token, name}`. Se añade en paralelo
+            a `status_token` y `status_name`, que se mantienen por
+            compatibilidad. Es `null` si el contrato no tiene estado asignado.
+          properties:
+            token:
+              type: string
+              nullable: true
+              description: Token del estado (mismo valor que `status_token`)
+            name:
+              type: string
+              nullable: true
+              description: Nombre del estado (mismo valor que `status_name`)
+          example:
+            token: "1"
+            name: Activo
         holder_token:
           type: string
           nullable: true
@@ -2328,6 +2475,12 @@ components:
         holder_name:
           type: string
           description: Nombre completo del titular
+        has_sepa_document:
+          type: boolean
+          description: |
+            `true` si la forma de pago del contrato tiene un mandato SEPA
+            firmado archivado (`GeneralPaymentSepaDocument`); `false` si no hay
+            mandato o el contrato no tiene forma de pago.
         city:
           type: string
           nullable: true
@@ -2360,6 +2513,22 @@ components:
             se omite por completo. El frontend utiliza esta bandera para aplicar la
             lógica de anonimización; si es `false`, se está viendo la cuenta de otra
             persona.
+          example: true
+        is_holder:
+          type: boolean
+          description: |
+            `true` si el parámetro de consulta `dni` coincide con el DNI/NIF del
+            titular del contrato (`Contract.holder.token`, normalizado: sin
+            espacios y en mayúsculas). **Solo aparece en la respuesta si se envía
+            `dni`**; sin `dni` la clave se omite por completo.
+          example: true
+        is_payer:
+          type: boolean
+          description: |
+            `true` si el parámetro de consulta `dni` coincide con el titular de la
+            cuenta de domiciliación (normalizado). **Solo aparece en la respuesta
+            si se envía `dni`**; sin `dni` la clave se omite por completo. Es un
+            alias explícito de la misma comprobación que `is_account_holder`.
           example: true
         holder_address:
           type: string
@@ -2415,6 +2584,25 @@ components:
         invoice_status:
           type: string
           description: Nombre del estado de la factura
+        status:
+          type: object
+          nullable: true
+          description: |
+            Estado de la factura como objeto `{token, name}`. Se añade en paralelo
+            a `invoice_status`, que se mantiene por compatibilidad. Es `null` si
+            la factura no tiene estado asignado.
+          properties:
+            token:
+              type: string
+              nullable: true
+              description: Token del estado (`InvoiceStatus.token`)
+            name:
+              type: string
+              nullable: true
+              description: Nombre del estado (mismo valor que `invoice_status`)
+          example:
+            token: "3"
+            name: Enviada
         due_date:
           type: string
           format: date

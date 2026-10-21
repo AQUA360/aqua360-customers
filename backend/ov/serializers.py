@@ -8,6 +8,7 @@ from contract.models import (
     PaymentType,
 )
 from billing.models import (
+    GeneralPaymentSepaDocument,
     Invoice,
     InvoiceLineItem,
     InvoiceStatus,
@@ -124,6 +125,7 @@ class BillingDataOVSerializer(serializers.ModelSerializer):
     payment_type = serializers.CharField(source="payment.type.token", read_only=True)
     iban = serializers.SerializerMethodField()
     holder_name = serializers.SerializerMethodField()
+    has_sepa_document = serializers.SerializerMethodField()
 
     class Meta:
         model = Contract
@@ -141,7 +143,17 @@ class BillingDataOVSerializer(serializers.ModelSerializer):
             "payment_type",
             "iban",
             "holder_name",
+            "has_sepa_document",
         ]
+
+    def get_has_sepa_document(self, obj):
+        """`true` si la forma de pagament del contracte té un mandat SEPA
+        firmat arxivat (`GeneralPaymentSepaDocument`)."""
+        if not obj.payment:
+            return False
+        return GeneralPaymentSepaDocument.objects.filter(
+            general_payment=obj.payment, file__isnull=False
+        ).exists()
 
     def get_tenant_name(self, obj):
         return f"{obj.holder.name} {obj.holder.surname}"
@@ -530,6 +542,7 @@ class BillingContractInvoicesOVSerializer(serializers.Serializer):
     # invoice_left_to_pay = serializers.FloatField(source="left_to_pay", read_only=True)
 
     invoice_status = serializers.CharField(source="status.name", read_only=True)
+    status = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
 
     class Meta:
@@ -542,7 +555,16 @@ class BillingContractInvoicesOVSerializer(serializers.Serializer):
             "invoice_status",
             "invoice_token",
             "pdf_available",
+            "status",
         ]
+
+    def get_status(self, obj):
+        """Estat de la factura com a objecte `{token, name}`; `null` si la
+        factura no té estat. S'afegeix al costat de `invoice_status`, que es
+        manté per compatibilitat."""
+        if not obj.status:
+            return None
+        return {"token": obj.status.token, "name": obj.status.name}
 
     def get_pdf_available(self, obj) -> bool:
         from coredata.models import ConfigProject
@@ -902,10 +924,14 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
     phone1 = serializers.SerializerMethodField()
     phone2 = serializers.SerializerMethodField()
 
+    status = serializers.SerializerMethodField()
     account_holder_dni = serializers.SerializerMethodField()
     is_account_holder = serializers.SerializerMethodField()
+    is_holder = serializers.SerializerMethodField()
+    is_payer = serializers.SerializerMethodField()
     holder_address = serializers.SerializerMethodField()
     iban = serializers.SerializerMethodField()
+    has_sepa_document = serializers.SerializerMethodField()
 
     class Meta:
         model = Contract
@@ -937,6 +963,10 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             "is_account_holder",
             "holder_address",
             "iban",
+            "status",
+            "is_holder",
+            "is_payer",
+            "has_sepa_document",
         ]
 
     def _iban(self, obj):
@@ -1064,6 +1094,56 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             return False
         return dni == iban_dni
 
+    def get_status(self, obj):
+        """Estat del contracte com a objecte `{token, name}`; `null` si el
+        contracte no té estat. Substitució estructural de `status_token` /
+        `status_name`, que es mantenen per compatibilitat."""
+        if not obj.status:
+            return None
+        return {"token": obj.status.token, "name": obj.status.name}
+
+    def get_has_sepa_document(self, obj):
+        """`true` si la forma de pagament del contracte té un mandat SEPA
+        firmat arxivat (`GeneralPaymentSepaDocument`)."""
+        if not obj.payment:
+            return False
+        return GeneralPaymentSepaDocument.objects.filter(
+            general_payment=obj.payment, file__isnull=False
+        ).exists()
+
+    @staticmethod
+    def _holder_dni(obj):
+        if not obj.holder:
+            return None
+        dni = obj.holder.token
+        if not dni:
+            return None
+        return str(dni).strip().upper()
+
+    def get_is_holder(self, obj):
+        """`true` si el `dni` de la query coincideix amb el titular del
+        contracte (normalitzat). Sense `dni` a la query la clau s'elimina del
+        resultat."""
+        dni = self._request_dni()
+        if not dni:
+            return False
+        holder_dni = self._holder_dni(obj)
+        if not holder_dni:
+            return False
+        return dni == holder_dni
+
+    def get_is_payer(self, obj):
+        """`true` si el `dni` de la query coincideix amb el titular del compte
+        de domiciliació (normalitzat). Sense `dni` a la query la clau
+        s'elimina del resultat."""
+        dni = self._request_dni()
+        if not dni:
+            return False
+        iban_dni = self._iban_holder_dni(self._iban(obj))
+        if not iban_dni:
+            return False
+        return dni == iban_dni
+
     def get_holder_address(self, obj):
         holder = obj.holder
         if not holder:
@@ -1093,6 +1173,8 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         if not self._request_dni():
             data.pop("is_account_holder", None)
+            data.pop("is_holder", None)
+            data.pop("is_payer", None)
         return data
 
 
@@ -1116,6 +1198,7 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     invoice_number = serializers.CharField(source="serie_final", read_only=True)
     invoice_date = serializers.DateField(source="issue_date", read_only=True)
     invoice_status = serializers.CharField(source="status.name", read_only=True)
+    status = serializers.SerializerMethodField()
     due_date = serializers.DateField(read_only=True, allow_null=True)
     invoice_amount = serializers.FloatField(source="left_to_pay", read_only=True)
     total_amount = serializers.FloatField(source="total_final", read_only=True)
@@ -1147,7 +1230,16 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
             "tax_address",
             "tariffs",
             "fiscal_breakdown",
+            "status",
         ]
+
+    def get_status(self, obj):
+        """Estat de la factura com a objecte `{token, name}`; `null` si la
+        factura no té estat. S'afegeix al costat de `invoice_status`, que es
+        manté per compatibilitat."""
+        if not obj.status:
+            return None
+        return {"token": obj.status.token, "name": obj.status.name}
 
     def _direct_debit_token(self):
         cfg = ConfigProject.objects.filter(token="direct_debit_token").first()

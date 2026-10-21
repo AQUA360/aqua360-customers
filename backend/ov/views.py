@@ -18,7 +18,13 @@ from rest_framework.generics import RetrieveAPIView
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from contract.models import Contract, ContractLog, ContractObservation, PaymentType
-from billing.models import Invoice, InvoiceStatus, Reading
+from billing.models import (
+    GeneralPaymentSepaDocument,
+    Invoice,
+    InvoiceStatus,
+    Reading,
+)
+from documentmanager.utils.main_utils import download_document, upload_document
 from ov.serializers import (
     BillingDataOVSerializer,
     BillingContractInvoicesOVSerializer,
@@ -216,9 +222,17 @@ class BillingContractInvoicesOVView(APIView):
             )
 
         contract = self.queryset.filter(token=contract_token).first()
-        invoices = Invoice.objects.filter(contract=contract).exclude(
-            status__token="1"
-        )  # excluïm les factures de pre-factura
+        if not contract:
+            return Response(
+                {"error": "Contract not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        invoices = (
+            Invoice.objects.filter(contract=contract)
+            .exclude(status__token="1")  # excluïm les factures de pre-factura
+            .select_related("status", "contract", "payment_type")
+        )
 
         serializer = BillingContractInvoicesOVSerializer(invoices, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -298,7 +312,9 @@ class UnpayedInvoicesOVView(APIView):
         # optional payment type exclusion
         invoices_queryset = Invoice.objects.filter(
             contract=contract, status__in=statuses
-        )
+        ).exclude(
+            status__token="1"
+        )  # mateix filtre base que /ov/invoices/: sense pre-factures
 
         qp_exc_payment_type = request.query_params.get("exc_payment_type_token", None)
         if qp_exc_payment_type:
@@ -753,6 +769,9 @@ class ConsumptionHistoryOVView(APIView):
         else:
             queryset = Reading.objects.none()
 
+        # Només consums facturats: lectures vinculades a almenys una factura
+        queryset = queryset.filter(invoices__isnull=False).distinct()
+
         queryset = (
             queryset.select_related("previous_reading")
             .prefetch_related("invoices")
@@ -862,7 +881,9 @@ class ConsumptionDownloadOVView(APIView):
         reading = None
         if meter:
             reading = (
-                Reading.objects.filter(pk=id, meter=meter)
+                Reading.objects.filter(
+                    pk=id, meter=meter, invoices__isnull=False
+                )
                 .select_related("previous_reading")
                 .prefetch_related("invoices")
                 .first()
@@ -948,9 +969,14 @@ class ConsumptionsDownloadOVView(APIView):
             if data.get("date_to"):
                 queryset = queryset.filter(reading_date__lte=data["date_to"])
 
-        queryset = queryset.select_related("previous_reading").prefetch_related(
-            "invoices"
-        ).order_by("-reading_date", "-id")
+        # Només consums facturats: les lectures no facturades s'ometen del fitxer
+        queryset = (
+            queryset.filter(invoices__isnull=False)
+            .distinct()
+            .select_related("previous_reading")
+            .prefetch_related("invoices")
+            .order_by("-reading_date", "-id")
+        )
 
         if export_format == "csv":
             payload = _consumptions_csv(queryset)
@@ -1008,11 +1034,12 @@ class BillingPeriodsOVView(APIView):
 class SepaDocumentUploadView(APIView):
     """POST /ov/procedures/{contract_token}/upload-sepa-signed/
 
-    Sube y archiva el mandato SEPA firmado de un contrato. Mock ligero:
-    valida que el contrato exista (404 si no) y que el `iban` enviado
-    coincida con el IBAN activo de la cuenta de domiciliación (400 si no
-    coincide); archiva el documento de forma placeholder y devuelve 201
-    con {"contract_token", "success": true}.
+    Sube y archiva el mandato SEPA firmado de un contrato. Valida que el
+    contrato exista (404 si no) y que el `iban` enviado coincida con el IBAN
+    activo de la cuenta de domiciliación (400 si no coincide); archiva el
+    documento en el gestor documental y lo vincula a la forma de pago del
+    contrato (`GeneralPaymentSepaDocument`), devolviendo 201 con
+    {"contract_token", "success": true}.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1047,14 +1074,90 @@ class SepaDocumentUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        _ = serializer.validated_data["sepa"]
+        uploaded_file = serializer.validated_data["sepa"]
+        general_payment = contract.payment
+        service = settings.DOCUMENT_MANAGER_SERVICES.get("contract")
 
-        logger.info(f"Mock archived signed SEPA mandate for contract {contract_token}")
+        person_bank = general_payment.IBAN or general_payment.company_iban
+        folder_name = "SEPA"
+        if person_bank:
+            if hasattr(person_bank, "name") and person_bank.name:
+                folder_name = person_bank.name
+            elif hasattr(person_bank, "person") and person_bank.person:
+                folder_name = (
+                    f"{person_bank.person.name} {person_bank.person.surname or ''}"
+                ).strip()
+            elif hasattr(person_bank, "company") and person_bank.company:
+                folder_name = person_bank.company.name
+            elif hasattr(person_bank, "iban") and person_bank.iban:
+                folder_name = person_bank.iban
+        folder_name = folder_name.replace(" ", "_").upper()
+
+        document = upload_document(
+            uploaded_file,
+            "SEPA",
+            "CONTRACT",
+            general_payment.id,
+            general_payment.token or "",
+            folder_name,
+            service,
+            uploaded_file.name,
+        )
+
+        with transaction.atomic():
+            GeneralPaymentSepaDocument.objects.filter(
+                general_payment=general_payment
+            ).delete()
+            GeneralPaymentSepaDocument.objects.create(
+                general_payment=general_payment, file=document, checked=True
+            )
+
+        logger.info(
+            "Archived signed SEPA mandate for contract %s (document %s)",
+            contract_token,
+            document.id,
+        )
 
         return Response(
             {"contract_token": contract_token, "success": True},
             status=status.HTTP_201_CREATED,
         )
+
+
+class SepaDocumentDownloadView(APIView):
+    """GET /ov/procedures/{contract_token}/sepa-signed/
+
+    Devuelve el mandato SEPA firmado archivado para la forma de pago del
+    contrato. Responde 404 si el contrato no existe o si no hay mandato
+    archivado.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, contract_token):
+        contract = Contract.objects.filter(token=contract_token).first()
+        if not contract:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        sepa_document = None
+        if contract.payment:
+            sepa_document = (
+                GeneralPaymentSepaDocument.objects.filter(
+                    general_payment=contract.payment, file__isnull=False
+                )
+                .select_related("file")
+                .first()
+            )
+
+        if not sepa_document or not sepa_document.file:
+            return Response(
+                {"error": "SEPA document not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return download_document(sepa_document.file)
 
 
 class CancelDirectDebitView(APIView):

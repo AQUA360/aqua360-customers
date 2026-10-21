@@ -20,6 +20,7 @@ from .views import (
     ConsumptionsDownloadOVView,
     BillingPeriodsOVView,
     SepaDocumentUploadView,
+    SepaDocumentDownloadView,
     CancelDirectDebitView,
     ContactDataOVView,
     BatchInvoiceDownloadView,
@@ -116,6 +117,12 @@ urlpatterns = [
         "procedures/<str:contract_token>/upload-sepa-signed/",
         SepaDocumentUploadView.as_view(),
         name="upload-sepa-signed-ov",
+    ),
+    # /ov/procedures/<contract_token>/sepa-signed/
+    path(
+        "procedures/<str:contract_token>/sepa-signed/",
+        SepaDocumentDownloadView.as_view(),
+        name="sepa-signed-ov",
     ),
     # /ov/procedures/<contract_token>/cancel-direct-debit/
     path(
