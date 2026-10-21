@@ -22,6 +22,7 @@ from coredata.utils.iban_validator_utils import get_spanish_bank_code_candidates
 from coredata.utils.validators_utils import validate_nif
 from service.models import Exploitation
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, jump_row, save_report
+from statistics.utils.report_progress import report_progress
 from statistics.utils.report_filters import (contract_multi_filter_q, get_billing_ids, get_multi_ids, has_serie_final_range,
                                              invoice_multi_filter_q, payment_multi_filter_q, serie_final_range_invoices,
                                              serie_final_range_period)
@@ -1733,7 +1734,9 @@ def generate_sgt_txt_report(request, black_fill=None, white_bold_font=None, task
         if multi_q:
             invoices = invoices.filter(multi_q).distinct()
 
-        content_file, file_name = generate_sgt_txt_content(None, invoices)
+        content_file, file_name = generate_sgt_txt_content(
+            None, invoices, progress_callback=lambda current, total: report_progress(task, current, total),
+        )
 
         response = HttpResponse(content_file.getvalue(), content_type="text/plain")
         response["Content-Disposition"] = f'attachment; filename="{file_name}"'
@@ -1751,7 +1754,7 @@ def generate_sgt_txt_report(request, black_fill=None, white_bold_font=None, task
         return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
 
-def generate_pending_invoices_values_report(request, black_fill=None, white_bold_font=None):
+def generate_pending_invoices_values_report(request, black_fill=None, white_bold_font=None, task=None):
     
     id = request.data.get('id', None)
     date_range = request.data.get('date_range', None)
@@ -1864,11 +1867,15 @@ def generate_pending_invoices_values_report(request, black_fill=None, white_bold
       
     inv_titles = [_("Contracte"), _("NIF Abonat"), _("Núm Factura"), _("Data Factura"), _("Estat"), _("Data pagament"), _("Total Factura"), _("Total Pendent")]
     inv_row = add_row(pending_invoices_sheet, inv_row, inv_titles, fill=black_fill, font=white_bold_font)
+    # El progrés cobreix els dos recorreguts: primer les factures i després els contractes.
+    total_invoices = invoices.count()
+    total_progress = total_invoices + contracts.count()
     count = 0
     for inv in invoices:
         if count % 1000 == 0:
-            print(f"processing invoice {count} out of {invoices.count()}")
+            print(f"processing invoice {count} out of {total_invoices}")
         count += 1
+        report_progress(task, count, total_progress)
         contract_token = None
         if inv.contract:
             contract_token = inv.contract.token
@@ -1910,8 +1917,9 @@ def generate_pending_invoices_values_report(request, black_fill=None, white_bold
     contract_count = 0
     for contract in contracts:
         if contract_count % 1000 == 0:
-            print(f"processing contract {contract_count} out of {contracts.count()}")
+            print(f"processing contract {contract_count} out of {total_progress - total_invoices}")
         contract_count += 1
+        report_progress(task, total_invoices + contract_count, total_progress)
         total_debt = contract_debt.get(contract.token, 0)
         contract_row_data = [
             contract.supply_point_default.connection.exploitation.name if contract.supply_point_default and contract.supply_point_default.connection and contract.supply_point_default.connection.exploitation else "",

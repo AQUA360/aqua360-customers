@@ -168,7 +168,7 @@ def invoice_reading_summary_csv_headers():
     ]
 
 
-def build_invoice_reading_summary_csv_bytes():
+def build_invoice_reading_summary_csv_bytes(progress_callback=None):
     active_token = _active_contract_status_token()
 
     contracts_qs = (
@@ -194,7 +194,10 @@ def build_invoice_reading_summary_csv_bytes():
     writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(invoice_reading_summary_csv_headers())
 
-    for c in contracts_qs.iterator(chunk_size=500):
+    total = contracts_qs.count() if progress_callback else 0
+    for idx, c in enumerate(contracts_qs.iterator(chunk_size=500), start=1):
+        if progress_callback:
+            progress_callback(idx, total)
         sp = c.supply_point_default
         prop = sp.property if sp else None
         rp = prop.route_position if prop else None

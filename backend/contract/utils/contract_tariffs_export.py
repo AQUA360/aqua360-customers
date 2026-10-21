@@ -82,7 +82,7 @@ def _contract_price_rate_token_name_by_contract_and_product(
     return out
 
 
-def build_contract_tariffs_export_csv_bytes(filtered_queryset):
+def build_contract_tariffs_export_csv_bytes(filtered_queryset, progress_callback=None):
     variable_names = []  # reutilitzem el mateix "base columns" de l'export 1
     base_headers = build_contract_export_headers(variable_names)
 
@@ -116,7 +116,10 @@ def build_contract_tariffs_export_csv_bytes(filtered_queryset):
     writer = SafeCsvWriter(buffer, delimiter=";")
     writer.writerow(base_headers + tariff_headers)
 
-    for contract in export_qs.iterator(chunk_size=500):
+    total = len(contract_ids)
+    for idx, contract in enumerate(export_qs.iterator(chunk_size=500), start=1):
+        if progress_callback:
+            progress_callback(idx, total)
         row = contract_row_values(contract, variable_names, debt_map, {})
         by_product = pr_by_contract_pid.get(contract.id, {})
         for p in water_products:
