@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from contract.utils.contract_invoice_reading_summary_export import (
     build_invoice_reading_summary_csv_bytes,
 )
+from statistics.utils.report_progress import report_progress
 
 
 def generate_contract_invoice_reading_summary_report(
@@ -18,7 +19,9 @@ def generate_contract_invoice_reading_summary_report(
     name = request.data.get('name', '') or 'Resum contractes factura i lectures'
     type_id = request.data.get('type_id', None)
 
-    body = build_invoice_reading_summary_csv_bytes()
+    body = build_invoice_reading_summary_csv_bytes(
+        progress_callback=(lambda current, total: report_progress(task, current, total, every=500)) if task else None,
+    )
     filename = (
         f"contract_invoice_reading_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     )

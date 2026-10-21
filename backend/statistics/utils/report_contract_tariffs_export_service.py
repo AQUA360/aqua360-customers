@@ -14,6 +14,7 @@ from contract.utils.contract_list_queryset import default_contract_list_queryset
 from contract.utils.contract_tariffs_export import (
     build_contract_tariffs_export_csv_bytes,
 )
+from statistics.utils.report_progress import report_progress
 
 
 def generate_contract_tariffs_export_report(request, black_fill=None, white_bold_font=None, task=None):
@@ -32,7 +33,10 @@ def generate_contract_tariffs_export_report(request, black_fill=None, white_bold
     )
 
     filtered = filterset.qs
-    body = build_contract_tariffs_export_csv_bytes(filtered)
+    body = build_contract_tariffs_export_csv_bytes(
+        filtered,
+        progress_callback=(lambda current, total: report_progress(task, current, total, every=500)) if task else None,
+    )
 
     filename = f"contractes_informacio_i_pricerate_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 

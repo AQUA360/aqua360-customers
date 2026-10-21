@@ -114,7 +114,7 @@ def generate_billing_missing_contracts_report(contracts_data, billing, first_sta
             ]
     
 
-    row = add_row(sheet, row, titles, fill=PatternFill(start_color="b8cce4", end_color="b8cce4", fill_type="solid"))
+    row = add_row(sheet, row, titles, fill=PatternFill(start_color="FFB8CCE4", end_color="FFB8CCE4", fill_type="solid"))
     for item in contracts_data:
         reading = readings.filter(contract__id=item['contract_id']).order_by('-reading_date').first()
         prev_reading = previous_readings.filter(contract__id=item['contract_id']).order_by('-reading_date').first()

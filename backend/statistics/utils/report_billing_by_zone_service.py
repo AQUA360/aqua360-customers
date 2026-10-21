@@ -657,11 +657,14 @@ def apply_zone_config(zones, meter_counts, config):
 
 
 def _fill(hex_color):
+    # Alfa FF: sense alfa openpyxl desa el color transparent (00) i alguns visors no el pinten.
+    if len(hex_color) == 6:
+        hex_color = f"FF{hex_color}"
     return PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
 
 
 def _thin_border():
-    side = Side(style='thin', color='BFBFBF')
+    side = Side(style='thin', color='FFBFBFBF')
     return Border(left=side, right=side, top=side, bottom=side)
 
 
@@ -702,7 +705,7 @@ def build_workbook(padrones, zones, data, others, meter_counts, black_fill, whit
         )
         return wb
 
-    header_font = Font(color="FFFFFF", bold=True)
+    header_font = Font(color="FFFFFFFF", bold=True)
     bold = Font(bold=True)
     zone_fills = [
         _fill("5B9BD5"),
