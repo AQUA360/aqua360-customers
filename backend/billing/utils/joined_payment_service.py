@@ -139,7 +139,8 @@ def get_contract_debt_detail(contract_id):
     si compta al deute, si es pot liquidar i, si no, el motiu: que ja és en una
     remesa pendent d'enviar o en un pagament agrupat actiu.
     """
-    contract = Contract.objects.get(id=contract_id)
+    from django.shortcuts import get_object_or_404
+    contract = get_object_or_404(Contract, id=contract_id)
     
     debt_payment_ids = set(Payment.objects.filter(
         invoice__contract_id=contract.id,
