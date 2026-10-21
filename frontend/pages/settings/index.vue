@@ -585,11 +585,11 @@ getConfigProject();
             :class="{ 'bg-slate-200': $route.path.indexOf('/settings/config_aca/') != -1 }">{{
               t('settings_block.config_aca') }}</NuxtLink>
         </li>
-        <!-- <li class="mb-1">
+        <li class="mb-1">
           <NuxtLink to="/settings/accounting/" class="text-sky-500 underline hover:no-underline"
             :class="{ 'bg-slate-200': $route.path.indexOf('/settings/accounting/') != -1 }">{{
               t('pricing_block.accounting') }}</NuxtLink>
-        </li> -->
+        </li>
       </ul>
 
       <details v-if="permissions?.permissions?.view_user" class="text-base  pl-6">

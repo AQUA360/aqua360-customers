@@ -5768,3 +5768,7 @@ msgstr "de noviembre"
 msgctxt "date month with preposition"
 msgid "of December"
 msgstr "de diciembre"
+
+#: pricing/utils/accounting_service.py
+msgid "No values found to generate accounting"
+msgstr "No se han encontrado valores para generar el informe de contabilidad"

@@ -3,6 +3,7 @@ from rest_framework import routers
 
 from documentmanager.views_export.generic_export_view import GenericExportView
 
+from pricing.views.accounting_config_view import AccountingConfigViewSet
 from pricing.views.accounting_cost_center_view import AccountingCostCenterViewSet
 from pricing.views.article_code_view import ArticleCodeViewSet
 
@@ -25,6 +26,7 @@ from .views.billing_period_view import BillingPeriodViewSet
 from .views.accounting_pricing_view import AccountingPricingViewSet
 from .views.accounting_concept_view import AccountingConceptViewSet
 from .views.accounting_type_view import AccountingTypeViewSet
+from .views.accounting_additional_line_view import AccountingAdditionalLineViewSet
 
 router = routers.DefaultRouter()
 router.register(r'adjustment', AdjustmentViewSet)
@@ -52,6 +54,8 @@ router.register(r'accounting-pricing', AccountingPricingViewSet)
 router.register(r'accounting-concept', AccountingConceptViewSet)
 router.register(r'accounting-type', AccountingTypeViewSet)
 router.register(r'accounting-cost-center', AccountingCostCenterViewSet)
+router.register(r'accounting-additional-line', AccountingAdditionalLineViewSet)
+router.register(r'accounting-config', AccountingConfigViewSet, basename='accounting-config')
 
 urlpatterns = [
     # Han d'anar abans d'`include(router.urls)`: el router registra `<recurs>/<pk>/`

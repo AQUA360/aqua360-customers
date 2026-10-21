@@ -442,7 +442,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
       raise ReportWarning(data['warning'])
     if response.status_code >= 400:
       error_msg = data.get('error', 'Unknown error') if data else str(response.data)
-      raise Exception(f"Generator returned error: {error_msg}")
+      raise Exception(f"{error_msg}")
 
   if isinstance(result, Response):
     _raise_if_generator_error(result)

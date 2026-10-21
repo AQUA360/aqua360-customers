@@ -15,7 +15,7 @@ from decouple import config
 from billing.models import Invoice, InvoiceTemplate
 from billing.signals import check_paid_invoice, create_payment_invoice
 from billing.utils.barcode_service import generate_barcode, get_barcode_values
-from billing.utils.invoice_service import get_totals
+from billing.utils.invoice_service import get_totals, reading_has_blocking_invoices
 from billing.utils.pdf_overlap import client_info_overlaps_header
 from billing.utils.message_service import invoice_add_messages
 from contract.models import Contract, ContractRequest, ContractTerminationRequest
@@ -313,7 +313,7 @@ def generate(context, invoice, exploitation, temporary=False):
                 if not reading.consumption_days and reading.previous_reading:
                     reading.consumption_days = (reading.reading_date - reading.previous_reading.reading_date).days
 
-                if reading.previous_reading and reading.previous_reading.is_close:
+                if reading.previous_reading and reading.previous_reading.is_close and not reading_has_blocking_invoices(reading.previous_reading):
                     prev = reading.previous_reading
                     # Només l'afegim si NO està ja a les lectures de la factura
                     if prev.id not in readings_ids:
@@ -322,7 +322,7 @@ def generate(context, invoice, exploitation, temporary=False):
                             prev.consumption_days = (prev.reading_date - prev.previous_reading.reading_date).days
                         meter_change_readings.append(prev)
 
-                if reading.previous_reading and reading.previous_reading.previous_reading and reading.previous_reading.previous_reading.is_close:
+                if reading.previous_reading and reading.previous_reading.previous_reading and reading.previous_reading.previous_reading.is_close and not reading_has_blocking_invoices(reading.previous_reading.previous_reading) and not reading_has_blocking_invoices(reading.previous_reading):
                     prev_prev = reading.previous_reading.previous_reading
                     # Només l'afegim si NO està ja a les lectures de la factura
                     if prev_prev.id not in readings_ids:

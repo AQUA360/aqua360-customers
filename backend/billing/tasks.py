@@ -4169,3 +4169,215 @@ def apply_billing_queue_action(queue_item, action):
 
   # Allibera/avança la cua FIFO (només actua si no hi ha cap altre item en running).
   process_next_queue_item()
+
+
+
+
+@shared_task
+def manage_deliquency(request_data, user_id):
+  try:
+    from django.db.models import Sum
+    from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
+    from billing.utils.payment_service import log_payment_status
+    from contract.serializers.contract_serializer import ContractListSerializer
+    from coredata.models import PersonDeliquency
+    from django.contrib.auth.models import User
+    
+    try:
+      user = User.objects.get(id=user_id)
+    except Exception as e:
+      user = None
+    
+    request_data = request_data or {}
+    selectedUseTypesIds = request_data.get("selectedUseTypesIds", [])
+    selectedExploitationId = request_data.get("selectedExploitationId", None)
+    selectedClientTypesIds = request_data.get("selectedClientTypesIds", [])
+    selectedZonesIds = request_data.get("selectedZonesIds", [])
+    # selectedDebtMngsIds = request_data.get("selectedDebtMngsIds", [])
+    selectedContractStatusesIds = request_data.get("selectedContractStatusesIds", [])
+    selectedPaymentTypeIds = request_data.get("selectedPaymentTypeIds", [])
+    filter_date_start = request_data.get("filter_date_start", None)
+    filter_date_end = request_data.get("filter_date_end", None)
+    filter_due_date_start = request_data.get("filter_due_date_start", None)
+    filter_due_date_end = request_data.get("filter_due_date_end", None)
+    filter_termination_start = request_data.get("filter_termination_start", None)
+    filter_termination_end = request_data.get("filter_termination_end", None)
+    selected_contracts_id = request_data.get("selected_contracts_id", [])
+    selected_invoices_id = request_data.get("selected_invoices_id", [])
+    max_pending_invoices = request_data.get("max_pending_invoices", None)
+    min_pending_invoices = request_data.get("min_pending_invoices", None)
+    filter_normal_invoices = request_data.get("filter_normal_invoices", None)
+    filter_endowment_invoices = request_data.get("filter_endowment_invoices", None)
+
+    is_saving = request_data.get('saving', False)
+    
+    invoice_ids = request_data.get("invoice_ids", [])
+    contract_ids = request_data.get("contract_ids", [])
+    ignore_invoice_ids = request_data.get("ignore_invoice_ids", [])
+    ignore_contract_ids = request_data.get("ignore_contract_ids", [])
+    saving_status_token = request_data.get("status_token", None)
+    
+    invoice_normal_status_configs = [
+      "invoice_status_confirmed_token",
+      "invoice_status_expired_token",
+      "invoice_status_endowment_token",
+    ]
+    invoice_excluded_status_configs = [
+      "invoice_status_irrecoverable_token"
+      "invoice_status_pending_token",
+      "invoice_status_paid_token",
+      "invoice_status_cancelled_token",
+      "invoice_status_payoff_token",
+      "invoice_status_dropped_token",
+    ]
+    invoice_normal_status_tokens = ConfigProject.objects.filter(token__in=invoice_normal_status_configs).values_list('value', flat=True)
+    invoice_excluded_status_configs = ConfigProject.objects.filter(token__in=invoice_excluded_status_configs).values_list('value', flat=True)
+    
+    print("before is saving")
+    if is_saving:
+      today = timezone.now().date()
+      print("is saving")
+      if invoice_ids:
+        config_endowment = ConfigProject.objects.get(token='invoice_status_endowment_token').value
+        config_irrecoverable = ConfigProject.objects.get(token='invoice_status_irrecoverable_token').value
+        if saving_status_token not in (config_endowment, config_irrecoverable):
+          raise Exception("Invalid delinquency status")
+        payment_status = PaymentStatus.objects.get(token=saving_status_token)
+        invoice_status = InvoiceStatus.objects.get(token=saving_status_token)
+        payment_status_token_paid = ConfigProject.objects.get(token='payment_status_paid_token').value
+        print("with invoice ids")
+        invoices = Invoice.objects.filter(id__in=invoice_ids).exclude(id__in=ignore_invoice_ids).distinct()
+        if not invoices.exists():
+          raise Exception("No invoices provided")
+
+        has_endowment = invoices.filter(endowment_date__isnull=False).exists()
+        has_normal = invoices.filter(endowment_date__isnull=True).exists()
+        if has_endowment and has_normal:
+          raise Exception("Select either normal or endowment invoices")
+        if has_endowment and saving_status_token != config_irrecoverable:
+          raise Exception("Endowment invoices can only be marked irrecoverable")
+
+        if saving_status_token == config_endowment:
+          invoices.update(status=invoice_status, endowment_date=today)
+        elif has_normal:
+          invoices.update(status=invoice_status, irrecoverable_date=today, endowment_date=today)
+        else:
+          invoices.update(status=invoice_status, irrecoverable_date=today)
+          
+        print("invoices", invoices)
+        payments = Payment.objects.filter(invoice__in=invoices).exclude(status__token=payment_status_token_paid).distinct()
+        for payment in payments:
+          log_payment_status(payment, payment_status, user, today)
+        payments.update(status=payment_status)
+
+        if not has_normal:
+          return {"OK": "Management finished."}
+
+        contracts = Contract.objects.filter(id__in=contract_ids).exclude(id__in=ignore_contract_ids).distinct()
+        for contract in contracts:
+          contract_holder = contract.holder
+          contract_invoices = invoices.filter(
+            Q(contract=contract) | Q(contract_termination__contract=contract) | Q(contract_request__contract=contract)
+            ).distinct()
+          last_invoice = contract_invoices.order_by('-issue_date').first()
+          invoices_paid = contract_invoices.aggregate(total=Sum('left_to_pay'))['total']
+          invoices_total = contract_invoices.aggregate(total=Sum('total_final'))['total']
+          invoices_total -= invoices_paid
+          if invoices_total:
+            if contract_holder.deliquency:
+              contract_holder.deliquency.debt_amount += invoices_total
+              contract_holder.deliquency.last_debt_data = last_invoice.due_date #either this or today?
+              contract_holder.deliquency.save()
+            else:
+              contract_holder.deliquency = PersonDeliquency.objects.create(
+                debt_amount=invoices_total,
+                last_debt_data=last_invoice.due_date,
+                is_debtor=True,
+              )
+              contract_holder.save()
+        return {"OK": "Management finished."}
+      else:
+        raise Exception("No invoices provided")
+    print("no saving")
+    
+    filters = Q(total_final__gt=0, status__token__in=invoice_normal_status_tokens)
+    print("filters", filters)
+    if selectedUseTypesIds:
+      filters &= (Q(contract__use_type__in=selectedUseTypesIds) | Q(contract_request__use_type__in=selectedUseTypesIds) | Q(contract_termination__contract__use_type__in=selectedUseTypesIds) | Q(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True))
+    if selectedExploitationId:
+      filters &= Q(exploitation=selectedExploitationId)
+    if selectedClientTypesIds:
+      filters &= (Q(contract__client_type__in=selectedClientTypesIds) | Q(contract_request__client_type__in=selectedClientTypesIds) | Q(contract_termination__contract__client_type__in=selectedClientTypesIds) | Q(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True))
+    if selectedZonesIds:
+      filters &= Q(zone__in=selectedZonesIds)
+    if selectedContractStatusesIds:
+      filters &= (Q(contract__status__in=selectedContractStatusesIds) | Q(contract_termination__contract_status__in=selectedContractStatusesIds))
+    if selectedPaymentTypeIds:
+      payment_types = PaymentType.objects.filter(id__in=selectedPaymentTypeIds)
+      filters &= Q(payment_type_token_final__in=payment_types.values_list('token', flat=True))
+    if filter_date_start:
+      filters &= Q(issue_date__gte=filter_date_start)
+    if filter_date_end:
+      filters &= Q(issue_date__lte=filter_date_end)
+    if filter_due_date_start:
+      filters &= Q(due_date__gte=filter_due_date_start)
+    if filter_due_date_end:
+      filters &= Q(due_date__lte=filter_due_date_end)
+    if filter_termination_start:
+      filters &= (Q(contract_termination__approved_at__gte=filter_termination_start) | Q(contract__termination_date__gte=filter_termination_start) | Q(contract_request__contract__termination_date__gte=filter_termination_start))
+    if filter_termination_end:
+      filters &= (Q(contract_termination__approved_at__lte=filter_termination_end) | Q(contract__termination_date__lte=filter_termination_end) | Q(contract_request__contract__termination_date__lte=filter_termination_end))
+    if selected_contracts_id:
+      filters &= (Q(contract__id__in=selected_contracts_id) | Q(contract_termination__contract__id__in=selected_contracts_id) | Q(contract_request__contract__id__in=selected_contracts_id))
+    if selected_invoices_id:
+      filters &= Q(id__in=selected_invoices_id)
+    normal_selected = bool(filter_normal_invoices)
+    endowment_selected = bool(filter_endowment_invoices)
+    if normal_selected == endowment_selected:
+      return {"ERROR": "Select either normal or endowment invoices"}
+    if normal_selected:
+      filters &= Q(endowment_date__isnull=True)
+    else:
+      filters &= Q(endowment_date__isnull=False)
+    
+    print("filters", filters)
+    invoices = Invoice.objects.filter(filters).exclude(status__token__in=invoice_excluded_status_configs).distinct()
+    
+    contacts_pending_invoices = []
+    has_min_pending_invoices = min_pending_invoices and min_pending_invoices != "" and min_pending_invoices != 0
+    has_max_pending_invoices = max_pending_invoices and max_pending_invoices != "" and max_pending_invoices != 0
+    if has_min_pending_invoices or has_max_pending_invoices:
+        pending_invoices_qs = Contract.objects.annotate(
+            pending_invoices_count=Count(
+                'invoices',
+                filter=Q(invoices__id__in=invoices.values_list('id', flat=True)),
+                distinct=True,
+            )
+        )
+        if has_min_pending_invoices:
+            pending_invoices_qs = pending_invoices_qs.filter(
+                pending_invoices_count__gte=min_pending_invoices
+            )
+        if has_max_pending_invoices:
+            pending_invoices_qs = pending_invoices_qs.filter(
+                pending_invoices_count__lte=max_pending_invoices
+            )
+        contacts_pending_invoices = pending_invoices_qs.values('id')
+        print("contacts_pending_invoices", contacts_pending_invoices)
+        if contacts_pending_invoices:
+          invoices = invoices.filter(Q(contract__id__in=contacts_pending_invoices) | Q(contract_termination__contract__id__in=contacts_pending_invoices) | Q(contract_request__contract__id__in=contacts_pending_invoices))
+        else:
+          invoices = invoices.none()
+    
+    print("invoices", invoices)
+    contract_ids = set(invoices.filter(contract__isnull=False).values_list('contract__id', flat=True))
+    contract_ids.update(invoices.filter(contract_termination__contract__isnull=False).values_list('contract_termination__contract__id', flat=True))
+    contract_ids.update(invoices.filter(contract_request__contract__isnull=False).values_list('contract_request__contract__id', flat=True))
+    contracts = Contract.objects.filter(id__in=contract_ids)
+    print("contracts", contracts)
+    serialized_invoices = InvoiceMinimalSerializer(invoices, many=True).data
+    serialized_contracts = ContractListSerializer(contracts, many=True).data
+
+    return {"invoices": serialized_invoices, "contracts": serialized_contracts}
+  except Exception as e:
+    return {"ERROR": str(e)}

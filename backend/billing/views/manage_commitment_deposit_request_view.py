@@ -262,7 +262,7 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                     "remaining": sum(float(p.get('amount')) for p in payments),
                     "status": defaul_commitment_deposit_status,
                     "days_next_payment": days_next_payment,
-                    "start_date": start_date_commitment,
+                    # "start_date": start_date_commitment,
                     "due_date": due_date_commitment,
                     "contract": contract_instance,
                     "customer_final": holder.get('name') if holder else invoices[0].get('customer_final'),
@@ -294,7 +294,7 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                         "commitment_deposit": commitment_deposit,
                         "currently_paid": 0.00,
                         "amount": float(payment.get('amount')),
-                        "start_date": payment.get('start_date') or None,
+                        # "start_date": payment.get('start_date') or None,
                         "due_date": payment.get('due_date'),
                         "is_guide": True,
                     }

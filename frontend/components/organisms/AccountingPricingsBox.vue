@@ -152,6 +152,7 @@ const relatedGroups = (item) =>
     },
     { key: 'payment_types', label: t('payment_types'), names: relatedNames(item.payment_types) },
     { key: 'origins', label: t('common.origins'), names: relatedNames(item.origins) },
+    { key: 'contract_types', label: t('common.usage_type'), names: relatedNames(item.contract_types) },
   ].filter((group) => group.names.length);
 
 const displayUser = (user) => user?.username || '—';

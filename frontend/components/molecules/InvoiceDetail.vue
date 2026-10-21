@@ -237,6 +237,10 @@ const openInvoiceFileTemplate = async () => {
       <FieldDetail v-else :label='$t("common.status")'>
         <AtomsColorBadge :value="localData.status?.name" :color="localData.status?.color"></AtomsColorBadge>
       </FieldDetail>
+      <FieldDetail v-if="localData.endowment_date" 
+      :label='$t("billing_block.endowment_date")' :value="formatDate(localData.endowment_date)"/>
+      <FieldDetail v-if="localData.irrecoverable_date" 
+      :label='$t("billing_block.irrecoverable_date")' :value="formatDate(localData.irrecoverable_date)"/>
       <FieldDetail :label='$t("billing_block.general_invoice")'
         v-if="!reducedDetail && localData.general_contracts && localData.general_contracts.length > 0">
         <div class="relative" ref="generalContractsButtonRef">
