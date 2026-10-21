@@ -21,6 +21,7 @@ class TestContractDebtDetail(TestCase):
     """
 
     def setUp(self):
+        """Crea estats i contractes de prova amb els senyals de pagament desconnectats."""
         disconnect_payment_signals()
         self.addCleanup(reconnect_payment_signals)
 
@@ -57,15 +58,18 @@ class TestContractDebtDetail(TestCase):
         self.invoice = Invoice.objects.create(token='F-1', contract=self.contract, serie_final='FC/1')
 
     def payment(self, token, amount, status, invoice=None, contract=None):
+        """Crea un pagament amb l'estat indicat i, per defecte, la factura de prova."""
         return Payment.objects.create(
             token=token, amount=Decimal(amount), status=self.status[status],
             invoice=invoice if invoice is not None else self.invoice,
             contract=contract, due_date=date(2026, 1, 1))
 
     def by_token(self, detail):
+        """Indexa els pagaments del detall pel seu token."""
         return {item['token']: item for item in detail['payments']}
 
     def test_total_coincideix_amb_el_deute_i_exclou_pagats_i_negatius(self):
+        """Comprova els totals de deute i liquidable excloent pagats, abonats i negatius."""
         self.payment('P-PENDING', '10.00', '1')
         self.payment('P-EXPIRED', '5.50', '-1')
         self.payment('P-COMMIT', '3.00', '4')
@@ -84,6 +88,7 @@ class TestContractDebtDetail(TestCase):
         self.assertEqual(detail['total_settleable'], Decimal('15.50'))
 
     def test_pagament_en_remesa_pendent_d_enviar(self):
+        """Comprova que una remesa no enviada bloqueja la liquidació però manté el deute."""
         payment = self.payment('P-REM', '12.00', '1')
         remittance = PaymentRemittance.objects.create(token='REM-1')
         remittance.payments.add(payment)
@@ -99,6 +104,7 @@ class TestContractDebtDetail(TestCase):
         self.assertEqual(detail['total_settleable'], Decimal('0'))
 
     def test_pagament_en_remesa_enviada_i_retornat_es_pot_liquidar(self):
+        """Comprova que un pagament retornat d'una remesa enviada es pot liquidar."""
         payment = self.payment('P-RET', '9.00', '-2')
         remittance = PaymentRemittance.objects.create(token='REM-2', sent_at=date(2026, 2, 1))
         remittance.payments.add(payment)
@@ -109,6 +115,7 @@ class TestContractDebtDetail(TestCase):
         self.assertFalse(item['remittance']['is_pending_send'])
 
     def test_pagament_en_pagament_agrupat_actiu(self):
+        """Comprova que les agrupacions actives bloquegen la liquidació i les anul·lades no."""
         in_active = self.payment('P-JOINED', '6.00', '1')
         in_cancelled = self.payment('P-JOINED-CANCELLED', '4.00', '1')
         JoinedPayment.objects.create(token='JP-1', status=self.joined_pending).payments.add(in_active)
@@ -124,6 +131,7 @@ class TestContractDebtDetail(TestCase):
         self.assertEqual(detail['total_in_joined_payment'], Decimal('6.00'))
 
     def test_pagament_de_factura_del_contracte_sense_contracte_al_pagament(self):
+        """Inclou entre els liquidables els pagaments vinculats al contracte per la factura."""
         # Molts pagaments només tenen el contracte a la factura: s'han de poder liquidar
         self.payment('P-NO-CONTRACT', '11.00', '1')
 
@@ -132,6 +140,7 @@ class TestContractDebtDetail(TestCase):
         self.assertEqual([p['token'] for p in pending['pending_payments']], ['P-NO-CONTRACT'])
 
     def test_no_inclou_pagaments_d_altres_contractes(self):
+        """Comprova que el detall no inclou pagaments de factures d'altres contractes."""
         other_invoice = Invoice.objects.create(token='F-2', contract=self.other_contract)
         self.payment('P-OTHER', '20.00', '1', invoice=other_invoice)
 
@@ -141,6 +150,7 @@ class TestContractDebtDetail(TestCase):
         self.assertEqual(detail['total_debt'], Decimal('0'))
 
     def test_document_agafa_el_contracte_de_la_factura(self):
+        """Comprova el contracte de la factura a la plantilla sense persistir-lo al pagament."""
         from billing.utils.joined_payment_service import _payments_for_template
 
         self.payment('P-DOC', '10.00', '1')

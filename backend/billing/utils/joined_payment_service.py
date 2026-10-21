@@ -40,6 +40,10 @@ CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS = ['0', '-4', '-6', '-7', '-99']
 
 
 def get_pending_client_data(data):
+    """Retorna el client, els pagaments liquidables i els totals pendents.
+
+    ``data`` ha d'indicar exactament un identificador: ``contract`` o ``person``.
+    """
     contract_id = data.get('contract', None)
     person_id = data.get('person', None)
     
@@ -68,6 +72,7 @@ def get_pending_client_data(data):
 
 
 def get_active_joined_payment_status_tokens():
+    """Retorna els tokens configurats d'agrupacions pagades, pendents o vençudes."""
     joined_payment_status_tokens_config = [
         "joined_payment_status_paid_token",
         "joined_payment_status_pending_token",
@@ -77,6 +82,7 @@ def get_active_joined_payment_status_tokens():
 
 
 def get_contract_payments(contract_id):
+    """Retorna pagaments vinculats al contracte directament o pels seus documents."""
     return Payment.objects.filter(
         Q(contract__id=contract_id) | 
         Q(invoice__contract__id=contract_id) | 
@@ -275,12 +281,16 @@ def mark_payments_as_paid(joined_payment, user, payment_origin = None):
 class _TemplatePayments(list):
     """Llista de pagaments que les plantilles poden recórrer amb `payments.all`."""
     def all(self):
+        """Retorna la mateixa llista per als accessos ``payments.all`` de les plantilles."""
         return self
 
 
 def _payments_for_template(payments):
-    # Molts pagaments només tenen el contracte a la factura; sense això la
-    # columna Contracte del document surt buida. Només s'assigna en memòria.
+    """Prepara els pagaments per a les plantilles amb el contracte de la factura.
+
+    Si el pagament no té contracte, s'assigna el de la factura només en memòria.
+    La llista retornada admet l'accés ``payments.all`` sense consultar de nou.
+    """
     result = _TemplatePayments(payments.select_related('contract', 'invoice__contract', 'commitment_deposit'))
     for payment in result:
         if payment.contract is None and payment.invoice and payment.invoice.contract:
@@ -289,6 +299,11 @@ def _payments_for_template(payments):
 
 
 def generate_report_joined_payment_pdf(joined_payment, user, request = None):
+    """Genera i signa el PDF d'un pagament agrupat o d'una previsualització.
+
+    Sense ``joined_payment``, fa servir les dades del formulari de ``request``.
+    Retorna una resposta JSON amb l'URL del fitxer temporal.
+    """
     try:
         contract = joined_payment.contract if joined_payment else Contract.objects.filter(id=request.data.get('contract_id', None)).first()
         payments = joined_payment.payments.all().order_by('amount') if joined_payment else Payment.objects.filter(id__in=request.data.get('payments_data', [])).order_by('amount')

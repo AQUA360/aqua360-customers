@@ -56,6 +56,7 @@ class JoinedPaymentViewSet(viewsets.ModelViewSet):
   
   @action(detail=False, methods=['post'], url_path='contract-debt')
   def obtain_contract_debt(self, request):
+      """Retorna pagaments i totals del deute; exigeix ``contract`` al cos del POST."""
       contract_id = request.data.get('contract', None)
       if not contract_id:
           return Response({"error": "contract is required"}, status=status.HTTP_400_BAD_REQUEST)

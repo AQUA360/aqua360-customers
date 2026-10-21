@@ -57,6 +57,7 @@ const canSave = computed(() =>
   !saving.value && selectedIds.value.length > 0 && selectedPaymentMethod.value != null && !!dueDate.value
 );
 
+/** Carrega permisos i deute, i conserva només les seleccions que encara es poden liquidar. */
 const getData = async (load = true) => {
   pending.value = load;
   error.value = null;
@@ -75,14 +76,17 @@ const getData = async (load = true) => {
   }
 }
 
+/** Retorna l'etiqueta traduïda del document que origina el pagament. */
 const getOriginType = (payment) => {
   if (payment.invoice) return t('invoice');
   if (payment.commitment_deposit) return t('claim_block.pay_commitments');
   return '-';
 };
 
+/** Retorna la referència de la factura o del compromís, o un guió si no n'hi ha. */
 const getOriginToken = (payment) => payment.invoice?.serie_final || payment.commitment_deposit?.token || '-';
 
+/** Alterna la selecció d'un pagament liquidable quan hi ha permís de canvi. */
 const togglePayment = (payment) => {
   if (!payment.is_settleable || !objectPermissions.value.can_change) return;
   if (selectedIds.value.includes(payment.id)) {
@@ -92,10 +96,12 @@ const togglePayment = (payment) => {
   }
 }
 
+/** Selecciona tots els pagaments liquidables o buida la selecció si ja ho estan. */
 const toggleAll = () => {
   selectedIds.value = allSelected.value ? [] : settleablePayments.value.map(p => p.id);
 }
 
+/** Construeix les dades de liquidació amb el contracte, la selecció, el mètode i el venciment. */
 const buildPayload = () => ({
   contract_id: props.id,
   person_id: null,
@@ -104,6 +110,7 @@ const buildPayload = () => ({
   due_date: dueDate.value,
 });
 
+/** Obre el PDF del pagament agrupat indicat o previsualitza les dades del formulari. */
 const openPDF = async (id = null) => {
   try {
     const file = await $JoinedPaymentApiService.generatePDF(id, buildPayload());
@@ -114,6 +121,7 @@ const openPDF = async (id = null) => {
   }
 }
 
+/** Desa la liquidació vàlida, obre el PDF i recarrega el deute abans d'emetre el canvi. */
 const save = async () => {
   attemptedSave.value = true;
   if (!canSave.value) return;
@@ -154,6 +162,7 @@ onMounted(() => {
 const showRegionDetailComponent = ref(null);
 const regionDetailId = ref(null);
 
+/** Tanca el detall del pagament, neteja la selecció de regió i ho comunica al pare. */
 const closeSubRegion = function () {
   SubRegion.value = false;
   showRegionDetailComponent.value = null;
@@ -161,6 +170,7 @@ const closeSubRegion = function () {
   emit('show-subregion', false);
 }
 
+/** Obre la subregió indicada per al pagament i ho comunica al pare. */
 const showDetail = function (component, id) {
   showRegionDetailComponent.value = component;
   regionDetailId.value = id;

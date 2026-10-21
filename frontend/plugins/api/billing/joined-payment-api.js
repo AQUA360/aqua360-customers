@@ -113,6 +113,11 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  /**
+   * Retorna els pagaments del deute, la seva liquidabilitat i els totals del contracte.
+   * @param {number} contractId Identificador del contracte.
+   * @returns {Promise<Object>} Detall retornat per l'endpoint contract-debt.
+   */
   const getContractDebt = async (contractId) => {
     const apiUrl = `${apiHost}${entity}contract-debt/`;
     try {

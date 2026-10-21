@@ -649,6 +649,7 @@ const openAddSMSPhoneSelect = () => {
   showRegion.value = true;
 };
 
+/** Afegeix el contacte i activa l'SMS només si el número és mòbil. */
 const onPhoneSelected = (phoneContact) => {
   if (!selectedPhones.value.find(phone => phone.id === phoneContact.id)) {
     selectedPhones.value.push(phoneContact);
