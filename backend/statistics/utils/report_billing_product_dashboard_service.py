@@ -289,15 +289,16 @@ def _reading_flags(invoice):
     readings = list(invoice.readings.all())
     estimated_used = sum(reading.estimated_used or 0 for reading in readings)
     if not readings:
-        return estimated_used, "", ""
+        return estimated_used, "", "", ""
     reading = readings[0]
+    period_days = reading.consumption_days if reading.consumption_days is not None else 0
     estimated = "S" if reading.is_estimated else "N"
     observation = _translated_alert(
         reading.alert_notes if reading.alert_notes
         else reading.remote_alert.name if reading.remote_alert
         else reading.alert.name if reading.alert else ""
     )
-    return estimated_used, estimated, observation
+    return estimated_used, period_days, estimated, observation
 
 
 def _tram_extension(invoice, contract):
@@ -309,7 +310,7 @@ def _tram_extension(invoice, contract):
 
 
 def _invoice_row(invoice, contract, product_columns, product_ids, tarifa_social_token):
-    estimated_used, reading_estimated, reading_observation = _reading_flags(invoice)
+    estimated_used, reading_period_days, reading_estimated, reading_observation = _reading_flags(invoice)
     address = (
         get_address_complete_without_city(contract.supply_point_default.address)
         if contract and contract.supply_point_default and contract.supply_point_default.address
@@ -328,6 +329,7 @@ def _invoice_row(invoice, contract, product_columns, product_ids, tarifa_social_
         invoice.payment_type_final or "",
         contract.use_type.name if contract and contract.use_type else "",
         contract.get_use_aca_display() if contract and contract.use_aca else "",
+        reading_period_days,
         reading_estimated,
         reading_observation,
         "S" if _has_social_tariff(contract, invoice.issue_date, tarifa_social_token) else "N",
@@ -362,6 +364,7 @@ def _headers():
         _("Població"), _("Identificador"), _("Data emissió"),
         _("Núm. factura"), _("Tipus factura"),
         _("Sector"), _("Tipus pagament"), _("Tipus d'ús contracte"), _("Ús ACA"),
+        f"{reading_prefix} · {_('Dies periode')}",
         f"{reading_prefix} · {_('Estimada')}",
         f"{reading_prefix} · {_('Observ. actual')}",
         _("Tarifa Social"), _("Ampliació de Trams"),
