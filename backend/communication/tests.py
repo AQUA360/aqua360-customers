@@ -926,3 +926,111 @@ class SupplyCutTemplateMigrationTests(TestCase):
         self.run_migration()
         self.assertFalse(MessageOrigin.objects.exists())
         self.assertFalse(MessageTemplate.objects.exists())
+
+
+class SmsSendingTests(TestCase):
+    """Enviament de l'SMS de les comunicacions via Broadcaster."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from communication.models import CommunicationStatus, Message
+
+        cls.pending = CommunicationStatus.objects.create(token='0', name='Pendent', is_default=True)
+        cls.sent = CommunicationStatus.objects.create(token='2', name='Enviada')
+        cls.rejected = CommunicationStatus.objects.create(token='-2', name='Retornada')
+        for token, value in (
+            ('communication_status_sent_token', '2'),
+            ('communication_status_rejected_token', '-2'),
+            ('message_type_sms_token', 'sms'),
+        ):
+            # Algunes migracions ja en creen.
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
+        cls.sms_type = MessageType.objects.create(token='sms', name='SMS')
+        cls.message = Message.objects.create(type=cls.sms_type, body='**BOLD**Avís**BOLD** del %date.today')
+
+    def make_comm(self, type_tokens='sms'):
+        comm = Communication.objects.create(
+            status=self.pending, used_phones='612345678,+34 698765432', type_tokens=type_tokens,
+        )
+        comm.messages.add(self.message)
+        return comm
+
+    def handle(self, comm):
+        from communication.utils.communication_service import handle_communication
+
+        handle_communication(comm, comm.type_tokens.split(','))
+        comm.refresh_from_db()
+
+    def test_get_sms_text(self):
+        from communication.utils.communication_service import get_sms_text
+
+        self.assertEqual(
+            get_sms_text('**BOLD**Tall**BOLD** a  %supplycut.affected_addresses', {'supplycut.affected_addresses': 'carrer'}),
+            'Tall a carrer',
+        )
+
+    def test_sms_sent(self):
+        from unittest.mock import patch
+
+        comm = self.make_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms:
+            self.handle(comm)
+
+        kwargs = send_sms.call_args.kwargs
+        self.assertEqual(kwargs['phones'], ['612345678', '+34 698765432'])
+        self.assertTrue(kwargs['text'].startswith('Avís del '))
+        self.assertNotIn('**', kwargs['text'])
+        self.assertEqual(comm.status, self.sent)
+        self.assertIsNotNone(comm.sent_at)
+        self.assertIsNotNone(comm.sms_sent_at)
+
+    def test_sms_error_rejects_communication(self):
+        from unittest.mock import patch
+        from integrations.outbound.broadcaster.exceptions import BroadcasterError
+
+        comm = self.make_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=BroadcasterError('HTTP 403')):
+            self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertIn('HTTP 403', comm.rejection_reason)
+        self.assertIsNone(comm.sms_sent_at)
+
+    def test_retry_after_email_error_does_not_resend_sms(self):
+        from unittest.mock import patch
+
+        def email_fails(comm):
+            Communication.objects.filter(id=comm.id).update(status=self.rejected, rejection_reason='Error sending email')
+
+        def email_ok(comm):
+            Communication.objects.filter(id=comm.id).update(status=self.sent)
+
+        comm = self.make_comm('email,sms')
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms, \
+                patch('communication.utils.communication_service.send_electronic_mail', side_effect=email_fails):
+            self.handle(comm)
+        self.assertEqual(send_sms.call_count, 1)
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, 'Error sending email')
+
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms, \
+                patch('communication.utils.communication_service.send_electronic_mail', side_effect=email_ok):
+            self.handle(comm)
+        send_sms.assert_not_called()
+        self.assertEqual(comm.status, self.sent)
+
+    def test_email_and_sms_errors_keep_both_reasons(self):
+        from unittest.mock import patch
+        from integrations.outbound.broadcaster.exceptions import BroadcasterError
+
+        def email_fails(comm):
+            Communication.objects.filter(id=comm.id).update(status=self.rejected, rejection_reason='Error sending email')
+
+        comm = self.make_comm('email,sms')
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=BroadcasterError('HTTP 500')), \
+                patch('communication.utils.communication_service.send_electronic_mail', side_effect=email_fails):
+            self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertIn('Error sending email', comm.rejection_reason)
+        self.assertIn('HTTP 500', comm.rejection_reason)
