@@ -4264,7 +4264,7 @@ def manage_deliquency(request_data, user_id):
         else:
           invoices.update(status=invoice_status, irrecoverable_date=today)
           
-        print("invoices", invoices)
+        print(f"invoices selected: count={invoices.count()}")
         payments = Payment.objects.filter(invoice__in=invoices).exclude(status__token=payment_status_token_paid).distinct()
         for payment in payments:
           log_payment_status(payment, payment_status, user, today)
