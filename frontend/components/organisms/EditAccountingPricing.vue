@@ -9,6 +9,7 @@ const toast = useToast();
 const objectPermissions = ref(null);
 const {
     $AccountingPricingApiService,
+    $AccountingAdditionalLineApiService,
     $AccountingConceptApiService,
     $AccountingTypeApiService,
     $AccountingCostCenterApiService,
@@ -70,20 +71,41 @@ const INVOICE_CATEGORIES = [
     { token: 'irrecuperable', nameKey: 'pricing_block.accounting_pricing_invoice_category_irrecuperable' },
 ];
 const selectedInvoiceCategory = ref('normal');
+const selectedPaymentCategory = ref('normal');
 const origins = ref([]);
 const selectedOrigins = ref([]);
 const loadingOrigins = ref(false);
+
+const contractTypes = ref([]);
+const selectedContractTypes = ref([]);
+const loadingContractTypes = ref(false);
 /** When endowment/irrecuperable: subtract previously declared normal invoices into this pricing. */
 const undeclarePrevious = ref(false);
 
 /** IBAN nationality and movement direction only apply to these payment methods. */
 const IBAN_PAYMENT_TYPE_TOKENS = ['DIRECT_DEBIT', 'BANK_TRANSFER'];
+/** Payment origin only applies to this payment method. */
+const BANK_PAYMENT_TOKEN = 'BANK_PAYMENT';
+const PAYMENT_ORIGIN_OPTIONS = [
+    { token: 'box_office', nameKey: 'billing_block.box_office' },
+    { token: 'post_office', nameKey: 'billing_block.post_office' },
+];
 
 /** Form-level defaults applied to every saved object (overridable per assignment row). */
 const token = ref('');
+const tokenReturn = ref('');
 const name = ref('');
+const declaredAs = ref('');
 /** Default for group_values; when true, matching rows merge into one record on save. */
 const groupValues = ref(true);
+/** Payment only. Backend splits generated lines by each available payment type. */
+const separateByType = ref(false);
+/** Invoice only. Shared pricing, one generated line per invoice origin. */
+const separateByOrigin = ref(false);
+/** BANK_PAYMENT only. null handles every origin; a token handles just that one. */
+const selectedPaymentOrigin = ref(null);
+/** Payment only. Grouped BANK_PAYMENT lines are summed per movement origin. */
+const separateByPaymentOrigin = ref(false);
 const is_default = ref(false);
 const is_active = ref(true);
 const selectedExploitation = ref(null);
@@ -105,13 +127,31 @@ const selectedLineItemTypes = ref([]);
 const selectedPriceIntervals = ref([]);
 const selectedPriceVariables = ref([]);
 
-/** Map keyed by `${kind}:${id}` → { useDefault, token, name, costCenter, groupValues } */
+/** Map keyed by `${kind}:${id}` → { useDefault, token, tokenReturn, name, declaredAs, costCenter, groupValues } */
 const valueAssignments = ref({});
-/** Map keyed by `${kind}:${id}` → { id, token, name } for rows already saved. */
+/** Map keyed by `${kind}:${id}` → { id, token, tokenReturn, name, declaredAs } for rows already saved. */
 const existingAssignments = ref({});
 const loadingExisting = ref(false);
 /** When invoice / no per-row assignments: an existing record covers the selection. */
 const existingSelection = ref(null);
+
+/** Extra declaration lines attached to this accounting pricing (edit mode). */
+const additionalLines = ref([]);
+const loadingAdditionalLines = ref(false);
+const savingAdditionalLine = ref(false);
+const showAdditionalLinePanel = ref(false);
+const additionalLineAttemptedSave = ref(false);
+const additionalLineConcepts = ref([]);
+const loadingAdditionalLineConcepts = ref(false);
+const additionalLineForm = ref({
+    id: null,
+    token: '',
+    tokenReturn: '',
+    name: '',
+    declaredAs: '',
+    accountingConcept: null,
+    isNegative: false,
+});
 
 const showExploitation = computed(() => exploitations.value.length > 1);
 const isEditing = computed(() => !!props.id);
@@ -136,6 +176,7 @@ const EXISTING_RELATION_PRIORITY = [
     ['products', 'product'],
     ['payment_types', 'payment_type'],
     ['origins', 'origin'],
+    ['contract_types', 'contract_type'],
 ];
 
 const relationIdsOf = (items) =>
@@ -143,14 +184,16 @@ const relationIdsOf = (items) =>
         .map((item) => (item && typeof item === 'object' ? item.id ?? item.code : item))
         .filter((id) => id !== undefined && id !== null && id !== '');
 
-/** Map find-existing records → `{ [assignmentKey]: { id, token, name } }`. */
+/** Map find-existing records → `{ [assignmentKey]: { id, token, tokenReturn, name, declaredAs } }`. */
 const mapExistingRecordsToKeys = (records) => {
     const map = {};
     (records || []).forEach((record) => {
         const meta = {
             id: record.id,
             token: record.token || '',
+            tokenReturn: record.token_return || '',
             name: record.name || '',
+            declaredAs: record.declared_as || '',
         };
 
         // Preferred flat shape: { kind, value_id }
@@ -180,6 +223,150 @@ const conceptOptions = computed(() =>
     })),
 );
 
+const additionalLineConceptOptions = computed(() =>
+    additionalLineConcepts.value.map((c) => ({
+        ...c,
+        label: `${c.token || '—'} · ${c.name}`,
+        code: c.id,
+    })),
+);
+
+const activeAdditionalLines = computed(() =>
+    (additionalLines.value || []).filter((line) => line.is_active !== false),
+);
+
+const resetAdditionalLineForm = () => {
+    additionalLineForm.value = {
+        id: null,
+        token: '',
+        tokenReturn: '',
+        name: '',
+        declaredAs: '',
+        accountingConcept: null,
+        isNegative: false,
+    };
+    additionalLineAttemptedSave.value = false;
+};
+
+const mapAdditionalLineConceptOption = (concept) => {
+    if (!concept) return null;
+    return {
+        ...concept,
+        code: concept.id,
+        label: `${concept.token || '—'} · ${concept.name}`,
+    };
+};
+
+const loadAdditionalLineConcepts = async () => {
+    loadingAdditionalLineConcepts.value = true;
+    try {
+        const response = await $AccountingConceptApiService.getAll('', 1, null, false);
+        additionalLineConcepts.value = response.results || [];
+    } catch (error) {
+        console.error(error);
+        additionalLineConcepts.value = [];
+    } finally {
+        loadingAdditionalLineConcepts.value = false;
+    }
+};
+
+const loadAdditionalLines = async () => {
+    if (!props.id) {
+        additionalLines.value = [];
+        return;
+    }
+    loadingAdditionalLines.value = true;
+    try {
+        const response = await $AccountingAdditionalLineApiService.getAll(props.id, true);
+        additionalLines.value = response.results || [];
+    } catch (error) {
+        console.error(error);
+        // Keep nested lines from getDetail when the list endpoint is unavailable.
+    } finally {
+        loadingAdditionalLines.value = false;
+    }
+};
+
+const openAdditionalLinePanel = async (line = null) => {
+    if (!props.id) {
+        toast.info(t('pricing_block.accounting_pricing_additional_lines_save_first'));
+        return;
+    }
+    if (!additionalLineConcepts.value.length) {
+        await loadAdditionalLineConcepts();
+    }
+    if (line) {
+        additionalLineForm.value = {
+            id: line.id,
+            token: line.token || '',
+            tokenReturn: line.token_return || '',
+            name: line.name || '',
+            declaredAs: line.declared_as || '',
+            accountingConcept: mapAdditionalLineConceptOption(line.accounting_concept),
+            isNegative: !!line.is_negative,
+        };
+    } else {
+        resetAdditionalLineForm();
+    }
+    additionalLineAttemptedSave.value = false;
+    showAdditionalLinePanel.value = true;
+};
+
+const closeAdditionalLinePanel = () => {
+    showAdditionalLinePanel.value = false;
+    resetAdditionalLineForm();
+};
+
+const canSaveAdditionalLine = computed(() => {
+    const form = additionalLineForm.value;
+    return !!(
+        (form.token || '').trim() &&
+        (form.name || '').trim() &&
+        (form.accountingConcept?.code ?? form.accountingConcept?.id)
+    );
+});
+
+const saveAdditionalLine = async () => {
+    additionalLineAttemptedSave.value = true;
+    if (!props.id || !canSaveAdditionalLine.value) return;
+
+    savingAdditionalLine.value = true;
+    try {
+        const form = additionalLineForm.value;
+        await $AccountingAdditionalLineApiService.save({
+            id: form.id || null,
+            accounting_pricing_id: props.id,
+            accounting_concept_id: form.accountingConcept?.code ?? form.accountingConcept?.id,
+            token: (form.token || '').trim(),
+            token_return: optionalText(form.tokenReturn),
+            name: (form.name || '').trim(),
+            declared_as: optionalText(form.declaredAs),
+            is_negative: !!form.isNegative,
+            is_active: true,
+        });
+        closeAdditionalLinePanel();
+        await loadAdditionalLines();
+        toast.success(t('common.correct_save'));
+    } catch (error) {
+        console.error(error);
+        toast.error(t('common.error'));
+    } finally {
+        savingAdditionalLine.value = false;
+    }
+};
+
+const deactivateAdditionalLine = async (line) => {
+    if (!line?.id) return;
+    try {
+        await $AccountingAdditionalLineApiService.doDelete({ id: line.id });
+        await loadAdditionalLines();
+        toast.success(t('common.deactivated'));
+    } catch (error) {
+        console.error(error);
+        toast.error(t('common.error'));
+    }
+};
+
 const itemLabel = (item) =>
     item?.label || item?.name || String(item?.code ?? item?.id ?? '');
 
@@ -192,6 +379,7 @@ const kindLabel = (kind) => {
         price_interval: t('pricing_block.price_interval'),
         price_variable: t('pricing_block.variable_price'),
         origin: t('common.origins'),
+        contract_type: t('common.usage_type'),
     };
     return map[kind] || kind;
 };
@@ -253,7 +441,9 @@ const valueAssignmentGroups = computed(() => {
             const assignment = valueAssignments.value[key] || {
                 useDefault: true,
                 token: '',
+                tokenReturn: '',
                 name: '',
+                declaredAs: '',
                 costCenter: null,
                 groupValues: true,
             };
@@ -266,7 +456,9 @@ const valueAssignmentGroups = computed(() => {
                 hint: rowHintFn ? rowHintFn(item) : null,
                 useDefault: assignment.useDefault,
                 customToken: assignment.token,
+                customTokenReturn: assignment.tokenReturn,
                 customName: assignment.name,
+                customDeclaredAs: assignment.declaredAs,
                 customCostCenter: assignment.costCenter || null,
                 customGroupValues:
                     assignment.groupValues === undefined
@@ -305,6 +497,19 @@ const valueAssignmentGroups = computed(() => {
             'origin',
             t('common.origins'),
             toRows('origin', selectedOrigins.value),
+        );
+        return groups;
+    }
+
+    if (
+        selectedCategory.value === 'invoice' &&
+        selectedInvoiceCategory.value === 'normal' &&
+        selectedContractTypes.value.length
+    ) {
+        pushGroup(
+            'contract_type',
+            t('common.usage_type'),
+            toRows('contract_type', selectedContractTypes.value),
         );
         return groups;
     }
@@ -432,6 +637,73 @@ const ibanPaymentScopePayload = (paymentTypeIds = null) => {
     };
 };
 
+const selectionIncludesBankPayment = (paymentTypeIds) =>
+    (paymentTypeIds || []).some(
+        (id) => paymentTypeTokenById.value.get(String(id)) === BANK_PAYMENT_TOKEN,
+    );
+
+const selectionIsOnlyBankPayment = (paymentTypeIds) => {
+    const ids = paymentTypeIds || [];
+    return (
+        ids.length > 0 &&
+        ids.every((id) => paymentTypeTokenById.value.get(String(id)) === BANK_PAYMENT_TOKEN)
+    );
+};
+
+const showsBankPaymentOrigin = computed(
+    () =>
+        selectedCategory.value === 'payment' &&
+        selectedPaymentTypes.value.some((item) => item?.token === BANK_PAYMENT_TOKEN),
+);
+
+const bankPaymentOriginExclusive = computed(
+    () =>
+        selectedPaymentTypes.value.length > 0 &&
+        selectedPaymentTypes.value.every((item) => item?.token === BANK_PAYMENT_TOKEN),
+);
+
+const paymentOriginOptions = computed(() =>
+    PAYMENT_ORIGIN_OPTIONS.map((item) => ({
+        token: item.token,
+        name: t(item.nameKey),
+    })),
+);
+
+const paymentOriginHint = computed(() => {
+    if (!bankPaymentOriginExclusive.value) {
+        return t('pricing_block.accounting_pricing_payment_origin_mixed_hint');
+    }
+    if (
+        selectedPaymentOrigin.value === 'box_office' ||
+        selectedPaymentOrigin.value === 'post_office'
+    ) {
+        return t('pricing_block.accounting_pricing_payment_origin_only_hint');
+    }
+    return t('pricing_block.accounting_pricing_payment_origin_all_hint');
+});
+
+/**
+ * A single origin is sent only when BANK_PAYMENT is the sole payment type.
+ * Grouped lines can still split bank payments by origin when other types are selected.
+ */
+const bankPaymentOriginPayload = (paymentTypeIds = null, grouped = null) => {
+    const ids = paymentTypeIds ?? idsOf(selectedPaymentTypes.value);
+    const linesGrouped = grouped === null || grouped === undefined ? groupValues.value : !!grouped;
+    const active = selectedCategory.value === 'payment';
+    const onlyBank = active && selectionIsOnlyBankPayment(ids);
+    const includesBank = active && selectionIncludesBankPayment(ids);
+    return {
+        payment_origin: onlyBank ? selectedPaymentOrigin.value || null : null,
+        separate_by_payment_origin:
+            includesBank && linesGrouped ? !!separateByPaymentOrigin.value : false,
+    };
+};
+
+const selectPaymentOrigin = (origin) => {
+    if (origin && !bankPaymentOriginExclusive.value) return;
+    selectedPaymentOrigin.value = origin || null;
+};
+
 const resetIbanPaymentScope = () => {
     selectedForeignIban.value = false;
     selectedNationalIban.value = false;
@@ -447,6 +719,12 @@ const applyIbanPaymentScope = (response) => {
 };
 
 const showsInvoiceOrigins = computed(
+    () =>
+        selectedCategory.value === 'invoice' &&
+        selectedInvoiceCategory.value === 'normal',
+);
+
+const showsInvoiceContractTypes = computed(
     () =>
         selectedCategory.value === 'invoice' &&
         selectedInvoiceCategory.value === 'normal',
@@ -486,7 +764,16 @@ const undeclarePreviousHint = computed(() => {
 const resetInvoiceScope = () => {
     selectedInvoiceCategory.value = 'normal';
     selectedOrigins.value = [];
+    selectedContractTypes.value = [];
     undeclarePrevious.value = false;
+    separateByOrigin.value = false;
+};
+
+const resetPaymentScope = () => {
+    selectedPaymentCategory.value = 'normal';
+    separateByType.value = false;
+    selectedPaymentOrigin.value = null;
+    separateByPaymentOrigin.value = false;
 };
 
 const selectInvoiceCategory = (token) => {
@@ -497,6 +784,7 @@ const selectInvoiceCategory = (token) => {
         undeclarePrevious.value = false;
     } else {
         selectedOrigins.value = [];
+        selectedContractTypes.value = [];
         valueAssignments.value = {};
         clearExistingLookup();
     }
@@ -504,7 +792,7 @@ const selectInvoiceCategory = (token) => {
 
 /**
  * Invoice scope flags sent with every invoice accounting pricing.
- * Origins only apply to normal; undeclare_previous only to endowment/irrecuperable.
+ * Origins and contract types only apply to normal; undeclare_previous only to endowment/irrecuperable.
  */
 const invoiceScopePayload = () => {
     if (selectedCategory.value !== 'invoice') {
@@ -531,6 +819,59 @@ const applyInvoiceScope = (response) => {
         (selectedInvoiceCategory.value === 'endowment' ||
             selectedInvoiceCategory.value === 'irrecuperable') &&
         response?.undeclare_previous === true;
+    separateByOrigin.value = response?.separate_by_origin === true;
+};
+
+const paymentCategoryOptions = computed(() =>
+    INVOICE_CATEGORIES.map((item) => ({
+        token: item.token,
+        name: t(item.nameKey),
+    })),
+);
+
+const paymentCategoryHint = computed(() => {
+    if (selectedPaymentCategory.value === 'normal') {
+        return t('pricing_block.accounting_pricing_payment_category_normal_hint');
+    }
+    if (selectedPaymentCategory.value === 'endowment') {
+        return t('pricing_block.accounting_pricing_payment_category_endowment_hint');
+    }
+    return t('pricing_block.accounting_pricing_payment_category_irrecuperable_hint');
+});
+
+const selectPaymentCategory = (token) => {
+    if (isEditing.value) return;
+    if (selectedPaymentCategory.value === token) return;
+    selectedPaymentCategory.value = token;
+};
+
+/**
+ * Payment category is an exclusive choice, same tokens as invoice.
+ * Sent only as an extra field; the rest of the payment payload stays unchanged.
+ */
+const paymentScopePayload = () => {
+    if (selectedCategory.value !== 'payment') {
+        return { invoice_category: null };
+    }
+    return {
+        invoice_category: selectedPaymentCategory.value || 'normal',
+    };
+};
+
+const applyPaymentScope = (response) => {
+    const category = response?.invoice_category || 'normal';
+    selectedPaymentCategory.value = INVOICE_CATEGORIES.some((c) => c.token === category)
+        ? category
+        : 'normal';
+    separateByType.value = response?.separate_by_type === true;
+    separateByPaymentOrigin.value = response?.separate_by_payment_origin === true;
+    selectedPaymentOrigin.value =
+        response?.payment_origin === 'box_office' || response?.payment_origin === 'post_office'
+            ? response.payment_origin
+            : null;
+    if (!bankPaymentOriginExclusive.value) {
+        selectedPaymentOrigin.value = null;
+    }
 };
 
 const ibanScopeHint = computed(() => {
@@ -562,7 +903,9 @@ const movementScopeHint = computed(() => {
 const relationsReady = computed(() => {
     if (!selectedCategory.value || !selectedAccountingConcept.value) return false;
     if (selectedCategory.value === 'invoice') return !!selectedInvoiceCategory.value;
-    if (selectedCategory.value === 'payment') return selectedPaymentTypes.value.length > 0;
+    if (selectedCategory.value === 'payment') {
+        return selectedPaymentTypes.value.length > 0 && !!selectedPaymentCategory.value;
+    }
     if (selectedCategory.value === 'lineitem') return selectedProducts.value.length > 0;
     return false;
 });
@@ -590,7 +933,9 @@ const buildFindExistingPayload = () => ({
     category: selectedCategory.value,
     ...buildRelationPayload(),
     ...ibanPaymentScopePayload(),
+    ...bankPaymentOriginPayload(),
     ...invoiceScopePayload(),
+    ...paymentScopePayload(),
 });
 
 const loadExistingAssignments = async () => {
@@ -614,7 +959,9 @@ const loadExistingAssignments = async () => {
             existingSelection.value = {
                 id: first.id,
                 token: first.token || '',
+                tokenReturn: first.token_return || '',
                 name: first.name || '',
+                declaredAs: first.declared_as || '',
             };
         }
     } catch (error) {
@@ -719,7 +1066,9 @@ const ensureAssignments = () => {
             next[row.key] = {
                 useDefault: true,
                 token: '',
+                tokenReturn: '',
                 name: '',
+                declaredAs: '',
                 costCenter: null,
                 groupValues: true,
             };
@@ -737,13 +1086,17 @@ const setAssignmentUseDefault = (key, useDefault) => {
         [key]: {
             ...(valueAssignments.value[key] || {
                 token: '',
+                tokenReturn: '',
                 name: '',
+                declaredAs: '',
                 costCenter: null,
                 groupValues: true,
             }),
             useDefault,
             token: useDefault ? '' : valueAssignments.value[key]?.token || '',
+            tokenReturn: useDefault ? '' : valueAssignments.value[key]?.tokenReturn || '',
             name: useDefault ? '' : valueAssignments.value[key]?.name || '',
+            declaredAs: useDefault ? '' : valueAssignments.value[key]?.declaredAs || '',
             costCenter: useDefault ? null : valueAssignments.value[key]?.costCenter || null,
             groupValues: useDefault
                 ? true
@@ -758,12 +1111,32 @@ const setAssignmentToken = (key, value) => {
         [key]: {
             ...(valueAssignments.value[key] || {
                 useDefault: false,
+                tokenReturn: '',
                 name: '',
+                declaredAs: '',
                 costCenter: null,
                 groupValues: true,
             }),
             useDefault: false,
             token: value,
+        },
+    };
+};
+
+const setAssignmentTokenReturn = (key, value) => {
+    valueAssignments.value = {
+        ...valueAssignments.value,
+        [key]: {
+            ...(valueAssignments.value[key] || {
+                useDefault: false,
+                token: '',
+                name: '',
+                declaredAs: '',
+                costCenter: null,
+                groupValues: true,
+            }),
+            useDefault: false,
+            tokenReturn: value,
         },
     };
 };
@@ -775,11 +1148,31 @@ const setAssignmentName = (key, value) => {
             ...(valueAssignments.value[key] || {
                 useDefault: false,
                 token: '',
+                tokenReturn: '',
+                declaredAs: '',
                 costCenter: null,
                 groupValues: true,
             }),
             useDefault: false,
             name: value,
+        },
+    };
+};
+
+const setAssignmentDeclaredAs = (key, value) => {
+    valueAssignments.value = {
+        ...valueAssignments.value,
+        [key]: {
+            ...(valueAssignments.value[key] || {
+                useDefault: false,
+                token: '',
+                tokenReturn: '',
+                name: '',
+                costCenter: null,
+                groupValues: true,
+            }),
+            useDefault: false,
+            declaredAs: value,
         },
     };
 };
@@ -791,7 +1184,9 @@ const setAssignmentCostCenter = (key, value) => {
             ...(valueAssignments.value[key] || {
                 useDefault: false,
                 token: '',
+                tokenReturn: '',
                 name: '',
+                declaredAs: '',
                 groupValues: true,
             }),
             useDefault: false,
@@ -807,7 +1202,9 @@ const setAssignmentGroupValues = (key, value) => {
             ...(valueAssignments.value[key] || {
                 useDefault: false,
                 token: '',
+                tokenReturn: '',
                 name: '',
+                declaredAs: '',
                 costCenter: null,
             }),
             useDefault: false,
@@ -834,6 +1231,7 @@ const clearCategoryRelations = () => {
     groupValues.value = true;
     resetIbanPaymentScope();
     resetInvoiceScope();
+    resetPaymentScope();
     clearExistingLookup();
 };
 
@@ -1233,6 +1631,13 @@ const onLineItemTypesChange = async (value) => {
 
 const onPaymentTypesChange = (value) => {
     selectedPaymentTypes.value = value || [];
+    const onlyBank =
+        selectedPaymentTypes.value.length > 0 &&
+        selectedPaymentTypes.value.every((item) => item?.token === BANK_PAYMENT_TOKEN);
+    if (!onlyBank) selectedPaymentOrigin.value = null;
+    if (!selectedPaymentTypes.value.some((item) => item?.token === BANK_PAYMENT_TOKEN)) {
+        separateByPaymentOrigin.value = false;
+    }
     ensureAssignments();
 };
 
@@ -1263,6 +1668,39 @@ const onOriginsChange = (value) => {
 
 const selectAllOrigins = () => {
     onOriginsChange([...origins.value]);
+};
+
+const onContractTypesChange = (value) => {
+    selectedContractTypes.value = value || [];
+    ensureAssignments();
+};
+
+const selectAllContractTypes = () => {
+    onContractTypesChange([...contractTypes.value]);
+};
+
+const loadContractTypes = async () => {
+    loadingContractTypes.value = true;
+    try {
+        const list = [];
+        let page = 1;
+        let hasNext = true;
+        while (hasNext && page <= 50) {
+            const response = await $ConfiglistApiService.getAll(
+                'contract/contract-use-type',
+                page,
+            );
+            list.push(...(response?.results || []));
+            hasNext = !!response?.next;
+            page += 1;
+        }
+        contractTypes.value = list.map((item) => toSelectOption(item));
+    } catch (error) {
+        console.error(error);
+        contractTypes.value = [];
+    } finally {
+        loadingContractTypes.value = false;
+    }
 };
 
 const loadOrigins = async () => {
@@ -1317,10 +1755,12 @@ const getAccountingPricingData = async () => {
     try {
         const response = await $AccountingPricingApiService.getDetail(props.id);
         token.value = response.token || '';
+        tokenReturn.value = response.token_return || '';
         name.value = response.name || '';
+        declaredAs.value = response.declared_as || '';
         is_default.value = !!response.is_default;
         is_active.value = response.is_active !== false;
-        groupValues.value = response.group_values !== false;
+        groupValues.value = response.grouped_lines !== false;
 
         if (response.exploitation?.id) {
             selectedExploitation.value =
@@ -1377,6 +1817,15 @@ const getAccountingPricingData = async () => {
                 );
                 origins.value = hydratedOrigins.options;
                 selectedOrigins.value = hydratedOrigins.selected;
+
+                const savedContractTypes = response.contract_types || [];
+                const hydratedContractTypes = hydrateRelationSelection(
+                    contractTypes.value,
+                    savedContractTypes,
+                    (item) => toSelectOption(item),
+                );
+                contractTypes.value = hydratedContractTypes.options;
+                selectedContractTypes.value = hydratedContractTypes.selected;
             }
         }
 
@@ -1392,7 +1841,9 @@ const getAccountingPricingData = async () => {
             );
             banks.value = hydratedBanks.options;
             selectedBanks.value = hydratedBanks.selected;
+            selectedPaymentCategory.value = response.invoice_category || "normal";
             applyIbanPaymentScope(response);
+            applyPaymentScope(response);
             hydrateSelectedCostCenter(response);
         }
 
@@ -1459,6 +1910,10 @@ const getAccountingPricingData = async () => {
         // Edit mode opens on values step (token/name); relations stay available via back.
         formStep.value = 'values';
         await loadExistingAssignments();
+        additionalLines.value = (response.aditional_lines || []).filter(
+            (line) => line.is_active !== false,
+        );
+        await loadAdditionalLines();
     } catch (error) {
         console.error(error);
         toast.error(t('common.error'));
@@ -1478,6 +1933,7 @@ const getData = async () => {
         await loadCostCenters();
         await getProducts();
         await loadOrigins();
+        await loadContractTypes();
         await getAccountingPricingData();
     } catch (error) {
         console.error(error);
@@ -1497,15 +1953,26 @@ const emptyRelationPayload = () => ({
     price_variables: [],
     banks: [],
     origins: [],
+    contract_types: [],
 });
+
+const optionalText = (value) => {
+    const text = (value || '').trim();
+    return text || null;
+};
 
 const buildBasePayload = () => ({
     id: props.id || null,
     token: (token.value || '').trim(),
+    token_return: optionalText(tokenReturn.value),
     name: (name.value || '').trim(),
+    declared_as: optionalText(declaredAs.value),
     is_default: is_default.value,
     is_active: is_active.value,
     group_values: groupValues.value,
+    separate_by_type: selectedCategory.value === 'payment' && groupValues.value ? !!separateByType.value : false,
+    separate_by_origin: selectedCategory.value === 'invoice' && groupValues.value ? !!separateByOrigin.value : false,
+    ...bankPaymentOriginPayload(),
     exploitation: exploitationIdForSave(),
     company: selectedCompany.value?.code ?? null,
     banks: selectedCategory.value === 'payment' ? idsOf(selectedBanks.value) : [],
@@ -1515,6 +1982,7 @@ const buildBasePayload = () => ({
         ? costCenterIdOf(selectedCostCenter.value)
         : null,
     ...invoiceScopePayload(),
+    ...paymentScopePayload(),
 });
 
 /** Full selection payload (edit / invoice / no per-value rows). */
@@ -1524,6 +1992,9 @@ const buildRelationPayload = () => {
     if (selectedCategory.value === 'invoice') {
         if (showsInvoiceOrigins.value) {
             payload.origins = idsOf(selectedOrigins.value);
+        }
+        if (showsInvoiceContractTypes.value) {
+            payload.contract_types = idsOf(selectedContractTypes.value);
         }
         return payload;
     }
@@ -1559,6 +2030,13 @@ const buildScopedRelationPayload = (kind, item) => {
 
     if (kind === 'origin') {
         payload.origins = [id];
+        payload.contract_types = idsOf(selectedContractTypes.value);
+        return payload;
+    }
+
+    if (kind === 'contract_type') {
+        payload.contract_types = [id];
+        payload.origins = idsOf(selectedOrigins.value);
         return payload;
     }
 
@@ -1620,8 +2098,14 @@ const buildScopedRelationPayload = (kind, item) => {
 const resolveRowToken = (row) =>
     row.useDefault ? token.value.trim() : (row.customToken || '').trim();
 
+const resolveRowTokenReturn = (row) =>
+    optionalText(row.useDefault ? tokenReturn.value : row.customTokenReturn);
+
 const resolveRowName = (row) =>
     row.useDefault ? name.value.trim() : (row.customName || '').trim();
+
+const resolveRowDeclaredAs = (row) =>
+    optionalText(row.useDefault ? declaredAs.value : row.customDeclaredAs);
 
 const resolveRowCostCenter = (row) => {
     if (!showsCostCenter.value) return null;
@@ -1642,6 +2126,7 @@ const RELATION_FIELDS = [
     'price_variables',
     'banks',
     'origins',
+    'contract_types',
 ];
 
 const mergeIds = (a, b) => [...new Set([...(a || []), ...(b || [])])];
@@ -1659,7 +2144,9 @@ const buildSaveEntries = () => {
         return [
             {
                 token: token.value.trim(),
+                token_return: optionalText(tokenReturn.value),
                 name: name.value.trim(),
+                declared_as: optionalText(declaredAs.value),
                 is_default: is_default.value,
                 group_values: groupValues.value,
                 cost_center: showsCostCenter.value
@@ -1676,7 +2163,9 @@ const buildSaveEntries = () => {
 
     editableRows.forEach((row) => {
         const resolvedToken = resolveRowToken(row);
+        const resolvedTokenReturn = resolveRowTokenReturn(row);
         const resolvedName = resolveRowName(row);
+        const resolvedDeclaredAs = resolveRowDeclaredAs(row);
         const resolvedCostCenterId = costCenterIdOf(resolveRowCostCenter(row));
         const resolvedGroupValues = resolveRowGroupValues(row);
         const scoped = buildScopedRelationPayload(row.kind, row.item);
@@ -1684,7 +2173,9 @@ const buildSaveEntries = () => {
         if (!resolvedGroupValues) {
             entries.push({
                 token: resolvedToken,
+                token_return: resolvedTokenReturn,
                 name: resolvedName,
+                declared_as: resolvedDeclaredAs,
                 is_default: row.useDefault ? is_default.value : false,
                 group_values: false,
                 cost_center: resolvedCostCenterId,
@@ -1693,12 +2184,14 @@ const buildSaveEntries = () => {
             return;
         }
 
-        const groupKey = `${row.kind}||${resolvedToken}||${resolvedName}||${resolvedCostCenterId ?? ''}`;
+        const groupKey = `${row.kind}||${resolvedToken}||${resolvedTokenReturn || ''}||${resolvedName}||${resolvedDeclaredAs || ''}||${resolvedCostCenterId ?? ''}`;
 
         if (!groups.has(groupKey)) {
             groups.set(groupKey, {
                 token: resolvedToken,
+                token_return: resolvedTokenReturn,
                 name: resolvedName,
+                declared_as: resolvedDeclaredAs,
                 is_default: row.useDefault ? is_default.value : false,
                 group_values: true,
                 cost_center: resolvedCostCenterId,
@@ -1719,7 +2212,9 @@ const buildSaveEntries = () => {
         return [
             {
                 token: token.value.trim(),
+                token_return: optionalText(tokenReturn.value),
                 name: name.value.trim(),
+                declared_as: optionalText(declaredAs.value),
                 is_default: is_default.value,
                 group_values: groupValues.value,
                 cost_center: showsCostCenter.value
@@ -1741,6 +2236,7 @@ const isValid = () => {
 
     if (selectedCategory.value === 'payment') {
         if (!selectedPaymentTypes.value.length) return false;
+        if (!selectedPaymentCategory.value) return false;
     }
 
     if (selectedCategory.value === 'lineitem') {
@@ -1794,10 +2290,16 @@ const save = async () => {
 
         const base = buildBasePayload();
         const defaultToken = token.value.trim();
+        const defaultTokenReturn = optionalText(tokenReturn.value);
         const defaultName = name.value.trim();
+        const defaultDeclaredAs = optionalText(declaredAs.value);
         let updateIndex = isEditing.value
             ? entries.findIndex(
-                (entry) => entry.token === defaultToken && entry.name === defaultName,
+                (entry) =>
+                    entry.token === defaultToken &&
+                    (entry.token_return || null) === defaultTokenReturn &&
+                    entry.name === defaultName &&
+                    (entry.declared_as || null) === defaultDeclaredAs,
             )
             : -1;
         if (isEditing.value && updateIndex < 0) updateIndex = 0;
@@ -1806,9 +2308,14 @@ const save = async () => {
             const payload = {
                 ...base,
                 token: entry.token,
+                token_return: entry.token_return ?? base.token_return,
                 name: entry.name || base.name,
+                declared_as: entry.declared_as ?? base.declared_as,
                 is_default: entry.is_default,
-                group_values: entry.group_values,
+                grouped_lines: entry.grouped_lines,
+                separate_by_type: selectedCategory.value === 'payment' && groupValues.value ? !!separateByType.value : false,
+                separate_by_origin: selectedCategory.value === 'invoice' && !!entry.group_values ? !!separateByOrigin.value : false,
+                ...bankPaymentOriginPayload(entry.payment_types, entry.group_values),
                 cost_center: showsCostCenter.value
                     ? (entry.cost_center ?? null)
                     : null,
@@ -1819,11 +2326,13 @@ const save = async () => {
                 price_intervals: entry.price_intervals,
                 price_variables: entry.price_variables,
                 origins: entry.origins || [],
+                contract_types: entry.contract_types || [],
                 banks: selectedCategory.value === 'payment'
                     ? idsOf(selectedBanks.value)
                     : (entry.banks || []),
                 ...ibanPaymentScopePayload(entry.payment_types),
                 ...invoiceScopePayload(),
+                ...paymentScopePayload(),
             };
 
             if (isEditing.value && index === updateIndex) {
@@ -1859,6 +2368,7 @@ watch(
         selectedPriceIntervals,
         selectedPriceVariables,
         selectedOrigins,
+        selectedContractTypes,
     ],
     () => ensureAssignments(),
     { deep: true },
@@ -1896,7 +2406,9 @@ watch(
         selectedOutgoingPayments,
         selectedIncomingPayments,
         selectedInvoiceCategory,
+        selectedPaymentCategory,
         selectedOrigins,
+        selectedContractTypes,
         undeclarePrevious,
     ],
     async () => {
@@ -2130,6 +2642,32 @@ onMounted(async () => {
                             </p>
                         </div>
 
+                        <div v-if="showsInvoiceContractTypes">
+                            <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                                <label class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('common.usage_type') }}
+                                    <span class="font-normal normal-case tracking-normal text-slate-400">({{
+                                        t('common.optional') }})</span>
+                                    <span v-if="loadingContractTypes" class="ml-1">…</span>
+                                </label>
+                                <button type="button"
+                                    class="rounded-md bg-[var(--accent-soft)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white disabled:opacity-50"
+                                    :disabled="!contractTypes.length" @click="selectAllContractTypes">
+                                    {{ t('common.select_all') }}
+                                </button>
+                            </div>
+                            <v-select :model-value="selectedContractTypes" :options="contractTypes" multiple
+                                class="block w-full" :loading="loadingContractTypes" :disabled="loadingContractTypes"
+                                @update:model-value="onContractTypesChange">
+                                <template #no-options>
+                                    {{ t('common.no_records') }}
+                                </template>
+                            </v-select>
+                            <p class="mt-1.5 text-[11px] leading-snug text-slate-500">
+                                {{ t('pricing_block.accounting_pricing_invoice_contract_types_hint') }}
+                            </p>
+                        </div>
+
                         <div v-if="showsUndeclarePrevious" class="rounded-md border px-3 py-3"
                             style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 18%, white)">
                             <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-sky-950">
@@ -2145,6 +2683,32 @@ onMounted(async () => {
                     <!-- Section: Payment types -->
                     <section v-if="selectedCategory === 'payment'" class="border-b px-4 py-4"
                         style="border-color: color-mix(in srgb, var(--accent-soft) 50%, transparent)">
+                        <div class="mb-4">
+                            <label
+                                class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                {{ t('pricing_block.accounting_pricing_payment_category') }}
+                            </label>
+                            <div class="flex flex-wrap gap-1.5"
+                                :class="{ 'rounded-md border border-red-300 p-2': attemptedSave && !selectedPaymentCategory }">
+                                <button v-for="paymentCategory in paymentCategoryOptions" :key="paymentCategory.token"
+                                    type="button"
+                                    class="rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors"
+                                    :class="selectedPaymentCategory === paymentCategory.token
+                                        ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                                        : isEditing
+                                            ? 'cursor-not-allowed border-[var(--accent-soft)] bg-[var(--accent-soft)]/20 text-[var(--accent)] opacity-60'
+                                            : 'border-[var(--accent-soft)] bg-white text-[var(--accent)] hover:bg-[var(--accent-soft)]/40'
+                                        " :disabled="isEditing"
+                                    :aria-pressed="selectedPaymentCategory === paymentCategory.token"
+                                    @click="selectPaymentCategory(paymentCategory.token)">
+                                    {{ paymentCategory.name }}
+                                </button>
+                            </div>
+                            <p class="mt-2 text-[11px] leading-snug text-slate-500">
+                                {{ paymentCategoryHint }}
+                            </p>
+                        </div>
+
                         <div class="mb-3 flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2">
                                 <span class="font-mono text-[10px] font-bold tracking-[0.14em]"
@@ -2210,6 +2774,42 @@ onMounted(async () => {
                                 </p>
                             </div>
                         </div>
+
+                        <div v-if="showsBankPaymentOrigin" class="mt-4 rounded-md border px-3 py-3"
+                            style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 18%, white)">
+                            <p class="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                {{ t('billing_block.payment_origin') }}
+                            </p>
+                            <div class="flex flex-wrap gap-1.5">
+                                <button type="button"
+                                    class="rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors"
+                                    :class="!selectedPaymentOrigin
+                                        ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                                        : existingSelection
+                                            ? 'cursor-not-allowed border-[var(--accent-soft)] bg-[var(--accent-soft)]/20 text-[var(--accent)] opacity-60'
+                                            : 'border-[var(--accent-soft)] bg-white text-[var(--accent)] hover:bg-[var(--accent-soft)]/40'"
+                                    :disabled="!!existingSelection"
+                                    :aria-pressed="!selectedPaymentOrigin"
+                                    @click="selectPaymentOrigin(null)">
+                                    {{ t('pricing_block.accounting_pricing_payment_origin_all') }}
+                                </button>
+                                <button v-for="origin in paymentOriginOptions" :key="origin.token" type="button"
+                                    class="rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors"
+                                    :class="selectedPaymentOrigin === origin.token
+                                        ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                                        : existingSelection || !bankPaymentOriginExclusive
+                                            ? 'cursor-not-allowed border-[var(--accent-soft)] bg-[var(--accent-soft)]/20 text-[var(--accent)] opacity-60'
+                                            : 'border-[var(--accent-soft)] bg-white text-[var(--accent)] hover:bg-[var(--accent-soft)]/40'"
+                                    :disabled="!!existingSelection || !bankPaymentOriginExclusive"
+                                    :aria-pressed="selectedPaymentOrigin === origin.token"
+                                    @click="selectPaymentOrigin(origin.token)">
+                                    {{ origin.name }}
+                                </button>
+                            </div>
+                            <p class="mt-1.5 text-[11px] leading-snug text-slate-500">
+                                {{ paymentOriginHint }}
+                            </p>
+                        </div>
                     </section>
 
                     <!-- Section: Line item cascade -->
@@ -2255,7 +2855,7 @@ onMounted(async () => {
                                     <label class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                         {{ t('common.price_rates') }}
                                         <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
-                                        }})</span>
+                                            }})</span>
                                         <span v-if="loadingRelations" class="ml-1">…</span>
                                     </label>
                                     <button type="button"
@@ -2287,7 +2887,7 @@ onMounted(async () => {
                                     <label class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                         {{ t('pricing_block.line_items') }}
                                         <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
-                                        }})</span>
+                                            }})</span>
                                     </label>
                                     <button type="button"
                                         class="rounded-md bg-[var(--accent-soft)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white disabled:opacity-50"
@@ -2318,7 +2918,7 @@ onMounted(async () => {
                                     <label class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                         {{ t('pricing_block.price_interval') }}
                                         <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
-                                        }})</span>
+                                            }})</span>
                                     </label>
                                     <button type="button"
                                         class="rounded-md bg-[var(--accent-soft)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white disabled:opacity-50"
@@ -2341,7 +2941,7 @@ onMounted(async () => {
                                     <label class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                         {{ t('pricing_block.variable_price') }}
                                         <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
-                                        }})</span>
+                                            }})</span>
                                     </label>
                                     <button type="button"
                                         class="rounded-md bg-[var(--accent-soft)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white disabled:opacity-50"
@@ -2401,6 +3001,10 @@ onMounted(async () => {
                                     · {{invoiceCategoryOptions.find((c) => c.token === selectedInvoiceCategory)?.name
                                     }}
                                 </template>
+                                <template v-if="selectedCategory === 'payment' && selectedPaymentCategory">
+                                    · {{paymentCategoryOptions.find((c) => c.token === selectedPaymentCategory)?.name
+                                    }}
+                                </template>
                             </p>
                             <p v-if="selectedAccountingConcept"
                                 class="truncate font-mono text-[10px] tracking-wide text-slate-500">
@@ -2429,8 +3033,12 @@ onMounted(async () => {
                             {{ t('pricing_block.accounting_pricing_already_exists_will_not_save') }}
                             <span v-if="existingSelection.token || existingSelection.name" class="font-medium">
                                 ({{ existingSelection.token }}
+                                <template v-if="existingSelection.tokenReturn"> · {{ existingSelection.tokenReturn
+                                    }}</template>
                                 {{ existingSelection.token && existingSelection.name ? ' · ' : '' }}
-                                {{ existingSelection.name }})
+                                {{ existingSelection.name }}
+                                <template v-if="existingSelection.declaredAs"> · {{ existingSelection.declaredAs
+                                    }}</template>)
                             </span>
                         </div>
 
@@ -2447,10 +3055,38 @@ onMounted(async () => {
                             <div>
                                 <label
                                     class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_pricing_token_return') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
+                                        }})</span>
+                                </label>
+                                <input v-model="tokenReturn" type="text" class="input" :disabled="!!existingSelection"
+                                    :placeholder="t('pricing_block.accounting_pricing_token_return')" />
+                                <!-- <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_token_return_hint') }}
+                                </p> -->
+                            </div>
+
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                     {{ t('common.name') }} *
                                 </label>
                                 <input v-model="name" type="text" class="input" :disabled="!!existingSelection"
                                     :class="{ invalid: attemptedSave && !name?.trim() }" />
+                            </div>
+
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_pricing_declared_as') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
+                                        }})</span>
+                                </label>
+                                <input v-model="declaredAs" type="text" class="input" :disabled="!!existingSelection"
+                                    :placeholder="t('pricing_block.accounting_pricing_declared_as')" />
+                                <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_declared_as_hint') }}
+                                </p>
                             </div>
 
                             <div class="sm:col-span-2 rounded-md border px-3 py-2.5"
@@ -2464,6 +3100,44 @@ onMounted(async () => {
                                 <p class="mt-1 text-[11px] leading-snug text-slate-500">
                                     {{ t('pricing_block.accounting_pricing_group_values_hint') }}
                                 </p>
+                            </div>
+
+                            <div v-if="selectedCategory === 'invoice' && groupValues"
+                                class="sm:col-span-2 rounded-md border px-3 py-2.5"
+                                style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                                <label class="inline-flex items-center gap-2 text-[12px] text-sky-950"
+                                    :class="existingSelection ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'">
+                                    <input v-model="separateByOrigin" type="checkbox" class="checkbox"
+                                        :disabled="!!existingSelection" />
+                                    <span>{{ t('pricing_block.accounting_pricing_separate_by_origin') }}</span>
+                                </label>
+                                <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_separate_by_origin_hint') }}
+                                </p>
+                            </div>
+
+                            <div v-if="selectedCategory === 'payment' && groupValues"
+                                class="sm:col-span-2 space-y-3 rounded-md border px-3 py-2.5"
+                                style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                                <div>
+                                    <label class="inline-flex items-center gap-2 text-[12px] text-sky-950"
+                                        :class="existingSelection ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'">
+                                        <input v-model="separateByType" type="checkbox" class="checkbox"
+                                            :disabled="!!existingSelection" />
+                                        <span>{{ t('pricing_block.accounting_pricing_separate_by_type') }}</span>
+                                    </label>
+                                </div>
+                                <div v-if="showsBankPaymentOrigin">
+                                    <label class="inline-flex items-center gap-2 text-[12px] text-sky-950"
+                                        :class="existingSelection ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'">
+                                        <input v-model="separateByPaymentOrigin" type="checkbox" class="checkbox"
+                                            :disabled="!!existingSelection" />
+                                        <span>{{ t('pricing_block.accounting_pricing_separate_by_payment_origin') }}</span>
+                                    </label>
+                                    <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                        {{ t('pricing_block.accounting_pricing_separate_by_payment_origin_hint') }}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -2513,7 +3187,7 @@ onMounted(async () => {
                                     class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 select-truncate">
                                     {{ t('pricing_block.accounting_cost_center') }}
                                     <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
-                                    }})</span>
+                                        }})</span>
                                     <span v-if="loadingCostCenters" class="ml-1">…</span>
                                 </label>
                                 <v-select v-model="selectedCostCenter" :options="costCenters" :clearable="true"
@@ -2566,6 +3240,43 @@ onMounted(async () => {
                                 </div>
                             </div>
 
+                            <div v-if="showsBankPaymentOrigin" class="sm:col-span-2 rounded-md border px-3 py-3"
+                                style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                                <p class="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('billing_block.payment_origin') }}
+                                </p>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <button type="button"
+                                        class="rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors"
+                                        :class="!selectedPaymentOrigin
+                                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                                            : existingSelection
+                                                ? 'cursor-not-allowed border-[var(--accent-soft)] bg-[var(--accent-soft)]/20 text-[var(--accent)] opacity-60'
+                                                : 'border-[var(--accent-soft)] bg-white text-[var(--accent)] hover:bg-[var(--accent-soft)]/40'"
+                                        :disabled="!!existingSelection"
+                                        :aria-pressed="!selectedPaymentOrigin"
+                                        @click="selectPaymentOrigin(null)">
+                                        {{ t('pricing_block.accounting_pricing_payment_origin_all') }}
+                                    </button>
+                                    <button v-for="origin in paymentOriginOptions" :key="`values-${origin.token}`"
+                                        type="button"
+                                        class="rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors"
+                                        :class="selectedPaymentOrigin === origin.token
+                                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                                            : existingSelection || !bankPaymentOriginExclusive
+                                                ? 'cursor-not-allowed border-[var(--accent-soft)] bg-[var(--accent-soft)]/20 text-[var(--accent)] opacity-60'
+                                                : 'border-[var(--accent-soft)] bg-white text-[var(--accent)] hover:bg-[var(--accent-soft)]/40'"
+                                        :disabled="!!existingSelection || !bankPaymentOriginExclusive"
+                                        :aria-pressed="selectedPaymentOrigin === origin.token"
+                                        @click="selectPaymentOrigin(origin.token)">
+                                        {{ origin.name }}
+                                    </button>
+                                </div>
+                                <p class="mt-1.5 text-[11px] leading-snug text-slate-500">
+                                    {{ paymentOriginHint }}
+                                </p>
+                            </div>
+
                             <div v-if="showsUndeclarePrevious" class="sm:col-span-2 rounded-md border px-3 py-2.5"
                                 style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
                                 <label class="inline-flex cursor-pointer items-center gap-2 text-[12px] text-sky-950">
@@ -2582,7 +3293,7 @@ onMounted(async () => {
                                     <label class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                         {{ t('common.banks') }}
                                         <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
-                                        }})</span>
+                                            }})</span>
                                         <span v-if="loadingBanks" class="ml-1">…</span>
                                     </label>
                                     <button type="button"
@@ -2720,7 +3431,7 @@ onMounted(async () => {
                                                         :disabled="row.alreadyExists"
                                                         @change="setAssignmentUseDefault(row.key, $event.target.checked)" />
                                                     <span>{{ t('pricing_block.accounting_pricing_use_default_values')
-                                                    }}</span>
+                                                        }}</span>
                                                 </label>
 
                                                 <input type="text" class="input w-full sm:w-24"
@@ -2735,6 +3446,15 @@ onMounted(async () => {
                                                                 !(row.customToken || '').trim(),
                                                         }" @input="setAssignmentToken(row.key, $event.target.value)" />
 
+                                                <input type="text" class="input w-full sm:w-28"
+                                                    :disabled="row.alreadyExists || row.useDefault"
+                                                    :title="t('pricing_block.accounting_pricing_token_return_hint')"
+                                                    :placeholder="tokenReturn || t('pricing_block.accounting_pricing_token_return')"
+                                                    :value="row.alreadyExists
+                                                        ? (row.existing?.tokenReturn || '')
+                                                        : (row.useDefault ? tokenReturn : row.customTokenReturn)"
+                                                    @input="setAssignmentTokenReturn(row.key, $event.target.value)" />
+
                                                 <input type="text" class="input w-full sm:flex-1 sm:min-w-[8rem]"
                                                     :disabled="row.alreadyExists || row.useDefault"
                                                     :placeholder="name || t('common.name')" :value="row.alreadyExists
@@ -2746,6 +3466,15 @@ onMounted(async () => {
                                                                 !row.useDefault &&
                                                                 !(row.customName || '').trim(),
                                                         }" @input="setAssignmentName(row.key, $event.target.value)" />
+
+                                                <input type="text" class="input w-full sm:flex-1 sm:min-w-[8rem]"
+                                                    :disabled="row.alreadyExists || row.useDefault"
+                                                    :title="t('pricing_block.accounting_pricing_declared_as_hint')"
+                                                    :placeholder="declaredAs || t('pricing_block.accounting_pricing_declared_as')"
+                                                    :value="row.alreadyExists
+                                                        ? (row.existing?.declaredAs || '')
+                                                        : (row.useDefault ? declaredAs : row.customDeclaredAs)"
+                                                    @input="setAssignmentDeclaredAs(row.key, $event.target.value)" />
 
                                                 <v-select v-if="showsCostCenter"
                                                     class="block w-full sm:min-w-[12rem] sm:flex-1" :model-value="row.alreadyExists
@@ -2769,7 +3498,7 @@ onMounted(async () => {
                                                         :disabled="row.alreadyExists || row.useDefault"
                                                         @change="setAssignmentGroupValues(row.key, $event.target.checked)" />
                                                     <span>{{ t('pricing_block.accounting_pricing_group_values')
-                                                        }}</span>
+                                                    }}</span>
                                                 </label>
                                             </div>
                                         </div>
@@ -2777,6 +3506,77 @@ onMounted(async () => {
                                 </ul>
                             </details>
                         </div>
+                    </section>
+
+                    <!-- Section: Extra declaration lines -->
+                    <section class="border-t px-4 py-4"
+                        style="border-color: color-mix(in srgb, var(--accent-soft) 50%, transparent)">
+                        <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+                            <div class="min-w-0">
+                                <div class="mb-1 flex items-center gap-2">
+                                    <span class="font-mono text-[10px] font-bold tracking-[0.14em]"
+                                        style="color: var(--accent-soft)">04</span>
+                                    <h3 class="text-[13px] font-bold text-sky-950">
+                                        {{ t('pricing_block.accounting_pricing_additional_lines_title') }}
+                                    </h3>
+                                </div>
+                                <p class="text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_additional_lines_hint') }}
+                                </p>
+                            </div>
+                            <button type="button"
+                                class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--accent-soft)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white disabled:opacity-50"
+                                :disabled="!isEditing || loadingAdditionalLines" @click="openAdditionalLinePanel()">
+                                <Icon name="fa6-solid:plus" class="size-3" />
+                                {{ t('pricing_block.accounting_pricing_additional_lines_add') }}
+                            </button>
+                        </div>
+
+                        <p v-if="!isEditing" class="mt-2 text-[11px] leading-snug text-amber-700">
+                            {{ t('pricing_block.accounting_pricing_additional_lines_save_first') }}
+                        </p>
+
+                        <div v-else-if="loadingAdditionalLines" class="mt-3 text-center text-[12px] text-slate-500">
+                            <Icon name="fa6-solid:spinner" class="mr-1.5 animate-spin" />
+                            {{ t('common.loading') }}
+                        </div>
+
+                        <ul v-else-if="activeAdditionalLines.length"
+                            class="mt-3 divide-y overflow-hidden rounded-md border bg-white"
+                            style="border-color: var(--accent-soft)">
+                            <li v-for="line in activeAdditionalLines" :key="line.id"
+                                class="flex items-start justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-sky-50/40">
+                                <button type="button" class="min-w-0 flex-1 text-left"
+                                    @click="openAdditionalLinePanel(line)">
+                                    <p class="truncate text-[13px] font-bold text-sky-950">
+                                        {{ line.declared_as || line.name || '—' }}
+                                    </p>
+                                    <p class="mt-0.5 font-mono text-[11px] tracking-wide text-slate-500">
+                                        {{ line.token || '—' }}
+                                        <template v-if="line.token_return"> · 
+                                            <span class="font-bold"> {{ line.token_return }} </span>
+                                        </template>
+                                        <template class="font-bold" v-if="line.accounting_concept">
+                                            · <span class="font-bold"> {{ line.accounting_concept.token }} </span>
+                                            {{ line.accounting_concept.name }}
+                                        </template>
+                                    </p>
+                                    <span v-if="line.is_negative"
+                                        class="mt-1 inline-block rounded-md bg-orange-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-orange-700">
+                                        {{ t('pricing_block.accounting_pricing_additional_line_is_negative') }}
+                                    </span>
+                                </button>
+                                <button type="button"
+                                    class="inline-flex shrink-0 items-center justify-center rounded-md border border-transparent p-1.5 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                    :title="t('common.delete')" @click="deactivateAdditionalLine(line)">
+                                    <Icon name="fa6-solid:trash-can" class="size-3.5" />
+                                </button>
+                            </li>
+                        </ul>
+
+                        <p v-else class="mt-3 text-[12px] text-slate-500">
+                            {{ t('pricing_block.accounting_pricing_additional_lines_empty') }}
+                        </p>
                     </section>
 
                     <!-- Footer actions -->
@@ -2798,6 +3598,118 @@ onMounted(async () => {
                 </div>
             </Transition>
         </form>
+
+        <Teleport to="body">
+            <div v-if="showAdditionalLinePanel"
+                class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4"
+                style="--accent: #0369a1; --accent-soft: #7dd3fc;" @click.self="closeAdditionalLinePanel">
+                <div class="w-full max-w-lg rounded-md border bg-white shadow-xl"
+                    style="border-color: var(--accent-soft)" @click.stop>
+                    <div class="flex items-center justify-between border-b px-4 py-3"
+                        style="border-color: color-mix(in srgb, var(--accent-soft) 50%, transparent); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                        <h3 class="text-[13px] font-bold text-sky-950">
+                            {{
+                                additionalLineForm.id
+                                    ? t('pricing_block.accounting_pricing_additional_lines_edit')
+                                    : t('pricing_block.accounting_pricing_additional_lines_add')
+                            }}
+                        </h3>
+                        <button type="button"
+                            class="rounded-md p-1 text-slate-400 transition-colors hover:bg-white hover:text-sky-950"
+                            @click="closeAdditionalLinePanel">
+                            <Icon name="fa6-solid:xmark" class="size-4" />
+                        </button>
+                    </div>
+
+                    <div class="space-y-3 px-4 py-4">
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('common.identificator') }} / {{ t('common.code') }} *
+                                </label>
+                                <input v-model="additionalLineForm.token" type="text" class="input"
+                                    :class="{ invalid: additionalLineAttemptedSave && !additionalLineForm.token?.trim() }" />
+                            </div>
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_pricing_token_return') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
+                                        }})</span>
+                                </label>
+                                <input v-model="additionalLineForm.tokenReturn" type="text" class="input"
+                                    :placeholder="t('pricing_block.accounting_pricing_token_return')" />
+                            </div>
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('common.name') }} *
+                                </label>
+                                <input v-model="additionalLineForm.name" type="text" class="input"
+                                    :class="{ invalid: additionalLineAttemptedSave && !additionalLineForm.name?.trim() }" />
+                            </div>
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_pricing_declared_as') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
+                                        }})</span>
+                                </label>
+                                <input v-model="additionalLineForm.declaredAs" type="text" class="input"
+                                    :placeholder="t('pricing_block.accounting_pricing_declared_as')" />
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_concept') }} *
+                                    <span v-if="loadingAdditionalLineConcepts" class="ml-1">…</span>
+                                </label>
+                                <v-select v-model="additionalLineForm.accountingConcept"
+                                    :options="additionalLineConceptOptions" class="block w-full" append-to-body
+                                    :loading="loadingAdditionalLineConcepts" :disabled="loadingAdditionalLineConcepts"
+                                    :class="{
+                                        invalid:
+                                            additionalLineAttemptedSave &&
+                                            !(additionalLineForm.accountingConcept?.code ??
+                                                additionalLineForm.accountingConcept?.id),
+                                    }">
+                                    <template #no-options>
+                                        {{ t('common.no_records') }}
+                                    </template>
+                                </v-select>
+                            </div>
+                            <div class="sm:col-span-2 rounded-md border px-3 py-2.5"
+                                style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                                <label class="inline-flex cursor-pointer items-center gap-2 text-[12px] text-sky-950">
+                                    <input v-model="additionalLineForm.isNegative" type="checkbox" class="checkbox" />
+                                    <span>{{ t('pricing_block.accounting_pricing_additional_line_is_negative') }}</span>
+                                </label>
+                                <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_additional_line_is_negative_hint') }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-row-reverse items-center gap-2 border-t px-4 py-3"
+                        style="border-color: color-mix(in srgb, var(--accent-soft) 50%, transparent); background-color: color-mix(in srgb, var(--accent-soft) 12%, white)">
+                        <button type="button"
+                            class="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-sky-800 disabled:opacity-50"
+                            :disabled="savingAdditionalLine" @click="saveAdditionalLine">
+                            <Icon :name="savingAdditionalLine ? 'fa6-solid:spinner' : 'fa6-solid:floppy-disk'"
+                                class="size-3" :class="{ 'animate-spin': savingAdditionalLine }" />
+                            {{ savingAdditionalLine ? t('common.loading') : t('common.save') }}
+                        </button>
+                        <button type="button"
+                            class="rounded-md border border-slate-200 bg-white px-4 py-2 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                            :disabled="savingAdditionalLine" @click="closeAdditionalLinePanel">
+                            {{ t('common.cancel') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </div>
 </template>
 
@@ -2832,5 +3744,12 @@ onMounted(async () => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+</style>
+
+<style>
+/* append-to-body menus sit under the Teleport overlay (z-10000) without this */
+body>ul.vs__dropdown-menu {
+    z-index: 10050;
 }
 </style>

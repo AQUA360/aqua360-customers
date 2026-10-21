@@ -5763,6 +5763,9 @@ msgctxt "date month with preposition"
 msgid "of December"
 msgstr "de desembre"
 
+#: pricing/utils/accounting_service.py
+msgid "No values found to generate accounting"
+msgstr "No s'han trobat valors per generar l'informe de comptabilitat"
 #: notification/utils/auto_tasks.py
 msgid "Apply meter change"
 msgstr "Aplicar el canvi de comptador"

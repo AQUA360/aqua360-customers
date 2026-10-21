@@ -138,9 +138,11 @@ export default defineNuxtConfig({
 
     // pricing
     '~/plugins/api/pricing/accounting-pricing-api.js',
+    '~/plugins/api/pricing/accounting-additional-line-api.js',
     '~/plugins/api/pricing/accounting-concept-api.js',
     '~/plugins/api/pricing/accounting-type-api.js',
     '~/plugins/api/pricing/accounting-cost-center-api.js',
+    '~/plugins/api/pricing/accounting-config-api.js',
     '~/plugins/api/pricing/billing-range-api.js',
     '~/plugins/api/pricing/line-item-type-api.js',
     '~/plugins/api/pricing/line-item-api.js',

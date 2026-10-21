@@ -2638,6 +2638,9 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
         else:
             main_company_token = ConfigProject.objects.get(token="main_company_token").value
             company = Company.objects.get(vat=main_company_token)
+        
+        if invoices.count() == 0:
+            raise Exception("No invoices found to generate SII report")
 
         filename = (
             f'SII_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.xml'

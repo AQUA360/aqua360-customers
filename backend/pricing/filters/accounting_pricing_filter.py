@@ -42,16 +42,16 @@ class AccountingPricingFilter(filters.FilterSet):
             term_queries.append(term_query)
         
         final_query = reduce(and_, term_queries)
-        return queryset.filter(final_query)
+        return queryset.filter(final_query).distinct()
     
     def filter_status(self, queryset, name, value):
         if value:
             status_values = value.split(',')
-            return queryset.filter(status__id__in=status_values)
+            return queryset.filter(status__id__in=status_values).distinct()
         return queryset
 
     def filter_type(self, queryset, name, value):
         if value:
             type_values = value.split(',')
-            return queryset.filter(accounting_concepts__type__id__in=type_values)
+            return queryset.filter(accounting_concepts__type__id__in=type_values).distinct()
         return queryset

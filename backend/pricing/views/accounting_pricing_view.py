@@ -10,7 +10,7 @@ from django.db.models import Q, Prefetch, F, CharField, Value
 from django.db.models.functions import Concat
 
 from billing.permissions import BillingPermission
-from pricing.models import AccountingPricing
+from pricing.models import AccountingAdditionalLine, AccountingPricing
 from pricing.filters.accounting_pricing_filter import AccountingPricingFilter
 from pricing.serializers.accounting_pricing_serializer import AccountingPricingGroupedSerializer, AccountingPricingSerializer
 from pricing.utils.accounting_service import bulk_save_accounting_pricing
@@ -28,7 +28,30 @@ class AccountingPricingListedPagination(PageNumberPagination):
 
 
 class AccountingPricingViewSet(viewsets.ModelViewSet):
-    queryset = AccountingPricing.objects.filter(is_active=True).order_by('accounting_concept__token', 'token', 'name')
+    queryset = AccountingPricing.objects.filter(is_active=True).select_related(
+        'accounting_concept',
+        'accounting_concept__type',
+        'accounting_cost_center',
+        'company',
+        'exploitation',
+    ).prefetch_related(
+        Prefetch(
+            'aditional_lines',
+            queryset=AccountingAdditionalLine.objects.filter(is_active=True).select_related(
+                'accounting_concept',
+                'accounting_concept__type',
+            ).order_by('token', 'name'),
+        ),
+        'origins',
+        'products',
+        'price_rates',
+        'line_item_types',
+        'price_intervals',
+        'price_variables',
+        'payment_types',
+        'banks',
+        'contract_types',
+    ).order_by('accounting_concept__token', 'token', 'name').distinct()
     permission_classes = [IsAuthenticated, BillingPermission]
     filter_backends = (DjangoFilterBackend, )
     filterset_class = AccountingPricingFilter
@@ -78,11 +101,16 @@ class AccountingPricingViewSet(viewsets.ModelViewSet):
         incoming_payments = request.data.get('incoming_payments', None)
         foreign_iban = request.data.get('foreign_iban', None)
         native_iban = request.data.get('native_iban', None)
+        category = request.data.get('category', None)
+        invoice_category = request.data.get('invoice_category', None)
+        contract_types = request.data.get('contract_types', [])
+        origins = request.data.get('origins', [])
         
         possible_existing_objects = AccountingPricing.objects.filter(
             accounting_concept__id=data['accounting_concept'],
             is_active=True,
         )
+        
         filters = Q()
         if price_rates:
             filters |= Q(price_rates__in=price_rates)
@@ -106,9 +134,29 @@ class AccountingPricingViewSet(viewsets.ModelViewSet):
             filters |= Q(foreign_iban=foreign_iban)
         if native_iban and banks:
             filters |= Q(native_iban=native_iban)
-        possible_existing_objects = possible_existing_objects.filter(filters, banks__in=banks)
-        print("possible_existing_objects")
-        print(possible_existing_objects)
+        if invoice_category:
+            filters |= Q(invoice_category=invoice_category)
+            if invoice_category == 'normal':
+                if contract_types:
+                    filters &= Q(contract_types__in=contract_types)
+                else:
+                    filters &= Q(contract_types__isnull=True)
+                if origins:
+                    filters &= Q(origins__in=origins)
+                else:
+                    filters &= Q(origins__isnull=True)
+                
+        possible_existing_objects = possible_existing_objects.filter(filters)
+        if category == "payment":
+            possible_existing_objects = possible_existing_objects.filter(banks__in=banks)
+            payment_origin = data.get('payment_origin') or None
+            if payment_origin in ('box_office', 'post_office'):
+                possible_existing_objects = possible_existing_objects.filter(payment_origin=payment_origin)
+            else:
+                possible_existing_objects = possible_existing_objects.filter(
+                    Q(payment_origin__isnull=True) | Q(payment_origin='')
+                )
+            
         serialized_objects = AccountingPricingSerializer(possible_existing_objects, many=True)
         return Response({"results": serialized_objects.data}, status=status.HTTP_200_OK)
     

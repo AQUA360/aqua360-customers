@@ -800,6 +800,9 @@ class Invoice(models.Model):
     suppressed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     suppressed_at = models.DateTimeField(null=True, blank=True)
     
+    endowment_date = models.DateField(null=True, blank=True) # accounting reference value
+    irrecoverable_date = models.DateField(null=True, blank=True) # accounting reference value
+    
     is_general = models.BooleanField(default=False)
     general_contracts = models.ManyToManyField(Contract, blank=True, related_name="general_invoices")
     
@@ -1101,7 +1104,6 @@ class CommitmentDeposit(models.Model):
     remaining = models.DecimalField(max_digits=11, decimal_places=2, null=True, blank=True, default=0.00)
     remaining_to_share = models.DecimalField(max_digits=11, decimal_places=2, null=True, blank=True, default=0.00)
     
-    start_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     days_next_payment = models.IntegerField(null=True, blank=True)
     
@@ -1187,7 +1189,6 @@ class PaymentCommitment(models.Model):
     payment_bank_final = models.CharField(max_length=255, null=True, blank=True)
     payment_swift_final = models.CharField(max_length=255, null=True, blank=True)
     
-    start_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     payment_date = models.DateField(null=True, blank=True)
     

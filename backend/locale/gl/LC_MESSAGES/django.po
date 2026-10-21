@@ -4329,6 +4329,9 @@ msgctxt "date month with preposition"
 msgid "of December"
 msgstr "de decembro"
 
+#: pricing/utils/accounting_service.py
+msgid "No values found to generate accounting"
+msgstr "Non se atoparon valores para xerar a contabilidade"
 #: notification/utils/auto_tasks.py
 msgid "Apply meter change"
 msgstr "Aplicar o cambio de contador"

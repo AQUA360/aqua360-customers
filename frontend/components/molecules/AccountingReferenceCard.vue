@@ -36,8 +36,8 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <section class="w-full max-w-[280px]">
-    <div class="relative flex flex-col items-center rounded-md border bg-white p-4 transition-colors" :style="{
+  <section class="w-full max-w-[280px] shrink-0">
+    <div class="relative flex h-full flex-col items-center rounded-md border bg-white p-4 transition-colors" :style="{
       '--accent': accent,
       '--accent-soft': accentSoft,
       borderColor: 'var(--accent-soft)',
