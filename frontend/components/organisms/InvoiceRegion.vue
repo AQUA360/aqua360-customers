@@ -705,13 +705,13 @@ const handleRefactor = async () => {
               @click="changeStatus(status_canceled_token, true)">
               <Icon name="fa6-solid:xmark" class="display-inline mr-2" /> {{ `${$t('common.cancel')} ${t('invoice').toLowerCase()}` }}
             </DropdownOption> -->
-            <DropdownOption
+            <!-- <DropdownOption
               v-if="data.status?.token != status_paid_token && data.status?.token != status_irrecoverable_token" :disabled="allow_changes"
               :name="`${$t('billing_block.irrecoverable_invoice')}`" @click="changeStatus(status_irrecoverable_token)">
               <Icon name="fa6-solid:circle-xmark" class="display-inline mr-2" /> {{
                 $t('billing_block.irrecoverable_invoice') }}
-            </DropdownOption>
-            <DropdownOption
+            </DropdownOption> -->
+            <!-- <DropdownOption
               v-if="data.status?.token != status_paid_token && data.status?.token != status_endowment_token && data.status?.token != status_irrecoverable_token"
               :disabled="allow_changes" :name="`${$t('contract_block.endowment_long')}`" @click="changeStatus(status_endowment_token)">
               <Icon name="fa6-solid:hand-holding-dollar" class="display-inline mr-2" /> {{
@@ -721,7 +721,7 @@ const handleRefactor = async () => {
               :disabled="allow_changes" @click="changeStatus(status_confirmed_token)">
               <Icon name="fa6-solid:hand-holding-dollar" class="display-inline mr-2" /> {{ $t('billing_block.unendow')
               }}
-            </DropdownOption>
+            </DropdownOption> -->
             <hr v-if="verifactuEnabled && data.type.token == invoice_token && !data.verifactu_invoice" />
             <DropdownOption v-if="verifactuEnabled && data.type.token == invoice_token && !data.verifactu_invoice"
               :name="`${$t('billing_block.notify_verifactu')}`" @click="notifyVerifactuInvoice">
