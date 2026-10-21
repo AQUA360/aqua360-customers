@@ -379,6 +379,7 @@ class OrderListSerializer(serializers.ModelSerializer):
             "created_by",
             "operators",
             "completed_at",
+            "description",
         ]
 
     def to_representation(self, instance):
