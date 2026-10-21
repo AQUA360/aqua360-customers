@@ -361,7 +361,7 @@ watch(() => route.query, () => {
           <span>
             <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
               @click="showDetail(item.id);">
-              <abbr :title="item.product.name" class="no-underline">{{ item.token }}</abbr>
+              <abbr :title="item.product?.name" class="no-underline">{{ item.token }}</abbr>
             </button>
           </span>
           <span class="p-1 text-nowrap" :title="item.name">{{ item.name }}</span>

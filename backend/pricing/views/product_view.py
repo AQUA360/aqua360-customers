@@ -1,13 +1,17 @@
+from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework import viewsets
+from django.utils.translation import gettext as _
 
 from ..filters.product_filter import ProductFilter
 from ..models import Product
-from ..serializers.product_serializer import ProductSerializer, ProductSaveSerializer, ProductListSerializer
+from ..serializers.product_serializer import ProductSerializer, ProductSaveSerializer, ProductListSerializer, create_product_log
+from ..serializers.price_rate_serializer import create_price_rate_log
+from ..utils.deletion_service import product_in_use
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -99,6 +103,31 @@ class ProductViewSet(viewsets.ModelViewSet):
         instance = serializer.instance
         read_serializer = ProductSerializer(instance, context=self.get_serializer_context())
         return Response(read_serializer.data, status=status.HTTP_200_OK, content_type='application/json')
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = self.get_serializer(instance).data
+        # Només al detall: al llistat suposaria diverses consultes per fila
+        data['is_deletable'] = not product_in_use(instance)
+        return Response(data)
+
+    def destroy(self, request, *args, **kwargs):
+        """Esborrat lògic del producte i les seves tarifes, només si no s'han fet servir en cap contracte ni factura."""
+        instance = self.get_object()
+        if product_in_use(instance):
+            return Response(
+                {'detail': _("No es pot eliminar el producte perquè està vinculat a contractes o factures.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            for price_rate in instance.price_rates.filter(is_active=True):
+                price_rate.is_active = False
+                price_rate.save(update_fields=['is_active', 'updated_at'])
+                create_price_rate_log(price_rate, 'is_active', True, False, request.user)
+            instance.is_active = False
+            instance.save(update_fields=['is_active', 'updated_at'])
+            create_product_log(instance, 'is_active', True, False, request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     @action(detail=False, methods=['get'], url_path='permissions')
     def permissions(self, request):

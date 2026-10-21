@@ -211,7 +211,7 @@ const save = async () => {
         path: '/pricing/products/',
         query: {
           action: 'showDetail',
-          id: price_rate.value.product.id,
+          id: price_rate.value.product?.id,
           price_rate_id: price_rate.value.id
         }
       })
@@ -261,7 +261,7 @@ const deleteItem = async () => {
       path: '/pricing/products/',
       query: {
         action: 'showDetail',
-        id: price_rate.value.product.id,
+        id: price_rate.value.product?.id,
         price_rate_id: price_rate.value.id
       }
     })

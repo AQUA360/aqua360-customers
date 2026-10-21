@@ -1534,7 +1534,7 @@ const getPriceRatesForProducts = async () => {
             selectedExploitation.value?.code ?? null,
         );
         priceRates.value = (result.results || []).map((item) => ({
-            ...toSelectOption(item, (i) => `${i.product.name || ''} · ${i.name}`),
+            ...toSelectOption(item, (i) => `${i.product?.name || ''} · ${i.name}`),
             br_id: item?.billing_range_active?.id || null,
             product_id: item?.product?.id || null,
         }));

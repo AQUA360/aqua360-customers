@@ -171,7 +171,7 @@ const toggleRegion = (force) => {
         <div class="flex justify-between items-center relative">
           <div>
             <div class="flex items-center gap-2">
-              <h2 class="text-slate-500">{{ data.product.name }}</h2>
+              <h2 class="text-slate-500">{{ data.product?.name }}</h2>
               <span v-if="!data.is_active" class="text-slate-500 italic">({{ t('common.deactivated') }})</span>
             </div>
             <AtomsH1Region class="mb-3">{{ data.name }}</AtomsH1Region>

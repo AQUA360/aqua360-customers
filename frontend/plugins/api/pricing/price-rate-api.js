@@ -123,6 +123,12 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  const deleteItem = async (id) => {
+    const apiUrl = `${apiHost}${entity}${id}/`;
+    await $apiManager.fetch(apiUrl, 'DELETE');
+    return true;
+  }
+
   const getPermissions = async () => {
     const apiUrl = `${apiHost}${entity}permissions/`;
     try {
@@ -143,6 +149,7 @@ export default defineNuxtPlugin(nuxtApp => {
     save,
     getDetail,
     getFilterProducts,
+    deleteItem,
     getPermissions
   }
 
