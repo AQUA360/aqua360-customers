@@ -32,6 +32,7 @@ import PiggyBankRegion from './PiggyBankRegion.vue';
 import AddPiggyBankBalance from '../molecules/AddPiggyBankBalance.vue';
 import AddReading from '../molecules/AddReading.vue';
 import EstimatedBagRegion from './EstimatedBagRegion.vue';
+import ContractDebtRegion from './ContractDebtRegion.vue';
 import AddNewCall from '../molecules/AddNewCall.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import TypedConfirmationModal from '../molecules/TypedConfirmationModal.vue';
@@ -783,7 +784,7 @@ const addWalletBalance = () => {
 
         <ContractDetail :data="data" @show-subregion="showDetail" :isSubRegion="isSubRegion"
           :canChange="objectPermissions?.can_change" :isSubRegionOpen="isSubRegionOpen" @change="handleChange"
-          :showImportantObservations="false" @new-call="startCall" />
+          :showImportantObservations="false" :showDebtDetail="true" @new-call="startCall" />
 
         <ContractTabs
           :contract="data"
@@ -877,6 +878,8 @@ const addWalletBalance = () => {
           :isSubRegion="true" />
         <EstimatedBagRegion v-if="showRegionDetailComponent === 'EstimatedBagRegion'" :id="parseInt(regionDetailId)"
           :isSubRegion="true" />
+        <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
+          :isSubRegion="true" @changed="handleChange(false)" />
         <AddInvoiceBudget v-if="showRegionDetailComponent === 'AddInvoiceBudget'" :isSubRegion="true"
           :object_id="props.id" :service="$ContractApiService" :entity="'custom'" :persons="[data.holder]"
           :individual="true" :selectedCustom="selectedCustomInvoice" @change="handleChange"

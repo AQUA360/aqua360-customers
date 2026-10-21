@@ -38,6 +38,11 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  // Debt badge opens ContractDebtRegion (the parent must handle it)
+  showDebtDetail: {
+    type: Boolean,
+    default: false
+  },
   canChange: Boolean
 });
 
@@ -499,7 +504,8 @@ watch(() => props.data, (newValue) => {
       <div>
         <hr class="my-2" />
         <div role="row" class="mb-2">
-          <ContractStatusBadges :contract="localData" :isSubRegion="isSubRegion" @show-detail="showDetail" />
+          <ContractStatusBadges :contract="localData" :isSubRegion="isSubRegion" :showDebtDetail="showDebtDetail"
+            @show-detail="showDetail" />
         </div>
         <div role="row" class="grid grid-cols-3 gap-x-3">
           <FieldDetail :label="$t('contract_block.client_type')"

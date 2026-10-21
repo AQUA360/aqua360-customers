@@ -8,12 +8,14 @@ from decouple import config
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.db.models import Q, Sum
+from decimal import Decimal
+from django.db.models import Prefetch, Q, Sum
 from django.http import JsonResponse
+from django.utils.dateparse import parse_date
 from django.template.loader import render_to_string
 from coredata.utils.pdf_utils import add_watermark_to_pdf
 from xhtml2pdf import pisa
-from billing.models import JoinedPayment, Payment, PaymentStatus
+from billing.models import JoinedPayment, Payment, PaymentRemittance, PaymentStatus
 from billing.serializers.payment_serializer import PaymentListSerializer
 from billing.utils.barcode_service import generate_barcode
 from billing.utils.payment_service import disconnect_payment_signals, generate_payment_movement, log_payment_status, reconnect_payment_signals
@@ -32,7 +34,16 @@ from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
 from statistics.utils.report_service import delete_file_later
 
+# Estats de pagament que no compten al deute del contracte. Ha de coincidir
+# amb el WHERE de la vista vw_contract_debt (statistics/migrations/0039).
+CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS = ['0', '-4', '-6', '-7', '-99']
+
+
 def get_pending_client_data(data):
+    """Retorna el client, els pagaments liquidables i els totals pendents.
+
+    ``data`` ha d'indicar exactament un identificador: ``contract`` o ``person``.
+    """
     contract_id = data.get('contract', None)
     person_id = data.get('person', None)
     
@@ -41,53 +52,9 @@ def get_pending_client_data(data):
     if not contract_id and not person_id:
         raise Exception("Either contract_id or person_id must be provided")
     
-    
-    payment_status_tokens_config = [
-        "payment_status_returned_token",
-        "payment_status_pending_token",
-        "payment_status_sent_token",
-        "payment_status_expired_token",
-        "payment_status_endowment_token",
-        "payment_status_irrecoverable_token"
-    ]
-    joined_payment_status_tokens_config = [
-        "joined_payment_status_paid_token",
-        "joined_payment_status_pending_token",
-        "joined_payment_status_expired_token"
-    ]
-    
-    payment_status_tokens = ConfigProject.objects.filter(token__in=payment_status_tokens_config).values_list('value', flat=True)
-    joined_payment_status_tokens = ConfigProject.objects.filter(token__in=joined_payment_status_tokens_config).values_list('value', flat=True)
-    
-    contract = None
-    person = None
-    payments = []
-    if contract_id:
-        contract = Contract.objects.get(id=contract_id)
-        payments = Payment.objects.filter(
-            Q(contract__id=contract_id) | 
-            Q(commitment_deposit__contract__id=contract_id) | 
-            Q(invoice__contract_request__contract__id=contract_id) |
-            Q(invoice__contract_termination__contract__id=contract_id)
-        ).exclude(joined_payments__status__token__in=joined_payment_status_tokens).distinct()
-    elif person_id:
-        person = Person.objects.get(id=person_id)
-        person_name_variations = [
-            f"{person.name} {person.surname if person.surname else ''}",
-            f"{person.name}{person.surname if person.surname else ''}",
-            f"{person.name}{person.surname}" if person.surname else person.name,
-        ]
-        payments = Payment.objects.filter(
-            Q(person__id=person_id) | 
-            Q(invoice__customer_token_final=person.token, invoice__customer_final__in=person_name_variations) |
-            Q(commitment_deposit__customer_token_final=person.token, commitment_deposit__customer_final__in=person_name_variations)
-        ).exclude(joined_payments__status__token__in=joined_payment_status_tokens).distinct()
-    
-    pending_payments = payments.filter(
-            status__token__in=payment_status_tokens,
-            amount__gt=0,
-            is_active=True
-        ).exclude(remittances__id__isnull=False, remittances__sent_at__isnull=True).order_by('invoice__serie_final', 'commitment_deposit__token', '-due_date')
+    contract = Contract.objects.get(id=contract_id) if contract_id else None
+    person = Person.objects.get(id=person_id) if person_id else None
+    pending_payments = get_pending_payments(contract=contract, person=person)
     
     total_pending = pending_payments.aggregate(total=Sum('amount'))['total']
     total_pending_invoices = pending_payments.filter(invoice__isnull=False).aggregate(total=Sum('amount'))['total']
@@ -101,6 +68,137 @@ def get_pending_client_data(data):
         'total_pending': total_pending,
         'total_pending_invoices': total_pending_invoices,
         'total_pending_commitments': total_pending_commitments
+    }
+
+
+def get_active_joined_payment_status_tokens():
+    """Retorna els tokens configurats d'agrupacions pagades, pendents o vençudes."""
+    joined_payment_status_tokens_config = [
+        "joined_payment_status_paid_token",
+        "joined_payment_status_pending_token",
+        "joined_payment_status_expired_token"
+    ]
+    return list(ConfigProject.objects.filter(token__in=joined_payment_status_tokens_config).values_list('value', flat=True))
+
+
+def get_contract_payments(contract_id):
+    """Retorna pagaments vinculats al contracte directament o pels seus documents."""
+    return Payment.objects.filter(
+        Q(contract__id=contract_id) | 
+        Q(invoice__contract__id=contract_id) | 
+        Q(commitment_deposit__contract__id=contract_id) | 
+        Q(invoice__contract_request__contract__id=contract_id) |
+        Q(invoice__contract_termination__contract__id=contract_id)
+    )
+
+
+def get_pending_payments(contract=None, person=None):
+    """Pagaments que es poden liquidar amb un pagament agrupat."""
+    payment_status_tokens_config = [
+        "payment_status_returned_token",
+        "payment_status_pending_token",
+        "payment_status_sent_token",
+        "payment_status_expired_token",
+        "payment_status_endowment_token",
+        "payment_status_irrecoverable_token"
+    ]
+    
+    payment_status_tokens = ConfigProject.objects.filter(token__in=payment_status_tokens_config).values_list('value', flat=True)
+    joined_payment_status_tokens = get_active_joined_payment_status_tokens()
+    
+    if contract:
+        payments = get_contract_payments(contract.id).exclude(joined_payments__status__token__in=joined_payment_status_tokens).distinct()
+    elif person:
+        person_id = person.id
+        person_name_variations = [
+            f"{person.name} {person.surname if person.surname else ''}",
+            f"{person.name}{person.surname if person.surname else ''}",
+            f"{person.name}{person.surname}" if person.surname else person.name,
+        ]
+        payments = Payment.objects.filter(
+            Q(person__id=person_id) | 
+            Q(invoice__customer_token_final=person.token, invoice__customer_final__in=person_name_variations) |
+            Q(commitment_deposit__customer_token_final=person.token, commitment_deposit__customer_final__in=person_name_variations)
+        ).exclude(joined_payments__status__token__in=joined_payment_status_tokens).distinct()
+    
+    else:
+        raise Exception("Either contract or person must be provided")
+    
+    return payments.filter(
+            status__token__in=payment_status_tokens,
+            amount__gt=0,
+            is_active=True
+        ).exclude(remittances__id__isnull=False, remittances__sent_at__isnull=True).order_by('invoice__serie_final', 'commitment_deposit__token', '-due_date')
+
+
+def get_contract_debt_detail(contract_id):
+    """
+    Pagaments que formen el deute del contracte (els mateixos que suma
+    vw_contract_debt) més els que es poden liquidar encara que no hi comptin
+    (p. ex. terminis de compromisos de pagament). Per a cada pagament s'indica
+    si compta al deute, si es pot liquidar i, si no, el motiu: que ja és en una
+    remesa pendent d'enviar o en un pagament agrupat actiu.
+    """
+    from django.shortcuts import get_object_or_404
+    contract = get_object_or_404(Contract, id=contract_id)
+    
+    debt_payment_ids = set(Payment.objects.filter(
+        invoice__contract_id=contract.id,
+        status__isnull=False,
+        amount__gt=0,
+    ).exclude(status__token__in=CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS).values_list('id', flat=True))
+    settleable_payment_ids = set(get_pending_payments(contract=contract).values_list('id', flat=True))
+    
+    joined_payment_status_tokens = get_active_joined_payment_status_tokens()
+    payments = Payment.objects.filter(
+        id__in=debt_payment_ids | settleable_payment_ids
+    ).select_related('status', 'invoice', 'commitment_deposit', 'reject').prefetch_related(
+        Prefetch('remittances', queryset=PaymentRemittance.objects.order_by('-created_at'), to_attr='ordered_remittances'),
+        Prefetch('joined_payments', queryset=JoinedPayment.objects.filter(status__token__in=joined_payment_status_tokens).select_related('status'), to_attr='active_joined_payments'),
+    ).order_by('-due_date', 'invoice__serie_final', 'commitment_deposit__token')
+    
+    payments_data = []
+    total_debt = Decimal('0')
+    total_settleable = Decimal('0')
+    total_in_pending_remittance = Decimal('0')
+    total_in_joined_payment = Decimal('0')
+    for payment in payments:
+        item = PaymentListSerializer(payment).data
+        remittance = payment.ordered_remittances[0] if payment.ordered_remittances else None
+        joined_payment = payment.active_joined_payments[0] if payment.active_joined_payments else None
+        
+        item['in_debt'] = payment.id in debt_payment_ids
+        item['is_settleable'] = payment.id in settleable_payment_ids
+        item['remittance'] = {
+            'id': remittance.id,
+            'token': remittance.token,
+            'desired_send_at': remittance.desired_send_at,
+            'sent_at': remittance.sent_at,
+            'is_pending_send': remittance.sent_at is None,
+        } if remittance else None
+        item['joined_payment'] = {
+            'id': joined_payment.id,
+            'token': joined_payment.token,
+            'status': joined_payment.status.name if joined_payment.status else None,
+        } if joined_payment else None
+        payments_data.append(item)
+        
+        if item['in_debt']:
+            total_debt += payment.amount
+        if item['is_settleable']:
+            total_settleable += payment.amount
+        if remittance and remittance.sent_at is None:
+            total_in_pending_remittance += payment.amount
+        if joined_payment:
+            total_in_joined_payment += payment.amount
+    
+    return {
+        'contract': ContractMinimalListSerializer(contract).data,
+        'payments': payments_data,
+        'total_debt': total_debt,
+        'total_settleable': total_settleable,
+        'total_in_pending_remittance': total_in_pending_remittance,
+        'total_in_joined_payment': total_in_joined_payment,
     }
 
 def register_joined_payment_log(joined_payment, previous_status, current_status, observation, user):
@@ -181,7 +279,32 @@ def mark_payments_as_paid(joined_payment, user, payment_origin = None):
             payment.invoice.save()
             reconnect_payment_signals()
 
+class _TemplatePayments(list):
+    """Llista de pagaments que les plantilles poden recórrer amb `payments.all`."""
+    def all(self):
+        """Retorna la mateixa llista per als accessos ``payments.all`` de les plantilles."""
+        return self
+
+
+def _payments_for_template(payments):
+    """Prepara els pagaments per a les plantilles amb el contracte de la factura.
+
+    Si el pagament no té contracte, s'assigna el de la factura només en memòria.
+    La llista retornada admet l'accés ``payments.all`` sense consultar de nou.
+    """
+    result = _TemplatePayments(payments.select_related('contract', 'invoice__contract', 'commitment_deposit'))
+    for payment in result:
+        if payment.contract is None and payment.invoice and payment.invoice.contract:
+            payment.contract = payment.invoice.contract
+    return result
+
+
 def generate_report_joined_payment_pdf(joined_payment, user, request = None):
+    """Genera i signa el PDF d'un pagament agrupat o d'una previsualització.
+
+    Sense ``joined_payment``, fa servir les dades del formulari de ``request``.
+    Retorna una resposta JSON amb l'URL del fitxer temporal.
+    """
     try:
         contract = joined_payment.contract if joined_payment else Contract.objects.filter(id=request.data.get('contract_id', None)).first()
         payments = joined_payment.payments.all().order_by('amount') if joined_payment else Payment.objects.filter(id__in=request.data.get('payments_data', [])).order_by('amount')
@@ -199,10 +322,7 @@ def generate_report_joined_payment_pdf(joined_payment, user, request = None):
                     exploitation = Exploitation.objects.get(id=payment_exploitations[0])
                 else:
                     exploitation = None.objects.get(id=payment_exploitations[0])
-                
-
-
-        contract = None
+        
         total = joined_payment.total_final if joined_payment else payments.aggregate(total=Sum('amount'))['total']
         title = f"00000000000"
         
@@ -272,11 +392,21 @@ def generate_report_joined_payment_pdf(joined_payment, user, request = None):
         company_iban = company_bank.iban if company_bank else None
         company_swift = company_bank.swift if company_bank else None
         
+        # Les plantilles (també les personalitzades de cada client) amaguen el
+        # venciment, l'IBAN i el SWIFT si no hi ha `object`. A la previsualització
+        # se'ls passa un pagament agrupat sense desar amb les dades del formulari;
+        # la referència i el codi de barres continuen sent provisionals.
+        template_object = joined_payment if joined_payment else JoinedPayment(
+            token="00000000000",
+            due_date=parse_date(str(request.data.get('due_date') or '')),
+            payment_type=payment_type,
+            total_final=total,
+        )
         
 
         context = {
-            'object': joined_payment,
-            'payments': payments,
+            'object': template_object,
+            'payments': _payments_for_template(payments),
             'company': company_data,
             'contract': contract,
             'barcode': barcode_base64,
