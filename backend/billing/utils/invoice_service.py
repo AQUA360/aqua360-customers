@@ -2508,9 +2508,6 @@ def invoice_contract_termination_generate(
         if payment_bank_instance:
             payer_final = f"{payment_bank_instance.name}"
             payer_token_final = payment_bank_instance.dni
-        elif payment_company_bank_instance and payment_company_bank_instance.company:
-            payer_final = payment_company_bank_instance.company.alias
-            payer_token_final = payment_company_bank_instance.company.vat
         else:
             payer_final = customer_final
             payer_token_final = customer_token_final
