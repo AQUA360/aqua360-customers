@@ -36,12 +36,7 @@ class InvoiceManageMassivelyViewSet(APIView):
             payment_type_token_final__in=['DIRECT_DEBIT', 'BALANCE', 'TPV_ONLINE']
         )
             
-        print(invoices)
-        print(invoices.values_list('serie_final', flat=True))
         unique_statuses = invoices.values_list('status__name', flat=True).distinct()
-        for status in unique_statuses:
-            print(status)
-            print(status in [paid_invoice_status, invoice_status_dropped, invoice_status_cancelled, invoice_status_commitment])
         
         is_saving = request.data.get('saving', True)
         
