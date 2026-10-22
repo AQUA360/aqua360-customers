@@ -14,6 +14,7 @@ class AcaTramServiceTest(TestCase):
             ('aca_notification_enabled', 'True'),
             ('aca_at_token', 'ACA-TRAM'),
             ('aca_tram_min_persons', '4'),
+            ('aca_tram_members_variable_token', 'ACA-TRAM-MEMBRES'),
             ('contract_active_token', 'actiu'),
             ('contract_terminated_status', 'baixa'),
         ):
@@ -125,6 +126,42 @@ class AcaTramServiceTest(TestCase):
 
         self.assertIsNone(self.active_bonification())
         self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_configured_variable_token_replaces_membres_hint(self):
+        ConfigProject.objects.filter(token='aca_tram_members_variable_token').update(value='HABITANTS')
+        habitants = VariableType.objects.create(token='HABITANTS', name='Habitants', data_type='int')
+        self.bonification_type.variable_types.add(habitants)
+
+        self.set_total_persons(4)
+
+        bonification = self.active_bonification()
+        self.assertEqual(bonification.variables.get(type=habitants).value, '4')
+        self.assertFalse(bonification.variables.filter(type=self.type_members).exists())
+
+        self.set_total_persons(6)
+        self.assertEqual(bonification.variables.get(type=habitants).value, '6')
+
+        variable = bonification.variables.get(type=habitants)
+        variable.value = '7'
+        variable.save()
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.total_persons, 7)
+
+        rejected = VariableSaveSerializer(data={
+            'contract': self.contract.id, 'type': habitants.id, 'value': '2', 'token': 'VR-HAB',
+        })
+        ignored = VariableSaveSerializer(data={
+            'contract': self.contract.id, 'type': self.type_members.id, 'value': '2', 'token': 'VR-MEM',
+        })
+        self.assertFalse(rejected.is_valid())
+        self.assertTrue(ignored.is_valid(), ignored.errors)
+
+    def test_missing_members_config_falls_back_to_aca_tram_membres(self):
+        ConfigProject.objects.filter(token='aca_tram_members_variable_token').delete()
+
+        self.set_total_persons(4)
+
+        self.assertEqual(self.members_value(self.active_bonification()), '4')
 
     def test_min_persons_for_contract_only_with_active_bonification(self):
         from contract.utils.aca_tram_service import aca_tram_min_persons_for_contract

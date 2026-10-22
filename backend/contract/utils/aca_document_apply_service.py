@@ -99,9 +99,11 @@ def find_contract(contract_code):
 
 
 def _variable_value(variable_type, change):
+    from watchdog.aca_config import is_aca_tram_members_variable_type
+
     if variable_type.data_type == 'bool':
         return 'True'
-    if 'MEMBRES' in (variable_type.token or '').upper() and (change.num_persons or '').isdigit():
+    if is_aca_tram_members_variable_type(variable_type) and (change.num_persons or '').isdigit():
         return str(int(change.num_persons))
     return None
 
