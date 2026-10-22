@@ -30,14 +30,13 @@ class InvoiceManageMassivelyViewSet(APIView):
         invoice_status_cancelled = get_invoice_status("invoice_status_cancelled_token")
         invoice_status_commitment = get_invoice_status("invoice_status_commitment_token")
         invoice_status_payoff = get_invoice_status("invoice_status_payoff_token")
+        invoice_status_pending = get_invoice_status("invoice_status_pending_token")
         invoices = invoices.exclude(
-            status__in=[paid_invoice_status, invoice_status_dropped, invoice_status_cancelled, invoice_status_commitment, invoice_status_payoff]
+            status__in=[paid_invoice_status, invoice_status_dropped, invoice_status_cancelled, invoice_status_commitment, invoice_status_payoff, invoice_status_pending]
             ).exclude(
             payment_type_token_final__in=['DIRECT_DEBIT', 'BALANCE', 'TPV_ONLINE']
         )
             
-        unique_statuses = invoices.values_list('status__name', flat=True).distinct()
-        
         is_saving = request.data.get('saving', True)
         
         if not is_saving:
