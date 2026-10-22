@@ -613,18 +613,6 @@
     },
     {
         "model": "coredata.configproject",
-        "pk": 52,
-        "fields": {
-            "created_at": "2025-01-27T13:51:11.717Z",
-            "updated_at": "2025-01-28T08:46:33.381Z",
-            "token": "supply_cut_status_pending_token",
-            "name": "Token Supply Cut Status Pending",
-            "value": "pendent",
-            "file": null
-        }
-    },
-    {
-        "model": "coredata.configproject",
         "pk": 53,
         "fields": {
             "created_at": "2025-01-27T13:51:11.717Z",
@@ -632,18 +620,6 @@
             "token": "supply_cut_status_active_token",
             "name": "Token Supply Cut Status Active",
             "value": "1",
-            "file": null
-        }
-    },
-    {
-        "model": "coredata.configproject",
-        "pk": 54,
-        "fields": {
-            "created_at": "2025-01-27T13:51:11.717Z",
-            "updated_at": "2025-01-28T08:46:33.381Z",
-            "token": "supply_cut_status_innactive_token",
-            "name": "Token Supply Cut Status Innactive",
-            "value": "-1",
             "file": null
         }
     },
@@ -2153,7 +2129,7 @@
         "fields": {
             "created_at": "2025-01-27T13:51:11.717Z",
             "updated_at": "2025-01-28T08:46:33.381Z",
-            "token": "gmao_integration_order_status_map",
+            "token": "gmao_integration_order_status_mapping",
             "name": "Json map of GMAO integration order status",
             "value": "{\"pending\":\"1\",\"in_progress\":\"5\",\"completed\":\"5\",\"finalized\":\"2\",\"cancelled\":\"-1\"}",
             "file": null
@@ -2864,6 +2840,234 @@
             "token": "BAIL_RETURN_INVOICE_DISABLED",
             "name": "No generar factura de devolución de fianza (la devolución se completa sin factura)",
             "value": "false",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 239,
+        "fields": {
+            "created_at": "2026-09-16T08:00:00.000Z",
+            "updated_at": "2026-09-16T08:00:00.000Z",
+            "token": "supply_cut_status_closed_tokens",
+            "name": "Tokens de estado de corte considerados cerrados/finalizados",
+            "value": "2,3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 240,
+        "fields": {
+            "created_at": "2026-09-24T00:00:00.000Z",
+            "updated_at": "2026-09-24T00:00:00.000Z",
+            "token": "change_meter_field_mapping",
+            "name": "Change Meter Field Mapping",
+            "value": "[{\"customers_field\": \"meter_old\", \"form_field\": \"codi_comptador_anterior\"}, {\"customers_field\": \"reading_old\", \"form_field\": \"lectura_anterior\"}, {\"customers_field\": \"meter_new\", \"form_field\": \"codi_comptador_instal_lat\"}, {\"customers_field\": \"reading_new\", \"form_field\": \"lectura_actual\"}]",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 241,
+        "fields": {
+            "created_at": "2026-09-24T00:00:00.000Z",
+            "updated_at": "2026-09-24T00:00:00.000Z",
+            "token": "change_meter_quick_fields",
+            "name": "Change Meter Quick Fields",
+            "value": "[{\"name\": \"Tipus d'instal·laci\\u00f3\", \"type\": \"options\", \"token\": \"tipus_dinstallacio\", \"required\": true}, {\"name\": \"Material del comptador\", \"type\": \"options\", \"token\": \"material_del_comptador\", \"required\": true}, {\"name\": \"Tipus lectura\", \"type\": \"options\", \"token\": \"tipus_lectura\", \"required\": true}, {\"name\": \"Di\\u00e0metre comptador (mm)\", \"type\": \"options\", \"token\": \"diametre_comptador_mm\", \"required\": true}, {\"name\": \"N\\u00famero de comptador (sortint)\", \"type\": \"text\", \"token\": \"numero_de_comptador_sortint\", \"required\": true}, {\"name\": \"Lectura comptador (sortint)\", \"type\": \"text\", \"token\": \"lectura_de_comptador_sortint\", \"required\": true}, {\"name\": \"Foto comptador (sortint)\", \"type\": \"photo\", \"token\": \"foto_de_comptador_sortint\", \"required\": false}, {\"name\": \"N\\u00famero de comptador\", \"type\": \"text\", \"token\": \"numero_de_comptador\", \"required\": true}, {\"name\": \"Lectura inicial\", \"type\": \"numeric\", \"token\": \"lectura_inicial\", \"required\": true}, {\"name\": \"Foto del comptador\", \"type\": \"photo\", \"token\": \"foto_de_comptador\", \"required\": false}]",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 243,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "aca_notification_enabled",
+            "name": "Activa el envío de notificaciones de bonificaciones ACA (ampliación de tramos)",
+            "value": "false",
+            "file": "ACA"
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 244,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "smart_metering_explotation_id",
+            "name": "Smart Metering Exploitation ID (massive readings)",
+            "value": null,
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 245,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "ATTACH_CLAIM_DOCUMENTS_ENABLED",
+            "name": "Adjunta por defecto el documento de reclamación al correo electrónico",
+            "value": "true",
+            "file": "COMMUNICATION"
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 246,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "claim_letter_return_fee_price_rate_token",
+            "name": "Token de la tarifa (PriceRate) de gastos de devolución en la carta de suspensión",
+            "value": null,
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 247,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "giswater_mincut_state_map",
+            "name": "Mapa de estado de Giswater -> token del catálogo de estado del PA",
+            "value": "{\"0\": \"0\", \"Planificada\": \"0\", \"4\": \"0\", \"Sobre la planificació\": \"0\", \"1\": \"1\", \"En curs\": \"1\", \"2\": \"2\", \"Acabat\": \"2\", \"3\": \"3\", \"Cancel·lat\": \"3\", \"5\": \"5\", \"Conflicte\": \"5\"}",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 248,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "giswater_mincut_cause_map",
+            "name": "Mapa de motivo de Giswater -> token del catálogo de motivo del PA",
+            "value": "{\"1\": \"Accidental\", \"Accidental\": \"Accidental\", \"2\": \"Planificada\", \"Planificada\": \"Planificada\"}",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 249,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "aca_tram_min_persons",
+            "name": "Mínimo de personas en la vivienda para la ampliación de tramos del ACA",
+            "value": "4",
+            "file": "ACA"
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 250,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "aca_tram_members_variable_token",
+            "name": "Variable de personas (total_persons) de la ampliación de tramos ACA",
+            "value": "ACA-TRAM-MEMBRES",
+            "file": "ACA"
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 251,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "order_reason_contract_termination",
+            "name": "Motivo orden Baja de contrato",
+            "value": "contract_termination",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 252,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "order_reason_contract_activation",
+            "name": "Motivo orden Alta de contrato",
+            "value": "contract_activation",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 253,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "order_reason_new_connection_request",
+            "name": "Motivo orden Nueva solicitud de acometida",
+            "value": "new_connection_request",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 254,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "order_reason_customer_supply_cut",
+            "name": "Motivo orden Corte de suministro",
+            "value": "customer_supply_cut_request",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 255,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "general_billing_summary_preview_enabled",
+            "name": "Muestra la previsualización (facturas a generar / perdidas / ya revisadas) antes de generar el Resumen de la facturación general",
+            "value": "false",
+            "file": "BILLING"
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 256,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "invoice_legacy_concept_order_enabled",
+            "name": "Ordena los conceptos de la factura como el sistema anterior (Kais): Cuota de Servicio primero, y dentro de Canon la Fuga antes que la Parte Fija. Solo tiene efecto si 'invoice_apply_advanced_grouping' también está a 'true'.",
+            "value": "false",
+            "file": "BILLING"
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 257,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "use_manual_bank_remittance",
+            "name": "Remesas SEPA con selector de banco manual (sin encaminamiento automático por entidad del pagador)",
+            "value": "false",
+            "file": "BILLING"
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 258,
+        "fields": {
+            "created_at": "2026-10-22T00:00:00.000Z",
+            "updated_at": "2026-10-22T00:00:00.000Z",
+            "token": "contract_request_type_change_name_token",
+            "name": "Contract request type: cambio de nombre",
+            "value": null,
             "file": null
         }
     }
