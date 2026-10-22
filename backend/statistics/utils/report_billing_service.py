@@ -8,7 +8,7 @@ from decimal import Decimal
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Window
-from django.db.models.functions import Abs, Coalesce, RowNumber
+from django.db.models.functions import Abs, Cast, Coalesce, RowNumber
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
 import openpyxl
@@ -486,13 +486,13 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
     """
     Resum de facturació (com get_report_billing_summary) agrupat per producte i, dins
     de cada producte, per tipus d'ús del contracte, amb el detall per concepte, tarifa,
-    tram, si el tram està ampliat i si la línia té tarifa social. Els totals per producte quadren amb el resum. Acaba amb el
+    tram, si el tram està ampliat, si la línia té tarifa social i preu unitari. Els totals per producte quadren amb el resum. Acaba amb el
     resum de l'IVA.
     """
     try:
         from django.db.models import Exists, Min, OuterRef
-        from openpyxl.styles import Font
-        from statistics.views.reports_views import light_gray_fill
+        from django.utils.dateformat import format as date_format
+        from openpyxl.styles import Alignment, Border, Font, Side
         from billing.models import AppliedAdjustment
         from contract.models import Variable
         from contract.utils.aca_tram_service import MEMBERS_VARIABLE_TOKEN_HINT
@@ -539,6 +539,9 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             use_type_id=F('invoice__contract__use_type_id'),
             configured_end_stretch=configured_end_stretch,
             has_members_variable=Exists(members_variables),
+            # Preu unitari aplicat (en valor absolut: els abonaments el desen en negatiu).
+            # Numeric de 10 decimals només per no separar files per soroll de coma flotant.
+            unit_price=Cast(Abs('price_unit'), DecimalField(max_digits=24, decimal_places=10)),
         ).annotate(
             is_extended=Case(
                 When(
@@ -552,7 +555,7 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             ),
         )
         groups = active_line_items.values(
-            'product_name', 'tax_percent', 'use_type_id', 'concept_name', 'price_rate_name', 'interval', 'is_extended', 'is_social',
+            'product_name', 'tax_percent', 'use_type_id', 'concept_name', 'price_rate_name', 'interval', 'is_extended', 'is_social', 'unit_price',
         ).annotate(
             count=Count('invoice', distinct=True),
             sum_units=_payoff_signed_sum('units', payoff_status_token),
@@ -567,12 +570,6 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
                 count=Count('invoice', distinct=True),
             ).order_by()
         }
-        use_type_counts = {
-            (item['product_name'], item['tax_percent'], item['use_type_id']): item['count']
-            for item in active_line_items.values('product_name', 'tax_percent', 'use_type_id').annotate(
-                count=Count('invoice', distinct=True),
-            ).order_by()
-        }
         use_types = {use_type.id: use_type for use_type in ContractUseType.objects.filter(
             id__in={item['use_type_id'] for item in groups if item['use_type_id']},
         )}
@@ -584,7 +581,18 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
                 return (1, 0, '')
             return (0, use_type.position if use_type.position is not None else 0, use_type.name or '')
 
+        # Ordre i codi dels productes (com al resum en PDF: "1 Consum", "3 Quota", ...).
+        product_positions = {
+            item['product_name']: item['position']
+            for item in active_line_items.values('product_name').annotate(position=Min('product__position')).order_by()
+        }
+        product_tax_counts = {}
+        for product_name, _tax_percent in product_counts:
+            product_tax_counts[product_name] = product_tax_counts.get(product_name, 0) + 1
+
         groups = sorted(groups, key=lambda item: (
+            product_positions.get(item['product_name']) is None,
+            product_positions.get(item['product_name']) or 0,
             item['product_name'] or '',
             item['tax_percent'] if item['tax_percent'] is not None else Decimal('-1'),
             use_type_sort(item['use_type_id']),
@@ -593,49 +601,103 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             item['interval'] or 0,
             item['is_extended'],
             item['is_social'],
+            item['unit_price'] if item['unit_price'] is not None else -1,
         ))
 
         wb = openpyxl.Workbook()
         sheet = wb.active
         sheet.title = _("Facturació per tarifa")
 
+        last_col = 8
         bold = Font(bold=True)
-        title_font = Font(bold=True, size=14)
+        small_bold = Font(bold=True, size=9)
+        thin = Side(style='thin', color='FF000000')
+        medium = Side(style='medium', color='FF000000')
+        center = Alignment(horizontal='center', vertical='center')
 
-        row = 0
-        row = add_row(sheet, row, [_("RESUM DE LA FACTURACIÓ GENERAL")])
-        sheet.cell(row=row, column=1).font = title_font
-        period = billing.created_at.strftime('%d/%m/%Y') if billing else f"{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
-        row = add_row(sheet, row, [period])
-        sheet.cell(row=row, column=1).font = bold
-        serie_range = invoices.exclude(serie_final__isnull=True).exclude(serie_final='').aggregate(
-            first=Min('serie_final'), last=Max('serie_final'),
-        )
-        if serie_range['first']:
-            row = add_row(sheet, row, [_("Del núm. de factura %(first)s a la %(last)s.") % serie_range])
-        row = jump_row(row)
+        def put(row, values, font=None, start_col=1, price_col=5):
+            # Sense add_row: el resum en PDF no té quadrícula a les cel·les.
+            for offset, value in enumerate(values):
+                if value is None or value == "":
+                    continue
+                cell = sheet.cell(row=row, column=start_col + offset, value=value)
+                if font:
+                    cell.font = font
+                if isinstance(value, (int, float)) and cell.column >= 3:
+                    is_integer = float(value).is_integer() and cell.column in (3, 4)
+                    if cell.column == price_col:
+                        # Tots els decimals del preu aplicat (mínim 2).
+                        cell.number_format = '#,##0.00########'
+                    else:
+                        cell.number_format = '#,##0' if is_integer else '#,##0.00'
+            return row
 
-        titles = [_("Ús"), _("Descripció"), _("Núm. de factures"), _("Unitats"), _("Base IVA"), _("Quota IVA"), _("Total")]
-        row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
+        def border_row(row, top=None, bottom=None, first_col=1, box=False):
+            for col in range(first_col, last_col + 1):
+                sheet.cell(row=row, column=col).border = Border(
+                    top=top, bottom=bottom,
+                    left=top if box and col == first_col else None,
+                    right=top if box and col == last_col else None,
+                )
 
-        def format_numbers(row):
-            for col in (4, 5, 6, 7):
-                sheet.cell(row=row, column=col).number_format = '#,##0.00'
+        def period_text():
+            if billing:
+                return billing.created_at.strftime('%d/%m/%Y')
+            start_month = date_format(start_date, 'F').upper()
+            end_month = date_format(end_date, 'F').upper()
+            if (start_date.year, start_date.month) == (end_date.year, end_date.month):
+                return f"{start_month} {start_date.year}"
+            if start_date.year == end_date.year:
+                return f"{start_month}-{end_month} {end_date.year}"
+            return f"{start_month} {start_date.year} - {end_month} {end_date.year}"
 
-        def bold_row(row, fill=None):
-            for col in range(1, len(titles) + 1):
-                sheet.cell(row=row, column=col).font = bold
-                if fill:
-                    sheet.cell(row=row, column=col).fill = fill
+        def serie_ranges_text():
+            ranges = list(
+                invoices.exclude(serie_final__isnull=True).exclude(serie_final='')
+                .values('serie_id').annotate(first=Min('serie_final'), last=Max('serie_final'))
+                .order_by('first')
+            )
+            if not ranges:
+                return None
+            parts = [_("Del núm. de factura %(first)s a la %(last)s") % ranges[0]]
+            parts += [_("de la %(first)s a la %(last)s") % item for item in ranges[1:]]
+            separator = " %s " % _("i")
+            return separator.join(parts) + "."
+
+        # Capçalera
+        row = 1
+        company_names = list(invoices.exclude(company__isnull=True).values_list('company__name', flat=True).distinct()[:2])
+        if len(company_names) == 1 and company_names[0]:
+            put(row, [company_names[0]], Font(bold=True, size=16))
+        date_cell = sheet.cell(row=row, column=last_col, value=datetime.date.today().strftime('%d/%m/%Y'))
+        date_cell.alignment = Alignment(horizontal='right')
+
+        row = 3
+        sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
+        put(row, [_("RESUM DE LA FACTURACIÓ GENERAL")], Font(bold=True, size=12))
+        sheet.cell(row=row, column=1).alignment = center
+        border_row(row, top=medium, bottom=medium, box=True)
+        sheet.row_dimensions[row].height = 26
+
+        row = 5
+        sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
+        put(row, [period_text()], Font(bold=True, underline='single'))
+        sheet.cell(row=row, column=1).alignment = center
+
+        serie_text = serie_ranges_text()
+        if serie_text:
+            row += 1
+            put(row, [serie_text], small_bold)
+
+        row += 1
+        titles = [_("Ús"), _("Descripció"), _("Núm. de factures"), _("Unitats"), _("Preu unitari"), _("Base IVA"), _("Quota IVA"), _("Total")]
+        put(row, titles, small_bold)
+        for col in range(2, last_col + 1):
+            sheet.cell(row=row, column=col).alignment = center
+        border_row(row, top=thin, bottom=thin, box=True)
 
         def tax_label(tax_percent):
             return f"{tax_percent} %" if tax_percent is not None else "- %"
-
-        def use_type_label(use_type_id):
-            use_type = use_types.get(use_type_id)
-            if use_type is None:
-                return _("Sense tipus d'ús")
-            return " ".join(part for part in (use_type.token, use_type.name) if part)
 
         def description(item):
             parts = [
@@ -654,36 +716,39 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
                 text = f"{text} {_('SOCIAL')}"
             return text
 
-        def amounts(totals):
-            return [round(totals[0], 2), round(totals[1], 2), round(totals[2], 2), round(totals[1] + totals[2], 2)]
+        def amounts(totals, unit_price=""):
+            return [round(totals[0], 2), unit_price, round(totals[1], 2), round(totals[2], 2), round(totals[1] + totals[2], 2)]
 
         def add_product_header(row, key):
-            row = add_row(sheet, row, [
-                f"{key[0] or '-'} ({_('IVA')} {tax_label(key[1])})", "",
-                _("Factures: %(count)s") % {"count": product_counts.get(key, 0)},
-            ])
-            sheet.cell(row=row, column=1).font = Font(bold=True, size=12)
+            row += 1
+            product_name = key[0] or "-"
+            # L'IVA només es mostra si el producte surt amb més d'un tipus.
+            if product_tax_counts.get(key[0], 0) > 1:
+                product_name = f"{product_name} ({_('IVA')} {tax_label(key[1])})"
+            position = product_positions.get(key[0])
+            put(row, [position if position is not None else "", product_name], Font(bold=True, size=13))
+            put(row, [_("Factures: %(count)s") % {"count": f"{product_counts.get(key, 0):,}".replace(',', '.')}], Font(size=9), start_col=3)
             return row
 
         def add_use_type_header(row, use_type_id):
-            row = add_row(sheet, row, [_("Ús: %(name)s") % {"name": use_type_label(use_type_id)}])
-            sheet.cell(row=row, column=1).font = bold
+            row += 1
+            use_type = use_types.get(use_type_id)
+            if use_type is None:
+                put(row, [_("Ús:"), _("Sense tipus d'ús")], small_bold)
+            else:
+                put(row, [_("Ús: %(code)s") % {"code": use_type.token or ""}, use_type.name or ""], small_bold)
             return row
 
-        def add_use_type_total(row, key, totals):
-            row = add_row(sheet, row, ["", "", use_type_counts.get(key, 0), *amounts(totals)])
-            bold_row(row)
-            format_numbers(row)
-            return jump_row(row)
+        def add_use_type_total(row, totals):
+            row += 1
+            put(row, ["", "", "", *amounts(totals)], bold)
+            return row + 1
 
-        def add_product_total(row, key, totals):
-            row = add_row(sheet, row, [
-                _("Total %(name)s") % {"name": key[0] or "-"}, "",
-                product_counts.get(key, 0), *amounts(totals),
-            ])
-            bold_row(row, light_gray_fill)
-            format_numbers(row)
-            return jump_row(row)
+        def add_product_total(row, totals):
+            row += 1
+            put(row, ["", "", "", *amounts(totals)], bold)
+            border_row(row, top=thin, first_col=3)
+            return row
 
         # [unitats, base, iva]
         grand_total = [0.0, 0.0, 0.0]
@@ -696,10 +761,10 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             product_key = (item['product_name'], item['tax_percent'])
             use_type_key = (*product_key, item['use_type_id'])
             if current_use_type is not None and use_type_key != current_use_type:
-                row = add_use_type_total(row, current_use_type, use_type_total)
+                row = add_use_type_total(row, use_type_total)
                 use_type_total = [0.0, 0.0, 0.0]
             if current_product is not None and product_key != current_product:
-                row = add_product_total(row, current_product, product_total)
+                row = add_product_total(row, product_total)
                 product_total = [0.0, 0.0, 0.0]
             if product_key != current_product:
                 row = add_product_header(row, product_key)
@@ -716,30 +781,36 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             tax_totals[0] += values[1]
             tax_totals[1] += values[2]
 
-            row = add_row(sheet, row, ["", description(item), item['count'], *amounts(values)])
-            format_numbers(row)
+            row += 1
+            put(row, ["", f"  {description(item)}", "", *amounts(values, float(item['unit_price']) if item['unit_price'] is not None else "")])
 
         if current_product is not None:
-            row = add_use_type_total(row, current_use_type, use_type_total)
-            row = add_product_total(row, current_product, product_total)
+            row = add_use_type_total(row, use_type_total)
+            row = add_product_total(row, product_total)
 
-        row = add_row(sheet, row, [_("Totals"), "", "", "", *amounts(grand_total)[1:]], fill=black_fill, font=white_bold_font)
-        format_numbers(row)
+        # Total general
+        row += 2
+        put(row, ["", "", "", "", *amounts(grand_total)[1:]], bold)
+        border_row(row, bottom=thin, first_col=2)
 
         # Resum de l'IVA
-        row = jump_row(row)
-        row = add_row(sheet, row, [_("RESUM DE L'IVA")])
-        sheet.cell(row=row, column=1).font = Font(bold=True, size=12)
-        row = add_row(sheet, row, ["", "", "", _("% IVA"), _("Base IVA"), _("Import IVA"), _("Total")], fill=black_fill, font=white_bold_font)
+        row += 1
+        put(row, ["", _("RESUM DE L'IVA")], Font(bold=True, size=13))
+        row += 2
+        put(row, ["", "", "", "", _("Base IVA"), _("% IVA"), _("Import IVA"), _("Total")], small_bold)
+        for col in range(5, last_col + 1):
+            sheet.cell(row=row, column=col).alignment = center
+        border_row(row, top=thin, bottom=thin, first_col=2, box=True)
         for tax_percent in sorted(tax_summary, key=lambda percent: percent if percent is not None else Decimal('-1')):
             base, tax = tax_summary[tax_percent]
-            row = add_row(sheet, row, ["", "", "", tax_label(tax_percent), round(base, 2), round(tax, 2), round(base + tax, 2)])
-            format_numbers(row)
-        row = add_row(sheet, row, ["", "", "", "", *amounts(grand_total)[1:]])
-        bold_row(row, light_gray_fill)
-        format_numbers(row)
+            row += 1
+            put(row, ["", "", "", "", round(base, 2), float(tax_percent or 0), round(tax, 2), round(base + tax, 2)], bold, price_col=None)
+        row += 2
+        put(row, ["", "", "", "", round(grand_total[1], 2), "", round(grand_total[2], 2), round(grand_total[1] + grand_total[2], 2)], bold, price_col=None)
+        border_row(row, top=thin, first_col=5)
 
-        adjust_column_widths(sheet)
+        for column, width in zip('ABCDEFGH', (10, 42, 16, 12, 14, 14, 14, 14)):
+            sheet.column_dimensions[column].width = width
 
         filename = f"billing_by_rate_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
