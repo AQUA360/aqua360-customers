@@ -399,8 +399,9 @@ def get_estimated_reading_minimal_object(
     # Intentem normalitzar la data al període nominal (ex: 90 dies des de l'anterior)
     target_nominal_date = period_start_reading.reading_date + timedelta(days=offset_days)
     
-    # Si la diferència entre la data demanada i la nominal és massa gran, ens quedem amb la demanada
-    if abs((target_nominal_date - date).days) > (offset_days * (limit / 100)):
+    # Si la diferència entre la data demanada i la nominal és massa gran, ens quedem amb la demanada.
+    # També si la nominal no és posterior a l'última lectura (canvi de comptador a final de període).
+    if abs((target_nominal_date - date).days) > (offset_days * (limit / 100)) or target_nominal_date <= last_reading.reading_date:
       final_date = date
     else:
       final_date = target_nominal_date

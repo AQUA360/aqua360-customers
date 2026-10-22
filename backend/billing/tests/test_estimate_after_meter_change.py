@@ -110,6 +110,21 @@ class TestEstimateAfterMeterChange(TestCase):
         self.assertEqual(reading.reading_date, self.today - timedelta(days=10))
         self.assertEqual(reading.consumption_days, 6)
 
+    def test_meter_change_after_nominal_date_uses_requested_date(self):
+        """Si el canvi és posterior a la data nominal, s'estima a la data demanada."""
+        self._reading(self.old_meter, 100, 7918)
+        _, initial = self._meter_change(6)
+
+        reading = get_estimated_reading_minimal_object(
+            self.supply_point, self.contract, self.today - timedelta(days=3), None,
+            offset_days=90, max_day_limit=self.today,
+        )
+
+        self.assertIsNotNone(reading)
+        self.assertEqual(reading.previous_reading_id, initial.id)
+        self.assertEqual(reading.reading_date, self.today - timedelta(days=3))
+        self.assertEqual(reading.consumption_days, 3)
+
     def test_recent_real_reading_still_blocks_estimate(self):
         """Sense canvi de comptador, una lectura real recent continua bloquejant l'estimació."""
         self._reading(self.old_meter, 100, 7918)
