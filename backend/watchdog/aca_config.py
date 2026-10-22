@@ -11,7 +11,9 @@ ACA_DIR_VARIABLE_CONFIG_TOKEN = 'contract_use_aca_dir_variable_token'
 ACA_KEEPER_USE_TYPE_CONFIG_TOKEN = 'contract_keeper_use_type_token'
 ACA_RAMADER_ARTICLE_TOKEN = 'ramader_0'
 ACA_TRAM_MIN_PERSONS_CONFIG_TOKEN = 'aca_tram_min_persons'
+ACA_TRAM_MEMBERS_VARIABLE_CONFIG_TOKEN = 'aca_tram_members_variable_token'
 DEFAULT_ACA_TRAM_MIN_PERSONS = 4
+DEFAULT_ACA_TRAM_MEMBERS_VARIABLE_TOKEN = 'ACA-TRAM-MEMBRES'
 
 REQUIRED_ACA_ARTICLE_CODE_SPECS = (
     ('part_fixa', 'Part fixa'),
@@ -103,6 +105,26 @@ def split_config_tokens(value):
     if not value:
         return []
     return [part.strip() for part in value.split('|') if part.strip()]
+
+
+def aca_tram_members_variable_tokens():
+    """Tokens de `VariableType` que es sincronitzen amb `Contract.total_persons`.
+
+    Es configuren a `ConfigProject.aca_tram_members_variable_token` (i des de
+    `/settings/config_aca/`). Si no n'hi ha cap, es manté el token històric
+    `ACA-TRAM-MEMBRES`."""
+    tokens = split_config_tokens(get_config_value(ACA_TRAM_MEMBERS_VARIABLE_CONFIG_TOKEN))
+    if not tokens:
+        return [DEFAULT_ACA_TRAM_MEMBERS_VARIABLE_TOKEN]
+    return tokens
+
+
+def is_aca_tram_members_variable_type(variable_type):
+    token = (getattr(variable_type, 'token', None) or '').strip()
+    if not token:
+        return False
+    configured = {item.upper() for item in aca_tram_members_variable_tokens()}
+    return token.upper() in configured
 
 
 def price_rate_matches_pattern(price_rate, pattern):
@@ -261,6 +283,22 @@ def check_aca_configuration_issues():
             if not VariableType.objects.filter(token=variable_token).exists():
                 issues.append(
                     f"ConfigProject '{ACA_DIR_VARIABLE_CONFIG_TOKEN}' referencia "
+                    f"VariableType.token '{variable_token}' però no existeix a la base de dades"
+                )
+
+    members_variable_value = get_config_value(ACA_TRAM_MEMBERS_VARIABLE_CONFIG_TOKEN)
+    if members_variable_value is None:
+        issues.append(f"ConfigProject '{ACA_TRAM_MEMBERS_VARIABLE_CONFIG_TOKEN}' no existeix")
+    else:
+        members_tokens = split_config_tokens(members_variable_value)
+        if not members_tokens:
+            issues.append(
+                f"ConfigProject '{ACA_TRAM_MEMBERS_VARIABLE_CONFIG_TOKEN}' té el valor buit"
+            )
+        for variable_token in members_tokens:
+            if not VariableType.objects.filter(token=variable_token).exists():
+                issues.append(
+                    f"ConfigProject '{ACA_TRAM_MEMBERS_VARIABLE_CONFIG_TOKEN}' referencia "
                     f"VariableType.token '{variable_token}' però no existeix a la base de dades"
                 )
 
