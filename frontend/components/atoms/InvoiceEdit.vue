@@ -125,7 +125,7 @@ import InvoiceListDetail from '../molecules/InvoiceListDetail.vue';
 import InvoiceBillingHistoryDetail from '../molecules/InvoiceBillingHistoryDetail.vue';
 import { formatMoneyWithCurrency } from '~/utils/money';
 import { getInvoiceDuration, hasDateRangeWarning } from '~/utils/stats';
-import { openAuthenticatedFileUrl, openInvoicePdf } from '~/utils/open-authenticated-file';
+import { invoiceHasPdf, openAuthenticatedFileUrl, openInvoicePdf } from '~/utils/open-authenticated-file';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -225,7 +225,7 @@ const invoicePDF = async () => {
   loadingPdf.value = true;
 
   try {
-    if (invoice.value.invoice_file) {
+    if (invoiceHasPdf(invoice.value)) {
       await openInvoicePdf(invoice.value);
     } else {
       const data = await $InvoiceApiService.getTemporaryPDF(invoice.value.id);

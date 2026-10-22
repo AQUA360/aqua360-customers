@@ -8,6 +8,7 @@ import fitz
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.management import call_command
+from django.http import Http404
 from django.test import TestCase, override_settings
 
 from billing.models import Invoice
@@ -59,15 +60,16 @@ class TestInvoicePdfStorage(TestCase):
             document_name=f'FACTURA_{invoice.id}.pdf', service='hdd', location=location,
         )
 
-    def _invoice(self, with_document=False, with_template=False, document_exists=True):
+    def _invoice(self, with_document=False, with_template=False, document_exists=True,
+                 document_pages=1, template_pages=1):
         # bulk_create: els signals de la factura no intervenen en el que es prova.
         number = Invoice.objects.count()
         Invoice.objects.bulk_create([Invoice(token=f'F-{number}', serie_final=f'FC/{number}')])
         invoice = Invoice.objects.get(token=f'F-{number}')
         if with_template:
-            invoice.invoice_file_template.save('preview.pdf', ContentFile(pdf_bytes()), save=False)
+            invoice.invoice_file_template.save('preview.pdf', ContentFile(pdf_bytes(template_pages)), save=False)
         if with_document:
-            invoice.invoice_file = self._document(invoice, exists=document_exists)
+            invoice.invoice_file = self._document(invoice, content=pdf_bytes(document_pages), exists=document_exists)
         Invoice.objects.filter(id=invoice.id).update(
             invoice_file_template=invoice.invoice_file_template.name or '',
             invoice_file=invoice.invoice_file,
@@ -84,19 +86,35 @@ class TestInvoicePdfStorage(TestCase):
         self.assertFalse(default_storage.exists(preview_name))
         self.assertFalse(invoice.invoice_file_template)
 
-    def test_merge_pdfs_reads_document_manager_file(self):
-        first = self._invoice(with_document=True)
-        second = self._invoice(with_document=True)
-        without_pdf = self._invoice()
-
-        only_template = self._invoice(with_template=True)
-
-        merged = merge_pdfs(first, second, without_pdf, only_template)
+    def _merged_page_count(self, *invoices):
+        merged = merge_pdfs(*invoices)
         try:
             with fitz.open(merged.name) as pdf:
-                self.assertEqual(pdf.page_count, 3)
+                return pdf.page_count
         finally:
             os.remove(merged.name)
+
+    def test_merge_pdfs_reads_document_manager_file(self):
+        # La previsualització té 2 pàgines: si es fes servir, el total canviaria.
+        with_both = self._invoice(with_document=True, with_template=True, template_pages=2)
+        with_document = self._invoice(with_document=True)
+        without_pdf = self._invoice()
+
+        self.assertEqual(self._merged_page_count(with_both, with_document, without_pdf), 2)
+
+    def test_merge_pdfs_falls_back_to_old_copy(self):
+        only_template = self._invoice(with_template=True, template_pages=2)
+        missing_document = self._invoice(
+            with_document=True, with_template=True, document_exists=False, template_pages=3,
+        )
+
+        self.assertEqual(self._merged_page_count(only_template, missing_document), 5)
+
+    def test_merge_pdfs_fails_without_any_copy(self):
+        missing_document = self._invoice(with_document=True, document_exists=False)
+
+        with self.assertRaises(Http404):
+            merge_pdfs(missing_document)
 
     def test_clean_command_removes_duplicates_and_orphans(self):
         duplicated = self._invoice(with_document=True, with_template=True)
