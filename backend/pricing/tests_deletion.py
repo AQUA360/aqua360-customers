@@ -6,7 +6,7 @@ from billing.models import InvoiceLineItem
 from coredata.models import ConfigProject
 from logger.models import LogPriceRateChange, LogProductChange
 from contract.models import Contract, ContractPriceRate
-from pricing.models import PriceRate, Product
+from pricing.models import BillingRange, LineItemType, PriceRate, Product
 
 PRICE_RATE_URL = '/pricing/price-rate/'
 PRODUCT_URL = '/pricing/product/'
@@ -59,6 +59,26 @@ class PricingDeletionApiTests(TestCase):
 
         response = self.client.delete(f'{PRICE_RATE_URL}{self.price_rate.id}/')
 
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(PriceRate.objects.get(id=self.price_rate.id).is_active)
+
+    def test_price_rate_used_through_an_invoice_concept_is_kept(self):
+        billing_range = BillingRange.objects.create(price_rate=self.price_rate)
+        InvoiceLineItem.objects.create(line_item_type=LineItemType.objects.create(billing_range=billing_range))
+
+        response = self.client.delete(f'{PRICE_RATE_URL}{self.price_rate.id}/')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(PriceRate.objects.get(id=self.price_rate.id).is_active)
+
+    def test_configured_price_rate_is_kept(self):
+        ConfigProject.objects.update_or_create(token='connection_rights_price_rate_token', defaults={'value': 'T'})
+
+        response = self.client.delete(f'{PRICE_RATE_URL}{self.price_rate.id}/')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('configurada', response.data['detail'])
+
+        response = self.client.delete(f'{PRODUCT_URL}{self.product.id}/')
         self.assertEqual(response.status_code, 400)
         self.assertTrue(PriceRate.objects.get(id=self.price_rate.id).is_active)
 
