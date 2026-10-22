@@ -224,7 +224,7 @@ const canGoNext = computed(() =>
 
 // An invoice can only be selected if it has a document to send.
 const canSelectInvoice = (invoice) =>
-  !!invoice?.invoice_file_template;
+  !!invoice?.invoice_file;
 
 const isInvoiceSelected = (invoice) =>
   selectedInvoiceIds.value.includes(invoice.id);
@@ -255,7 +255,7 @@ const toggleInvoiceSelection = (invoice) => {
 
 const openSendModal = (invoice) => {
 
-  if (!invoice.invoice_file_template) {
+  if (!invoice.invoice_file) {
 
     toast.warning(
       t('billing_block.invoice_no_document')
@@ -767,10 +767,10 @@ watch(
           <button
             type="button"
             @click="openSendModal(item)"
-            :disabled="!item.invoice_file_template"
+            :disabled="!item.invoice_file"
             class="flex items-center justify-center w-8 h-8 rounded-full transition-colors disabled:cursor-not-allowed"
             :class="
-              item.invoice_file_template
+              item.invoice_file
                 ? 'bg-sky-500 text-white hover:bg-sky-600'
                 : 'bg-slate-300 text-slate-500'
             "

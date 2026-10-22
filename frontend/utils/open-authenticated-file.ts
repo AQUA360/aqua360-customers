@@ -51,6 +51,30 @@ function filenameFromResponse(res: Response, url: string): string {
   return 'download';
 }
 
+// El PDF definitiu d'una factura només es desa al gestor documental (`invoice_file`);
+// `invoice_file_template` només guarda la previsualització provisional.
+export function invoiceHasPdf(invoice: any): boolean {
+  return !!(invoice?.invoice_file || invoice?.invoice_file_template);
+}
+
+export async function openInvoicePdf(invoice: any): Promise<void> {
+  if (!invoice?.invoice_file) {
+    if (invoice?.invoice_file_template) await openAuthenticatedFileUrl(invoice.invoice_file_template);
+    return;
+  }
+
+  const toast = useToast();
+  const { $i18n, $DocumentManagerApiService } = useNuxtApp();
+  try {
+    const file = await $DocumentManagerApiService.viewDocument(invoice.invoice_file);
+    openBlobInNewTab(file);
+  } catch (error) {
+    console.error(error);
+    toast.error($i18n.t('common.error'));
+    throw error;
+  }
+}
+
 export async function openAuthenticatedFileUrl(url: string, is_pdf = true): Promise<void> {
   const toast = useToast();
   const { $i18n } = useNuxtApp();

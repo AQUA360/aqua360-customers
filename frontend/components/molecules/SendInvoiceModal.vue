@@ -9,7 +9,7 @@ import {
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import { formatDate } from '~/utils/date';
-import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
+import { invoiceHasPdf, openInvoicePdf } from '~/utils/open-authenticated-file';
 import { AVAILABLE_LANGUAGES } from '~/utils/languages';
 
 const { t, locale } = useI18n();
@@ -495,18 +495,12 @@ const sentInfoLines = computed(() => {
 // ---------------------------------------------------------
 
 const openInvoiceFileTemplate = async () => {
-  if (
-    !props.invoice
-      ?.invoice_file_template
-  ) {
+  if (!invoiceHasPdf(props.invoice)) {
     return;
   }
 
   try {
-    await openAuthenticatedFileUrl(
-      props.invoice
-        .invoice_file_template
-    );
+    await openInvoicePdf(props.invoice);
   } catch (err) {
     console.error(err);
   }
@@ -753,7 +747,7 @@ const sendEmail = async () => {
             </div>
 
             <div
-              v-if="invoice?.invoice_file_template"
+              v-if="invoiceHasPdf(invoice)"
               class="flex justify-between px-3 py-2"
             >
               <span class="text-slate-500 text-sm">
