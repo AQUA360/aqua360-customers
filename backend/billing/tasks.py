@@ -35,6 +35,7 @@ from billing.utils.reading_service import (
     find_canonical_general_meter_reading,
     get_estimated_reading_minimal_object,
     get_estimated_reading,
+    get_period_start_reading,
     READING_ESTIMATE_PERIOD_CHOICES,
     READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR,
     READING_ESTIMATE_STATISTIC_CHOICES,
@@ -2198,11 +2199,12 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
                   # arrossegades al lot (p.ex. no facturades de cicles anteriors); cada
                   # punt fa servir la seva propia ultima lectura real + el seu propi
                   # periode com a referencia, en lloc de la mitjana de tot el lot.
-                  last_reading = Reading.objects.filter(
+                  # Un canvi de comptador no reinicia el periode.
+                  last_reading = get_period_start_reading(Reading.objects.filter(
                       supply_point=supply_point,
                       contract=contract,
                       reading_value__isnull=False
-                  ).order_by('-reading_date').first()
+                  ).order_by('-reading_date', 'is_close').first())
                   if last_reading:
                       sp_target_date = last_reading.reading_date + timedelta(days=sp_biller_days)
 
