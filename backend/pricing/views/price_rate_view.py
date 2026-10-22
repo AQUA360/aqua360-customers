@@ -6,7 +6,6 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import viewsets
 from django.db.models import Q
-from django.utils.translation import gettext as _
 
 from auth.permissions import PermissionManager
 from ..models import PriceRate
@@ -15,7 +14,7 @@ from ..serializers.price_rate_serializer import PriceRateSerializer, PriceRateSa
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 from pricing.filters.price_rate_filter import PriceRateFilter
-from pricing.utils.deletion_service import price_rate_in_use
+from pricing.utils.deletion_service import price_rate_deletion_error
 
 class PriceRateViewSet(viewsets.ModelViewSet):
     # Les tarifes sense producte també es mostren, perquè es puguin revisar i eliminar
@@ -58,19 +57,18 @@ class PriceRateViewSet(viewsets.ModelViewSet):
         return Response(read_serializer.data, status=status.HTTP_200_OK, content_type='application/json')
 
     def retrieve(self, request, *args, **kwargs):
-        response = super().retrieve(request, *args, **kwargs)
+        instance = self.get_object()
+        data = self.get_serializer(instance).data
         # Només al detall: al llistat suposaria diverses consultes per fila
-        response.data['is_deletable'] = not price_rate_in_use([kwargs['pk']])
-        return response
+        data['is_deletable'] = price_rate_deletion_error(instance) is None
+        return Response(data)
 
     def destroy(self, request, *args, **kwargs):
-        """Esborrat lògic, només si la tarifa no s'ha fet servir en cap contracte ni factura."""
+        """Esborrat lògic, només si la tarifa no s'ha fet servir en cap contracte ni factura ni està configurada."""
         instance = self.get_object()
-        if price_rate_in_use([instance.id]):
-            return Response(
-                {'detail': _("No es pot eliminar la tarifa perquè està vinculada a contractes o factures.")},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        error = price_rate_deletion_error(instance)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
         instance.is_active = False
         instance.save(update_fields=['is_active', 'updated_at'])
         create_price_rate_log(instance, 'is_active', True, False, request.user)

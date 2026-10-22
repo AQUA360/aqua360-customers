@@ -5,13 +5,12 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework import viewsets
-from django.utils.translation import gettext as _
 
 from ..filters.product_filter import ProductFilter
 from ..models import Product
 from ..serializers.product_serializer import ProductSerializer, ProductSaveSerializer, ProductListSerializer, create_product_log
 from ..serializers.price_rate_serializer import create_price_rate_log
-from ..utils.deletion_service import product_in_use
+from ..utils.deletion_service import product_deletion_error
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -108,17 +107,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         data = self.get_serializer(instance).data
         # Només al detall: al llistat suposaria diverses consultes per fila
-        data['is_deletable'] = not product_in_use(instance)
+        data['is_deletable'] = product_deletion_error(instance) is None
         return Response(data)
 
     def destroy(self, request, *args, **kwargs):
-        """Esborrat lògic del producte i les seves tarifes, només si no s'han fet servir en cap contracte ni factura."""
+        """Esborrat lògic del producte i les seves tarifes, només si no s'han fet servir en cap contracte ni factura ni estan configurades."""
         instance = self.get_object()
-        if product_in_use(instance):
-            return Response(
-                {'detail': _("No es pot eliminar el producte perquè està vinculat a contractes o factures.")},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        error = product_deletion_error(instance)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             for price_rate in instance.price_rates.filter(is_active=True):
                 price_rate.is_active = False
