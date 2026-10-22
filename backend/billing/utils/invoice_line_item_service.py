@@ -761,13 +761,13 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                     if dies_consum and dies_consum > 0:
                         units = units * (dies_consum/billing_days) """
             units = round_ceil(units or 0)
-            price = float(price_unit) * float(units)
+            price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
             # print("\n\n\nunits", units)
             _, _, _, corrected_price, var_adjustments, extra_description, _ = calc_correctors_variables_calcul(variables, variable_types, line_item_type, consum, dies_consum, diferencia_fuita, days_correction, contract, units_adjusted=units_adjusted, reading_batch_id=reading_batch_id)
             if extra_description and extra_description.replace(" ", "") != "":
                 description = extra_description
             if corrected_price:
-                price = corrected_price
+                price = round_ceil(corrected_price)
             if var_adjustments:
                 applied_adjustments.extend(var_adjustments)
             linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, None, description, True, reading, applied_adjustments, 0, None, correction_multiplier, units_adjusted))
