@@ -76,7 +76,7 @@ export default defineNuxtPlugin(nuxtApp => {
     }
 
     if (product_ids?.length > 0) {
-      apiUrl += `&product=${productids.join(',')}`;
+      apiUrl += `&product=${product_ids.join(',')}`;
     }
 
     if (debt_management_types?.length > 0) {

@@ -46,7 +46,7 @@ class ContractManageMassivelyViewSet(APIView):
         if bonification_type_ids and operation == "OFF":
             filters &= Q(bonifications__bonification_type__id__in=bonification_type_ids)
         if product_ids and operation == "OFF":
-            filters &= Q(price_rates__product__id__in=product_ids)
+            filters &= Q(price_rates__price_rate__product__id__in=product_ids)
 
         contracts = Contract.objects.filter(filters).distinct()
         
@@ -86,16 +86,10 @@ class ContractManageMassivelyViewSet(APIView):
                     bonification.save()
                     
             if product_ids:
-                products = Product.objects.filter(id__in=product_ids)
-                if products.exists():
-                    price_rates = list(products.values_list('price_rates', flat=True))
-
-                    # Pre-fetch supply points for all contracts to avoid N+1 queries
-                contracts_with_supply_points = contracts.prefetch_related('supply_points')
-                
-                for contract in contracts_with_supply_points:
+                for contract in contracts.prefetch_related('supply_points'):
                     contract._skip_claim_management = True
-                    contract.price_rates.remove(*price_rates)  
+                    to_remove = contract.price_rates.filter(price_rate__product__id__in=product_ids)
+                    contract.price_rates.remove(*to_remove)
                     contract.save()
         
         elif operation == "ADD":
