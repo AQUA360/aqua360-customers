@@ -19,7 +19,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
-from billing.utils.payment_service import disconnect_payment_signals, generate_payment_movement, get_sii_invoices, log_invoice_status, log_payment_status, reconnect_payment_signals
+from billing.utils.payment_service import disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
 from coredata.utils.name_utils import generate_token
 from documentmanager.utils.main_utils import upload_document
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, ClaimRequestTemplate
@@ -307,7 +307,16 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 if not skip_return and ((payment.status.token == payment_paid_token and ((payment.invoice and payment.invoice.status and payment.invoice.status.token == invoice_paid_token) or payment.commitment_deposit)) or (payment.status.token == payment_cancelled_token)):
                     disconnect_payment_signals()
                     today = timezone.now().date()
-                    if not last_movement or last_movement.current_status.token == payment_paid_token:
+                    if is_paid_by_direct_debit_with_other_method(payment, rjt_date):
+                        # Cobrat per domiciliació i després canviat de mètode sense retorn: es retorna
+                        # la domiciliació i es torna a cobrar pel mètode actual; la factura queda pagada
+                        generate_method_change_rejection_movements(
+                            payment, payment_returned_status,
+                            rjt_date,
+                            direct_debit_movement.payment_bank if direct_debit_movement and direct_debit_movement.payment_bank else payment.payment_bank, request.user,
+                            return_motive,
+                            payment.remittances.filter(sent_at__isnull=False).order_by('-sent_at').first())
+                    elif not last_movement or last_movement.current_status.token == payment_paid_token:
                         movement_date = rjt_date
                         log_payment_status(payment, payment_returned_status, request.user, movement_date)
                         generate_payment_movement(
@@ -398,6 +407,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
         claim_instances = Payment.objects.filter(id__in=claim_payments)
         if payments_to_return_ids:
             claim_instances = claim_instances.filter(id__in=payments_to_return_ids)
+        # Un pagament que continua pagat (p. ex. tornat a cobrar pel mètode actual) no té res a reclamar
+        claim_instances = claim_instances.exclude(status__token=payment_paid_token)
         claim_request_open_tokens = list(ConfigProject.objects.filter(
             token__in=['claim_request_status_pending_token', 'claim_request_status_accepted_token']
         ).values_list('value', flat=True))

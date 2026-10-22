@@ -639,10 +639,11 @@ const handleRefactor = async () => {
             <Icon name="fa6-solid:credit-card" class="display-inline mr-2" /> {{ `${t('common.generate')}
             ${t('billing_block.payment').toLowerCase()}` }}
           </DropdownOption>
-          <!-- :disabled="data.status?.token == status_paid_token" -->
+          <!-- Pagada: el mètode no es pot canviar sense fer-ne abans el retorn (el moviment comptable no canviaria) -->
           <DropdownOption v-if="data.status?.token != status_canceled_token" :disabled="allow_changes ||
-          (data.status?.token == status_paid_token && data.payment_type_token_final == 'BALANCE')"
+          data.status?.token == status_paid_token"
             :name="`${t('common.change')} ${t('common.payment_method').toLowerCase()}`"
+            :title="data.status?.token == status_paid_token ? t('informative_block.info_paid_invoice_payment_method_locked') : undefined"
             @click="modalsRef?.openChangePaymentMethod()">
             <Icon name="fa6-solid:wallet" class="display-inline mr-2" /> {{ `${t('common.change')}
             ${t('common.payment_method').toLowerCase()}` }}

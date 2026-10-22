@@ -3145,6 +3145,8 @@ export default {
     info_return_payments_no_action: 'All payments will be marked as returned and the invoices as confirmed.',
     info_select_claim_invoice: 'Select to generate a claim invoice',
     info_select_claim_mng: 'Select to generate a collections management case',
+    info_return_method_changed: 'Collected by direct debit and then switched to another method: the direct debit will be returned and it will stay paid by the current method',
+    info_paid_invoice_payment_method_locked: 'The invoice is already paid: to change its payment method, it must first be returned and paid again',
     info_must_accept_first: 'You must accept the request first in order to finalize it',
     info_redo_leak: 'The actual consumption will be subtracted from the total consumption, marking the rest as a leak.\nThis works with the actual meter consumption, NOT with the contract\'s specific consumption.',
     info_operation_var: 'The variable value will be multiplied by the selected calculation variable',
