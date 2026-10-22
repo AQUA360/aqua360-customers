@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import time
 from io import StringIO
 
 import fitz
@@ -16,6 +17,14 @@ from documentmanager.models import Document
 
 MEDIA_ROOT = tempfile.mkdtemp()
 DOCUMENTS_ROOT = tempfile.mkdtemp()
+
+
+def make_old(name):
+    # Els PDF recents es consideren en curs de generació i la neteja no els toca.
+    path = default_storage.path(name)
+    old_time = time.time() - 2 * 3600
+    os.utime(path, (old_time, old_time))
+    return name
 
 
 def pdf_bytes(pages=1):
@@ -80,10 +89,12 @@ class TestInvoicePdfStorage(TestCase):
         second = self._invoice(with_document=True)
         without_pdf = self._invoice()
 
-        merged = merge_pdfs(first, second, without_pdf)
+        only_template = self._invoice(with_template=True)
+
+        merged = merge_pdfs(first, second, without_pdf, only_template)
         try:
             with fitz.open(merged.name) as pdf:
-                self.assertEqual(pdf.page_count, 2)
+                self.assertEqual(pdf.page_count, 3)
         finally:
             os.remove(merged.name)
 
@@ -94,7 +105,8 @@ class TestInvoicePdfStorage(TestCase):
         preview_name = preview_only.invoice_file_template.name
         missing_document = self._invoice(with_document=True, with_template=True, document_exists=False)
         missing_name = missing_document.invoice_file_template.name
-        orphan_name = default_storage.save('uploads/billing/invoices/999999/old.pdf', ContentFile(pdf_bytes()))
+        orphan_name = make_old(default_storage.save('uploads/billing/invoices/999999/old.pdf', ContentFile(pdf_bytes())))
+        recent_name = default_storage.save('uploads/billing/invoices/999997/new.pdf', ContentFile(pdf_bytes()))
         chart_name = default_storage.save(
             f'uploads/billing/invoices/{duplicated.id}/charts/chart.png', ContentFile(b'png')
         )
@@ -112,11 +124,12 @@ class TestInvoicePdfStorage(TestCase):
         self.assertFalse(os.path.exists(os.path.join(MEDIA_ROOT, 'uploads/billing/invoices/999999')))
         # Les gràfiques de la factura es desen a la mateixa carpeta i no s'han de tocar.
         self.assertTrue(default_storage.exists(chart_name))
+        self.assertTrue(default_storage.exists(recent_name))
 
     def test_clean_command_dry_run_keeps_files(self):
         duplicated = self._invoice(with_document=True, with_template=True)
         duplicated_name = duplicated.invoice_file_template.name
-        orphan_name = default_storage.save('uploads/billing/invoices/999998/old.pdf', ContentFile(pdf_bytes()))
+        orphan_name = make_old(default_storage.save('uploads/billing/invoices/999998/old.pdf', ContentFile(pdf_bytes())))
 
         call_command('clean_duplicated_invoice_pdfs', '--dry-run', stdout=StringIO())
 

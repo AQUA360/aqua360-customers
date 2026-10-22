@@ -1,12 +1,16 @@
 import os
 import posixpath
+from datetime import timedelta
 
 from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from billing.models import Invoice
 
 INVOICES_UPLOAD_DIR = 'uploads/billing/invoices'
+# Un PDF més nou que això es pot estar generant: no es tracta com a orfe.
+RECENT_FILE_AGE = timedelta(hours=1)
 
 
 class Command(BaseCommand):
@@ -89,6 +93,15 @@ class Command(BaseCommand):
         if not default_storage.exists(INVOICES_UPLOAD_DIR):
             return 0, 0
 
+        # A la mateixa carpeta hi ha altres fitxers de la factura (p. ex. les
+        # gràfiques de charts/): només es tracten els PDF.
+        candidates = [
+            name for name in self._walk(INVOICES_UPLOAD_DIR)
+            if name.lower().endswith('.pdf') and name not in cleared_names
+        ]
+        # Les referències es consulten després de recórrer la carpeta, i es deixen
+        # els fitxers recents, perquè un PDF que s'està generant encara pot no
+        # tenir la factura actualitzada.
         referenced = set(
             Invoice.objects
             .exclude(invoice_file_template='')
@@ -98,12 +111,8 @@ class Command(BaseCommand):
 
         count = 0
         total_bytes = 0
-        for name in self._walk(INVOICES_UPLOAD_DIR):
-            # A la mateixa carpeta hi ha altres fitxers de la factura (p. ex. les
-            # gràfiques de charts/): només es tracten els PDF.
-            if not name.lower().endswith('.pdf'):
-                continue
-            if name in referenced or name in cleared_names:
+        for name in candidates:
+            if name in referenced or self._is_recent(name):
                 continue
             count += 1
             total_bytes += self._size(name)
@@ -130,6 +139,13 @@ class Command(BaseCommand):
         for dir_path, _dirs, _files in os.walk(root, topdown=False):
             if dir_path != root and not os.listdir(dir_path):
                 os.rmdir(dir_path)
+
+    def _is_recent(self, name):
+        try:
+            modified = default_storage.get_modified_time(name)
+        except (OSError, NotImplementedError):
+            return False
+        return timezone.now() - modified < RECENT_FILE_AGE
 
     def _size(self, name):
         try:

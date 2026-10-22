@@ -2,6 +2,7 @@ import io
 import fitz  # PyMuPDF
 from PIL import Image
 import numpy as np
+from django.core.files.storage import default_storage
 from tempfile import NamedTemporaryFile
 
 def add_watermark_to_pdf(pdf_buffer, watermark_path, gradient=False, opacity=0.3):
@@ -102,6 +103,11 @@ def merge_pdfs(*invoices):
                 file_content = document_content.content
             pdf = fitz.open("pdf", file_content)
             merged_pdf.insert_pdf(pdf)
+        elif invoice.invoice_file_template:
+            # Factures antigues que només tenen la còpia a uploads/billing/invoices.
+            with default_storage.open(invoice.invoice_file_template.name, 'rb') as f:
+                pdf = fitz.open("pdf", f.read())
+                merged_pdf.insert_pdf(pdf)
     
     temp_file = NamedTemporaryFile(suffix=".pdf", delete=False)
     merged_pdf.save(temp_file.name)
