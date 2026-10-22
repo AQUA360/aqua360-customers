@@ -32,16 +32,18 @@ class InvoiceGenerateTemporaryPDFView(views.APIView):
             generate(context, invoice, exploitation, True)
             
             new_invoice = get_object_or_404(Invoice, id=id)
-            # Check if the file was successfully saved before accessing its URL
-            if not new_invoice.invoice_file_template or not new_invoice.invoice_file_template.name:
+            # El PDF amb marca d'aigua es desa a invoice_file_template; el definitiu,
+            # només al gestor documental (invoice_file).
+            if new_invoice.invoice_file_template and new_invoice.invoice_file_template.name:
+                try:
+                    file_url = request.build_absolute_uri(new_invoice.invoice_file_template.url)
+                except ValueError:
+                    logger.exception("No s'ha pogut obtenir l'URL del PDF")
+                    return Response({"error": "No s'ha pogut obtenir l'URL del PDF."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            elif new_invoice.invoice_file_id:
+                file_url = request.build_absolute_uri(f"/documentmanager/view-document/{new_invoice.invoice_file_id}/")
+            else:
                 return Response({"error": "No s'ha pogut generar el PDF. El fitxer no s'ha guardat correctament."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # Get the full URL including host
-            try:
-                file_url = request.build_absolute_uri(new_invoice.invoice_file_template.url)
-            except ValueError:
-                logger.exception("No s'ha pogut obtenir l'URL del PDF")
-                return Response({"error": "No s'ha pogut obtenir l'URL del PDF."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             return Response({"url": file_url}, status=status.HTTP_200_OK)
         
