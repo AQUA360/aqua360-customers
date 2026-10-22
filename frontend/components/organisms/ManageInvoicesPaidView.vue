@@ -103,7 +103,7 @@ onMounted(() => {
       </H1Region>
       <div class="mt-2 flex gap-4">
         <div class="bg-sky-50 px-3 py-1 rounded-md border border-sky-200">
-          <span class="text-xs font-semibold text-sky-700 uppercase">{{ t('common.invoices') }}:</span>
+          <span class="text-xs font-semibold text-sky-700 uppercase">{{ t('invoices') }}:</span>
           <span class="ml-2 font-bold">{{ summary.count }}</span>
         </div>
         <div class="bg-sky-50 px-3 py-1 rounded-md border border-sky-200">
