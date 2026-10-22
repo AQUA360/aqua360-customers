@@ -2170,7 +2170,7 @@ export default {
     total_invoice: 'Total factura',
     manage_massively_paid: 'Marcar como pagado en masa',
     no_invoices_selected: 'No hay facturas seleccionadas por el filtro aplicado',
-    bulk_pay_description: 'Esta operación marcará como pagadas todas las facturas que cumplan los filtros aplicados actualmente en la lista de facturas. Se actualizarán tanto las facturas de Efectivo como las de SEPA.',
+    bulk_pay_description: 'Esta operación marcará como pagadas todas las facturas que cumplan los filtros aplicados actualmente en la lista de facturas. Se actualizarán todas las facturas que no sean SEPA, saldo o TPV online.',
     invoices_to_be_paid: 'Facturas a pagar',
     mark_as_paid_bulk: 'Marcar como pagado',
     confirm_bulk_payment: 'Confirmar pago en masa',

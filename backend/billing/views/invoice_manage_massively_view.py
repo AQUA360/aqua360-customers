@@ -16,7 +16,8 @@ class InvoiceManageMassivelyViewSet(APIView):
   
     def post(self, request, *args, **kwargs):
         # We use InvoiceFilter to apply the same logic as the list view
-        queryset = Invoice.objects.all()
+        invoice_type_invoice_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
+        queryset = Invoice.objects.filter(type_final=invoice_type_invoice_token)
         filterset = InvoiceFilter(request.data, queryset=queryset)
         
         if not filterset.is_valid():
@@ -25,9 +26,22 @@ class InvoiceManageMassivelyViewSet(APIView):
         invoices = filterset.qs.distinct()
         
         paid_invoice_status = get_invoice_status("invoice_status_paid_token")
-        invoices = invoices.exclude(status=paid_invoice_status).filter(
-            payment_type_token_final__in=['CASH', 'DIRECT_DEBIT']
+        invoice_status_dropped = get_invoice_status("invoice_status_dropped_token")
+        invoice_status_cancelled = get_invoice_status("invoice_status_cancelled_token")
+        invoice_status_commitment = get_invoice_status("invoice_status_commitment_token")
+        invoice_status_payoff = get_invoice_status("invoice_status_payoff_token")
+        invoices = invoices.exclude(
+            status__in=[paid_invoice_status, invoice_status_dropped, invoice_status_cancelled, invoice_status_commitment, invoice_status_payoff]
+            ).exclude(
+            payment_type_token_final__in=['DIRECT_DEBIT', 'BALANCE', 'TPV_ONLINE']
         )
+            
+        print(invoices)
+        print(invoices.values_list('serie_final', flat=True))
+        unique_statuses = invoices.values_list('status__name', flat=True).distinct()
+        for status in unique_statuses:
+            print(status)
+            print(status in [paid_invoice_status, invoice_status_dropped, invoice_status_cancelled, invoice_status_commitment])
         
         is_saving = request.data.get('saving', True)
         
