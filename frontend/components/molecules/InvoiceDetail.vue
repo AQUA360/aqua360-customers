@@ -5,7 +5,7 @@ import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { formatDate } from '~/utils/date';
 import { hideIban } from '~/utils/iban';
 import IBAN from '~/components/atoms/IBAN.vue';
-import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
+import { invoiceHasPdf, openInvoicePdf } from '~/utils/open-authenticated-file';
 
 const { t } = useI18n();
 const props = defineProps({
@@ -97,10 +97,10 @@ watch(() => props.data, () => {
 });
 
 const openInvoiceFileTemplate = async () => {
-  if (!localData.value?.invoice_file_template) return;
+  if (!invoiceHasPdf(localData.value)) return;
 
   try {
-    await openAuthenticatedFileUrl(localData.value.invoice_file_template);
+    await openInvoicePdf(localData.value);
   } catch (err) {
     console.error(err);
   }
@@ -160,7 +160,7 @@ const openInvoiceFileTemplate = async () => {
         </div>
       </FieldDetail>
 
-      <FieldDetail :label='$t("common.doc")' v-if="localData.invoice_file_template && !reducedDetail">
+      <FieldDetail :label='$t("common.doc")' v-if="invoiceHasPdf(localData) && !reducedDetail">
         <button type="button" @click="openInvoiceFileTemplate"
           class="text-sky-500 underline flex items-center gap-2">
           <Icon name="fa6-solid:file-pdf" />

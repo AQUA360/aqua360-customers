@@ -5,7 +5,7 @@ import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { formatDate } from '~/utils/date';
 import { hideIban } from '~/utils/iban';
 import IBAN from '~/components/atoms/IBAN.vue';
-import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
+import { invoiceHasPdf, openInvoicePdf } from '~/utils/open-authenticated-file';
 
 const { $InvoiceApiService } = useNuxtApp();
 
@@ -42,10 +42,10 @@ const getData = async () => {
 };
 
 const openPdf = async () => {
-  if (!data.value?.invoice_file_template) return;
+  if (!invoiceHasPdf(data.value)) return;
 
   try {
-    await openAuthenticatedFileUrl(data.value.invoice_file_template);
+    await openInvoicePdf(data.value);
   } catch (err) {
     console.error(err);
   }
