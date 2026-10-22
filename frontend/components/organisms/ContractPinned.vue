@@ -231,12 +231,12 @@ const getGeneralInvoices = async () => {
     }
 }
 
-// Update a single invoice's PDF template in-place so the "send" button reactivates
+// Update a single invoice's PDF document in-place so the "send" button reactivates
 // without reloading the whole invoice list.
-const onInvoicePdfGenerated = ({ id, invoice_file_template }) => {
+const onInvoicePdfGenerated = ({ id, invoice_file }) => {
     const invoiceId = parseInt(id);
     const item = (invoices.value || []).find(inv => inv.id === invoiceId);
-    if (item) item.invoice_file_template = invoice_file_template;
+    if (item) item.invoice_file = invoice_file;
 }
 
 const getExpiredVariables = async () => {

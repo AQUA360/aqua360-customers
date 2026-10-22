@@ -85,16 +85,17 @@ def discard_unused_invoice_pdf_document(old_document):
 
 def prepare_invoice_pdf_filename(invoice):
     """
-    Build the PDF filename and optionally remove the previous media file.
+    Build the PDF filename and remove the previous provisional PDF.
 
-    Only the current PDF is kept when THAT document is linked to a communication.
-    Intermediate regenerations not used in any communication are deleted.
-    A unique filename is used when retained communication PDFs may still exist on disk,
+    The definitive PDF lives only in the document manager (invoice_file), so
+    invoice_file_template only holds the provisional (watermarked) preview and is
+    always replaced. The caller must save the invoice to persist the cleared field.
+    A unique filename is used when retained communication PDFs may still exist,
     so their original name is not overwritten.
     """
     keep_previous = invoice_current_file_used_in_communication(invoice)
-    if invoice.invoice_file_template and not keep_previous:
-        invoice.invoice_file_template.delete()
+    if invoice.invoice_file_template:
+        invoice.invoice_file_template.delete(save=False)
 
     base = f"{invoice.serie_final.replace('/', '')}_{invoice.id}"
     if keep_previous or invoice_has_communication_retained_pdfs(invoice):
@@ -677,13 +678,8 @@ def generate(context, invoice, exploitation, temporary=False):
         else:
             if test_watermark_path:
                 pdf_buffer = add_watermark_to_pdf(pdf_buffer, test_watermark_path)
-            try:
-                invoice.invoice_file_template.save(pdf_filename, ContentFile(pdf_buffer.getvalue()))
-            except Exception as e:
-                error_msg = f"Error en guardar PDF: {str(e)}"
-                print(error_msg)
-                raise Exception(error_msg)
-            
+
+            # El PDF definitiu només es desa al gestor documental (invoice_file).
             signed_pdf_buffer = sign_pdf(
                 pdf_buffer, 
                 company, 
