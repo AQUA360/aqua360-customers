@@ -1,8 +1,9 @@
 """Ampliació de trams de l'ACA (bonificació configurada a `ConfigProject.aca_at_token`).
 
 `Contract.total_persons` és la font de veritat del nombre de persones; la `Variable`
-"Membres d'ampliació de tram (ACA)" de la `Bonification` n'és el reflex que s'envia a
-l'ACA. Aquest servei manté les dues coses sincronitzades i aplica el mínim de persones
+configurada a `ConfigProject.aca_tram_members_variable_token` (per defecte
+`ACA-TRAM-MEMBRES`) de la `Bonification` n'és el reflex que s'envia a l'ACA. Aquest
+servei manté les dues coses sincronitzades i aplica el mínim de persones
 (`watchdog.aca_config.aca_tram_min_persons`).
 
 Tot plegat només s'aplica als projectes amb l'ACA activa (`uses_aca`): fora de
@@ -15,8 +16,6 @@ from coredata.utils.name_utils import generate_token
 
 from ..models import ACABonificationRequest, Bonification, BonificationType, Variable
 
-MEMBERS_VARIABLE_TOKEN_HINT = 'MEMBRES'
-
 
 def get_aca_tram_bonification_type():
     """BonificationType d'ampliació de trams ACA, segons `ConfigProject.aca_at_token`."""
@@ -27,7 +26,18 @@ def get_aca_tram_bonification_type():
 
 
 def is_members_variable_type(variable_type):
-    return bool(variable_type) and MEMBERS_VARIABLE_TOKEN_HINT in (variable_type.token or '').upper()
+    from watchdog.aca_config import is_aca_tram_members_variable_type
+    return is_aca_tram_members_variable_type(variable_type)
+
+
+def members_variable_type(bonification_type):
+    """`VariableType` de persones d'aquest tipus de bonificació, segons la configuració."""
+    if not bonification_type:
+        return None
+    for variable_type in bonification_type.variable_types.all():
+        if is_members_variable_type(variable_type):
+            return variable_type
+    return None
 
 
 def get_active_aca_tram_bonification(contract, bonification_type):
@@ -82,9 +92,7 @@ def update_aca_tram_members(bonification, total_persons, notification_enabled):
     sol·licitud (ja enviada o no) torna a quedar pendent d'enviar amb el nou valor —
     l'ACA necessita rebre l'ampliació de trams actualitzada, no la primera que es va
     enviar."""
-    variable_type = bonification.bonification_type.variable_types.filter(
-        token__icontains=MEMBERS_VARIABLE_TOKEN_HINT
-    ).first()
+    variable_type = members_variable_type(bonification.bonification_type)
     if not variable_type:
         return
 

@@ -354,10 +354,17 @@ def track_aca_bonification_request(sender, instance, **kwargs):
         ACABonificationRequest.objects.filter(bonification=instance, sent_at__isnull=True).delete()
 
 def _sync_num_persons_from_variable(aca_request):
-    """El nombre de persones a aplicar és el que s'informa a la variable
-    'ACA-TRAM-MEMBRES' de la sol·licitud de bonificació (veure AddBonification.vue),
+    """El nombre de persones a aplicar és el de la variable configurada a
+    `ConfigProject.aca_tram_members_variable_token` (veure AddBonification.vue),
     no un valor per defecte del contracte."""
-    variable = aca_request.bonification.variables.filter(type__token__icontains='MEMBRES').first()
+    from watchdog.aca_config import is_aca_tram_members_variable_type
+    variable = next(
+        (
+            item for item in aca_request.bonification.variables.select_related('type')
+            if is_aca_tram_members_variable_type(item.type)
+        ),
+        None,
+    )
     if variable and variable.value is not None:
         try:
             aca_request.num_persons_to_apply = int(variable.value)
@@ -370,7 +377,8 @@ def sync_aca_bonification_num_persons(sender, instance, **kwargs):
     """Quan es desa la variable amb el nombre de membres de la sol·licitud
     d'ampliació de trams (creada després de la Bonification, veure
     AddBonification.vue), actualitza la sol·licitud ACA pendent associada."""
-    if not instance.bonification_id or not instance.type or 'MEMBRES' not in (instance.type.token or '').upper():
+    from watchdog.aca_config import is_aca_tram_members_variable_type
+    if not instance.bonification_id or not is_aca_tram_members_variable_type(instance.type):
         return
 
     aca_request = ACABonificationRequest.objects.filter(bonification_id=instance.bonification_id).first()
@@ -446,10 +454,13 @@ def sync_contract_total_persons_from_aca_variable(sender, instance, **kwargs):
     del mínim (`VariableSaveSerializer`), però en poden arribar d'altres fluxos."""
     if getattr(instance, '_skip_signal', False):
         return
-    if not instance.is_active or not instance.type or 'MEMBRES' not in (instance.type.token or '').upper():
+    from watchdog.aca_config import (
+        aca_tram_min_persons,
+        is_aca_tram_members_variable_type,
+        uses_aca_enabled,
+    )
+    if not instance.is_active or not is_aca_tram_members_variable_type(instance.type):
         return
-
-    from watchdog.aca_config import aca_tram_min_persons, uses_aca_enabled
     if not uses_aca_enabled():
         return
 
