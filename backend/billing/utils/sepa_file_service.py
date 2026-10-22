@@ -57,7 +57,8 @@ def build_sepa_concept(prefix, invoice_numbers, invoice_label="FRA"):
         remaining = len(numbers) - index - 1
         suffix = f" +{remaining}" if remaining else ""
         if len(candidate) + len(suffix) > SEPA_USTRD_MAX_LENGTH:
-            return f"{concept} +{len(numbers) - index}"[:SEPA_USTRD_MAX_LENGTH]
+            suffix = f" +{len(numbers) - index}"
+            return f"{concept[:SEPA_USTRD_MAX_LENGTH - len(suffix)]}{suffix}"
         concept = candidate
     return concept
 

@@ -39,3 +39,14 @@ class BuildSepaConceptTests(SimpleTestCase):
         prefix = "P"
         number = "X" * (SEPA_USTRD_MAX_LENGTH - len("P FRA "))
         self.assertEqual(build_sepa_concept(prefix, [number]), f"P FRA {number}")
+
+    def test_long_prefix_preserves_complete_omitted_invoice_count(self):
+        for prefix_length in (133, 136, 140, 160):
+            for invoice_count in (1, 12, 123):
+                with self.subTest(prefix_length=prefix_length, invoice_count=invoice_count):
+                    concept = build_sepa_concept(
+                        "P" * prefix_length, ["A-0001"] * invoice_count
+                    )
+
+                    self.assertLessEqual(len(concept), SEPA_USTRD_MAX_LENGTH)
+                    self.assertTrue(concept.endswith(f" +{invoice_count}"))
