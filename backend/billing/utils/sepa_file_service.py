@@ -38,6 +38,29 @@ def generate_payment_remittance_ident_msg(vat):
 
     return f"{base_token}{max_seq + 1:03d}"
 
+# Longitud màxima del concepte (RmtInf/Ustrd) segons l'esquema SEPA.
+SEPA_USTRD_MAX_LENGTH = 140
+
+def build_sepa_concept(prefix, invoice_numbers, invoice_label="FRA"):
+    """
+    Concepte del rebut: el prefix seguit dels números de factura, perquè el client
+    i el banc vegin quines factures es cobren (també en un retorn).
+    Si no hi caben totes, s'afegeix "+N" amb les que falten.
+    """
+    numbers = [n for n in invoice_numbers if n]
+    if not numbers:
+        return prefix[:SEPA_USTRD_MAX_LENGTH]
+
+    concept = f"{prefix} {invoice_label}" if prefix else invoice_label
+    for index, number in enumerate(numbers):
+        candidate = f"{concept} {number}"
+        remaining = len(numbers) - index - 1
+        suffix = f" +{remaining}" if remaining else ""
+        if len(candidate) + len(suffix) > SEPA_USTRD_MAX_LENGTH:
+            return f"{concept} +{len(numbers) - index}"[:SEPA_USTRD_MAX_LENGTH]
+        concept = candidate
+    return concept
+
 def get_sepa_signature_date(payment):
     """
     Returns the SEPA signature date for a payment.
@@ -464,6 +487,9 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
             # PAYMENT SEND DATE IS NOT USED TO SEND PAYMENTS, BUT TO DECLARE WHEN SEPA IS SIGNED (WHOOPS)
             payment_send_date = send_date_strf
             
+            # Sense factura ni compromís, el concepte no es pot quedar amb el del pagament anterior.
+            title = payment.token or ""
+            invoice_label = "FRA" if language in ("ca", "es") else "INV"
             if payment.commitment_deposit:
                 if language == "ca":
                     title = f"COMPROMÍS DE PAGAMENT {payment.commitment_deposit.token}"
@@ -471,8 +497,13 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
                     title = f"COMPROMISO DE PAGAMENTO {payment.commitment_deposit.token}"
                 else:
                     title = f"PAYMENT COMMITMENT {payment.commitment_deposit.token}"
+                # Pagament agrupat: el compromís cobra diverses factures alhora.
+                commitment_invoice_numbers = payment.commitment_deposit.invoices.exclude(
+                    serie_final__isnull=True
+                ).order_by("serie_final").values_list("serie_final", flat=True)
+                title = build_sepa_concept(title, list(commitment_invoice_numbers), invoice_label)
             if payment.invoice:
-                title = payment.invoice.serie_final
+                title = payment.invoice.serie_final or title
                 if payment.invoice.contract and payment.invoice.origin == origin_water:
                     if language == "ca":
                         title = f"AIGUA CONTRACTE {payment.invoice.contract.token}"
@@ -480,6 +511,7 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
                         title = f"AGUA CONTRATO {payment.invoice.contract.token}"
                     else:
                         title = f"WATER CONTRACT {payment.invoice.contract.token}"
+                    title = build_sepa_concept(title, [payment.invoice.serie_final], invoice_label)
             if is_return:
                 title = f"{_('Return xml msg')} {payment.contract.token if payment.contract else payment.person.token if payment.person else payment.token}"
             
