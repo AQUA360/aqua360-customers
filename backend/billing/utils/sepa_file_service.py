@@ -44,7 +44,8 @@ SEPA_USTRD_MAX_LENGTH = 140
 def build_sepa_concept(prefix, invoice_numbers, invoice_label="FRA"):
     """
     Concepte del rebut: el prefix seguit dels números de factura, perquè el client
-    i el banc vegin quines factures es cobren (també en un retorn).
+    i el banc vegin quines factures es cobren. Si el banc retorna el rebut, el
+    retorn conserva aquest concepte.
     Si no hi caben totes, s'afegeix "+N" amb les que falten.
     """
     numbers = [n for n in invoice_numbers if n]
