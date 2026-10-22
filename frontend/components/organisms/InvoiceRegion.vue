@@ -402,7 +402,7 @@ const reGenerateInvoice = async () => {
     const response = await $InvoiceApiService.downloadInvoice(invoiceId.value);
     downloadDocument(response.document_id)
     await getData(false)
-    emit('pdf-generated', { id: invoiceId.value, invoice_file_template: data.value?.invoice_file_template });
+    emit('pdf-generated', { id: invoiceId.value, invoice_file: data.value?.invoice_file });
   } catch (error) {
     console.error(error)
   }
@@ -411,7 +411,7 @@ const reGenerateInvoice = async () => {
 const sendModalOpen = ref(false);
 
 const openSendModal = () => {
-  if (!data.value?.invoice_file_template) {
+  if (!data.value?.invoice_file) {
     toast.warning(t('billing_block.invoice_no_document'));
     return;
   }
