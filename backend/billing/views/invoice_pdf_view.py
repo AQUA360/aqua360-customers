@@ -714,20 +714,18 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
             'FACTURA'
             )
 
-        # Save PDF to `invoice_file` field in Invoice instance.
-        # Keep previous media only if THAT document is linked to a communication.
+        # Save PDF to `invoice_file` field in Invoice instance (només al gestor documental).
+        # Keep previous document only if it is linked to a communication.
         from billing.utils.invoice_pdf import (
             discard_unused_invoice_pdf_document,
             prepare_invoice_pdf_filename,
         )
         old_document = invoice.invoice_file
-        pdf_filename = prepare_invoice_pdf_filename(invoice)
-        invoice._skip_signal = True
-        invoice.invoice_file_template.save(pdf_filename, ContentFile(signed_pdf_buffer.getvalue()))
-        
+
         service = settings.DOCUMENT_MANAGER_SERVICES.get("billing")
         document_id = None
         if save_pdf:
+            pdf_filename = prepare_invoice_pdf_filename(invoice)
             document_file = upload_document(ContentFile(signed_pdf_buffer.getvalue()), 'FACTURES', 'FACTURA', invoice.id, invoice.customer_token_final, '', service, pdf_filename)
             invoice.invoice_file = document_file
             invoice._skip_signal = True
@@ -741,11 +739,8 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
             source_invoice.invoice_file = invoice.invoice_file
 
         file_url = None
-        if request:
-            try:
-                file_url = request.build_absolute_uri(invoice.invoice_file_template.url)
-            except:
-                file_url = None
+        if request and invoice.invoice_file_id:
+            file_url = request.build_absolute_uri(f"/documentmanager/view-document/{invoice.invoice_file_id}/")
         
         return file_url, document_id, signed_pdf_buffer
     except Exception as e:

@@ -89,14 +89,38 @@ def reduce_opacity_with_gradient(image_path, base_opacity=1):
     
     return img_bytes
 
+def _invoice_pdf_content(invoice):
+    """PDF definitiu del gestor documental; si no n'hi ha, o el fitxer ja no és al
+    disc, la còpia antiga de uploads/billing/invoices (invoice_file_template)."""
+    from django.http import Http404
+    from documentmanager.utils.main_utils import download_document
+
+    if invoice.invoice_file:
+        try:
+            document_content = download_document(invoice.invoice_file)
+        except Http404:
+            if not invoice.invoice_file_template:
+                raise
+        else:
+            try:
+                return document_content.getvalue()
+            except AttributeError:
+                return document_content.content
+
+    if invoice.invoice_file_template:
+        with default_storage.open(invoice.invoice_file_template.name, 'rb') as f:
+            return f.read()
+    return None
+
+
 def merge_pdfs(*invoices):
     merged_pdf = fitz.open()
     
     for invoice in invoices:
-        if invoice.invoice_file_template:
-            with default_storage.open(invoice.invoice_file_template.name, 'rb') as f:
-                pdf = fitz.open("pdf", f.read())
-                merged_pdf.insert_pdf(pdf)
+        file_content = _invoice_pdf_content(invoice)
+        if file_content is not None:
+            pdf = fitz.open("pdf", file_content)
+            merged_pdf.insert_pdf(pdf)
     
     temp_file = NamedTemporaryFile(suffix=".pdf", delete=False)
     merged_pdf.save(temp_file.name)
