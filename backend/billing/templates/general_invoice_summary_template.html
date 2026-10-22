@@ -88,11 +88,12 @@
     <table class="summary" repeat="1">
         <thead>
             <tr>
-                <th width="15%">Contracte</th>
-                <th width="17%">Factura</th>
-                <th width="38%">Adreça de subministrament</th>
-                <th width="15%" class="num">Subtotal (€)</th>
-                <th width="15%" class="num">Total (€)</th>
+                <th width="13%">Contracte</th>
+                <th width="15%">Factura</th>
+                <th width="32%">Adreça de subministrament</th>
+                <th width="12%" class="num">Consum (m3)</th>
+                <th width="14%" class="num">Subtotal (€)</th>
+                <th width="14%" class="num">Total (€)</th>
             </tr>
         </thead>
         <tbody>
@@ -101,12 +102,14 @@
                 <td>{{ row.contract_token }}</td>
                 <td>{{ row.serie }}</td>
                 <td>{{ row.supply_address }}</td>
+                <td class="num">{{ row.consumption|format_eu:2 }}</td>
                 <td class="num">{{ row.subtotal|format_eu:2 }}</td>
                 <td class="num">{{ row.total|format_eu:2 }}</td>
             </tr>
             {% endfor %}
             <tr class="total">
                 <td colspan="3">TOTAL ({{ rows|length }} factures)</td>
+                <td class="num">{{ consumption_sum|format_eu:2 }}</td>
                 <td class="num">{{ subtotal_sum|format_eu:2 }}</td>
                 <td class="num">{{ total_sum|format_eu:2 }}</td>
             </tr>
