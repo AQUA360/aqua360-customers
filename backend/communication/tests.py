@@ -754,6 +754,27 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
         self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
         self.assertEqual(self.comm.invoices.count(), 2)
 
+    def test_without_extra_docs_only_claim_document_is_attached(self):
+        from unittest.mock import patch
+
+        from communication.tasks import generate_claim_document_pdf_task
+
+        ConfigProject.objects.update_or_create(token='attach_extra_docs_in_claims', defaults={'value': 'false'})
+
+        def claim_step_file(claim_request, contract, comm, *args):
+            return CommunicationFile(communication=comm, file=self.claim_doc)
+
+        with patch('communication.tasks._create_claim_step_communication_file', side_effect=claim_step_file), \
+                patch('communication.tasks.generate_report_payment_pdf') as payment_pdf:
+            result = generate_claim_document_pdf_task([self.comm.id], self.process.id, claim_id=self.claim.id)
+
+        self.assertEqual(result['status'], 'success')
+        payment_pdf.assert_not_called()
+        files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
+        self.assertEqual(files, [self.claim_doc.id])
+        # Les factures es vinculen igualment per resoldre les variables %invoice.*
+        self.assertEqual(self.comm.invoices.count(), 2)
+
 
 class SupplyCutRecipientChannelTests(TestCase):
     """Destinataris d'un tall segons els canals triats.
