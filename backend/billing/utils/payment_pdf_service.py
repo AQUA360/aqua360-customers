@@ -186,7 +186,9 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
             'barcode_values': barcode_values,
             'payment_amount': total,
             'due_date': payment.due_date,
-            'now_date': payment.due_date,
+            # Data límit que es mostra a la carta: el nou termini concedit (limit_date, el
+            # mateix que porta el codi de barres) i, si no n'hi ha, el venciment del pagament.
+            'now_date': limit_date or payment.due_date,
             'payment_date': payment.payment_date,
             'main_color': main_color,
             'secondary_color': secondary_color,
