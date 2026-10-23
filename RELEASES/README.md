@@ -1,4 +1,4 @@
-# Product releases (monorepo)
+# Releases (monorepo)
 
 Language / Idioma / Llengua:
 
