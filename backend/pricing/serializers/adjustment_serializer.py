@@ -6,6 +6,7 @@ from contract.serializers.value_objects_serializer import VariableTypeSerializer
 from coredata.utils.name_utils import generate_token
 from pricing.serializers.value_objects_serializer import AdjustmentIntervalStretchSerializer, AdjustmentOperationSerializer, VariableCalculationSerializer
 from pricing.utils.adjustment_service import updateAdjustmentPreferences
+from pricing.utils.formula_evaluator import FormulaError, validate
 
 from ..models import Adjustment, AdjustmentOperation, LineItemType, PriceInterval, VariableCalculation, AdjustmentCondition
 
@@ -42,6 +43,14 @@ class AdjustmentSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = Adjustment
         fields = '__all__'
+
+    def validate_formula(self, value):
+        if value:
+            try:
+                validate(value)
+            except FormulaError as e:
+                raise serializers.ValidationError(str(e))
+        return value
         
     @transaction.atomic
     def create(self, validated_data):

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from pricing.utils.formula_evaluator import FormulaError, validate
 from ..models import Quantity, BillingPeriod, Tax, AdjustmentOperation, VariableCalculation, AdjustmentIntervalStretch, ProductOrigin, ArticleCode
 
 class AdjustmentOperationSerializer(serializers.ModelSerializer):
@@ -31,6 +32,14 @@ class AdjustmentIntervalStretchSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdjustmentIntervalStretch
         fields = '__all__'
+
+    def validate_formula(self, value):
+        if value:
+            try:
+                validate(value)
+            except FormulaError as e:
+                raise serializers.ValidationError(str(e))
+        return value
     
 class ProductOriginSerializer(serializers.ModelSerializer):
     class Meta:
