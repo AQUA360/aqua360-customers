@@ -9,6 +9,7 @@ from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
 from logger.models import LogPaymentStatusChange
 from pricing.models import ProductOrigin
+from django.db import transaction
 from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 
@@ -311,6 +312,59 @@ def generate_payment_movement(payment, payment_status, payment_date, payment_typ
         is_active = True,
     )
     return new_movement
+
+def get_unreturned_direct_debit_movement(payment, until_date=None):
+    # Últim cobrament per domiciliació del pagament que el banc encara no ha retornat
+    paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+    returned_token = ConfigProject.objects.get(token='payment_status_returned_token').value
+    movements = payment.movements.filter(is_active=True)
+    if until_date:
+        movements = movements.filter(movement_date__lte=until_date)
+    direct_debit_movement = movements.filter(
+        payment_type__token='DIRECT_DEBIT',
+        current_status__token=paid_token,
+    ).order_by('-movement_date', '-timestamp').first()
+    if not direct_debit_movement:
+        return None
+    if payment.movements.filter(
+        is_active=True,
+        current_status__token=returned_token,
+        timestamp__gt=direct_debit_movement.timestamp,
+    ).exists():
+        return None
+    return direct_debit_movement
+
+def is_paid_by_direct_debit_with_other_method(payment, until_date=None):
+    # Pagament cobrat per domiciliació al qual després s'ha canviat el mètode sense fer cap
+    # retorn: el pagament diu un altre mètode, però el moviment comptable continua sent domiciliació
+    paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+    if not payment.status or payment.status.token != paid_token or payment.payment_type_token == 'DIRECT_DEBIT':
+        return False
+    return get_unreturned_direct_debit_movement(payment, until_date) is not None
+
+def generate_method_change_rejection_movements(payment, returned_status, rejection_date, payment_bank, user, reject_motive=None, payment_remittance=None):
+    # Retorn d'una domiciliació d'un pagament que ja consta pagat per un altre mètode: es retorna
+    # la domiciliació (moviment negatiu) i es torna a cobrar amb el mètode actual (moviment positiu),
+    # com si s'hagués fet el retorn abans del canvi. El pagament i la factura continuen pagats.
+    # Tot o res: un retorn sense el nou cobrament deixaria el pagament pagat amb la domiciliació
+    # retornada, i un nou intent ja no el tornaria a cobrar perquè la domiciliació consta retornada
+    paid_status = payment.status
+    with transaction.atomic():
+        log_payment_status(payment, returned_status, user, rejection_date, 'DIRECT_DEBIT')
+        generate_payment_movement(
+            payment, returned_status,
+            rejection_date, 'DIRECT_DEBIT',
+            payment_bank, user,
+            reject_motive, payment_remittance)
+        payment.status = returned_status
+        try:
+            log_payment_status(payment, paid_status, user, rejection_date)
+            generate_payment_movement(
+                payment, paid_status,
+                rejection_date, payment.payment_type_token,
+                payment.payment_bank, user)
+        finally:
+            payment.status = paid_status
 
 def log_invoice_status(invoice, invoice_status, current_user=None):
     if not current_user:
