@@ -459,6 +459,80 @@ def mask_iban(value):
         groups[-1] = '*' * 4
     return '-'.join(groups)
 
+@register.filter
+def with_return_fee_invoices(invoices):
+    """Files per a les cartes de reclamació: cada factura reclamada seguida de les
+    factures de despeses de devolució pendents que en pengen (invoice_return_charge(),
+    marcades per la PriceRate de `invoice_return_price_rate_token`). La factura de
+    despeses penja de l'última rectificativa de la cadena, per això es busca a tota
+    la cadena de filles. Cada fila és {'invoice', 'is_return_fee', 'left_to_pay'}.
+    Mai no fa petar la carta: si falla la cerca de despeses, retorna només les
+    factures reclamades."""
+    try:
+        invoices = list(invoices or [])
+    except Exception:
+        return []
+    try:
+        return _with_return_fee_invoices(invoices)
+    except Exception:
+        return [
+            {'invoice': invoice, 'is_return_fee': False, 'left_to_pay': getattr(invoice, 'left_to_pay', None) or 0}
+            for invoice in invoices
+        ]
+
+
+def _with_return_fee_invoices(invoices):
+    from billing.models import Invoice
+    from coredata.models import ConfigProject
+
+    fee_token = ConfigProject.objects.filter(
+        token='invoice_return_price_rate_token'
+    ).values_list('value', flat=True).first()
+    fee_ids = set()
+    if fee_token and invoices:
+        fee_ids = set(Invoice.objects.filter(
+            id__in=[invoice.id for invoice in invoices],
+            line_items__price_rate__token=fee_token,
+        ).values_list('id', flat=True))
+
+    rows = []
+    seen = set()
+
+    def append(invoice, is_return_fee):
+        if invoice.id in seen:
+            return
+        seen.add(invoice.id)
+        rows.append({
+            'invoice': invoice,
+            'is_return_fee': is_return_fee,
+            'left_to_pay': invoice.left_to_pay or 0,
+        })
+
+    for invoice in invoices:
+        if invoice.id in fee_ids:
+            continue
+        append(invoice, False)
+        if not fee_token:
+            continue
+        chain_ids = [invoice.id]
+        children = list(Invoice.objects.filter(parent_invoice_id=invoice.id).values_list('id', flat=True))
+        while children:
+            chain_ids.extend(child for child in children if child not in chain_ids)
+            children = list(Invoice.objects.filter(parent_invoice_id__in=children).exclude(id__in=chain_ids).values_list('id', flat=True))
+        fees = Invoice.objects.filter(
+            parent_invoice_id__in=chain_ids,
+            line_items__price_rate__token=fee_token,
+            left_to_pay__gt=0,
+        ).distinct().order_by('issue_date', 'id')
+        for fee in fees:
+            append(fee, True)
+
+    # Factures de despeses reclamades directament sense la seva factura d'origen
+    for invoice in invoices:
+        if invoice.id in fee_ids:
+            append(invoice, True)
+    return rows
+
 def _item_attr(item, key, default=None):
     if isinstance(item, dict):
         return item.get(key, default)
