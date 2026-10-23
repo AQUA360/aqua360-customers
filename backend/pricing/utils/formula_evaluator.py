@@ -13,6 +13,8 @@ import re
 MAX_FORMULA_LENGTH = 1000
 MAX_POWER_EXPONENT = 100
 MAX_ABS_NUMBER = 1e15
+# round(1, -10**7) fa càlculs enormes amb enters.
+MAX_ROUND_DIGITS = 15
 
 # %contract.persons, %variable.5021... També entre cometes ('%contract.communication_type'),
 # com calia escriure-la amb l'eval per comparar textos: llavors és la mateixa variable.
@@ -51,6 +53,19 @@ _FUNCTIONS = {
     'math.floor': math.floor,
     'math.sqrt': math.sqrt,
 }
+# Mínim i màxim d'arguments de cada funció (None: sense màxim). min i max en necessiten dos
+# perquè les fórmules no admeten llistes.
+_FUNCTION_ARITY = {
+    'abs': (1, 1),
+    'min': (2, None),
+    'max': (2, None),
+    'round': (1, 2),
+    'int': (1, 1),
+    'float': (1, 1),
+    'math.ceil': (1, 1),
+    'math.floor': (1, 1),
+    'math.sqrt': (1, 1),
+}
 
 
 # Missatges fixos per a l'usuari: la resposta de l'API no porta mai el text d'una excepció.
@@ -63,6 +78,7 @@ ERROR_MESSAGES = {
         'Element no permès a la fórmula: només hi pot haver números, operacions, comparacions, '
         'condicions, variables %nom i les funcions ' + ', '.join(_FUNCTIONS)
     ),
+    'arguments': "Nombre d'arguments incorrecte en una funció de la fórmula",
     'unknown_variable': 'Variable desconeguda a la fórmula',
     'not_a_number': 'Operació aritmètica amb un valor que no és un número',
     'too_big': 'Resultat massa gran',
@@ -113,6 +129,9 @@ def _check(node, names):
             _check(child, names)
         return
     if isinstance(node, ast.Call) and not node.keywords and _function_name(node.func) in _FUNCTIONS:
+        minimum, maximum = _FUNCTION_ARITY[_function_name(node.func)]
+        if len(node.args) < minimum or (maximum is not None and len(node.args) > maximum):
+            raise FormulaError('arguments', _function_name(node.func))
         for arg in node.args:
             _check(arg, names)
         return
@@ -164,8 +183,11 @@ def _eval(node, names):
     if isinstance(node, ast.IfExp):
         return _eval(node.body if _eval(node.test, names) else node.orelse, names)
     if isinstance(node, ast.Call):
-        function = _FUNCTIONS[_function_name(node.func)]
-        return _check_number(function(*(_eval(arg, names) for arg in node.args)))
+        name = _function_name(node.func)
+        args = [_eval(arg, names) for arg in node.args]
+        if name == 'round' and len(args) == 2 and isinstance(args[1], int) and abs(args[1]) > MAX_ROUND_DIGITS:
+            raise FormulaError('too_big', 'decimals de round')
+        return _check_number(_FUNCTIONS[name](*args))
     raise FormulaError('not_allowed', ast.unparse(node)[:80])
 
 
@@ -191,7 +213,8 @@ def _parse(formula, variables):
         if key not in variables:
             raise FormulaError('unknown_variable', f'%{key}')
         name = f'v{len(names)}'
-        names[name] = _as_value(variables[key])
+        # Entre cometes es compara com a text, com amb l'eval ('08001' no és 8001).
+        names[name] = str(variables[key]) if match.group(1) else _as_value(variables[key])
         return name
 
     expression = _VARIABLE_RE.sub(to_name, formula.strip())

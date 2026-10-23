@@ -65,6 +65,18 @@ class EvaluateFormulaTest(SimpleTestCase):
                 with self.assertRaises(FormulaError):
                     evaluate(formula, {})
 
+    def test_round_with_huge_digits_is_rejected(self):
+        for formula in ['round(1, -10**7)', 'round(%consumption, 10**7)']:
+            with self.subTest(formula=formula):
+                with self.assertRaises(FormulaError):
+                    evaluate(formula, {'consumption': 1})
+        self.assertEqual(evaluate('round(%consumption, 2)', {'consumption': 1.2345}), 1.23)
+
+    def test_quoted_variable_is_text(self):
+        variables = {'contract.zip': '08001', 'contract.persons': 3}
+        self.assertIs(evaluate("'%contract.zip' == '08001'", variables), True)
+        self.assertIs(evaluate("'%contract.persons' == '3'", variables), True)
+
     def test_decimal_comma_is_an_error(self):
         with self.assertRaisesMessage(FormulaError, 'punt'):
             evaluate('0,5', {})
@@ -90,6 +102,13 @@ class ValidateFormulaTest(SimpleTestCase):
 
     def test_validate_checks_branches_not_taken(self):
         self.assertEqual(validate("1 if True else __import__('os')"), ERROR_MESSAGES['not_allowed'])
+
+    def test_validate_checks_function_arguments(self):
+        for formula in ['max(1)', 'max()', 'round(1, 2, 3)', 'abs()', 'math.ceil(1, 2)']:
+            with self.subTest(formula=formula):
+                self.assertEqual(validate(formula), ERROR_MESSAGES['arguments'])
+        self.assertIsNone(validate('max(%a, %b, 3)'))
+        self.assertIsNone(validate('round(%a)'))
 
     def test_validate_message_has_no_internal_details(self):
         self.assertEqual(validate('1 +'), ERROR_MESSAGES['syntax'])
