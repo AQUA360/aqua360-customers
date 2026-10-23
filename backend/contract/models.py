@@ -268,7 +268,7 @@ class Variable(models.Model):
     # relacions
     contract = models.ForeignKey('Contract', on_delete=models.SET_NULL, null=True, blank=True, related_name='variables')
     contract_request = models.ForeignKey('ContractRequest', on_delete=models.SET_NULL, null=True, blank=True, related_name='variables')
-    bonification = models.ForeignKey('Bonification', on_delete=models.SET_NULL, null=True, blank=True, related_name='variables')
+    bonification = models.ForeignKey('Bonification', on_delete=models.CASCADE, null=True, blank=True, related_name='variables')
     
     is_active = models.BooleanField(default=True)
 
