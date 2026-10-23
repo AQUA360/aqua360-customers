@@ -16,6 +16,7 @@ from ..models import AppliedAdjustment, Invoice, InvoiceLineItem, Reading
 from coredata.models import ConfigProject
 from coredata.utils.invoice_tram_config import should_show_all_consumption_trams
 from pricing.models import LineItemType, Product
+from pricing.utils.formula_evaluator import replace_percentage
 from contract.utils.contract_service import get_meter_caliber, get_variables_actives, get_connection_diameter
 from billing.utils.adjustment_service import adjustment_eval_conditions, convert_value, evaluate_formula, calc_consumption_responsible, generate_variables, get_contract_variable, get_line_item_type_adjustments, get_tram_adjustments, adjustment_has_interval_stretches
 
@@ -1301,11 +1302,3 @@ def create_from_lineitemtype_connection(connection, line_item_type, existing_lin
     
     return linies
 
-def replace_match(match):
-    percentage_value = float(match.group(1))  
-    return f"({percentage_value / 100}) *"  
-
-def replace_percentage(formula):
-
-    modified_formula = re.sub(r'(\d+)%', replace_match, formula)
-    return modified_formula

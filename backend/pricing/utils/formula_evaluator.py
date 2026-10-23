@@ -7,6 +7,7 @@ objecte de Python.
 """
 import ast
 import math
+from decimal import Decimal
 import operator
 import re
 
@@ -19,6 +20,8 @@ MAX_ROUND_DIGITS = 15
 # %contract.persons, %variable.5021... També entre cometes ('%contract.communication_type'),
 # com calia escriure-la amb l'eval per comparar textos: llavors és la mateixa variable.
 _VARIABLE_RE = re.compile(r"""(['"]?)%([A-Za-z_][\w.]*\w|[A-Za-z_])\1""")
+# Una fórmula que només és un número amb coma decimal (0,5).
+_DECIMAL_COMMA_RE = re.compile(r'^\s*([-+]?\d+),(\d+)\s*$')
 
 _BIN_OPS = {
     ast.Add: operator.add,
@@ -193,6 +196,8 @@ def _eval(node, names):
 
 def _as_value(value):
     """Valor d'una variable tal com l'entenia l'eval: un text numèric és un número."""
+    if isinstance(value, Decimal):
+        return float(value)
     if isinstance(value, str):
         for number_type in (int, float):
             try:
@@ -200,6 +205,17 @@ def _as_value(value):
             except ValueError:
                 pass
     return value
+
+
+def normalize_decimal_comma(formula):
+    """0,5 -> 0.5. Només si la fórmula és un número sol: a max(1,5) la coma separa arguments."""
+    match = _DECIMAL_COMMA_RE.match(formula)
+    return f'{match.group(1)}.{match.group(2)}' if match else formula
+
+
+def replace_percentage(formula):
+    """Percentatges de les fórmules dels conceptes de factura: 21% %x -> (0.21) * %x."""
+    return re.sub(r'(\d+)%', lambda match: f'({float(match.group(1)) / 100}) *', formula)
 
 
 def _parse(formula, variables):

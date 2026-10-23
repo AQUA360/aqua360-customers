@@ -4,9 +4,8 @@ from django.db.models import Max
 from contract.models import VariableType
 from contract.serializers.value_objects_serializer import VariableTypeSerializer
 from coredata.utils.name_utils import generate_token
-from pricing.serializers.value_objects_serializer import AdjustmentIntervalStretchSerializer, AdjustmentOperationSerializer, VariableCalculationSerializer
+from pricing.serializers.value_objects_serializer import AdjustmentIntervalStretchSerializer, AdjustmentOperationSerializer, VariableCalculationSerializer, validate_formula_field
 from pricing.utils.adjustment_service import updateAdjustmentPreferences
-from pricing.utils.formula_evaluator import validate
 
 from ..models import Adjustment, AdjustmentOperation, LineItemType, PriceInterval, VariableCalculation, AdjustmentCondition
 
@@ -45,10 +44,7 @@ class AdjustmentSaveSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def validate_formula(self, value):
-        error = validate(value) if value else None
-        if error:
-            raise serializers.ValidationError(error)
-        return value
+        return validate_formula_field(value)
         
     @transaction.atomic
     def create(self, validated_data):

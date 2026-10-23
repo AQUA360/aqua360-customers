@@ -1,10 +1,13 @@
 import importlib
+from decimal import Decimal
 
 from django.apps import apps
 from django.test import SimpleTestCase, TestCase
+from rest_framework.exceptions import ValidationError
 
 from billing.utils.adjustment_service import evaluate_formula
 from pricing.models import Adjustment, AdjustmentCondition, AdjustmentIntervalStretch, LineItemType
+from pricing.serializers.line_item_type_serializer import LineItemTypeSaveSerializer
 from pricing.serializers.value_objects_serializer import AdjustmentIntervalStretchSerializer
 from pricing.utils.formula_evaluator import ERROR_MESSAGES, FormulaError, evaluate, validate
 
@@ -72,6 +75,9 @@ class EvaluateFormulaTest(SimpleTestCase):
                     evaluate(formula, {'consumption': 1})
         self.assertEqual(evaluate('round(%consumption, 2)', {'consumption': 1.2345}), 1.23)
 
+    def test_decimal_variable_is_a_number(self):
+        self.assertEqual(evaluate('%invoice.total_final * 2', {'invoice.total_final': Decimal('12.30')}), 24.6)
+
     def test_quoted_variable_is_text(self):
         variables = {'contract.zip': '08001', 'contract.persons': 3}
         self.assertIs(evaluate("'%contract.zip' == '08001'", variables), True)
@@ -118,6 +124,17 @@ class ValidateFormulaTest(SimpleTestCase):
         serializer = AdjustmentIntervalStretchSerializer(data={'formula': "__import__('os')"})
         self.assertFalse(serializer.is_valid())
         self.assertEqual(serializer.errors['formula'], [ERROR_MESSAGES['not_allowed']])
+
+    def test_serializer_fixes_decimal_comma(self):
+        serializer = AdjustmentIntervalStretchSerializer(data={'formula': '0,5'})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data['formula'], '0.5')
+
+    def test_line_item_type_formula_is_validated(self):
+        serializer = LineItemTypeSaveSerializer()
+        self.assertEqual(serializer.validate_formula('21% %product.AIGUA'), '21% %product.AIGUA')
+        with self.assertRaises(ValidationError):
+            serializer.validate_formula("__import__('os')")
 
 
 class FixDecimalCommaMigrationTest(TestCase):
