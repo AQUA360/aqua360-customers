@@ -242,6 +242,11 @@ class BillingContractInvoicesOVView(APIView):
             )
 
         contract = self.queryset.filter(token=contract_token).first()
+        if not contract:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
         invoices = Invoice.objects.filter(contract=contract).exclude(
             status__token="1"
         )  # excluïm les factures de pre-factura
@@ -324,7 +329,7 @@ class UnpayedInvoicesOVView(APIView):
         # optional payment type exclusion
         invoices_queryset = Invoice.objects.filter(
             contract=contract, status__in=statuses
-        )
+        ).exclude(status__token="1")
 
         qp_exc_payment_type = request.query_params.get("exc_payment_type_token", None)
         if qp_exc_payment_type:
