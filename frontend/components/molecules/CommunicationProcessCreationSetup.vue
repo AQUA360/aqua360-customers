@@ -257,7 +257,10 @@ watch(() => props.search, async (newVal, oldVal) => {
                         <span>{{ t('customer_service_block.select_mng') }}</span>
                     </ButtonOutline>
                 </div>
-                <span></span>
+                <div class="max-w-md">
+                    <!-- Amb el filtre de contractes, el selector d'empresa es mostra al costat del cercador -->
+                    <slot v-if="typeSelect !== 'CONTRACT'" name="company-filter" />
+                </div>
                 <!-- <div class="col-span-2">
                     <div class="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
                         <abbr :title="t('customer_service_block.no_grouping')"
@@ -358,7 +361,11 @@ watch(() => props.search, async (newVal, oldVal) => {
             </div>
             <!-- CONTRACT -->
             <div v-if="typeSelect === 'CONTRACT'">
-                <CommunicationProcessCreationSetupContract :contract_data="filter_data" @change="onFilterChange" />
+                <CommunicationProcessCreationSetupContract :contract_data="filter_data" @change="onFilterChange">
+                    <template v-if="$slots['company-filter']" #company-filter>
+                        <slot name="company-filter" />
+                    </template>
+                </CommunicationProcessCreationSetupContract>
             </div>
 
             <div v-else-if="typeSelect === 'CONTRACTREQUEST'">

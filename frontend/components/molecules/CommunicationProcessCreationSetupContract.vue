@@ -199,7 +199,10 @@ watch(props.contract_data, async (newVal) => {
     <div class="grid grid-cols-2 gap-4">
       <SearchEntityInput :service="$ContractApiService" @select="onContractSelected" :title="$t('search_block.search_contract')"
         :result_value="'holder_full_name'" class="mt-auto" />
-      <div v-if="selectedAddedContracts?.length > 0" class="mb-2">
+      <div v-if="$slots['company-filter']" class="mt-auto">
+        <slot name="company-filter" />
+      </div>
+      <div v-if="selectedAddedContracts?.length > 0" class="mb-2" :class="{ 'col-span-2': $slots['company-filter'] }">
         <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('contract_block.selected_contracts') }}</label>
         <div class="flex flex-wrap gap-2 ">
           <span v-for="contract in selectedAddedContracts" :key="contract.id"
@@ -215,7 +218,7 @@ watch(props.contract_data, async (newVal) => {
           </span>
         </div>
       </div>
-      <span v-else></span>
+      <span v-else-if="!$slots['company-filter']"></span>
 
       <div>
         <label class="block text-sm font-medium text-slate-600 mb-2">{{ $t('common.status') }}: {{ $t('contract') }}</label>
