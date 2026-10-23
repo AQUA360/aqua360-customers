@@ -68,6 +68,18 @@ class EvaluateFormulaTest(SimpleTestCase):
                 with self.assertRaises(FormulaError):
                     evaluate(formula, {})
 
+    def test_huge_constants_and_variables_are_rejected(self):
+        for formula in ['1e999', '9' * 400, '-1e999 * 0 + 1', "float('nan')", '-%x', '%x']:
+            with self.subTest(formula=formula[:20]):
+                with self.assertRaises(FormulaError):
+                    evaluate(formula, {'x': 10**20})
+        self.assertEqual(validate('1e999'), ERROR_MESSAGES['too_big'])
+
+    def test_null_character_is_a_syntax_error(self):
+        with self.assertRaises(FormulaError):
+            evaluate('1\x00', {})
+        self.assertEqual(validate('1\x00'), ERROR_MESSAGES['syntax'])
+
     def test_round_with_huge_digits_is_rejected(self):
         for formula in ['round(1, -10**7)', 'round(%consumption, 10**7)']:
             with self.subTest(formula=formula):

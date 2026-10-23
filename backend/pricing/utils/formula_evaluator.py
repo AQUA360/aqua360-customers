@@ -111,6 +111,8 @@ def _check(node, names):
     if isinstance(node, ast.Expression):
         return _check(node.body, names)
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float, str, bool, type(None))):
+        # 1e999 (inf) o un enter de centenars de xifres no arribarien a la factura.
+        _check_number(node.value)
         return
     if isinstance(node, ast.Name) and node.id in names:
         return
@@ -144,7 +146,8 @@ def _check(node, names):
 
 
 def _check_number(value):
-    if isinstance(value, (int, float)) and abs(value) > MAX_ABS_NUMBER:
+    # `not <=` també rebutja inf i nan.
+    if isinstance(value, (int, float)) and not abs(value) <= MAX_ABS_NUMBER:
         raise FormulaError('too_big')
     return value
 
@@ -236,9 +239,15 @@ def _parse(formula, variables):
     expression = _VARIABLE_RE.sub(to_name, formula.strip())
     try:
         tree = ast.parse(expression, mode='eval')
-        _check(tree, names)
     except SyntaxError as e:
         raise FormulaError('syntax', e.msg) from e
+    except ValueError as e:
+        # Python 3.10: un caràcter NUL dona ValueError en lloc de SyntaxError.
+        raise FormulaError('syntax', str(e)) from e
+    except RecursionError as e:
+        raise FormulaError('too_nested') from e
+    try:
+        _check(tree, names)
     except RecursionError as e:
         raise FormulaError('too_nested') from e
     return tree, names
@@ -252,7 +261,8 @@ def evaluate(formula, variables):
     """
     tree, names = _parse(formula, variables)
     try:
-        return _eval(tree, names)
+        # També el resultat final: una variable sola o -%x no passen per cap altra comprovació.
+        return _check_number(_eval(tree, names))
     except FormulaError:
         raise
     except (ArithmeticError, TypeError, ValueError, RecursionError) as e:
