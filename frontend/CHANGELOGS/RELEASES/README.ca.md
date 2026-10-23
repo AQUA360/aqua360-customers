@@ -2,6 +2,8 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
+> **Històric fins a la `v1.135.02`.** Des d'aleshores hi ha una sola versió per a tot el monorepo i les seccions de versió, baseline i càlcul d'aquest document ja no s'apliquen. La política vigent, incloses les regles dels changelogs, és a [`RELEASES/README.ca.md`](../../../RELEASES/README.ca.md). Les notes antigues es conserven.
+
 Aquest document alinea el versionat del frontend amb el del backend: **Conventional Commits + SemVer**, sense inflar el MINOR amb canvis petits.
 
 ## Format de versió
@@ -102,9 +104,9 @@ Exemple:
    FEAT  → 1.52.00   (el PATCH es reinicia)
 ```
 
-## Deliverables de release
+## Deliverables de release (històric)
 
-Quan es tanqui un període, crear:
+Fins a la `v1.135.02`, quan es tancava un període es creaven els fitxers següents. Ara les notes van a [`RELEASES/`](../../../RELEASES/README.ca.md):
 
 - `CHANGELOGS/RELEASES/<versió>.{ca,es,en}.md` — notes de release (metodologia, taula dia→versió, highlights)
 - Opcional: `CHANGELOGS/RELEASES/PLAN_RELEASE_<versió>.{ca,es,en}.md` — pla/checklist
