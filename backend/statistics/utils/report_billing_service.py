@@ -4869,22 +4869,39 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
             _("Titular"),
             _("Import"),
             _("Consum registrat"),
+            _("Consum pendent"),
             _("Altres consums"),
             _("Consum facturat"),
             ]
         row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
+        
+        def _get_close_readings(readings):
+            from billing.utils.invoice_service import get_close_previous_reading, get_close_previous_previous_reading
+            close_readings = []
+            for reading in readings:
+                close_reading = get_close_previous_reading(reading)
+                if not close_reading:
+                    close_reading = get_close_previous_previous_reading(reading)
+                if close_reading:
+                    close_readings.append(close_reading)
+            return close_readings
+            
 
         total_invoices_progress = invoices.count()
         for idx_invoice, invoice in enumerate(invoices, start=1):
             report_progress(task, idx_invoice, total_invoices_progress)
+            
+            close_readings = _get_close_readings(invoice.readings.all())
+            
             row_data = [
                 str(invoice.contract.supply_point_default.address) if invoice.contract and invoice.contract.supply_point_default and invoice.contract.supply_point_default.address else "",
                 invoice.contract.token if invoice.contract else "",
                 invoice.customer_final if invoice.customer_final else "",
                 invoice.total_final,
+                sum(reading.real_consumption for reading in close_readings) if close_readings else 0,
                 invoice.readings.filter(is_estimated=False).aggregate(total_consumption=Sum('real_consumption'))['total_consumption'] or 0,
                 invoice.readings.filter(is_estimated=True).aggregate(total_consumption=Sum('calculated_value'))['total_consumption'] or 0,
-                invoice.real_consumption
+                invoice.real_consumption if invoice.real_consumption else invoice.consumption if invoice.consumption else 0
             ]
             row = add_row(sheet, row, row_data)
 
