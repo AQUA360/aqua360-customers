@@ -32,6 +32,9 @@ const paymentAmount = ref(null)
 const selectedPaymentMethod = ref(null);
 const selectedBankDebit = ref(null);
 
+const newPayerName = ref(null);
+const newPayerNIF = ref(null);
+
 const availableBalance = computed(() => {
     return depositData.value.contract_piggy_bank;
 });
@@ -82,6 +85,8 @@ const save = async () => {
             payment_bank: selectedBankDebit.value || null,
             payment_bank_final: selectedBankDebit.value?.iban || null,
             payment_swift_final: selectedBankDebit.value?.swift || null,
+            new_payer_name: newPayerName.value && newPayerNIF.value ? newPayerName.value : null,
+            new_payer_nif: newPayerName.value && newPayerNIF.value ? newPayerNIF.value : null,
             is_guide: false,
         };
 
@@ -201,6 +206,19 @@ onMounted(async () => {
                             {{ $t('common.select') }} {{ $t('common.iban') }}
                         </ButtonSeleccio>
                     </div>
+                </div>
+
+                <div class="mb-2">
+                    <label class="block text-sm font-medium text-slate-500 mb-2">
+                        {{ t('billing_block.new_payer_name') }} ({{ $t('common.optional') }})
+                    </label>
+                    <input type="text" v-model="newPayerName" class="input" />
+                </div>
+                <div class="mb-2">
+                    <label class="block text-sm font-medium text-slate-500 mb-2">
+                        {{ t('billing_block.new_payer_nif') }} ({{ $t('common.optional') }})
+                    </label>
+                    <input type="text" v-model="newPayerNIF" class="input" />
                 </div>
             </div>
             <hr />
