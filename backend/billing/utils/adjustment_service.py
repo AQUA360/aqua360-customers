@@ -1,14 +1,12 @@
 import contextlib
 import contextvars
 import datetime
-import os
-import math
-import random
 import logging
 
 from billing.models import Invoice
 from contract.models import VariableType
 from pricing.models import AdjustmentCondition, AdjustmentIntervalStretch
+from pricing.utils.formula_evaluator import FormulaError, evaluate
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -21,17 +19,10 @@ def calc_consumption_responsible(contract, consumption):
     return True if ( (consumption / contract.total_persons) < 100) else False
 
 def evaluate_formula(formula, variables):
-    """Substitutes variables into the formula and evaluates the resulting expression."""
-    # Sort variables by length (longest first) to avoid partial replacements
-    sorted_variables = sorted(variables.items(), key=lambda x: len(x[0]), reverse=True)
-    expression = formula
-    for key, value in sorted_variables:
-        expression = expression.replace(f'%{key}', str(value))
+    """Avalua la fórmula amb els valors de les variables (vegeu pricing.utils.formula_evaluator)."""
     try:
-        result = eval(expression)
-        # logger.debug("Evaluated formula '%s' with result: %s", formula, result)
-        return result
-    except Exception as e:
+        return evaluate(formula, variables)
+    except FormulaError as e:
         # La fórmula sense substituir: els valors són dades del contracte.
         logger.error(f"Error evaluating adj formula {formula}: {e}")
         return False
