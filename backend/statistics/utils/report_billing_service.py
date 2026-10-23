@@ -22,7 +22,7 @@ from billing.utils.aca_company_service import ACACompanyError, get_records_compa
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
-from contract.models import Contract, ContractUseType
+from contract.models import Contract, ContractLog, ContractUseType
 from coredata.models import ConfigProject, Person
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.other_utils import round_ceil
@@ -485,7 +485,7 @@ def _social_adjustment_ids():
 def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font, task=None):
     """
     Resum de facturació (com get_report_billing_summary) agrupat per producte i, dins
-    de cada producte, per tipus d'ús del contracte, amb el detall per concepte, tarifa,
+    de cada producte, per tipus d'ús del contracte (el que tenia quan es va generar la factura), amb el detall per concepte, tarifa,
     tram, si el tram està ampliat, si la línia té tarifa social i preu unitari. Els totals per producte quadren amb el resum. Acaba amb el
     resum de l'IVA.
     """
@@ -533,10 +533,41 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             type__token__in=aca_tram_members_variable_tokens(),
         ).exclude(value__isnull=True).exclude(value__in=['', '0'])
 
+        # Tipus d'ús del contracte quan es va generar la factura, segons l'historial
+        # (ContractLog desa el nom del tipus d'ús): el valor nou de l'últim canvi anterior
+        # o, si no n'hi ha, el valor antic del primer canvi posterior. Sense canvis, el
+        # tipus d'ús actual del contracte.
+        use_type_logs = ContractLog.objects.filter(contract=OuterRef('invoice__contract'), field_name='use_type')
+        use_type_log_before = use_type_logs.filter(created_at__lte=OuterRef('invoice__created_at')).order_by('-created_at', '-id')
+        use_type_log_after = use_type_logs.filter(created_at__gt=OuterRef('invoice__created_at')).order_by('created_at', 'id')
+
         active_line_items = InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True).annotate(
+            has_use_type_log_before=Exists(use_type_log_before),
+            has_use_type_log_after=Exists(use_type_log_after),
+        ).annotate(
+            use_type_log_name=Case(
+                When(has_use_type_log_before=True, then=Subquery(use_type_log_before.values('new_value')[:1])),
+                When(has_use_type_log_after=True, then=Subquery(use_type_log_after.values('old_value')[:1])),
+                default=Value(None),
+                output_field=CharField(),
+            ),
+        ).annotate(
             concept_name=Coalesce('line_item_type__name', 'name'),
             is_social=Exists(social_adjustments),
-            use_type_id=F('invoice__contract__use_type_id'),
+            use_type_id=Case(
+                When(
+                    Q(has_use_type_log_before=True) | Q(has_use_type_log_after=True),
+                    # Si el nom ja no existeix (tipus d'ús reanomenat), el tipus d'ús actual.
+                    then=Case(
+                        When(use_type_log_name__isnull=True, then=Value(None)),
+                        default=Coalesce(
+                            Subquery(ContractUseType.objects.filter(name=OuterRef('use_type_log_name')).order_by('id').values('id')[:1]),
+                            F('invoice__contract__use_type_id'),
+                        ),
+                    ),
+                ),
+                default=F('invoice__contract__use_type_id'),
+            ),
             configured_end_stretch=configured_end_stretch,
             has_members_variable=Exists(members_variables),
             # Preu unitari aplicat (en valor absolut: els abonaments el desen en negatiu).
