@@ -3148,6 +3148,8 @@ export default {
     info_return_payments_no_action: 'Marcaranse todos os pagos como devoltos e as facturas como confirmadas.',
     info_select_claim_invoice: 'Selecciona para xerar unha factura de reclamación',
     info_select_claim_mng: 'Selecciona para xerar unha xestión de impagos',
+    info_return_method_changed: 'Cobrada por domiciliación e despois cambiada de método: devolverase a domiciliación e quedará pagada polo método actual',
+    info_paid_invoice_payment_method_locked: 'A factura xa está pagada: para cambiar o seu método de pagamento, primeiro hai que devolvela e volver pagala',
     info_must_accept_first: 'Debes aceptar a solicitude primeiro para poder finalizala',
     info_redo_leak: 'O consumo real restarase do consumo total, marcando o resto como fuga.\nTraballase co consumo real do contador, NON co consumo específico do contrato.',
     info_operation_var: 'O valor da variable multiplicarase pola variable de cálculo seleccionada',

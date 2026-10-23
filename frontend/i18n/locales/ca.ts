@@ -3278,6 +3278,8 @@ export default {
     info_return_payments_no_action: 'Es marcaran tots els pagaments com a retornats i les factures com a confirmades.',
     info_select_claim_invoice: 'Selecciona per a generar una factura de reclamació',
     info_select_claim_mng: 'Selecciona per a generar una gestió d\'impagats',
+    info_return_method_changed: 'Cobrada per domiciliació i després canviada de mètode: es retornarà la domiciliació i quedarà pagada pel mètode actual',
+    info_paid_invoice_payment_method_locked: 'La factura ja està pagada: per canviar-ne el mètode de pagament, primer cal fer-ne el retorn i tornar-la a pagar',
     info_must_accept_first: 'Has d\'acceptar la sol·licitud abans de poder finalitzar-la',
     info_redo_leak: 'El consum real es restarà del consum total, marcant el restant com a fuita.\nEs treballa amb el consum real del comptador, NO amb el consum específic del contracte.',
     info_operation_var: 'El valor de la variable es multiplicarà per la variable de càlcul seleccionada',
