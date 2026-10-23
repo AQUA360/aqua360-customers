@@ -2,7 +2,7 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
-> **Històric fins a la `v1.135.02`.** Des d'aleshores hi ha una sola versió per a tot el monorepo: vegeu [`RELEASES/`](../../../RELEASES/README.ca.md). Les notes antigues es conserven.
+> **Històric fins a la `v1.135.02`.** Des d'aleshores hi ha una sola versió per a tot el monorepo i les seccions de versió, baseline i càlcul d'aquest document ja no s'apliquen. La política vigent, incloses les regles dels changelogs, és a [`RELEASES/README.ca.md`](../../../RELEASES/README.ca.md). Les notes antigues es conserven.
 
 Aquest document alinea el versionat del frontend amb el del backend: **Conventional Commits + SemVer**, sense inflar el MINOR amb canvis petits.
 

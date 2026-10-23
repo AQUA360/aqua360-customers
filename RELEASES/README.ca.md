@@ -50,11 +50,12 @@ Els `CURRENT_CHANGELOG.ca.md` es mantenen separats per àrea, perquè cada equip
 3. **Tancar els changelogs** de backend i frontend (i l'arxiu mensual si ha canviat el mes).
 4. **Notes** a `RELEASES/<versió>.{ca,es,en}.md` amb la plantilla de sota. Les tres llengües diuen el mateix.
 5. **Commit** `release: v<versió>` i PR `release/<versió>` → `main`, revisada i fusionada a mà.
-6. **Tag anotat** sobre el commit de fusió de `main`:
+6. **Tag anotat** sobre el commit de fusió de la PR de release a `main` (no sobre la punta de `main`, que pot haver rebut commits posteriors):
 
 ```bash
-git checkout main && git pull
-git tag -a v<versió> -m "Release v<versió>"
+git fetch origin main --tags
+SHA=$(gh pr view <núm. PR> --json mergeCommit --jq .mergeCommit.oid)
+git tag -a v<versió> "$SHA" -m "Release v<versió>"
 git push origin v<versió>
 ```
 
@@ -67,7 +68,7 @@ gh release create v<versió> --verify-tag --title "v<versió>" --notes-file RELE
 8. **PR `main` → `develop`** perquè les notes i qualsevol hotfix tornin a `develop`.
 9. **Desplegar** sempre des del tag (`CUSTOMERS_VERSION=v<versió>`), mai des d'un commit de `main` sense tag.
 
-Un hotfix surt de `main`, puja el PATCH i segueix els passos 4 a 8.
+Un hotfix surt de `main`, puja el PATCH i segueix els passos 4 a 9.
 
 ## Fitxers
 

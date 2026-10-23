@@ -2,11 +2,11 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
-> **History up to `v1.135.02`.** Since then there is a single version for the whole monorepo: see [`RELEASES/`](../../../RELEASES/README.en.md). Older notes are kept.
+> **History up to `v1.135.02`.** Since then there is a single version for the whole monorepo, and the version, baseline and calculation sections of this document no longer apply. The current policy, including the changelog rules, is in [`RELEASES/README.en.md`](../../../RELEASES/README.en.md). Older notes are kept.
 
 This folder holds the plan and notes for each backend release.
 
-## CHANGELOG convention (from now on)
+## CHANGELOG convention
 
 Daily changelog sections map to Conventional Commits and SemVer:
 
@@ -59,4 +59,4 @@ Daily changelog sections map to Conventional Commits and SemVer:
 
 This folder versions only the **backend component**.
 
-The git tag and joint version (backend + frontend) are documented in [`RELEASES/README.en.md`](../../../RELEASES/README.en.md) at the monorepo root (`product = max(backend, frontend)`).
+Since `v1.135.02`, the git tag and the single monorepo version are calculated by combining the backend and frontend changelogs according to [`RELEASES/README.en.md`](../../../RELEASES/README.en.md).

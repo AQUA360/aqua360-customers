@@ -2,7 +2,7 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
-> **History up to `v1.135.02`.** Since then there is a single version for the whole monorepo: see [`RELEASES/`](../../../RELEASES/README.en.md). Older notes are kept.
+> **History up to `v1.135.02`.** Since then there is a single version for the whole monorepo, and the version, baseline and calculation sections of this document no longer apply. The current policy, including the changelog rules, is in [`RELEASES/README.en.md`](../../../RELEASES/README.en.md). Older notes are kept.
 
 This document aligns frontend versioning with the backend: **Conventional Commits + SemVer**, without inflating MINOR for small changes.
 

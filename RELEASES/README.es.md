@@ -50,11 +50,12 @@ Los `CURRENT_CHANGELOG.ca.md` se mantienen separados por área, porque cada equi
 3. **Cerrar los changelogs** de backend y frontend (y el archivo mensual si ha cambiado el mes).
 4. **Notas** en `RELEASES/<versión>.{ca,es,en}.md` con la plantilla de abajo. Las tres lenguas dicen lo mismo.
 5. **Commit** `release: v<versión>` y PR `release/<versión>` → `main`, revisada y fusionada a mano.
-6. **Tag anotado** sobre el commit de fusión de `main`:
+6. **Tag anotado** sobre el commit de fusión de la PR de release en `main` (no sobre la punta de `main`, que puede haber recibido commits posteriores):
 
 ```bash
-git checkout main && git pull
-git tag -a v<versión> -m "Release v<versión>"
+git fetch origin main --tags
+SHA=$(gh pr view <núm. PR> --json mergeCommit --jq .mergeCommit.oid)
+git tag -a v<versión> "$SHA" -m "Release v<versión>"
 git push origin v<versión>
 ```
 
@@ -67,7 +68,7 @@ gh release create v<versión> --verify-tag --title "v<versión>" --notes-file RE
 8. **PR `main` → `develop`** para que las notas y cualquier hotfix vuelvan a `develop`.
 9. **Desplegar** siempre desde el tag (`CUSTOMERS_VERSION=v<versión>`), nunca desde un commit de `main` sin tag.
 
-Un hotfix sale de `main`, sube el PATCH y sigue los pasos 4 a 8.
+Un hotfix sale de `main`, sube el PATCH y sigue los pasos 4 a 9.
 
 ## Ficheros
 

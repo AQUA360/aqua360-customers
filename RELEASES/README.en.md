@@ -50,11 +50,12 @@ The `CURRENT_CHANGELOG.ca.md` files stay separate per area, because each team wr
 3. **Close the changelogs** for backend and frontend (and the monthly archive if the month changed).
 4. **Notes** in `RELEASES/<version>.{ca,es,en}.md` using the template below. All three languages say the same.
 5. **Commit** `release: v<version>` and PR `release/<version>` → `main`, reviewed and merged by hand.
-6. **Annotated tag** on the merge commit in `main`:
+6. **Annotated tag** on the release PR's merge commit in `main` (not on the tip of `main`, which may have received later commits):
 
 ```bash
-git checkout main && git pull
-git tag -a v<version> -m "Release v<version>"
+git fetch origin main --tags
+SHA=$(gh pr view <PR number> --json mergeCommit --jq .mergeCommit.oid)
+git tag -a v<version> "$SHA" -m "Release v<version>"
 git push origin v<version>
 ```
 
@@ -67,7 +68,7 @@ gh release create v<version> --verify-tag --title "v<version>" --notes-file RELE
 8. **PR `main` → `develop`** so the notes and any hotfix return to `develop`.
 9. **Deploy** always from the tag (`CUSTOMERS_VERSION=v<version>`), never from an untagged `main` commit.
 
-A hotfix branches from `main`, bumps the PATCH and follows steps 4 to 8.
+A hotfix branches from `main`, bumps the PATCH and follows steps 4 to 9.
 
 ## Files
 

@@ -2,11 +2,11 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
-> **Històric fins a la `v1.135.02`.** Des d'aleshores hi ha una sola versió per a tot el monorepo: vegeu [`RELEASES/`](../../../RELEASES/README.ca.md). Les notes antigues es conserven.
+> **Històric fins a la `v1.135.02`.** Des d'aleshores hi ha una sola versió per a tot el monorepo i les seccions de versió, baseline i càlcul d'aquest document ja no s'apliquen. La política vigent, incloses les regles dels changelogs, és a [`RELEASES/README.ca.md`](../../../RELEASES/README.ca.md). Les notes antigues es conserven.
 
 Aquesta carpeta guarda el pla i les notes de cada release del backend.
 
-## Convenció del CHANGELOG (a partir d’ara)
+## Convenció del CHANGELOG
 
 Les seccions del changelog diari mapejen a Conventional Commits i SemVer:
 
@@ -59,4 +59,4 @@ Les seccions del changelog diari mapejen a Conventional Commits i SemVer:
 
 Aquesta carpeta versiona només el **component backend**.
 
-El tag git i la versió conjunta (backend + frontend) es documenten a [`RELEASES/README.ca.md`](../../../RELEASES/README.ca.md) a l’arrel del monorepo (`product = max(backend, frontend)`).
+Des de la `v1.135.02`, el tag git i la versió única del monorepo es calculen combinant els changelogs de backend i frontend segons [`RELEASES/README.ca.md`](../../../RELEASES/README.ca.md).
