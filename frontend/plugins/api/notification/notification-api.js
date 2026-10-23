@@ -32,7 +32,7 @@ export default defineNuxtPlugin(nuxtApp => {
     }
 
     const checkNewNotifications = async () => {
-      let apiUrl = apiHost + entity + '?is_seen=false&is_active=true';
+      let apiUrl = apiHost + entity + '?is_seen=false&is_archived=false';
       try {
         const response = await $apiManager.fetch(apiUrl, 'GET')
         if (response.results) {
