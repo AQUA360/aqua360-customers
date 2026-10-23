@@ -104,9 +104,9 @@ Example:
    FEAT  → 1.52.00   (PATCH resets)
 ```
 
-## Release deliverables
+## Release deliverables (history)
 
-When closing a period, create:
+Up to `v1.135.02`, closing a period created the following files. Release notes now go to [`RELEASES/`](../../../RELEASES/README.en.md):
 
 - `CHANGELOGS/RELEASES/<version>.{ca,es,en}.md` — release notes (methodology, day→version table, highlights)
 - Optional: `CHANGELOGS/RELEASES/PLAN_RELEASE_<version>.{ca,es,en}.md` — plan/checklist

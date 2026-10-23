@@ -4,7 +4,7 @@
 
 > **Histórico hasta la `v1.135.02`.** Desde entonces hay una sola versión para todo el monorepo y las secciones de versión, baseline y cálculo de este documento ya no se aplican. La política vigente, incluidas las reglas de los changelogs, está en [`RELEASES/README.es.md`](../../../RELEASES/README.es.md). Las notas antiguas se conservan.
 
-Esta carpeta guarda el plan y las notas de cada release del backend.
+Esta carpeta guarda el plan y las notas de las releases del backend hasta la `v1.135.02`. Ya no se crean ficheros nuevos: las notas van a [`RELEASES/`](../../../RELEASES/README.es.md).
 
 ## Convención del CHANGELOG
 
@@ -52,11 +52,11 @@ Las secciones del changelog diario mapean a Conventional Commits y SemVer:
 
 | Archivo | Contenido |
 |---|---|
-| `<versión>.{ca,es,en}.md` | Notas de release concretas |
+| `<versión>.{ca,es,en}.md` | Notas de release históricas (hasta la `v1.135.02`) |
 | `README.md` | Índice de idiomas |
 
 ## Release de producto (monorepo)
 
-Esta carpeta versiona solo el **componente backend**.
+Hasta la `v1.135.02`, esta carpeta versionaba solo el **componente backend**.
 
 Desde la `v1.135.02`, el tag git y la versión única del monorepo se calculan combinando los changelogs de backend y frontend según [`RELEASES/README.es.md`](../../../RELEASES/README.es.md).

@@ -104,9 +104,9 @@ Ejemplo:
    FEAT  → 1.52.00   (el PATCH se reinicia)
 ```
 
-## Entregables de release
+## Entregables de release (histórico)
 
-Cuando se cierre un periodo, crear:
+Hasta la `v1.135.02`, al cerrar un periodo se creaban los ficheros siguientes. Ahora las notas van a [`RELEASES/`](../../../RELEASES/README.es.md):
 
 - `CHANGELOGS/RELEASES/<versión>.{ca,es,en}.md` — notas de release (metodología, tabla día→versión, highlights)
 - Opcional: `CHANGELOGS/RELEASES/PLAN_RELEASE_<versión>.{ca,es,en}.md` — plan/checklist

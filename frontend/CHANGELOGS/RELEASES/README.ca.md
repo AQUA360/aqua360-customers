@@ -104,9 +104,9 @@ Exemple:
    FEAT  → 1.52.00   (el PATCH es reinicia)
 ```
 
-## Deliverables de release
+## Deliverables de release (històric)
 
-Quan es tanqui un període, crear:
+Fins a la `v1.135.02`, quan es tancava un període es creaven els fitxers següents. Ara les notes van a [`RELEASES/`](../../../RELEASES/README.ca.md):
 
 - `CHANGELOGS/RELEASES/<versió>.{ca,es,en}.md` — notes de release (metodologia, taula dia→versió, highlights)
 - Opcional: `CHANGELOGS/RELEASES/PLAN_RELEASE_<versió>.{ca,es,en}.md` — pla/checklist
