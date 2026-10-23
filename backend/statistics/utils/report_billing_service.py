@@ -4898,8 +4898,8 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
                 invoice.contract.token if invoice.contract else "",
                 invoice.customer_final if invoice.customer_final else "",
                 invoice.total_final,
-                sum(reading.real_consumption for reading in close_readings) if close_readings else 0,
                 invoice.readings.filter(is_estimated=False).aggregate(total_consumption=Sum('real_consumption'))['total_consumption'] or 0,
+                sum(reading.real_consumption for reading in close_readings) if close_readings else 0,
                 invoice.readings.filter(is_estimated=True).aggregate(total_consumption=Sum('calculated_value'))['total_consumption'] or 0,
                 invoice.real_consumption if invoice.real_consumption else invoice.consumption if invoice.consumption else 0
             ]
