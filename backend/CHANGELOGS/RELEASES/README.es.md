@@ -2,6 +2,8 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
+> **Histórico hasta la `v1.135.02`.** Desde entonces hay una sola versión para todo el monorepo: ver [`RELEASES/`](../../../RELEASES/README.es.md). Las notas antiguas se conservan.
+
 Esta carpeta guarda el plan y las notas de cada release del backend.
 
 ## Convención del CHANGELOG (a partir de ahora)

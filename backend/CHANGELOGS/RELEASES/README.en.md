@@ -2,6 +2,8 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
+> **History up to `v1.135.02`.** Since then there is a single version for the whole monorepo: see [`RELEASES/`](../../../RELEASES/README.en.md). Older notes are kept.
+
 This folder holds the plan and notes for each backend release.
 
 ## CHANGELOG convention (from now on)

@@ -2,6 +2,8 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
+> **Històric fins a la `v1.135.02`.** Des d'aleshores hi ha una sola versió per a tot el monorepo: vegeu [`RELEASES/`](../../../RELEASES/README.ca.md). Les notes antigues es conserven.
+
 Aquest document alinea el versionat del frontend amb el del backend: **Conventional Commits + SemVer**, sense inflar el MINOR amb canvis petits.
 
 ## Format de versió
