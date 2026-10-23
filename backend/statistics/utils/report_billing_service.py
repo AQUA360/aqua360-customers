@@ -495,8 +495,8 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
         from openpyxl.styles import Alignment, Border, Font, Side
         from billing.models import AppliedAdjustment
         from contract.models import Variable
-        from contract.utils.aca_tram_service import MEMBERS_VARIABLE_TOKEN_HINT
         from pricing.models import PriceIntervalStretch, PriceVariableIntervalStretch
+        from watchdog.aca_config import aca_tram_members_variable_tokens
 
         name = request.data.get('name', '')
         type_id = request.data.get('type_id', None)
@@ -530,7 +530,7 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             Q(start_at__isnull=True) | Q(start_at__lte=OuterRef('invoice__issue_date')),
             Q(end_at__isnull=True) | Q(end_at__gte=OuterRef('invoice__issue_date')),
             contract=OuterRef('invoice__contract'),
-            type__token__icontains=MEMBERS_VARIABLE_TOKEN_HINT,
+            type__token__in=aca_tram_members_variable_tokens(),
         ).exclude(value__isnull=True).exclude(value__in=['', '0'])
 
         active_line_items = InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True).annotate(
