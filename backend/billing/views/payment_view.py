@@ -294,7 +294,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 # Si aquest cobrament ja consta retornat amb el mateix motiu (p. ex. el fitxer es
                 # torna a carregar), no se'n genera un segon retorn: només s'actualitza el motiu
                 return_motive = rejection_motive if rejection_motive else reject
-                previous_returns = payment.movements.filter(current_status=payment_returned_status)
+                previous_returns = payment.movements.filter(is_active=True, current_status=payment_returned_status)
                 if direct_debit_movement:
                     previous_returns = previous_returns.filter(movement_date__gte=direct_debit_movement.movement_date)
                 if return_motive:
@@ -304,6 +304,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 # Si la domiciliació ja té un retorn posterior, sigui quin sigui el motiu, tampoc: el
                 # pagament pot continuar pagat (tornat a cobrar per un altre mètode) i es tornaria dos cops
                 already_returned = direct_debit_movement and payment.movements.filter(
+                    is_active=True,
                     current_status=payment_returned_status,
                     timestamp__gt=direct_debit_movement.timestamp,
                 ).exists()

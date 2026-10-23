@@ -9,6 +9,7 @@ from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
 from logger.models import LogPaymentStatusChange
 from pricing.models import ProductOrigin
+from django.db import transaction
 from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 
@@ -345,22 +346,25 @@ def generate_method_change_rejection_movements(payment, returned_status, rejecti
     # Retorn d'una domiciliació d'un pagament que ja consta pagat per un altre mètode: es retorna
     # la domiciliació (moviment negatiu) i es torna a cobrar amb el mètode actual (moviment positiu),
     # com si s'hagués fet el retorn abans del canvi. El pagament i la factura continuen pagats.
+    # Tot o res: un retorn sense el nou cobrament deixaria el pagament pagat amb la domiciliació
+    # retornada, i un nou intent ja no el tornaria a cobrar perquè la domiciliació consta retornada
     paid_status = payment.status
-    log_payment_status(payment, returned_status, user, rejection_date, 'DIRECT_DEBIT')
-    generate_payment_movement(
-        payment, returned_status,
-        rejection_date, 'DIRECT_DEBIT',
-        payment_bank, user,
-        reject_motive, payment_remittance)
-    payment.status = returned_status
-    try:
-        log_payment_status(payment, paid_status, user, rejection_date)
+    with transaction.atomic():
+        log_payment_status(payment, returned_status, user, rejection_date, 'DIRECT_DEBIT')
         generate_payment_movement(
-            payment, paid_status,
-            rejection_date, payment.payment_type_token,
-            payment.payment_bank, user)
-    finally:
-        payment.status = paid_status
+            payment, returned_status,
+            rejection_date, 'DIRECT_DEBIT',
+            payment_bank, user,
+            reject_motive, payment_remittance)
+        payment.status = returned_status
+        try:
+            log_payment_status(payment, paid_status, user, rejection_date)
+            generate_payment_movement(
+                payment, paid_status,
+                rejection_date, payment.payment_type_token,
+                payment.payment_bank, user)
+        finally:
+            payment.status = paid_status
 
 def log_invoice_status(invoice, invoice_status, current_user=None):
     if not current_user:

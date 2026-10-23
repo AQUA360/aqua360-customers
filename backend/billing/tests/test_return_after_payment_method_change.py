@@ -1,6 +1,7 @@
 import json
 from datetime import date
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -10,8 +11,9 @@ from rest_framework.test import APIClient
 from billing.models import (
     CommitmentDepositStatus, Invoice, InvoiceStatus, Payment, PaymentCommitmentStatus, PaymentStatus, RejectMotive,
 )
+from billing.utils import payment_service
 from billing.utils.payment_service import (
-    disconnect_payment_signals, generate_payment_movement, get_unreturned_direct_debit_movement,
+    disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_unreturned_direct_debit_movement,
     is_paid_by_direct_debit_with_other_method, reconnect_payment_signals,
 )
 from billing.utils.sepa_service import handle_not_found_payment
@@ -216,6 +218,34 @@ class TestManageRejectionAfterMethodChange(ReturnAfterPaymentMethodChangeBase):
         self.invoice.refresh_from_db()
         self.assertEqual(self.payment.status.token, '0')
         self.assertEqual(self.invoice.status.token, 'PAID')
+
+    def test_inactive_return_does_not_block_the_return(self):
+        self.change_method_to_cash()
+        self.post_return()
+        # S'anul·la el retorn: només queda actiu el cobrament per domiciliació
+        self.payment.movements.exclude(payment_type__token='DIRECT_DEBIT', current_status__token='0').update(is_active=False)
+
+        self.post_return()
+
+        self.assertEqual(self.payment.movements.filter(is_active=True).count(), 3)
+
+    def test_failed_new_collection_rolls_back_the_return(self):
+        self.change_method_to_cash()
+        real_generate = payment_service.generate_payment_movement
+
+        def fail_on_new_collection(payment, payment_status, *args, **kwargs):
+            if payment_status == self.payment_status['0']:
+                raise Exception('error')
+            return real_generate(payment, payment_status, *args, **kwargs)
+
+        with mock.patch.object(payment_service, 'generate_payment_movement', side_effect=fail_on_new_collection):
+            with self.assertRaises(Exception):
+                generate_method_change_rejection_movements(
+                    self.payment, self.payment_status['-2'], date(2026, 9, 9),
+                    self.payment.payment_bank, self.user, self.motive)
+
+        self.assertEqual(self.payment.movements.count(), 1)
+        self.assertEqual(self.payment.status.token, '0')
 
     def test_return_with_main_motive_saves_reject_date(self):
         self.change_method_to_cash()
