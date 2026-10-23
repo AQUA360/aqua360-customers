@@ -301,7 +301,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     previous_returns = previous_returns.filter(reject_motive=return_motive)
                 else:
                     previous_returns = previous_returns.filter(reject_motive__isnull=True)
-                if previous_returns.exists():
+                # Si la domiciliació ja té un retorn posterior, sigui quin sigui el motiu, tampoc: el
+                # pagament pot continuar pagat (tornat a cobrar per un altre mètode) i es tornaria dos cops
+                already_returned = direct_debit_movement and payment.movements.filter(
+                    current_status=payment_returned_status,
+                    timestamp__gt=direct_debit_movement.timestamp,
+                ).exists()
+                if previous_returns.exists() or already_returned:
                     skip_return = True
 
                 if not skip_return and ((payment.status.token == payment_paid_token and ((payment.invoice and payment.invoice.status and payment.invoice.status.token == invoice_paid_token) or payment.commitment_deposit)) or (payment.status.token == payment_cancelled_token)):
@@ -316,6 +322,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             direct_debit_movement.payment_bank if direct_debit_movement and direct_debit_movement.payment_bank else payment.payment_bank, request.user,
                             return_motive,
                             payment.remittances.filter(sent_at__isnull=False).order_by('-sent_at').first())
+                        payment.reject_date = rjt_date
                     elif not last_movement or last_movement.current_status.token == payment_paid_token:
                         movement_date = rjt_date
                         log_payment_status(payment, payment_returned_status, request.user, movement_date)

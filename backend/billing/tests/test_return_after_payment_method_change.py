@@ -69,6 +69,7 @@ class ReturnAfterPaymentMethodChangeBase(TestCase):
         cls.direct_debit = PaymentType.objects.create(token='DIRECT_DEBIT', name='Domiciliació')
         cls.cash = PaymentType.objects.create(token='CASH', name='Efectiu')
         cls.motive = RejectMotive.objects.create(token='AM04', name='Fons insuficients')
+        cls.other_motive = RejectMotive.objects.create(token='MD06', name='Retorn a petició del deutor')
         cls.user = get_user_model().objects.create_superuser(username='admin-retorn', password='x')
 
     def setUp(self):
@@ -149,19 +150,22 @@ class TestSepaReturnFileAfterMethodChange(ReturnAfterPaymentMethodChangeBase):
 
 class TestManageRejectionAfterMethodChange(ReturnAfterPaymentMethodChangeBase):
 
-    def post_return(self):
+    def post_return(self, motive=None, main_motive=None):
         client = APIClient()
         client.force_authenticate(self.user)
-        rejections = [{
-            'id': self.payment.id, 'motive_id': self.motive.id, 'motive': self.motive.name,
-            'skip_return': False, 'rjt_dt': '2026-09-09',
-        }]
-        return client.post(reverse('payment-manage-rejection-payments'), {
-            'payments_to_return': json.dumps(rejections),
+        rejection = {'id': self.payment.id, 'skip_return': False, 'rjt_dt': '2026-09-09'}
+        if not main_motive:
+            motive = motive or self.motive
+            rejection.update({'motive_id': motive.id, 'motive': motive.name})
+        data = {
+            'payments_to_return': json.dumps([rejection]),
             'return_payments': json.dumps([self.payment.id]),
             'claim_payments': json.dumps([self.payment.id]),
             'return_date': '2026-09-09',
-        }, format='multipart')
+        }
+        if main_motive:
+            data['main_return_reason'] = main_motive.id
+        return client.post(reverse('payment-manage-rejection-payments'), data, format='multipart')
 
     def test_return_creates_direct_debit_return_and_new_method_payment(self):
         self.change_method_to_cash()
@@ -199,6 +203,29 @@ class TestManageRejectionAfterMethodChange(ReturnAfterPaymentMethodChangeBase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.payment.movements.count(), 3)
+
+    def test_reloading_the_return_with_other_motive_does_not_return_it_again(self):
+        self.change_method_to_cash()
+        self.post_return()
+
+        response = self.post_return(motive=self.other_motive)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.payment.movements.count(), 3)
+        self.payment.refresh_from_db()
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.payment.status.token, '0')
+        self.assertEqual(self.invoice.status.token, 'PAID')
+
+    def test_return_with_main_motive_saves_reject_date(self):
+        self.change_method_to_cash()
+
+        response = self.post_return(main_motive=self.motive)
+
+        self.assertEqual(response.status_code, 200)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.reject_date, date(2026, 9, 9))
+        self.assertEqual(self.payment.movements.get(current_status__token='-2').reject_motive, self.motive)
 
 
 class TestChangePaymentMethodOfPaidInvoice(ReturnAfterPaymentMethodChangeBase):
