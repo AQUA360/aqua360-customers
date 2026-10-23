@@ -4,7 +4,7 @@
 
 > **History up to `v1.135.02`.** Since then there is a single version for the whole monorepo, and the version, baseline and calculation sections of this document no longer apply. The current policy, including the changelog rules, is in [`RELEASES/README.en.md`](../../../RELEASES/README.en.md). Older notes are kept.
 
-This folder holds the plan and notes for each backend release.
+This folder holds the plan and notes for backend releases up to `v1.135.02`. No new files are created here: notes go to [`RELEASES/`](../../../RELEASES/README.en.md).
 
 ## CHANGELOG convention
 
@@ -52,11 +52,11 @@ Daily changelog sections map to Conventional Commits and SemVer:
 
 | File | Content |
 |---|---|
-| `<version>.{ca,es,en}.md` | Concrete release notes |
+| `<version>.{ca,es,en}.md` | Historical release notes (up to `v1.135.02`) |
 | `README.md` | Language index |
 
 ## Product release (monorepo)
 
-This folder versions only the **backend component**.
+Up to `v1.135.02`, this folder versioned only the **backend component**.
 
 Since `v1.135.02`, the git tag and the single monorepo version are calculated by combining the backend and frontend changelogs according to [`RELEASES/README.en.md`](../../../RELEASES/README.en.md).
