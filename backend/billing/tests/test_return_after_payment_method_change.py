@@ -4,6 +4,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.db.models.signals import pre_save
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -11,6 +12,7 @@ from rest_framework.test import APIClient
 from billing.models import (
     CommitmentDepositStatus, Invoice, InvoiceStatus, Payment, PaymentCommitmentStatus, PaymentStatus, RejectMotive,
 )
+from billing.signals import payment_status_changed
 from billing.utils import payment_service
 from billing.utils.payment_service import (
     disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_unreturned_direct_debit_movement,
@@ -233,19 +235,35 @@ class TestManageRejectionAfterMethodChange(ReturnAfterPaymentMethodChangeBase):
         self.change_method_to_cash()
         real_generate = payment_service.generate_payment_movement
 
+        class NewCollectionFailure(Exception):
+            pass
+
         def fail_on_new_collection(payment, payment_status, *args, **kwargs):
             if payment_status == self.payment_status['0']:
-                raise Exception('error')
+                raise NewCollectionFailure()
             return real_generate(payment, payment_status, *args, **kwargs)
 
-        with mock.patch.object(payment_service, 'generate_payment_movement', side_effect=fail_on_new_collection):
-            with self.assertRaises(Exception):
+        with mock.patch.object(payment_service, 'generate_payment_movement', side_effect=fail_on_new_collection) as generate:
+            with self.assertRaises(NewCollectionFailure):
                 generate_method_change_rejection_movements(
                     self.payment, self.payment_status['-2'], date(2026, 9, 9),
                     self.payment.payment_bank, self.user, self.motive)
+        # El retorn s'havia creat i s'ha desfet
+        self.assertEqual(generate.call_count, 2)
 
         self.assertEqual(self.payment.movements.count(), 1)
         self.assertEqual(self.payment.status.token, '0')
+
+    def test_failed_return_reconnects_payment_signals(self):
+        self.change_method_to_cash()
+
+        with mock.patch('billing.views.payment_view.generate_method_change_rejection_movements',
+                        side_effect=RuntimeError('error')):
+            with self.assertRaises(RuntimeError):
+                self.post_return()
+
+        # disconnect() només torna True si el senyal estava connectat
+        self.assertTrue(pre_save.disconnect(payment_status_changed, sender=Payment))
 
     def test_return_with_main_motive_saves_reject_date(self):
         self.change_method_to_cash()

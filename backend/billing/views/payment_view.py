@@ -317,12 +317,18 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     if is_paid_by_direct_debit_with_other_method(payment, rjt_date):
                         # Cobrat per domiciliació i després canviat de mètode sense retorn: es retorna
                         # la domiciliació i es torna a cobrar pel mètode actual; la factura queda pagada
-                        generate_method_change_rejection_movements(
-                            payment, payment_returned_status,
-                            rjt_date,
-                            direct_debit_movement.payment_bank if direct_debit_movement and direct_debit_movement.payment_bank else payment.payment_bank, request.user,
-                            return_motive,
-                            payment.remittances.filter(sent_at__isnull=False).order_by('-sent_at').first())
+                        try:
+                            generate_method_change_rejection_movements(
+                                payment, payment_returned_status,
+                                rjt_date,
+                                direct_debit_movement.payment_bank if direct_debit_movement and direct_debit_movement.payment_bank else payment.payment_bank, request.user,
+                                return_motive,
+                                payment.remittances.filter(sent_at__isnull=False).order_by('-sent_at').first())
+                        except Exception:
+                            # Els senyals són globals del procés: si no es reconnecten, les peticions
+                            # següents desarien pagaments i factures sense moviments ni canvis d'estat
+                            reconnect_payment_signals()
+                            raise
                         payment.reject_date = rjt_date
                     elif not last_movement or last_movement.current_status.token == payment_paid_token:
                         movement_date = rjt_date
