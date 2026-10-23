@@ -1742,6 +1742,9 @@ msgstr "Registered consumption"
 msgid "Altres consums"
 msgstr "Other consumption"
 
+msgid "Consum pendent"
+msgstr "Pending consumption"
+
 msgid "Consum facturat"
 msgstr "Billed consumption"
 
