@@ -63,7 +63,6 @@ const save = async () => {
   // Guardar variables. Abans que els documents: el backend en pot rebutjar alguna
   // (p. ex. el mínim de membres de l'ampliació de trams de l'ACA) i llavors desfem la
   // bonificació que s'acaba de crear perquè no quedi a mitges.
-  const savedVariables = [];
   try {
     for (const variable of variables.value) {
       variable.bonification = bonification.value.id;
@@ -78,13 +77,11 @@ const save = async () => {
         ...(variable.end_at && { end_at: variable.end_at }),
       };
 
-      savedVariables.push(await $VariableApiService.save(save_data));
+      await $VariableApiService.save(save_data);
     }
   } catch (error) {
     if (isNewBonification) {
-      for (const saved of savedVariables) {
-        await $VariableApiService.doDelete(saved);
-      }
+      // En eliminar la bonificació, el backend també n'elimina les variables desades.
       await $BonificationApiService.doDelete(bonification.value);
       bonification.value = null;
     }
