@@ -369,6 +369,10 @@ watch(() => props.search, async (newVal, oldVal) => {
             </div>
 
 
+            <div v-if="$slots['company-filter']" class="mt-3 max-w-md">
+                <slot name="company-filter" />
+            </div>
+
             <div class="grid grid-cols-2 gap-2 mt-3" v-if="data.entity !== 'supplycut'">
                 <div class="col-span-2">
                     <div class="grid gap-4" :class="{

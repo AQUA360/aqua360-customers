@@ -1,120 +1,131 @@
-# Releases de producto (monorepo)
+# Releases (monorepo)
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
-Esta carpeta documenta la **versión conjunta** del producto Aqua360 (backend + frontend) que se despliega junta desde el monorepo.
+Esta carpeta documenta las releases de Aqua360 Customers. Hay **una sola versión** para todo el monorepo (backend, frontend, Docker y documentación): es la que se etiqueta, se publica en GitHub y se despliega.
 
-Las versiones de componente se siguen calculando por separado:
-
-| Componente | Convención SemVer | Notas de release |
-|---|---|---|
-| Backend | [`backend/CHANGELOGS/RELEASES/README.es.md`](../backend/CHANGELOGS/RELEASES/README.es.md) | `backend/CHANGELOGS/RELEASES/<versión>.es.md` |
-| Frontend | [`frontend/CHANGELOGS/RELEASES/README.es.md`](../frontend/CHANGELOGS/RELEASES/README.es.md) | `frontend/CHANGELOGS/RELEASES/<versión>.es.md` |
-
-## Capas de versión
-
-| Capa | Qué es | Dónde | Ejemplo |
-|---|---|---|---|
-| Componente backend | SemVer del changelog BE | `backend/CHANGELOGS/RELEASES/` | `1.72.00` |
-| Componente frontend | SemVer del changelog FE | `frontend/CHANGELOGS/RELEASES/` | `1.73.00` |
-| **Producto** | Versión conjunta etiquetada en git | `RELEASES/` + tag git | `v1.74.00` |
-
-No se fuerza que backend y frontend tengan el mismo número. El tag git representa el **conjunto desplegable** (commit + BE + FE).
+Las versiones de componente (backend `1.135.01`, frontend `1.123.00`) quedan congeladas como histórico en `backend/CHANGELOGS/RELEASES/` y `frontend/CHANGELOGS/RELEASES/`, y no se vuelven a calcular. La primera versión única parte de `1.135.02`.
 
 ## Formato
 
-Mismo formato SemVer con 2 dígitos en MINOR y PATCH:
+`MAJOR.MINOR.PATCH` con 2 dígitos en MINOR y PATCH:
 
 ```
-1.50.00
-1.73.00
-1.74.01
+1.136.00
+1.136.01
 ```
 
-Tag git: prefijo `v` → `v1.74.00`.
+El tag git lleva prefijo `v` → `v1.136.00`.
 
-## Cálculo de la versión de producto
+## Cálculo de la versión
 
-**Regla:** `product = max(backend, frontend)` el día del release (comparación SemVer).
+El bump se calcula **día a día** sobre los dos changelogs juntos (`backend/CHANGELOGS/CURRENT_CHANGELOG.ca.md` y `frontend/CHANGELOGS/CURRENT_CHANGELOG.ca.md`), desde el último tag. Para cada día cuenta el tipo más alto de los dos ficheros:
 
-Ejemplos:
-
-| Backend | Frontend | Producto |
+| Sección del changelog | Conventional Commit | Bump |
 |---|---|---|
-| `1.72.00` | `1.73.00` | `1.73.00` |
-| `1.75.02` | `1.74.00` | `1.75.02` |
-| `1.80.00` | `1.80.00` | `1.80.00` |
+| `### BREAKING` | `BREAKING CHANGE` | **MAJOR** (+1, MINOR y PATCH = `00`) |
+| `### FEAT` | `feat` | **MINOR** (+1, PATCH = `00`) |
+| `### FIX` | `fix` | **PATCH** (+1) |
+| `### CHORE` | `chore` / `docs` / `ci` | **PATCH** (+1) |
+| `### MODIFIED` | `refactor` / `perf` | **PATCH** (+1) |
 
-Si hace falta un bump de producto sin cambio de componentes (p. ej. solo `docker-compose`, docs de ops), se puede subir el PATCH de producto manualmente y documentarlo en las notas.
+Ejemplo: si el 20-10 el backend tiene `FIX` y el frontend `FEAT`, ese día cuenta como `FEAT`.
 
-## Flujo práctico de release
+- Si solo cambian Docker, CI o documentación de operaciones, se sube el PATCH.
+- Si el número que toca ya tiene tag, se salta al siguiente y se explica en las notas.
 
-1. **Cerrar backend** — calcular SemVer BE y crear `backend/CHANGELOGS/RELEASES/<be>.{ca,es,en}.md`.
-2. **Cerrar frontend** — calcular SemVer FE y crear `frontend/CHANGELOGS/RELEASES/<fe>.{ca,es,en}.md`.
-3. **Calcular producto** — `product = max(be, fe)`.
-4. **Notas conjuntas** — crear `RELEASES/<product>.{ca,es,en}.md` (véase plantilla).
-5. **Commit de release** — incluir los tres entregables (BE, FE, producto).
-6. **Tag anotado** en el commit de release:
+## Changelogs
+
+Los `CURRENT_CHANGELOG.ca.md` se mantienen separados por área, porque cada equipo escribe en ellos su día a día; solo la versión es común.
+
+- Un bloque `## [DD-MM-YYYY]` por día, con las secciones de la tabla anterior y el módulo (`#### BILLING`, `#### OV`…).
+- Si es nuevo y visible para el usuario o la API → `FEAT`. Si es nuevo pero interno, de operaciones o un detalle → `CHORE`.
+- Las entradas añadidas a un día ya etiquetado se mueven al día nuevo.
+- Cuando cambia el mes, los bloques del mes cerrado pasan al archivo mensual `CHANGELOGS/<año>/<AAAAMM>_CHANGELOG.ca.md`.
+
+## Flujo de release
+
+1. **Calcular la versión** con los dos changelogs juntos (ver más arriba).
+2. **Rama** `release/<versión>` desde `develop` actualizado.
+3. **Cerrar los changelogs** de backend y frontend (y el archivo mensual si ha cambiado el mes).
+4. **Notas** en `RELEASES/<versión>.{ca,es,en}.md` con la plantilla de abajo. Las tres lenguas dicen lo mismo.
+5. **Commit** `release: v<versión>` y PR `release/<versión>` → `main`, revisada y fusionada a mano.
+6. **Tag anotado** sobre el commit de fusión de la PR de release en `main` (no sobre la punta de `main`, que puede haber recibido commits posteriores):
 
 ```bash
-git tag -a v<product> -m "$(cat <<'EOF'
-Release producto <product>
-
-- backend: <be>
-- frontend: <fe>
-EOF
-)"
-git push origin v<product>
+git fetch origin main --tags
+SHA=$(gh pr view <núm. PR> --json mergeCommit --jq .mergeCommit.oid)
+git tag -a v<versión> "$SHA" -m "Release v<versión>"
+git push origin v<versión>
 ```
 
-7. **Desplegar** siempre desde el tag de producto (no desde `main` “a ojo”).
+7. **GitHub Release** publicada (no en borrador) a partir del tag, para que el workflow Imatges construya las imágenes:
 
-## Archivos
+```bash
+gh release create v<versión> --verify-tag --title "v<versión>" --notes-file RELEASES/<versión>.es.md
+```
 
-| Archivo | Contenido |
+8. **PR `main` → `develop`** para que las notas y cualquier hotfix vuelvan a `develop`.
+9. **Desplegar** siempre desde el tag (`CUSTOMERS_VERSION=v<versión>`), nunca desde un commit de `main` sin tag.
+
+Un hotfix sale de `main`, sube el PATCH y sigue los pasos 4 a 9.
+
+## Ficheros
+
+| Fichero | Contenido |
 |---|---|
-| `RELEASES/README.{ca,es,en}.md` | Esta política |
-| `RELEASES/<versión>.{ca,es,en}.md` | Notas de la release de producto |
-| `RELEASES/PLAN_RELEASE_<versión>.{ca,es,en}.md` | Opcional: checklist / plan |
+| `RELEASES/README.{ca,es,en}.md` | Esta política (un fichero por idioma) |
 | `RELEASES/README.md` | Índice de idiomas |
+| `RELEASES/<versión>.{ca,es,en}.md` | Notas de la release |
+| `RELEASES/PLAN_RELEASE_<versión>.{ca,es,en}.md` | Opcional: checklist o plan de releases grandes |
+
+Ya no se crean ficheros en `backend/CHANGELOGS/RELEASES/` ni en `frontend/CHANGELOGS/RELEASES/`.
 
 ## Plantilla `RELEASES/<versión>.es.md`
 
 ```markdown
-# Release producto <versión> — DD-MM-YYYY
+# Release v<versión> — DD-MM-YYYY
 
-| Componente | Versión |
-|---|---|
-| Backend | <be> |
-| Frontend | <fe> |
-| Tag | v<versión> |
+[Català](./<versión>.ca.md) · [Español](./<versión>.es.md) · [English](./<versión>.en.md)
+
+Baseline: `v<versión anterior>` (DD-MM-YYYY).
+
+## Tabla día → bump → versión
+
+| Día | Backend | Frontend | Bump | Versión |
+|---|---|---|---|---|
+| DD-MM-YYYY | — | — | `BASELINE` | `<versión anterior>` |
+| DD-MM-YYYY | FIX | FEAT | `FEAT` | `<…>` |
+| DD-MM-YYYY | FIX | — | `PATCH` | **`<versión>`** |
 
 ## Highlights
 
 - …
 
-## Notas de componente
+## Cambios
 
-- Backend: [`backend/CHANGELOGS/RELEASES/<be>.es.md`](../backend/CHANGELOGS/RELEASES/<be>.es.md)
-- Frontend: [`frontend/CHANGELOGS/RELEASES/<fe>.es.md`](../frontend/CHANGELOGS/RELEASES/<fe>.es.md)
+### Backend
+
+- FEAT: …
+- FIX: …
+
+### Frontend
+
+- FEAT: …
+- FIX: …
 
 ## Observaciones
 
-- (incompatibilidades, migraciones, flags ConfigProject, etc.)
+- Migraciones: <lista> o «Sin migraciones».
+- Variables de entorno, ConfigProject, opscripts e incompatibilidades.
+- Imágenes: con `CUSTOMERS_VERSION=v<versión>` en el `.env`, `docker compose pull && docker compose up -d`.
 ```
-
-## Tags git
-
-| Tipo | Convención | Cuándo |
-|---|---|---|
-| Producto (obligatorio en el release) | `v1.74.00` | Cada release conjunta |
-| Componente (opcional) | `backend/1.72.00`, `frontend/1.73.00` | Solo si hace falta trazabilidad extra |
-
-Para el día a día del monorepo basta con el tag de producto.
 
 ## Qué no hacer
 
-- Forzar el mismo número SemVer en BE y FE en cada release.
-- Etiquetar solo por fecha (`2026-07-21`) sin versión de producto.
-- Dejar de versionar BE/FE por separado en sus changelogs.
-- Desplegar un commit de `main` sin tag de producto asociado.
+- Volver a calcular versiones separadas de backend y frontend.
+- Calcular el bump solo con uno de los dos changelogs.
+- Etiquetar antes de fusionar las notas en `main`, o con un tag ligero (sin `-a`).
+- Reutilizar un número ya etiquetado.
+- Dejar la GitHub Release en borrador.
+- Desplegar un commit de `main` sin tag.
