@@ -133,6 +133,10 @@ class ValidateFormulaTest(SimpleTestCase):
     def test_line_item_type_formula_is_validated(self):
         serializer = LineItemTypeSaveSerializer()
         self.assertEqual(serializer.validate_formula('21% %product.AIGUA'), '21% %product.AIGUA')
+        # Sense productes, en facturar 21% no es converteix: 21 % (mòdul) i el * no té operand.
+        with self.assertRaises(ValidationError):
+            serializer.validate_formula('21% * %contract.persons')
+        self.assertEqual(serializer.validate_formula('3.2*%contract.persons'), '3.2*%contract.persons')
         with self.assertRaises(ValidationError):
             serializer.validate_formula("__import__('os')")
 

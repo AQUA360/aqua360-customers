@@ -5,7 +5,8 @@ from ..models import Quantity, BillingPeriod, Tax, AdjustmentOperation, Variable
 def validate_formula_field(value, percentages=False):
     """Valida la fórmula en desar-la i corregeix la coma decimal (0,5 -> 0.5).
 
-    `percentages`: les fórmules dels conceptes de factura admeten 21% (vegeu replace_percentage).
+    `percentages`: les fórmules dels conceptes de factura amb productes admeten 21% (vegeu
+    replace_percentage).
     """
     if not value:
         return value

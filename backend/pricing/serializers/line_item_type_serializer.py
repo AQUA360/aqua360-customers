@@ -53,7 +53,8 @@ class LineItemTypeSaveSerializer(TranslatableFieldMixin, serializers.ModelSerial
         fields = '__all__'
 
     def validate_formula(self, value):
-        return validate_formula_field(value, percentages=True)
+        # En facturar, els percentatges només es converteixen si la fórmula fa servir productes.
+        return validate_formula_field(value, percentages=bool(value) and '%product.' in value)
 
     def create(self, validated_data):
         price_variable = validated_data.pop('price_variable_id', None)
