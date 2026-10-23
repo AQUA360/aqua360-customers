@@ -3,10 +3,19 @@ import xml.etree.ElementTree as ET
 from datetime import timedelta, date
 from billing.models import CommitmentDeposit, DocumentSEPA, Invoice, InvoiceStatus, Payment, PaymentRemittance, PaymentStatus, RejectMotive
 from billing.utils.invoice_service import invoice_return_charge
+from billing.utils.payment_service import is_paid_by_direct_debit_with_other_method
 from contract.models import Contract, ContractRequest
 from coredata.models import ConfigProject
 from dateutil.relativedelta import relativedelta
 from documentmanager.utils.main_utils import download_document
+
+def _until_date(value):
+    # Data de retorn com a "YYYY-MM-DD" (pot arribar com a date, datetime o text amb hora)
+    if not value:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    return str(value).split("T")[0]
 
 def extract_payments_data(root, namespaces, msgId, client_doc_ids, clients_data, rjt_date):
     payments_data = []
@@ -157,8 +166,12 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
                 rjt_dt = rjt_date
             
             
+            # Si s'ha canviat el mètode d'un cobrament per domiciliació sense retornar-lo, el retorn
+            # s'ha de processar igualment: el mètode actual del pagament no diu com es va cobrar
+            method_changed = is_paid_by_direct_debit_with_other_method(payment, _until_date(item_rjt_date))
+            rejection["method_changed"] = method_changed
             # If the payment is paid and not direct debit, skip
-            if payment.status == paid_status and payment.payment_type and payment.payment_type_token != 'DIRECT_DEBIT':
+            if payment.status == paid_status and payment.payment_type and payment.payment_type_token != 'DIRECT_DEBIT' and not method_changed:
                 rejection["not_found"] = False
                 rejection["skip_return"] = True
                 rejection["contract"] = contract.token if contract else None
@@ -357,8 +370,12 @@ def handle_not_found_payment(client_data, company_data, rjt_date):
         commitment_deposit = CommitmentDeposit.objects.get(id=payment.commitment_deposit.id)
         contract = commitment_deposit.contract
         
+    # Si s'ha canviat el mètode d'un cobrament per domiciliació sense retornar-lo, el retorn
+    # s'ha de processar igualment: el mètode actual del pagament no diu com es va cobrar
+    method_changed = is_paid_by_direct_debit_with_other_method(payment, _until_date(reject_date))
+    rejection["method_changed"] = method_changed
     # If the payment is paid and not direct debit, skip
-    if payment.status == paid_status and payment.payment_type_token != 'DIRECT_DEBIT':
+    if payment.status == paid_status and payment.payment_type_token != 'DIRECT_DEBIT' and not method_changed:
         rejection["not_found"] = False
         rejection["skip_return"] = True
         rejection["contract"] = contract.token if contract else None

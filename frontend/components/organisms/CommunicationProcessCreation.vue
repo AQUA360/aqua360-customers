@@ -687,23 +687,35 @@ onMounted(async () => {
       <div v-else class="">
         <!-- Pas 1: Configuració -->
         <div v-show="currentStep === 0" class="space-y-4">
-          <div v-if="useMultipleCompanies" class="max-w-md">
-            <div class="text-sm font-medium text-gray-500 mb-2">
-              {{ $t('customer_service_block.select_contracts_company') }}
-            </div>
-            <v-select v-model="filterCompany" :options="filterCompanies" class="block w-full"
-              :placeholder="$t('service_block.companies')" />
-          </div>
-
           <CommunicationProcessCreationManage v-if="objectSearchData?.entity && objectSearchData?.id"
             :data="objectSearchData" @load="loadingSetupData = $event" @remove-fix="removeFix" @change="onPersonsChange"
             @change-unreachable="onUnreachableChange"
-            :search="sendSearch" @show-detail="showDetail" :isFixed="isObjectFixed" :company-id="filterCompany?.id" />
+            :search="sendSearch" @show-detail="showDetail" :isFixed="isObjectFixed" :company-id="filterCompany?.id">
+            <template v-if="useMultipleCompanies" #company-filter>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">
+                  {{ $t('customer_service_block.select_contracts_company') }}
+                </label>
+                <v-select v-model="filterCompany" :options="filterCompanies" class="block w-full"
+                  :placeholder="$t('service_block.companies')" />
+              </div>
+            </template>
+          </CommunicationProcessCreationManage>
 
           <CommunicationProcessCreationSetup v-else
             :request="request" @load="loadingSetupData = $event" @change="onPersonsChange" :search="sendSearch"
             @change-unreachable="onUnreachableChange"
-            @show-detail="showDetail" :company-id="filterCompany?.id" @change-supply-cuts="onSupplyCutsChange" />
+            @show-detail="showDetail" :company-id="filterCompany?.id" @change-supply-cuts="onSupplyCutsChange">
+            <template v-if="useMultipleCompanies" #company-filter>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-2">
+                  {{ $t('customer_service_block.select_contracts_company') }}
+                </label>
+                <v-select v-model="filterCompany" :options="filterCompanies" class="block w-full"
+                  :placeholder="$t('service_block.companies')" />
+              </div>
+            </template>
+          </CommunicationProcessCreationSetup>
         </div>
 
         <!-- Pas 2: Selecció de pagaments -->
