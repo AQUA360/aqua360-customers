@@ -1711,6 +1711,8 @@ export default {
     initial_reading_new_contract: 'Lectura inicial del nou contracte'
   },
   billing_block:   {
+    new_payer_name: 'Nom del nou pagador',
+    new_payer_nif: 'NIF del nous pagador',
     endowment_date: 'Data de morositat',
     irrecoverable_date: 'Data irrecuperable',
     holder_change: 'Canvi de titular',
