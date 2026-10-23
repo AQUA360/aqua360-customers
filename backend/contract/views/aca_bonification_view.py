@@ -14,7 +14,7 @@ from contract.models import ACABonificationRequest, ACADocument, ACADocumentStat
 from contract.permissions import ContractPermission
 from contract.serializers.aca_bonification_serializer import ACABonificationRequestSerializer
 from contract.utils.aca_bonification_export_service import build_ampliacio_trams_file
-from watchdog.aca_config import aca_notification_enabled
+from watchdog.aca_config import aca_notification_enabled, aca_tram_members_variable_tokens
 
 
 class ACABonificationRequestViewSet(viewsets.ReadOnlyModelViewSet):
@@ -76,7 +76,11 @@ class ACABonificationRequestViewSet(viewsets.ReadOnlyModelViewSet):
         missing = [req.id for req in detail_requests if req.num_persons_to_apply is None]
         if missing:
             return None, Response(
-                {'error': "Falta la variable 'ACA-TRAM-MEMBRES' (nombre de persones) a la sol·licitud de bonificació per a algun dels contractes seleccionats.", 'ids': missing},
+                {'error': (
+                    "Falta la variable de persones "
+                    f"({', '.join(aca_tram_members_variable_tokens())}) "
+                    "a la sol·licitud de bonificació per a algun dels contractes seleccionats."
+                ), 'ids': missing},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
