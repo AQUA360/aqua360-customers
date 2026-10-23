@@ -1,6 +1,10 @@
-from django.test import SimpleTestCase
+import importlib
+
+from django.apps import apps
+from django.test import SimpleTestCase, TestCase
 
 from billing.utils.adjustment_service import evaluate_formula
+from pricing.models import Adjustment, AdjustmentCondition, AdjustmentIntervalStretch, LineItemType
 from pricing.serializers.value_objects_serializer import AdjustmentIntervalStretchSerializer
 from pricing.utils.formula_evaluator import FormulaError, evaluate, validate
 
@@ -92,3 +96,18 @@ class ValidateFormulaTest(SimpleTestCase):
         serializer = AdjustmentIntervalStretchSerializer(data={'formula': "__import__('os')"})
         self.assertFalse(serializer.is_valid())
         self.assertIn('formula', serializer.errors)
+
+
+class FixDecimalCommaMigrationTest(TestCase):
+    def test_only_plain_numbers_with_comma_are_fixed(self):
+        adjustment = Adjustment.objects.create(formula='0,5')
+        stretch = AdjustmentIntervalStretch.objects.create(formula=' 1,25 ')
+        line_item_type = LineItemType.objects.create(formula='max(1,5)')
+        condition = AdjustmentCondition.objects.create(formula='1,2')
+
+        migration = importlib.import_module('pricing.migrations.0132_formula_decimal_comma')
+        migration.fix_decimal_comma(apps, None)
+
+        for item, expected in [(adjustment, '0.5'), (stretch, '1.25'), (line_item_type, 'max(1,5)'), (condition, '1,2')]:
+            item.refresh_from_db()
+            self.assertEqual(item.formula, expected)
