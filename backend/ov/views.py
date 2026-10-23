@@ -19,6 +19,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from contract.models import Contract, ContractLog, ContractObservation, PaymentType
 from billing.models import Invoice, InvoiceStatus, Reading
+from documentmanager.utils.main_utils import download_document, upload_document
 from ov.serializers import (
     BillingDataOVSerializer,
     BillingContractInvoicesOVSerializer,
@@ -44,6 +45,31 @@ from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
 from ov.throttles import DniEnumerationThrottle
 
 logger = logging.getLogger(__name__)
+
+
+def _get_invoice_pdf_bytes(invoice, request, save_pdf=True):
+    if invoice.invoice_file:
+        try:
+            return download_document(invoice.invoice_file).content
+        except Exception:
+            logger.exception(
+                "Failed to retrieve stored invoice PDF for invoice %s; "
+                "falling back to PDF generation",
+                invoice.pk,
+            )
+    else:
+        logger.warning(
+            "No stored invoice PDF for invoice %s; falling back to PDF generation",
+            invoice.pk,
+        )
+
+    _, _, pdf_buffer = generate_report_invoice_pdf(
+        invoice,
+        request,
+        context={"request": request},
+        save_pdf=save_pdf,
+    )
+    return pdf_buffer.getvalue()
 
 
 class ContractOVView(APIView):
@@ -418,20 +444,9 @@ class InvoicePDFView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             ) """
 
-        from documentmanager.utils.main_utils import download_document
-
         try:
-
-            """http_response = download_document(invoice.invoice_file)
-
-            pdf_bytes = http_response.content
-
-            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")"""
-
-            _, _, pdf_buffer = generate_report_invoice_pdf(
-                invoice, request, context={"request": request}
-            )
-            pdf_base64 = base64.b64encode(pdf_buffer.getvalue()).decode("utf-8")
+            pdf_bytes = _get_invoice_pdf_bytes(invoice, request)
+            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
             filename = (
                 f"invoice_{invoice.serie_final}_{invoice.id}.pdf"
@@ -443,7 +458,11 @@ class InvoicePDFView(APIView):
                 {
                     "pdf": pdf_base64,  # Base64-encoded PDF content
                     "filename": filename,  # Suggested filename for download
-                    "document_name": invoice.invoice_file.document_name,  # Original document name
+                    "document_name": (
+                        invoice.invoice_file.document_name
+                        if invoice.invoice_file
+                        else ""
+                    ),  # Original document name
                 },
                 status=status.HTTP_200_OK,
             )
@@ -1261,11 +1280,8 @@ class BatchInvoiceDownloadView(APIView):
             with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 used_names = set()
                 for invoice in ordered:
-                    _, _, pdf_buffer = generate_report_invoice_pdf(
-                        invoice,
-                        request,
-                        context={"request": request},
-                        save_pdf=False,
+                    pdf_bytes = _get_invoice_pdf_bytes(
+                        invoice, request, save_pdf=False
                     )
                     raw_name = str(
                         invoice.serie_final or invoice.token or invoice.id
@@ -1281,7 +1297,7 @@ class BatchInvoiceDownloadView(APIView):
                     if name in used_names:
                         name = f"factura_{safe_name}_{invoice.id}.pdf"
                     used_names.add(name)
-                    zip_file.writestr(name, pdf_buffer.getvalue())
+                    zip_file.writestr(name, pdf_bytes)
         except Exception as e:
             logger.exception("Error inesperat")
             return Response(
