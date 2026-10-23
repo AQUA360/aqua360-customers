@@ -53,8 +53,30 @@ _FUNCTIONS = {
 }
 
 
+# Missatges fixos per a l'usuari: la resposta de l'API no porta mai el text d'una excepció.
+ERROR_MESSAGES = {
+    'too_long': 'Fórmula massa llarga',
+    'too_nested': 'Fórmula massa niuada',
+    'syntax': 'Sintaxi incorrecta a la fórmula',
+    'decimal_comma': "Fórmula no vàlida: els decimals s'escriuen amb punt (0.5), no amb coma",
+    'not_allowed': (
+        'Element no permès a la fórmula: només hi pot haver números, operacions, comparacions, '
+        'condicions, variables %nom i les funcions ' + ', '.join(_FUNCTIONS)
+    ),
+    'unknown_variable': 'Variable desconeguda a la fórmula',
+    'not_a_number': 'Operació aritmètica amb un valor que no és un número',
+    'too_big': 'Resultat massa gran',
+    'calculation': 'No es pot calcular la fórmula',
+}
+
+
 class FormulaError(ValueError):
-    pass
+    """`code` és una clau d'ERROR_MESSAGES; `detail` només va al log."""
+
+    def __init__(self, code, detail=None):
+        message = ERROR_MESSAGES[code]
+        super().__init__(f'{message}: {detail}' if detail else message)
+        self.code = code
 
 
 def _function_name(node):
@@ -95,13 +117,13 @@ def _check(node, names):
             _check(arg, names)
         return
     if isinstance(node, ast.Tuple):
-        raise FormulaError('Fórmula no vàlida: els decimals s\'escriuen amb punt (0.5), no amb coma')
-    raise FormulaError(f'Element no permès a la fórmula: {ast.unparse(node)[:80]}')
+        raise FormulaError('decimal_comma')
+    raise FormulaError('not_allowed', ast.unparse(node)[:80])
 
 
 def _check_number(value):
     if isinstance(value, (int, float)) and abs(value) > MAX_ABS_NUMBER:
-        raise FormulaError('Resultat massa gran')
+        raise FormulaError('too_big')
     return value
 
 
@@ -117,9 +139,9 @@ def _eval(node, names):
         right = _eval(node.right, names)
         # Només números: 'a' * 10**9 ompliria la memòria.
         if not all(isinstance(x, (int, float)) for x in (left, right)):
-            raise FormulaError('Operació aritmètica amb un valor que no és un número')
+            raise FormulaError('not_a_number')
         if isinstance(node.op, ast.Pow) and abs(right) > MAX_POWER_EXPONENT:
-            raise FormulaError('Exponent massa gran')
+            raise FormulaError('too_big', 'exponent')
         return _check_number(_BIN_OPS[type(node.op)](left, right))
     if isinstance(node, ast.UnaryOp):
         return _UNARY_OPS[type(node.op)](_eval(node.operand, names))
@@ -144,7 +166,7 @@ def _eval(node, names):
     if isinstance(node, ast.Call):
         function = _FUNCTIONS[_function_name(node.func)]
         return _check_number(function(*(_eval(arg, names) for arg in node.args)))
-    raise FormulaError(f'Element no permès a la fórmula: {ast.unparse(node)[:80]}')
+    raise FormulaError('not_allowed', ast.unparse(node)[:80])
 
 
 def _as_value(value):
@@ -161,13 +183,13 @@ def _as_value(value):
 def _parse(formula, variables):
     """Arbre de la fórmula i els valors de les variables, amb un nom intern per a cada %variable."""
     if len(formula) > MAX_FORMULA_LENGTH:
-        raise FormulaError('Fórmula massa llarga')
+        raise FormulaError('too_long')
     names = {}
 
     def to_name(match):
         key = match.group(2)
         if key not in variables:
-            raise FormulaError(f'Variable desconeguda: %{key}')
+            raise FormulaError('unknown_variable', f'%{key}')
         name = f'v{len(names)}'
         names[name] = _as_value(variables[key])
         return name
@@ -177,9 +199,9 @@ def _parse(formula, variables):
         tree = ast.parse(expression, mode='eval')
         _check(tree, names)
     except SyntaxError as e:
-        raise FormulaError(f'Sintaxi incorrecta a la fórmula: {e.msg}') from e
+        raise FormulaError('syntax', e.msg) from e
     except RecursionError as e:
-        raise FormulaError('Fórmula massa niuada') from e
+        raise FormulaError('too_nested') from e
     return tree, names
 
 
@@ -195,7 +217,7 @@ def evaluate(formula, variables):
     except FormulaError:
         raise
     except (ArithmeticError, TypeError, ValueError, RecursionError) as e:
-        raise FormulaError(str(e)) from e
+        raise FormulaError('calculation', str(e)) from e
 
 
 class _AnyVariable(dict):
@@ -209,5 +231,12 @@ class _AnyVariable(dict):
 
 
 def validate(formula):
-    """Comprova en desar que la fórmula només fa servir elements permesos (sense avaluar-la)."""
-    _parse(formula, _AnyVariable())
+    """Comprova en desar que la fórmula només fa servir elements permesos (sense avaluar-la).
+
+    Torna None si és vàlida, o el missatge d'error per a l'usuari.
+    """
+    try:
+        _parse(formula, _AnyVariable())
+    except FormulaError as e:
+        return ERROR_MESSAGES[e.code]
+    return None

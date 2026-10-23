@@ -6,7 +6,7 @@ from django.test import SimpleTestCase, TestCase
 from billing.utils.adjustment_service import evaluate_formula
 from pricing.models import Adjustment, AdjustmentCondition, AdjustmentIntervalStretch, LineItemType
 from pricing.serializers.value_objects_serializer import AdjustmentIntervalStretchSerializer
-from pricing.utils.formula_evaluator import FormulaError, evaluate, validate
+from pricing.utils.formula_evaluator import ERROR_MESSAGES, FormulaError, evaluate, validate
 
 
 DAYS_CORRECTION = 'math.ceil(9 * %contract.persons * (%consumption_days / 90 if abs(%consumption_days / 90 - 1) > 0.2 else 1))'
@@ -85,17 +85,20 @@ class EvaluateFormulaTest(SimpleTestCase):
 
 class ValidateFormulaTest(SimpleTestCase):
     def test_validate_accepts_any_variable(self):
-        validate(DAYS_CORRECTION)
-        validate('%consumption / (%variable.CASES - 1)')
+        self.assertIsNone(validate(DAYS_CORRECTION))
+        self.assertIsNone(validate('%consumption / (%variable.CASES - 1)'))
 
     def test_validate_checks_branches_not_taken(self):
-        with self.assertRaises(FormulaError):
-            validate("1 if True else __import__('os')")
+        self.assertEqual(validate("1 if True else __import__('os')"), ERROR_MESSAGES['not_allowed'])
+
+    def test_validate_message_has_no_internal_details(self):
+        self.assertEqual(validate('1 +'), ERROR_MESSAGES['syntax'])
+        self.assertEqual(validate('0,5'), ERROR_MESSAGES['decimal_comma'])
 
     def test_serializer_rejects_invalid_formula(self):
         serializer = AdjustmentIntervalStretchSerializer(data={'formula': "__import__('os')"})
         self.assertFalse(serializer.is_valid())
-        self.assertIn('formula', serializer.errors)
+        self.assertEqual(serializer.errors['formula'], [ERROR_MESSAGES['not_allowed']])
 
 
 class FixDecimalCommaMigrationTest(TestCase):
