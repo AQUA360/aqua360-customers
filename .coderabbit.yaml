@@ -1,0 +1,13 @@
+# Configuració de CodeRabbit, la revisió automàtica de les PR (gratis per a repositoris públics).
+# Seguretat: el repositori és públic. Res de noms de clients, entorns, servidors ni adreces.
+language: "ca-ES"
+reviews:
+  auto_review:
+    enabled: true
+    # Per defecte només revisa les PR cap a la branca principal; aquí es treballa cap a develop.
+    base_branches:
+      - "develop"
+      - "main"
+    # Per defecte es pausa després de 5 commits revisats a la mateixa PR i cal demanar-li la
+    # revisió a mà. Com que la revisió és obligatòria per fusionar, no es pausa mai.
+    auto_pause_after_reviewed_commits: 0

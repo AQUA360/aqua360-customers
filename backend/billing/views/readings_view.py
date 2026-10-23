@@ -5,6 +5,11 @@ from django.db import transaction
 from datetime import datetime
 import pandas as pd
 from billing.models import Reading
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 # from ..utils.aca_document_service import process_document
 
 class ReadingsViewSet(views.APIView):
@@ -19,7 +24,8 @@ class ReadingsViewSet(views.APIView):
             return Response("OK", status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            return Response({"error": f"Unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def process_file(file):
     try:

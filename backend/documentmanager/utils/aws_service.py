@@ -12,6 +12,7 @@ from order.middleware import get_current_user
 from documentmanager.models import Document
 
 def upload_to_aws(file, document, name, field, entity):
+    """Uploads a file to the AWS S3 bucket, ensuring a unique object key, and updates the document record."""
     print("going in service aws")
     s3_client = boto3.client(
         's3',
@@ -31,9 +32,7 @@ def upload_to_aws(file, document, name, field, entity):
     print("got s3_client")
     print(s3_client)
     bucket_name = settings.AWS_STORAGE_BUCKET_NAME  
-    print(bucket_name)
     s3_file_path = f"{field}/{entity}/{date_year}/{month_folder_name}/{name}"  
-    print(s3_file_path)
     
     current_user = get_current_user()
     
@@ -132,7 +131,7 @@ def download_multiple_documents_from_aws(document_ids):
         region_name=settings.AWS_REGION,
     )
     
-    documents = Document.objects.filter(id__in=document_ids)
+    documents = Document.in_order(document_ids)
 
     files = []  
     for document in documents:

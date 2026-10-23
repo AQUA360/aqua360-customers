@@ -7,7 +7,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 
 from auth.permissions import PermissionManager
-from contract.utils.bail_service import liquidate_bail as liquidate_bail_service
+from contract.utils.bail_service import immediate_return_bail, liquidate_bail as liquidate_bail_service
 from coredata.models import ConfigProject
 
 
@@ -22,6 +22,9 @@ from contract.serializers.bail_serializer import (BailSerializer, BailListSerial
 
 from logger.models import LogBailStatus
 from django.contrib.auth.models import Group
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BailViewSet(viewsets.ModelViewSet):
     queryset = Bail.objects.all().order_by('-status', 'payment_date')
@@ -49,6 +52,22 @@ class BailViewSet(viewsets.ModelViewSet):
         bails = Bail.objects.filter(contract__in=contracts)
         liquidate_bail_service(user, bails)
         return Response({'message': 'Invoice returned successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='return-immediately')
+    def return_bail_immediately(self, request):
+        user = request.user
+        bail_ids = request.data.get('bail_ids', [])
+        if not bail_ids:
+            return Response({'error': 'No bail provided'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            for bail_id in bail_ids:
+                immediate_return_bail(user, bail_id)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'message': 'Bail returned successfully'}, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['post'], url_path='cancel')
     def cancel_bail(self, request):

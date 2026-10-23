@@ -14,6 +14,7 @@ ACA_CONFIG_SPECS = (
     ('contract_use_aca_gan_tokens', 'PriceRate', 'price_rates', 'price_rates'),
     ('contract_use_aca_alta_tokens', 'PriceRate', 'price_rates', 'price_rates'),
     ('contract_use_aca_dir_variable_token', 'VariableType', 'variable_types', 'variable_types'),
+    ('aca_tram_members_variable_token', 'VariableType', 'variable_types', 'variable_types'),
     ('tarifa_social', 'VariableType', 'variable_types', 'variable_types'),
     ('token_product_aca', 'Product', 'products', 'products'),
     ('contract_keeper_use_type_token', 'ContractUseType', 'contract_use_types', 'contract_use_types'),

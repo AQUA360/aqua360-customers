@@ -6,16 +6,24 @@ from rest_framework.serializers import ValidationError
 from communication import process_policy
 from communication.models import (
     Communication,
+    CommunicationFile,
     CommunicationProcess,
     CommunicationProcessStatus,
     CommunicationUseType,
+    MessageOrigin,
+    MessageTemplate,
+    MessageType,
 )
 from communication.serializers.communication_process_serializer import (
     CommunicationProcessSaveSerializer,
+    CommunicationProcessSerializer,
+    save_process_exclusions,
 )
+from communication.views.manage_communication_process_view import _CONFIG_CACHE, filter_by_supply_cut
 from communication.utils.communication_service import get_com_values, refactor_text
-from contract.models import Contract
-from coredata.models import Address, City, ConfigProject, Country, Person, Street, StreetNumber
+from contract.models import Contract, ContractStatus
+from coredata.models import Address, City, ConfigProject, Country, Person, PersonContact, Street, StreetNumber
+from coredata.serializers import PersonCommunicationSerializer
 from service.models import SupplyCut, SupplyCutCause, SupplyCutStatus, SupplyPoint
 
 
@@ -526,6 +534,21 @@ class SupplyCutMessageVariableTests(TestCase):
                     'supplycut.exec_start', 'supplycut.exec_end'):
             self.assertEqual(values[key], '')
 
+    def test_start_and_end_times_are_in_local_time(self):
+        # A la BD les dates són UTC: un tall a les 00:30 (hora local) no pot sortir
+        # amb la data del dia abans ni amb l'hora UTC.
+        from datetime import datetime, timezone as dt_timezone
+        cut = self.make_cut(
+            date_start=datetime(2026, 10, 4, 22, 30, tzinfo=dt_timezone.utc),
+            date_end=datetime(2026, 10, 5, 12, 0, tzinfo=dt_timezone.utc),
+        )
+        values = self.values(self.make_communication([cut]))
+        self.assertEqual(values['supplycut.date_start'], '05/10/2026')
+        self.assertEqual(values['supplycut.time_start'], '00:30')
+        self.assertEqual(values['supplycut.time_end'], '14:00')
+        body = refactor_text('De %supplycut.time_start a %supplycut.time_end', values)
+        self.assertEqual(body, 'De 00:30 a 14:00')
+
     def test_tokens_are_substituted_in_the_body(self):
         cut = self.make_cut(token='CUT-9')
         communication = self.make_communication([cut])
@@ -624,3 +647,489 @@ class SupplyCutMessageVariableTests(TestCase):
         )
         self.assertIn('Carrer Mallorca', body)
         self.assertNotIn('Carrer Balmes', body)
+
+
+class CommunicationProcessComFilesOrderTests(TestCase):
+    """Els documents a descarregar surten agrupats per comunicació (persona): primer la carta,
+    després el document de comunicació i la resta, encara que es generin després."""
+
+    def setUp(self):
+        from documentmanager.models import Document
+
+        ConfigProject.objects.update_or_create(token='message_type_letter_token', defaults={'value': 'postal'})
+        ConfigProject.objects.update_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        self.process = CommunicationProcess.objects.create(token='PROC-ORDER')
+        comms = [
+            Communication.objects.create(process=self.process, type_tokens='postal')
+            for _ in range(2)
+        ]
+
+        def document(name, entity='FACTURES'):
+            return Document.objects.create(entity=entity, entity_id=1, service='hdd', document_name=name)
+
+        # Com al procés real: la carta es crea primer sense fitxer, les factures ja existeixen
+        # i els pagaments i el PDF de la carta es generen després
+        letters = [CommunicationFile.objects.create(communication=c, is_letter=True) for c in comms]
+        invoices = [document(f'factura-{i}') for i in range(2)]
+        payments = [document(f'pagament-{i}') for i in range(2)]
+        for comm, invoice, payment in zip(comms, invoices, payments):
+            CommunicationFile.objects.create(communication=comm, file=invoice)
+            CommunicationFile.objects.create(communication=comm, file=payment)
+        # El document del pas d'impagats (fa de carta) es genera després de factures i pagaments
+        claim_docs = [document(f'avis-{i}', entity='COMUNICACIO') for i in range(2)]
+        for comm, claim_doc in zip(comms, claim_docs):
+            CommunicationFile.objects.create(communication=comm, file=claim_doc)
+        letter_docs = [document(f'carta-{i}', entity='COMUNICACIO') for i in range(2)]
+        for letter, letter_doc in zip(letters, letter_docs):
+            letter.file = letter_doc
+            letter.save()
+
+        self.expected = [
+            letter_docs[0].id, claim_docs[0].id, invoices[0].id, payments[0].id,
+            letter_docs[1].id, claim_docs[1].id, invoices[1].id, payments[1].id,
+        ]
+
+    def test_com_files_grouped_by_communication_with_letter_first(self):
+        com_files = CommunicationProcessSerializer().get_com_files(self.process)
+        self.assertEqual([f['id'] for f in com_files], self.expected)
+
+
+class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
+    """Amb «Agrupar pagaments» les factures també s'adjunten a la comunicació,
+    però no els rebuts individuals (el rebut és el document agrupat)."""
+
+    def setUp(self):
+        from billing.models import Invoice, JoinedPayment, Payment
+        from claimrequest.models import (
+            ClaimRequest, ClaimRequestPayment, ClaimRequestStep, ClaimRequestStepTemplate,
+            ClaimRequestTemplate,
+        )
+        from documentmanager.models import Document
+
+        ConfigProject.objects.update_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        # Configuració que demanen els senyals de contracte, factura i pagament
+        for token in ('contract_terminated_status', 'invoice_status_cancelled_token'):
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': '-1'})
+        self.process = CommunicationProcess.objects.create(token='PROC-CLAIM')
+        step_template = ClaimRequestStepTemplate.objects.create(
+            template=ClaimRequestTemplate.objects.create(), group_payments=True,
+        )
+        self.claim = ClaimRequest.objects.create()
+        step = ClaimRequestStep.objects.create(
+            claim_request=self.claim, step_template=step_template, communication_process=self.process,
+        )
+        self.claim.current_step = step
+        self.claim.save()
+
+        self.contract = Contract.objects.create(token='CLAIM-CT')
+        self.comm = Communication.objects.create(process=self.process, type_tokens='letter')
+        self.comm.contracts.add(self.contract)
+
+        self.invoice_docs = []
+        joined = JoinedPayment.objects.create(contract=self.contract, claim_request=self.claim)
+        for i in range(2):
+            doc = Document.objects.create(entity_id=1, service='hdd', document_name=f'factura-{i}')
+            invoice = Invoice.objects.create(invoice_file=doc)
+            payment = Payment.objects.create(invoice=invoice)
+            ClaimRequestPayment.objects.create(claim_request=self.claim, contract=self.contract, payment=payment)
+            joined.payments.add(payment)
+            self.invoice_docs.append(doc)
+        self.claim_doc = Document.objects.create(entity_id=1, service='hdd', document_name='reclamacio')
+
+    def test_grouped_payments_attach_invoices_and_grouped_claim_document(self):
+        from unittest.mock import patch
+
+        from communication.tasks import generate_claim_document_pdf_task
+
+        def claim_step_file(claim_request, contract, comm, *args):
+            return CommunicationFile(communication=comm, file=self.claim_doc)
+
+        with patch('communication.tasks._create_claim_step_communication_file', side_effect=claim_step_file), \
+                patch('communication.tasks.generate_report_payment_pdf') as payment_pdf:
+            result = generate_claim_document_pdf_task([self.comm.id], self.process.id, claim_id=self.claim.id)
+
+        self.assertEqual(result['status'], 'success')
+        payment_pdf.assert_not_called()
+        files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
+        self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
+        self.assertEqual(self.comm.invoices.count(), 2)
+
+    def test_without_extra_docs_only_claim_document_is_attached(self):
+        from unittest.mock import patch
+
+        from communication.tasks import generate_claim_document_pdf_task
+
+        ConfigProject.objects.update_or_create(token='attach_extra_docs_in_claims', defaults={'value': 'false'})
+
+        def claim_step_file(claim_request, contract, comm, *args):
+            return CommunicationFile(communication=comm, file=self.claim_doc)
+
+        with patch('communication.tasks._create_claim_step_communication_file', side_effect=claim_step_file), \
+                patch('communication.tasks.generate_report_payment_pdf') as payment_pdf:
+            result = generate_claim_document_pdf_task([self.comm.id], self.process.id, claim_id=self.claim.id)
+
+        self.assertEqual(result['status'], 'success')
+        payment_pdf.assert_not_called()
+        files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
+        self.assertEqual(files, [self.claim_doc.id])
+        # Les factures es vinculen igualment per resoldre les variables %invoice.*
+        self.assertEqual(self.comm.invoices.count(), 2)
+
+
+class SupplyCutRecipientChannelTests(TestCase):
+    """Destinataris d'un tall segons els canals triats.
+
+    Un fix no pot rebre SMS: qui només té un fix i cap altre canal queda a la
+    llista de descartats amb el motiu, i qui té un altre canal hi continua però
+    amb l'avís del canal que no li arriba.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        for token, value in {
+            'contract_terminated_status': '99',
+            'contract_active_token': '1',
+            'message_type_email_token': 'email',
+            'message_type_letter_token': 'letter',
+            'message_type_sms_token': 'sms',
+        }.items():
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': value})
+        cls.active = ContractStatus.objects.create(token='1', name='Actiu')
+        cls.cut = SupplyCut.objects.create(token='CUT-1')
+        cls.point = SupplyPoint.objects.create(token='SP-1')
+        cls.cut.supply_points.add(cls.point)
+
+    def setUp(self):
+        # get_config_token guarda els valors en un cache de mòdul.
+        _CONFIG_CACHE.clear()
+
+    def make_holder(self, name, phone=None, email=None):
+        person = Person.objects.create(name=name)
+        contact = PersonContact.objects.create(person=person, phone=phone, email=email)
+        contract = Contract.objects.create(holder=person, status=self.active)
+        contract.supply_points.add(self.point)
+        if phone:
+            contract.person_contact_sms.add(contact)
+        if email:
+            contract.person_contact_email = contact
+            contract.save()
+        return person
+
+    def search(self, message_types):
+        excluded = []
+        persons = filter_by_supply_cut(
+            {'supply_cuts': [{'id': self.cut.id}], 'message_types': message_types},
+            [],
+            excluded=excluded,
+        )
+        return {p['id']: p for p in persons}, {e['id']: e for e in excluded}
+
+    def test_landline_only_is_excluded_with_the_reason(self):
+        landline = self.make_holder('Fix', phone='972123456')
+        no_phone = self.make_holder('Sense telèfon')
+        mobile = self.make_holder('Mòbil', phone='612345678')
+
+        persons, excluded = self.search(['sms'])
+
+        self.assertEqual(set(persons), {mobile.id})
+        self.assertTrue(persons[mobile.id]['has_sms'])
+        self.assertEqual(excluded[landline.id]['reasons'], ['sms_landline'])
+        self.assertEqual(excluded[no_phone.id]['reasons'], ['sms_no_phone'])
+        self.assertEqual(excluded[landline.id]['person_type'], 'holder')
+
+    def test_landline_with_email_keeps_email_as_alternative(self):
+        person = self.make_holder('Fix amb correu', phone='972123456', email='abonat@example.com')
+
+        persons, excluded = self.search(['sms', 'email'])
+
+        self.assertNotIn(person.id, excluded)
+        self.assertFalse(persons[person.id]['has_sms'])
+        self.assertEqual(persons[person.id]['unavailable_channels'], ['sms_landline'])
+        # Tots els canals, no només els triats: el pas 6 ho necessita per als canals del pas 4.
+        self.assertEqual(
+            sorted(persons[person.id]['missing_channels']),
+            ['electronic_inv_missing', 'letter_missing', 'sms_landline'],
+        )
+        self.assertEqual(persons[person.id]['contracts'][0]['communication_type'], 'DIGITAL')
+
+    def test_contract_email_of_the_holder_does_not_reach_the_tenant(self):
+        # El correu del contracte és del titular: l'arrendatari no el rep (com en
+        # crear la comunicació), així que amb només correu queda descartat.
+        holder = self.make_holder('Titular', email='titular@example.com')
+        contract = Contract.objects.get(holder=holder)
+        tenant = Person.objects.create(name='Arrendatari')
+        contract.tenant = tenant
+        contract.save()
+
+        persons, excluded = self.search(['email'])
+
+        self.assertIn(holder.id, persons)
+        self.assertEqual(excluded[tenant.id]['reasons'], ['email_missing'])
+        self.assertEqual(excluded[tenant.id]['person_type'], 'tenant')
+
+    def test_sms_phone_only_returns_mobiles(self):
+        person = self.make_holder('Dos telèfons', phone='972123456')
+        contract = Contract.objects.get(holder=person)
+        mobile = PersonContact.objects.create(person=person, phone='+34 612 345 678')
+        contract.person_contact_sms.add(mobile)
+        person.contract_ids = [contract.id]
+        person.invoice_ids = []
+        person.reading_ids = []
+        self.assertEqual(PersonCommunicationSerializer(person).data['sms_phone'], '+34 612 345 678')
+
+    def test_exclusions_are_saved_on_the_process(self):
+        person = self.make_holder('Fix', phone='972123456')
+        contract = Contract.objects.get(holder=person)
+        process = CommunicationProcess.objects.create(token='PROC-1')
+
+        save_process_exclusions(process, [
+            {'id': person.id, 'person_type': 'holder', 'contracts': [contract.id], 'reasons': ['sms_landline']},
+            {'id': 999999, 'reasons': ['manual']},  # persona inexistent: s'ignora
+        ])
+
+        exclusion = process.exclusions.get()
+        self.assertEqual(exclusion.person, person)
+        self.assertEqual(exclusion.reasons, ['sms_landline'])
+        self.assertEqual(list(exclusion.contracts.all()), [contract])
+        data = CommunicationProcessSerializer(process).data
+        self.assertEqual(data['exclusions'][0]['reasons'], ['sms_landline'])
+
+
+class SupplyCutTemplateMigrationTests(TestCase):
+    """La migració 0034 crea l'origen i la plantilla d'avís de tall a les instal·lacions existents."""
+
+    def run_migration(self):
+        from importlib import import_module
+        from django.apps import apps
+        migration = import_module('communication.migrations.0034_supplycut_origin_and_template')
+        migration.create_supplycut_origin_and_template(apps, None)
+        return migration
+
+    def test_creates_origin_and_one_template_per_existing_channel(self):
+        MessageOrigin.objects.create(token='other', name='Altres', position=4)
+        # Un origen sense posició no pot fer que el nou vagi el primer (NULL primer a Postgres).
+        MessageOrigin.objects.create(token='custom', name='Personalitzat', position=None)
+        for config_token, value in (('message_type_email_token', 'email'), ('message_type_letter_token', 'letter'),
+                                    ('message_type_sms_token', 'sms')):
+            ConfigProject.objects.get_or_create(token=config_token, defaults={'value': value})
+        MessageType.objects.create(token='email', name='Correu')
+        MessageType.objects.create(token='letter', name='Carta')
+        # Sense tipus 'sms' a la BD: no se'n crea la plantilla d'SMS.
+
+        from django.test import override_settings
+        with override_settings(LANGUAGE='ca'):
+            self.run_migration()
+            self.run_migration()  # idempotent
+
+        origin = MessageOrigin.objects.get(token='supplycut')
+        self.assertEqual(origin.position, 5)
+        template = MessageTemplate.objects.get(token='supplycut_notice')
+        self.assertEqual(template.origin, origin)
+        self.assertEqual(sorted(template.templates.values_list('type__token', flat=True)), ['email', 'letter'])
+        self.assertIn('%supplycut.affected_addresses', template.templates.get(type__token='email').body)
+        self.assertEqual(origin.name, 'Tall de subministrament')
+
+    def test_template_follows_the_installation_language(self):
+        from django.test import override_settings
+        MessageOrigin.objects.create(token='other', name='Otros', position=4)
+        ConfigProject.objects.get_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        MessageType.objects.create(token='email', name='Correo')
+
+        with override_settings(LANGUAGE='es'):
+            self.run_migration()
+
+        self.assertEqual(MessageOrigin.objects.get(token='supplycut').name, 'Corte de suministro')
+        template = MessageTemplate.objects.get(token='supplycut_notice')
+        self.assertEqual(template.name, 'Aviso de corte de suministro')
+        self.assertTrue(template.templates.get().body.startswith('Estimado/a %person.name'))
+
+    def test_fresh_database_is_left_to_initial_data(self):
+        self.run_migration()
+        self.assertFalse(MessageOrigin.objects.exists())
+        self.assertFalse(MessageTemplate.objects.exists())
+
+
+class SmsSendingTests(TestCase):
+    """Enviament de l'SMS de les comunicacions via Broadcaster."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from communication.models import CommunicationStatus, Message
+
+        cls.pending = CommunicationStatus.objects.create(token='0', name='Pendent', is_default=True)
+        cls.sent = CommunicationStatus.objects.create(token='2', name='Enviada')
+        cls.rejected = CommunicationStatus.objects.create(token='-2', name='Retornada')
+        for token, value in (
+            ('communication_status_sent_token', '2'),
+            ('communication_status_rejected_token', '-2'),
+            ('message_type_sms_token', 'sms'),
+        ):
+            # Algunes migracions ja en creen.
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
+        cls.sms_type = MessageType.objects.create(token='sms', name='SMS')
+        cls.message = Message.objects.create(type=cls.sms_type, body='**BOLD**Avís**BOLD** del %date.today')
+
+    def make_comm(self, type_tokens='sms'):
+        comm = Communication.objects.create(
+            status=self.pending, used_phones='612345678,+34 698765432', type_tokens=type_tokens,
+        )
+        comm.messages.add(self.message)
+        return comm
+
+    def handle(self, comm):
+        from communication.utils.communication_service import handle_communication
+
+        handle_communication(comm, comm.type_tokens.split(','))
+        comm.refresh_from_db()
+
+    def make_email_comm(self, type_tokens='email,sms'):
+        from communication.models import Message
+        from service.models import CompanyConfig, CompanyConfigEmail
+
+        config = CompanyConfig.objects.create()
+        config_email = CompanyConfigEmail.objects.create(
+            company_config=config, mail_send_user='sender@example.com',
+            mail_send_mail='sender@example.com', is_default=True,
+        )
+        email_type = MessageType.objects.create(token='email', name='Email')
+        ConfigProject.objects.update_or_create(
+            token='message_type_email_token', defaults={'value': 'email'},
+        )
+        comm = self.make_comm(type_tokens)
+        comm.company_config = config
+        comm.company_config_email = config_email
+        comm.used_email = 'recipient@example.com'
+        comm.save()
+        comm.messages.add(Message.objects.create(type=email_type, subject='Avís', body='Avís de tall'))
+        return comm
+
+    def test_get_sms_text(self):
+        from communication.utils.communication_service import get_sms_text
+
+        self.assertEqual(
+            get_sms_text('**BOLD**Tall**BOLD** a  %supplycut.affected_addresses', {'supplycut.affected_addresses': 'carrer'}),
+            'Tall a carrer',
+        )
+
+    def test_sms_sent(self):
+        from unittest.mock import patch
+
+        comm = self.make_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms:
+            self.handle(comm)
+
+        kwargs = send_sms.call_args.kwargs
+        self.assertEqual(kwargs['phones'], ['612345678', '+34 698765432'])
+        self.assertTrue(kwargs['text'].startswith('Avís del '))
+        self.assertNotIn('**', kwargs['text'])
+        self.assertEqual(comm.status, self.sent)
+        self.assertIsNotNone(comm.sent_at)
+        self.assertIsNotNone(comm.sms_sent_at)
+
+    def test_sms_error_rejects_communication(self):
+        from unittest.mock import patch
+        from integrations.outbound.broadcaster.exceptions import BroadcasterError
+
+        comm = self.make_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=BroadcasterError('HTTP 403')):
+            self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertIn('HTTP 403', comm.rejection_reason)
+        self.assertIsNone(comm.sms_sent_at)
+
+    def test_retry_after_email_error_does_not_resend_sms(self):
+        from unittest.mock import patch
+
+        def email_fails(comm):
+            Communication.objects.filter(id=comm.id).update(status=self.rejected, rejection_reason='Error sending email')
+
+        def email_ok(comm):
+            Communication.objects.filter(id=comm.id).update(status=self.sent)
+
+        comm = self.make_comm('email,sms')
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms, \
+                patch('communication.utils.communication_service.send_electronic_mail', side_effect=email_fails):
+            self.handle(comm)
+        self.assertEqual(send_sms.call_count, 1)
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, 'Error sending email')
+
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms, \
+                patch('communication.utils.communication_service.send_electronic_mail', side_effect=email_ok):
+            self.handle(comm)
+        send_sms.assert_not_called()
+        self.assertEqual(comm.status, self.sent)
+
+    def test_retry_after_sms_error_does_not_resend_email(self):
+        from unittest.mock import patch
+        from integrations.outbound.broadcaster.exceptions import BroadcasterError
+
+        comm = self.make_email_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms',
+                   side_effect=[BroadcasterError('HTTP 500'), BroadcasterError('HTTP 500'), None]) as send_sms, \
+                patch('communication.utils.communication_service._send_via_smtp') as send_email:
+            for _ in range(2):
+                self.handle(comm)
+                self.assertEqual(comm.status, self.rejected)
+                self.assertIsNotNone(comm.sent_at)
+                self.assertIsNone(comm.sms_sent_at)
+                self.assertEqual(send_email.call_count, 1)
+            self.handle(comm)
+
+        self.assertEqual(send_sms.call_count, 3)
+        send_email.assert_called_once()
+        self.assertEqual(comm.status, self.sent)
+        self.assertIsNotNone(comm.sms_sent_at)
+
+    def test_retry_sends_failed_email_without_resending_sms(self):
+        from unittest.mock import patch
+
+        comm = self.make_email_comm()
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms') as send_sms, \
+                patch('communication.utils.communication_service._send_via_smtp',
+                      side_effect=[Exception('SMTP unavailable'), None]) as send_email:
+            self.handle(comm)
+            self.assertEqual(comm.status, self.rejected)
+            self.assertIsNone(comm.sent_at)
+            self.assertIsNotNone(comm.sms_sent_at)
+            self.handle(comm)
+
+        send_sms.assert_called_once()
+        self.assertEqual(send_email.call_count, 2)
+        self.assertEqual(comm.status, self.sent)
+        self.assertIsNotNone(comm.sent_at)
+
+    def test_email_timestamp_is_rechecked_before_sending(self):
+        from unittest.mock import patch
+        from django.utils import timezone
+
+        comm = self.make_email_comm('email')
+        for status in (self.pending, self.rejected):
+            with self.subTest(status=status.token):
+                comm.sent_at = None
+                sent_at = timezone.now()
+                Communication.objects.filter(id=comm.id).update(status=status, sent_at=sent_at)
+                with patch('communication.utils.communication_service.get_all_documents') as get_documents, \
+                        patch('communication.utils.communication_service._send_via_smtp') as send_email:
+                    self.handle(comm)
+                get_documents.assert_not_called()
+                send_email.assert_not_called()
+                self.assertEqual(comm.status, status)
+                self.assertEqual(comm.sent_at, sent_at)
+
+    def test_email_and_sms_errors_keep_both_reasons(self):
+        from unittest.mock import patch
+        from integrations.outbound.broadcaster.exceptions import BroadcasterError
+
+        def email_fails(comm):
+            Communication.objects.filter(id=comm.id).update(status=self.rejected, rejection_reason='Error sending email')
+
+        comm = self.make_comm('email,sms')
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=BroadcasterError('HTTP 500')), \
+                patch('communication.utils.communication_service.send_electronic_mail', side_effect=email_fails):
+            self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertIn('Error sending email', comm.rejection_reason)
+        self.assertIn('HTTP 500', comm.rejection_reason)

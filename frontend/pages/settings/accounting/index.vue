@@ -6,6 +6,7 @@ import AppLoading from '~/components/atoms/AppLoading.vue';
 import AccountingReferenceCard from '~/components/molecules/AccountingReferenceCard.vue';
 import AccountingConceptsRegion from '~/components/molecules/AccountingConceptsRegion.vue';
 import AccountingCostCentersRegion from '~/components/molecules/AccountingCostCentersRegion.vue';
+import AccountingConfigRegion from '~/components/molecules/AccountingConfigRegion.vue';
 import AccountingPricingsBox from '~/components/organisms/AccountingPricingsBox.vue';
 import EditAccountingPricing from '~/components/organisms/EditAccountingPricing.vue';
 import { checkPermission } from '~/middleware/permission';
@@ -145,7 +146,7 @@ onMounted(async () => {
           </li>
         </AtomsTabs>
 
-        <div class="mb-3 flex flex-wrap justify-around gap-4 max-w-xl" :class="showExploitation ? 'mt-3' : ''">
+        <div class="mb-3 flex flex-wrap items-stretch justify-start gap-4" :class="showExploitation ? 'mt-3' : ''">
           <AccountingReferenceCard index="01" icon="fa6-solid:tags" accent="#0d9488" accent-soft="#99f6e4"
             :title="t('pricing_block.accounting_concepts')"
             :description="t('pricing_block.accounting_concepts_description')" :loading="conceptsLoading"
@@ -155,6 +156,11 @@ onMounted(async () => {
             :title="t('pricing_block.accounting_cost_centers')"
             :description="t('pricing_block.accounting_cost_centers_description')"
             @check="openReferenceRegion('AccountingCostCenters')" />
+
+          <AccountingReferenceCard index="03" icon="fa6-solid:sliders" accent="#b45309" accent-soft="#fcd34d"
+            :title="t('pricing_block.accounting_settings')"
+            :description="t('pricing_block.accounting_settings_description')"
+            @check="openReferenceRegion('AccountingConfig')" />
         </div>
 
         <AccountingPricingsBox ref="pricingsBox" :categories="accountingValues"
@@ -169,7 +175,7 @@ onMounted(async () => {
     class="fixed h-full border-l border-gray-100 top-0 right-0 z-10 transition-all duration-500 ease py-2 text-base bg-white overflow-x-hidden"
     :class="{
       'translate-x-0': showRegion,
-      'translate-x-[2000px]': !showRegion,
+      'translate-x-full': !showRegion,
       'w-[95%]': isSubRegionOpen,
       'w-[55%]': !isSubRegionOpen,
     }">
@@ -183,6 +189,7 @@ onMounted(async () => {
         :categories="accountingValues" @show-subregion="handleSubRegionEvent" @close="toggleRegion(false)"
         @changed="refreshConcepts" />
       <AccountingCostCentersRegion v-if="regionComponent === 'AccountingCostCenters'" @close="toggleRegion(false)" />
+      <AccountingConfigRegion v-if="regionComponent === 'AccountingConfig'" @close="toggleRegion(false)" />
       <EditAccountingPricing v-if="regionComponent === 'EditAccountingPricing'" :id="selectedItemId"
         @close="toggleRegion(false)" @changed="refreshPricings" />
     </div>

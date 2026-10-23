@@ -207,14 +207,7 @@ const save = async () => {
       }
 
       //return navigateTo('/pricing/products/')
-      return navigateTo({
-        path: '/pricing/products/',
-        query: {
-          action: 'showDetail',
-          id: price_rate.value.product.id,
-          price_rate_id: price_rate.value.id
-        }
-      })
+      return goBackToPriceRate()
     } else {
       console.error('Formulari no vàlid');
     }
@@ -253,18 +246,25 @@ const updateSelect = (event, entity) => {
   }
 }
 
+// Torna al detall de la tarifa: dins del producte si en té, o al llistat de tarifes si no
+const goBackToPriceRate = () => {
+  if (price_rate.value.product) {
+    return navigateTo({
+      path: '/pricing/products/',
+      query: { action: 'showDetail', id: price_rate.value.product.id, price_rate_id: price_rate.value.id }
+    })
+  }
+  return navigateTo({
+    path: '/pricing/price-rates/',
+    query: { action: 'showDetail', pr_id: price_rate.value.id }
+  })
+}
+
 const deleteItem = async () => {
   if (confirm(t('confirmation_text_block.confirm_delete'))) {
     saving.value = true;
     await $AdjustmentApiService.doDelete(adjustment_id.value);
-    return navigateTo({
-      path: '/pricing/products/',
-      query: {
-        action: 'showDetail',
-        id: price_rate.value.product.id,
-        price_rate_id: price_rate.value.id
-      }
-    })
+    return goBackToPriceRate()
   }
 }
 
@@ -534,7 +534,7 @@ watch( quantity, (newVal) => {
 
     <div role="region" id="right_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
-      :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
+      :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />

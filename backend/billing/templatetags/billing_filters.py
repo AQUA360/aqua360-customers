@@ -207,6 +207,75 @@ def invoice_period(invoice):
         return ""
 
 
+@register.filter
+def invoice_period_month(invoice):
+    """Últim mes del període facturat, en format numèric "MM/AAAA" (p. ex. "03/2026").
+
+    Format compacte per a columnes estretes (detall del deute a les cartes
+    d'impagats). Mateix criteri que `invoice_period`: el mes de tancament surt de
+    la lectura més recent o, si no n'hi ha, del mes de facturació menys un; les
+    factures puntuals no tenen període i retornen "Puntual".
+    """
+    if invoice is None:
+        return ""
+
+    try:
+        if not _is_consumption_invoice(invoice):
+            return _("Puntual")
+
+        end = _invoice_period_end(invoice)
+        if not end:
+            return ""
+        return f"{end[1]:02d}/{end[0]}"
+    except Exception:
+        return ""
+
+
+def _month_abbr(year, month):
+    """Abreviatura de 3 lletres del mes en l'idioma actiu, en majúscules ("ABR").
+
+    Es retalla a 3 lletres perquè algunes abreviatures del català de Django en
+    tenen més ("març", "maig", "juny").
+    """
+    return formats.date_format(date(year, month, 1), 'b').rstrip('.')[:3].upper()
+
+
+@register.filter
+def invoice_period_short(invoice):
+    """Període facturat amb abreviatures de mes, en l'idioma actiu.
+
+    "ABR - JUN 2026", "JUL 2026" (un sol mes) o "NOV 2025 - GEN 2026" (travessa
+    l'any). Mateix criteri de període que `invoice_period`; les factures puntuals
+    retornen "Puntual".
+    """
+    if invoice is None:
+        return ""
+
+    try:
+        if not _is_consumption_invoice(invoice):
+            return _("Puntual")
+
+        end = _invoice_period_end(invoice)
+        if not end:
+            return ""
+
+        end_year, end_month = end
+        months = _invoice_period_months(invoice)
+        start_index = (end_year * 12 + (end_month - 1)) - (months - 1)
+        start_year, start_month = divmod(start_index, 12)
+        start_month += 1
+
+        end_label = _month_abbr(end_year, end_month)
+        if months <= 1:
+            return f"{end_label} {end_year}"
+        start_label = _month_abbr(start_year, start_month)
+        if start_year == end_year:
+            return f"{start_label} - {end_label} {end_year}"
+        return f"{start_label} {start_year} - {end_label} {end_year}"
+    except Exception:
+        return ""
+
+
 BILLER_INITIAL_MONTH = {
     'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
@@ -353,11 +422,116 @@ def clean_address_suffix(value):
     return cleaned.strip()
 
 @register.filter
+def address_without_city(address):
+    """`address_complete` d'una adreça serialitzada sense el ", MUNICIPI" final.
+
+    Per a blocs de destinatari de cartes, on el municipi ja surt a la línia del
+    codi postal i no s'ha de repetir.
+    """
+    if not address:
+        return ""
+    complete = str(_item_attr(address, 'address_complete') or '').strip()
+    city = _item_attr(address, 'city')
+    city_name = _item_attr(city, 'name') if city else None
+    city_name = city_name or _item_attr(address, 'city_name')
+    if city_name:
+        suffix = f", {city_name}"
+        if complete.upper().endswith(suffix.upper()):
+            complete = complete[:-len(suffix)].rstrip()
+    return complete.rstrip(',').strip()
+
+@register.filter
 def format_iban(value):
     if not value:
         return value
     iban_str = str(value).replace(' ', '')
     return ' '.join(iban_str[i:i+4] for i in range(0, len(iban_str), 4))
+
+@register.filter
+def mask_iban(value):
+    """IBAN en blocs de 4 separats per guions i amb l'últim bloc ocult
+    ("ES00-0000-0000-0000-0000-****"), per a cartes on no s'ha de mostrar sencer."""
+    if not value:
+        return ""
+    iban_str = re.sub(r'[\s-]', '', str(value)).upper()
+    groups = [iban_str[i:i+4] for i in range(0, len(iban_str), 4)]
+    if len(groups) > 1:
+        groups[-1] = '*' * 4
+    return '-'.join(groups)
+
+@register.filter
+def with_return_fee_invoices(invoices):
+    """Files per a les cartes de reclamació: cada factura reclamada seguida de les
+    factures de despeses de devolució pendents que en pengen (invoice_return_charge(),
+    marcades per la PriceRate de `invoice_return_price_rate_token`). La factura de
+    despeses penja de l'última rectificativa de la cadena, per això es busca a tota
+    la cadena de filles. Cada fila és {'invoice', 'is_return_fee', 'left_to_pay'}.
+    Mai no fa petar la carta: si falla la cerca de despeses, retorna només les
+    factures reclamades."""
+    try:
+        invoices = list(invoices or [])
+    except Exception:
+        return []
+    try:
+        return _with_return_fee_invoices(invoices)
+    except Exception:
+        return [
+            {'invoice': invoice, 'is_return_fee': False, 'left_to_pay': getattr(invoice, 'left_to_pay', None) or 0}
+            for invoice in invoices
+        ]
+
+
+def _with_return_fee_invoices(invoices):
+    from billing.models import Invoice
+    from coredata.models import ConfigProject
+
+    fee_token = ConfigProject.objects.filter(
+        token='invoice_return_price_rate_token'
+    ).values_list('value', flat=True).first()
+    fee_ids = set()
+    if fee_token and invoices:
+        fee_ids = set(Invoice.objects.filter(
+            id__in=[invoice.id for invoice in invoices],
+            line_items__price_rate__token=fee_token,
+        ).values_list('id', flat=True))
+
+    rows = []
+    seen = set()
+
+    def append(invoice, is_return_fee):
+        if invoice.id in seen:
+            return
+        seen.add(invoice.id)
+        rows.append({
+            'invoice': invoice,
+            'is_return_fee': is_return_fee,
+            'left_to_pay': invoice.left_to_pay or 0,
+        })
+
+    for invoice in invoices:
+        if invoice.id in fee_ids:
+            continue
+        append(invoice, False)
+        if not fee_token:
+            continue
+        chain_ids = [invoice.id]
+        children = list(Invoice.objects.filter(parent_invoice_id=invoice.id).values_list('id', flat=True))
+        while children:
+            chain_ids.extend(child for child in children if child not in chain_ids)
+            children = list(Invoice.objects.filter(parent_invoice_id__in=children).exclude(id__in=chain_ids).values_list('id', flat=True))
+        fees = Invoice.objects.filter(
+            parent_invoice_id__in=chain_ids,
+            line_items__price_rate__token=fee_token,
+            left_to_pay__gt=0,
+        ).distinct().order_by('issue_date', 'id')
+        for fee in fees:
+            append(fee, True)
+
+    # Factures de despeses reclamades directament sense la seva factura d'origen
+    for invoice in invoices:
+        if invoice.id in fee_ids:
+            append(invoice, True)
+    return rows
 
 def _item_attr(item, key, default=None):
     if isinstance(item, dict):

@@ -105,10 +105,8 @@ class Command(BaseCommand):
                             )
                         )
                         self.stdout.write(f"Routing Key: {method.routing_key}")
-                        self.stdout.write("Payload:")
-                        self.stdout.write(
-                            json.dumps(payload, indent=2, default=str, ensure_ascii=False)
-                        )
+                        # Només el tipus de missatge: el contingut pot portar dades personals.
+                        self.stdout.write(f"Key: {payload.get('key') if isinstance(payload, dict) else '?'} ({len(body)} bytes)")
                         self.stdout.write(self.style.HTTP_INFO("=" * 60))
 
                         # Process the message.

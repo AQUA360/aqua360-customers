@@ -5,17 +5,20 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import viewsets
+from django.db.models import Q
 
 from auth.permissions import PermissionManager
 from ..models import PriceRate
-from ..serializers.price_rate_serializer import PriceRateSerializer, PriceRateSaveSerializer
+from ..serializers.price_rate_serializer import PriceRateSerializer, PriceRateSaveSerializer, create_price_rate_log
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 from pricing.filters.price_rate_filter import PriceRateFilter
+from pricing.utils.deletion_service import price_rate_deletion_error
 
 class PriceRateViewSet(viewsets.ModelViewSet):
-    queryset = PriceRate.objects.filter(is_active=True, product__is_active=True).order_by('token')
+    # Les tarifes sense producte també es mostren, perquè es puguin revisar i eliminar
+    queryset = PriceRate.objects.filter(Q(product__isnull=True) | Q(product__is_active=True), is_active=True).order_by('token')
     serializer_class = PriceRateSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
@@ -52,6 +55,24 @@ class PriceRateViewSet(viewsets.ModelViewSet):
         instance = serializer.instance
         read_serializer = PriceRateSerializer(instance, context=self.get_serializer_context())
         return Response(read_serializer.data, status=status.HTTP_200_OK, content_type='application/json')
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = self.get_serializer(instance).data
+        # Només al detall: al llistat suposaria diverses consultes per fila
+        data['is_deletable'] = price_rate_deletion_error(instance) is None
+        return Response(data)
+
+    def destroy(self, request, *args, **kwargs):
+        """Esborrat lògic, només si la tarifa no s'ha fet servir en cap contracte ni factura ni està configurada."""
+        instance = self.get_object()
+        error = price_rate_deletion_error(instance)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+        instance.is_active = False
+        instance.save(update_fields=['is_active', 'updated_at'])
+        create_price_rate_log(instance, 'is_active', True, False, request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     @action(detail=False, methods=['get'], url_path='all')
     def all(self, request):

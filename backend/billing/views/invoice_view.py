@@ -30,6 +30,9 @@ from contract.models import PiggyBankMovement, Contract
 from coredata.utils.name_utils import generate_token
 from billing.views.epayment_document_generate_view import generate_xml
 from statistics.utils.report_service import delete_file_later
+import logging
+
+logger = logging.getLogger(__name__)
 
 class InvoiceViewSet(viewsets.ModelViewSet):
   """
@@ -98,6 +101,13 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     invoice_status_paid_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
     payment_status_paid_token = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
 
+    # Canviar el mètode d'un cobrament ja fet no genera cap moviment, i la comptabilitat continuaria
+    # dient el mètode original: primer s'ha de fer el retorn i tornar-la a pagar pel mètode nou
+    if invoice.status and invoice.status.token == invoice_status_paid_token:
+      return Response(
+        {'error': "No es pot canviar el mètode de pagament d'una factura pagada: primer cal fer-ne el retorn i tornar-la a pagar."},
+        status=status.HTTP_400_BAD_REQUEST)
+
     disconnect_payment_signals()
     
     log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
@@ -108,11 +118,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     # invoice.payment_type = payment_type
     invoice.save()
     
-    payments = invoice.payments.all()
-    if invoice.status.token != invoice_status_paid_token:
-        payments = payments.exclude(status__token=payment_status_paid_token).distinct()
-    else:
-        payments = payments.exclude(payment_type_token="BALANCE").distinct()
+    payments = invoice.payments.exclude(status__token=payment_status_paid_token.token).distinct()
     payments.update(
         payment_type=payment_type.name, 
         payment_type_token=payment_type.token, 
@@ -539,8 +545,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         new_invoice = recalculate_invoice_smart(invoice.id)
         serializer = InvoiceFullSerializer(new_invoice, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
-    except Exception as e:
+    except ValueError as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.exception("Error inesperat")
+        return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
   @action(detail=False, methods=['get'], url_path='permissions')
 

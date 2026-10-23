@@ -1322,7 +1322,7 @@ watch(() => route.query, async () => {
 
   <div role="region" id="right_page"
     class="fixed z-20 h-full border-l border-gray-100 top-0 transition-[right,width] duration-500 ease py-2 text-base bg-white"
-    :class="[showRegion ? 'right-0' : 'right-[-2000px]', isSubRegionOpen ? 'w-[95%]' : 'w-[60%]']">
+    :class="[showRegion ? 'right-0' : '-right-full', isSubRegionOpen ? 'w-[95%]' : 'w-[60%]']">
     <div id="region_nav" class="mb-3 px-3">
       <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
         <Icon name="fa6-solid:angles-right" class="text-slate-500" />

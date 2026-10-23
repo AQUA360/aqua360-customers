@@ -214,11 +214,12 @@ def publish_event(key: str, payload: dict):
     try:
         message_body = json.dumps(payload, ensure_ascii=False,indent=2, default=str)
     except TypeError as e:
-        logger.error(f"Payload not JSON serializable: {payload}")
+        # Sense el contingut: inclou nom, correu i telèfon del client.
+        logger.error(f"Payload not JSON serializable for RabbitMQ event '{key}'")
         raise ValueError(f"Payload contains non-serializable objects: {e}")
 
-    # Log the formatted message payload we are trying to send
-    logger.info(f"Preparing to send RabbitMQ event '{key}' with payload: {message_body}")
+    # Sense el contingut del missatge: inclou nom, correu i telèfon del client.
+    logger.info(f"Preparing to send RabbitMQ event '{key}' ({len(message_body)} bytes)")
 
     connection = None
     try:
@@ -250,7 +251,7 @@ def publish_event(key: str, payload: dict):
         logger.info(f"Published {key} to {settings.RABBIT_OUT_QUEUE}")
 
     except Exception as e:
-        logger.error(f"Failed to publish RabbitMQ event '{key}'. Payload was: {message_body}. Error: {e}")
+        logger.error(f"Failed to publish RabbitMQ event '{key}'. Error: {e}")
         raise
 
     finally:

@@ -17,6 +17,9 @@ from notification.serializers.incident_serializer import *
 from ..models import Incident
 from coredata.models import ConfigProject
 from order.models import OrderStatus
+import logging
+
+logger = logging.getLogger(__name__)
 
 class IncidentPagination(PageNumberPagination):
     page_size = 50
@@ -113,8 +116,9 @@ class IncidentViewSet(viewsets.ModelViewSet):
           }, status=status.HTTP_202_ACCEPTED)
           
       except Exception as e:
+          logger.exception("Error inesperat")
           return Response(
-              {"error": f"Error en iniciar l'exportació: {str(e)}"},
+              {"error": "Error en iniciar l'exportació."},
               status=status.HTTP_500_INTERNAL_SERVER_ERROR
           )
 

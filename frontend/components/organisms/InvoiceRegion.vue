@@ -402,7 +402,7 @@ const reGenerateInvoice = async () => {
     const response = await $InvoiceApiService.downloadInvoice(invoiceId.value);
     downloadDocument(response.document_id)
     await getData(false)
-    emit('pdf-generated', { id: invoiceId.value, invoice_file_template: data.value?.invoice_file_template });
+    emit('pdf-generated', { id: invoiceId.value, invoice_file: data.value?.invoice_file });
   } catch (error) {
     console.error(error)
   }
@@ -411,7 +411,7 @@ const reGenerateInvoice = async () => {
 const sendModalOpen = ref(false);
 
 const openSendModal = () => {
-  if (!data.value?.invoice_file_template) {
+  if (!data.value?.invoice_file) {
     toast.warning(t('billing_block.invoice_no_document'));
     return;
   }
@@ -639,10 +639,11 @@ const handleRefactor = async () => {
             <Icon name="fa6-solid:credit-card" class="display-inline mr-2" /> {{ `${t('common.generate')}
             ${t('billing_block.payment').toLowerCase()}` }}
           </DropdownOption>
-          <!-- :disabled="data.status?.token == status_paid_token" -->
+          <!-- Pagada: el mètode no es pot canviar sense fer-ne abans el retorn (el moviment comptable no canviaria) -->
           <DropdownOption v-if="data.status?.token != status_canceled_token" :disabled="allow_changes ||
-          (data.status?.token == status_paid_token && data.payment_type_token_final == 'BALANCE')"
+          data.status?.token == status_paid_token"
             :name="`${t('common.change')} ${t('common.payment_method').toLowerCase()}`"
+            :title="data.status?.token == status_paid_token ? t('informative_block.info_paid_invoice_payment_method_locked') : undefined"
             @click="modalsRef?.openChangePaymentMethod()">
             <Icon name="fa6-solid:wallet" class="display-inline mr-2" /> {{ `${t('common.change')}
             ${t('common.payment_method').toLowerCase()}` }}
@@ -705,13 +706,13 @@ const handleRefactor = async () => {
               @click="changeStatus(status_canceled_token, true)">
               <Icon name="fa6-solid:xmark" class="display-inline mr-2" /> {{ `${$t('common.cancel')} ${t('invoice').toLowerCase()}` }}
             </DropdownOption> -->
-            <DropdownOption
+            <!-- <DropdownOption
               v-if="data.status?.token != status_paid_token && data.status?.token != status_irrecoverable_token" :disabled="allow_changes"
               :name="`${$t('billing_block.irrecoverable_invoice')}`" @click="changeStatus(status_irrecoverable_token)">
               <Icon name="fa6-solid:circle-xmark" class="display-inline mr-2" /> {{
                 $t('billing_block.irrecoverable_invoice') }}
-            </DropdownOption>
-            <DropdownOption
+            </DropdownOption> -->
+            <!-- <DropdownOption
               v-if="data.status?.token != status_paid_token && data.status?.token != status_endowment_token && data.status?.token != status_irrecoverable_token"
               :disabled="allow_changes" :name="`${$t('contract_block.endowment_long')}`" @click="changeStatus(status_endowment_token)">
               <Icon name="fa6-solid:hand-holding-dollar" class="display-inline mr-2" /> {{
@@ -721,7 +722,7 @@ const handleRefactor = async () => {
               :disabled="allow_changes" @click="changeStatus(status_confirmed_token)">
               <Icon name="fa6-solid:hand-holding-dollar" class="display-inline mr-2" /> {{ $t('billing_block.unendow')
               }}
-            </DropdownOption>
+            </DropdownOption> -->
             <hr v-if="verifactuEnabled && data.type.token == invoice_token && !data.verifactu_invoice" />
             <DropdownOption v-if="verifactuEnabled && data.type.token == invoice_token && !data.verifactu_invoice"
               :name="`${$t('billing_block.notify_verifactu')}`" @click="notifyVerifactuInvoice">

@@ -36,6 +36,13 @@ const externalGot = String(config.public.externalGot).toLowerCase() === 'true';
 
 const emit = defineEmits(['show-detail', 'clickChangeStatus', 'validate', 'invalidate']);
 
+const description = computed(() => (localData.value?.description || '').trim());
+const needsManualReview = computed(() => description.value.startsWith('[REVISIÓ MANUAL]'));
+const manualReviewTitle = computed(() => description.value.split('\n', 1)[0]);
+const manualReviewBody = computed(() =>
+  description.value.split('\n').slice(1).join('\n').trim()
+);
+
 const showDetail = function (component, id) {
   console.log(component)
   console.log(id)
@@ -73,6 +80,14 @@ onMounted(async () => {
       </div>
     </div>
     <div v-else-if="localData">
+      <div v-if="needsManualReview" role="alert"
+        class="mb-3 flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 shadow-sm">
+        <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0 text-lg text-amber-600" />
+        <div class="min-w-0">
+          <p class="font-semibold break-words">{{ manualReviewTitle }}</p>
+          <p v-if="manualReviewBody" class="mt-1 whitespace-pre-line break-words text-sm">{{ manualReviewBody }}</p>
+        </div>
+      </div>
       <div role="row" class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <FieldDetail :label='$t("common.code")' :value=localData.token />
         <FieldDetail :label='$t("common.status")' :value="localData.status?.name || localData.token" class="items-center">
@@ -141,6 +156,9 @@ onMounted(async () => {
         </FieldDetail>
         <FieldDetail v-if="localData.address" :label='$t("common.address")' :value="localData.address.address_complete" />
       </div>
+      <FieldDetail v-if="description && !needsManualReview" :label='$t("common.description")'>
+        <span class="whitespace-pre-line break-words">{{ description }}</span>
+      </FieldDetail>
     </div>
 
   </div>

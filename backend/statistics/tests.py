@@ -1,8 +1,21 @@
-from django.test import SimpleTestCase, TestCase
+from decimal import Decimal
 
+from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
+
+from billing.models import Invoice, Payment, PaymentStatus
+from contract.models import Contract
+from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
 from coredata.models import ConfigProject
+from pricing.models import ProductOrigin
 from service.models import Exploitation
 from service.serializers.exploitation_serializer import ExploitationSerializer
+from statistics.models import BillingConsumption
+from statistics.utils.billing_amount_average import (
+    TotalAmountAvgCache,
+    get_total_amount_avg,
+    is_high_amount_for_period,
+)
 from statistics.utils.incasol import resolve_incasol_num
 
 from statistics.utils.report_billing_by_zone_service import (
@@ -48,6 +61,22 @@ class ClassifyLineTests(SimpleTestCase):
             None, 'm3', None,
         )
         self.assertEqual(kind, 'sewer')
+        self.assertIsNone(tram)
+
+    def test_ensobrat_by_token(self):
+        kind, tram = classify_line(
+            'ENSOBRAT', 'Ensobrat', None, 'Ensobrat', None,
+            None, None, None,
+        )
+        self.assertEqual(kind, 'ensobrat')
+        self.assertIsNone(tram)
+
+    def test_ensobrat_by_name_not_water(self):
+        kind, tram = classify_line(
+            'ENS', 'Taxa ensobrat zona 1', 'aigua', 'Ensobrat', None,
+            None, None, None,
+        )
+        self.assertEqual(kind, 'ensobrat')
         self.assertIsNone(tram)
 
     def test_part_fixa_sense_consum_is_quota(self):
@@ -240,6 +269,12 @@ class WorkbookCanonSplitTests(SimpleTestCase):
         self.assertTrue(any('CANON-DOM - TRAM 1' in str(v) for v in labels))
         self.assertTrue(any("CONSUM D'AIGUA - TRAM 1" in str(v) for v in labels))
         self.assertTrue(any('TOTAL CÀNON ZONA' in str(v) for v in labels))
+        self.assertTrue(any(str(v) == 'Ensobrat' for v in labels))
+        self.assertTrue(any(str(v) == 'TOTAL ENSOBRAT' for v in labels))
+        ensobrat_cell = next(cell for cell in wb.active['A'] if cell.value == 'Ensobrat')
+        self.assertFalse(bool(ensobrat_cell.font and ensobrat_cell.font.bold))
+        total_cell = next(cell for cell in wb.active['A'] if cell.value == 'TOTAL ENSOBRAT')
+        self.assertTrue(bool(total_cell.font and total_cell.font.bold))
         self.assertFalse(any(str(v).startswith('TOTAL ZONA:') for v in labels))
         self.assertFalse(any('Tarifa aigua' in str(v) for v in labels))
         self.assertEqual(sum(1 for v in labels if v == 'Quota servei'), 1)
@@ -381,3 +416,87 @@ class IncasolNumResolutionTests(TestCase):
         serializer.save()
         self.exploitation.refresh_from_db()
         self.assertEqual(self.exploitation.incasol_num, '')
+
+
+class HighAmountWaterInvoicesTests(TestCase):
+    """L'avís d'import alt només compara amb factures d'aigua (no les d'alta ni altres)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ConfigProject.objects.update_or_create(token='origin_reading_token', defaults={'value': 'aigua'})
+        cls.water, _ = ProductOrigin.objects.get_or_create(token='aigua', defaults={'name': 'Aigua'})
+        cls.other, _ = ProductOrigin.objects.get_or_create(token='altres', defaults={'name': 'Altres'})
+        cls.contract = Contract.objects.bulk_create([Contract(
+            token='HA-NEW', registration_date=timezone.now().date(), is_active=True,
+        )])[0]
+
+    def _invoice(self, origin, total, year=None, month=None):
+        invoice = Invoice.objects.bulk_create([Invoice(
+            contract=self.contract, origin=origin, total_final=Decimal(total),
+            billing_period_year=year, billing_period_month=month,
+        )])[0]
+        BillingConsumption.objects.create(
+            invoice=invoice, contract=self.contract, year=year, month=month, total_amount=Decimal(total),
+        )
+        return invoice
+
+    def test_new_contract_with_only_registration_invoice_has_no_average(self):
+        Invoice.objects.bulk_create([Invoice(contract=self.contract, origin=self.other, total_final=Decimal('11.11'))])
+
+        self.assertIsNone(get_total_amount_avg([self.contract]))
+        self.assertFalse(is_high_amount_for_period(Decimal('40'), [self.contract], 2026, 10))
+        cache = TotalAmountAvgCache([self.contract.id])
+        self.assertFalse(cache.is_high_amount(Decimal('40'), self.contract.id, 2026, 10))
+
+    def test_average_ignores_non_water_invoices(self):
+        self._invoice(self.other, '11.11', 2026, 8)
+        self._invoice(self.water, '30', 2026, 9)
+
+        self.assertEqual(get_total_amount_avg([self.contract]), 30.0)
+        self.assertFalse(is_high_amount_for_period(Decimal('40'), [self.contract], 2026, 10))
+        self.assertTrue(is_high_amount_for_period(Decimal('50'), [self.contract], 2026, 10))
+        cache = TotalAmountAvgCache([self.contract.id])
+        self.assertEqual(cache.total_avg(self.contract.id), 30.0)
+        self.assertFalse(cache.is_high_amount(Decimal('40'), self.contract.id, 2026, 10))
+        self.assertTrue(cache.is_high_amount(Decimal('50'), self.contract.id, 2026, 10))
+
+    def test_seasonal_average_ignores_non_water_invoices(self):
+        self._invoice(self.water, '100', 2025, 1)
+        self._invoice(self.water, '20', 2025, 10)
+        self._invoice(self.other, '5', 2025, 10)
+
+        # Mitjana completa 60 i la del període (octubre 2025) 20: 95 supera 1,5 vegades totes dues.
+        self.assertTrue(is_high_amount_for_period(Decimal('95'), [self.contract], 2026, 10))
+        cache = TotalAmountAvgCache([self.contract.id])
+        self.assertEqual(cache.seasonal_avg(self.contract.id, 2026, 10), 20.0)
+
+
+class ContractDebtViewTests(TestCase):
+    """vw_contract_debt: els pagaments "En saldo" estan cobrats amb el saldo i no són deute."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.contract = Contract.objects.bulk_create([Contract(
+            token='DEBT-VIEW', registration_date=timezone.now().date(), is_active=True,
+        )])[0]
+        cls.invoice = Invoice.objects.bulk_create([Invoice(contract=cls.contract, total_final=Decimal('50'))])[0]
+
+    def _payment(self, status_token, amount):
+        status, _ = PaymentStatus.objects.get_or_create(token=status_token, defaults={'name': status_token})
+        # bulk_create: sense els signals de Payment, que necessiten tot el ConfigProject.
+        Payment.objects.bulk_create([Payment(invoice=self.invoice, status=status, amount=Decimal(amount))])
+
+    def _debt(self):
+        return contract_debt_amounts_by_contract_id([self.contract.id]).get(self.contract.id, Decimal('0'))
+
+    def test_balance_payment_is_not_debt(self):
+        self._payment('5', '12.02')
+
+        self.assertEqual(self._debt(), Decimal('0'))
+
+    def test_balance_payment_does_not_hide_unpaid_payments(self):
+        self._payment('5', '12.02')
+        self._payment('-1', '30.00')
+        self._payment('0', '20.00')
+
+        self.assertEqual(self._debt(), Decimal('30.00'))

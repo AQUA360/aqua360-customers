@@ -10,6 +10,9 @@ from statistics.models import DailyDocument
 from statistics.serializers import DailyDocumentSerializer, DailyDocumentListSerializer
 from statistics.permissions import StatisticsPermission
 from statistics.tasks import regenerate_daily_document
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DailyDocumentViewSet(viewsets.ModelViewSet):
@@ -39,7 +42,8 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             daily_documents = DailyDocument.objects.filter(status__token__in=[pending_status_token, expired_status_token])
             return Response(len(daily_documents), status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['get'], url_path='regenerate')
     def regenerate_daily_document(self, request, pk=None):
@@ -50,5 +54,6 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             task = regenerate_daily_document.delay(daily_document.id)
             return Response({'task_id': task.id}, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -2,7 +2,7 @@
 
 Integració **outbound** del Programa d'Abonats (PA) amb l'ERP de comptabilitat **Odoo 19 Community** via l'API FastAPI del connector `aqua360_connector`.
 
-**Contracte de dades:** [`data-contract.md`](data-contract.md)
+**Contracte de dades:** [`data-contract.md`](data-contract.md) · [`data-contract.es.md`](data-contract.es.md) · [`openapi.yaml`](openapi.yaml)
 
 ---
 
@@ -173,18 +173,18 @@ Si els codis difereixen entre PA i Odoo, caldrà un diccionari de mapatge a `set
 
 ---
 
-## Endpoints Odoo (previstos)
+## Endpoints Odoo
 
-> Confirmar amb l'equip del connector Odoo abans d'implementar el client.
+Especificació per al connector: [`openapi.yaml`](openapi.yaml) (descripcions en castellà).
 
 | Mètode | Endpoint | Cos |
 |--------|----------|-----|
 | `POST` | `/invoices` | JSON factura / rectificativa |
 | `POST` | `/payments` | JSON pagament + reconcile |
 
-Resposta esperada: `{ "id": <odoo_id>, "aqua_id": "..." }` (confirmar schema exacte).
+Resposta esperada: `{ "id": <odoo_id>, "aqua_id": "..." }`.
 
-Autenticació: API key via capçalera (`Aqua360-Api-Key` o Bearer — confirmar).
+Autenticació: capçalera `Aqua360-Api-Key` (la que envia el client).
 
 ---
 
@@ -283,7 +283,7 @@ python manage.py push_payment_movement_to_odoo \
 
 ## Referències
 
-- Contracte de dades: [`data-contract.md`](data-contract.md)
+- Contracte de dades: [`data-contract.md`](data-contract.md) · [`data-contract.es.md`](data-contract.es.md) · [`openapi.yaml`](openapi.yaml)
 - Codi (planificat): [`integrations/outbound/odoo/README.md`](../../../integrations/outbound/odoo/README.md)
 - Convencions generals: [`../integrations.md`](../../integrations.md)
 - Models de facturació: `billing/models.py` (`Invoice`, `InvoiceLineItem`, `Payment`, `PaymentMovement`)

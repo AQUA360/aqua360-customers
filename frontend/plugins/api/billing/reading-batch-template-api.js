@@ -52,6 +52,26 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   };
 
+  // Totes les plantilles amb rutes (recorre totes les pàgines), opcionalment
+  // només les que tenen rutes de les zones indicades. Per a selectors.
+  const getAllWithRoutes = async (routeZoneIds = []) => {
+    let apiUrl = `${apiHost}${entity}?has_routes=true&ordering=name`;
+    if (routeZoneIds.length > 0) {
+      apiUrl += `&route_zone=${routeZoneIds.join(',')}`;
+    }
+
+    let results = [];
+    while (apiUrl) {
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (!response.results) {
+        throw new Error('Error estructura `results` no trobat');
+      }
+      results = results.concat(response.results);
+      apiUrl = response.next;
+    }
+    return results;
+  };
+
   const loadBatchTemplateByFile = async (file) => {
     let apiUrl = `${apiHost}${entity}load-batch-template-by-file/`;
     try {
@@ -107,6 +127,7 @@ export default defineNuxtPlugin(nuxtApp => {
 
   const apiService = {
     getAll,
+    getAllWithRoutes,
     getDetail,
     save,
     loadBatchTemplateByFile,

@@ -10,6 +10,7 @@ import PersonRegion from '~/components/organisms/PersonRegion.vue';
 import InvoiceRegion from '~/components/organisms/InvoiceRegion.vue';
 import debounce from 'lodash.debounce';
 import { formatMessageTextForPreview } from '~/utils/messages';
+import CommunicationProcessUnreachableList from '~/components/molecules/CommunicationProcessUnreachableList.vue';
 
 const props = defineProps({
   persons: {
@@ -31,12 +32,27 @@ const props = defineProps({
   isRegion: {
     type: Boolean,
     default: false
-  }
+  },
+  // Tots els que no rebran la comunicació, amb el motiu: descartats de la cerca,
+  // sense cap dels canals triats al pas 4 i exclosos a mà.
+  unreachablePersons: {
+    type: Array,
+    default: () => []
+  },
+  // Entrades de `persons` que no tenen cap dels canals triats: no surten com a destinataris.
+  noChannelEntries: {
+    type: Array,
+    default: () => []
+  },
 });
 
 const { t } = useI18n();
 const toast = useToast();
 const emit = defineEmits(['close', 'show-detail', 'change', 'change-excluded']);
+
+// Pestanya activa: destinataris o persones que no rebran la comunicació.
+const activeList = ref('recipients');
+const noChannelSet = computed(() => new Set(props.noChannelEntries));
 const { $PersonApiService } = useNuxtApp();
 
 const loading = ref(false);
@@ -82,6 +98,9 @@ watch(searchQuery, (newValue) => {
 
 const personsWithoutEmail = computed(() => {
   return localPersons.value.filter(person => (!props.excludedPersons.includes(person.id) && !person?.has_email));
+});
+const personsWithoutSms = computed(() => {
+  return localPersons.value.filter(person => (!props.excludedPersons.includes(person.id) && !person?.has_sms));
 });
 const personsWithoutAddress = computed(() => {
   return localPersons.value.filter(person => (!props.excludedPersons.includes(person.id) && !person?.has_address));
@@ -149,7 +168,7 @@ watch([showExcluded, showJuridic, showVulnerable, showWithoutPhone, showWithoutE
 // Filtrar els contractes basats en la cerca i l'estat d'exclusió
 // Optimized with caching and debounced search
 const filteredPersons = computed(() => {
-  let persons = localPersons.value || [];
+  let persons = (localPersons.value || []).filter(person => !noChannelSet.value.has(person));
 
   // Apply filters first (most selective filters first for better performance)
   if (!showExcluded.value) {
@@ -369,6 +388,26 @@ onMounted(async () => {
   <div class="region__content pr-1">
 
     <div class="h-full flex flex-col transition-all duration-500 ease" :class="{ 'mr-[50%]': showRegion && !isSubRegionOpen, 'mr-[95%]': showRegion && isSubRegionOpen }">
+      <div class="flex gap-2 mb-4 border-b border-gray-200">
+        <button v-for="tab in [
+            { key: 'recipients', label: $t('customer_service_block.recipients_tab'), count: filteredPersons.length },
+            { key: 'unreachable', label: $t('customer_service_block.not_receiving_persons'), count: unreachablePersons.length },
+          ]" :key="tab.key" @click="activeList = tab.key"
+          class="px-3 py-2 text-sm font-semibold -mb-px border-b-2"
+          :class="activeList === tab.key ? 'border-sky-500 text-sky-700' : 'border-transparent text-gray-500 hover:text-gray-700'">
+          {{ tab.label }}
+          <span class="ml-1 px-2 rounded-full text-xs"
+            :class="tab.key === 'unreachable' && tab.count > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'">
+            {{ tab.count }}
+          </span>
+        </button>
+      </div>
+
+      <!-- Qui no rebrà la comunicació i per què -->
+      <CommunicationProcessUnreachableList v-if="activeList === 'unreachable'" :persons="unreachablePersons"
+        @show-person="showDetail('PersonRegion', $event)" />
+
+      <template v-else>
       <div class="flex justify-between items-center mb-2">
         <h3 class="text-lg font-semibold">{{ $t('customer_service_block.recipients_list') }}</h3>
         <div class="flex items-center gap-2">
@@ -403,6 +442,12 @@ onMounted(async () => {
           {{ $t('address_block.no_address') }}:
           <span class="text-red-500 font-semibold">
             {{ personsWithoutAddress.length }}
+          </span>
+        </span>
+        <span class="pl-2 border-l-2 border-slate-300 text-sm text-gray-500 mb-4">
+          {{ $t('customer_service_block.no_tlf_sms') }}:
+          <span class="text-red-500 font-semibold">
+            {{ personsWithoutSms.length }}
           </span>
         </span>
       </div>
@@ -465,13 +510,16 @@ onMounted(async () => {
           {{ $t('Destinataris') }}: {{ localPersons.count }}
         </div>
       </div> -->
-      <div class="grid grid-cols-[27px,80px,60px,20px,150px,150px,500px] gap-2 w-full font-semibold">
+      <div class="grid grid-cols-[27px,80px,60px,20px,150px,150px,130px,500px] gap-2 w-full font-semibold">
         <span></span>
         <span class="truncate col-span-4">
           {{ $t('customer_service_block.recipient') }}
         </span>
         <span class="truncate">
           {{ $t('common.email_long') }}
+        </span>
+        <span class="truncate">
+          {{ $t('customer_service_block.short_tlf_sms') }}
         </span>
         <span class="truncate">
           {{ $t('address_block.address') }}
@@ -518,7 +566,7 @@ onMounted(async () => {
                       <Icon :name="isPersonExpanded(person) ? 'fa6-solid:chevron-down' : 'fa6-solid:chevron-right'" />
                     </button>
                     <div>
-                      <div class="grid grid-cols-[80px,60px,20px,150px,150px,500px] gap-2 w-full">
+                      <div class="grid grid-cols-[80px,60px,20px,150px,150px,130px,500px] gap-2 w-full">
                         <button @click="showDetail('PersonRegion', person.id)"
                           class="text-sky-500 hover:text-sky-700 underline text-left"
                           :title="`${$t('common.show')} ${$t('common.details')}`">
@@ -543,6 +591,9 @@ onMounted(async () => {
                         </span>
                         <span class="truncate">
                           {{ person.email || t('common.no_email') }}
+                        </span>
+                        <span class="truncate" :title="person.sms_phone || ''">
+                          {{ person.sms_phone || t('customer_service_block.no_tlf_sms') }}
                         </span>
                         <span class="truncate">
                           {{ person.address || t('address_block.no_address') }}
@@ -575,7 +626,8 @@ onMounted(async () => {
                   <div class="bg-white">
                     <div v-for="message in props.final_data.messages_data">
                       <div v-if="message.type.token == 'email' && person.email ||
-                        message.type.token == 'letter' && person.address">
+                        message.type.token == 'letter' && person.address ||
+                        message.type.token == 'sms' && person.sms_phone">
                         <label for="message" class="text-sm text-slate-500 font-semibold">
                           {{ message.type.name }}
                         </label>
@@ -663,11 +715,12 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+      </template>
     </div>
     <div role="region" :id="isRegion ? 'subregion' : 'right_page'"
       class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white fixed top-0 right-0 z-10" :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[95%]': isSubRegionOpen,
         'w-[50%]': !isSubRegionOpen
       }">

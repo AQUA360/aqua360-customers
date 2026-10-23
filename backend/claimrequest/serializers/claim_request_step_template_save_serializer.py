@@ -8,9 +8,7 @@ class ClaimRequestStepTemplateSaveSerializer(serializers.ModelSerializer):
         fields = '__all__'
     
     def create(self, validated_data):
-        print("Creating claim step template with data:", validated_data)
         return super().create(validated_data) 
     
     def update(self, instance, validated_data):
-        print("Updating claim step template with data:", validated_data)
         return super().update(instance, validated_data)

@@ -233,7 +233,9 @@ watch(() => route.query, () => {
           </span>
           <span class="p-1 truncate">{{ item.description || '-' }}</span>
           <span class="p-1">{{ item.available_report_name || '-' }}</span>
-          <span class="p-1">{{item.days_to_complete > 0 ?  `${item.days_to_complete} ${t('common.days')}`  : t('common.doe_not_expire')}}</span>
+          <span class="p-1">{{ item.days_to_complete > 0
+            ? `${item.days_to_complete} ${t('common.days')} ${item.is_work_days ? t('common.work') : t('common.natural')}`
+            : t('common.doe_not_expire') }}</span>
           <span class="p-1 font-bold text-slate-400">{{ item.is_active ? '' : t('common.inactive') }}</span>
         </div><!-- end for items -->
       </template>
@@ -245,7 +247,7 @@ watch(() => route.query, () => {
 
   <div role="region" id="right_page"
     class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 pr-3 text-base bg-white overflow-x-hidden"
-    :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-[55%]': !isSubRegionOpen }">
+    :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-[55%]': !isSubRegionOpen }">
     <div id="region_nav" class="mb-3 px-3">
       <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
         <Icon name="fa6-solid:angles-right" class="text-slate-500" />

@@ -6,6 +6,7 @@ import Date from '~/components/atoms/Date.vue';
 import ButtonOutline from '../atoms/ButtonOutline.vue';
 
 const { $CalendarTaskApiService } = useNuxtApp();
+const sidebarStore = useSidebarStore();
 const { t } = useI18n();
 
 const props = defineProps({
@@ -23,7 +24,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['show-detail', 'edit']);
+const emit = defineEmits(['show-detail', 'edit', 'changed']);
 
 const isLoading = ref(false);
 const error = ref(null);
@@ -47,6 +48,7 @@ const fetchData = async () => {
 
 };
 
+/** Save the task completion flag and refresh the sidebar task counts. */
 const handleTaskCheck = async (event) => {
   local_checked.value = event.target.checked;
   let local_save = {
@@ -55,6 +57,7 @@ const handleTaskCheck = async (event) => {
   }
 
   localData.value = await $CalendarTaskApiService.save(local_save);
+  sidebarStore.tasksChanged();
 };
 
 const getStyleColor = (color) => {
@@ -90,6 +93,21 @@ const edit = function () {
   emit('edit', 'CalendarTaskEdit', localData.value.id);
 }
 
+/** Confirm and delete one task or its future pending series occurrences. */
+const deleteItem = async function () {
+  let series = false;
+  if (localData.value.recurrence) {
+    // Acceptar: aquesta i les següents pendents; cancel·lar: només aquesta
+    series = confirm(t('calendar_tasks.delete_series_confirm'));
+    if (!series && !confirm(t('calendar_tasks.delete_occurrence_confirm'))) return;
+  } else if (!confirm(t('calendar_tasks.delete_confirm'))) {
+    return;
+  }
+  await $CalendarTaskApiService.deleteItem(localData.value.id, series);
+  sidebarStore.tasksChanged();
+  emit('changed');
+}
+
 onMounted(() => {
   if (!props.data && props.id) {
     fetchData();
@@ -117,8 +135,13 @@ watch(() => props.id, (newId, oldId) => {
   <div v-else-if="localData" class="group rounded-md border-l-8 relative" :class="getStyleColor(localData.color)">
     <div class="px-4 py-2">
       <div class="px-4 py-2 flex justify-between">
-        <div class=" text-slate-700 font-medium rounded-t-md">
+        <div class="text-slate-700 font-medium rounded-t-md flex items-center gap-2">
+          <span v-if="localData.time" class="text-slate-500 text-sm">{{ localData.time.slice(0, 5) }}</span>
           {{ localData.name }}
+          <Icon v-if="localData.recurrence" name="fa6-solid:repeat" class="text-slate-400 text-xs" :title="t('calendar_tasks.recurring')" />
+          <span v-if="localData.source === 'auto'" class="text-xs font-normal text-slate-500 bg-white rounded px-1">
+            <Icon name="fa6-solid:robot" class="text-[10px]" /> {{ t('calendar_tasks.automatic') }}
+          </span>
         </div>
         <!-- <label class="text-slate-800 text-base flex items-center gap-1">
           {{ t('Completat') }}
@@ -132,6 +155,11 @@ watch(() => props.id, (newId, oldId) => {
           :value="localData.user ? localData.user.username : t('common.no_user_assigned')" :strong="true" />
         <FieldDetail v-if="localData.description" :label="$t('dashboard.task_description')" :value="localData.description"
           :strong="true" />
+        <FieldDetail v-if="localData.order" :label="$t('calendar_tasks.order')" :strong="true">
+          <NuxtLink :to="`/order/orders?id=${localData.order.id}`" class="text-sky-500 underline hover:no-underline">
+            {{ localData.order.token }}<span v-if="localData.order.type" class="text-slate-400 no-underline ml-1">({{ localData.order.type }})</span>
+          </NuxtLink>
+        </FieldDetail>
         <FieldDetail v-if="localData.contract" :label="$t('contract')" :strong="true" >
           <button v-if="!isSubRegion" @click="showDetail('ContractRegion', localData.contract.id)" class="text-left">
             <span class="text-sky-500 underline hover:no-underline">{{ localData.contract.token }}</span>

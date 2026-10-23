@@ -16,6 +16,11 @@ from contract.serializers.contract_termination_request_serializer import (Contra
 from contract.permissions import ContractTerminationRequestPermission
 from contract.utils.contract_termination_service import getTerminationDocument
 from documentmanager.utils.main_utils import upload_document
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class ContractTerminationRequestViewSet(viewsets.ModelViewSet):
     queryset = ContractTerminationRequest.objects.filter(is_active=True).all().order_by('-created_at')
     permission_classes = [IsAuthenticated, ContractTerminationRequestPermission]
@@ -111,7 +116,8 @@ class ContractTerminationRequestViewSet(viewsets.ModelViewSet):
                     observation="Baixa de contracte cancel·lada, fiança restablerta a No Retornat"
                 )
         except Exception as e:
-            return JsonResponse({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Error inesperat")
+            return JsonResponse({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
         serialized_instance = ContractTerminationRequestSerializer(instance)
         return Response(serialized_instance.data, status=status.HTTP_200_OK)
     

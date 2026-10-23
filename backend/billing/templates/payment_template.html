@@ -76,12 +76,12 @@
                         {% if company.website %}<tr>
                             <td style="font-size: 9px; margin-x: 1px;"> {{ company.website|default_if_none:"" }}</td>
                         </tr>{% endif %}
-                        <tr>
-                            <td style="font-size: 9px; margin-x: 1px;"> <br /> TELÈFON D'ATENCIÓ AL CLIENT: {{
+                        {% if company.show_customer_service_block is not False %}<tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> <br /> {{ company.customer_service_label|default:"TELÈFON D'ATENCIÓ AL CLIENT"|upper }}: {{
                                 company.phone }} </td>
-                        </tr>
-                        {% if company.phone2 %}<tr>
-                            <td style="font-size: 9px; margin-x: 1px;"> TELÈFON D'AVERIES: {{ company.phone2 }} </td>
+                        </tr>{% endif %}
+                        {% if company.phone2 and company.show_breakdown_block is not False %}<tr>
+                            <td style="font-size: 9px; margin-x: 1px;"> {{ company.breakdown_label|default:"TELÈFON D'AVERIES"|upper }}: {{ company.phone2 }} </td>
                         </tr> {% endif %}
                     </table>
                 </td>

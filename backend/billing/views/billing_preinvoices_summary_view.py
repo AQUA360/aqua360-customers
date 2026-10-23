@@ -11,6 +11,9 @@ from billing.serializers.invoice_serializer import InvoiceMinimalListSerializer
 from django.shortcuts import get_object_or_404
 
 from coredata.utils.other_utils import round_ceil
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def highlighted(value):
@@ -96,8 +99,8 @@ class BillingPreInvoicesSummaryViewSet(views.APIView):
             },{
                 'line_items': line_items_dict,
                 'taxes': tax_dict,
-                'total_billing': highlighted(str(sum(invoice.total_final for invoice in invoices))+' €'),
                 'subtotal_billing': highlighted(str(sum(invoice.subtotal_final for invoice in invoices))+' €'),
+                'total_billing': highlighted(str(sum(invoice.total_final for invoice in invoices))+' €'),
             },{
                 'bonifications': bonifications_dict,
                 'variables': variables_dict,
@@ -107,4 +110,5 @@ class BillingPreInvoicesSummaryViewSet(views.APIView):
             return Response(response, status=status.HTTP_200_OK)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

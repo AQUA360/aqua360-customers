@@ -33,6 +33,7 @@ def authenticate_azure():
     return blob_service_client
 
 def upload_to_azure(file, entity, field, entity_id, entity_token, folder, document_name, document, date=None):
+    """Uploads a file as a blob to Azure Blob Storage, ensuring a unique blob name, and updates the document record."""
     print("\n\nUploading to Azure")
     try:
         locale.setlocale(locale.LC_TIME, 'ca_ES.UTF-8')
@@ -100,7 +101,6 @@ def upload_to_azure(file, entity, field, entity_id, entity_token, folder, docume
     #blob_client = container_client.get_blob_client(blob_name)
     try:
         blob_client.upload_blob(data=file, overwrite=True, tags=sample_tags) 
-        print(f"Uploaded blob: {blob_name}")
     except Exception as e:
         raise Exception(f"Failed to upload blob: {e}")
 
@@ -132,7 +132,7 @@ def download_multiple_documents_from_azure(document_ids):
     blob_service = authenticate_azure()
     files = []  
     
-    documents = Document.objects.filter(id__in=document_ids)
+    documents = Document.in_order(document_ids)
 
     for document in documents:
         try:

@@ -1,5 +1,195 @@
 # Changelog Frontend
 
+## [23-10-2026]
+
+### FEAT
+#### BILLING (`InvoiceRegion.vue`, `SEPAReturnSetup.vue`, `i18n/locales/*` — D_004-256, retorns de domiciliacions de factures canviades de mètode) (PR #113)
+    - Avisos informatius a la devolució SEPA quan el rebut és d'una factura canviada de mètode de pagament, i a la factura quan ja està pagada (no se'n pot canviar el mètode). Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### NOTIFICATION (`NotificationRegion.vue`, `notification-api.js` — llegir i arxivar notificacions) (PR #117)
+    - Les accions de llegir/no llegir i arxivar/desarxivar envien l'estat segons l'usuari actual (`read_by` / `archived_by`), de manera que reflecteixen l'opció triada.
+    - El llistat filtra per `is_archived` i el recompte de notificacions noves exclou les arxivades. Cal desplegar-lo junt amb el backend.
+
+## [22-10-2026]
+
+### FEAT
+#### CLAIMREQUEST (`AcceptVulnerabilityRequest.vue`, `i18n/locales/*` — data de fi de les variables de vulnerabilitat) (PR #110)
+    - La data de venciment de la sol·licitud ja no és obligatòria.
+    - Nou camp «Data de fi de les variables» a «Opcions avançades», amb avís: si es deixa en blanc, les variables es mantenen indefinidament. Claus noves `contract_block.advanced_options`, `variables_end_date` i `variables_end_date_hint` als quatre idiomes. Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### PRICING (`AdjustmentEdit.vue` — 2032, tornada a la tarifa en desar un ajust) (PR #104)
+    - En desar o eliminar un ajust es torna al detall de la tarifa: dins del producte si en té, o al llistat de tarifes si no.
+
+#### CONTRACT (`contract-api.js` — filtre de producte dels contractes) (PR #107)
+    - Corregida la variable del filtre de producte a la cerca de contractes, que no s'enviava.
+
+#### BILLING (`ManageInvoicesPaidView.vue`, `i18n/locales/ca.ts`, `es.ts` — pagament massiu de factures) (PR #108)
+    - La descripció del pagament massiu indica que s'actualitzen totes les factures que no siguin SEPA, saldo o TPV online. Corregida l'etiqueta del recompte de factures.
+
+### MODIFIED
+#### BILLING (`InvoiceDetail.vue`, `InvoiceListDetail.vue`, `InvoiceMiniDetail.vue`, `SendInvoiceModal.vue`, `InvoiceRegion.vue`, `ContractRegion.vue`, `ContractPinned.vue`, `utils/open-authenticated-file.ts` — ACUSTOMERS-335, PDF de factura des del gestor documental) (PR #109)
+    - Les pantalles de factura obren el PDF definitiu des del gestor documental (`invoice_file`) i, si encara no n'hi ha, la previsualització provisional.
+    - El botó d'enviar i la selecció de factures per enviar depenen del PDF definitiu. Cal desplegar-lo junt amb el backend.
+
+## [21-10-2026]
+
+### FEAT
+#### CONTRACT (`ContractDebtRegion.vue`, `ContractStatusBadges.vue`, `ContractDetail.vue`, `PinnedContractBasicInfo.vue`, `ContractPinned.vue`, `ContractRegion.vue`, `joined-payment-api.js`, `i18n/locales/*` — 1897, detall del deute del contracte) (PR #90)
+    - El xip del deute de la fitxa fixada i de la regió de contracte obre la nova regió «Detall del deute» amb els pagaments que formen el deute.
+    - La regió mostra els totals (deute, liquidable, en remesa pendent d'enviar i en pagament agrupat) i, per a cada pagament, si és en una remesa (pendent o enviada), en un pagament agrupat actiu o no compta al deute.
+    - Permet seleccionar els pagaments liquidables, triar el mètode de pagament i el venciment, previsualitzar el document i crear un pagament agrupat (amb permís de canvi). Textos nous en ca, es, en i gl. Cal desplegar-lo junt amb el backend.
+
+#### ORDER (`pages/order/orders/index.vue`, `OrderDetail.vue` — descripció de l'ordre i revisió manual) (PR #93)
+    - Nova columna de descripció al llistat d'ordres (taula, targeta mòbil i exportació). Les ordres pendents de revisió manual es destaquen en ambre.
+    - Al detall de l'ordre es mostra la descripció; si comença per `[REVISIÓ MANUAL]` surt com a avís destacat a dalt de tot.
+
+#### SETTINGS/ACCOUNTING (`AccountingConfigRegion.vue`, `EditAccountingPricing.vue`, `AccountingPricingsBox.vue`, `pages/settings/accounting/index.vue`, `accounting-config-api.js`, `accounting-additional-line-api.js`, `i18n/locales/*` — comptabilitat configurable) (PR #97)
+    - Es torna a mostrar l'enllaç «Comptabilitat» a configuració, amb una targeta nova de configuració comptable: regles dels moviments de saldo (deure/haver, signe i compte de contrapartida d'entrades i devolucions).
+    - L'edició de la tarifa comptable permet triar categoria de morositat, tipus d'ús, origen de cobrament bancari, separar per origen o tipus de pagament, «declarar com a» i codi de retorn, i gestionar les línies extra del compte.
+    - El llistat de tarifes comptables mostra els tipus d'ús. Traduccions ca, es, en i gl. Cal desplegar-lo junt amb el backend.
+
+#### BILLING (`DeliquencyRequestEdit.vue`, `InvoiceDetail.vue` — gestió de morositat) (PR #97)
+    - Nou flux de gestió de morositat: filtres per tipus d'ús, explotació, tipus de client, zona, estat de contracte, tipus de pagament, dates i nombre de factures pendents; cerca de factures normals o en dotació, selecció i marcatge com a dotació o irrecuperables amb confirmació. La cerca i el desat són asíncrons (seguiment de la tasca).
+    - El detall de la factura mostra la data de morositat i la d'irrecuperable quan en té. Cal desplegar-lo junt amb el backend.
+
+#### CONTRACT (`ContractTabs.vue`, `composables/useTabsLayout.js`, `i18n/locales/*` — pestanyes del contracte configurables) (PR #98)
+    - Cada usuari pot reordenar (arrossegant o amb fletxes), amagar i tornar a mostrar les pestanyes de la fitxa del contracte, i contraure-les per veure només les icones.
+    - La configuració es desa al navegador per usuari i es pot restaurar per defecte; les pestanyes noves s'afegeixen al final. Traduccions ca, es, en i gl.
+
+#### STATISTICS (`DailyDocumentTemplateEdit.vue`, `DailyDocumentTemplateDetail.vue`, `pages/statistics/daily-document-templates/index.vue` — dies hàbils als documents diaris) (PR #101)
+    - Selector Hàbil/Natural al costat dels dies per completar de la plantilla de document diari; el detall i el llistat indiquen el tipus de dies. Cal desplegar-lo junt amb el backend.
+
+#### PRICING (`PriceRateRegion.vue`, `ProductRegion.vue`, `ProductEdit.vue`, `PriceRateEdit.vue`, `price-rate-api.js` — 2032, eliminar tarifes i productes no utilitzats) (PR #103)
+    - Opció «Eliminar» al desplegable del detall de tarifa i de producte, només amb permís d'eliminar i si el backend indica que es pot eliminar (`is_deletable`).
+    - Es treu l'opció «Desactivar producte» i el botó d'eliminar de l'edició de producte, que no feien cap comprovació.
+    - Les tarifes sense producte es mostren sense errors i el producte passa a ser obligatori en desar una tarifa. Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### CONTRACT REQUEST (`ContractRequestAddressPayment.vue` — SMS en afegir un telèfon fix) (PR #90)
+    - En afegir un telèfon de contacte a la sol·licitud només s'activa l'SMS si el número és mòbil; amb un fix el backend rebutjava el desat.
+
+#### ORDER (`OrderEdit.vue` — error en editar ordres sense tipus, estat o operaris) (PR #93)
+    - Inicialització segura de tipus, estat i operaris: les ordres vinculades per adreça o òrfenes ja no fallen en obrir l'edició.
+
+#### DASHBOARD (`DashboardReadingBatchesCard.vue` — color de l'estat dels lots de lectura) (PR #98)
+    - L'estat dels lots de lectura del tauler es mostra amb `ColorBadge`: el color és un codi (yellow, green...) i no es pintava correctament com a color CSS.
+
+### MODIFIED
+#### BILLING (`InvoiceRegion.vue`, `CommitmentDepositRegion.vue`) (PR #97)
+    - Es retiren de la factura les opcions de marcar-la com a irrecuperable, assignar-la a dotació i treure-la de dotació (ara es fa des de la gestió de morositat).
+    - «Introduir pagament» del compromís de dipòsit ja no queda desactivat quan no hi ha pagaments pendents.
+
+#### PERSON (`AddBank.vue` — SWIFT d'11 caràcters) (PR #102)
+    - Els BIC complets de 8 caràcters es mostren com a SWIFT d'11 afegint-hi `XXX`: al SWIFT desat, al detectat per l'IBAN i al del banc triat. Els codis incomplets no es toquen.
+
+## [20-10-2026]
+
+### FEAT
+#### SERVICE (`SupplyCutEdit.vue`, `SupplyCutRegion.vue`, `ContractRegion.vue`, `supply-cut-api.js`, `i18n/locales/*` — 1913, protecció de persones vulnerables als talls de subministrament) (PR #67)
+    - En crear un tall es mostren els contractes amb persones vulnerables (titular, llogater o propietari, amb el nivell). Amb motiu permanent el tall queda bloquejat; amb motiu temporal cal escriure `CONFIRMAR` per continuar. També en canviar el motiu i en activar un tall existent.
+    - La planificació massiva combina la llista d'identificadors amb els punts i contractes triats al selector en una sola petició; la previsualització indica l'origen de cada fila (Llista/Manual) i les persones vulnerables afectades.
+    - Selecció múltiple de contractes; un tall ja creat ja no permet modificar-ne els punts. Missatges d'error més clars i avís d'èxit en la creació manual. Cal desplegar-lo junt amb el backend.
+
+#### STATISTICS (`GenericReportForm.vue` — informe «Dashboard de facturació») (PR #84)
+    - El formulari de l'informe «Dashboard de facturació» mostra el selector de productes, amb el nom de l'explotació de cada producte.
+
+### FIX
+#### BILLING (`AddInvoiceBudget.vue` — compte bancari de la factura de baixa que cobra l'alta) (PR #80)
+    - El diàleg de facturació d'una baixa vinculada a una alta que cobra la lectura de tall proposa el pagament de l'alta (`billing_contract_request_payment`) en lloc del del contracte que es dona de baixa.
+
+#### GOT (`FileUpload.vue` — validació del tipus de fitxer) (PR #87)
+    - La validació del tipus de fitxer accepta llistes separades per comes de tipus MIME, comodins (`image/*`) i extensions (`.pdf`), com l'atribut `accept` de l'input, en lloc de construir una expressió regular amb el valor.
+
+## [19-10-2026]
+
+### FEAT
+#### DASHBOARD (`pages/index.vue`, `components/molecules/dashboard/*`, `pages/calendar/index.vue`, `CalendarTaskEdit.vue`, `CalendarTaskDetail.vue`, `NavSidebar.vue`, `NotificationRegion.vue`, `dashboard-api.js`, `calendar-task-api.js`, `i18n/locales/*` — D_004-371, dashboard personalitzable i millores del calendari) (PR #60)
+    - La pàgina d'inici passa a ser un dashboard personalitzable per usuari: es poden afegir (catàleg segons permisos), treure, configurar, canviar de mida i reordenar les cards arrossegant-les. Cada card carrega les dades per separat.
+    - Nova pàgina `/calendar` amb vista mensual, setmanal i de llista, filtres, tasques recurrents, hora i enllaç a l'ordre de treball. Les tasques es poden marcar com a fetes o esborrar (una sola o la sèrie).
+    - Entrada «Calendari» al menú amb el comptador de tasques d'avui i endarrerides (en vermell si n'hi ha d'endarrerides). Els avisos de tasques obren el calendari en aquella data. Opció per rebre el resum diari per correu.
+    - Traduccions ca, es, en i gl. Cal desplegar-lo junt amb el backend.
+
+#### BILLING (`pages/billing/transfer/index.vue`, `SepaValidateModal.vue`, `sepa-remittance-api.js`, `i18n/locales/*` — validar fitxers de transferències) (PR #64)
+    - Botó «Validar fitxer» a la pantalla de transferències, que valida l'XML contra l'esquema de transferències (pain.001). `SepaValidateModal` rep la prop `type` (`sepa` / `trf`).
+    - Claus noves `billing_block.trf_file_valid` i `trf_file_invalid` als quatre idiomes. Cal desplegar-lo junt amb el backend.
+
+#### CONTRACT REQUEST (`ContractRequestTermination.vue`, `i18n/locales/*` — lectura inicial des de Smart Metering) (PR #66)
+    - Botó «Obtenir lectura inicial (Smart Metering)» a la targeta de lectura inicial de la sol·licitud quan el comptador té telelectura de tipus Smart Metering.
+    - Consulta la lectura d'avui amb un marge de 5 dies, n'omple el valor i no la desa fins a «Guardar», que també envia la data de la lectura. Avisa si no se'n troba cap o hi ha un error.
+    - En canviar de comptador es descarta el resultat, i les respostes d'un comptador anterior ja no sobreescriuen les dades del seleccionat. Claus noves als quatre idiomes.
+
+#### COMMUNICATION (`CommunicationProcessCreation.vue`, `CommunicationProcessPersonList.vue`, `CommunicationProcessPersonMessageList.vue`, `CommunicationProcessUnreachableList.vue`, `CommunicationProcessRegion.vue`, `utils/communication-exclusion.ts`, `i18n/locales/*` — 1964, flux de comunicació dels talls de subministrament) (PR #70)
+    - L'assistent de comunicacions mostra en una pestanya les persones que no rebran la comunicació i el motiu (sense mòbil, telèfon fix, sense correu, sense adreça...), incloses les excloses a mà; la llista es desa amb el procés i es pot consultar al detall del procés.
+    - Els telèfons fixos no es poden triar com a telèfon SMS (alta de contracte) i el detall de la comunicació mostra el telèfon SMS utilitzat.
+    - Noves variables `%supplycut.time_start` i `%supplycut.time_end` a l'editor de missatges. Cal desplegar-lo junt amb el backend.
+
+#### BILLING/READING (`BillingSummary.vue`, `ReadingBatchSummary.vue`, `invoice-api.js`, `reading-api.js` — ACUSTOMERS-353, exportació a Excel dels avisos de lectures i pre-factures) (PR #73)
+    - Nou botó per descarregar en Excel el detall obert del resum de pre-factures i del resum del lot de lectures, amb els mateixos filtres, cerca i ordenació que el llistat. Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### GENERAL (`AddNewCommunication.vue`, `AddNewCommunicationClientData.vue`, `ClaimRequestEdit.vue`, `ClaimRequestManage.vue`, `SEPAManagementEdit.vue` — panells laterals tapats per la barra inferior) (PR #57)
+    - A les pantalles amb barra inferior fixa (nova comunicació, gestió d'impagats, remeses SEPA), el panell lateral queda per sobre de la barra; quan està tancat surt del tot de la pantalla.
+    - El panell lateral de les remeses SEPA es pot desplaçar quan el contingut no hi cap.
+
+#### PERSON (`AddAddress.vue`, `plugins/api/api-manager.js` — adreces amb ciutat escrita a mà i carrer nou) (PR #77)
+    - Amb la ciutat escrita a mà, el carrer nou s'envia sense ciutat i l'adreça es pot desar.
+    - Els errors de validació niats es mostren llegibles en lloc de `[object Object]`.
+
+### MODIFIED
+#### SETTINGS (`pages/settings/index.vue`, `ExploitationEdit.vue`, `middleware/permission.js` — només l'usuari customers edita les configuracions internes) (PR #61)
+    - El llapis per editar les «Configuracions internes» només surt a l'usuari amb `can_edit_config_project` (l'usuari `customers`), en lloc de qualsevol usuari amb `change_user`.
+    - En desar una explotació, el número de concert INCASOL general només s'actualitza si l'usuari pot editar les configuracions. Si no es poden carregar els permisos, no es desa i es mostra un error. Cal desplegar-lo junt amb el backend.
+
+#### SERVICE (`MeterDetail.vue` — adreça del comptador) (PR #69)
+    - Si el comptador no té adreça pròpia, el detall mostra el carrer del punt de subministrament associat; la fila d'adreça només surt quan hi ha valor.
+
+## [16-10-2026]
+
+### FEAT
+#### BILLING (`SEPARemittanceReturnDetail.vue`, `ClaimRequestEdit.vue` — gestió d'impagats des d'una devolució SEPA)
+    - Nou botó «Nova gestió d'impagats» al detall d'una devolució SEPA (només amb permís de canvi sobre gestions d'impagats). Obre l'assistent de nova gestió amb la devolució preseleccionada.
+    - L'assistent mostra la devolució com a filtre (es pot treure), la tracta com a criteri de cerca vàlid i llança la cerca automàticament en obrir-se, de manera que només surten els pagaments d'aquesta devolució encara pendents de reclamar. Cal desplegar-lo junt amb el backend.
+
+#### CONTRACT (`BailRegion.vue`, `bail-api.js`, `i18n/locales/*` — retorn manual d'una fiança) (PR #49)
+    - Nou botó per retornar al moment una fiança no retornada, amb confirmació. Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### PERSON (`PersonContractsList.vue` — obrir el punt de subministrament des dels contractes de la persona) (PR #55)
+    - L'enllaç del punt de subministrament de la llista de contractes de la persona obre el punt per defecte del contracte (`supply_point_default_id`); si el contracte no en té, no es mostra l'enllaç. Cal desplegar-lo junt amb el backend.
+
+#### GENERAL (pàgines i regions laterals — 1918, regions plegades del tot amagades en pantalles grans) (PR #47)
+    - Les regions laterals plegades se surten del tot de la pantalla (`translate-x-full` / `-right-full`) en lloc de desplaçar-se 2000px: en pantalles amples en quedava un tros visible que tapava botons.
+
+## [15-10-2026]
+
+### FEAT
+#### SERVICE (`MeterEdit.vue` — adreça del comptador opcional)
+    - La ubicació del comptador ja no és obligatòria: es pot crear i desar un comptador sense adreça, i en treure-la (paperera) es desa sense adreça.
+    - Si se n'indica una, el carrer i el tipus de via continuen sent obligatoris, i el número si no és S/N. Cal desplegar-lo junt amb el backend.
+
+#### SERVICE (`AddCompany.vue`, `i18n/locales/*` — ACUSTOMERS-356, blocs de contacte i avaries configurables) (PR #22)
+    - Nova secció «Dades de contacte a les plantilles» a la fitxa d'empresa, amb una targeta per a atenció al client i una per a avaries: mostrar el bloc, títol, telèfon, horari i mostrar l'horari.
+    - Un text buit deixa el que ja posa cada plantilla. Traduccions ca, es, en i gl. Cal desplegar-lo junt amb el backend.
+
+#### CLAIMREQUEST (`ClaimRequestEdit.vue`, `reading-batch-template-api.js` — 97, filtre per plantilla de lot de lectura) (PR #31)
+    - Nou selector de plantilla de lot de lectura al formulari de reclamació d'impagats, filtrat per les zones seleccionades i només amb plantilles que tenen rutes. Cal desplegar-lo junt amb el backend.
+
+#### ORDER (`WorkOrderTypeSelectorModal.vue`, `useOrderReasonId.js`, `ContractRequestTermination.vue`, `ContractRequestOrderBilling.vue`, `ConnectionRequestData.vue`, `SupplyCutRegion.vue`, `ContractTerminationEdit.vue`, `pages/order/orders/index.vue`, `i18n/locales/*` — PA-33, selector d'ordres de treball per motiu) (PR #34)
+    - Nou modal per triar el tipus d'ordre de treball, que mostra els tipus vinculats al motiu de cada flux (baixa, alta de contracte, sol·licitud d'escomesa i tall de subministrament) i amaga els que ja s'han creat. Si el motiu no té tipus vinculats, avisa i ofereix el tipus de sempre.
+    - A l'alta de contracte les ordres es creen al moment des del pas d'ordres, en lloc de deixar-les planificades per a la finalització.
+    - Les ordres de tall es creen sobre el punt de subministrament, sense associar-les a un contracte qualsevol del punt, i les llistes d'ordres es limiten al punt actual.
+    - Totes les ordres es creen amb el motiu; si no es troba, s'avisa i no es crea. Traduccions ca, es, en i gl. Cal desplegar-lo junt amb el backend.
+
+### FIX
+#### SERVICE (`MeterEdit.vue` — el municipi i el codi postal del comptador es perdien en editar-lo)
+    - `setValues()` no carregava `address_city` ni `address_postal_code` del comptador, de manera que en desar sense obrir el panell d'adreça s'enviaven a `null` i el backend els esborrava. Ara es carreguen del detall del comptador.
+
+#### SERVICE (`MeterEdit.vue` — ACUSTOMERS-337, número de carrer del comptador) (PR #32)
+    - No deixa desar un número de carrer N/R/S buit i envia sempre tots els camps del número quan no és S/N (també si només hi ha sufix).
+    - Només reaprofita el número existent si no s'ha canviat: pot ser compartit amb l'adreça del punt de subministrament, i editar-lo modificava també el punt.
+
 ## [14-10-2026]
 
 ### FEAT

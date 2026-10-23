@@ -1383,6 +1383,8 @@ def generate_management_volume_report(request, black_fill, white_bold_font, task
         titles = [_("Tipologia de Gestió")] + month_titles + [_("Total")]
         row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
 
+        from watchdog.aca_config import aca_tram_members_variable_tokens
+
         # Define categories and their querysets
         # Altes: Count new contracts as suggested by the user
         # Canvis de nom: combine several models
@@ -1409,7 +1411,10 @@ def generate_management_volume_report(request, black_fill, white_bold_font, task
                     Q(observation__icontains='convivència') |
                     Q(observation__icontains='familia nombrosa')
                 ),
-                Variable.objects.filter(type__token__in=['ACA-TRAM', 'ACA-TRAM-MEMBRES']),
+                Variable.objects.filter(type__token__in=[
+                    'ACA-TRAM',
+                    *aca_tram_members_variable_tokens(),
+                ]),
                 ContractRequest.objects.filter(type__token='ampliacio_tram')
             ]),
             (_("Sol·licitud tarifes social"), [

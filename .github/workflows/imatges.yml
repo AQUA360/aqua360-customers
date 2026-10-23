@@ -2,6 +2,10 @@
 # GitHub (ghcr.io) amb l'etiqueta de la versió i la del commit. Els servidors dels clients només les
 # baixen.
 #
+# També a cada commit de main i de develop, amb l'etiqueta de la branca i la del commit: una
+# instal·lació que segueix una branca rep els canvis sense esperar cap release i sense construir les
+# imatges al seu servidor. Cada imatge porta el commit, i per això main i develop no es trepitgen.
+#
 # Seguretat: el registre és públic, igual que aquest repositori. Aquí només es construeix el codi
 # del repositori: cap .env, servidor, domini ni contrasenya. La configuració de cada client es posa
 # en engegar el contenidor, al seu servidor.
@@ -10,6 +14,8 @@ name: Imatges
 on:
   release:
     types: [published]
+  push:
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       versio:
@@ -20,8 +26,15 @@ permissions:
   contents: read
   packages: write
 
+# En una branca, només compta l'últim commit: si n'entra un altre, el d'abans es deixa de construir.
+concurrency:
+  group: imatges-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.versio || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
-  VERSIO: ${{ github.event.release.tag_name || inputs.versio }}
+  VERSIO: ${{ github.event.release.tag_name || inputs.versio || github.ref_name }}
+  # El codi que es construeix: la release, la versió demanada o el commit exacte de la branca.
+  CODI: ${{ github.event.release.tag_name || inputs.versio || github.sha }}
 
 jobs:
   imatge:
@@ -32,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.VERSIO }}
+          ref: ${{ env.CODI }}
 
       # Etiqueta també amb el commit: HelpAsset, en actualitzar, busca la imatge del commit que
       # posa i, si no hi és, la construeix al servidor.

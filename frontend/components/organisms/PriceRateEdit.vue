@@ -48,7 +48,7 @@ const getData = async () => {
     is_bail.value = item.value.is_bail;
     is_return_fee.value = item.value.is_return_fee;
     console.log("selectedProduct", item.value);
-    selectedProduct.value = { 'value': item.value.product.id, 'label': item.value.product.name };
+    selectedProduct.value = item.value.product ? { 'value': item.value.product.id, 'label': item.value.product.name } : null;
   } else {
     item.value = {};
   }
@@ -101,6 +101,7 @@ const save = async () => {
 const isValid = () => {
   if (name.value == '' || name.value == null) return false;
   if (token.value == '' || token.value == null) return false;
+  if (!selectedProduct.value?.value) return false;
   return true;
 }
 
@@ -194,7 +195,7 @@ onMounted(() => {
 
     <div role="region" id="right_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-10"
-      :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
+      :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />

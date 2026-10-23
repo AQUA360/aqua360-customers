@@ -13,6 +13,9 @@ from billing.utils.joined_payment_service import mark_payments_as_paid, register
 from contract.models import Contract, PaymentType, PiggyBankMovement
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BankRNDDocumentView(APIView):
@@ -245,7 +248,8 @@ class BankRNDDocumentView(APIView):
                 
             return Response({'message': 'Payments updated'}, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def put(self, request, *args, **kwargs):
         from billing.utils.payment_service import reconnect_payment_signals
@@ -583,8 +587,9 @@ class BankRNDDocumentView(APIView):
             return Response({'data': data, 'document_exists': doc_exists }, status=status.HTTP_200_OK)
             
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error processing file: {str(e)}"},
+                {"error": "Error processing file."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
     

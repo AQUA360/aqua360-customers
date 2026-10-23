@@ -127,19 +127,14 @@ const showDetail = async function (component, id) {
   }
 }
 
-const deactivate = async () => {
-  if (!confirm(t('confirmation_text_block.confirm_deactivate'))) return;
+// El backend rebutja l'eliminació si el producte ja s'ha fet servir (el missatge surt com a toast)
+const deleteItem = async () => {
+  if (!confirm(t('confirmation_text_block.confirm_delete'))) return;
   try {
-    let save_data = {
-      id: data.value.id,
-      is_active: false
-    }
-    let response = await $ProductApiService.save(save_data);
-    if (response) {
-      toast.success(t('common.deactivated'));
-      emit('close-subregion');
-    }
-    //await getData();
+    await $ProductApiService.deleteItem(props.id);
+    toast.success(t('common.deleted_successfully'));
+    emit('changed');
+    emit('close-subregion');
   } catch (err) {
     console.error(err);
   }
@@ -182,9 +177,12 @@ const setActiveTab = (tab) => {
       :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': SubRegion }">
       <div class="flex justify-between relative">
         <H1Region class="mb-3">{{ $t('product') }}</H1Region>
-        <OptionsDropdown v-if="objectPermissions.can_change" id="PriceRateRegionOptions">
-          <DropdownOption :name="`${t('common.modify')} ${t('product')}`" @click="edit"></DropdownOption>
-          <DropdownOption :name="`${t('common.deactivate')} ${t('product')}`" @click="deactivate"></DropdownOption>
+        <OptionsDropdown v-if="objectPermissions.can_change || (objectPermissions.can_delete && data?.is_deletable)" id="PriceRateRegionOptions">
+          <DropdownOption v-if="objectPermissions.can_change" :name="`${t('common.modify')} ${t('product')}`" @click="edit"></DropdownOption>
+          <DropdownOption v-if="objectPermissions.can_delete && data?.is_deletable" :name="`${t('common.delete')} ${t('product').toLowerCase()}`"
+            @click="deleteItem" class="text-red-600">
+            <Icon name="fa6-solid:trash" class="display-inline mr-2 text-red-600" /> {{ t('common.delete') }} {{ t('product').toLowerCase() }}
+          </DropdownOption>
         </OptionsDropdown>
       </div>
 

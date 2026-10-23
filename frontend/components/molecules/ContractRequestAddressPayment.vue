@@ -18,10 +18,13 @@ import InputSepa from '~/components/atoms/InputSepa.vue';
 import PersonContactDetail from '~/components/molecules/PersonContactDetail.vue';
 import { resolveId, toSortedPhoneIds } from '~/utils/contractDataChangeDisplay';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
+import { isMobilePhone } from '~/utils/communication-exclusion';
+import { useToast } from 'vue-toastification';
 
 
 const { $SupplyPointApiService, $PersonApiService, $PersonAddressApiService, $PersonBankApiService, $ContractApiService } = useNuxtApp();
 const { t } = useI18n();
+const toast = useToast();
 
 const props = defineProps({
   request: {
@@ -646,12 +649,14 @@ const openAddSMSPhoneSelect = () => {
   showRegion.value = true;
 };
 
+/** Afegeix el contacte i activa l'SMS només si el número és mòbil. */
 const onPhoneSelected = (phoneContact) => {
   if (!selectedPhones.value.find(phone => phone.id === phoneContact.id)) {
     selectedPhones.value.push(phoneContact);
   }
-  // En afegir un telèfon de contacte, s'habilita l'SMS automàticament sense pas manual.
-  if (!selectedSMSPhones.value.find(phone => phone.id === phoneContact.id)) {
+  // En afegir un telèfon de contacte, s'habilita l'SMS automàticament sense pas manual,
+  // excepte si és un fix (no pot rebre SMS i el backend el rebutjaria en desar).
+  if (isMobilePhone(phoneContact?.phone) && !selectedSMSPhones.value.find(phone => phone.id === phoneContact.id)) {
     selectedSMSPhones.value.push(phoneContact);
   }
   emitChange();
@@ -659,6 +664,11 @@ const onPhoneSelected = (phoneContact) => {
 };
 
 const onSMSPhoneSelected = (phoneContact) => {
+  // Un fix no pot rebre SMS (el backend també ho rebutja en desar).
+  if (!isMobilePhone(phoneContact?.phone)) {
+    toast.warning(`${phoneContact?.phone || ''}: ${t('customer_service_block.non_mobile_phone')}`);
+    return;
+  }
   if (!selectedSMSPhones.value.find(phone => phone.id === phoneContact.id)) {
     selectedSMSPhones.value.push(phoneContact);
   }
@@ -706,6 +716,10 @@ const selectSMSPhone = (phoneId) => {
   const phone = selectedPhones.value.find(phone => phone.id === phoneId);
   if (phone) {
     if (!selectedSMSPhones.value.find(phone => phone.id === phoneId)) {
+      if (!isMobilePhone(phone.phone)) {
+        toast.warning(`${phone.phone}: ${t('customer_service_block.non_mobile_phone')}`);
+        return;
+      }
       selectedSMSPhones.value.push(phone);
     } else {
       selectedSMSPhones.value = selectedSMSPhones.value.filter(phone => phone.id !== phoneId);
@@ -1404,7 +1418,8 @@ const handleSubRegionEvent = (show) => {
                 <Icon name="fa6-solid:trash" />
               </button>
             </div>
-            <abbr :title="t('customer_service_block.tlf_sms')" class="flex items-center ml-2 rounded-md justify-center"
+            <abbr :title="isMobilePhone(phone.phone) ? t('customer_service_block.tlf_sms') : t('customer_service_block.non_mobile_phone')"
+              class="flex items-center ml-2 rounded-md justify-center"
               :class="{
                 'bg-green-100 text-green-500 hover:text-green-700': selectedSMSPhones.find(smsPhone => smsPhone.id === phone.id),
                 'bg-slate-100 text-slate-500 hover:text-slate-700': !selectedSMSPhones.find(smsPhone => smsPhone.id === phone.id),

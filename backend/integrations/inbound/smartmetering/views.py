@@ -5,6 +5,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .services import CONTRACTS_ENDPOINT, fetch_contracts_export, log_inbound_request
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SmartMeteringContractsView(APIView):
@@ -30,6 +33,7 @@ class SmartMeteringContractsView(APIView):
             )
             return Response(data, status=status.HTTP_200_OK)
         except Exception as exc:
+            logger.exception("Error inesperat")
             log_inbound_request(
                 endpoint=self.endpoint,
                 method="GET",
@@ -40,4 +44,4 @@ class SmartMeteringContractsView(APIView):
                 error_message=str(exc),
                 object_id=str(request.user.pk),
             )
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)

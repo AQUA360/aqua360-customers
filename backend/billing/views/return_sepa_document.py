@@ -12,12 +12,20 @@ from billing.utils.sepa_service import (
     extract_company_data,
     extract_clients_data,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ReturnSEPADocument(APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Reading.objects.all().order_by('-created_at')
     def put(self, request, *args, **kwargs):
+        """Process an uploaded SEPA status report and return payment rejections.
+
+        Return HTTP 400 for missing uploads, unsupported namespaces or malformed
+        XML; log parse errors and return a generic message.
+        """
         file = request.data.get("file")
         print("in sepa return")
         if not file:
@@ -58,14 +66,16 @@ class ReturnSEPADocument(APIView):
                 {"rejections": rejections, "og_msg_id": og_msg_id}, status=status.HTTP_200_OK
             )
 
-        except ET.ParseError as e:
+        except ET.ParseError:
+            logger.exception("El fitxer XML de retorn no és vàlid")
             return Response(
-                {"error": f"XML Parsing Error: {str(e)}"},
+                {"error": "El fitxer XML no és vàlid."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Error processing file: {str(e)}"},
+                {"error": "Error processing file."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

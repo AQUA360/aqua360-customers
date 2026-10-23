@@ -28,6 +28,7 @@ import PriceRateRegionDetail from './PriceRateRegionDetail.vue';
 import PriceIntervalRegion from './PriceIntervalRegion.vue';
 import CalendarTaskEdit from '../molecules/CalendarTaskEdit.vue';
 import PiggyBankRegion from './PiggyBankRegion.vue';
+import ContractDebtRegion from './ContractDebtRegion.vue';
 import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
@@ -230,12 +231,12 @@ const getGeneralInvoices = async () => {
     }
 }
 
-// Update a single invoice's PDF template in-place so the "send" button reactivates
+// Update a single invoice's PDF document in-place so the "send" button reactivates
 // without reloading the whole invoice list.
-const onInvoicePdfGenerated = ({ id, invoice_file_template }) => {
+const onInvoicePdfGenerated = ({ id, invoice_file }) => {
     const invoiceId = parseInt(id);
     const item = (invoices.value || []).find(inv => inv.id === invoiceId);
-    if (item) item.invoice_file_template = invoice_file_template;
+    if (item) item.invoice_file = invoice_file;
 }
 
 const getExpiredVariables = async () => {
@@ -765,6 +766,8 @@ const setActiveTab = (tab) => {
                 :isSubRegion="true" @changed="handleChange" />
             <PiggyBankRegion v-if="showRegionDetailComponent === 'PiggyBankRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" @changed="handleChange" @show-subregion="handleSubRegionEvent" />
+            <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
+                :isSubRegion="true" @changed="getContractData(false)" @show-subregion="handleSubRegionEvent" />
             <AddReading v-if="showRegionDetailComponent === 'AddReading'" :contract="contract"
                 :contract_ids="[contract.id]" :isSubRegion="true" />
             <AddInvoiceBudget v-if="showRegionDetailComponent === 'AddInvoiceBudget'" :isSubRegion="true"

@@ -276,6 +276,36 @@ def get_existing_reading(reading):
   
   return data
 
+def is_meter_change_reading(reading):
+  """
+  Lectura generada per un canvi de comptador: el tancament del comptador vell
+  (is_close) o la primera del comptador nou, que es crea el mateix dia que un
+  tancament del mateix contracte i punt de subministrament.
+  """
+  if reading.is_close:
+    return True
+
+  return Reading.objects.filter(
+    supply_point_id=reading.supply_point_id, contract_id=reading.contract_id,
+    reading_date=reading.reading_date, is_close=True, is_control=False,
+  ).exclude(id=reading.id).exists()
+
+def get_period_start_reading(reading):
+  """
+  Lectura real que marca l'inici del període de `reading`: si és de canvi de
+  comptador, retrocedeix fins a l'última lectura anterior que no ho sigui.
+  Si no n'hi ha cap, retorna la mateixa `reading`.
+  """
+  if not reading or not is_meter_change_reading(reading):
+    return reading
+
+  previous = Reading.objects.filter(
+    supply_point_id=reading.supply_point_id, contract_id=reading.contract_id,
+    is_control=False, reading_value__isnull=False, reading_date__lt=reading.reading_date,
+  ).order_by('-reading_date', 'is_close').first()
+
+  return get_period_start_reading(previous) if previous else reading
+
 def get_estimated_reading_minimal_object(
     supply_point, contract, date, batch, 
     offset_days: int = 90, max_day_limit = None, force_zero_consumption = False, create_reading = True
@@ -314,14 +344,20 @@ def get_estimated_reading_minimal_object(
   no_meter_status = ConfigProject.objects.get(token='token_meter_status_no_meter').value
   is_gauge = supply_point.meter and supply_point.meter.status and supply_point.meter.status.token == no_meter_status
 
-  last_reading = Reading.objects.filter(supply_point=supply_point, is_control=False, contract=contract, reading_value__isnull=False).order_by('-reading_date').first()
-  existing_reading = Reading.objects.filter(supply_point=supply_point, is_control=False, contract=contract).order_by('-reading_date').first()
+  # En un canvi de comptador el tancament del vell i la inicial del nou tenen la
+  # mateixa data: 'is_close' fa que la del comptador nou surti primer.
+  last_reading = Reading.objects.filter(supply_point=supply_point, is_control=False, contract=contract, reading_value__isnull=False).order_by('-reading_date', 'is_close').first()
+  existing_reading = Reading.objects.filter(supply_point=supply_point, is_control=False, contract=contract).order_by('-reading_date', 'is_close').first()
   
   if not last_reading and not existing_reading:
     if supply_point.meter:
-        last_reading = Reading.objects.filter(meter=supply_point.meter, is_control=False, reading_value__isnull=False).order_by('-reading_date').first()
-        existing_reading = Reading.objects.filter(meter=supply_point.meter, is_control=False).order_by('-reading_date').first()
+        last_reading = Reading.objects.filter(meter=supply_point.meter, is_control=False, reading_value__isnull=False).order_by('-reading_date', 'is_close').first()
+        existing_reading = Reading.objects.filter(meter=supply_point.meter, is_control=False).order_by('-reading_date', 'is_close').first()
   
+  # Les lectures d'un canvi de comptador no tanquen el període: la data nominal
+  # i els dies mínims es calculen des de l'última lectura real anterior al canvi.
+  period_start_reading = get_period_start_reading(last_reading)
+
   read1 = 0
   if last_reading and hasattr(last_reading, 'reading_value') and last_reading.reading_value is not None:
       read1 = last_reading.reading_value
@@ -361,10 +397,11 @@ def get_estimated_reading_minimal_object(
   
   if last_reading and last_reading.contract and last_reading.contract == contract:
     # Intentem normalitzar la data al període nominal (ex: 90 dies des de l'anterior)
-    target_nominal_date = last_reading.reading_date + timedelta(days=offset_days)
+    target_nominal_date = period_start_reading.reading_date + timedelta(days=offset_days)
     
-    # Si la diferència entre la data demanada i la nominal és massa gran, ens quedem amb la demanada
-    if abs((target_nominal_date - date).days) > (offset_days * (limit / 100)):
+    # Si la diferència entre la data demanada i la nominal és massa gran, ens quedem amb la demanada.
+    # També si la nominal no és posterior a l'última lectura (canvi de comptador a final de període).
+    if abs((target_nominal_date - date).days) > (offset_days * (limit / 100)) or target_nominal_date <= last_reading.reading_date:
       final_date = date
     else:
       final_date = target_nominal_date
@@ -386,8 +423,12 @@ def get_estimated_reading_minimal_object(
     if last_reading and last_reading.contract == contract:
       consumption_days = (final_date - last_reading.reading_date).days
   
+  period_days = consumption_days
+  if period_start_reading and period_start_reading != last_reading:
+    period_days = (final_date - period_start_reading.reading_date).days
+
   # Validació de dies mínims per seguretat
-  if not is_new_contract_exception and (consumption_days / offset_days) * 100 < limit and contract_readings.count() > 0:
+  if not is_new_contract_exception and ((period_days / offset_days) * 100 < limit or consumption_days <= 0) and contract_readings.count() > 0:
     return None
 
   # 3. CÀLCUL FINAL DEL VOLUM basat en la DATA FINAL decidida
@@ -1007,7 +1048,6 @@ def check_unusual_consumption(reading, calc_value):
     if last_val is None:
       continue
     diff_last = percent_difference(last_val, calc_value)
-    print(f"diff between {last_val} and {calc_value} is {diff_last}")
     if diff_last is not None and diff_last < 50:
       return False
   
@@ -1439,10 +1479,10 @@ def get_estimated_reading(
 
   last_reading = Reading.objects.filter(
     supply_point=supply_point, contract=contract, is_control=False, reading_value__isnull=False
-  ).order_by('-reading_date').first()
+  ).order_by('-reading_date', 'is_close').first()
   existing_reading = Reading.objects.filter(
     supply_point=supply_point, contract=contract, is_control=False
-  ).order_by('-reading_date').first()
+  ).order_by('-reading_date', 'is_close').first()
 
   read1 = last_reading.reading_value if last_reading and last_reading.reading_value is not None else 0
 

@@ -236,7 +236,7 @@
             <tr>
                 <td colspan="2" style="font-size: 12px;">
                     <span style=" margin-top: 2px;">{{ company.address.address_complete }} {{ company.address.postal_code }}</span></br>
-                    <span><strong>ATENCIÓ AL CLIENT</strong> {{ company.phone }}  {% if company.phone2 %} / {{ company.phone2 }} {% endif %}</span></br>
+                    <span>{% if company.show_customer_service_block is not False %}<strong>{{ company.customer_service_label|default:"Atenció al client"|upper }}</strong> {{ company.phone }}  {% endif %}{% if company.phone2 and company.show_breakdown_block is not False %}{% if company.show_customer_service_block is not False %} / {% endif %}{% if company.breakdown_label %}<strong>{{ company.breakdown_label|upper }}</strong> {% endif %}{{ company.phone2 }} {% endif %}</span></br>
                 </td>
             </tr>
         </table>
@@ -248,8 +248,8 @@
                 <td style="width: 40%; vertical-align: top; font-size: 10px;">
                     {% comment %} <div class="contact-info" style="margin-top: 8px; padding-top: 4px;">
                         <p>{{ company.address.address_complete }} {{ company.address.postal_code }} {{ company.address.city.name }}</p>
-                        <p><strong>TELÈFON D'ATENCIÓ AL CLIENT</strong> {{ company.phone }}</p>
-                        {% if company.phone2 %}<p><strong>TELÈFON D'AVERIES</strong> {{ company.phone2 }}</p>
+                        {% if company.show_customer_service_block is not False %}<p><strong>{{ company.customer_service_label|default:"TELÈFON D'ATENCIÓ AL CLIENT"|upper }}</strong> {{ company.phone }}</p>{% endif %}
+                        {% if company.phone2 and company.show_breakdown_block is not False %}<p><strong>{{ company.breakdown_label|default:"TELÈFON D'AVERIES"|upper }}</strong> {{ company.phone2 }}</p>
                         {% endif %}
                     </div> {% endcomment %}
                 </td>

@@ -4,7 +4,6 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils.dateparse import parse_date
 import csv
-import re
 import zipfile
 import logging
 from io import BytesIO, StringIO
@@ -151,8 +150,9 @@ class BillingDataOVView(APIView):
             )
 
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to update billing data: {str(e)}"},
+                {"error": "Failed to update billing data."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -196,8 +196,9 @@ class BillingDataOVUpdateIBANView(APIView):
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to update IBAN: {str(e)}"},
+                {"error": "Failed to update IBAN."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -448,9 +449,10 @@ class InvoicePDFView(APIView):
             )
 
         except Exception as e:
+            logger.exception("Error inesperat")
             # Step 12: Handle any errors during document retrieval or conversion
             return Response(
-                {"error": f"Failed to retrieve invoice PDF: {str(e)}"},
+                {"error": "Failed to retrieve invoice PDF."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -600,7 +602,11 @@ class ContractDetailByTokenOVView(RetrieveAPIView):
         return contract
 
 
-NIC_PATTERN = re.compile(r"\d+(?:/\d+){1,2}")
+def is_valid_nic(nic):
+    r"""Equivale a re.fullmatch(r"\d+(?:/\d+){1,2}", nic) sin regex: de 2 a 3
+    grupos de dígitos separados por «/» (CodeQL marca la regex como ReDoS)."""
+    parts = nic.split("/")
+    return 2 <= len(parts) <= 3 and all(part.isdecimal() for part in parts)
 
 
 class ContractByNicView(RetrieveAPIView):
@@ -626,8 +632,13 @@ class ContractByNicView(RetrieveAPIView):
     )
 
     def get_object(self):
+        """Valida el NIC, busca el contrato más reciente y comprueba los permisos.
+
+        Prioriza el punto de suministro por defecto y después busca en los demás.
+        Lanza ValidationError si el NIC es inválido o NotFound si no hay contrato.
+        """
         nic = (self.kwargs.get("nic") or "").strip()
-        if not NIC_PATTERN.fullmatch(nic):
+        if not is_valid_nic(nic):
             raise ValidationError({"error": "Invalid NIC format"})
         contract = (
             self.queryset.filter(supply_point_default__token=nic)
@@ -1272,8 +1283,9 @@ class BatchInvoiceDownloadView(APIView):
                     used_names.add(name)
                     zip_file.writestr(name, pdf_buffer.getvalue())
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {"error": f"Failed to retrieve invoice PDF: {str(e)}"},
+                {"error": "Failed to retrieve invoice PDF."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

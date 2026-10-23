@@ -138,9 +138,11 @@ export default defineNuxtConfig({
 
     // pricing
     '~/plugins/api/pricing/accounting-pricing-api.js',
+    '~/plugins/api/pricing/accounting-additional-line-api.js',
     '~/plugins/api/pricing/accounting-concept-api.js',
     '~/plugins/api/pricing/accounting-type-api.js',
     '~/plugins/api/pricing/accounting-cost-center-api.js',
+    '~/plugins/api/pricing/accounting-config-api.js',
     '~/plugins/api/pricing/billing-range-api.js',
     '~/plugins/api/pricing/line-item-type-api.js',
     '~/plugins/api/pricing/line-item-api.js',
@@ -214,6 +216,9 @@ export default defineNuxtConfig({
     '~/plugins/api/notification/incident-api.js',
     '~/plugins/api/notification/incident-report-api.js',
     '~/plugins/api/notification/general-note-api.js',
+
+    //dashboard
+    '~/plugins/api/dashboard/dashboard-api.js',
 
     //fraud
     '~/plugins/api/fraud/fraud-api.js',

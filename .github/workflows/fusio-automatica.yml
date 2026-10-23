@@ -1,0 +1,32 @@
+# Activa la fusió automàtica a cada PR cap a develop: GitHub la fusiona sola quan passen totes les
+# validacions obligatòries (backend, frontend, CodeQL i CodeRabbit). No s'aplica a main: les
+# releases es fusionen a mà. Les PR en esborrany i les que vénen d'un fork no la tenen. Es pot
+# desactivar a cada PR amb «Disable auto-merge».
+#
+# Fa servir el token FUSIO_TOKEN (un token d'usuari), no el GITHUB_TOKEN de l'acció: GitHub no
+# engega cap workflow per un push fet amb el GITHUB_TOKEN, i la fusió es feia amb ell. Sense
+# FUSIO_TOKEN, develop no passava les proves ni construïa les imatges després de fusionar.
+#
+# Seguretat: el repositori és públic. El secret no arriba mai a les PR que vénen d'un fork (ni
+# aquest job s'hi executa) i no s'escriu enlloc.
+name: Fusió automàtica
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+    branches: [develop]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  activa:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Activar la fusió automàtica
+        env:
+          GH_TOKEN: ${{ secrets.FUSIO_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --merge "$PR_URL"

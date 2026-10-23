@@ -152,6 +152,7 @@ class MassiveTerminationContractViewSet(APIView):
                 'error': 'Un o més contractes no s\'han trobat'
             }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response({
-                'error': f'Ha ocorregut un error inesperat: {str(e)}'
+                'error': 'Ha ocorregut un error inesperat.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 

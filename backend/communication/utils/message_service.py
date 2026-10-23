@@ -147,8 +147,6 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
             persons_map = {
                 str(p.id): p for p in Person.objects.filter(id__in=person_ids)
             }
-            print(f"persons_map: {persons_map}")
-            print(f"split_person_groups: {split_person_groups}")
 
             serialized_persons = []
             for group in split_person_groups:
@@ -166,6 +164,7 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
             
             email_token = ConfigProject.objects.get(token='message_type_email_token').value
             letter_token = ConfigProject.objects.get(token='message_type_letter_token').value
+            sms_token = ConfigProject.objects.filter(token='message_type_sms_token').values_list('value', flat=True).first()
             electronic_invoice_token = "electronic_inv"
             
             communications_to_create = []
@@ -175,7 +174,6 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
             
             for idx, person in enumerate(serialized_persons):
                 person_instance = persons_map.get(str(person['id']))
-                print(f"person_instance: {person_instance}")
                 if not person_instance:
                     continue
                 
@@ -198,6 +196,10 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                             final_tokens.append(process_type.type.token)
                             final_names.append(process_type.type.name)
                         elif process_type.type.token == letter_token and person.get('address'):
+                            final_tokens.append(process_type.type.token)
+                            final_names.append(process_type.type.name)
+                        elif sms_token and process_type.type.token == sms_token and person.get('sms_phone'):
+                            # sms_phone només inclou mòbils (PersonCommunicationSerializer.get_sms_phone)
                             final_tokens.append(process_type.type.token)
                             final_names.append(process_type.type.name)
                         
@@ -275,6 +277,9 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                 
                 process_message_types = [msg_type.type for msg_type in process_used_types]
                 for comm, types in zip(created_communications, [[] if process_types_count == 0 else process_message_types for _ in range(len(created_communications))]):
+                    if not comm.used_phones:
+                        # Sense mòbil no hi ha SMS: la comunicació arriba pels altres canals del procés.
+                        types = [msg_type for msg_type in types if msg_type.token != sms_token]
                     if types:
                         comm.types.set(types)
                 

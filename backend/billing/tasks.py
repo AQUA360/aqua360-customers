@@ -1,4 +1,5 @@
 import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import re
 from decimal import Decimal
 from html import escape
@@ -34,6 +35,7 @@ from billing.utils.reading_service import (
     find_canonical_general_meter_reading,
     get_estimated_reading_minimal_object,
     get_estimated_reading,
+    get_period_start_reading,
     READING_ESTIMATE_PERIOD_CHOICES,
     READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR,
     READING_ESTIMATE_STATISTIC_CHOICES,
@@ -51,7 +53,7 @@ from coredata.serializers import PersonSerializer
 from documentmanager.utils.main_utils import upload_document
 from documentmanager.utils.sign_certificate_service import sign_pdf
 from logger.models import LogInvoiceChangeStatus
-from notification.models import CalendarTask, Notification
+from notification.models import Notification
 from service.models import CompanyBank, Exploitation, Meter, Route, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
 from verifactu.utils.save_verifactu_info import notify_verifactu_unsent_batches
@@ -590,7 +592,7 @@ def export_reading_batch_task(self, reading_batch_id, file_format="csv"):
 
     if fmt == "csv":
         buffer = io.StringIO()
-        writer = csv.writer(buffer, delimiter=";")
+        writer = SafeCsvWriter(buffer, delimiter=";")
         writer.writerow(headers)
         writer.writerows(rows)
         csv_text = "\ufeff" + buffer.getvalue()
@@ -706,6 +708,146 @@ def export_readings_task(reading_ids, columns=None):
         return {
             "status": "error",
             "message": f"Error generating readings export: {str(e)}",
+        }
+
+
+def _yes_no(value):
+    return _("Sí") if value else ""
+
+
+def _date_str(value):
+    return value.strftime("%Y-%m-%d") if value else ""
+
+
+def _reading_alert_label(alert):
+    # Els noms de ReadingAlert són claus de traducció (el front les tradueix amb billing_block.<nom>).
+    if not alert:
+        return ""
+    labels = {
+        "reading_alert_turn": _("Volta comptador"),
+        "reading_alert_zero": _("Lectura 0"),
+        "reading_alert_negative": _("Lectura negativa"),
+        "reading_alert_estimated": _("Lectura estimada"),
+        "reading_alert_unusual": _("Lectura inusual"),
+        "reading_alert_low_consumption": _("Consum inusualment baix"),
+    }
+    return labels.get(alert.name, alert.name)
+
+
+def _reading_alert_notes(reading):
+    # Mateix criteri que ReadingByBatchMinimalSerializer: si no hi ha notes, l'alerta del lector o la remota.
+    if reading.alert_notes:
+        return reading.alert_notes
+    if reading.reader_alert:
+        return reading.reader_alert.name
+    if reading.remote_alert:
+        return reading.remote_alert.name
+    return ""
+
+
+def _batch_reading_export_columns():
+    prev = lambda r: r.previous_reading
+    return [
+        ("contract", _("Contracte"), lambda r: r.contract.token if r.contract else ""),
+        ("address", _("Adreça"), lambda r: str(r.supply_point.address) if r.supply_point and r.supply_point.address else ""),
+        ("route_position", _("Posició de ruta"), lambda r: r.supply_point.property.route_position.token
+            if r.supply_point and r.supply_point.property and r.supply_point.property.route_position else ""),
+        ("meter", _("Comptador"), lambda r: r.meter.code if r.meter else ""),
+        ("origin", _("Tipus"), lambda r: r.origin or ""),
+        ("previous_leak", _("Fuita anterior"), lambda r: prev(r).leak_value if prev(r) else None),
+        ("previous_reading_date", _("Data lectura anterior"), lambda r: _date_str(prev(r).reading_date) if prev(r) else ""),
+        ("previous_reading", _("Lectura anterior"), lambda r: prev(r).reading_value if prev(r) else None),
+        ("reading_date", _("Data lectura"), lambda r: _date_str(r.reading_date)),
+        ("reading_value", _("Lectura"), lambda r: r.reading_value),
+        ("leak_value", _("Fuita"), lambda r: r.leak_value),
+        # Mateix valor que mostra el llistat (get_existing_reading).
+        ("consumption", _("Consum"), lambda r: r.real_consumption if r.real_consumption else r.calculated_value),
+        ("is_general", _("General"), lambda r: _yes_no(r.meter and r.meter.is_general)),
+        ("is_estimated", _("Estimada"), lambda r: _yes_no(r.is_estimated)),
+        ("consumption_days", _("Dies"), lambda r: r.consumption_days),
+        ("alert", _("Avís"), lambda r: _reading_alert_label(r.alert)),
+        ("alert_notes", _("Observacions"), _reading_alert_notes),
+    ]
+
+
+def _billing_invoice_export_columns():
+    return [
+        ("contract", _("Contracte"), lambda i: i.contract.token if i.contract else ""),
+        ("customer", _("Client"), lambda i: i.customer_final or ""),
+        ("address", _("Adreça"), lambda i: i.address_final or ""),
+        ("use_type", _("Tipus d'ús"), lambda i: i.contract.use_type.name if i.contract and i.contract.use_type else ""),
+        ("payment_type", _("Forma de pagament"), lambda i: i.payment_type_final or ""),
+        ("total_final", _("Total"), lambda i: i.total_final),
+        ("left_to_pay", _("Pendent"), lambda i: i.left_to_pay),
+        ("consumption", _("Consum"), lambda i: i.consumption),
+        ("consumption_days", _("Dies"), lambda i: i.consumption_days),
+        ("warning", _("Avís"), lambda i: i.warning.name if i.warning else ""),
+    ]
+
+
+def _upload_export_xlsx(file_bytes, prefix, document_entity):
+    filename = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    document = upload_document(
+        file=ContentFile(file_bytes, name=filename),
+        entity=document_entity,
+        field="EXPORT",
+        entity_id=0,
+        entity_token=f"{document_entity}_EXPORT",
+        folder="",
+        service=settings.DOCUMENT_MANAGER_SERVICES.get("billing", "hdd"),
+        document_name=filename,
+        date=datetime.now(),
+    )
+    return {
+        "status": "success",
+        "message": f"{prefix} export generated successfully",
+        "document_id": document.id,
+        "document_name": filename,
+    }
+
+
+@shared_task
+def export_batch_readings_task(reading_ids):
+    """
+    Exporta les lectures del detall del resum del lot de lectures (avisos, correctes...).
+    `reading_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    """
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
+
+    try:
+        queryset = Reading.objects.select_related(
+            "contract", "meter", "alert", "reader_alert", "remote_alert", "previous_reading",
+            "supply_point__address", "supply_point__property__route_position",
+        )
+        file_bytes = build_export_xlsx_bytes_from_objects(
+            iter_objects_by_ids(queryset, reading_ids or []), _batch_reading_export_columns(),
+        )
+        return _upload_export_xlsx(file_bytes, "readings", "READING")
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error generating readings export: {str(e)}",
+        }
+
+
+@shared_task
+def export_billing_invoices_task(invoice_ids):
+    """
+    Exporta les factures del detall del resum de pre-factures (avisos, correctes...).
+    `invoice_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    """
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
+
+    try:
+        queryset = Invoice.objects.select_related("contract__use_type", "warning")
+        file_bytes = build_export_xlsx_bytes_from_objects(
+            iter_objects_by_ids(queryset, invoice_ids or []), _billing_invoice_export_columns(),
+        )
+        return _upload_export_xlsx(file_bytes, "invoices", "INVOICE")
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error generating invoices export: {str(e)}",
         }
 
 
@@ -1349,10 +1491,6 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
     except Exception as e:
       print(f"Error creating reading document not found: {e}")
         
-    print("Last reading close: ", last_reading_close)
-    for reading in last_reading_close:
-        print(f"Reading: {reading.reading_date} - {reading.reading_value} - {reading.contract.token}")
-      
     for error in errors:  
         print(f"Error: {error}")
 
@@ -2061,11 +2199,12 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
                   # arrossegades al lot (p.ex. no facturades de cicles anteriors); cada
                   # punt fa servir la seva propia ultima lectura real + el seu propi
                   # periode com a referencia, en lloc de la mitjana de tot el lot.
-                  last_reading = Reading.objects.filter(
+                  # Un canvi de comptador no reinicia el periode.
+                  last_reading = get_period_start_reading(Reading.objects.filter(
                       supply_point=supply_point,
                       contract=contract,
                       reading_value__isnull=False
-                  ).order_by('-reading_date').first()
+                  ).order_by('-reading_date', 'is_close').first())
                   if last_reading:
                       sp_target_date = last_reading.reading_date + timedelta(days=sp_biller_days)
 
@@ -2815,7 +2954,6 @@ def assign_batches_to_invoices(billing_batch_ids):
                 for contract in supply_point.contracts.all():  # Multiple contracts
                   for invoice in contract.invoices.all():  # Invoices linked to contract
                     print("ASSIGN BATCH TO INVOICE:")
-                    print(invoice)
                     invoice.batch = batch  # Assign batch
                     invoice.save(update_fields=['batch'])  # Save efficiently
 
@@ -3106,28 +3244,6 @@ def export_wincen_task(self, billing_id, queue_item_id=None):
     if q_item:
       _close_billing_queue_item(q_item.id, self.request.id, status='failed', completed_at=timezone.now(), error_message=str(e))
     raise Exception(f"Error in export_wincen_task: {e}")
-
-
-@shared_task
-def check_today_tasks():
-  try:
-      tasks = CalendarTask.objects.filter(task_done=False, set_date__lte=timezone.now().date()).distinct()
-
-      for task in tasks:
-        notification_save = {
-          'token': uuid.uuid4(),
-          'name': f"Tasca del dia pendent",
-          'description': f"Tasca: '{task.name}' pendent de finalització",
-          'module': '',
-          'entity': '',
-          'object_id': None,
-          'is_active': True,
-          'user': task.user,
-        }
-        notification = Notification.objects.create(**notification_save)
-  except Exception as e:
-      print(f"Error checking today's tasks: {e}")
-      return None
 
 
 @shared_task
@@ -3616,7 +3732,7 @@ def export_readings_by_batch_csv_task(batch_id):
         # Add BOM for UTF-8
         buffer.write('\ufeff')
         
-        writer = csv.writer(buffer, delimiter=';')
+        writer = SafeCsvWriter(buffer, delimiter=';')
         
         # Headers
         headers = [
@@ -3799,27 +3915,24 @@ def fix_invoices_persons_task():
       pass
       Invoice.objects.bulk_update(updating_invoices, ['person'])
 
+  # Només ids: noms de clients i números de factura no s'escriuen al log.
   print(f"FIXED {counter - len(not_found_person) - len(person_multiple_times)} INVOICES")
-  for invoice in invoices[:5]:
-      print(invoice.serie_final)
   print(f"NOT FOUND PERSON: {len(not_found_person)}")
   for invoice in not_found_person:
-      print(f"Invoice {invoice.id}: {invoice.serie_final}, customer final: {invoice.customer_final}, customer token final: {invoice.customer_token_final}")
+      print(f"Invoice id {invoice.id}")
   print(f"MULTIPLE PERSONS FOUND: {len(person_multiple_times)}")
   for invoice in person_multiple_times[:5]:
-      print(invoice['invoice'].serie_final)
-      print(invoice['person'].name)
-      print(invoice['others'])
+      print(f"Invoice id {invoice['invoice'].id}: person id {invoice['person'].id}, others {[p.id for p in invoice['others']]}")
 
 
 @shared_task
 @billing_run_cache_scope()
 def process_selected_contracts_task(billing_id, contract_ids):
-    print(f"Start process_selected_contracts_task for billing={billing_id}, contracts={contract_ids}")
+    """Processes readings and generates line items for the given contracts within a billing run."""
     try:
         billing = Billing.objects.get(id=billing_id)
     except Billing.DoesNotExist:
-        print(f"Billing {billing_id} not found.")
+        print("process_selected_contracts_task: billing not found.")
         return
 
     fanout_general_meter_readings(billing)
@@ -3950,7 +4063,6 @@ def process_selected_contracts_task(billing_id, contract_ids):
         ).order_by('reading_date').distinct())
 
         if not contract_readings:
-            print(f"No active readings for contract {contract_id} in billing {billing_id}")
             continue
 
         # Deduplicate readings
@@ -4021,7 +4133,6 @@ def process_selected_contracts_task(billing_id, contract_ids):
         invoice.billing = billing
         invoice.save()
 
-    print(f"Finished process_selected_contracts_task for billing={billing_id}")
 def process_next_queue_item():
   from billing.models import BillingQueue
   from django.utils import timezone
@@ -4168,3 +4279,215 @@ def apply_billing_queue_action(queue_item, action):
 
   # Allibera/avança la cua FIFO (només actua si no hi ha cap altre item en running).
   process_next_queue_item()
+
+
+
+
+@shared_task
+def manage_deliquency(request_data, user_id):
+  try:
+    from django.db.models import Sum
+    from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
+    from billing.utils.payment_service import log_payment_status
+    from contract.serializers.contract_serializer import ContractListSerializer
+    from coredata.models import PersonDeliquency
+    from django.contrib.auth.models import User
+    
+    try:
+      user = User.objects.get(id=user_id)
+    except Exception as e:
+      user = None
+    
+    request_data = request_data or {}
+    selectedUseTypesIds = request_data.get("selectedUseTypesIds", [])
+    selectedExploitationId = request_data.get("selectedExploitationId", None)
+    selectedClientTypesIds = request_data.get("selectedClientTypesIds", [])
+    selectedZonesIds = request_data.get("selectedZonesIds", [])
+    # selectedDebtMngsIds = request_data.get("selectedDebtMngsIds", [])
+    selectedContractStatusesIds = request_data.get("selectedContractStatusesIds", [])
+    selectedPaymentTypeIds = request_data.get("selectedPaymentTypeIds", [])
+    filter_date_start = request_data.get("filter_date_start", None)
+    filter_date_end = request_data.get("filter_date_end", None)
+    filter_due_date_start = request_data.get("filter_due_date_start", None)
+    filter_due_date_end = request_data.get("filter_due_date_end", None)
+    filter_termination_start = request_data.get("filter_termination_start", None)
+    filter_termination_end = request_data.get("filter_termination_end", None)
+    selected_contracts_id = request_data.get("selected_contracts_id", [])
+    selected_invoices_id = request_data.get("selected_invoices_id", [])
+    max_pending_invoices = request_data.get("max_pending_invoices", None)
+    min_pending_invoices = request_data.get("min_pending_invoices", None)
+    filter_normal_invoices = request_data.get("filter_normal_invoices", None)
+    filter_endowment_invoices = request_data.get("filter_endowment_invoices", None)
+
+    is_saving = request_data.get('saving', False)
+    
+    invoice_ids = request_data.get("invoice_ids", [])
+    contract_ids = request_data.get("contract_ids", [])
+    ignore_invoice_ids = request_data.get("ignore_invoice_ids", [])
+    ignore_contract_ids = request_data.get("ignore_contract_ids", [])
+    saving_status_token = request_data.get("status_token", None)
+    
+    invoice_normal_status_configs = [
+      "invoice_status_confirmed_token",
+      "invoice_status_expired_token",
+      "invoice_status_endowment_token",
+    ]
+    invoice_excluded_status_configs = [
+      "invoice_status_irrecoverable_token"
+      "invoice_status_pending_token",
+      "invoice_status_paid_token",
+      "invoice_status_cancelled_token",
+      "invoice_status_payoff_token",
+      "invoice_status_dropped_token",
+    ]
+    invoice_normal_status_tokens = ConfigProject.objects.filter(token__in=invoice_normal_status_configs).values_list('value', flat=True)
+    invoice_excluded_status_configs = ConfigProject.objects.filter(token__in=invoice_excluded_status_configs).values_list('value', flat=True)
+    
+    print("before is saving")
+    if is_saving:
+      today = timezone.now().date()
+      print("is saving")
+      if invoice_ids:
+        config_endowment = ConfigProject.objects.get(token='invoice_status_endowment_token').value
+        config_irrecoverable = ConfigProject.objects.get(token='invoice_status_irrecoverable_token').value
+        if saving_status_token not in (config_endowment, config_irrecoverable):
+          raise Exception("Invalid delinquency status")
+        payment_status = PaymentStatus.objects.get(token=saving_status_token)
+        invoice_status = InvoiceStatus.objects.get(token=saving_status_token)
+        payment_status_token_paid = ConfigProject.objects.get(token='payment_status_paid_token').value
+        print("with invoice ids")
+        invoices = Invoice.objects.filter(id__in=invoice_ids).exclude(id__in=ignore_invoice_ids).distinct()
+        if not invoices.exists():
+          raise Exception("No invoices provided")
+
+        has_endowment = invoices.filter(endowment_date__isnull=False).exists()
+        has_normal = invoices.filter(endowment_date__isnull=True).exists()
+        if has_endowment and has_normal:
+          raise Exception("Select either normal or endowment invoices")
+        if has_endowment and saving_status_token != config_irrecoverable:
+          raise Exception("Endowment invoices can only be marked irrecoverable")
+
+        if saving_status_token == config_endowment:
+          invoices.update(status=invoice_status, endowment_date=today)
+        elif has_normal:
+          invoices.update(status=invoice_status, irrecoverable_date=today, endowment_date=today)
+        else:
+          invoices.update(status=invoice_status, irrecoverable_date=today)
+          
+        print(f"invoices selected: count={invoices.count()}")
+        payments = Payment.objects.filter(invoice__in=invoices).exclude(status__token=payment_status_token_paid).distinct()
+        for payment in payments:
+          log_payment_status(payment, payment_status, user, today)
+        payments.update(status=payment_status)
+
+        if not has_normal:
+          return {"OK": "Management finished."}
+
+        contracts = Contract.objects.filter(id__in=contract_ids).exclude(id__in=ignore_contract_ids).distinct()
+        for contract in contracts:
+          contract_holder = contract.holder
+          contract_invoices = invoices.filter(
+            Q(contract=contract) | Q(contract_termination__contract=contract) | Q(contract_request__contract=contract)
+            ).distinct()
+          last_invoice = contract_invoices.order_by('-issue_date').first()
+          invoices_paid = contract_invoices.aggregate(total=Sum('left_to_pay'))['total']
+          invoices_total = contract_invoices.aggregate(total=Sum('total_final'))['total']
+          invoices_total -= invoices_paid
+          if invoices_total:
+            if contract_holder.deliquency:
+              contract_holder.deliquency.debt_amount += invoices_total
+              contract_holder.deliquency.last_debt_data = last_invoice.due_date #either this or today?
+              contract_holder.deliquency.save()
+            else:
+              contract_holder.deliquency = PersonDeliquency.objects.create(
+                debt_amount=invoices_total,
+                last_debt_data=last_invoice.due_date,
+                is_debtor=True,
+              )
+              contract_holder.save()
+        return {"OK": "Management finished."}
+      else:
+        raise Exception("No invoices provided")
+    print("no saving")
+    
+    filters = Q(total_final__gt=0, status__token__in=invoice_normal_status_tokens)
+    print("filters", filters)
+    if selectedUseTypesIds:
+      filters &= (Q(contract__use_type__in=selectedUseTypesIds) | Q(contract_request__use_type__in=selectedUseTypesIds) | Q(contract_termination__contract__use_type__in=selectedUseTypesIds) | Q(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True))
+    if selectedExploitationId:
+      filters &= Q(exploitation=selectedExploitationId)
+    if selectedClientTypesIds:
+      filters &= (Q(contract__client_type__in=selectedClientTypesIds) | Q(contract_request__client_type__in=selectedClientTypesIds) | Q(contract_termination__contract__client_type__in=selectedClientTypesIds) | Q(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True))
+    if selectedZonesIds:
+      filters &= Q(zone__in=selectedZonesIds)
+    if selectedContractStatusesIds:
+      filters &= (Q(contract__status__in=selectedContractStatusesIds) | Q(contract_termination__contract_status__in=selectedContractStatusesIds))
+    if selectedPaymentTypeIds:
+      payment_types = PaymentType.objects.filter(id__in=selectedPaymentTypeIds)
+      filters &= Q(payment_type_token_final__in=payment_types.values_list('token', flat=True))
+    if filter_date_start:
+      filters &= Q(issue_date__gte=filter_date_start)
+    if filter_date_end:
+      filters &= Q(issue_date__lte=filter_date_end)
+    if filter_due_date_start:
+      filters &= Q(due_date__gte=filter_due_date_start)
+    if filter_due_date_end:
+      filters &= Q(due_date__lte=filter_due_date_end)
+    if filter_termination_start:
+      filters &= (Q(contract_termination__approved_at__gte=filter_termination_start) | Q(contract__termination_date__gte=filter_termination_start) | Q(contract_request__contract__termination_date__gte=filter_termination_start))
+    if filter_termination_end:
+      filters &= (Q(contract_termination__approved_at__lte=filter_termination_end) | Q(contract__termination_date__lte=filter_termination_end) | Q(contract_request__contract__termination_date__lte=filter_termination_end))
+    if selected_contracts_id:
+      filters &= (Q(contract__id__in=selected_contracts_id) | Q(contract_termination__contract__id__in=selected_contracts_id) | Q(contract_request__contract__id__in=selected_contracts_id))
+    if selected_invoices_id:
+      filters &= Q(id__in=selected_invoices_id)
+    normal_selected = bool(filter_normal_invoices)
+    endowment_selected = bool(filter_endowment_invoices)
+    if normal_selected == endowment_selected:
+      return {"ERROR": "Select either normal or endowment invoices"}
+    if normal_selected:
+      filters &= Q(endowment_date__isnull=True)
+    else:
+      filters &= Q(endowment_date__isnull=False)
+    
+    print("filters applied for invoice selection")
+    invoices = Invoice.objects.filter(filters).exclude(status__token__in=invoice_excluded_status_configs).distinct()
+    
+    contacts_pending_invoices = []
+    has_min_pending_invoices = min_pending_invoices and min_pending_invoices != "" and min_pending_invoices != 0
+    has_max_pending_invoices = max_pending_invoices and max_pending_invoices != "" and max_pending_invoices != 0
+    if has_min_pending_invoices or has_max_pending_invoices:
+        pending_invoices_qs = Contract.objects.annotate(
+            pending_invoices_count=Count(
+                'invoices',
+                filter=Q(invoices__id__in=invoices.values_list('id', flat=True)),
+                distinct=True,
+            )
+        )
+        if has_min_pending_invoices:
+            pending_invoices_qs = pending_invoices_qs.filter(
+                pending_invoices_count__gte=min_pending_invoices
+            )
+        if has_max_pending_invoices:
+            pending_invoices_qs = pending_invoices_qs.filter(
+                pending_invoices_count__lte=max_pending_invoices
+            )
+        contacts_pending_invoices = pending_invoices_qs.values('id')
+        print("contacts_pending_invoices_count", contacts_pending_invoices.count())
+        if contacts_pending_invoices:
+          invoices = invoices.filter(Q(contract__id__in=contacts_pending_invoices) | Q(contract_termination__contract__id__in=contacts_pending_invoices) | Q(contract_request__contract__id__in=contacts_pending_invoices))
+        else:
+          invoices = invoices.none()
+    
+    print("invoices_count", invoices.count())
+    contract_ids = set(invoices.filter(contract__isnull=False).values_list('contract__id', flat=True))
+    contract_ids.update(invoices.filter(contract_termination__contract__isnull=False).values_list('contract_termination__contract__id', flat=True))
+    contract_ids.update(invoices.filter(contract_request__contract__isnull=False).values_list('contract_request__contract__id', flat=True))
+    contracts = Contract.objects.filter(id__in=contract_ids)
+    print("contracts_count", contracts.count())
+    serialized_invoices = InvoiceMinimalSerializer(invoices, many=True).data
+    serialized_contracts = ContractListSerializer(contracts, many=True).data
+
+    return {"invoices": serialized_invoices, "contracts": serialized_contracts}
+  except Exception as e:
+    return {"ERROR": str(e)}

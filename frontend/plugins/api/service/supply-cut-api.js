@@ -120,9 +120,10 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
-    const startCut = async (id, observation = null) => {
+    /** Activate a planned cut, forwarding vulnerability overrides and an optional observation. */
+    const startCut = async (id, observation = null, overrides = {}) => {
       const apiUrl = `${apiHost}${entity}${id}/start-cut/`;
-      const payload = {};
+      const payload = { ...overrides };
       if (observation) payload.observation = observation;
       try {
         return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(payload), { 'Content-Type': 'application/json' });

@@ -39,10 +39,6 @@ class ManageCommitmentDepositRequestViewSet(APIView):
         print("Manage Commitment Deposit Generate View")
         print(step)
         print(selected_contract)
-        print(selected_person)
-        print(selected_invoice)
-        print(payments)
-        print(holder)
         
         tenant = None
         owner = None
@@ -109,13 +105,9 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                     if contract_request_id:
                         contract_filters |= Q(contract_request__id=contract_request_id)
                     filters &= contract_filters
-                    print("filters: ", filters)
                     deposits_found = CommitmentDeposit.objects.filter(contract__id=selected_contract.get('id'), status__in=[pending_commitment_deposit_status, partially_paid_commitment_deposit_status]).distinct()
                     
                     invoices = Invoice.objects.filter(filters).distinct()
-                    print("invoices: ", invoices)
-                    for invoice in invoices:
-                        print("invoice: ", invoice.serie_final)
                 
                 
                 """ if selected_person:
@@ -124,8 +116,6 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                         'name': selected_person.get('full_name'),
                     }
                     print("selected_person")
-                    print(selected_person)
-                    print(selected_person.get('token'))
                     #either person or person id
                     filters &= Q(customer_token_final=selected_person.get('token')) """
                 
@@ -173,7 +163,6 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                                 'name': f'{contract_instance.owner.name} {contract_instance.owner.surname}',
                             }
                     else:
-                        print("selected_invoice: ", selected_invoice)
                         contract = None
                         holder = {
                             'id': None,
@@ -218,7 +207,6 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                 log.new_invoices.set(invoice_ids)
                 
                 print("remaining: ", deposit.remaining)
-                print("new remaining: ", float(deposit.remaining) + sum(float(p.get('amount')) for p in payments))
                 deposit.remaining += Decimal(sum(float(p.get('amount')) for p in payments))
                 deposit.due_date = due_date_commitment
                 deposit.total += Decimal(sum(float(p.get('amount')) for p in payments))
@@ -262,7 +250,7 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                     "remaining": sum(float(p.get('amount')) for p in payments),
                     "status": defaul_commitment_deposit_status,
                     "days_next_payment": days_next_payment,
-                    "start_date": start_date_commitment,
+                    # "start_date": start_date_commitment,
                     "due_date": due_date_commitment,
                     "contract": contract_instance,
                     "customer_final": holder.get('name') if holder else invoices[0].get('customer_final'),
@@ -294,7 +282,7 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                         "commitment_deposit": commitment_deposit,
                         "currently_paid": 0.00,
                         "amount": float(payment.get('amount')),
-                        "start_date": payment.get('start_date') or None,
+                        # "start_date": payment.get('start_date') or None,
                         "due_date": payment.get('due_date'),
                         "is_guide": True,
                     }

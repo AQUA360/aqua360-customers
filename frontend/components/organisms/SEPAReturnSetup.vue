@@ -380,6 +380,9 @@ watch(() => props.save_response, (newValue) => {
                                             class="inline-flex items-center px-1.5 py-0.5 rounded text-sm font-medium bg-red-100 text-red-800">
                                             {{ element.motive || "-" }}
                                         </span>
+                                        <p v-if="element.method_changed" class="mt-1 text-xs text-amber-700">
+                                            {{ t("informative_block.info_return_method_changed") }}
+                                        </p>
                                     </td>
                                     <td class="px-1 py-2">
                                         <abbr :title="`${t('informative_block.info_select_claim_invoice')}`"

@@ -3,10 +3,19 @@ import xml.etree.ElementTree as ET
 from datetime import timedelta, date
 from billing.models import CommitmentDeposit, DocumentSEPA, Invoice, InvoiceStatus, Payment, PaymentRemittance, PaymentStatus, RejectMotive
 from billing.utils.invoice_service import invoice_return_charge
+from billing.utils.payment_service import is_paid_by_direct_debit_with_other_method
 from contract.models import Contract, ContractRequest
 from coredata.models import ConfigProject
 from dateutil.relativedelta import relativedelta
 from documentmanager.utils.main_utils import download_document
+
+def _until_date(value):
+    # Data de retorn com a "YYYY-MM-DD" (pot arribar com a date, datetime o text amb hora)
+    if not value:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    return str(value).split("T")[0]
 
 def extract_payments_data(root, namespaces, msgId, client_doc_ids, clients_data, rjt_date):
     payments_data = []
@@ -157,8 +166,12 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
                 rjt_dt = rjt_date
             
             
+            # Si s'ha canviat el mètode d'un cobrament per domiciliació sense retornar-lo, el retorn
+            # s'ha de processar igualment: el mètode actual del pagament no diu com es va cobrar
+            method_changed = is_paid_by_direct_debit_with_other_method(payment, _until_date(item_rjt_date))
+            rejection["method_changed"] = method_changed
             # If the payment is paid and not direct debit, skip
-            if payment.status == paid_status and payment.payment_type and payment.payment_type_token != 'DIRECT_DEBIT':
+            if payment.status == paid_status and payment.payment_type and payment.payment_type_token != 'DIRECT_DEBIT' and not method_changed:
                 rejection["not_found"] = False
                 rejection["skip_return"] = True
                 rejection["contract"] = contract.token if contract else None
@@ -357,8 +370,12 @@ def handle_not_found_payment(client_data, company_data, rjt_date):
         commitment_deposit = CommitmentDeposit.objects.get(id=payment.commitment_deposit.id)
         contract = commitment_deposit.contract
         
+    # Si s'ha canviat el mètode d'un cobrament per domiciliació sense retornar-lo, el retorn
+    # s'ha de processar igualment: el mètode actual del pagament no diu com es va cobrar
+    method_changed = is_paid_by_direct_debit_with_other_method(payment, _until_date(reject_date))
+    rejection["method_changed"] = method_changed
     # If the payment is paid and not direct debit, skip
-    if payment.status == paid_status and payment.payment_type_token != 'DIRECT_DEBIT':
+    if payment.status == paid_status and payment.payment_type_token != 'DIRECT_DEBIT' and not method_changed:
         rejection["not_found"] = False
         rejection["skip_return"] = True
         rejection["contract"] = contract.token if contract else None
@@ -446,6 +463,63 @@ def handle_document_sepa(document, company_data, clients_data, msgId, client_doc
     )
     return rejections
 
+# Bancs que generen el CreDtTm dels informes de retorn (pain.002) amb un format de data que no
+# és l'ISO (AAAA-MM-DD). Clau: les 8 primeres posicions del BIC de l'entitat que emet l'informe.
+# - Caixa Guissona (CGUIESBA): AAAA-DD-MM, p. ex. 2026-13-10T14:16:00 per al 13/10/2026
+BANK_REPORT_DATE_FORMATS = {
+    "CGUIESBA": "%Y-%d-%m",
+}
+
+# Codi d'entitat de l'IBAN espanyol (posicions 5-8) -> BIC, per als informes sense BIC a la capçalera
+BANK_CODE_BICS = {
+    "3140": "CGUIESBA",
+}
+
+
+def identify_report_bank(report, namespace):
+    """BIC (8 posicions) del banc que ha generat l'informe de retorn.
+
+    Es mira el BIC de l'entitat del creditor a la capçalera (GrpHdr/CdtrAgt); si no hi és, es
+    dedueix del codi d'entitat de l'IBAN del creditor.
+    """
+    for path in (".//pain:GrpHdr/pain:CdtrAgt/pain:FinInstnId/pain:BIC",
+                 ".//pain:GrpHdr/pain:CdtrAgt/pain:FinInstnId/pain:BICFI",
+                 ".//pain:GrpHdr//pain:BICOrBEI"):
+        elem = report.find(path, namespace)
+        if elem is not None and elem.text and elem.text.strip():
+            return elem.text.strip()[:8].upper()
+
+    elem = report.find(".//pain:CdtrAcct/pain:Id/pain:IBAN", namespace)
+    if elem is not None and elem.text:
+        iban = elem.text.strip().upper()
+        if iban.startswith("ES"):
+            return BANK_CODE_BICS.get(iban[4:8])
+    return None
+
+
+def parse_report_creation_date(value, bank_bic=None):
+    """Data del CreDtTm de l'informe de retorn, tenint en compte el format propi de cada banc.
+
+    Primer es prova el format del banc (si en té) i després l'ISO. Si cap dels dos és vàlid, es
+    prova amb el dia i el mes intercanviats, que és l'error que s'ha vist en alguns bancs.
+    """
+    if not value:
+        return None
+    date_part = value.split("T")[0].strip()[:10]
+
+    formats = []
+    if bank_bic in BANK_REPORT_DATE_FORMATS:
+        formats.append(BANK_REPORT_DATE_FORMATS[bank_bic])
+    formats += ["%Y-%m-%d", "%Y-%d-%m"]
+
+    for date_format in formats:
+        try:
+            return datetime.datetime.strptime(date_part, date_format)
+        except ValueError:
+            continue
+    return None
+
+
 def extract_report_data(report, namespace):
     report_data = {}
     rjt_date = None
@@ -475,16 +549,10 @@ def extract_report_data(report, namespace):
         orgn_ctrl_sum_elem = group_org_header.find(".//pain:OrgnlCtrlSum", namespace)
         report_data["orgn_ctrl_sum"] = orgn_ctrl_sum_elem.text if orgn_ctrl_sum_elem is not None else None
 
+    report_data["bank_bic"] = identify_report_bank(report, namespace)
+
     # Version-based date logic
-    cre_dt = None
-    if report_data.get("creation_datetime"):
-        try:
-            cre_dt = datetime.datetime.fromisoformat(report_data["creation_datetime"].replace('Z', '+00:00'))
-        except:
-            try:
-                cre_dt = datetime.datetime.strptime(report_data["creation_datetime"][:19], "%Y-%m-%dT%H:%M:%S")
-            except:
-                pass
+    cre_dt = parse_report_creation_date(report_data.get("creation_datetime"), report_data["bank_bic"])
 
     if "002.001.10" in namespace.get("pain", ""):
         # Version 10: Always use CreDtTm

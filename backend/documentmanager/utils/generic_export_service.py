@@ -1,4 +1,4 @@
-import csv
+from documentmanager.utils.csv_safety import SafeCsvWriter
 import io
 from decimal import Decimal
 
@@ -55,6 +55,12 @@ def _append_export_row(worksheet, values):
     cells = []
     for value in values:
         excel_value, number_format = coerce_export_value(value)
+        if isinstance(excel_value, str):
+            # Sempre text: un valor que comenci per `=` no s'ha d'interpretar com a fórmula.
+            cell = WriteOnlyCell(worksheet, value=excel_value)
+            cell.data_type = "s"
+            cells.append(cell)
+            continue
         if number_format is None:
             cells.append(excel_value)
             continue
@@ -69,16 +75,34 @@ def build_export_xlsx_bytes(queryset, columns):
     columns: [(key, header, lambda obj: value), ...]
     XLSX with numeric columns stored as numbers (so Excel can sum them).
     """
+    # chunk_size explícit: obligatori quan el queryset porta `prefetch_related`
+    # (p. ex. l'export de Meter), si no `iterator()` llença ValueError.
+    return build_export_xlsx_bytes_from_objects(queryset.iterator(chunk_size=500), columns)
+
+
+def build_export_xlsx_bytes_from_objects(objects, columns):
+    """Com build_export_xlsx_bytes, però a partir de qualsevol iterable d'objectes."""
     workbook = Workbook(write_only=True)
     worksheet = workbook.create_sheet(title="Export")
     worksheet.append([str(header) for _, header, _ in columns])
-    # chunk_size explícit: obligatori quan el queryset porta `prefetch_related`
-    # (p. ex. l'export de Meter), si no `iterator()` llença ValueError.
-    for obj in queryset.iterator(chunk_size=500):
+    for obj in objects:
         _append_export_row(worksheet, [getter(obj) for _, _, getter in columns])
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+def iter_objects_by_ids(queryset, ids, chunk_size=500):
+    """
+    Objectes de `queryset` amb id a `ids`, en el mateix ordre que `ids`
+    (per conservar l'ordenació del llistat d'on surt l'exportació).
+    """
+    for start in range(0, len(ids), chunk_size):
+        chunk = ids[start:start + chunk_size]
+        objects = queryset.in_bulk(chunk)
+        for pk in chunk:
+            if pk in objects:
+                yield objects[pk]
 
 
 def build_export_csv_bytes(queryset, columns):
@@ -87,7 +111,7 @@ def build_export_csv_bytes(queryset, columns):
     Retorna els bytes del CSV (amb BOM UTF-8) llest per pujar via upload_document.
     """
     buffer = io.StringIO()
-    writer = csv.writer(buffer, delimiter=";")
+    writer = SafeCsvWriter(buffer, delimiter=";")
     writer.writerow([header for _, header, _ in columns])
     # chunk_size explícit: obligatori quan el queryset porta `prefetch_related`
     # (p. ex. l'export de Meter), si no `iterator()` llença ValueError.

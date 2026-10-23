@@ -390,7 +390,6 @@ def surcharge_invoice(sender, instance, **kwargs):
         if (instance.status == status_returned) :
             instance._skip_signal = True
             print(f"Skip signal for surcharge {instance.id}")
-            print("INVOICE FOR PAYMENT: ", instance.invoice)
             invoice = instance.invoice
             if invoice.parent_invoice:
                 while invoice.parent_invoice:

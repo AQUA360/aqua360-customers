@@ -240,12 +240,10 @@ def generate_xml(payment, invoice_inst=None):
             person = contract.holder
         else:
             person = find_person_for_invoice_customer(invoice)
-    print("person: ", person)
     direct_debit_token = ConfigProject.objects.get(token='direct_debit_token').value
     bank_transfer_token = ConfigProject.objects.get(token='bank_transfer_token').value
     cash_token = ConfigProject.objects.get(token='cash_token').value
-    #TODO: IMPORTANT CHECK COMMENT IN THIS XML. SOME IMPORTANT DETAILS IN NEED OF BEING CHECKED
-    print("\n\ninvoice")
+    
     invoice_ser = InvoiceFullSerializer(invoice)
     taxes = invoice_ser.data['taxes']
     #add to taxes, '0.00': 'subtotal'
@@ -258,11 +256,9 @@ def generate_xml(payment, invoice_inst=None):
         taxes_base.update({'0.00': total_left})
         taxes.update({'0.00': 0.00})
     
-    print(invoice)
-    print(invoice.serie_final)
     invoices = None
     residenceTypeCode = None
-    #TODO: GET CURRENT USED EXPLOITATION
+    
     exploitation = invoice.exploitation
     contract = invoice.contract if invoice.contract else invoice.contract_request
     if not contract and invoice.contract_termination:
@@ -295,7 +291,6 @@ def generate_xml(payment, invoice_inst=None):
     lang = settings.LANGUAGE_CODE
     country_company = Country.objects.get(iso_code=main_company.address.country.iso_code)
     print("gotten country_company")
-    print(invoice.country_final)
     country = Country.objects.get(iso_code=invoice.country_final)
     if country.iso_code == 'ES':
         residenceTypeCode = 'R'
@@ -578,7 +573,8 @@ def generate_xml(payment, invoice_inst=None):
         ET.SubElement(invoiceLine, "Quantity").text = str(round_ceil(float(quantity_einvoice))) # get_einvoice_line_quantity(line_item)
         #TODO: DO RESEARCH ('Tipos-de-medida-de-unidad-uncefact')
         # ET.SubElement(invoiceLine, "UnitOfMeasure").text = "01" if line_item.units == 1 else "33"
-        if round_ceil(float(quantity_einvoice) * line_item.price_unit) == line_item.price:
+        computed_total = Decimal(str(quantity_einvoice)) * Decimal(str(line_item.price_unit))
+        if round_ceil(computed_total) == line_item.price:
             unit_price_without_tax = line_item.price_unit
         else:
             unit_price_without_tax = float(Decimal(str(line_item.price / float(quantity_einvoice))).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))

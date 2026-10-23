@@ -196,16 +196,22 @@ def get_sepa_payments_and_batches(request):
         filters &= Q(invoice__billing__id=billing)
         
     if contracts:
-        filters &= (Q(invoice__contract__id__in=contracts) | Q(commitment_deposit__contract__id__in=contracts))
+        # Els pagaments sense factura ni dipòsit (p. ex. la devolució del saldo
+        # d'un contracte) van lligats directament al contracte.
+        filters &= (
+            Q(invoice__contract__id__in=contracts) |
+            Q(commitment_deposit__contract__id__in=contracts) |
+            Q(invoice__isnull=True, commitment_deposit__isnull=True, contract__id__in=contracts)
+        )
         
     if invoices:
         filters &= (Q(invoice__id__in=invoices) | Q(commitment_deposit__invoices__id__in=invoices))
         
     if send_date_start:
-        filters &= (Q(invoice__send_at__gte=send_date_start) | Q(due_date__gte=send_date_start))
+        filters &= (Q(invoice__send_at__gte=send_date_start) | Q(due_date__gte=send_date_start) | Q(issue_date__gte=send_date_start))
         
     if send_date_end:
-        filters &= (Q(invoice__send_at__lte=send_date_end) | Q(due_date__lte=send_date_end))
+        filters &= (Q(invoice__send_at__lte=send_date_end) | Q(due_date__lte=send_date_end) | Q(issue_date__lte=send_date_end))
         
     if issue_date_start:
         filters &= (Q(invoice__issue_date__gte=issue_date_start) | Q(commitment_deposit__invoices__issue_date__gte=issue_date_start))

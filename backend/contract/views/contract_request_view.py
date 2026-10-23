@@ -26,6 +26,9 @@ from documentmanager.utils.main_utils import upload_document
 from django.contrib.auth.models import User
 from auth.permissions import PermissionManager
 from service.models import MeterCaliber
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ContractRequestViewSet(viewsets.ModelViewSet):
@@ -206,6 +209,12 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='send-for-signing')
     def send_for_signing(self, request, pk=None):
+        """Crea una sessió de signatura per a la sol·licitud i retorna 201.
+
+        Accepta dades del destinatari, callback_url i force al cos de la petició.
+        Si falla el servei de signatura, registra el detall i retorna un error
+        genèric amb estat 400.
+        """
         from integrations.outbound.signing.exceptions import SigningApiError
         from integrations.outbound.signing.services import create_contract_request_signing_session
 
@@ -221,8 +230,10 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
                 force=str(request.data.get('force', '')).lower() in ('true', '1', 'yes'),
             )
             return Response(result, status=status.HTTP_201_CREATED)
-        except SigningApiError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SigningApiError:
+            # El detall (resposta del servei extern) queda al log, no al client.
+            logger.exception("Error del servei de signatura")
+            return Response({"error": "No s'ha pogut completar l'operació amb el servei de signatura."}, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=True, methods=['get'], url_path='validate-data')
     def validate_data(self, request, pk=None):
@@ -276,4 +287,5 @@ class ContractRequestCreateContractView(APIView):
         except ContractRequest.DoesNotExist:
             return Response({"error": "ContractRequest not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

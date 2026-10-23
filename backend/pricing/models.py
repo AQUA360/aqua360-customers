@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
-from contract.models import PaymentType, VariableType
+from django.utils.translation import gettext_lazy as _
+from contract.models import ContractUseType, PaymentType, VariableType
 from coredata.models import Bank
 from service.models import Exploitation, Company
 
@@ -498,14 +499,21 @@ class AccountingPricing(models.Model):
     last_updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='last_updated_accounting_pricings')
     
     token = models.CharField(max_length=255, null=True, blank=True)
+    # Replaces the accounting concept token when the declared line is negative or an undeclaration.
+    token_return = models.CharField(max_length=255, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
+    # Accounting line title. When empty, the line keeps name.
+    declared_as = models.CharField(max_length=255, null=True, blank=True)
     
     accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     accounting_cost_center = models.ForeignKey(AccountingCostCenter, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     #invoices category
     invoice_category = models.CharField(max_length=255, null=True, blank=True) # normal - irrecoverable - endownment
+    # this value also works for payment to allow and detect if a marked invoice is being paid
     undeclare_previous = models.BooleanField(default=False) # if TRUE, undeclare previous declarations (example, declared normal invoice set as endowment will be firt subtracted from normal invoices accounting and then declared on endowment accounting)
     origins = models.ManyToManyField(ProductOrigin, related_name='accounting_pricings') # declare only if separated by these, otherwise all together
+    separate_by_origin = models.BooleanField(default=False) # if TRUE, separate by origin of the product in case invoices share one same pricing
+    contract_types = models.ManyToManyField(ContractUseType, related_name='accounting_pricings')
     # lineitem category
     products = models.ManyToManyField(Product, related_name='accounting_pricings')
     price_rates = models.ManyToManyField(PriceRate, related_name='accounting_pricings')
@@ -519,6 +527,16 @@ class AccountingPricing(models.Model):
     foreign_iban = models.BooleanField(default=False) # handled if DIRECT_DEBIT
     outgoing_payments = models.BooleanField(default=False) # handled if BANK_TRANSFER
     incoming_payments = models.BooleanField(default=False) # handled if BANK_TRANSFER
+    separate_by_type = models.BooleanField(default=False) # if TRUE, separate by type of payment (DIRECT_DEBIT, BANK_TRANSFER, CASH, etc.)
+    # BANK_PAYMENT only. Empty handles every origin. A single origin is stored
+    # only when BANK_PAYMENT is the sole selected payment type.
+    PAYMENT_ORIGIN_CHOICES = [
+        ('box_office', _('Box Office')),
+        ('post_office', _('Post Office')),
+    ]
+    payment_origin = models.CharField(max_length=20, choices=PAYMENT_ORIGIN_CHOICES, null=True, blank=True)
+    # When grouped_lines and BANK_PAYMENT is among the payment types, split those lines by origin.
+    separate_by_payment_origin = models.BooleanField(default=False)
     
     grouped_lines = models.BooleanField(default=True) # if FALSE, each value will be a separate line
     
@@ -530,3 +548,92 @@ class AccountingPricing(models.Model):
     
     def __str__(self):
         return f"AccountingPricing {self.name}"
+
+class AccountingAdditionalLine(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    accounting_pricing = models.ForeignKey(AccountingPricing, on_delete=models.CASCADE, related_name='aditional_lines', null=True, blank=True)
+
+    token = models.CharField(max_length=255, null=True, blank=True)
+    token_return = models.CharField(max_length=255, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    declared_as = models.CharField(max_length=255, null=True, blank=True)
+    
+    accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='additional_lines', null=True, blank=True)
+
+    is_negative = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    def __str__(self):
+        return f"AccountingAditionalLine {self.name}"
+
+
+class AccountingConfig(models.Model):
+    """Singleton-style client settings for accounting declaration rules."""
+
+    DECLARE_CHOICES = [
+        ('debt', _('Debt')),
+        ('have', _('Have')),
+    ]
+    COUNTER_DECLARE_CHOICES = [
+        ('debt', _('Debt')),
+        ('have', _('Have')),
+        ('none', _('Not declared')),
+    ]
+    SIGN_CHOICES = [
+        ('positive', _('Positive')),
+        ('negative', _('Negative')),
+    ]
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+
+    # When True, piggy-bank movement amounts stay negative (legacy style).
+    # When False, amounts follow incoming_sign / return_sign (usually positive).
+    piggybank_as_negative = models.BooleanField(default=False)
+    # Movements whose current_status matches payment_status_piggy_token are
+    # always treated as piggy-bank and declared (even with invoice/commitment/BALANCE).
+    include_piggy_status_payments = models.BooleanField(default=False)
+
+    # Incoming piggy-bank deposit (movement.is_positive=False)
+    incoming_declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')
+    incoming_sign = models.CharField(max_length=10, choices=SIGN_CHOICES, default='positive')
+    incoming_counter_declare_as = models.CharField(
+        max_length=10, choices=COUNTER_DECLARE_CHOICES, default='have',
+    )
+    incoming_counter_pricing = models.ForeignKey(
+        AccountingPricing,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='incoming_piggybank_configs',
+    )
+
+    # Outgoing piggy-bank return (movement.is_positive=True)
+    return_declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='have')
+    return_sign = models.CharField(max_length=10, choices=SIGN_CHOICES, default='positive')
+    return_counter_declare_as = models.CharField(
+        max_length=10, choices=COUNTER_DECLARE_CHOICES, default='debt',
+    )
+    return_counter_pricing = models.ForeignKey(
+        AccountingPricing,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='return_piggybank_configs',
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Accounting config'
+        verbose_name_plural = 'Accounting configs'
+
+    def __str__(self):
+        return f"AccountingConfig #{self.pk}"
+
+    @classmethod
+    def get_solo(cls):
+        config = cls.objects.filter(is_active=True).order_by('id').first()
+        if config:
+            return config
+        return cls.objects.create()

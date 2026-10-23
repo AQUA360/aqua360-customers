@@ -34,6 +34,11 @@ let lastIban = null;
 
 // El catàleg de bancs pot portar només el codi d'entitat de 4 lletres ("BSAB"), que no és un BIC.
 const isCompleteBic = (bic) => !!bic && [8, 11].includes(String(bic).trim().length);
+// Un BIC de 8 caràcters és l'oficina principal: es mostra com el SWIFT de 11 afegint-hi "XXX".
+const toSwift11 = (bic) => {
+  const value = String(bic).trim().toUpperCase();
+  return value.length === 8 ? `${value}XXX` : value;
+};
 
 const selectedBankEntity = ref(null)
 const selectedBank = ref(null)
@@ -75,6 +80,9 @@ const assignValues = async () => {
     selectedCountry.value = props.selectedCountry;
   }
   if (selectedBank.value.swift) {
+    if (isCompleteBic(selectedBank.value.swift)) {
+      selectedBank.value.swift = toSwift11(selectedBank.value.swift);
+    }
     isSwiftAutomatic.value = true;
   }
   swiftManual.value = isCompleteBic(selectedBank.value.swift);
@@ -121,7 +129,7 @@ const onIbanChanged = (value) => {
   if (!swiftManual.value) {
     const autoSwift = value.swift || (isCompleteBic(foundBank?.bic) ? foundBank.bic : null);
     if (autoSwift) {
-      selectedBank.value.swift = autoSwift;
+      selectedBank.value.swift = isCompleteBic(autoSwift) ? toSwift11(autoSwift) : autoSwift;
       isSwiftAutomatic.value = true;
     }
   }
@@ -149,7 +157,7 @@ const getData = async () => {
       if (selectedBank.value) {
         selectedBank.value.control = foundBank.token;
         if (!swiftManual.value && isCompleteBic(foundBank.bic)) {
-          selectedBank.value.swift = foundBank.bic;
+          selectedBank.value.swift = toSwift11(foundBank.bic);
           isSwiftAutomatic.value = true;
         }
       }
@@ -171,7 +179,7 @@ const updateSelected = (e) => {
     selectedBankEntity.value = e.id;
     selectedBank.value.control = e.id?.token;
     if (isCompleteBic(e.id?.bic)) {
-      selectedBank.value.swift = e.id.bic;
+      selectedBank.value.swift = toSwift11(e.id.bic);
       swiftManual.value = false;
       isSwiftAutomatic.value = true;
     }

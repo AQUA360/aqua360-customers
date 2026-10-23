@@ -143,6 +143,7 @@ const showPreinvoices = computed(() => hasField(['include_preinvoices', 'preinvo
 const showProducts = computed(() => {
   const productFuncs = [
     'register_billing_summary',
+    'billing_product_dashboard',
     'mini_register_billing_summary',
     'billing_taxes_detailed_summary',
     'detailed_billing_summary',
@@ -304,7 +305,7 @@ const onDownload = () => {
             class="checkbox rounded border-slate-300 text-sky-600 focus:ring-sky-500"
           />
           <label :for="'p-' + product.id" class="text-slate-600 truncate cursor-pointer select-none" :title="product.name">
-            {{ product.name }}<template v-if="['register_billing_summary', 'mini_register_billing_summary', 'detailed_billing_summary'].includes(props.report.function_name) && product.exploitation"> {{ product.exploitation.name }}</template>
+            {{ product.name }}<template v-if="['register_billing_summary', 'billing_product_dashboard', 'mini_register_billing_summary', 'detailed_billing_summary'].includes(props.report.function_name) && product.exploitation"> {{ product.exploitation.name }}</template>
           </label>
         </div>
       </div>

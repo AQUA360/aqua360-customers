@@ -140,6 +140,8 @@ const openDetail = (filter, warningName) => {
   pagination.value.page = 1;
   showRegionComponent.value = 'BillingSummary';
   search_filter.value = ""
+  // El nou detall es carrega sense cerca: el cercador (i l'exportació) també.
+  searchInput.value = '';
   title.value = '';
   filterPossibleLeakComm.value = false;
   switch (filter) {
@@ -249,6 +251,11 @@ const getData = async (query = null, page = 1) => {
     loadingInvoices.value = false;
   }
 }
+
+// Exporta a Excel les factures del detall obert, amb els mateixos filtres.
+const exportShownInvoices = () => $InvoiceApiService.exportBatchInvoices(
+  props.billing_id, searchInput.value, search_filter.value, sortBy.value, sortDesc.value, filterPossibleLeakComm.value
+);
 
 const loadMore = async () => {
   if (loadingInvoices.value || !pagination.value.next) return;
@@ -827,7 +834,7 @@ watch(() => props.load_invoices, (newValue) => {
     </div>
     <div role="region"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white  z-20 overflow-hidden"
-      :class="{ 'translate-x-0': showRegion, 'translate-x-[2000px]': !showRegion, 'w-[90%]': showRegionComponent === 'BillingSummary', 'w-[75%]': showRegionComponent != 'BillingSummary' }">
+      :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[90%]': showRegionComponent === 'BillingSummary', 'w-[75%]': showRegionComponent != 'BillingSummary' }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
@@ -836,12 +843,17 @@ watch(() => props.load_invoices, (newValue) => {
       <div v-if="showRegionComponent === 'BillingSummary'" class="px-10 flex flex-col h-full">
         <!-- Added h-full here -->
         <H1>{{ t('invoices') }} {{ title }}</H1>
-        <span class="input-group flex flex-start items-center gap-2 w-80">
-          <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
-          <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
-            :placeholder="$t('dashboard.search')"
-            class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0" autocomplete="off" />
-        </span>
+        <div class="flex justify-between items-center gap-2">
+          <span class="input-group flex flex-start items-center gap-2 w-80">
+            <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
+            <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
+              :placeholder="$t('dashboard.search')"
+              class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0" autocomplete="off" />
+          </span>
+          <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportShownInvoices"
+            :disabled="loadingInvoices || !pagination.total"
+            :export-name="`${t('invoices')} ${title}`.trim()" />
+        </div>
         <div class="flex justify-between items-center mt-4 mb-2">
           <div v-if="medianDuration > 0" class="text-sm text-slate-600 italic">
             {{ t('common.median') }}: <span class="font-bold font-mono">{{ medianDuration }} {{ t('common.days')
@@ -948,7 +960,7 @@ watch(() => props.load_invoices, (newValue) => {
     </div>
     <div role="region" id="right_over_page"
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white w-[75%] z-30 shadow"
-      :class="{ 'translate-x-0': showSubRegion, 'translate-x-[2000px]': !showSubRegion }">
+      :class="{ 'translate-x-0': showSubRegion, 'translate-x-full': !showSubRegion }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="toggleSubRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />

@@ -237,7 +237,7 @@ def _get_desc_lines(invoice, contract, holder, config):
     return desc_lines_content
 
 
-def generate_sgt_txt_content(request, invoices):
+def generate_sgt_txt_content(request, invoices, progress_callback=None):
     config = _load_sgt_txt_config()
     invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
     code_values = _get_code_values(config)
@@ -263,12 +263,15 @@ def generate_sgt_txt_content(request, invoices):
     file_name = f"{current_year}{billing_period} sgttxs.txt"
     
     count = 0
+    total_invoices = invoices.count() if progress_callback else 0
 
     for invoice in invoices:
         # print(f"Processing invoice {invoice.serie_final}")
         if count % 200 == 0:
             print(f"Processed {count} invoices out of {invoices.count()}")
         count += 1
+        if progress_callback:
+            progress_callback(count, total_invoices)
         
         # if count == 500:
         #     break

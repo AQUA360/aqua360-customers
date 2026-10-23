@@ -7,7 +7,7 @@ from pricing.serializers.price_interval_serializer import PriceIntervalSerialize
 from pricing.serializers.price_rate_serializer import create_price_rate_log
 from pricing.serializers.price_variable_interval_serializer import PriceVariableIntervalSerializer
 from pricing.serializers.translatable_mixin import TranslatableFieldMixin
-from pricing.serializers.value_objects_serializer import ArticleCodeSerializer, BillingPeriodSerializer, QuantitySerializer, TaxSerializer, VariableCalculationSerializer
+from pricing.serializers.value_objects_serializer import ArticleCodeSerializer, BillingPeriodSerializer, QuantitySerializer, TaxSerializer, VariableCalculationSerializer, validate_formula_field
 
 
 from ..models import BillingPeriod, BillingRange, LineItemType, PriceInterval, PriceVariableInterval, Quantity, Tax, VariableCalculation
@@ -52,8 +52,11 @@ class LineItemTypeSaveSerializer(TranslatableFieldMixin, serializers.ModelSerial
         model = LineItemType
         fields = '__all__'
 
+    def validate_formula(self, value):
+        # En facturar, els percentatges només es converteixen si la fórmula fa servir productes.
+        return validate_formula_field(value, percentages=bool(value) and '%product.' in value)
+
     def create(self, validated_data):
-        print(validated_data)
         price_variable = validated_data.pop('price_variable_id', None)
         price_interval = validated_data.pop('price_interval_id', None)
         billing_period = validated_data.pop('billing_period_token', None)
@@ -94,7 +97,6 @@ class LineItemTypeSaveSerializer(TranslatableFieldMixin, serializers.ModelSerial
     
     def update(self, instance, validated_data):
         print('on update')
-        print(validated_data)
         
         price_variable_id = validated_data.pop('price_variable_id', None)
         price_interval_id = validated_data.pop('price_interval_id', None)
@@ -198,8 +200,6 @@ class LineItemTypeSaveSerializer(TranslatableFieldMixin, serializers.ModelSerial
         if validated_data.get('name'):
             if not instance.name or instance.name != validated_data.get('name'):
                 print("instance name: ", instance.name)
-                print("validated name: ", validated_data.get('name'))
-                print("instance name != validated name: ", instance.name != validated_data.get('name'))
                 create_price_rate_log(
                     current_price_rate(),
                     'name',

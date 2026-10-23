@@ -125,7 +125,7 @@ watch(() => props.data, (newData) => {
     
     <div role="row" class="grid grid-cols-2">
       <FieldDetail class="truncate" :label='$t("common.email_long")' :value="localData.used_email? localData.used_email : t('common.no_email') " />
-      <!-- <FieldDetail class="truncate" :label='$t("customer_service_block.short_tlf_sms")' :value="localData.used_phones? localData.used_phones : t('common.no_tlf') " /> -->
+      <FieldDetail class="truncate" :label='$t("customer_service_block.short_tlf_sms")' :value="localData.used_phones? localData.used_phones : t('customer_service_block.no_tlf_sms') " />
       <FieldDetail class="col-span-2" :label='$t("address_block.address")' :value="localData.used_address? localData.used_address : t('address_block.no_address') " />
       <FieldDetail v-if="localData.accounting_office" :label='$t("billing_block.short_accounting_office")' :value="localData.accounting_office" />
       <FieldDetail v-if="localData.managing_body && localData.managing_body != localData.accounting_office && localData.managing_body != localData.processing_unit"

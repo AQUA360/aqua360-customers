@@ -33,6 +33,9 @@ from .serializers import (
     AuthenticationSerializer
 )
 from .decorators import lecturapp_auth_required, get_authenticated_operator
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ReadingOperatorViewSet(ModelViewSet):
     """
@@ -102,8 +105,6 @@ class AuthenticationView(APIView):
             username = serializer.validated_data['username']
             password = serializer.validated_data['password']
             
-            print(f"Authenticating operator with username: {username}")
-            print(f"Password: {password}")
             operator = ReadingOperator.authenticate(username, password)
             if operator:
                 # Generate a new token for this operator
@@ -181,8 +182,6 @@ def operator_logout(request):
 def validate_token(request):
     """Validate a token and return operator info"""
     token = request.GET.get('token') or request.headers.get('X-App-Token')
-    
-    print(f"Token: {token}")
     
     if not token:
         return Response({
@@ -407,9 +406,10 @@ def reading_batch_routes_detailed_status(request, task_id):
             }, status=500)
             
     except Exception as e:
+        logger.exception("Error inesperat")
         return JsonResponse({
             'status': 'error',
-            'message': f'Error checking task status: {str(e)}',
+            'message': 'Error checking task status.',
             'progress': {
                 'current': 0,
                 'total': 100,

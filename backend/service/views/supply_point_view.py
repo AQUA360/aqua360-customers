@@ -27,6 +27,11 @@ from coredata.models import ConfigProject
 from service.permissions import SupplyPointPermission
 from contract.permissions import ContractPermission, ContractRequestPermission
 from fraud.permissions import FraudPermission
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class SupplyPointViewSet(viewsets.ModelViewSet):
     serializer_class = SupplyPointSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -409,7 +414,8 @@ class SupplyPointActivateView(APIView):
         except SupplyPoint.DoesNotExist:
             return Response({"error": "SupplyPoint not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SupplyPointDeactivateView(APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -430,7 +436,8 @@ class SupplyPointDeactivateView(APIView):
         except SupplyPoint.DoesNotExist:
             return Response({"error": "SupplyPoint not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class SupplyPointChangeAddressView(APIView):
@@ -451,4 +458,5 @@ class SupplyPointChangeAddressView(APIView):
         except SupplyPoint.DoesNotExist:
             return Response({"error": "SupplyPoint not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

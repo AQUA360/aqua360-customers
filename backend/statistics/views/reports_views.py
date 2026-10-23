@@ -37,17 +37,20 @@ from service.models import Company, SupplyPointType, Exploitation
 from statistics.models import GeneralReport, ReportType
 from statistics.permissions import ReportViewPermission
 from statistics.tasks import *
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 row_letters = list(string.ascii_uppercase)
-black_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
-white_bold_font = Font(color="FFFFFF", bold=True)
-light_gray_fill = PatternFill(start_color="ebebeb", end_color="ebebeb", fill_type="solid")
+black_fill = PatternFill(start_color="FF000000", end_color="FF000000", fill_type="solid")
+white_bold_font = Font(color="FFFFFFFF", bold=True)
+light_gray_fill = PatternFill(start_color="FFebebeb", end_color="FFebebeb", fill_type="solid")
 thin_border = Border(
-    left=Side(style='thin', color='d3d3d3'),
-    right=Side(style='thin', color='d3d3d3'),
-    top=Side(style='thin', color='d3d3d3'),
-    bottom=Side(style='thin', color='d3d3d3')
+    left=Side(style='thin', color='FFd3d3d3'),
+    right=Side(style='thin', color='FFd3d3d3'),
+    top=Side(style='thin', color='FFd3d3d3'),
+    bottom=Side(style='thin', color='FFd3d3d3')
 )
 
 def column_to_excel_letter(column_index):
@@ -163,7 +166,8 @@ class ReportBillingActiveProducts(views.APIView):
             return Response(serialized_products.data, status=status.HTTP_200_OK)
      
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportBillingSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -181,7 +185,8 @@ class ReportBillingSummary(views.APIView):
             
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class ReportAccountingValuesSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
     queryset = Billing.objects.all()
@@ -197,7 +202,8 @@ class ReportAccountingValuesSummary(views.APIView):
             
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportAquaRemittanceSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -215,7 +221,8 @@ class ReportAquaRemittanceSummary(views.APIView):
             
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportBailsReport(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -233,7 +240,8 @@ class ReportBailsReport(views.APIView):
             
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportIncasolLiquidation(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -251,7 +259,8 @@ class ReportIncasolLiquidation(views.APIView):
 
 
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportACASummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -268,7 +277,8 @@ class ReportACASummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportWalletSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -284,7 +294,8 @@ class ReportWalletSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 
 class ReportWalletBankList(views.APIView):
@@ -301,7 +312,8 @@ class ReportWalletBankList(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 
 class ReportWalletBankSummary(views.APIView):
@@ -319,7 +331,8 @@ class ReportWalletBankSummary(views.APIView):
         
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class ReportWalletBankDetailedSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -335,7 +348,8 @@ class ReportWalletBankDetailedSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportWalletCashDetailedSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -351,7 +365,8 @@ class ReportWalletCashDetailedSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportWalletUnpaidDetailedSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -367,7 +382,8 @@ class ReportWalletUnpaidDetailedSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class ReportWalletUnpaidSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
     queryset = Payment.objects.all()
@@ -382,7 +398,8 @@ class ReportWalletUnpaidSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportWalletAllUnpaidSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -398,7 +415,8 @@ class ReportWalletAllUnpaidSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportOrderTimeSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -415,7 +433,8 @@ class ReportOrderTimeSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportRecaptacioSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -428,7 +447,8 @@ class ReportRecaptacioSummary(views.APIView):
                 "message": "Report generation started. Use the task_id to check the status."
             }, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ReportCobramentsSummary(views.APIView):
@@ -442,7 +462,8 @@ class ReportCobramentsSummary(views.APIView):
                 "message": "Report generation started. Use the task_id to check the status."
             }, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ReportRecaptacioConceptesSummary(views.APIView):
@@ -456,7 +477,8 @@ class ReportRecaptacioConceptesSummary(views.APIView):
                 "message": "Report generation started. Use the task_id to check the status."
             }, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def enqueue_report_export(request, generator_func_name, default_name):
@@ -485,7 +507,8 @@ class ReportRegisterBillingSummary(views.APIView):
             
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportMiniRegisterBillingSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -496,7 +519,8 @@ class ReportMiniRegisterBillingSummary(views.APIView):
             
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportDetailedBillingSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -512,7 +536,8 @@ class ReportDetailedBillingSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class ReportBillingSummaryBySupplyType(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
     queryset = Billing.objects.all()
@@ -527,7 +552,8 @@ class ReportBillingSummaryBySupplyType(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportBillingSummaryByPerson(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -543,7 +569,8 @@ class ReportBillingSummaryByPerson(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportBillingSummaryByRates(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -559,7 +586,8 @@ class ReportBillingSummaryByRates(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class ReportBillingTaxesSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
     queryset = Billing.objects.all()
@@ -574,7 +602,8 @@ class ReportBillingTaxesSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportBillingTaxesDetailedSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -590,7 +619,8 @@ class ReportBillingTaxesDetailedSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 class ReportBillingModel347(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
     queryset = Billing.objects.all()
@@ -605,7 +635,8 @@ class ReportBillingModel347(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
         
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class ReportBillingDetailedConsumptionSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -621,7 +652,8 @@ class ReportBillingDetailedConsumptionSummary(views.APIView):
             }, status=status.HTTP_202_ACCEPTED)
             
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ReportContractsExport(views.APIView):
@@ -640,8 +672,9 @@ class ReportContractsExport(views.APIView):
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {'error': f'Ha ocorregut un error inesperat: {e}'},
+                {'error': 'Ha ocorregut un error inesperat.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -664,8 +697,9 @@ class ReportContractInvoiceReadingSummary(views.APIView):
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {'error': f'Ha ocorregut un error inesperat: {e}'},
+                {'error': 'Ha ocorregut un error inesperat.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -686,8 +720,9 @@ class ReportContractTariffsExport(views.APIView):
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {'error': f'Ha ocorregut un error inesperat: {e}'},
+                {'error': 'Ha ocorregut un error inesperat.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -708,8 +743,9 @@ class ReportContractTerminationExport(views.APIView):
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
+            logger.exception("Error inesperat")
             return Response(
-                {'error': f'Ha ocorregut un error inesperat: {e}'},
+                {'error': 'Ha ocorregut un error inesperat.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -797,7 +833,8 @@ class ReportGeneralBillingSummary(views.APIView):
             task = run_report_task.delay('general_billing_summary_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportDetailedTypologyPeriodicity(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -806,7 +843,8 @@ class ReportDetailedTypologyPeriodicity(views.APIView):
             task = run_report_task.delay('detailed_typology_periodicity_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportDetailedConcept(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -815,7 +853,8 @@ class ReportDetailedConcept(views.APIView):
             task = run_report_task.delay('detailed_concept_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportNoRegisterAcaBilling(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -823,7 +862,8 @@ class ReportNoRegisterAcaBilling(views.APIView):
         try:
             return enqueue_report_export(request, 'no_register_aca_contracts_report', _("Resum de contractes sense ACA"))
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportNonTariffIncome(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -832,7 +872,8 @@ class ReportNonTariffIncome(views.APIView):
             task = run_report_task.delay('non_tariff_income_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportSubscriberEvolution(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -841,7 +882,8 @@ class ReportSubscriberEvolution(views.APIView):
             task = run_report_task.delay('subscriber_evolution_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportSocialTariffEvolution(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -850,7 +892,8 @@ class ReportSocialTariffEvolution(views.APIView):
             task = run_report_task.delay('social_tariff_evolution_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportPendingInvoicesValuesReport(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -859,7 +902,8 @@ class ReportPendingInvoicesValuesReport(views.APIView):
             task = run_report_task.delay('pending_invoices_values_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportClaimResponseTime(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -868,7 +912,8 @@ class ReportClaimResponseTime(views.APIView):
             task = run_report_task.delay('claim_response_time_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportManagementVolume(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -877,7 +922,8 @@ class ReportManagementVolume(views.APIView):
             task = run_report_task.delay('management_volume_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportClavegueramInvoicesSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -890,7 +936,8 @@ class ReportClavegueramInvoicesSummary(views.APIView):
                 "message": "Report generation started. Use the task_id to check the status."
             }, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportTotalCustomersDebtSummary(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -903,7 +950,8 @@ class ReportTotalCustomersDebtSummary(views.APIView):
                 "message": "Report generation started. Use the task_id to check the status."
             }, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportSgtTxt(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -912,7 +960,8 @@ class ReportSgtTxt(views.APIView):
             task = run_report_task.delay('sgt_txt_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ReportGeneralAccounting(views.APIView):
     permission_classes = [IsAuthenticated, ReportViewPermission]
@@ -921,4 +970,5 @@ class ReportGeneralAccounting(views.APIView):
             task = run_report_task.delay('general_accounting_report', request.data)
             return Response({"task_id": task.id, "status": "pending"}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

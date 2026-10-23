@@ -110,7 +110,7 @@ onMounted(() => {
       <!-- <div class="h-[70vh] customers-shadow rounded my-2 overflow-y-auto"> -->
       <div class="h-[80vh] border-b my-2 overflow-y-auto">
         <div v-for="item in data" :key="item.id" class="my-1">
-          <CalendarTaskDetail :data="item" @edit="showDetail" @show-detail="showDetail" />
+          <CalendarTaskDetail :data="item" @edit="showDetail" @show-detail="showDetail" @changed="refresh(false)" />
         </div>
   
         <div v-if="data.length === 0" class="flex font-bold text-slate-700 justify-center items-center bg-slate-100 rounded-md p-4">

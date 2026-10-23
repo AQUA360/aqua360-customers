@@ -7,6 +7,7 @@ from communication.utils.communication_service import create_email_template, get
 from coredata.models import ConfigProject
 from django.conf import settings
 from coredata.utils.name_utils import generate_token
+from coredata.utils.phone_utils import is_mobile_phone
 from logger.models import LogCommunicationChange
 from service.serializers.value_objects_serializer import CompanyConfigEmailSerializer, CompanyConfigSerializer
 from ..models import Communication, CommunicationFile, CommunicationObservation, CommunicationStatus, CommunicationUseType, Message, MessageType, MessageTypeTemplate
@@ -176,7 +177,10 @@ class CommunicationSaveSerializer(serializers.ModelSerializer):
                         else:
                             msg_type = MessageType.objects.get(token=sms_token)
                             if not 'used_phones' in validated_data:
-                                validated_data['used_phones'] = contract.person_contact_sms.values_list('phone', flat=True)
+                                validated_data['used_phones'] = ','.join(
+                                    phone for phone in contract.person_contact_sms.filter(is_active=True).values_list('phone', flat=True)
+                                    if is_mobile_phone(phone)
+                                )
                     elif contract.communication_type == 'PAPER' or contract.communication_type == 'PHYSICAL':
                         from coredata.serializers import PersonAddressSerializer
                         msg_type = MessageType.objects.get(token=letter_token)

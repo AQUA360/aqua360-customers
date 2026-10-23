@@ -14,6 +14,8 @@ fa servir el callback, de manera que el resultat és idèntic pels dos camins.
 Els dos camins conviuen: el que ja està firmat no es torna a processar.
 """
 
+import logging
+
 from django.conf import settings
 
 from documentmanager.models import DocumentSign
@@ -27,8 +29,10 @@ from integrations.inbound.signing.services import (
 )
 from integrations.models import ContractSigningSession
 from integrations.outbound.signing.client import SigningClient
-from integrations.outbound.signing.exceptions import SigningApiError
+from integrations.outbound.signing.exceptions import SIGNING_SERVICE_ERROR, SigningApiError
 from integrations.outbound.signing.services import save_signed_contract_file
+
+logger = logging.getLogger(__name__)
 
 REMOTE_STATUS_SIGNED = "signed"
 REMOTE_STATUS_EXPIRED = "expired"
@@ -100,8 +104,9 @@ def poll_document_sign(document_sign, client=None, dry_run=False, fail_on_error=
             object_id=str(document_sign.id),
             log_success=log_success,
         )
-    except SigningApiError as exc:
-        return _remote_failure(document_sign, str(exc), fail_on_error)
+    except SigningApiError:
+        logger.exception("Error del servei de signatura (DocumentSign %s)", document_sign.id)
+        return _remote_failure(document_sign, SIGNING_SERVICE_ERROR, fail_on_error)
 
     remote_status = (session_data.get("status") or "").lower()
 
@@ -133,8 +138,9 @@ def poll_document_sign(document_sign, client=None, dry_run=False, fail_on_error=
             session_id, document_id,
             object_type="document_sign", object_id=str(document_sign.id),
         )
-    except SigningApiError as exc:
-        return _remote_failure(document_sign, str(exc), fail_on_error)
+    except SigningApiError:
+        logger.exception("Error del servei de signatura (DocumentSign %s)", document_sign.id)
+        return _remote_failure(document_sign, SIGNING_SERVICE_ERROR, fail_on_error)
 
     save_signed_document_sign_file(
         document_sign, pdf_bytes, _parse_signed_at(session_data.get("signed_at"))

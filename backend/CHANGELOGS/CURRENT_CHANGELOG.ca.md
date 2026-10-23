@@ -1,6 +1,304 @@
 # Changelog Backend
 
+## [23-10-2026]
+### FEAT
+#### COMMUNICATION (`communication/tasks.py`, `coredata/migrations/0143_add_attach_extra_docs_in_claims_config.py` — comunicacions d'impagats sense factures ni rebuts adjunts) (PR #115)
+    - Nou `ConfigProject.attach_extra_docs_in_claims` (migració `coredata.0143`, valor per defecte `true`): amb `false`, a les comunicacions d'impagats només s'adjunta el document del pas (avís de pagament o carta de suspensió), sense els PDF de les factures ni els rebuts o el document agrupat.
+    - Les factures dels pagaments reclamats continuen vinculades a la comunicació, de manera que les variables `%invoice.*` del cos del missatge es continuen resolent.
+    - Migració de merge `coredata.0144` (dues `0143` en paral·lel). Tests a `communication/tests.py`.
+
+#### BILLING (`billing/templatetags/billing_filters.py` — despeses de devolució a les cartes de reclamació) (PR #120)
+    - Nou filtre `with_return_fee_invoices`: a cada factura reclamada hi afegeix les factures de despeses de devolució pendents que en pengen (també des de les rectificatives de la cadena), ordenades per data d'emissió i sense duplicats. Les factures de despeses reclamades directament es marquen com a tals.
+    - Si la cerca falla, retorna només les factures reclamades, de manera que la carta no deixa de generar-se. Les plantilles que el facin servir requereixen aquest backend.
+
+#### BILLING (`billing/utils/sepa_service.py`, `billing/utils/payment_service.py`, `billing/views/payment_view.py` — D_004-256, retorns de domiciliacions de factures canviades de mètode) (PR #113)
+    - Retornar un rebut SEPA d'una factura que després s'ha canviat a un altre mètode de pagament registra la devolució i la torna a cobrar pel mètode nou. El fitxer de retorn ja no salta aquests pagaments i els marca com a canviats.
+    - Els pagaments que continuen pagats no entren a la gestió d'impagats, i no es registra dues vegades la devolució del mateix rebut encara que el motiu sigui diferent.
+
+### FIX
+#### STATISTICS (`statistics/utils/report_billing_service.py` — informe de facturació per tarifa amb la variable de persones configurada) (PR #120)
+    - L'informe importava una constant que s'havia eliminat en fer configurable la variable de persones de l'ampliació de trams ACA i fallava. Ara les variables de membres es busquen pels tokens de `ConfigProject.aca_tram_members_variable_token`, amb els mateixos criteris de vigència i valor.
+
+#### STATISTICS (`statistics/utils/report_billing_service.py` — tipus d'ús vigent a la data de la factura) (PR #122)
+    - El resum de facturació per tarifa agrupa cada factura pel tipus d'ús que tenia el contracte quan es va generar, segons l'historial de canvis del contracte, en lloc del tipus d'ús actual. Sense canvis registrats, o si el tipus d'ús s'ha reanomenat, es fa servir l'actual.
+
+#### NOTIFICATION (`notification/serializers/notification_serializer.py`, `notification/filters/notification_filter.py` — llegir i arxivar notificacions per usuari) (PR #117)
+    - Marcar com a llegida/no llegida i arxivar/desarxivar apliquen el valor enviat en lloc d'alternar l'estat, de manera que repetir l'acció ja no la desfà.
+    - Arxivar ja no desa `is_active=False` a la notificació (l'amagava a tots els usuaris): només afegeix o treu l'usuari d'`archived_by`.
+    - L'acció sobre totes les notificacions es limita a les de l'usuari i les generals. Corregit el filtre `is_seen` amb l'arxivament invertit.
+
+#### PRICING/BILLING (`pricing/utils/formula_evaluator.py`, `billing/utils/adjustment_service.py`, `pricing/serializers/*` — avaluació segura de les fórmules de tarifes i ajustos) (PR #118, #121)
+    - Les fórmules d'ajustos, trams i conceptes de factura ja no s'executen amb `eval`: només s'hi accepten números, operacions aritmètiques, comparacions, condicions (`x if ... else y`, `and`/`or`/`not`), variables `%nom` i les funcions `abs`, `min`, `max`, `round`, `int`, `float`, `math.ceil`, `math.floor` i `math.sqrt`. Es limiten la longitud, l'exponent, els decimals de `round` i els números massa grans o no finits.
+    - En desar un ajust, un tram o un concepte de factura es rebutgen les fórmules no vàlides amb un missatge d'error; als conceptes amb productes s'hi admeten percentatges (`21%`), com en facturar.
+    - Les fórmules que són només un número amb coma decimal (`0,5`) passen a punt (`0.5`), en desar i amb la migració `pricing.0132` per a les existents. Les condicions dels ajustos no es toquen.
+    - Tests a `pricing/tests_formula_evaluator.py`.
+
+#### BILLING (`billing/views/invoice_view.py`, `billing/serializers/payment_serializer.py` — canvi de mètode de pagament de factures pagades) (PR #113)
+    - No es pot canviar el mètode de pagament d'una factura ja pagada (primer cal retornar-la) ni el tipus d'un pagament cobrat. En factures no pagades, el canvi només afecta els pagaments pendents.
+    - Tests a `billing/tests/test_return_after_payment_method_change.py`. Cal desplegar-lo junt amb el frontend.
+
+## [22-10-2026]
+
+### FEAT
+#### BILLING (`billing/utils/sepa_file_service.py` — 1907, número de factura al concepte dels rebuts SEPA) (PR #106)
+    - El concepte dels rebuts d'aigua inclou el número de factura (`FRA` en català i castellà, `INV` en anglès); el dels compromisos de pagament llista les factures que cobren.
+    - El concepte es limita als 140 caràcters de l'esquema SEPA: si no hi caben totes les factures, s'hi afegeix `+N` amb les que falten.
+    - Els pagaments sense factura ni compromís parteixen del seu token i ja no hereten el concepte del pagament anterior. Tests a `billing/tests/test_sepa_concept.py`.
+
+#### BILLING (`billing/utils/general_invoice_summary_service.py`, `general_invoice_summary_template.html` — consum al resum de la factura general) (PR #110)
+    - El resum en PDF de la factura general té una columna nova «Consum (m3)» per factura (consum real o, si no n'hi ha, el facturat) i el total.
+
+#### STATISTICS (`statistics/utils/report_billing_service.py` — resum de facturació per tarifa amb el format del resum en PDF) (PR #110)
+    - L'Excel inclou capçalera amb l'empresa i la data, el període en mesos, els rangs de números de factura per sèrie i una columna nova de preu unitari aplicat.
+    - Els productes surten amb la seva posició i l'IVA només s'indica si el producte en té més d'un tipus. Nou format dels totals i del resum de l'IVA.
+
+#### CONTRACT (`watchdog/aca_config.py`, `contract/utils/aca_tram_service.py`, `contract/signals.py` — variable de persones de l'ampliació de trams ACA configurable) (PR #114)
+    - La variable que es sincronitza amb el nombre de persones del contracte ja no es detecta perquè el token contingui `MEMBRES`: es configura a `ConfigProject.aca_tram_members_variable_token` (migració `coredata.0143`, per defecte `ACA-TRAM-MEMBRES`) i es tria a `/settings/config_aca/` (migració `billing.0326`, que crea la fila per explotació).
+    - La coincidència és pel token sencer, sense distingir majúscules, i se n'admet més d'un separat per `|`. Si la configuració no existeix o és buida, es fa servir el token històric.
+    - S'aplica a la bonificació en canviar el nombre de persones, a l'aplicació de fitxers de l'ACA, a l'exportació de sol·licituds i a l'informe de volum de gestions. El watchdog avisa si la configuració falta o apunta a un tipus de variable inexistent.
+    - Tests a `contract/tests/test_aca_tram_service.py`.
+
+### FIX
+#### PRICING (`pricing/utils/deletion_service.py`, `pricing/views/*` — 2032, revisió de l'eliminació de tarifes i productes) (PR #104)
+    - També es considera en ús una tarifa referenciada només pel concepte de la línia de factura.
+    - No es poden eliminar les tarifes configurades com a despeses de devolució o drets de connexió (ni els productes que en tinguin), i el `400` indica el motiu.
+
+#### BILLING (`billing/utils/payment_pdf_service.py` — 2027, la carta de pagament mostra el nou termini concedit) (PR #105)
+    - La data límit de la carta de pagament és el nou termini concedit a la reclamació (el mateix que porta el codi de barres); si no n'hi ha, el venciment del pagament. Tests a `billing/tests/test_payment_pdf_limit_date.py`.
+
+#### CONTRACT (`contract/views/contract_manage_massively_view.py` — filtre de producte a la gestió massiva de contractes) (PR #107)
+    - El filtre per producte i l'eliminació massiva de productes fan servir la relació correcta amb la tarifa del contracte: ara es treuen del contracte les tarifes d'aquests productes.
+
+#### BILLING (`billing/views/invoice_manage_massively_view.py` — pagament massiu de factures) (PR #108)
+    - Només s'apliquen a factures (no a pressupostos) i s'exclouen les pagades, descartades, cancel·lades, en compromís, liquidades o pendents.
+    - S'exclouen els pagaments per SEPA, saldo i TPV online; la resta de formes de pagament s'hi inclouen (abans només efectiu i SEPA).
+
+#### BILLING (`billing/utils/reading_service.py`, `billing/tasks.py` — 1916, estimar lectures després d'un canvi de comptador) (PR #111)
+    - Un canvi de comptador recent ja no bloqueja l'estimació: els dies del període es compten des de l'última lectura real anterior al canvi.
+    - Amb diverses lectures el mateix dia es prioritza la del comptador nou, de manera que l'estimada en parteix sempre. Es descarten els períodes sense dies de consum. Tests a `billing/tests/test_estimate_after_meter_change.py`.
+
+#### BILLING (`billing/utils/invoice_line_item_service.py`, `billing/views/epayment_document_generate_view.py` — arrodoniment dels imports proporcionals) (PR #112)
+    - L'import de les línies proporcionals i el preu corregit s'arrodoneixen amb `round_ceil` i es calculen amb `Decimal`, també en la comprovació del preu unitari de la factura electrònica.
+
+### MODIFIED
+#### BILLING/COREDATA (`billing/utils/invoice_pdf.py`, `billing/views/invoice_pdf_view.py`, `coredata/utils/pdf_utils.py` — ACUSTOMERS-335, PDF de factura desat només al gestor documental) (PR #109)
+    - El PDF definitiu de la factura només es desa al gestor documental (`invoice_file`); `invoice_file_template` queda per a la previsualització provisional. La URL retornada en generar-lo apunta al gestor documental.
+    - Els PDF combinats de factures fan servir el document definitiu i, si no n'hi ha, la còpia antiga.
+    - Nova ordre `clean_duplicated_invoice_pdfs` (`--dry-run`, `--skip-orphans`) i opscript `billing/0008` per esborrar les còpies duplicades i els PDF orfes antics de `uploads/billing/invoices`. Cal desplegar-lo junt amb el frontend. Tests a `billing/tests/test_invoice_pdf_storage.py`.
+
+#### CLAIMREQUEST (`claimrequest/serializers/vulnerability_request_serializer.py` — data de fi de les variables de vulnerabilitat) (PR #110)
+    - En acceptar una sol·licitud de vulnerabilitat, les variables creades ja no prenen la data de venciment de la sol·licitud: queden obertes tret que s'enviï `variables_end_at`. Cal desplegar-lo junt amb el frontend.
+
+### CHORE
+#### COREDATA (`initial_data/{ca,es}/config_project/local/ConfigProject.json` — fixtures de ConfigProject al dia amb les migracions) (PR #116)
+    - Els dos fixtures queden amb els mateixos tokens, s'hi afegeixen els que creen les migracions i s'eliminen els que les migracions esborren. Només afecta instal·lacions noves.
+
+## [21-10-2026]
+
+### FEAT
+#### BILLING (`billing/utils/joined_payment_service.py`, `billing/views/joined_payment_view.py` — 1897, detall del deute del contracte) (PR #90)
+    - Nou `POST joined-payments/contract-debt/` (cos `{ "contract": <id> }`; `400` si falta): retorna els pagaments que formen el deute del contracte (els mateixos que suma `vw_contract_debt`) més els que es poden liquidar encara que no hi comptin (p. ex. terminis de compromisos de pagament). Per a cada pagament indica `in_debt`, `is_settleable`, la remesa més recent (pendent d'enviar o enviada) i el pagament agrupat actiu, amb els totals de deute, liquidable, en remesa pendent i en pagament agrupat.
+    - Els pagaments pendents d'un contracte (liquidables amb un pagament agrupat) inclouen també els que només tenen el contracte a la factura (`invoice__contract`).
+    - Document de pagament agrupat: la previsualització mostra el venciment, l'IBAN i el SWIFT (abans les plantilles els amagaven sense pagament agrupat desat), i la columna Contracte agafa el de la factura quan el pagament no en té.
+    - Tests: `billing/tests/test_contract_debt_detail.py`. Cal desplegar-lo junt amb el frontend.
+
+#### ORDER (`order/services/consumer.py`, `order/signals.py`, `order/serializers/order_serializer.py`, `documentmanager/utils/export_registry.py` — ordres creades directament al GMAO) (PR #93)
+    - El consumer GMAO processa el nou event entrant `order.created` i replica l'ordre al CRM. Vinculació en tres nivells, sense errors ni DLQ si no hi ha coincidència: ordre pare (n'hereta contracte, punt de subministrament, tipus, motiu, prioritat i adreça), adreça de text lliure del GMAO (carrer, número, CP i municipi) resolta a un únic punt de subministrament actiu, o ordre òrfena.
+    - Les ordres òrfenes es creen sense punt ni contracte i amb la descripció marcada amb `[REVISIÓ MANUAL]` i l'adreça rebuda. Idempotent pel `token` de l'ordre; l'estat es mapeja amb `gmao_integration_order_status_mapping` (o l'estat per defecte) i la data límit amb `due_date`.
+    - Les ordres s'atribueixen a l'usuari de sistema `GMAO` (es crea automàticament, sense contrasenya utilitzable ni permisos) i no es tornen a publicar cap al GMAO (`_skip_publish` al senyal).
+    - El llistat d'ordres (`OrderListSerializer`) i l'exportació XLSX inclouen `description`. Sense migracions. Tests: `order/tests/test_gmao_consumer_order_created.py`.
+
+#### CONTRACT (`contract/utils/bail_service.py` — retorn de fiances sense factura) (PR #96)
+    - Nou ConfigProject `BAIL_RETURN_INVOICE_DISABLED` (migració `coredata.0140_add_bail_return_invoice_disabled_config`, per defecte `false`).
+    - Activat, el retorn immediat d'una fiança i el de la baixa del contracte la deixen «Retornada» sense generar la factura de retorn ni abonar l'import al saldo; tampoc cal forma de pagament ni saldo al contracte.
+    - Desactivat, el comportament no canvia: sense forma de pagament a la baixa, la fiança continua sense retornar. Tests: `contract/tests/test_bail_return_without_invoice.py`.
+
+#### PRICING (`pricing/models.py`, `pricing/utils/accounting_service.py`, `pricing/views/accounting_*_view.py` — comptabilitat configurable) (PR #97)
+    - Tarifes comptables (`AccountingPricing`): separar les factures per origen (`separate_by_origin`), per tipus d'ús del contracte (`contract_types`) i per categoria de morositat (normal, dotació, irrecuperable), amb títol de línia propi (`declared_as`) i codi de retorn (`token_return`) per a les línies negatives o desdeclaracions.
+    - Cobraments: separar per tipus de pagament (`separate_by_type`) i, en pagaments bancaris agrupats, per origen taquilla/correus (`payment_origin`, `separate_by_payment_origin`). El deure del compte de cobrament es compensa amb l'haver al compte de clients de la factura; els cobraments de factures en dotació o irrecuperables desdeclaren aquests comptes i, si cal, restauren el nivell anterior.
+    - Nou model `AccountingAdditionalLine` i API `accounting-additional-line`: línies extra que es declaren amb els mateixos imports que el compte pare (amb concepte, codi i nom propis, i opció d'import negatiu). L'esborrat és lògic.
+    - Nou model `AccountingConfig` i API `accounting-config/current/` (GET/PUT/PATCH): regles de declaració dels moviments de saldo (deure/haver, signe i compte de contrapartida per a entrades i devolucions, moviments com a negatius, i incloure pagaments amb estat saldo).
+    - Les línies es generen agrupades o separades segons la configuració, amb l'IVA per percentatge i el codi de centre de cost. `AccountingConcept.category` admet `invoice` (per defecte).
+    - L'informe comptable rep la data (`start_date` o rang) i carrega ell mateix factures, factures en dotació/irrecuperables i moviments. Missatge traduït quan no hi ha valors.
+    - Migracions `pricing.0120` a `pricing.0130` (i `pricing.0131` al PR #100).
+
+#### BILLING (`billing/models.py`, `billing/tasks.py`, `billing/views/manage_deliquency_view.py` — gestió de morositat) (PR #97)
+    - Nous camps `Invoice.endowment_date` i `Invoice.irrecoverable_date` (migracions `billing.0321` i `billing.0322`), data en què la factura passa a dotació o a irrecuperable i que fa servir la comptabilitat.
+    - La gestió de morositat és una tasca asíncrona (`manage_deliquency`) amb filtres per tipus d'ús, explotació, tipus de client, zona, estat del contracte, tipus de pagament, dates d'emissió, venciment i baixa, i nombre mínim/màxim de factures pendents. Cerca factures normals o en dotació (no les dues alhora).
+    - En desar, marca les factures i els pagaments no pagats com a dotació o irrecuperables a data d'avui (amb registre del canvi d'estat del pagament). Les factures en dotació només poden passar a irrecuperables; per a les normals s'actualitza el deute del titular.
+
+#### COMMUNICATION (`communication/utils/communication_service.py`, `integrations/outbound/broadcaster/` — SMS de les comunicacions via Broadcaster) (PR #100)
+    - Els SMS de les comunicacions s'envien pel Broadcaster (mateix payload que Aqua360 Sign): text amb les variables resoltes i sense marques de format, telèfons mòbils en format internacional i sense duplicats. Les crides queden a `IntegrationRequestLog` sense telèfons ni text.
+    - L'SMS s'envia abans del correu i l'estat final de la comunicació té en compte els dos canals; els motius d'error dels dos es conserven. Les comunicacions cancel·lades no es marquen com a enviades.
+    - Nou camp `Communication.sms_sent_at` (migració `communication.0035`): un reintent per error del correu no torna a enviar l'SMS, ni es reenvia un correu ja enviat.
+    - En crear una comunicació a mà, els telèfons desats són només els mòbils actius del contacte SMS del contracte, separats per comes. Noves variables d'entorn `BROADCASTER_*`. Tests a `communication/tests.py` i `integrations/outbound/broadcaster/tests.py`.
+
+#### STATISTICS (`statistics/models.py`, `statistics/utils/daily_document_service.py` — termini dels documents diaris en dies hàbils) (PR #101)
+    - Nou camp `DailyDocumentTemplate.is_work_days` (migració `statistics.0048`, per defecte `false`).
+    - Activat, la data límit del document diari es calcula sumant dies laborables (de dilluns a divendres); si no, dies naturals com fins ara.
+
+#### PRICING (`pricing/utils/deletion_service.py`, `pricing/views/price_rate_view.py`, `pricing/views/product_view.py` — 2032, eliminar tarifes i productes no utilitzats) (PR #103)
+    - `DELETE` de tarifa i de producte fa un esborrat lògic, registrat a l'historial, només si no estan vinculats a cap contracte, sol·licitud, fiança ni factura; si no, `400` amb el motiu. Eliminar un producte desactiva també les seves tarifes.
+    - El detall de tarifa i de producte retorna `is_deletable`.
+    - El llistat de tarifes i el filtre per explotació inclouen les tarifes sense producte; en desar una tarifa el producte és obligatori. Tests a `pricing/tests_deletion.py`. Cal desplegar-lo junt amb el frontend.
+
+### FIX
+#### BILLING (`billing/views/generate_invoice_budget_view.py` — compte de l'empresa a la factura de baixa) (PR #88)
+    - El compte de l'empresa triat al diàleg de facturació d'una baixa no arribava a la generació de la factura o pressupost de baixa (s'usava sempre el del pagament per defecte). Ara es passa i es fa servir.
+    - Documentació (docstrings) dels fluxos de facturació de baixes i normalització de valors als logs.
+
+#### BILLING (`service/utils/company_bank_service.py`, `billing/utils/invoice_pdf.py`, `billing/views/invoice_pdf_view.py`, `billing/utils/barcode_service.py` — compte bancari de l'empresa al PDF de la factura) (PR #99)
+    - Nou `get_company_bank`: compte de cobrament assignat a la factura, o el per defecte i actiu, o el primer actiu, o el primer de l'empresa (ordenats per id).
+    - El PDF de la factura (les dues vies de generació) i el codi de barres fan servir aquest mateix compte. Abans la generació del PDF podia agafar el primer compte de la llista en lloc del configurat per defecte.
+    - El codi de barres usa el CIF específic del compte (`barcode_cif`) quan en té.
+
+#### STATISTICS (`statistics/utils/report_progress.py`, `statistics/views/reports_views.py`, `statistics/utils/report_*` — colors i progrés dels informes) (PR #94)
+    - Els colors dels informes Excel (capçaleres negres, farcits i vores) es desen amb canal alfa: alguns visors no pintaven les capçaleres.
+    - Nou `report_progress`: els informes publiquen el progrés a la tasca perquè la cua d'informes mostri la barra (remeses, SII, SGT, deute pendent, resums ACA, facturació per tarifes, exportacions de contractes i tarifes, i resum de factures i lectures).
+
+#### BILLING (`billing/utils/invoice_pdf.py`, `billing/views/invoice_pdf_view.py`, `billing/views/sepa_payment_document_generate_view.py`) (PR #97)
+    - La plantilla de factura només mostra la lectura de tall anterior quan no està bloquejada per altres factures.
+    - La cerca de pagaments per a la remesa SEPA també filtra per data d'emissió quan la factura no té data d'enviament ni de venciment dins del rang.
+    - L'informe SII dona error si no hi ha factures, i el missatge d'error dels informes ja no porta el prefix «Generator returned error».
+
+### MODIFIED
+#### BILLING (`billing/views/manage_deliquency_view.py`, `billing/models.py` — API de gestió de morositat) (PR #97)
+    - `POST` de gestió de morositat ja no respon amb les factures i contractes: llança la tasca `manage_deliquency` i retorna `{"task_id"}`, amb un payload de filtres nou. Canvi incompatible de l'API interna: cal desplegar-lo junt amb el frontend.
+    - S'eliminen els camps `start_date` de `CommitmentDeposit` i `PaymentCommitment` (migració `billing.0324`); la gestió de compromisos ja no els desa.
+
+#### STATISTICS (`report_billing_service.py` — resum de facturació per tarifa) (PR #94)
+    - L'informe es reorganitza per producte i, dins de cada producte, per tipus d'ús del contracte, amb total per tipus d'ús i per producte i el rang de números de factura a la capçalera.
+    - Cada línia indica concepte, tarifa i tram, i les marques AMPLIACIÓ (tram ampliat per nombre de persones) i SOCIAL. Acaba amb un resum de l'IVA per percentatge.
+
+#### STATISTICS (`report_billing_product_dashboard_service.py` — Dashboard de facturació) (PR #95)
+    - Nova columna «Lectura 1 · Dies periode» abans d'«Estimada»: dies de consum de la primera lectura de la factura (0 si no en té; buit si la factura no té lectures).
+
+### CHORE
+#### PRICING (`pricing/utils/accounting_service.py`) (PR #101)
+    - Tret el `print` de factures i línies de la generació de comptabilitat.
+
+#### INITIAL DATA (`initial_data/es/statistics.AvailableReport.json`, `initial_data/*/config_project/local/ConfigProject.json`) (PRs #96, #97)
+    - El fixture d'informes en castellà s'iguala amb el català (informes de comptabilitat, deute pendent, SII i informe comptable). Nou `BAIL_RETURN_INVOICE_DISABLED` als ConfigProject de `ca` i `es`.
+
+## [20-10-2026]
+
+### FEAT
+#### SERVICE (`service/utils/supply_cut_bulk_planner.py`, `service/utils/supply_cut_service.py`, `service/views/supply_cut_view.py`, `service/serializers/*`, `service/tasks.py` — 1913, protecció de persones vulnerables als talls de subministrament) (PR #67)
+    - Nova detecció de persones vulnerables (titular, llogater o propietari amb nivell de vulnerabilitat > 0 en contractes actius) als punts del tall. Motiu permanent: bloqueig estricte amb `400` (`vulnerability_blocked`), sense manera d'evitar-lo. Motiu temporal: cal confirmar-ho (paraula `CONFIRMAR` a la creació manual i al canvi de motiu; `override_vulnerable` a la planificació massiva i a l'activació, `409` mentre no es confirmi).
+    - La regla es torna a validar en activar el tall (`start-cut` i activació programada), perquè la vulnerabilitat pot haver-se registrat després de crear-lo; l'activació automàtica salta els talls permanents bloquejats.
+    - `bulk-plan/preview/` i `bulk-plan/` accepten, a més de la llista d'identificadors, punts (`supply_points`) i contractes (`contract_ids`) triats manualment: es combinen sense duplicats, cada fila indica l'origen (`manual` o llista) i els no trobats es retornen per tipus (id del punt o token del contracte). La previsualització inclou `vulnerable` i el recompte.
+    - Els serialitzadors de contracte i de punt de subministrament exposen `holder/tenant/owner_vulnerability_level`. Un tall ja creat ja no admet canviar-ne els punts per `PUT` (`400`). Tests a `service/tests_supply_cut_bulk_planner.py` i `service/tests_vulnerability_guard.py`. Cal desplegar-lo junt amb el frontend.
+
+#### STATISTICS (`statistics/utils/report_billing_product_dashboard_service.py`, `statistics/tasks.py` — nou informe «Dashboard de facturació») (PR #84)
+    - Nou informe Excel `billing_product_dashboard` a la secció de facturació (migració de dades `statistics.0047`), independent del padró de facturació, que no canvia.
+    - Una fila per factura amb dades del client, el contracte i la factura, sector, tipus de pagament, tipus d'ús, ús ACA, estimació i observació de la lectura, tarifa social (S/N), ampliació de trams, consum i imports (subtotal, IVA i total), més tres columnes (subtotal, IVA, total) per producte i una d'«Altres».
+    - Filtra per lot de facturació, rang de dates o rang de números de factura, explotació, estat i productes (`product_ids`, `400` si el format no és vàlid). Sense explotació concreta, genera un full per explotació amb totals al peu.
+
+### FIX
+#### BILLING (`billing/utils/invoice_service.py`, `billing/views/generate_invoice_budget_view.py`, `contract/serializers/contract_termination_request_serializer.py` — compte bancari de la factura de baixa que cobra l'alta) (PR #80)
+    - En una baixa vinculada a una alta que cobra la lectura de tall, si el diàleg envia el compte del contracte que es dona de baixa i l'alta en té un altre, la factura fa servir el compte de l'alta.
+    - El pagador de la factura de baixa és el titular del compte que es cobra, no el del pagament per defecte.
+    - La sol·licitud de baixa exposa `billing_contract_request_payment` (pagament de l'alta vinculada) perquè el diàleg de facturació el proposi.
+    - Logs de seguiment de la facturació de baixes i dels canvis de «facturar lectura de tall», sense dades bancàries. Tests: `billing/tests/test_termination_payment_bank.py`.
+
+#### BILLING (`billing/utils/invoice_service.py` — període del cànon després d'un canvi de comptador ja facturat) (PR #83)
+    - Si la lectura del canvi de comptador ja està facturada, el període de la factura següent comença en ella i no es torna a cobrar el tram del comptador antic. Afecta sobretot quan hi ha un canvi de tarifa (dos rangs de facturació) pel mig.
+    - Tests: `billing/tests/test_meter_change_billing_range.py`.
+
+#### SECURITY (vistes de `billing`, `contract`, `communication`, `service`, `statistics`, `documentmanager`, `ov`, `integrations`, `verifactu`, `lecturapp`, `got` i altres — alertes de code scanning) (PR #87, #89, #91, #92)
+    - Les respostes d'error ja no retornen el text de l'excepció al client: es retorna un missatge genèric (p. ex. «Ha ocorregut un error inesperat.», o un d'específic per a signatura, telelectura, XML SEPA, contrasenya SMTP i cues) i el detall queda al log. Els codis d'estat HTTP es mantenen.
+    - Accés a fitxers: la descàrrega de media, els documents desats al disc i les plantilles per idioma (factures i plantilles del projecte) no poden sortir de la seva carpeta, tampoc amb `..` ni enllaços simbòlics.
+    - Expressions regulars amb risc de ReDoS substituïdes (sèries de factura, NIC de l'OV, noms de carrer a les rutes).
+    - L'acció sobre un element de la cua de facturació i d'informes ja no retorna `error_message`, i `DocumentSign.error_report` desa un missatge genèric quan falla el servei de signatura. L'informe del watchdog ja no escriu els IBAN. Tests actualitzats (cues, contrasenya SMTP, signatura).
+
+### CHORE
+#### BILLING/DOCUMENTMANAGER (`billing/tasks.py`, `billing/utils/adjustment_service.py`, `billing/utils/invoice_line_item_service.py`, `documentmanager/utils/*_service.py` — dades sensibles als logs) (PR #85, #86)
+    - Eliminats els missatges de depuració amb rutes i noms de documents dels serveis d'emmagatzematge (Alfresco, AWS, Azure, FTP, disc); els errors d'Alfresco ja no escriuen el contingut de la resposta.
+    - Els errors de fórmules d'ajust mostren la fórmula original, sense els valors del contracte, i els missatges de facturació no inclouen identificadors.
+    - Docstrings a les funcions afectades.
+
+## [19-10-2026]
+### FEAT
+#### DASHBOARD/NOTIFICATION (`dashboard/*`, `notification/models.py`, `notification/tasks.py`, `notification/utils/*`, `notification/views/*`, `order/signals.py`, `customers/celery.py` — D_004-371, dashboard personalitzable i millores del calendari) (PR #60)
+    - Nova app `dashboard` (migració `dashboard.0001`): disposició de la pàgina d'inici per usuari (`UserDashboard.layout`, amb una disposició per defecte si no en té). API `GET/PUT/DELETE /dashboard/layout/`, catàleg `GET /dashboard/cards/` filtrat pels permisos de l'usuari i dades de cada card per separat a `GET /dashboard/cards/<key>/data/` (activitat diària, tasques d'avui, ordres per validar, canvis de comptador pendents, lots de lectura en curs, factures emeses, anul·lacions, refacturacions, cerques recents, calendari i accessos directes).
+    - Tasques del calendari (migració `notification.0025`): hora, enllaç a l'ordre de treball, qui i quan s'ha fet, i tasques recurrents (`CalendarTaskRecurrence`: diària, setmanal, mensual o anual), amb ocurrències generades per endavant cada nit. Esborrar amb `?series=true` atura la sèrie a partir d'aquella data. Nous filtres (`date_from`/`date_to`, `assigned`, `overdue`, `order`…), acció `summary` (pendents d'avui i endarrerides) i paginació llarga al llistat.
+    - Avisos: la notificació de tasques pendents (`notification.tasks.notify_today_tasks`, que substitueix `billing.tasks.check_today_tasks`) ja no es repeteix cada dia per a la mateixa tasca; les tasques del mateix dia s'avisen en desar-les. Nou correu de resum diari a les 7:00 amb les tasques pendents i endarrerides de l'usuari, activable a `GET/PUT /notification/preference/`.
+    - Tasca automàtica «Aplicar canvi de comptador» quan es tanca una ordre de canvi de comptador sense aplicar el canvi; es tanca sola en aplicar-lo. Tipus d'ordre configurables amb el `ConfigProject` opcional `order_type_change_meter_tokens` (per defecte `change_meter` i `install_meter`). Cal desplegar-lo junt amb el frontend.
+
+#### BILLING (`billing/validators/sepa_xsd_validator.py`, `billing/validators/pain.001.001.03.xsd`, `billing/views/sepa_xsd_validate_view.py` — validació dels fitxers de transferències) (PR #64)
+    - La validació XSD de fitxers accepta el paràmetre `type`: `sepa` (per defecte, rebuts pain.008.001.02) o `trf` (transferències pain.001.001.03, amb l'XSD SEPA de la Deutsche Kreditwirtschaft). Un tipus desconegut retorna `400`.
+    - Seguretat: l'XML pujat es llegeix sense resoldre entitats, sense DTD i sense xarxa; un fitxer amb `DOCTYPE` es rebutja («DTD not allowed»).
+    - Tests a `billing/tests/test_sepa_xsd_validator.py`. Cal desplegar-lo junt amb el frontend.
+
+#### COMMUNICATION/COREDATA (`communication/views/manage_communication_process_view.py`, `communication/models.py`, `coredata/utils/phone_utils.py`, `communication/utils/*` — 1964, flux de comunicació dels talls de subministrament) (PR #70)
+    - Els SMS només s'envien a mòbils (pla de numeració espanyol; els estrangers es donen per bons si tenen una llargada vàlida). Contractes i sol·licituds rebutgen afegir un telèfon fix com a telèfon SMS; els fixos ja vinculats es mantenen. Sense mòbil, la comunicació arriba pels altres canals del procés.
+    - La cerca de destinataris retorna les persones que no poden rebre cap dels canals triats, amb el motiu (sense telèfon, telèfon fix, sense correu, sense adreça, sense factura electrònica, exclusió manual), i es desen al procés en el nou model `CommunicationProcessExclusion` (migració `communication.0033`), visible a `exclusions` del procés.
+    - Nou origen de missatges «Tall de subministrament» amb una plantilla d'avís per a SMS, correu i carta en l'idioma de la instal·lació (migració `communication.0034`, també a `initial_data`). Noves variables `%supplycut.time_start` i `%supplycut.time_end`; les dates i hores del tall surten en hora local.
+    - Nova comanda `check_sms_phones` (només informa) per llistar els telèfons SMS de contractes actius que no són mòbils. Cal desplegar-lo junt amb el frontend.
+
+#### BILLING (`billing/views/billing_invoices_view.py`, `billing/views/reading_view.py`, `billing/tasks.py`, `documentmanager/utils/generic_export_service.py` — ACUSTOMERS-353, exportació a Excel dels avisos de lectures i pre-factures) (PR #73)
+    - Nous `POST billing/<id>/invoices/export` i `POST reading/by-batch-minimal/export`: exporten a Excel (en segon pla) les factures del resum de pre-factures i les lectures del resum del lot amb els mateixos filtres, cerca i ordenació que el llistat.
+    - L'Excel inclou dades de facturació, consum, lectures i avisos. Cal permís d'exportació sobre factures o lectures. Tests a `billing/tests/test_warnings_export.py`. Cal desplegar-lo junt amb el frontend.
+
+#### STATISTICS (`statistics/utils/report_billing_service.py`, `statistics/opscripts/0003_add_billing_summary_by_rate_report.py` — resum de facturació per tarifa, tram i tarifa social) (PR #75)
+    - Nou informe «Resum de facturació per tarifa, tram i tarifa social»: el resum de facturació desglossat per concepte, tarifa, tram i ajust de tarifa social (núm. de factures, unitats, base, IVA i total), amb subtotals per producte que quadren amb el resum general.
+    - Mateixa selecció de factures que el resum de facturació (lot, període o rang de sèrie, explotació i filtres); els abonaments resten. L'informe es registra amb l'opscript `statistics/0003`.
+
+#### SERVICE (`service/serializers/meter_serializer.py` — carrer del punt de subministrament al comptador) (PR #69)
+    - Els punts de subministrament del detall del comptador inclouen `street_complete` (tipus de via i nom del carrer), perquè el frontend en mostri l'adreça quan el comptador no en té.
+
+### FIX
+#### BILLING (`billing/utils/sepa_file_service.py` — fitxer XML de les transferències de retorn) (PR #62, PR #64)
+    - Al fitxer de transferències (pain.001), l'ordenant i la part iniciadora s'identifiquen com a organització (`OrgId`) en lloc de persona física (`PrvtId`).
+    - Les transferències ja no porten `LclInstrm` amb `DIVI` (és un codi de propòsit, no un instrument local). Les remeses de cobrament mantenen `CORE` i `PrvtId` com fins ara.
+
+#### LECTURAPP (`lecturapp/serializers.py`, `lecturapp/tasks.py` — lots de lectura només de telecontrol) (PR #71)
+    - Un lot de lectura amb telecontrol i sense lectures manuals enviava a l'app tots els comptadors, perquè només es mirava `include_telecontrol`. Ara també es té en compte `include_manual` i el lot només inclou els comptadors de telecontrol (posicions, comptadors, lectures i recompte).
+
+#### BILLING/COREDATA (`billing/views/sepa_payment_document_generate_view.py`, `coredata/views/person_piggy_bank_view.py` — transferències de retorn) (PR #74)
+    - El filtre per contracte de la generació de transferències inclou ara els pagaments sense factura ni dipòsit lligats directament al contracte (p. ex. la devolució del saldo).
+    - La devolució del saldo de la guardiola d'una persona fallava perquè no es llegia `mark_as_paid` de la petició; ara s'accepta (per defecte `true`).
+
+#### COREDATA (`coredata/serializers.py` — adreces amb ciutat escrita a mà i carrer nou) (PR #77)
+    - Desar una adreça estrangera o amb la ciutat escrita a mà amb un carrer nou donava error: el carrer rebia la ciutat en text. Ara el carrer es crea sense ciutat i l'adreça desa el nom de la ciutat com a text; les ciutats del catàleg continuen associant-se a l'adreça i al carrer. Tests a `coredata/tests.py`.
+
+#### DOCUMENTMANAGER (`documentmanager/utils/csv_safety.py`, `documentmanager/utils/xlsx_safety.py`, exportacions CSV — injecció de fórmules a les exportacions) (PR #76)
+    - Tots els Excel generats desen com a text els valors que comencen per `=`: un text introduït per un usuari ja no s'executa com a fórmula en obrir el fitxer. No afecta les fórmules dels fitxers que es llegeixen.
+    - Les exportacions CSV posen una `'` davant dels textos que Excel interpretaria com a fórmula (`=`, `+`, `-`, `@`), excepte els números. L'actualització massiva de comptadors treu aquesta `'` en importar un CSV exportat.
+
+#### BILLING/SERVICE (`billing/utils/invoice_service.py`, `service/serializers/supply_point_serializer.py` — consum per comptador i avís de tall) (PR #52)
+    - En un contracte amb diversos punts de subministrament i tarifa per punt, el consum de cada lectura és el del seu comptador: abans s'hi sumava el de les lectures anteriors i la segona línia facturava el consum acumulat.
+    - L'avís de tall del punt de subministrament es mostra també per als talls planificats sense data de fi (p. ex. per impagament).
+    - Proves actualitzades al comportament actual.
+
+### MODIFIED
+#### COREDATA/AUTH (`coredata/permissions.py`, `coredata/views/config_project_view.py`, `auth/views.py` — només l'usuari `customers` modifica les configuracions internes) (PR #61)
+    - L'API `config-project` es pot continuar consultant amb qualsevol usuari autenticat, però crear, modificar, esborrar i `bulk-update-values` només ho pot fer l'usuari `customers`; la resta reben `403`.
+    - `GET /auth/permission/my-permissions/` retorna `can_edit_config_project`.
+    - Tests a `coredata/tests.py` (`ConfigProjectPermissionTests`). Cal desplegar-lo junt amb el frontend.
+
+### CHORE
+#### BILLING/COMMUNICATION/LECTURAPP (`lecturapp/*`, `billing/utils/payment_service.py`, `communication/utils/communication_service.py`, `billing/tasks.py` — dades sensibles als logs) (PR #76)
+    - Els logs ja no escriuen contrasenyes ni tokens de l'app de lectures, ni IBAN, noms, adreces, correus, assumptes o números de factura de remeses, comunicacions i factures: només identificadors i recomptes.
+
+#### GENERAL (`order/services/rabbit.py`, `order/management/commands/run_gmao_consumer.py`, vistes i serialitzadors diversos — dades personals als logs i codi sense ús) (PR #79)
+    - Els esdeveniments enviats i rebuts del GMAO ja no escriuen el contingut del missatge (dades del client) al log, només la clau i la mida.
+    - Esborrats els missatges de depuració amb formularis, pagaments i IBAN de diversos mòduls (facturació, contractes, preus, servei, estadístiques, OV).
+    - Esborrats fitxers antics sense ús: `billing/utils/sepa_service_prev.py`, `billing/views/detailed_billing_document_generate_view_prev.py`, `billing/views/sepa_payment_document_generate_view_prev.py` i `communication/views/manage_communication_process_view_copy.py`.
+
+### DOCS
+#### INTEGRATIONS (`docs/integrations/odoo/` — OpenAPI del connector i contracte en castellà)
+    - Nova especificació OpenAPI 3.0 (`docs/integrations/odoo/openapi.yaml`) dels `POST /invoices` i `POST /payments` que Aqua360 envia al connector Odoo. Descripcions i textos dels exemples en castellà. Autenticació documentada amb la capçalera `Aqua360-Api-Key` i resposta `{ "id", "aqua_id" }`.
+    - El contracte narratiu en castellà és `data-contract.es.md` (mateixa estructura, literals dels JSON en castellà). El català (`data-contract.md`) continua sent la versió de treball i enllaça l'OpenAPI. La nota d'`amount` al pagament queda alineada amb v1.1: positiu en un cobrament, negatiu en una devolució, sense canviar `payment_type`.
+
 ## [16-10-2026]
+### FEAT
+#### CLAIMREQUEST (`claimrequest/tasks.py` — filtre per devolució de remesa SEPA a la cerca de pagaments per a gestions d'impagats)
+    - `_build_claim_request_filters` accepta `payment_remittance_return_id`: limita els contractes, els pagaments i els recomptes als pagaments d'aquesta devolució SEPA. Es combina amb la resta de filtres (estats de pagament reclamables, explotació, pagaments ja en una gestió activa, etc.). Cal desplegar-lo junt amb el frontend.
+    - Amb aquest filtre, a més de les factures vençudes, també compten les factures confirmades amb el pagament retornat: després d'una devolució la factura torna a «Confirmada» i no passa a «Vençuda» fins a la data de venciment, de manera que una devolució recent no tenia pagaments reclamables. La cerca general sense devolució continua demanant factures vençudes.
+
+#### CONTRACT (`contract/utils/bail_service.py`, `contract/views/bail_view.py`, `billing/utils/invoice_service.py` — retorn manual d'una fiança) (PR #49)
+    - Nou `POST bail/return-immediately/` (`bail_ids`): retorna una fiança no retornada igual que en una baixa (pre-factura de retorn, estat pendent i després retornada) i n'abona l'import al saldo del contracte que la inclou. `400` si la fiança no està pendent de retornar o el contracte no té forma de pagament ni saldo. Cal desplegar-lo junt amb el frontend.
 
 ### FIX
 #### OV (`ov/views.py`, `docs/ov/openapi.yaml`, `ov/tests.py` — `GET /ov/contract-detail/` torna a respondre directament)
@@ -9,6 +307,95 @@
     - El `request` es passa al serialitzador perquè el paràmetre opcional `dni` continuï desenmascarant l'IBAN i determinant `is_account_holder`. `400` si falta el paràmetre; `404` si el contracte no existeix.
     - `docs/ov/openapi.yaml`: documenta `200` (`ContractFullDetail`) i `404` en comptes del `302`.
     - Tests a `ov/tests.py` (`ContractOVViewTests`): token amb barra, token senzill, token desconegut, paràmetre absent i processament de paràmetres extra sense redirect.
+
+#### STATISTICS (`statistics/migrations/0046_vw_contract_debt_exclude_balance.py` — el deute del contracte no compta els pagaments «En saldo») (PR #58)
+    - La vista `vw_contract_debt` ja no suma els pagaments en estat «En saldo», que estan cobrats amb el saldo del contracte i la resta de l'aplicació ja tracta com a pagats. En retornar fiances, les factures pagades dels contractes de baixa sortien amb deute.
+    - Tests a `statistics/tests.py` (`ContractDebtViewTests`).
+
+#### CONTRACT (`contract/serializers/contract_serializer.py` — punt de subministrament des dels contractes de la persona) (PR #55)
+    - `ContractMinimalListSerializer` exposa `supply_point_default_id`, perquè la llista de contractes de la fitxa de persona pugui obrir el punt de subministrament del contracte. Cal desplegar-lo junt amb el frontend.
+
+#### BILLING (`billing/views/billing_preinvoices_summary_view.py` — ordre dels totals al resum de pre-factures) (PR #50)
+    - El resum de pre-factures mostra el subtotal abans del total.
+
+## [15-10-2026]
+
+### FEAT
+#### STATISTICS (`report_billing_by_zone_service.py` — línia d'ensobrat a l'execució de padrons per zona)
+    - L'informe «Execució de padrons per zona de tarificació» classificava l'ensobrat com a «Altres conceptes» (no és aigua, clavegueram ni cànon). Ara es detecta per token/nom `ENSOBRAT` i surt com a concepte propi a cada zona, amb el mateix desglossament per padró (núm. factures i euros) i un total `TOTAL ENSOBRAT` al peu.
+
+#### BILLING (`billing/templatetags/billing_filters.py` — filtres per a les cartes d'impagats)
+    - Nou filtre `invoice_period_month`: últim mes del període facturat en format `MM/AAAA` (p. ex. `03/2026`), per a columnes estretes com el detall del deute de les cartes d'impagats. Mateix criteri que `invoice_period` (lectura més recent o mes de facturació menys un) i retorna "Puntual" per a les factures que no són de consum.
+    - Nou filtre `address_without_city`: `address_complete` d'una adreça serialitzada sense el ", MUNICIPI" final, per als blocs de destinatari on el municipi ja surt a la línia del codi postal.
+    - Nou filtre `invoice_period_short`: període facturat amb abreviatures de mes de 3 lletres en l'idioma actiu (`ABR - JUN 2026`, `JUL 2026`, `NOV 2025 - GEN 2026`); "Puntual" per a les factures que no són de consum.
+    - Nou filtre `mask_iban`: IBAN en blocs de 4 separats per guions amb l'últim bloc ocult (`ES00-0000-0000-0000-0000-****`).
+    - Les plantilles de carta que els facin servir requereixen aquest backend desplegat.
+
+#### BILLING (`billing/utils/charts_service.py` — gràfic de consum de la factura a partir de les factures)
+    - Cada barra del gràfic és ara el consum facturat (`Invoice.consumption`) d'una factura del contracte, en lloc del recalculat a partir de les lectures. El gràfic coincideix amb el que s'ha cobrat en comptadors generals, comptadors compartits entre contractes i refacturacions.
+    - Les factures es posicionen per la data de la seva última lectura, de manera que una refacturació ocupa el lloc de la factura original encara que s'emeti mesos després.
+    - S'exclouen pressupostos, factures abonades o anul·lades, els seus abonaments (que copien el consum en positiu) i les factures sense lectures (derrames i similars, que tenen `consumption` desat amb un valor que no és consum d'aigua). Ja no surten barres de lectures intermèdies que no s'han facturat.
+    - Si una factura de consum no té el consum desat, es calcula a partir de les seves lectures. Si el contracte no té prou factures (p. ex. contractes que abans es facturaven fora de l'aplicació), les barres que falten s'omplen amb l'historial de lectures anterior a la factura més antiga, com fins ara.
+    - S'elimina la barra apilada "Subministrament adicional": el total de cada barra no canvia, però ja no es distingeix per subministrament.
+
+#### SERVICE (`service/models.py`, `service/serializers/company_serializer.py`, plantilles de factura, pagament, contracte, baixa, cartes i correus — ACUSTOMERS-356, blocs de contacte i avaries configurables) (PR #22)
+    - Camps nous a l'empresa (migració `service.0135`) per al bloc de contacte de les plantilles: títol i horari d'atenció al client i d'avaries, i interruptors per amagar cada bloc i cada horari (per defecte es mostren). Sense configurar, els documents surten igual que fins ara.
+    - Les plantilles estàndard (factures normals i simplificades, sol·licitud de factura, justificant i document de pagament, dipòsit, carta i correu bàsics, contractes, baixa, recordatori de pagament i carta de tall) prenen el títol i l'horari de l'empresa si n'hi ha.
+    - Corregit el bloc d'avaries de les plantilles de factura, que mostrava el telèfon d'atenció al client: ara mostra el segon telèfon i, si no n'hi ha, el principal.
+    - En un `PUT` de l'empresa, els textos que no arriben es buiden. Tests a `service/tests_company_contact_texts.py`. Cal desplegar-lo junt amb el frontend.
+
+#### CLAIMREQUEST/BILLING (`claimrequest/tasks.py`, `billing/views/reading_batch_template_view.py` — 97, filtre per plantilla de lot de lectura a la reclamació d'impagats) (PR #31)
+    - La cerca de contractes de la reclamació d'impagats accepta `selectedReadingBatchTemplatesIds`: limita als contractes el punt de subministrament dels quals és en una ruta d'aquestes plantilles.
+    - El llistat de plantilles de lot de lectura accepta `route_zone` (zones de ruta) i `has_routes=true` (només plantilles amb rutes).
+    - Tests a `claimrequest/tests.py`. Cal desplegar-lo junt amb el frontend.
+
+#### COREDATA/ORDER (`coredata/migrations/0138_*`, `coredata/migrations/0139_*`, `order/filters/order_filter.py` — PA-33, selector d'ordres de treball per motiu) (PR #34)
+    - Noves configuracions del motiu d'ordre de cada flux: `order_reason_contract_termination`, `order_reason_contract_activation`, `order_reason_new_connection_request` i `order_reason_customer_supply_cut` (migracions `coredata.0138` i `coredata.0139`; no se sobreescriuen si ja tenen valor). La `0138` crea el motiu «Baixa de contracte» si no existeix.
+    - Nou filtre `supply_point_ids` a les ordres de treball: abans el paràmetre s'ignorava i es retornaven ordres de tot el sistema. Cal desplegar-lo junt amb el frontend.
+
+#### COMMUNICATION/DOCUMENTMANAGER (`communication/serializers/communication_process_serializer.py`, `communication/tasks.py`, `documentmanager/*` — D_004-369, documents de comunicació agrupats per persona) (PR #36)
+    - Els documents d'un procés de comunicació s'agrupen per comunicació (persona): primer la carta o el document de comunicació i després les factures i els pagaments.
+    - La descàrrega en un sol PDF respecta l'ordre dels documents demanats (també amb AWS i Azure), en lloc de l'ordre de la base de dades.
+    - Impagats amb «Agrupar pagaments»: també s'adjunten les factures de cada contracte; el rebut continua sent el document agrupat.
+    - Tests a `communication/tests.py` i `documentmanager/tests.py`.
+
+#### CONTRACT (`contract/serializers/contract_request_serializer.py`, `contract/opscripts/0004_fill_empty_contract_request_person.py` — D_004-368, el titular fa de sol·licitant si la sol·licitud no en té) (PR #37)
+    - En crear o desar una sol·licitud de contracte sense sol·licitant, s'hi assigna el titular. No es modifica un sol·licitant existent ni quan canvia el titular.
+    - Opscript `contract/0004_fill_empty_contract_request_person`: omple el sol·licitant amb el titular a les sol·licituds existents que no en tenen.
+    - Tests a `contract/tests/test_contract_request_default_person.py`.
+
+### FIX
+#### SERVICE (`service/serializers/meter_serializer.py` — adreça del comptador opcional)
+    - `MeterSerializer.create()` fallava sense `address_street` (variables sense definir): ara crea el comptador sense carrer ni número.
+    - `MeterSerializer.update()` amb `address_street` i `address_street_number` explícitament a `null` treu l'adreça del comptador; si les claus no hi són, es manté com abans.
+    - `street_complete` retorna `null` en lloc de `"None"` quan el comptador no té carrer.
+    - Tests a `service/tests.py` (`TestMeterOptionalAddress`). Cal desplegar-lo junt amb el frontend.
+
+#### CONTRACT (`contract/serializers/contract_serializer.py` — factures d'una altra sol·licitud a la llista de factures del contracte)
+    - `get_request_invoices` buscava les factures de la sol·licitud amb `contract_request__token=obj.token`, és a dir, comparava el token del contracte amb el de les sol·licituds. Si una sol·licitud aliena tenia el mateix token que el contracte, les seves factures sortien a la pestanya de factures del contracte. Ara es filtra per la FK `contract_request` del contracte (igual que `contract_pinned_serializer.py` i `get_invoices_count`), i els contractes sense sol·licitud no en retornen cap.
+
+#### BILLING (`billing/utils/sepa_service.py` — 1906, lectura dels retorns SEPA amb data no estàndard) (PR #38)
+    - L'informe de retorn (pain.002) identifica el banc pel BIC o, si no hi és, pel codi d'entitat de l'IBAN del creditor, i aplica el format de data de cada banc.
+    - Algun banc envia la data de creació com a AAAA-DD-MM: abans no es podia llegir, es feia servir una data anterior al cobrament i tots els retorns es descartaven com a «data de pagament posterior a la de retorn». Per a la resta de bancs es manté l'ISO i, només si no és vàlida, es prova amb el dia i el mes intercanviats.
+    - Tests a `billing/tests/test_sepa_return_report.py`.
+
+#### SERVICE/COREDATA (`service/serializers/meter_serializer.py`, `coredata/opscripts/0003_recover_lost_street_numbers.py` — ACUSTOMERS-337, números de carrer perduts en actualitzar l'adreça dels comptadors) (PR #32)
+    - `MeterSerializer.create()`, en reaprofitar un número de carrer existent, només actualitza els camps que arriben (com ja feia `update()`): el número pot ser el de l'adreça d'un punt de subministrament i quedava buit.
+    - Opscript `coredata/0003_recover_lost_street_numbers`: torna a omplir els números sense número ni sufix amb el de l'adreça dels elements relacionats (comptador, escomesa, finca, bateria, posició de ruta), només si totes les fonts coincideixen i és el mateix carrer. La resta es llisten per revisar-los a mà.
+    - Tests a `coredata/tests.py` i `service/tests.py`.
+
+#### LECTURAPP (`lecturapp/serializers.py`, `lecturapp/tasks.py` — D_004-189, la Lecturapp no envia comptadors inactius) (PR #40)
+    - Les dades que rep la Lecturapp (comptadors de la finca, posicions de la ruta i recomptes) exclouen tant els comptadors en aforament com els inactius. Una posició amb només comptadors inactius ja no s'envia.
+    - Tests a `lecturapp/tests.py` (`TestLecturappExcludesInactiveMeters`).
+
+#### STATISTICS (`statistics/utils/billing_amount_average.py` — 29, avís d'import alt comparant només factures d'aigua) (PR #42)
+    - Les mitjanes de l'avís d'import alt (completa, del mateix període i la de reserva) només compten les factures de l'origen configurat a `origin_reading_token`; les d'alta i d'altres conceptes ja no hi entren.
+    - Un contracte nou amb només la factura d'alta ja no té mitjana, i la primera factura d'aigua ja no rep l'avís. Tests a `statistics/tests.py`.
+
+### CHORE
+#### COREDATA (`coredata/opscripts/0004_fill_connection_street_numbers.py` — 47, número de carrer de les escomeses que no en tenen) (PR #39)
+    - Opscript `coredata/0004_fill_connection_street_numbers`: les escomeses actives sense número (i no marcades S/N) prenen el carrer i el número de l'adreça de referència (la bateria si són de bateria, el punt de subministrament si són individuals), només quan totes les fonts coincideixen i sense modificar números compartits.
+    - S'ha d'executar després del `0003`; llista les escomeses que canvien de carrer i les que no es poden resoldre. Tests a `coredata/tests.py`.
 
 ## [14-10-2026]
 
@@ -212,7 +599,6 @@
 #### ORDER (`prometeo/data/order.OrderReason.json` — fixture de demo amb referència a un `OrderType` inexistent)
     - Les raons d'ordre 2 (frau), 4 (impagament) i 6 (baixa de contracte) referenciaven el tipus d'ordre 15, que no existeix a `order.OrderType.json` (hi ha 1–14 i 16–22). `loaddata prometeo/data/*.json` és atòmic i fallava amb `ForeignKeyViolation` a `order_orderreason_type`, de manera que `prometeo/reset_db.sh` deixava la BD sense cap dada base (`ContractStatus`, `BillingStatus`, `Bank`…) tot i acabar dient «loaded successfully». S'ha tret la referència penjada.
     - Provat en local amb `reset_db.sh --force`: es carreguen 2853 objectes de 95 fixtures, les importacions acaben amb 0 errors i es generen factures fins al lot 124 (2026M07).
-
 
 ## [08-10-2026]
 

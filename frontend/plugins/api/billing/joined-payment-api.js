@@ -113,6 +113,21 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  /**
+   * Retorna els pagaments del deute, la seva liquidabilitat i els totals del contracte.
+   * @param {number} contractId Identificador del contracte.
+   * @returns {Promise<Object>} Detall retornat per l'endpoint contract-debt.
+   */
+  const getContractDebt = async (contractId) => {
+    const apiUrl = `${apiHost}${entity}contract-debt/`;
+    try {
+      const response = await $apiManager.fetch(apiUrl, 'POST', { contract: contractId }, { 'Content-Type': 'application/json' })
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   const generatePaymentProofDoc = async (data) => {
     const apiUrl = `${apiHost}${entity}payment-proof/`;
     try {
@@ -144,6 +159,7 @@ export default defineNuxtPlugin(nuxtApp => {
     getDetail,
     save,
     getPendingClientData,
+    getContractDebt,
     generatePaymentProofDoc,
     generatePDF,
   };

@@ -120,7 +120,6 @@ class PropertySerializer(serializers.ModelSerializer):
         if not validated_data.get('name'):
             validated_data['name'] = (str(street) + ' ' + str(street_number) + ' ' + (str(postal_code.code) if postal_code else '')).strip()
 
-        print(validated_data)
 
         property = Property.objects.create(
             address_street = street,

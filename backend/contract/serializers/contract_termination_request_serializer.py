@@ -3,6 +3,7 @@ from django.utils.module_loading import import_string
 from rest_framework import serializers
 from auth.serializers import UserMinimalSerializer
 from billing.models import Reading
+from billing.serializers.general_payment_serializer import GeneralPaymentSerializer
 from coredata.models import ConfigProject, Person
 from coredata.serializers import PersonSerializer
 from coredata.utils.name_utils import generate_token
@@ -89,6 +90,11 @@ class ContractTerminationRequestSerializer(serializers.ModelSerializer):
         
     
     def to_representation(self, instance):
+        """Return nested termination details and the linked billing request's payment.
+
+        Set billing_contract_request_payment to None when no active linked
+        request bills the closing reading or that request has no payment.
+        """
         representation = super().to_representation(instance)
         ContractSerializer = import_string('contract.serializers.contract_serializer.ContractSerializer')
         
@@ -96,6 +102,11 @@ class ContractTerminationRequestSerializer(serializers.ModelSerializer):
         representation['person'] = PersonSerializer(instance.person, context=self.context).data if instance.person else None
         representation['type'] = ContractTerminationRequestTypeSerializer(instance.type).data
         representation['status'] = ContractTerminationRequestStatusSerializer(instance.status).data
+        # Pagament de l'alta que cobra la lectura de tall: el diàleg de facturació l'ha de proposar
+        # en lloc del pagament del contracte que es dona de baixa.
+        billing_contract_request = instance.get_billing_contract_request()
+        representation['billing_contract_request_payment'] = GeneralPaymentSerializer(billing_contract_request.payment, context=self.context).data \
+            if billing_contract_request and billing_contract_request.payment else None
         return representation
     
 class ContractTerminationRequestMinimalSerializer(serializers.ModelSerializer):

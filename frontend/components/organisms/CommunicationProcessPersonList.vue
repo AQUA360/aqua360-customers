@@ -9,6 +9,8 @@ import PersonRegion from '~/components/organisms/PersonRegion.vue';
 import InvoiceRegion from '~/components/organisms/InvoiceRegion.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import debounce from 'lodash.debounce';
+import { exclusionReasonLabel } from '~/utils/communication-exclusion';
+import CommunicationProcessUnreachableList from '~/components/molecules/CommunicationProcessUnreachableList.vue';
 
 const props = defineProps({
   persons: {
@@ -26,6 +28,12 @@ const props = defineProps({
   isRegion: {
     type: Boolean,
     default: false
+  },
+  // Persones que no poden rebre cap dels canals triats ({id, token, full_name,
+  // person_type, contracts, reasons}), tal com les retorna la cerca.
+  unreachablePersons: {
+    type: Array,
+    default: () => []
   },
 });
 
@@ -49,6 +57,20 @@ const showWithoutAddress = ref(false);
 const showElectronicInvoice = ref(false);
 
 const loadingPersonId = ref(null);
+
+// Pestanya activa: destinataris o persones que no es poden comunicar.
+const activeList = ref('recipients');
+
+// Dades de la cerca per persona (canals que no li arriben), indexades per id.
+const searchEntries = computed(() => {
+  const entries = new Map();
+  (localPersons.value || []).forEach(person => {
+    const current = entries.get(person.id);
+    const channels = new Set([...(current?.unavailable_channels || []), ...(person.unavailable_channels || [])]);
+    entries.set(person.id, { ...person, unavailable_channels: [...channels] });
+  });
+  return entries;
+});
 
 // Pagination for better performance
 const currentPage = ref(1);
@@ -177,6 +199,9 @@ const filteredPersons = computed(() => {
   // Apply filters (most selective filters first for better performance)
   if (!showExcluded.value) {
     persons = persons.filter(person => !excludedPersons.value.includes(person.id));
+  }
+  if (showWithoutPhone.value) {
+    persons = persons.filter(person => !person.has_sms);
   }
   if (showWithoutEmail.value) {
     persons = persons.filter(person => !person.has_email);
@@ -321,6 +346,26 @@ onMounted(async () => {
   <div class="region__content pr-1">
 
     <div class="h-full flex flex-col transition-all duration-500 ease" :class="{ 'mr-[50%]': showRegion && !isSubRegionOpen, 'mr-[95%]': showRegion && isSubRegionOpen }">
+      <div class="flex gap-2 mb-4 border-b border-gray-200">
+        <button v-for="tab in [
+            { key: 'recipients', label: $t('customer_service_block.recipients_tab'), count: localPersons.length },
+            { key: 'unreachable', label: $t('customer_service_block.unreachable_persons'), count: unreachablePersons.length },
+          ]" :key="tab.key" @click="activeList = tab.key"
+          class="px-3 py-2 text-sm font-semibold -mb-px border-b-2"
+          :class="activeList === tab.key ? 'border-sky-500 text-sky-700' : 'border-transparent text-gray-500 hover:text-gray-700'">
+          {{ tab.label }}
+          <span class="ml-1 px-2 rounded-full text-xs"
+            :class="tab.key === 'unreachable' && tab.count > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'">
+            {{ tab.count }}
+          </span>
+        </button>
+      </div>
+
+      <!-- Persones que no poden rebre cap dels canals triats -->
+      <CommunicationProcessUnreachableList v-if="activeList === 'unreachable'" :persons="unreachablePersons"
+        @show-person="showDetail('PersonRegion', $event)" />
+
+      <template v-else>
       <div class="flex justify-between items-center mb-2">
         <h3 class="text-lg font-semibold">{{ $t('customer_service_block.recipients_list') }}</h3>
         <div class="flex items-center gap-2">
@@ -370,7 +415,7 @@ onMounted(async () => {
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="showWithoutPhone"
               class="form-checkbox h-4 w-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500" />
-            <span class="ml-2 text-sm text-gray-700">{{ $t('common.show') }} {{ $t('common.no_tlf') }}</span>
+            <span class="ml-2 text-sm text-gray-700">{{ $t('common.show') }} {{ $t('customer_service_block.no_tlf_sms') }}</span>
           </label>
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="showWithoutEmail"
@@ -397,12 +442,15 @@ onMounted(async () => {
           {{ $t('Destinataris') }}: {{ localPersons.count }}
         </div>
       </div> -->
-      <div class="grid grid-cols-[80px,60px,20px,150px,150px,500px] px-2 gap-2 w-full font-semibold">
+      <div class="grid grid-cols-[80px,60px,20px,150px,150px,130px,500px] px-2 gap-2 w-full font-semibold">
         <span class="truncate col-span-4">
           {{ $t('customer_service_block.recipient') }}
         </span>
         <span class="truncate">
           {{ $t('common.email_long') }}
+        </span>
+        <span class="truncate">
+          {{ $t('customer_service_block.short_tlf_sms') }}
         </span>
         <span class="truncate">
           {{ $t('address_block.address') }}
@@ -440,7 +488,7 @@ onMounted(async () => {
                   <div class="flex items-center space-x-3">
 
                     <div>
-                      <div class="grid grid-cols-[80px,60px,20px,150px,150px,500px] gap-2 w-full">
+                      <div class="grid grid-cols-[80px,60px,20px,150px,150px,130px,500px] gap-2 w-full">
                         <button @click="showDetail('PersonRegion', person.id)"
                           class="text-sky-500 hover:text-sky-700 underline text-left"
                           :title="`${$t('common.show')} ${$t('common.details')}`">
@@ -463,9 +511,16 @@ onMounted(async () => {
                         </abbr>
                         <span class="truncate flex items-center gap-1">
                           {{ person.full_name }}
+                          <abbr v-if="searchEntries.get(person.id)?.unavailable_channels?.length"
+                            :title="`${$t('customer_service_block.unavailable_channels')}: ${searchEntries.get(person.id).unavailable_channels.map(reason => exclusionReasonLabel(t, reason)).join(', ')}`">
+                            <Icon name="fa6-solid:triangle-exclamation" class="text-amber-500 w-3 h-3" />
+                          </abbr>
                         </span>
                         <span class="truncate">
                           {{ person.email || t('common.no_email') }}
+                        </span>
+                        <span class="truncate" :title="person.sms_phone || ''">
+                          {{ person.sms_phone || t('customer_service_block.no_tlf_sms') }}
                         </span>
                         <span class="truncate">
 
@@ -566,11 +621,12 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+      </template>
     </div>
     <div role="region" :id="isRegion ? 'subregion' : 'right_page'"
       class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white fixed top-0 right-0 z-10" :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[95%]': isSubRegionOpen,
         'w-[50%]': !isSubRegionOpen
       }">

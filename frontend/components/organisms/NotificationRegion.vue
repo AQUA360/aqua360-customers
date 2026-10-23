@@ -39,6 +39,9 @@ const scrollContainer = ref(null);
 
 const username = ref(null);
 
+const isRead = (n) => n.read_by.some(u => u.username === username.value);
+const isArchived = (n) => n.archived_by.some(u => u.username === username.value);
+
 if (process.client) {
     username.value = localStorage.getItem('user_username') || '';
 }
@@ -53,7 +56,9 @@ const getData = async (restart = false) => {
   
   try {
     //CHECK IF DATA SHOULD BE GROUPED
-    let response = await $NotificationApiService.getAll('', [], page.value, is_seen.value, is_active.value);
+    // is_active (UI) = "no arxivades"  ->  is_archived (API) = el contrari
+    const is_archived = is_active.value === null ? null : !is_active.value;
+    let response = await $NotificationApiService.getAll('', [], page.value, is_seen.value, is_archived);
     if (response.results && response.results.length > 0) {
       if (response.next == null) {
         hasNextPage.value = false;
@@ -146,6 +151,7 @@ const filterNotifications = (filter) => {
   notificationFilterOpen.value = false;
 };
 
+/** Open the notification target, including calendar dates for task reminders. */
 const redirectNotification = async (result) => {
   if (!result) return;
   let save_data = {
@@ -154,6 +160,10 @@ const redirectNotification = async (result) => {
   };
   await $NotificationApiService.save(save_data);
   closeNotifications();
+  // Avís de tasques del dia: obre el calendari en aquella data
+  if (result.module === 'notification' && result.entity === 'calendar') {
+    return navigateTo('/calendar' + (result.object_id ? '?date=' + result.object_id : ''));
+  }
   if (result.object_id) {
     // For orders, open in lateral panel instead of edit page
     if (result.module === 'order' && result.entity === 'orders') {
@@ -172,7 +182,7 @@ const redirectNotification = async (result) => {
 const markNotification = async (result) => {
   let save_data = {
     id: result.id,
-    is_seen: !result.is_seen,
+    is_seen: !isRead(result),   // llegida -> false; no llegida -> true
   };
   await $NotificationApiService.save(save_data);
   getData(true);
@@ -181,7 +191,7 @@ const markNotification = async (result) => {
 const activateNotification = async (result) => {
   let save_data = {
     id: result.id,
-    is_active: !result.is_active,
+    is_active: isArchived(result),   // arxivada -> true (desarxiva); si no -> false (arxiva)
   };
   await $NotificationApiService.save(save_data);
   getData(true);

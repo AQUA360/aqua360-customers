@@ -18,7 +18,7 @@ const toast = useToast();
 
 const showRegion = ref(false);
 const showRegionClass = computed(() => {
-  return showRegion.value ? 'translate-x-0' : 'translate-x-[2000px]';
+  return showRegion.value ? 'translate-x-0' : 'translate-x-full';
 });
 
 const toggleRegion = (force) => {
@@ -585,11 +585,11 @@ getConfigProject();
             :class="{ 'bg-slate-200': $route.path.indexOf('/settings/config_aca/') != -1 }">{{
               t('settings_block.config_aca') }}</NuxtLink>
         </li>
-        <!-- <li class="mb-1">
+        <li class="mb-1">
           <NuxtLink to="/settings/accounting/" class="text-sky-500 underline hover:no-underline"
             :class="{ 'bg-slate-200': $route.path.indexOf('/settings/accounting/') != -1 }">{{
               t('pricing_block.accounting') }}</NuxtLink>
-        </li> -->
+        </li>
       </ul>
 
       <details v-if="permissions?.permissions?.view_user" class="text-base  pl-6">
@@ -611,7 +611,7 @@ getConfigProject();
             </template>
             <template v-else>
               <span>{{ item.value }}</span>
-              <button v-if="permissions?.permissions?.change_user" class="text-sky-500 hover:text-sky-700"
+              <button v-if="permissions?.can_edit_config_project" class="text-sky-500 hover:text-sky-700"
                 :title="t('common.edit')" @click="startEditConfigProject(item)">
                 <Icon name="fa6-solid:pen-to-square" />
               </button>

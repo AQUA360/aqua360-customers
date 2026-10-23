@@ -11,13 +11,12 @@ import locale
 from documentmanager.models import Document
 
 def download_document_from_alfresco(document):
+    """Downloads a document's content from Alfresco using its stored location."""
     token = get_alfresco_token()
     encoded_token = encode_token(token)
     
     location = document.location
     folder_id = decode_token(location)
-    print("folder_id")
-    print(folder_id)
     
     folder = check_folder_exists_by_id(encoded_token, folder_id)
     if not folder:
@@ -178,6 +177,7 @@ def check_folder_exists(ticket, folder, parent_folder=None, description=''):
         return None
 
 def check_folder_exists_by_id(ticket, folder_id):
+    """Checks whether an Alfresco folder exists by its node id, returning its name and id if found."""
     url = f"{settings.ALFRESCO_BASE_URL}/alfresco/api/-default-/public/alfresco/versions/1/nodes/{folder_id}"
     print("Checking folder exists using POST /search...")
 
@@ -204,7 +204,7 @@ def check_folder_exists_by_id(ticket, folder_id):
             # Folder does not exist
             return None
     else:
-        print(f"Error checking folder: {response.status_code} - {response.text}")
+        print(f"Error checking folder: {response.status_code}")
         return None
 
 def create_folder(ticket, folder, parent_folder='-my-', description=''):
@@ -299,6 +299,7 @@ def upload_document(ticket, file, name, document, parent_folder='-my-', descript
 def upload_versioned_document(
     ticket, file, name, parent_token, parent_name, parent_folder='-my-', description=''
 ):
+    """Uploads a new version of an existing document's content to Alfresco."""
     print("upload_versioned_document")
     """
     DOCUMENT UPLOAD INFO
@@ -341,7 +342,6 @@ def upload_versioned_document(
         return parent_folder
     else:
         print(f"Failed to upload versioned document. Status code: {response.status_code}")
-        print(f"Response text: {response.text}") 
         raise Exception(
             f"Failed to upload versioned document.  Status code: {response.status_code}, Response: {response.text}"
         )

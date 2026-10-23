@@ -13,7 +13,7 @@ from io import BytesIO
 from xhtml2pdf import pisa
 from django.template import Template, Context 
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from billing.utils.invoice_service import get_totals
+from billing.utils.invoice_service import get_totals, reading_has_blocking_invoices
 from billing.utils.message_service import invoice_add_messages
 from billing.utils.pdf_overlap import client_info_overlaps_header
 from contract.models import Contract, ContractRequest, Variable
@@ -30,6 +30,8 @@ from ..models import Invoice, InvoiceLineItem, InvoiceTemplate, Reading
 from service.utils.exploitation_logo import exploitation_logo_path
 from coredata.models import ConfigProject
 from billing.utils.barcode_service import generate_barcode, get_barcode_values
+from service.serializers.company_bank_serializer import CompanyBankSerializer
+from service.utils.company_bank_service import get_company_bank
 import base64
 from verifactu.utils.qr_service import generate_qr_base64
 
@@ -64,8 +66,17 @@ class InvoiceReportPDFDownloadViewSet(APIView):
     return JsonResponse({"pdf_url": file_url, "document_id": document_id})
 
 def resolve_invoice_template_name(base_name, lang):
+    """Choose an existing personalized or localized invoice template name.
+
+    Candidates must resolve (symlinks included) to a path under
+    billing/templates. Return base_name when no candidate matches.
+    """
+    templates_dir = os.path.join(os.path.realpath(settings.BASE_DIR), 'billing', 'templates')
     for candidate in build_template_candidates(base_name, lang=lang):
-        if os.path.exists(os.path.join(settings.BASE_DIR, 'billing', 'templates', candidate)):
+        # L'idioma ve del contracte: cap variant pot sortir de la carpeta de plantilles,
+        # tampoc a través d'un enllaç simbòlic.
+        candidate_path = os.path.realpath(os.path.join(templates_dir, candidate))
+        if candidate_path.startswith(templates_dir + os.sep) and os.path.exists(candidate_path):
             return candidate
     return base_name
 
@@ -165,6 +176,8 @@ def get_invoice_for_pdf(invoice_id=None, invoice=None):
         'connection_request__address_billing__address',
         'connection_request__address_billing__address__city',
         'connection_request__person',
+        'payment_company_bank',
+        'payment_company_bank__bank',
     ).prefetch_related(
         Prefetch('readings', queryset=reading_qs),
         Prefetch('line_items', queryset=line_item_qs),
@@ -318,6 +331,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
         # Adjust if falls on weekend
         while tomorrow.weekday() >= 5:  
             tomorrow += timedelta(days=1)
+        company_bank_obj = get_company_bank(company_obj, invoice)
         if invoice.payment_type_token_final != 'DIRECT_DEBIT' and invoice.payment_type_token_final != 'BANK_TRANSFER':
             ident = invoice.due_date.strftime("%d%m%y") if invoice.due_date else "000000"
             if company_obj:
@@ -326,6 +340,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                     'reference': invoice.token,
                     'total_final': invoice.left_to_pay,
                     'company': company_obj,
+                    'company_bank': company_bank_obj,
                     'ident': ident,
                 }
                 barcode = generate_barcode(barcode_data)
@@ -515,7 +530,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                 if not reading.consumption_days and reading.previous_reading:
                     reading.consumption_days = (reading.reading_date - reading.previous_reading.reading_date).days
 
-                if reading.previous_reading and reading.previous_reading.is_close:
+                if reading.previous_reading and reading.previous_reading.is_close and not reading_has_blocking_invoices(reading.previous_reading):
                     prev = reading.previous_reading
                     # Només l'afegim si NO està ja a les lectures de la factura
                     if prev.id not in readings_ids:
@@ -524,7 +539,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                             prev.consumption_days = (prev.reading_date - prev.previous_reading.reading_date).days
                         meter_change_readings.append(prev)
 
-                if reading.previous_reading and reading.previous_reading.previous_reading and reading.previous_reading.previous_reading.is_close:
+                if reading.previous_reading and reading.previous_reading.previous_reading and reading.previous_reading.previous_reading.is_close and not reading_has_blocking_invoices(reading.previous_reading.previous_reading) and not reading_has_blocking_invoices(reading.previous_reading):
                     prev_prev = reading.previous_reading.previous_reading
                     # Només l'afegim si NO està ja a les lectures de la factura
                     if prev_prev.id not in readings_ids:
@@ -535,9 +550,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
         except Exception as e:
             print(f"Error en obtenir les lectures de canvi de metre: {str(e)}")
             meter_change_readings = []
-        company_bank = None
-        if company_serialized:
-            company_bank = company_serialized.get("company_banks")[0] if company_serialized.get("company_banks") else None
+        company_bank = CompanyBankSerializer(company_bank_obj).data if company_bank_obj else None
 
         num_habitatges = None
         if contract and hasattr(contract, 'variables'):
@@ -701,20 +714,18 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
             'FACTURA'
             )
 
-        # Save PDF to `invoice_file` field in Invoice instance.
-        # Keep previous media only if THAT document is linked to a communication.
+        # Save PDF to `invoice_file` field in Invoice instance (només al gestor documental).
+        # Keep previous document only if it is linked to a communication.
         from billing.utils.invoice_pdf import (
             discard_unused_invoice_pdf_document,
             prepare_invoice_pdf_filename,
         )
         old_document = invoice.invoice_file
-        pdf_filename = prepare_invoice_pdf_filename(invoice)
-        invoice._skip_signal = True
-        invoice.invoice_file_template.save(pdf_filename, ContentFile(signed_pdf_buffer.getvalue()))
-        
+
         service = settings.DOCUMENT_MANAGER_SERVICES.get("billing")
         document_id = None
         if save_pdf:
+            pdf_filename = prepare_invoice_pdf_filename(invoice)
             document_file = upload_document(ContentFile(signed_pdf_buffer.getvalue()), 'FACTURES', 'FACTURA', invoice.id, invoice.customer_token_final, '', service, pdf_filename)
             invoice.invoice_file = document_file
             invoice._skip_signal = True
@@ -728,11 +739,8 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
             source_invoice.invoice_file = invoice.invoice_file
 
         file_url = None
-        if request:
-            try:
-                file_url = request.build_absolute_uri(invoice.invoice_file_template.url)
-            except:
-                file_url = None
+        if request and invoice.invoice_file_id:
+            file_url = request.build_absolute_uri(f"/documentmanager/view-document/{invoice.invoice_file_id}/")
         
         return file_url, document_id, signed_pdf_buffer
     except Exception as e:

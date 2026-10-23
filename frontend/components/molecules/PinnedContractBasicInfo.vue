@@ -132,7 +132,8 @@ const showDetail = (component, id) => {
                 </div>
             </div>
         </div><!-- end relative avisos -->
-        <ContractStatusBadges :contract="contract" :isSubRegion="isSubRegion" @show-detail="showDetail" />
+        <ContractStatusBadges :contract="contract" :isSubRegion="isSubRegion" :showDebtDetail="true"
+            @show-detail="showDetail" />
     </div>
     <div class="grid grid-cols-3 gap-4" @click="showAddresses = false; showComms = false; showContacts = false">
 

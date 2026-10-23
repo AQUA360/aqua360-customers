@@ -32,6 +32,7 @@ import PiggyBankRegion from './PiggyBankRegion.vue';
 import AddPiggyBankBalance from '../molecules/AddPiggyBankBalance.vue';
 import AddReading from '../molecules/AddReading.vue';
 import EstimatedBagRegion from './EstimatedBagRegion.vue';
+import ContractDebtRegion from './ContractDebtRegion.vue';
 import AddNewCall from '../molecules/AddNewCall.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import TypedConfirmationModal from '../molecules/TypedConfirmationModal.vue';
@@ -335,13 +336,13 @@ const getGeneralInvoices = async () => {
   }
 }
 
-// Update a single invoice's PDF template in-place so the "send" button reactivates
+// Update a single invoice's PDF document in-place so the "send" button reactivates
 // without reloading the whole invoice list.
-const onInvoicePdfGenerated = ({ id, invoice_file_template }) => {
+const onInvoicePdfGenerated = ({ id, invoice_file }) => {
   const invoiceId = parseInt(id);
   [invoices.value, general_invoices.value].forEach(list => {
     const item = (list || []).find(inv => inv.id === invoiceId);
-    if (item) item.invoice_file_template = invoice_file_template;
+    if (item) item.invoice_file = invoice_file;
   });
 }
 
@@ -768,7 +769,7 @@ const addWalletBalance = () => {
             </div>
             <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span class="text-sm font-semibold text-amber-900 leading-snug">
-                {{ $t('service_block.supply_cut_notice') }}
+                {{ $t('service_block.supply_with_cut') }}
               </span>
               <span class="text-sm text-amber-800 leading-snug">
                 {{ supplyCutAlert.status_name }}
@@ -783,7 +784,7 @@ const addWalletBalance = () => {
 
         <ContractDetail :data="data" @show-subregion="showDetail" :isSubRegion="isSubRegion"
           :canChange="objectPermissions?.can_change" :isSubRegionOpen="isSubRegionOpen" @change="handleChange"
-          :showImportantObservations="false" @new-call="startCall" />
+          :showImportantObservations="false" :showDebtDetail="true" @new-call="startCall" />
 
         <ContractTabs
           :contract="data"
@@ -877,6 +878,8 @@ const addWalletBalance = () => {
           :isSubRegion="true" />
         <EstimatedBagRegion v-if="showRegionDetailComponent === 'EstimatedBagRegion'" :id="parseInt(regionDetailId)"
           :isSubRegion="true" />
+        <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
+          :isSubRegion="true" @changed="handleChange(false)" />
         <AddInvoiceBudget v-if="showRegionDetailComponent === 'AddInvoiceBudget'" :isSubRegion="true"
           :object_id="props.id" :service="$ContractApiService" :entity="'custom'" :persons="[data.holder]"
           :individual="true" :selectedCustom="selectedCustomInvoice" @change="handleChange"

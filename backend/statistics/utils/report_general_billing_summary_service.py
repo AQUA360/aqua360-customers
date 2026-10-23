@@ -14,6 +14,9 @@ from coredata.models import ConfigProject
 from statistics.utils.report_billing_service import _payoff_signed_sum
 from statistics.utils.report_filters import get_multi_ids, invoice_multi_filter_q
 from statistics.views.reports_views import add_row, adjust_column_widths, jump_row, save_report
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Retalla la part variable per factura d'una descripció de línia, perquè conceptes com
 # "CONSUM - 1R TRAM" no s'explotin en una fila diferent per cada factura només perque el
@@ -266,4 +269,5 @@ def generate_general_billing_summary_report(request, black_fill, white_bold_font
         os.remove(filename)
         return response, document_id, None
     except Exception as e:
-        return Response({"error": f"Ha ocorregut un error inesperat: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        logger.exception("Error inesperat")
+        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

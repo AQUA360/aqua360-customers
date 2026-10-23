@@ -32,6 +32,7 @@ class PersonPiggyBankViewSet(viewsets.ModelViewSet):
         payment_date = request.data.get('payment_date', None)
         bank_debit_id = request.data.get('bank_debit_id', None)
         return_date = request.data.get('return_date', None)
+        mark_as_paid = request.data.get('mark_as_paid', True)
         amount = request.data.get('amount', 0)
         user = self.request.user
         

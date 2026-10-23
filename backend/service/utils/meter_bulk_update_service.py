@@ -8,6 +8,8 @@ from datetime import datetime
 
 from django.db import transaction
 
+from documentmanager.utils.csv_safety import csv_unescape_value
+
 from service.models import Meter, MeterCaliber, MeterStatus
 
 # Camps escalars / FK simples actualitzables
@@ -279,7 +281,8 @@ def _parse_csv_bytes(content):
         delimiter = ';' if sample.count(';') >= sample.count(',') else ','
 
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    rows = list(reader)
+    # L'exportació de comptadors posa una `'` davant dels textos que Excel llegiria com a fórmula: es treu.
+    rows = [[csv_unescape_value(cell) for cell in row] for row in reader]
     if not rows:
         raise MeterBulkUpdateError("El fitxer CSV està buit.")
     return rows

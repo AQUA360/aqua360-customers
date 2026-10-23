@@ -348,6 +348,10 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
         # make limit here 2 months forward from today
         limit_date = timezone.now() + timedelta(days=60)
         email_token = ConfigProject.objects.get(token='message_type_email_token').value
+        # Si és 'false', només s'adjunta el document del pas (avís de pagament o carta de suspensió),
+        # sense les factures ni els rebuts
+        attach_extra_docs_config = ConfigProject.objects.filter(token='attach_extra_docs_in_claims').first()
+        attach_extra_docs = not (attach_extra_docs_config and attach_extra_docs_config.value and attach_extra_docs_config.value.lower() == 'false')
         for comm in communications:
             print(f"Communication: {comm.id}")
             invoice_attached_to_comm = False
@@ -360,8 +364,15 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                     and claim_request.current_step.step_template.group_payments
                 )
 
-                if not claim_payments.exists() or add_joined_payments:
+                # Amb pagaments agrupats també s'adjunten les factures; el rebut és el document agrupat
+                if not claim_payments.exists():
                     print(f"No ClaimRequestPayment found for contract {contract.id}")
+                elif not attach_extra_docs:
+                    # Sense adjunts extra les factures només es vinculen: el cos del missatge resol %invoice.*
+                    invoices = Invoice.objects.filter(payments__in=claim_payments.values('payment')).distinct()
+                    if invoices.exists():
+                        comm.invoices.add(*invoices)
+                        invoice_attached_to_comm = True
                 else:
                     for cr_payment in claim_payments:
                         invoice = getattr(getattr(cr_payment, "payment", None), "invoice", None)
@@ -839,10 +850,13 @@ def get_communication_process_data(request_data):
     group_same = request_data.get('group_same', [])
 
     persons = []
+    # Persones que no poden rebre cap dels canals triats, amb el motiu. Només les
+    # informen els filtres basats en contractes (contracte, punt i tall).
+    excluded = []
     time_start = time.time()
 
     if filter_type == 'CONTRACT':
-        persons = filter_by_contract(filter_data, group_same)
+        persons = filter_by_contract(filter_data, group_same, excluded=excluded)
     elif filter_type == 'BILLING':
         persons = filter_by_billing(filter_data, group_same)
     elif filter_type == 'CONTRACTREQUEST':
@@ -852,9 +866,9 @@ def get_communication_process_data(request_data):
     elif filter_type == 'PERSON':
         persons = filter_by_person(filter_data, group_same)
     elif filter_type == 'SUPPLYPOINT':
-        persons = filter_by_supply_point(filter_data, group_same)
+        persons = filter_by_supply_point(filter_data, group_same, excluded=excluded)
     elif filter_type == 'SUPPLYCUT':
-        persons = filter_by_supply_cut(filter_data, group_same)
+        persons = filter_by_supply_cut(filter_data, group_same, excluded=excluded)
     elif filter_type == 'COMMUNICATION':
         persons = filter_by_communication(filter_data, group_same)
     elif filter_type == 'DRAFT':
@@ -873,11 +887,14 @@ def get_communication_process_data(request_data):
         fixed_filter = fixed_filters.get(entity, None)
         if fixed_filter is None:
             raise ValueError(f"Unknown fixed_data entity: {entity!r}")
-        persons = fixed_filter(filter_data, group_same)
+        if fixed_filter is filter_by_supply_cut:
+            persons = fixed_filter(filter_data, group_same, excluded=excluded)
+        else:
+            persons = fixed_filter(filter_data, group_same)
 
     time_end = time.time()
     print(f"Time taken: {time_end - time_start} seconds")
-    return {"persons": persons}
+    return {"persons": persons, "excluded": excluded}
 
 
 COMMUNICATION_EXPORT_COLUMNS = {

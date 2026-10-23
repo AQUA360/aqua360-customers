@@ -20,8 +20,6 @@ class PiggyBankGetRelatedDataViewSet(generics.ListAPIView):
         try:
             piggy_bank_id = request.query_params.get('id')
             is_person = request.query_params.get('is_person', 'false').lower() == 'true'
-            print("piggy_bank_id", piggy_bank_id)
-            print("is_person", is_person)
             contracts = []
             persons = []
             related_piggy_banks = []

@@ -86,6 +86,10 @@ const wizardSteps = computed(() => [
 ]);
 
 const persons = shallowRef([]) // Use shallowRef for large arrays
+// Persones que la cerca ha deixat fora perquè no poden rebre cap dels canals
+// triats (p. ex. només tenen un fix i no tenen correu), amb els motius. Es
+// mostren al pas 2 i es desen al procés per poder-les avisar per una altra via.
+const unreachablePersons = shallowRef([])
 const setupType = ref(null)
 const attachInvoices = ref(false)
 const attachReadings = ref(false)
@@ -140,6 +144,7 @@ const loadFilterCompanies = async () => {
 // preseleccionar la configuració de la nova empresa.
 watch(filterCompany, () => {
   persons.value = []
+  unreachablePersons.value = []
   company.value = null
   if (finalData.value?.company || finalData.value?.company_config_email) {
     finalData.value = { ...finalData.value, company: null, company_config_email: null }
@@ -169,7 +174,9 @@ const isClaimRequest = computed(() => objectSearchData.value?.entity === 'claimr
 const contextToken = computed(() => {
   if (objectSearchData.value?.entity === 'billing') return 'billing'
   if (objectSearchData.value?.entity === 'claimrequest') return 'claim'
+  if (objectSearchData.value?.entity === 'supplycut') return 'supplycut'
   if (setupType.value === 'BILLING') return 'billing'
+  if (setupType.value === 'SUPPLYCUT') return 'supplycut'
   return null
 })
 
@@ -192,6 +199,75 @@ const isPersonExcluded = (person) =>
 const selectedPersons = computed(() =>
   (persons.value ?? []).filter(p => !isPersonExcluded(p))
 )
+
+// Motius (dels que retorna la cerca a `missing_channels`) que fan que un canal no arribi.
+const CHANNEL_REASONS = {
+  email: ['email_missing'],
+  letter: ['letter_missing'],
+  sms: ['sms_no_phone', 'sms_landline'],
+  electronic_inv: ['electronic_inv_missing'],
+}
+
+// Motius pels quals una entrada de la cerca no rebrà cap dels canals triats al
+// pas 4, amb el mateix criteri que el backend en crear les comunicacions
+// (message_service.create_comm_from_persons). null si rebrà algun canal o si la
+// cerca no informa dels canals (filtres que no són per contracte).
+const noChannelReasons = (person) => {
+  const missing = person?.missing_channels
+  if (!Array.isArray(missing)) return null
+  const types = messageData.value?.message_types || []
+  if (types.length === 0) return null
+  // El backend agafa la preferència del primer contracte de l'entrada.
+  const comType = person.contracts?.[0]?.communication_type
+  const channelMissing = (token) => {
+    const reasons = (CHANNEL_REASONS[token] || []).filter(reason => missing.includes(reason))
+    // En paper (o sense comunicació) el backend no fa servir el correu encara que n'hi hagi.
+    if (token === 'email' && reasons.length === 0 && ['PAPER', 'NONE'].includes(comType)) {
+      return ['email_paper_contract']
+    }
+    return reasons
+  }
+
+  if (types.some(type => type?.id === 'default')) {
+    // "Per defecte del contracte": NONE no rep res; la resta rep correu o carta.
+    if (comType === 'NONE') return ['communication_none']
+    const reasons = [...channelMissing('email'), ...channelMissing('letter')]
+    return channelMissing('email').length && channelMissing('letter').length ? reasons : null
+  }
+
+  const tokens = types.map(type => type?.type?.token).filter(Boolean)
+  // Un canal sense comprovació (p. ex. whatsapp) es dona per disponible.
+  if (tokens.length === 0 || tokens.some(token => !CHANNEL_REASONS[token])) return null
+  const perChannel = tokens.map(channelMissing)
+  return perChannel.every(reasons => reasons.length > 0) ? [...new Set(perChannel.flat())] : null
+}
+
+// Entrades de la cerca que no rebran cap dels canals triats (sense comptar les excloses a mà).
+const noChannelPersons = computed(() =>
+  selectedPersons.value
+    .map(person => ({ person, reasons: noChannelReasons(person) }))
+    .filter(item => item.reasons)
+)
+
+const noChannelEntries = computed(() => noChannelPersons.value.map(item => item.person))
+
+// Tots els que no rebran la comunicació: els descartats de la cerca, els que no
+// tenen cap dels canals triats i els exclosos a mà. És el que es desa al procés.
+const notReceivingPersons = computed(() => {
+  const row = (person, reasons) => ({
+    id: person.id,
+    token: person.token,
+    full_name: person.full_name,
+    person_type: person.person_type || null,
+    contracts: person.contracts || [],
+    reasons,
+  })
+  return [
+    ...unreachablePersons.value.map(person => row(person, [...(person.reasons || [])])),
+    ...noChannelPersons.value.map(item => row(item.person, item.reasons)),
+    ...(persons.value ?? []).filter(isPersonExcluded).map(person => row(person, ['manual'])),
+  ]
+})
 
 const excludedPersonsCount = computed(() =>
   (persons.value ?? []).length - selectedPersons.value.length
@@ -221,6 +297,12 @@ const searchSummary = computed(() => [
     label: t('customer_service_block.excluded_persons'),
     value: excludedPersonsCount.value,
     icon: 'fa6-solid:eye-slash',
+  },
+  {
+    key: 'unreachable',
+    label: t('customer_service_block.unreachable_persons'),
+    value: unreachablePersons.value.length + noChannelPersons.value.length,
+    icon: 'fa6-solid:user-slash',
   },
   {
     key: 'contracts',
@@ -255,7 +337,7 @@ const triggerFooterHighlight = () => {
   })
 }
 
-watch([persons, excludedPersons], () => {
+watch([persons, excludedPersons, unreachablePersons], () => {
   triggerFooterHighlight()
 })
 
@@ -271,6 +353,7 @@ const removeFix = () => {
   isObjectFixed.value = false
   // Create new empty array reference for shallowRef reactivity
   persons.value = []
+  unreachablePersons.value = []
 }
 
 const triggerSearch = () => {
@@ -367,8 +450,10 @@ const save = async () => {
 
     if (!confirm(t('confirmation_text_block.confirm_create_process'))) return
     
+    // Qui no rebria cap canal no es crea com a comunicació: queda a les exclusions.
+    const noChannel = new Set(noChannelEntries.value);
     const saving_persons = persons.value
-      .filter(p => !excludedPersons.value.includes(p.id))
+      .filter(p => !excludedPersons.value.includes(p.id) && !noChannel.has(p))
       .map(p => {
         const rawPerson = toRaw(p);
         const person = { id: rawPerson.id };
@@ -383,6 +468,15 @@ const save = async () => {
         }
         return person;
       });
+    // Qui queda fora del procés i per què (la llista del pas 6). Es desa amb el
+    // procés, només al primer lot.
+    const contractIds = (contracts) => (contracts || []).map(c => (typeof c === 'object' ? c.id : c));
+    const exclusions = notReceivingPersons.value.map(p => ({
+      id: p.id,
+      person_type: p.person_type,
+      contracts: contractIds(toRaw(p.contracts)),
+      reasons: [...p.reasons],
+    }));
     const chunkSize = 500;
 
     const personChunks = []
@@ -431,6 +525,10 @@ const save = async () => {
       if (supplyCutIds.length) {
         save_data.supply_cuts = supplyCutIds;
       }
+      // Un esborrany reobert no torna a fer la cerca: es conserven les exclusions que ja té.
+      if (i === 0 && !props.request?.id) {
+        save_data.excluded_persons = exclusions;
+      }
       
       const response = await $CommunicationProcessApiService.save(save_data);
       
@@ -470,6 +568,10 @@ const save = async () => {
 
 const onExcludedPersonsChange = (value) => {
   excludedPersons.value = value
+}
+
+const onUnreachableChange = (value) => {
+  unreachablePersons.value = [...(value || [])]
 }
 
 const onPersonsChange = (value, type = null, attach_invoices = false, attach_readings = false) => {
@@ -595,16 +697,19 @@ onMounted(async () => {
 
           <CommunicationProcessCreationManage v-if="objectSearchData?.entity && objectSearchData?.id"
             :data="objectSearchData" @load="loadingSetupData = $event" @remove-fix="removeFix" @change="onPersonsChange"
+            @change-unreachable="onUnreachableChange"
             :search="sendSearch" @show-detail="showDetail" :isFixed="isObjectFixed" :company-id="filterCompany?.id" />
 
           <CommunicationProcessCreationSetup v-else
             :request="request" @load="loadingSetupData = $event" @change="onPersonsChange" :search="sendSearch"
+            @change-unreachable="onUnreachableChange"
             @show-detail="showDetail" :company-id="filterCompany?.id" @change-supply-cuts="onSupplyCutsChange" />
         </div>
 
         <!-- Pas 2: Selecció de pagaments -->
         <div v-if="currentStep === 1" class="space-y-4">
-          <CommunicationProcessPersonList :excludedPersons="excludedPersons" :persons="persons" @change-excluded="onExcludedPersonsChange" :fixed_data="objectSearchData" />
+          <CommunicationProcessPersonList :excludedPersons="excludedPersons" :persons="persons" @change-excluded="onExcludedPersonsChange" :fixed_data="objectSearchData"
+            :unreachable-persons="unreachablePersons" />
         </div>
 
         <!-- Pas 3: Informació del procés -->
@@ -637,7 +742,8 @@ onMounted(async () => {
             </div>
           </div>
           <CommunicationProcessPersonMessageList :excludedPersons="excludedPersons" :persons="persons" :final_data="finalData"
-          @change="onPersonsChange" @change-excluded="onExcludedPersonsChange" :fixed_data="objectSearchData" />
+          @change="onPersonsChange" @change-excluded="onExcludedPersonsChange" :fixed_data="objectSearchData"
+          :unreachable-persons="notReceivingPersons" :no-channel-entries="noChannelEntries" />
         </div>
       </div>
     </div>
@@ -657,12 +763,12 @@ onMounted(async () => {
         <div class="grid auto-cols-max grid-flow-col items-center gap-x-8"
           :title="$t('customer_service_block.search_summary')">
           <div v-for="item in searchSummary" :key="`footer-summary-${item.key}`" class="flex items-center gap-2">
-            <Icon :name="item.icon" :class="item.key === 'excluded' ? 'text-red-500' : 'text-slate-500'" />
-            <span class="text-lg font-bold" :class="item.key === 'excluded' ? 'text-red-700' : 'text-slate-900'">
+            <Icon :name="item.icon" :class="['excluded', 'unreachable'].includes(item.key) ? 'text-red-500' : 'text-slate-500'" />
+            <span class="text-lg font-bold" :class="['excluded', 'unreachable'].includes(item.key) ? 'text-red-700' : 'text-slate-900'">
               {{ item.value }}
             </span>
             <span class="text-sm font-semibold whitespace-nowrap"
-              :class="item.key === 'excluded' ? 'text-red-600' : 'text-slate-700'">
+              :class="['excluded', 'unreachable'].includes(item.key) ? 'text-red-600' : 'text-slate-700'">
               {{ item.label }}
             </span>
           </div>
@@ -703,7 +809,7 @@ onMounted(async () => {
       class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white z-[50]"
       :class="{
         'translate-x-0': showRegion,
-        'translate-x-[2000px]': !showRegion,
+        'translate-x-full': !showRegion,
         'w-[95%]': isSubRegionOpen,
         'w-[55%]': !isSubRegionOpen
       }">

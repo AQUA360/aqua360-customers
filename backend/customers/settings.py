@@ -136,6 +136,7 @@ OWN_APPS = [
     "verifactu",
     "watchdog",
     "integrations",
+    "dashboard",
 ]
 
 EXTRA_APPS = [
@@ -505,6 +506,21 @@ SIGN_CALLBACK_API_KEY = config("SIGN_CALLBACK_API_KEY", default="")
 # de seguretat per als callbacks perduts. Vegeu integrations/outbound/signing/polling.py.
 SIGNING_POLL_ENABLED = config("SIGNING_POLL_ENABLED", default=False, cast=bool)
 SIGNING_POLL_MINUTES = config("SIGNING_POLL_MINUTES", default=10, cast=int)
+
+# Broadcaster: enviament d'SMS de les comunicacions, amb el mateix payload que
+# Aqua360 Sign. El text arriba resolt a la variable {{ message }} de la plantilla.
+BROADCASTER_API_URL = config(
+    "BROADCASTER_API_URL",
+    default="https://broadcaster.aqua360.cloud/api/v1/broadcast-messages/send/",
+)
+BROADCASTER_API_TOKEN = config("BROADCASTER_API_TOKEN", default="")
+BROADCASTER_TIMEOUT_SECONDS = config("BROADCASTER_TIMEOUT_SECONDS", default=15, cast=int)
+BROADCASTER_USER_AGENT = config("BROADCASTER_USER_AGENT", default="")
+BROADCASTER_CHANNEL = config("BROADCASTER_CHANNEL", default="sms")
+BROADCASTER_TOPIC = config("BROADCASTER_TOPIC", default="aqua360-customers")
+BROADCASTER_TEMPLATE_CODE = config("BROADCASTER_TEMPLATE_CODE", default="aqua360-customers")
+BROADCASTER_TEMPLATE_NAME = config("BROADCASTER_TEMPLATE_NAME", default="Comunicació")
+BROADCASTER_TEMPLATE_BODY = config("BROADCASTER_TEMPLATE_BODY", default="{{ message }}")
 
 ODOO_BASE_URL = config("ODOO_BASE_URL", default="")
 ODOO_API_KEY = config("ODOO_API_KEY", default="")

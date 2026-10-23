@@ -15,8 +15,12 @@ from communication.tasks import get_communication_process_data
 from communication.serializers.communication_serializer import CommunicationListSerializer, CommunicationMinimalSerializer
 from contract.models import Contract
 from coredata.models import Address, ConfigProject, Person, PersonAddress, PersonContact
+from coredata.utils.phone_utils import is_mobile_phone
 from service.models import SupplyCut, SupplyPoint
 from billing.models import Invoice, Payment
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Cache for config tokens to avoid repeated DB queries
 _CONFIG_CACHE = {}
@@ -64,7 +68,7 @@ def build_person_data_fast(person):
     has_electronic_invoice = False
     for contact in person.contacts.all():
         if contact.is_active:
-            if contact.phone and not has_sms:
+            if contact.phone and not has_sms and is_mobile_phone(contact.phone):
                 has_sms = True
             if contact.email and not has_email:
                 has_email = True
@@ -92,7 +96,8 @@ class ManageCommunicationProcessViewSet(APIView):
             task = get_communication_process_data.delay(request.data)
             return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Error inesperat")
+            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
         # persons = []
         # time_start = time.time()
@@ -261,7 +266,13 @@ def filter_by_communication(filter_data, group_same):
     serialized_communications = CommunicationListSerializer(communications, many=True).data
     return serialized_communications
 
-def filter_by_contract(filter_data, group_same):
+def filter_by_contract(filter_data, group_same, excluded=None):
+    """Destinataris dels contractes filtrats.
+
+    Si es passa `excluded` (llista), s'hi afegeixen les persones que no poden
+    rebre cap dels canals triats, amb els motius, per mostrar-les al wizard i
+    desar-les al procés.
+    """
     filters = Q()
     contract_ids = [contract['id'] for contract in filter_data.get('contracts', [])]
     use_types = filter_data.get('use_types', [])
@@ -315,7 +326,12 @@ def filter_by_contract(filter_data, group_same):
         'address_contact',
         'person_contact_email',
         'supply_point_default',
-        'supply_point_default__address'
+        'supply_point_default__address',
+        'address_contact',
+        'payment',
+    ).prefetch_related(
+        # Telèfons SMS del contracte, per validar el canal SMS sense una consulta per contracte.
+        Prefetch('person_contact_sms', queryset=PersonContact.objects.filter(is_active=True))
     )
     
 
@@ -355,24 +371,48 @@ def filter_by_contract(filter_data, group_same):
             if not person:
                 continue
             
-            # Validate person has communication methods
-            if address_type == 'default':
-                if not check_person_communication(person, message_types, contract):
-                    continue
-            elif address_type == 'contract':
-                if not check_person_communication_by_contract(contract, message_types):
-                    continue
-            
-            # Use fast builder instead of serializer
-            person_data = build_person_data_fast(person)
-            person_data['exclude'] = False
-            
             # Build contract info
             contract_info = {
                 'id': contract.id,
                 'token': contract.token,
                 'supply_address': str(contract.supply_point_default.address) if contract.supply_point_default else None,
+                # La preferència del contracte (DIGITAL/PAPER/BOTH/NONE) decideix el canal
+                # quan al pas 4 es tria "per defecte del contracte".
+                'communication_type': contract.communication_type,
             }
+
+            # Validate person has communication methods. `missing_channels` mira tots
+            # els canals perquè el pas 6 sàpiga qui no rebrà res amb els canals que
+            # s'acabin triant al pas 4, que poden ser menys que els del pas 1.
+            unavailable_channels = []
+            missing_channels = []
+            if address_type == 'default':
+                missing_channels = person_unavailable_channels(person, all_channel_tokens(), contract)
+            elif address_type == 'contract':
+                missing_channels = contract_unavailable_channels(contract, all_channel_tokens(), person)
+            unavailable_channels = reasons_for_channels(missing_channels, message_types)
+            if address_type in ('default', 'contract') and not has_available_channel(message_types, unavailable_channels):
+                if excluded is not None:
+                    excluded.append({
+                        'id': person.id,
+                        'token': person.token,
+                        'full_name': get_person_full_name(person),
+                        'person_type': person_type,
+                        'contracts': [contract_info],
+                        'reasons': unavailable_channels,
+                    })
+                continue
+            
+            # Use fast builder instead of serializer
+            person_data = build_person_data_fast(person)
+            person_data['exclude'] = False
+            # Mateix criteri que el telèfon que es farà servir (get_sms_phone): només mòbils.
+            person_data['has_sms'] = get_sms_reason(
+                get_sms_phones(person, contract if address_type == 'contract' else None)
+            ) is None
+            # Canals triats que no li arribaran: el wizard avisa que rebrà la comunicació per un altre.
+            person_data['unavailable_channels'] = unavailable_channels
+            person_data['missing_channels'] = missing_channels
             if contract and contract.payment and contract.payment.accounting_office:
                 person_data['has_electronic_invoice'] = True
 
@@ -391,6 +431,14 @@ def filter_by_contract(filter_data, group_same):
                     # Add to existing group
                     persons_dict[group_key]['total_communication'] += 1
                     persons_dict[group_key]['contracts'].append(contract_info)
+                    persons_dict[group_key]['has_sms'] = persons_dict[group_key]['has_sms'] or person_data['has_sms']
+                    persons_dict[group_key]['unavailable_channels'] = sorted(
+                        set(persons_dict[group_key]['unavailable_channels']) | set(unavailable_channels)
+                    )
+                    # Agrupades, un canal hi arriba si arriba per algun dels contractes.
+                    persons_dict[group_key]['missing_channels'] = sorted(
+                        set(persons_dict[group_key]['missing_channels']) & set(missing_channels)
+                    )
                 else:
                     # Create new group
                     person_data['contracts'] = [contract_info]
@@ -866,9 +914,6 @@ def filter_by_person(filter_data, group_same):
                 persons_dict[unique_key] = person_data
         
     elif address_type == 'contract':
-        print("filtered persons")
-        for person in filtered_persons:
-            print(person)
         contract_status_token = get_config_token('contract_active_token')
         #GET ONLY HOLDERS
         contracts = Contract.objects.filter( Q(holder__in=filtered_persons) ).filter(
@@ -902,7 +947,7 @@ def filter_by_person(filter_data, group_same):
     persons.sort(key=lambda x: x['id'])
     return persons
 
-def filter_by_supply_point(filter_data, group_same):
+def filter_by_supply_point(filter_data, group_same, excluded=None):
     filters = Q()
     supply_point_ids = [supply_point['id'] for supply_point in filter_data.get('supply_points', [])]
     statuses = filter_data.get('statuses', [])
@@ -955,11 +1000,11 @@ def filter_by_supply_point(filter_data, group_same):
             'address_type': 'contract'
         }
         
-        persons = filter_by_contract(filter_contract_data, group_same)
+        persons = filter_by_contract(filter_contract_data, group_same, excluded=excluded)
     
     return persons
 
-def filter_by_supply_cut(filter_data, group_same):
+def filter_by_supply_cut(filter_data, group_same, excluded=None):
     """Destinataris dels contractes afectats per un o més talls de subministrament.
 
     Accepta tant la cerca genèrica (type SUPPLYCUT, amb `supply_cuts`) com el
@@ -1016,7 +1061,7 @@ def filter_by_supply_cut(filter_data, group_same):
             'address_type': address_type
         }
 
-        persons = filter_by_contract(filter_contract_data, group_same)
+        persons = filter_by_contract(filter_contract_data, group_same, excluded=excluded)
 
     return persons
 
@@ -1199,28 +1244,117 @@ def filter_by_sepa_remittance(filter_data, group_same):
     
     return persons
 
-def check_person_communication(person, message_types, contract=None):
-    total_options = len(message_types)
+# Motius pels quals un canal triat al pas 1 no pot arribar al destinatari. Es
+# retornen al wizard i es desen al procés (CommunicationProcessExclusion) perquè
+# sempre es vegi per quin canal alternatiu es pot avisar qui no rep el missatge.
+REASON_SMS_NO_PHONE = 'sms_no_phone'
+REASON_SMS_LANDLINE = 'sms_landline'
+REASON_EMAIL_MISSING = 'email_missing'
+REASON_LETTER_MISSING = 'letter_missing'
+REASON_ELECTRONIC_INVOICE_MISSING = 'electronic_inv_missing'
+
+def get_sms_phones(person, contract=None):
+    """Telèfons per a SMS, amb el mateix criteri que PersonCommunicationSerializer:
+    amb contracte, els telèfons SMS del contracte que són de la persona; sense,
+    tots els seus contactes actius. Fa servir les dades prefetchades."""
+    if contract is not None:
+        return [
+            c.phone for c in contract.person_contact_sms.all()
+            if c.is_active and c.phone and (person is None or c.person_id == person.id)
+        ]
+    return [c.phone for c in person.contacts.all() if c.is_active and c.phone]
+
+def get_sms_reason(phones):
+    """None si algun telèfon és mòbil; si no, el motiu pel qual no es pot enviar l'SMS."""
+    if not phones:
+        return REASON_SMS_NO_PHONE
+    if not any(is_mobile_phone(phone) for phone in phones):
+        return REASON_SMS_LANDLINE
+    return None
+
+def person_unavailable_channels(person, message_types, contract=None):
+    """Motius dels canals triats que no arriben a la persona (dades de la persona)."""
+    reasons = []
     email_token = get_config_token('message_type_email_token')
     letter_token = get_config_token('message_type_letter_token')
+    sms_token = get_config_token('message_type_sms_token')
     electronic_invoice_token = "electronic_inv"
-    
+
     # Use prefetched data to avoid additional queries
     if email_token in message_types:
-        has_email = any(c.is_active and c.email for c in person.contacts.all())
-        if not has_email:
-            total_options -= 1
+        if not any(c.is_active and c.email for c in person.contacts.all()):
+            reasons.append(REASON_EMAIL_MISSING)
     if letter_token in message_types:
-        has_address = any(addr.is_active and addr.address for addr in person.addresses.all())
-        if not has_address:
-            total_options -= 1
+        if not any(addr.is_active and addr.address for addr in person.addresses.all()):
+            reasons.append(REASON_LETTER_MISSING)
+    if sms_token and sms_token in message_types:
+        sms_reason = get_sms_reason(get_sms_phones(person, contract))
+        if sms_reason:
+            reasons.append(sms_reason)
     if electronic_invoice_token in message_types:
         if not (contract and contract.payment and contract.payment.accounting_office):
-            total_options -= 1
-    
-    if total_options == 0:
-        return False
-    return True
+            reasons.append(REASON_ELECTRONIC_INVOICE_MISSING)
+    return reasons
+
+def contract_unavailable_channels(contract, message_types, person=None):
+    """Motius dels canals triats que no arriben amb les dades de contacte del contracte.
+
+    Amb `person`, el correu i l'adreça del contracte han de ser d'aquella persona,
+    com fa PersonCommunicationSerializer en crear la comunicació: si són del
+    titular, l'arrendatari no els rep.
+    """
+    reasons = []
+    email_token = get_config_token('message_type_email_token')
+    letter_token = get_config_token('message_type_letter_token')
+    sms_token = get_config_token('message_type_sms_token')
+    electronic_invoice_token = "electronic_inv"
+
+    def belongs_to_person(contact):
+        return contact is not None and (person is None or contact.person_id == person.id)
+
+    if email_token in message_types:
+        email_contact = contract.person_contact_email
+        if not (belongs_to_person(email_contact) and email_contact.email):
+            reasons.append(REASON_EMAIL_MISSING)
+    if letter_token in message_types:
+        if not belongs_to_person(contract.address_contact):
+            reasons.append(REASON_LETTER_MISSING)
+    if electronic_invoice_token in message_types:
+        if not (contract.payment and contract.payment.accounting_office):
+            reasons.append(REASON_ELECTRONIC_INVOICE_MISSING)
+    if sms_token and sms_token in message_types:
+        sms_reason = get_sms_reason(get_sms_phones(person, contract))
+        if sms_reason:
+            reasons.append(sms_reason)
+    return reasons
+
+def all_channel_tokens():
+    """Tots els canals que es comproven: el pas 4 pot triar-ne qualsevol."""
+    tokens = [
+        get_config_token('message_type_email_token'),
+        get_config_token('message_type_letter_token'),
+        get_config_token('message_type_sms_token'),
+        "electronic_inv",
+    ]
+    return [token for token in tokens if token]
+
+def reasons_for_channels(reasons, message_types):
+    """Els motius que afecten algun dels canals de `message_types`."""
+    reason_channels = {
+        REASON_SMS_NO_PHONE: get_config_token('message_type_sms_token'),
+        REASON_SMS_LANDLINE: get_config_token('message_type_sms_token'),
+        REASON_EMAIL_MISSING: get_config_token('message_type_email_token'),
+        REASON_LETTER_MISSING: get_config_token('message_type_letter_token'),
+        REASON_ELECTRONIC_INVOICE_MISSING: "electronic_inv",
+    }
+    return [reason for reason in reasons if reason_channels.get(reason) in message_types]
+
+def has_available_channel(message_types, reasons):
+    # Els tipus sense comprovació (p. ex. whatsapp) compten sempre com a disponibles.
+    return len(message_types) - len(reasons) > 0
+
+def check_person_communication(person, message_types, contract=None):
+    return has_available_channel(message_types, person_unavailable_channels(person, message_types, contract))
 
 def check_person_communication_by_invoice(invoice, message_types):
     total_options = len(message_types)
@@ -1243,18 +1377,5 @@ def check_person_communication_by_invoice(invoice, message_types):
         return False
     return True
 
-def check_person_communication_by_contract(contract, message_types):
-    total_options = len(message_types)
-    email_token = get_config_token('message_type_email_token')
-    letter_token = get_config_token('message_type_letter_token')
-    
-    if email_token in message_types:
-        if contract.person_contact_email is None:
-            total_options -= 1
-    if letter_token in message_types:
-        if contract.address_contact is None:
-            total_options -= 1
-    
-    if total_options == 0:
-        return False
-    return True
+def check_person_communication_by_contract(contract, message_types, person=None):
+    return has_available_channel(message_types, contract_unavailable_channels(contract, message_types, person))

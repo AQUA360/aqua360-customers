@@ -11,6 +11,7 @@ from .models import CallRegister, ConfigProject, Address, Person, PersonAddress,
 from django.apps import apps
 from .street_types import resolve_street_type
 from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
+from .utils.phone_utils import is_mobile_phone
 
 
 
@@ -92,6 +93,9 @@ class StreetSerializer(serializers.ModelSerializer):
             data = data.copy()
             if 'city' in data and isinstance(data['city'], dict):
                 data['city'] = data['city'].get('id') or data['city'].get('code') or data['city'].get('pk')
+            # Ciutat escrita a mà (països estrangers o províncies 98/99): el carrer queda sense ciutat
+            if isinstance(data.get('city'), str) and not data['city'].isdigit():
+                data.pop('city')
                 
         return super().to_internal_value(data)
 
@@ -345,20 +349,22 @@ class AddressSerializer(serializers.ModelSerializer):
             # Normalitzem per evitar duplicats per espais o NULL vs ''
             street_name = street_data.get('name', '').strip()
             street_name_2 = street_data.get('name_2') or ''
+            # Les ciutats escrites a mà no són una City: el carrer queda sense ciutat
+            street_city = validated_data.get('city') if isinstance(validated_data.get('city'), City) else None
 
             try:
                 street, created_street = Street.objects.get_or_create(
                     type=street_type,
                     name=street_name,
                     name_2=street_name_2,
-                    city=validated_data.get('city')
+                    city=street_city
                 )
             except:
                 street = Street.objects.filter(
                     type=street_type,
                     name=street_name,
                     name_2=street_name_2,
-                    city=validated_data.get('city')
+                    city=street_city
                 ).first()
 
         street_number = None
@@ -449,20 +455,22 @@ class AddressSerializer(serializers.ModelSerializer):
                 # Normalitzem per evitar duplicats per espais o NULL vs ''
                 street_name = street_data.get('name', '').strip()
                 street_name_2 = street_data.get('name_2') or ''
+                # Les ciutats escrites a mà no són una City: el carrer queda sense ciutat
+                street_city = validated_data.get('city') if isinstance(validated_data.get('city'), City) else None
 
                 try:
                     street, created_street = Street.objects.get_or_create(
                         type=street_type,
                         name=street_name,
                         name_2=street_name_2,
-                        city=validated_data.get('city')
+                        city=street_city
                     )
                 except:
                     street = Street.objects.filter(
                         type=street_type,
                         name=street_name,
                         name_2=street_name_2,
-                        city=validated_data.get('city')
+                        city=street_city
                     ).first()
                 instance.street = street
 
@@ -809,11 +817,13 @@ class PersonCommunicationSerializer(serializers.ModelSerializer):
             phones = instance.contacts.filter(is_active=True, contract_contact_sms__id__in=instance.contract_ids).values_list('phone', flat=True).distinct()
         else:
             phones = instance.contacts.filter(is_active=True).values_list('phone', flat=True).distinct()
+        # Només els mòbils: un fix no pot rebre SMS.
+        phones = [phone for phone in phones if is_mobile_phone(phone)]
         if phones:
             return ','.join(phones)
         else:
             return None
-    
+
     def get_address(self, instance):
         if instance.contract_ids and len(instance.contract_ids) > 0:
             addresses = instance.addresses.filter(is_active=True, contracts_contact__id__in=instance.contract_ids).distinct()
@@ -1118,7 +1128,6 @@ class PersonSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         print("\n\ncreating person")
-        print(validated_data)
         addresses_data = validated_data.pop('addresses') if 'addresses' in validated_data else []
         contacts_data = validated_data.pop('contacts') if 'contacts' in validated_data else []
         banks_data = validated_data.pop('banks') if 'banks' in validated_data else []

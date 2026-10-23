@@ -5762,3 +5762,91 @@ msgstr "de novembre"
 msgctxt "date month with preposition"
 msgid "of December"
 msgstr "de desembre"
+
+#: pricing/utils/accounting_service.py
+msgid "No values found to generate accounting"
+msgstr "No s'han trobat valors per generar l'informe de comptabilitat"
+#: notification/utils/auto_tasks.py
+msgid "Apply meter change"
+msgstr "Aplicar el canvi de comptador"
+
+#: notification/utils/auto_tasks.py
+#, python-format
+msgid "Order %(token)s is closed but the meter change has not been applied to the system yet."
+msgstr "L'ordre %(token)s està tancada però encara no s'ha aplicat el canvi de comptador al sistema."
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "and %(count)s more"
+msgstr "i %(count)s més"
+
+#: notification/utils/task_notifications.py
+msgid "Pending tasks for today"
+msgstr "Tasques pendents del dia"
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "You have %(count)s pending tasks: %(tasks)s"
+msgstr "Tens %(count)s tasques pendents: %(tasks)s"
+
+#: notification/tasks.py
+#, python-format
+msgid "You have %(count)s pending tasks"
+msgstr "Tens %(count)s tasques pendents"
+
+#: notification/tasks.py
+msgid "These are your pending tasks for today, and the overdue ones:"
+msgstr "Aquestes són les teves tasques pendents d'avui i les endarrerides:"
+
+#: notification/utils/task_notifications.py
+#, python-format
+msgid "You have a pending task: %(task)s"
+msgstr "Tens una tasca pendent: %(task)s"
+
+#: billing/tasks.py
+msgid "Posició de ruta"
+msgstr "Posició de ruta"
+
+#: billing/tasks.py
+msgid "Fuita"
+msgstr "Fuita"
+
+#: billing/tasks.py
+msgid "Fuita anterior"
+msgstr "Fuita anterior"
+
+#: billing/tasks.py
+msgid "Lectura anterior"
+msgstr "Lectura anterior"
+
+#: billing/tasks.py
+msgid "General"
+msgstr "General"
+
+#: billing/tasks.py
+msgid "Avís"
+msgstr "Avís"
+
+#: billing/tasks.py
+msgid "Volta comptador"
+msgstr "Volta comptador"
+
+#: billing/tasks.py
+msgid "Lectura 0"
+msgstr "Lectura 0"
+
+#: billing/tasks.py
+msgid "Lectura negativa"
+msgstr "Lectura negativa"
+
+#: billing/tasks.py
+msgid "Lectura estimada"
+msgstr "Lectura estimada"
+
+#: billing/tasks.py
+msgid "Lectura inusual"
+msgstr "Lectura inusual"
+
+#: billing/tasks.py
+msgid "Consum inusualment baix"
+msgstr "Consum inusualment baix"

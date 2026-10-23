@@ -88,7 +88,6 @@ class GeneratePaymentDocDownloadViewSet(APIView):
     
     company_iban = company_bank.iban if company_bank else None
     company_swift = company_bank.swift if company_bank else None
-    print('payment_type_token', payment_type_token)
 
     is_returned = False
     try:

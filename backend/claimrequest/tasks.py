@@ -328,6 +328,7 @@ def _build_claim_request_filters(payload):
     use_types = payload.get('selectedUseTypesIds')
     client_types = payload.get('selectedClientTypesIds')
     zones = payload.get('selectedZonesIds')
+    reading_batch_templates = payload.get('selectedReadingBatchTemplatesIds')
     contract_statuses = payload.get('selectedContractStatusesIds')
     debt_management = payload.get('selectedDebtMngsIds')
     check_without_debt = payload.get('check_without_debt', True)
@@ -336,12 +337,24 @@ def _build_claim_request_filters(payload):
 
     if selected_contracts_ids:
         filters &= Q(id__in=selected_contracts_ids)
+
+    # Limitar als pagaments d'una devolució de remesa SEPA concreta
+    remittance_return_payment_ids = None
+    remittance_return_id = payload.get('payment_remittance_return_id')
+    if remittance_return_id:
+        remittance_return_payment_ids = list(
+            Payment.objects.filter(remittances_returns__id=remittance_return_id).values_list('id', flat=True)
+        )
+        filters &= Q(invoices__payments__id__in=remittance_return_payment_ids)
+        payment_filters &= Q(id__in=remittance_return_payment_ids)
     if use_types:
         filters &= Q(use_type__id__in=use_types)
     if client_types:
         filters &= Q(client_type__id__in=client_types)
     if zones:
         filters &= Q(supply_point_default__property__route_position__route__route_zone__id__in=zones)
+    if reading_batch_templates:
+        filters &= Q(supply_point_default__property__route_position__route__reading_batch_template__id__in=reading_batch_templates)
     if contract_statuses:
         filters &= Q(status__id__in=contract_statuses)
     if rejection_motives:
@@ -396,7 +409,17 @@ def _build_claim_request_filters(payload):
     annotation_filters &= Q(invoices__payments__status__in=payment_statuses)
 
     expired_status_token = ConfigProject.objects.get(token='invoice_status_expired_token').value
-    annotation_filters &= Q(invoices__status=InvoiceStatus.objects.get(token=expired_status_token))
+    invoice_status_filter = Q(invoices__status__token=expired_status_token)
+    if remittance_return_payment_ids is not None:
+        # Des d'una devolució SEPA també es poden reclamar els pagaments retornats
+        # encara que la factura no hagi vençut (continua confirmada fins a la data de venciment)
+        confirmed_status_token = ConfigProject.objects.get(token='invoice_status_confirmed_token').value
+        returned_status_token = ConfigProject.objects.get(token='payment_status_returned_token').value
+        invoice_status_filter |= Q(
+            invoices__status__token=confirmed_status_token,
+            invoices__payments__status__token=returned_status_token,
+        )
+    annotation_filters &= invoice_status_filter
 
     if date_start and date_start != "":
         annotation_filters &= Q(invoices__payments__payment_date__gte=date_start)
@@ -416,6 +439,8 @@ def _build_claim_request_filters(payload):
         annotation_filters &= ~Q(invoices__payments__id__in=ignore_payments)
     if return_fee_invoice_ids is not None:
         annotation_filters &= ~Q(invoices__id__in=return_fee_invoice_ids)
+    if remittance_return_payment_ids is not None:
+        annotation_filters &= Q(invoices__payments__id__in=remittance_return_payment_ids)
     if exploitation_id and exploitation_id != "":
         annotation_filters &= Q(invoices__exploitation__id=exploitation_id) | Q(invoices__exploitation__isnull=True)
     

@@ -133,7 +133,6 @@ def suppress_invoice(invoice, user, reason=None, payment_type_id=None, return_pa
                             payment=new_return_payment,
                         )
                 else:
-                    print("payment status: ", payment.status.name)
                     generate_payment_movement(
                         payment,
                         payment_returned,
@@ -170,7 +169,6 @@ def suppress_invoice(invoice, user, reason=None, payment_type_id=None, return_pa
                     piggy_bank.save()
     except Exception as e:
         print(e)
-    print("returned payments: ", returned_payments)
     change_status_logger(user, invoice, invoice_status_to_change)
 
     movement_date = timezone.now()

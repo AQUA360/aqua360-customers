@@ -79,8 +79,45 @@ export default defineNuxtPlugin(nuxtApp => {
   
     }
   
-    const deleteItem = async (id) => {
-      const apiUrl = `${apiHost}${entity}${id}/`;
+    /**
+     * Tasques entre dues dates (vista setmanal/mensual/llista del calendari).
+     * `filters` admet task_done, assigned ('me' | 'all_users'), overdue, search...
+     */
+    const getRange = async (dateFrom, dateTo, filters = {}) => {
+      const params = new URLSearchParams();
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      Object.entries(filters).forEach(([name, value]) => {
+        if (value !== null && value !== undefined && value !== '') params.append(name, value);
+      });
+      params.append('ordering', 'set_date,time');
+      return await $apiManager.fetch(`${apiHost}${entity}?${params.toString()}`, 'GET');
+    }
+
+    /** Pendents d'avui i endarrerides: `{ today, overdue }`. */
+    const getSummary = async (assigned = null) => {
+      const query = assigned ? `?assigned=${assigned}` : '';
+      return await $apiManager.fetch(`${apiHost}${entity}summary/${query}`, 'GET', null, null, true);
+    }
+
+    /** Update a task completion flag without changing its other fields. */
+    const setDone = async (id, taskDone) => {
+      return await $apiManager.fetch(`${apiHost}${entity}${id}/`, 'PATCH', { task_done: taskDone }, { 'Content-Type': 'application/json' });
+    }
+
+    /** Fetch the current user task notification preferences. */
+    const getNotificationPreference = async () => {
+      return await $apiManager.fetch(`${apiHost}/notification/preference/`, 'GET');
+    }
+
+    /** Update the current user task notification preferences. */
+    const saveNotificationPreference = async (data) => {
+      return await $apiManager.fetch(`${apiHost}/notification/preference/`, 'PUT', data, { 'Content-Type': 'application/json' });
+    }
+
+    /** Amb `series`, en una tasca recurrent s'esborren també les ocurrències pendents posteriors. */
+    const deleteItem = async (id, series = false) => {
+      const apiUrl = `${apiHost}${entity}${id}/${series ? '?series=true' : ''}`;
 
       try {
         const response = await $apiManager.fetch(apiUrl, 'DELETE');
@@ -95,6 +132,11 @@ export default defineNuxtPlugin(nuxtApp => {
       getAll,
       getDetail,
       getDayTasks,
+      getRange,
+      getSummary,
+      setDone,
+      getNotificationPreference,
+      saveNotificationPreference,
       deleteItem,
       save,
     };

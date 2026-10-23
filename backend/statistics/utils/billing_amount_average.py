@@ -16,10 +16,15 @@ l'any anterior es va facturar amb tarifes més baixes, sortien més avisos que a
   a cada banda, perquè una tanda trimestral no sempre s'emet el mateix mes.
 - Només compten factures d'almenys MIN_MONTHS_AGO mesos enrere (anys anteriors) i amb
   import positiu (els abonaments negatius esbiaixen mitjanes de poques mostres).
+
+Totes les mitjanes es fan només amb factures d'aigua (origen `origin_reading_token`): les
+d'alta o d'altres conceptes tenen imports que no es poden comparar amb el rebut d'aigua, i
+en un contracte nou feien saltar l'avís a la primera factura de consum.
 """
 from django.db.models import Count, Sum
 
 from billing.models import Invoice
+from coredata.models import ConfigProject
 from statistics.models import BillingConsumption
 
 PERIOD_WINDOW_MONTHS = 1
@@ -60,13 +65,19 @@ def seasonal_amounts(rows, year, month):
     ]
 
 
+def _water_origin_token():
+    config = ConfigProject.objects.filter(token='origin_reading_token').first()
+    return config.value if config else 'aigua'
+
+
 def is_high_amount(total_final, avg_total):
     return bool(avg_total) and float(total_final) > float(avg_total) * HIGH_AMOUNT_FACTOR
 
 
 def get_total_amount_avg(contracts, exclude_invoice_id=None):
     """Mitjana completa de total_amount dels contractes; si no n'hi ha, la de les factures."""
-    stats = BillingConsumption.objects.filter(contract__in=contracts)
+    origin_token = _water_origin_token()
+    stats = BillingConsumption.objects.filter(contract__in=contracts, invoice__origin__token=origin_token)
     if exclude_invoice_id:
         stats = stats.exclude(invoice_id=exclude_invoice_id)
     agg = stats.aggregate(total_sum=Sum('total_amount'), total_count=Count('total_amount'))
@@ -74,7 +85,7 @@ def get_total_amount_avg(contracts, exclude_invoice_id=None):
     if avg is not None:
         return avg
 
-    invoices = Invoice.objects.filter(contract__in=contracts, total_final__isnull=False)
+    invoices = Invoice.objects.filter(contract__in=contracts, origin__token=origin_token, total_final__isnull=False)
     if exclude_invoice_id:
         invoices = invoices.exclude(id=exclude_invoice_id)
     agg = invoices.aggregate(total_sum=Sum('total_final'), total_count=Count('id'))
@@ -89,7 +100,9 @@ def get_seasonal_total_amount_avg(contracts, year, month, exclude_invoice_id=Non
     months = period_months(month)
     if not months or not year:
         return None
-    stats = BillingConsumption.objects.filter(contract__in=contracts, month__in=months)
+    stats = BillingConsumption.objects.filter(
+        contract__in=contracts, month__in=months, invoice__origin__token=_water_origin_token()
+    )
     if exclude_invoice_id:
         stats = stats.exclude(invoice_id=exclude_invoice_id)
     values = seasonal_amounts(stats.values_list('year', 'month', 'total_amount'), year, month)
@@ -110,9 +123,10 @@ class TotalAmountAvgCache:
     """
 
     def __init__(self, contract_ids):
+        origin_token = _water_origin_token()
         self.by_month = {}
         rows = (
-            BillingConsumption.objects.filter(contract_id__in=contract_ids)
+            BillingConsumption.objects.filter(contract_id__in=contract_ids, invoice__origin__token=origin_token)
             .values_list('contract_id', 'year', 'month', 'total_amount')
         )
         for contract_id, year, month, amount in rows:
@@ -120,7 +134,7 @@ class TotalAmountAvgCache:
 
         self.invoices = {}
         rows = (
-            Invoice.objects.filter(contract_id__in=contract_ids, total_final__isnull=False)
+            Invoice.objects.filter(contract_id__in=contract_ids, origin__token=origin_token, total_final__isnull=False)
             .values('contract_id')
             .annotate(total_sum=Sum('total_final'), total_count=Count('id'))
         )
