@@ -348,6 +348,10 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
         # make limit here 2 months forward from today
         limit_date = timezone.now() + timedelta(days=60)
         email_token = ConfigProject.objects.get(token='message_type_email_token').value
+        # Si és 'false', només s'adjunta el document del pas (avís de pagament o carta de suspensió),
+        # sense les factures ni els rebuts
+        attach_extra_docs_config = ConfigProject.objects.filter(token='attach_extra_docs_in_claims').first()
+        attach_extra_docs = not (attach_extra_docs_config and attach_extra_docs_config.value and attach_extra_docs_config.value.lower() == 'false')
         for comm in communications:
             print(f"Communication: {comm.id}")
             invoice_attached_to_comm = False
@@ -363,6 +367,12 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                 # Amb pagaments agrupats també s'adjunten les factures; el rebut és el document agrupat
                 if not claim_payments.exists():
                     print(f"No ClaimRequestPayment found for contract {contract.id}")
+                elif not attach_extra_docs:
+                    # Sense adjunts extra les factures només es vinculen: el cos del missatge resol %invoice.*
+                    invoices = Invoice.objects.filter(payments__in=claim_payments.values('payment')).distinct()
+                    if invoices.exists():
+                        comm.invoices.add(*invoices)
+                        invoice_attached_to_comm = True
                 else:
                     for cr_payment in claim_payments:
                         invoice = getattr(getattr(cr_payment, "payment", None), "invoice", None)
