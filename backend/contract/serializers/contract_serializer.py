@@ -36,7 +36,7 @@ from .contract_payment_serializer import ContractPaymentSerializer
 from django.db.models import Q, Sum
 from billing.models import CommitmentDepositStatus, GeneralPaymentMandateLog, Invoice, InvoiceStatus, Payment, PaymentStatus
 from logger.models import LogContractTotalMembers
-from contract.utils.contract_service import log_contract_phones_change
+from contract.utils.contract_service import get_contract_housing_units, log_contract_phones_change
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
 
 class ContractObservationSerializer(serializers.ModelSerializer):
@@ -288,16 +288,7 @@ class ContractSerializer(serializers.ModelSerializer):
         return PersonObservationSerializer(holder_observations | tenant_observations | owner_observations, many=True, context=self.context).data
     
     def get_housing_units(self, obj):
-        """Valor de la variable activa del contracte que indica el nombre d'habitatges. El
-        VariableType es configura a `ConfigProject.contract_housing_units_variable_type_token`."""
-        config = ConfigProject.objects.filter(token='contract_housing_units_variable_type_token').first()
-        variable_type_token = (config.value or '').strip() if config else ''
-        if not variable_type_token:
-            return None
-        variable = obj.variables.filter(
-            is_active=True, type__token=variable_type_token,
-        ).order_by('-start_at', '-id').first()
-        return variable.value if variable else None
+        return get_contract_housing_units(obj)
 
     def get_supply_point_ids(self, obj):
         supply_points = obj.supply_points.all()

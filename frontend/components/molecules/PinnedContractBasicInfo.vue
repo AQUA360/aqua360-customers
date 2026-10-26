@@ -455,6 +455,8 @@ const showDetail = (component, id) => {
                         contract.supply_point_default?.meter.code }}</button>
                 <span v-else>-</span>
             </FieldDetail>
+            <FieldDetail v-if="contract.housing_units !== null && contract.housing_units !== undefined && contract.housing_units !== ''"
+                :label="$t('contract_block.housing_units')" :value="contract.housing_units" />
         </div>
         <!-- <div v-if="contract.important_observations && contract.important_observations.length > 0" class="col-span-3">
             <span v-for="observation in contract.important_observations" :key="observation.id"

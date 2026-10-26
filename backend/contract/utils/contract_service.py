@@ -458,6 +458,22 @@ def get_contract_tarifa_bop(contract):
 CHANGE_OF_NAME_EXCLUDED_VARIABLE_TOKENS = ('aca', 'social')
 
 
+HOUSING_UNITS_VARIABLE_TYPE_CONFIG_TOKEN = 'contract_housing_units_variable_type_token'
+
+
+def get_contract_housing_units(contract):
+    """Valor de la variable activa del contracte que indica el nombre d'habitatges. El
+    VariableType es configura a `ConfigProject.contract_housing_units_variable_type_token`."""
+    config = ConfigProject.objects.filter(token=HOUSING_UNITS_VARIABLE_TYPE_CONFIG_TOKEN).first()
+    variable_type_token = (config.value or '').strip() if config else ''
+    if not variable_type_token:
+        return None
+    variable = contract.variables.filter(
+        is_active=True, type__token=variable_type_token,
+    ).order_by('-start_at', '-id').first()
+    return variable.value if variable else None
+
+
 def get_change_of_name_copyable_variables(old_contract):
     """Variables vigents del contracte anterior que es traspassen en un canvi de nom.
     Sense start_at/end_at es considera vigent (moltes variables importades no tenen dates)."""
