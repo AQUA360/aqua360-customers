@@ -31,6 +31,8 @@ def generate_general_accounting_report(request, black_fill=None, white_bold_font
             request.data['start_date'] = start_date_str
 
         content_file = generate_general_accounting(request)
+        if content_file is None:
+            return None, None, None
 
         filename = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 

@@ -2783,6 +2783,8 @@ export default {
     daily_file_help: 'Xerarase automaticamente cada día.',
     required_parameters: 'Parámetros',
     no_available_report: 'Sen informe asociado',
+    creation_error_help: 'Probe a rexenerar e, se o erro persiste, contacte co soporte',
+    no_document_no_data: 'Non se xerou documento, non se atoparon datos para este día',
     report_section: 'Sección',
     choose_daily_report: 'Escolle o ficheiro diario',
     choose_daily_report_help: 'Selecciona primeiro a sección e despois o informe que se xera cada día.',
