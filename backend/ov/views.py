@@ -514,38 +514,37 @@ class InvoicePDFView(APIView):
                 {"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        """ if not invoice.invoice_file:
-            return Response(
-                {"error": "Invoice PDF file not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            ) """
-
         from documentmanager.utils.main_utils import download_document
 
         try:
-
-            """http_response = download_document(invoice.invoice_file)
-
-            pdf_bytes = http_response.content
-
-            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")"""
-
-            _, _, pdf_buffer = generate_report_invoice_pdf(
-                invoice, request, context={"request": request}
-            )
-            pdf_base64 = base64.b64encode(pdf_buffer.getvalue()).decode("utf-8")
-
             filename = (
                 f"invoice_{invoice.serie_final}_{invoice.id}.pdf"
                 if invoice.serie_final
                 else f"invoice_{invoice.token}_{invoice.id}.pdf"
             )
+            pdf_bytes = None
+            document_name = filename
+            if invoice.invoice_file:
+                try:
+                    pdf_bytes = download_document(invoice.invoice_file).content
+                    document_name = invoice.invoice_file.document_name or filename
+                except Exception:
+                    logger.warning(
+                        "Could not retrieve stored PDF for invoice %s", invoice.id
+                    )
+            if pdf_bytes is None:
+                _, _, pdf_buffer = generate_report_invoice_pdf(
+                    invoice, request, context={"request": request}, save_pdf=False
+                )
+                pdf_bytes = pdf_buffer.getvalue()
+                document_name = filename
+            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
             return Response(
                 {
                     "pdf": pdf_base64,  # Base64-encoded PDF content
                     "filename": filename,  # Suggested filename for download
-                    "document_name": invoice.invoice_file.document_name,  # Original document name
+                    "document_name": document_name,  # Original document name
                 },
                 status=status.HTTP_200_OK,
             )
@@ -1832,11 +1831,7 @@ class QuickPayOVView(APIView):
                 {
                     "error": "Invoice is not payable",
                     "status": status_payload,
-                    "left_to_pay": (
-                        None
-                        if invoice.left_to_pay is None
-                        else f"{invoice.left_to_pay:.2f}"
-                    ),
+                    "left_to_pay": invoice.left_to_pay,
                 },
                 status=status.HTTP_409_CONFLICT,
             )
@@ -2172,7 +2167,7 @@ class InvoiceReturnRequestOVView(APIView):
 
         with transaction.atomic():
             incident = Incident.objects.create(
-                token=generate_token(Incident),
+                token=check_token_exists(generate_token(Incident), Incident),
                 name=RETURN_REQUEST_INCIDENT_NAME,
                 description=reason,
                 contract=invoice.contract,
@@ -2464,9 +2459,13 @@ class ContractProcedureOVView(APIView):
             )
             contract_request.supply_points.set([supply_point])
 
-            contract_price_rate, _ = ContractPriceRate.objects.get_or_create(
-                supply_point=supply_point, price_rate=tariff
-            )
+            contract_price_rate = ContractPriceRate.objects.filter(
+                supply_point=supply_point, price_rate=tariff, is_active=True
+            ).first()
+            if contract_price_rate is None:
+                contract_price_rate = ContractPriceRate.objects.create(
+                    supply_point=supply_point, price_rate=tariff, is_active=True
+                )
             contract_request.price_rates.set([contract_price_rate])
             contract_request.registration_price_rates.set(
                 procedure_type.registration_price_rates.all()

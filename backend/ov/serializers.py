@@ -1959,10 +1959,10 @@ class QuickPayResponseSerializer(serializers.Serializer):
     issue_date = serializers.DateField(allow_null=True)
     due_date = serializers.DateField(allow_null=True)
     invoice_amount = serializers.DecimalField(
-        max_digits=10, decimal_places=2, allow_null=True
+        max_digits=10, decimal_places=2, allow_null=True, coerce_to_string=False
     )
     left_to_pay = serializers.DecimalField(
-        max_digits=10, decimal_places=2, allow_null=True
+        max_digits=10, decimal_places=2, allow_null=True, coerce_to_string=False
     )
     status = serializers.DictField(allow_null=True)
     payable = serializers.BooleanField()

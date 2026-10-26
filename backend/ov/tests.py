@@ -1707,6 +1707,120 @@ class PersonDataOVTests(TestCase):
         )
 
 
+class InvoicePDFOVTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-invoice-pdf-test")
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_type_invoice_token", "F"),
+            ("invoice_status_cancelled_token", "-6"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.contract = Contract.objects.create(token="PDF-CONTRACT")
+        cls.invoice = Invoice.objects.create(
+            token="PDF-INVOICE",
+            serie_final="FC/2026/1",
+            contract=cls.contract,
+            type_final="F",
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, **overrides):
+        params = {
+            "contract_token": self.contract.token,
+            "invoice_token": self.invoice.token,
+        }
+        params.update(overrides)
+        return self.client.get(reverse("invoice-pdf-ov"), params)
+
+    def test_reuses_stored_pdf_without_generating_or_replacing_it(self):
+        pdf_bytes = b"%PDF-1.4 stored invoice"
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "stored.pdf")
+            with open(path, "wb") as stored:
+                stored.write(pdf_bytes)
+            document = Document.objects.create(
+                entity_id=self.invoice.pk,
+                service="hdd",
+                location=path,
+                document_name="original.pdf",
+            )
+            Invoice.objects.filter(pk=self.invoice.pk).update(invoice_file=document)
+            document_count = Document.objects.count()
+
+            with patch("ov.views.generate_report_invoice_pdf") as generate:
+                response = self._get(invoice_token=self.invoice.serie_final)
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(base64.b64decode(response.data["pdf"]), pdf_bytes)
+            self.assertEqual(response.data["document_name"], "original.pdf")
+            generate.assert_not_called()
+            self.invoice.refresh_from_db()
+            self.assertEqual(self.invoice.invoice_file_id, document.pk)
+            self.assertEqual(Document.objects.count(), document_count)
+            with open(path, "rb") as stored:
+                self.assertEqual(stored.read(), pdf_bytes)
+
+    def test_generates_missing_pdf_in_memory_with_fallback_document_name(self):
+        for serie_final in ("FC/2026/1", None):
+            with self.subTest(serie_final=serie_final):
+                Invoice.objects.filter(pk=self.invoice.pk).update(
+                    serie_final=serie_final
+                )
+                document_count = Document.objects.count()
+                with patch(
+                    "ov.views.generate_report_invoice_pdf",
+                    return_value=(None, None, BytesIO(b"%PDF-1.4 generated")),
+                ) as generate:
+                    response = self._get()
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    base64.b64decode(response.data["pdf"]), b"%PDF-1.4 generated"
+                )
+                expected_name = (
+                    f"invoice_{serie_final or self.invoice.token}_{self.invoice.pk}.pdf"
+                )
+                self.assertEqual(response.data["filename"], expected_name)
+                self.assertEqual(response.data["document_name"], expected_name)
+                generate.assert_called_once()
+                self.assertIs(generate.call_args.kwargs["save_pdf"], False)
+                self.invoice.refresh_from_db()
+                self.assertIsNone(self.invoice.invoice_file_id)
+                self.assertEqual(Document.objects.count(), document_count)
+
+    def test_unavailable_stored_pdf_falls_back_without_replacing_document(self):
+        document = Document.objects.create(
+            entity_id=self.invoice.pk,
+            service="hdd",
+            document_name="unavailable.pdf",
+        )
+        Invoice.objects.filter(pk=self.invoice.pk).update(invoice_file=document)
+        document_count = Document.objects.count()
+
+        with patch(
+            "ov.views.generate_report_invoice_pdf",
+            return_value=(None, None, BytesIO(b"%PDF-1.4 fallback")),
+        ) as generate:
+            response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(base64.b64decode(response.data["pdf"]), b"%PDF-1.4 fallback")
+        self.assertEqual(response.data["document_name"], response.data["filename"])
+        generate.assert_called_once()
+        self.assertIs(generate.call_args.kwargs["save_pdf"], False)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.invoice_file_id, document.pk)
+        self.assertEqual(Document.objects.count(), document_count)
+
+
 class QuickPayOVTests(TestCase):
     """`POST /ov/invoice/quick-pay/` — resolució sense escriptures d'una
     factura a partir de número de contracte, número de factura (`serie_final`)
@@ -1865,8 +1979,8 @@ class QuickPayOVTests(TestCase):
         self.assertEqual(response.data["invoice_number"], "FC/202609/000001")
         self.assertEqual(response.data["issue_date"], "2026-09-01")
         self.assertEqual(response.data["due_date"], "2026-09-30")
-        self.assertEqual(response.data["invoice_amount"], "101.73")
-        self.assertEqual(response.data["left_to_pay"], "101.73")
+        self.assertEqual(response.json()["invoice_amount"], 101.73)
+        self.assertEqual(response.json()["left_to_pay"], 101.73)
         self.assertEqual(
             response.data["status"],
             {
@@ -1935,7 +2049,7 @@ class QuickPayOVTests(TestCase):
                 self.assertEqual(
                     response.data["status"]["token"], status_token
                 )
-                self.assertEqual(response.data["left_to_pay"], "30.00")
+                self.assertEqual(response.json()["left_to_pay"], 30.00)
 
     def test_zero_left_to_pay_returns_409(self):
         response = self._post(
@@ -1944,6 +2058,15 @@ class QuickPayOVTests(TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data["error"], "Invoice is not payable")
+        self.assertEqual(response.json()["left_to_pay"], 0)
+
+    def test_null_left_to_pay_returns_409_with_null_amount(self):
+        Invoice.objects.filter(pk=self.payable.pk).update(left_to_pay=None)
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIsNone(response.json()["left_to_pay"])
 
     def test_invoice_without_status_returns_409(self):
         response = self._post(
@@ -2699,6 +2822,20 @@ class InvoiceReturnRequestOVTests(TestCase):
             remittance_return_count,
         )
 
+    def test_generated_incident_token_collision_is_resolved(self):
+        existing = Incident.objects.create(token="RETURN-COLLISION-0")
+
+        with patch("ov.views.generate_token", return_value=existing.token):
+            response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertNotEqual(response.data["incident_token"], existing.token)
+        self.assertEqual(
+            Incident.objects.filter(token=response.data["incident_token"]).count(), 1
+        )
+        existing.refresh_from_db()
+        self.assertEqual(existing.token, "RETURN-COLLISION-0")
+
     def test_duplicate_request_returns_409_and_reuses_incident(self):
         first = self._post()
         second = self._post()
@@ -2818,6 +2955,18 @@ class InvoiceReturnRequestOVTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_empty_invoice_type_config_returns_404_before_invoice_lookup(self):
+        ConfigProject.objects.filter(token="invoice_type_invoice_token").update(
+            value=""
+        )
+
+        with patch("ov.views.Invoice.objects.select_related") as lookup:
+            response = self._post()
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+        lookup.assert_not_called()
 
     def test_requires_authentication(self):
         anonymous = APIClient()
@@ -3031,6 +3180,46 @@ class ContractProcedureOVTests(TestCase):
             self.type_tariff,
             [cpr.price_rate for cpr in contract_price_rates],
         )
+
+    def test_reuses_an_active_contract_price_rate_when_duplicates_exist(self):
+        inactive = ContractPriceRate.objects.create(
+            supply_point=self.supply_point, price_rate=self.tariff, is_active=False
+        )
+        active_rates = [
+            ContractPriceRate.objects.create(
+                supply_point=self.supply_point, price_rate=self.tariff, is_active=True
+            )
+            for _ in range(2)
+        ]
+        count = ContractPriceRate.objects.count()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        chosen = self._created_request(response).price_rates.get()
+        self.assertIn(chosen, active_rates)
+        self.assertTrue(chosen.is_active)
+        self.assertEqual(ContractPriceRate.objects.count(), count)
+        inactive.refresh_from_db()
+        self.assertFalse(inactive.is_active)
+
+    def test_creates_active_contract_price_rate_when_only_inactive_exists(self):
+        inactive = ContractPriceRate.objects.create(
+            supply_point=self.supply_point, price_rate=self.tariff, is_active=False
+        )
+        count = ContractPriceRate.objects.count()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        chosen = self._created_request(response).price_rates.get()
+        self.assertNotEqual(chosen.pk, inactive.pk)
+        self.assertTrue(chosen.is_active)
+        self.assertEqual(chosen.supply_point, self.supply_point)
+        self.assertEqual(chosen.price_rate, self.tariff)
+        self.assertEqual(ContractPriceRate.objects.count(), count + 1)
+        inactive.refresh_from_db()
+        self.assertFalse(inactive.is_active)
 
     def test_registration_rates_and_order_types_come_from_type(self):
         response = self._post()
