@@ -180,6 +180,20 @@ const exportColumns = computed(() => [
     { header: t('billing_block.sepa_return_date'), value: (row) => row.rjt_dt ? formatDate(row.rjt_dt) : '' },
 ]);
 
+const exportSummary = computed(() => {
+    const returnDate = rejections.value?.find(rejection => rejection.rjt_dt)?.rjt_dt;
+    const totalAmount = (rejections.value || []).reduce((sum, rejection) => sum + (Number(rejection.amount) || 0), 0);
+    return [
+        [t('common.doc_sepa'), sepaFile.value?.name],
+        [t('billing_block.sepa_return_date'), returnDate ? formatDate(returnDate) : ''],
+        [t('invoices'), totalInvoices.value],
+        [t('claim_block.commitments'), totalCommitments.value],
+        [t('billing_block.payments_to_return'), rejections.value?.length || 0],
+        [t('billing_block.total_amount'), Math.round(totalAmount * 100) / 100],
+        [t('common.return_multiple_not_found'), not_found_rejections.value?.length || 0],
+    ];
+});
+
 const showDetail = (region, id) => {
     emit('show-detail', region, id);
 }
@@ -280,7 +294,7 @@ watch(() => props.save_response, (newValue) => {
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-semibold text-slate-700">{{ t("common.return_multiple") }}</h3>
                             <div class="flex items-center gap-2">
-                                <AtomsDownloadXlsxButton :rows="rejections" :columns="exportColumns" :label="t('billing_block.download_summary_xlsx')"
+                                <AtomsDownloadXlsxButton :rows="rejections" :columns="exportColumns" :summary="exportSummary" :label="t('billing_block.download_summary_xlsx')"
                                     file-name="sepa_return" />
                                 <span class="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded">
                                     {{ rejections.length }}

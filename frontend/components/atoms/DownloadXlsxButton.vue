@@ -28,6 +28,12 @@ const props = defineProps({
         type: String,
         default: 'Sheet1',
     },
+    // Label/value rows written above the table: [['Total', 123], ...].
+    // Only used by the client-side export.
+    summary: {
+        type: Array,
+        default: () => [],
+    },
     // Kept for existing callers. The export no longer depends on the page count:
     // whenever serverExportFn is set, the file is built on the backend.
     totalPages: {
@@ -79,6 +85,7 @@ const download = async () => {
             columns: props.columns,
             fileName: props.fileName,
             sheetName: props.sheetName,
+            summary: props.summary,
             totalPages: props.totalPages,
             serverExportFn: props.serverExportFn,
             exportName: props.exportName || undefined,

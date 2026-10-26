@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { exportToXlsx, type XlsxColumn } from '~/utils/xlsx-export';
+import { exportToXlsx, type XlsxColumn, type XlsxSummaryRow } from '~/utils/xlsx-export';
 import { useExportJobsStore } from '~/stores/useExportJobs';
 
 export interface ServerExportOptions<T = any> {
@@ -12,6 +12,8 @@ export interface ServerExportOptions<T = any> {
     fileName?: string;
     // Optional worksheet name.
     sheetName?: string;
+    // Label/value rows written above the table (client-side path only).
+    summary?: XlsxSummaryRow[];
     // Number of pages in the current (filtered) result set.
     totalPages?: number;
     // Triggers the server-side export. Must return the API response, which is
@@ -109,13 +111,14 @@ export function useServerExport() {
             columns,
             fileName = 'export',
             sheetName = 'Sheet1',
+            summary = [],
             serverExportFn,
             exportName,
         } = opts;
 
         // No server export → fall back to the rows already loaded in the table.
         if (!serverExportFn) {
-            exportToXlsx(rows, columns, fileName, sheetName);
+            exportToXlsx(rows, columns, fileName, sheetName, summary);
             return;
         }
 
