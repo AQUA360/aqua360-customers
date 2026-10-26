@@ -44,10 +44,20 @@ def upload_to_hdd(file, entity, field, entity_id, entity_token, folder, document
 
     return document
 
+def get_hdd_document_path(document):
+    """Camí del fitxer del document, només si és dins la carpeta de documents."""
+    if not document.location:
+        return None
+    storage_path = os.path.realpath(settings.DOCUMENT_STORAGE_PATH)
+    document_path = os.path.realpath(str(document.location))
+    if not document_path.startswith(storage_path + os.sep):
+        return None
+    return document_path
+
 def download_document_from_hdd(document):
 
-    document_path = str(document.location)
-    if os.path.exists(document_path):
+    document_path = get_hdd_document_path(document)
+    if document_path and os.path.exists(document_path):
         try:
             with open(document_path, 'rb') as f:
                 file_data = f.read()
@@ -64,8 +74,9 @@ def delete_document_from_hdd(document):
     """Deletes a document file from the hard drive."""
     #delete or deactivate
     try:
-        if document.location and os.path.exists(document.location):
-            os.remove(document.location)
+        document_path = get_hdd_document_path(document)
+        if document_path and os.path.exists(document_path):
+            os.remove(document_path)
             print(f"Document {document.id} deleted from HDD")
         else:
             print(f"Document not found on HDD or location is not set.")

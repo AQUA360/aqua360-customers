@@ -16,6 +16,23 @@ from auth.permissions import PermissionManager
 from coredata.permissions import can_edit_config_project
 
 
+WRITE_ACTIONS = ('create', 'update', 'partial_update', 'destroy')
+
+
+def check_user_management_permission(request, action, resource):
+    """Usuaris i grups: llegir requereix `view_user` i escriure `change_user`."""
+    if not PermissionManager.has_permission(request.user, 'view_user'):
+        raise PermissionDenied(f"You don't have permission to view {resource}.")
+    if action in WRITE_ACTIONS and not PermissionManager.has_permission(request.user, 'change_user'):
+        raise PermissionDenied(f"You don't have permission to modify {resource}.")
+
+
+def check_superuser_target(user, target):
+    """Només un superusuari pot modificar o eliminar un altre superusuari."""
+    if target.is_superuser and not user.is_superuser:
+        raise PermissionDenied("You are not allowed to modify a superuser")
+
+
 class CustomAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data, context={'request': request})
@@ -40,10 +57,19 @@ class UserViewSet(viewsets.ModelViewSet):
     filterset_class = UserFilter
 
     def get_permissions(self):
-        if not PermissionManager.has_permission(self.request.user, 'view_user'):
-            raise PermissionDenied("You don't have permission to view users.")
+        if self.action == 'permissions':
+            return [IsAuthenticated()]
+        check_user_management_permission(self.request, self.action, "users")
         return super().get_permissions()
-    
+
+    def perform_update(self, serializer):
+        check_superuser_target(self.request.user, serializer.instance)
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        check_superuser_target(self.request.user, instance)
+        super().perform_destroy(instance)
+
     @action(detail=False, methods=['get'], url_path='permissions')
     def permissions(self, request):
         pk = request.query_params.get('id')
@@ -58,11 +84,6 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(group_permissions, status=status.HTTP_200_OK)
         permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'user')
         return Response(permissions, status=status.HTTP_200_OK)
-    
-    def get_permissions(self):
-        if self.action == 'permissions':
-            return [IsAuthenticated()]
-        return super().get_permissions()
 
 
 class GroupViewSet(viewsets.ModelViewSet):
@@ -75,9 +96,17 @@ class GroupViewSet(viewsets.ModelViewSet):
     filterset_class = GroupFilter
     
     def get_permissions(self):
-        if not PermissionManager.has_permission(self.request.user, 'view_user'):
-            raise PermissionDenied("You don't have permission to view groups.")
+        if self.action == 'permissions':
+            return [IsAuthenticated()]
+        check_user_management_permission(self.request, self.action, "groups")
         return super().get_permissions()
+
+    def perform_destroy(self, instance):
+        # Mateix criteri que create/update del GroupSerializer.
+        user = self.request.user
+        if not user.is_superuser or not user.has_perm('auth.delete_group'):
+            raise PermissionDenied("You are not allowed to delete this group")
+        super().perform_destroy(instance)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -98,11 +127,6 @@ class GroupViewSet(viewsets.ModelViewSet):
             return Response(group_permissions, status=status.HTTP_200_OK)
         permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
         return Response(permissions, status=status.HTTP_200_OK)
-    
-    def get_permissions(self):
-        if self.action == 'permissions':
-            return [IsAuthenticated()]
-        return super().get_permissions()
 
 
 

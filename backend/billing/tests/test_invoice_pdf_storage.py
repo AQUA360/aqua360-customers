@@ -37,7 +37,7 @@ def pdf_bytes(pages=1):
     return content
 
 
-@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+@override_settings(MEDIA_ROOT=MEDIA_ROOT, DOCUMENT_STORAGE_PATH=DOCUMENTS_ROOT)
 class TestInvoicePdfStorage(TestCase):
     """
     El PDF definitiu de la factura només es desa al gestor documental
