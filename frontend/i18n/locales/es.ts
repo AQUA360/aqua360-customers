@@ -2066,6 +2066,7 @@ export default {
     total_amount: 'Importe total',
     payments_count: 'Número de pagos',
     download_document: 'Descargar Documento',
+    download_summary_xlsx: 'Descargar resumen',
     download_xml_document: 'Descargar documento XML',
     regenerate_document: 'Regenerar Documento',
     regenerate_sepa_document: 'Regenerar documento SEPA',

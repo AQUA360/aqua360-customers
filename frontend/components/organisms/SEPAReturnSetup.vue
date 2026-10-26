@@ -168,6 +168,18 @@ const selectAllForClaims = () => {
     emitSelectionChanged();
 }
 
+// Exporta els pagaments retornats trobats, amb les mateixes columnes que la taula
+const exportColumns = computed(() => [
+    { header: t('contract'), value: (row) => row.contract },
+    { header: t('billing_block.payment'), value: (row) => row.payment_token },
+    { header: `${t('invoice')} / ${t('claim_block.commitment')}`, value: (row) => row.invoice || row.commitment_deposit },
+    { header: t('billing_block.payment_date'), value: (row) => row.payment_date ? formatDate(row.payment_date) : '' },
+    { header: t('common.amount'), value: (row) => row.amount !== null && row.amount !== undefined ? Number(row.amount) : '' },
+    { header: t('common.previous_status'), value: (row) => row.prev_status },
+    { header: t('order_block.reason'), value: (row) => row.motive },
+    { header: t('billing_block.sepa_return_date'), value: (row) => row.rjt_dt ? formatDate(row.rjt_dt) : '' },
+]);
+
 const showDetail = (region, id) => {
     emit('show-detail', region, id);
 }
@@ -267,9 +279,13 @@ watch(() => props.save_response, (newValue) => {
                     <div class="px-4 py-2 bg-slate-50 border-b border-slate-200">
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-semibold text-slate-700">{{ t("common.return_multiple") }}</h3>
-                            <span class="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded">
-                                {{ rejections.length }}
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <AtomsDownloadXlsxButton :rows="rejections" :columns="exportColumns" :label="t('billing_block.download_summary_xlsx')"
+                                    file-name="sepa_return" />
+                                <span class="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded">
+                                    {{ rejections.length }}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
