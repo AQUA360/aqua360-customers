@@ -171,6 +171,8 @@ const selectAllForClaims = () => {
 // Exporta els pagaments retornats trobats, amb les mateixes columnes que la taula
 const exportColumns = computed(() => [
     { header: t('contract'), value: (row) => row.contract },
+    { header: t('common.holder'), value: (row) => row.contract_holder_name },
+    { header: t('common.person_id'), value: (row) => row.contract_holder_nif },
     { header: t('billing_block.payment'), value: (row) => row.payment_token },
     { header: `${t('invoice')} / ${t('claim_block.commitment')}`, value: (row) => row.invoice || row.commitment_deposit },
     { header: t('billing_block.payment_date'), value: (row) => row.payment_date ? formatDate(row.payment_date) : '' },
