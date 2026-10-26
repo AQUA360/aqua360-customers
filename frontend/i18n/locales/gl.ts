@@ -2007,6 +2007,7 @@ export default {
     total_amount: 'Importe total',
     payments_count: 'Número de pagos',
     download_document: 'Descargar Documento',
+    download_summary_xlsx: 'Descargar resumo',
     download_xml_document: 'Descargar documento XML',
     regenerate_document: 'Rexerar Documento',
     regenerate_sepa_document: 'Rexerar documento SEPA',

@@ -1104,6 +1104,7 @@ class CommitmentDeposit(models.Model):
     remaining = models.DecimalField(max_digits=11, decimal_places=2, null=True, blank=True, default=0.00)
     remaining_to_share = models.DecimalField(max_digits=11, decimal_places=2, null=True, blank=True, default=0.00)
     
+    start_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     days_next_payment = models.IntegerField(null=True, blank=True)
     
@@ -1189,6 +1190,7 @@ class PaymentCommitment(models.Model):
     payment_bank_final = models.CharField(max_length=255, null=True, blank=True)
     payment_swift_final = models.CharField(max_length=255, null=True, blank=True)
     
+    start_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     payment_date = models.DateField(null=True, blank=True)
     
