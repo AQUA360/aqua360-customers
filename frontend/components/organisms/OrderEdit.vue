@@ -33,7 +33,7 @@ const originalToken = ref('')
 const selected_order = ref(null);
 
 const { t } = useI18n();
-const { $OrderApiService, $ObservationApiService } = useNuxtApp();
+const { $OrderApiService } = useNuxtApp();
 const { $OperatorApiService } = useNuxtApp();
 const { $OrderTypeApiService } = useNuxtApp();
 const { $ConfiglistApiService } = useNuxtApp();
@@ -41,8 +41,6 @@ const { $OrderPriorityApiService } = useNuxtApp();
 const { $PropertyApiService } = useNuxtApp();
 const { $SupplyPointApiService } = useNuxtApp();
 const { $ConnectionApiService } = useNuxtApp();
-
-const pendingObservations = ref([]);
 
 const { $ContractApiService } = useNuxtApp();
 const toast = useToast();
@@ -373,16 +371,6 @@ const getPriorities = async () => {
   }
 }
 
-const addPendingObservation = (text) => {
-  if (text?.trim()) {
-    pendingObservations.value.push(text);
-  }
-}
-
-const removePendingObservation = (index) => {
-  pendingObservations.value.splice(index, 1);
-}
-
 const save = async () => {
   attemptedSave.value = true;
   if (isValid()) {
@@ -451,20 +439,6 @@ const save = async () => {
     }
     try {
       item.value = await $OrderApiService.save(selectedOptions);
-      
-      // Save pending observations if any (for new orders)
-      if (pendingObservations.value.length > 0 && item.value?.id) {
-        for (const obs of pendingObservations.value) {
-          try {
-            await $ObservationApiService.postObservation({
-              observation: obs,
-              order: item.value.id
-            }, 'order', 'order');
-          } catch (obsError) {
-            console.error('Error saving observation:', obsError);
-          }
-        }
-      }
       if (updatePropertyGeolocation.value && 
           locationTypeRadio.value == 'SP' && 
           selectedSupplyPoint.value && 
@@ -783,34 +757,15 @@ const onIdLostFocus = async () => {
         </div>
       </div>
 
-      <!-- Observations field -->
-      <div class="mb-4">
+      <!-- Observations field (només en edició: en crear l'ordre es fa servir la descripció) -->
+      <div v-if="props.id" class="mb-4">
         <label class="block text-sm font-medium text-slate-500 mb-2">
           {{ t('common.observations') }}
         </label>
-        
-        <div v-if="!props.id">
-          <!-- Component for adding notes before order exists -->
-          <AtomsInputTextarea @update:text="addPendingObservation" :autosave="true" />
-          
-          <!-- Show list of pending observations -->
-          <div v-if="pendingObservations.length > 0" class="mt-2 space-y-2">
-            <div v-for="(obs, index) in pendingObservations" :key="index" 
-                 class="p-2 bg-slate-50 border border-slate-200 rounded-md flex justify-between items-start group">
-              <p class="text-sm text-gray-700 whitespace-pre-wrap flex-1">{{ obs }}</p>
-              <button @click="removePendingObservation(index)" 
-                      class="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Icon name="fa6-solid:xmark" />
-              </button>
-            </div>
-          </div>
-        </div>
-        <div v-else>
-           <MoleculesObservationList 
-            parent_entity="order" 
-            :id="props.id" 
-            module="order" />
-        </div>
+        <MoleculesObservationList 
+          parent_entity="order" 
+          :id="props.id" 
+          module="order" />
       </div>
 
       <!-- Location section -->
