@@ -15,6 +15,19 @@ export interface XlsxColumn<T = any> {
     key?: string;
 }
 
+/**
+ * Label/value pair shown above the table as a summary block (e.g. totals or
+ * general info of the exported entity). The label must already be translated.
+ */
+export type XlsxSummaryRow = [label: string, value: unknown];
+
+const toCell = (raw: unknown): unknown => {
+    if (raw === null || raw === undefined) return '';
+    if (raw instanceof Date) return raw;
+    if (typeof raw === 'object') return JSON.stringify(raw);
+    return raw;
+};
+
 const sanitizeFileName = (name: string): string =>
     (name || 'export')
         .toString()
@@ -33,27 +46,28 @@ const sanitizeFileName = (name: string): string =>
  * @param columns  The visible columns, in display order.
  * @param fileName File name without extension (`.xlsx` is appended).
  * @param sheetName Optional worksheet name (max 31 chars, Excel limit).
+ * @param summary  Optional label/value rows written above the table, followed
+ *                 by an empty row.
  */
 export const exportToXlsx = <T = any>(
     rows: T[],
     columns: XlsxColumn<T>[],
     fileName = 'export',
     sheetName = 'Sheet1',
+    summary: XlsxSummaryRow[] = [],
 ): void => {
     const safeRows = Array.isArray(rows) ? rows : [];
 
-    const aoa: unknown[][] = [
+    const summaryAoa: unknown[][] = summary.length
+        ? [...summary.map(([label, value]) => [label, toCell(value)]), []]
+        : [];
+
+    const tableAoa: unknown[][] = [
         columns.map((c) => c.header),
-        ...safeRows.map((row) =>
-            columns.map((col) => {
-                const raw = col.value(row);
-                if (raw === null || raw === undefined) return '';
-                if (raw instanceof Date) return raw;
-                if (typeof raw === 'object') return JSON.stringify(raw);
-                return raw;
-            }),
-        ),
+        ...safeRows.map((row) => columns.map((col) => toCell(col.value(row)))),
     ];
+
+    const aoa: unknown[][] = [...summaryAoa, ...tableAoa];
 
     const worksheet = XLSX.utils.aoa_to_sheet(aoa);
 
