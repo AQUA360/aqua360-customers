@@ -2007,6 +2007,7 @@ export default {
     total_amount: 'Total amount',
     payments_count: 'Number of payments',
     download_document: 'Download Document',
+    download_summary_xlsx: 'Download summary',
     download_xml_document: 'Download XML document',
     regenerate_document: 'Regenerate Document',
     regenerate_sepa_document: 'Regenerate SEPA document',
