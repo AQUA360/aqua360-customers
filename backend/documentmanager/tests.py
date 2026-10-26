@@ -201,6 +201,74 @@ def _blank_pdf():
     return buffer
 
 
+class DocumentStorageLocationTest(TestCase):
+    """La ubicació del fitxer no es pot canviar per API ni sortir de la carpeta de documents."""
+
+    def setUp(self):
+        import os
+        import tempfile
+
+        from django.test import override_settings
+
+        self.storage = tempfile.TemporaryDirectory()
+        self.addCleanup(self.storage.cleanup)
+        self.outside = tempfile.NamedTemporaryFile(delete=False)
+        self.outside.write(b"secret")
+        self.outside.close()
+        self.addCleanup(os.remove, self.outside.name)
+        settings_override = override_settings(DOCUMENT_STORAGE_PATH=self.storage.name)
+        settings_override.enable()
+        self.addCleanup(settings_override.disable)
+
+        self.inside_path = os.path.join(self.storage.name, "doc.pdf")
+        with open(self.inside_path, "wb") as f:
+            f.write(b"document")
+        self.document = Document.objects.create(
+            entity="CONTRACT", entity_id=1, service="hdd", document_name="doc.pdf", location=self.inside_path
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(User.objects.create_superuser("docs", "docs@example.com", "pwd"))
+
+    def test_storage_fields_are_read_only(self):
+        response = self.client.patch(
+            f"/documentmanager/document/{self.document.id}/",
+            {"service": "aws", "location": self.outside.name, "document_name": "nou.pdf"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.document.refresh_from_db()
+        self.assertEqual(self.document.location, self.inside_path)
+        self.assertEqual(self.document.service, "hdd")
+        self.assertEqual(self.document.document_name, "nou.pdf")
+
+    def test_download_inside_storage(self):
+        response = self.client.get(f"/documentmanager/view-document/{self.document.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"document")
+
+    def test_download_outside_storage_is_not_served(self):
+        Document.objects.filter(id=self.document.id).update(location=self.outside.name)
+        response = self.client.get(f"/documentmanager/view-document/{self.document.id}/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_traversal_outside_storage_is_not_served(self):
+        import os
+
+        traversal = os.path.join(self.storage.name, "..", os.path.basename(self.outside.name))
+        Document.objects.filter(id=self.document.id).update(location=traversal)
+        response = self.client.get(f"/documentmanager/view-document/{self.document.id}/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_outside_storage_keeps_file(self):
+        import os
+
+        from documentmanager.utils.hdd_service import delete_document_from_hdd
+
+        self.document.location = self.outside.name
+        delete_document_from_hdd(self.document)
+        self.assertTrue(os.path.exists(self.outside.name))
+
+
 class DocumentOrderTest(TestCase):
     """El PDF únic respecta l'ordre dels ids rebuts, no l'ordre de creació."""
 

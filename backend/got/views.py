@@ -1628,22 +1628,37 @@ def add_order_report_document(request, order_id, report_id):
         )
 
 
+# Entitats de les fotos dels formularis i dels informes d'ordres. Els adjunts dels
+# informes es pugen amb el token de l'ordre com a entitat i es reconeixen per la relació.
+GOT_DOCUMENT_ENTITIES = (
+    "ORDER",
+    "ORDER_REPORT",
+    "ORDER_FORM_SUBMISSION",
+    "ORDER_FORM_SUBMISSION_PENDING",
+)
+
+
 @permission_classes([AllowAny])
+@token_required
 def view_document(request, pk):
-    """View a document by its primary key - accessible without authentication"""
+    """View an order document by its primary key (requires an operator token)"""
     from order.models import OrderReportDocument
-    from documentmanager.models import Document
     from documentmanager.utils.main_utils import download_document
 
-    # Get the document
-    document = get_object_or_404(Document, pk=pk, is_active=True)
+    if not get_order_operator(get_authenticated_operator(request)):
+        return JsonResponse(
+            {"success": False, "message": "No operator profile found"}, status=403
+        )
 
-    # Allow public access to documents - removed authentication checks
-    # This endpoint is now accessible from other applications without authentication
-    
-    # If all checks pass, download and return the document
-    download_info = download_document(document)
-    return download_info
+    document = get_object_or_404(
+        Document.objects.filter(
+            Q(entity__in=GOT_DOCUMENT_ENTITIES)
+            | Q(id__in=OrderReportDocument.objects.values("file_id")),
+            pk=pk,
+            is_active=True,
+        )
+    )
+    return download_document(document)
 
 @permission_classes([AllowAny])
 @token_required
