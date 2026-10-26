@@ -1,10 +1,12 @@
-{% load svg_converter %}
+{% load i18n svg_converter %}
+{% language receipt_language|default:'ca' %}
+{% get_current_language as LANGUAGE_CODE %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE }}">
 
 <head>
     <meta charset="UTF-8">
-    <title>Justificant de pagament</title>
+    <title>{% trans "Justificant de pagament" %}</title>
     <style>
         *,
         ::after,
@@ -99,8 +101,6 @@
 
 <body>
 
-    {% load i18n %}
-    {% language 'ca' %}
     <!-- Header with Company Logo and Contact Information -->
     <div class="header">
        
@@ -131,14 +131,16 @@
                             {% get_phone_call_icon_base64 secondary_color as phone_icon %}
                             <img src="{{ phone_icon }}" alt="Phone" style="width: 15px; height: 15px; vertical-align: middle;">
                             <div style="line-height: 12px;">
-                            {{ company.customer_service_label|default:"Atenció al client" }}
+                            {% trans "Atenció al client" as default_customer_service_label %}
+                            {{ company.customer_service_label|default:default_customer_service_label }}
                             </div>
                             <div style="color: {{ secondary_color }}; font-size: 15px; line-height: 12px;">
                             {{ company.phone }}
                             </div>
                             {% if company.show_customer_service_schedule is not False %}
                             <div style="font-size: 8px; line-height: 12px;">
-                            {{ company.customer_service_schedule|default:"dilluns a divendres de 8 a 15 hores" }}
+                            {% trans "dilluns a divendres de 8 a 15 hores" as default_customer_service_schedule %}
+                            {{ company.customer_service_schedule|default:default_customer_service_schedule }}
                             </div>
                             {% endif %}
                             </td>
@@ -148,14 +150,16 @@
                             {% get_wrench_icon_base64 secondary_color as wrench_icon %}
                             <img src="{{ wrench_icon }}" alt="Phone" style="width: 15px; height: 15px; vertical-align: middle;">
                             <div style="line-height: 12px;">
-                            {{ company.breakdown_label|default:"Avaries" }}
+                            {% trans "Avaries" as default_breakdown_label %}
+                            {{ company.breakdown_label|default:default_breakdown_label }}
                             </div>
                             <div style="color: {{ secondary_color }}; font-size: 15px; ">
                             {{ company.phone2 }}
                             </div>
                             {% if company.show_breakdown_schedule is not False %}
                             <div style="font-size: 8px; font-style: italic; line-height: 12px;">
-                            {{ company.breakdown_schedule|default:"24 hores" }}
+                            {% trans "24 hores" as default_breakdown_schedule %}
+                            {{ company.breakdown_schedule|default:default_breakdown_schedule }}
                             </div>
                             {% endif %}
                             </td>
@@ -185,7 +189,7 @@
                         <table style="font-size: 12px;">
                             <tr style="">
                                 <td colspan="2" style="color:{{ secondary_color }}; font-weight: bold; font-family: 'OpenSansBold';">
-                                    <span>JUSTIFICANT DE PAGAMENT</span>
+                                    <span>{% trans "JUSTIFICANT DE PAGAMENT" %}</span>
                                 </td>
                             </tr>
                         </table>
@@ -200,7 +204,7 @@
     <br /><br />
     <div style="text-align: justify;">
         <p>
-        Amb aquest document declarem que hem rebut les quantitats següents, per les factures i els imports que es detallen a continuació:
+        {% trans "Amb aquest document declarem que hem rebut les quantitats següents, per les factures i els imports que es detallen a continuació:" %}
         </p>
     </div>
 
@@ -209,11 +213,11 @@
         <table style="width: 100%; font-size: 12px;">
             <thead>
                 <tr style="background-color: {{secondary_color}}; color: {{main_color}};">
-                    <td style="width:18%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">CONTRACTE</td>
-                    <td style="width:40%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">ADREÇA SUBMINISTRAMENT</td>
-                    <td style="width:12%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">PERÍODE</td>
-                    <td style="width:18%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">NÚM. FACTURA/DOC</td>
-                    <td style="width:12%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold'; text-align: right;">IMPORT COBRAT</td>
+                    <td style="width:18%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">{% trans "CONTRACTE" %}</td>
+                    <td style="width:40%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">{% trans "ADREÇA SUBMINISTRAMENT" %}</td>
+                    <td style="width:12%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">{% trans "PERÍODE" %}</td>
+                    <td style="width:18%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold';">{% trans "NÚM. FACTURA/DOC" %}</td>
+                    <td style="width:12%; padding: 5px 4px; font-weight: bold; font-family: 'OpenSansBold'; text-align: right;">{% trans "IMPORT COBRAT" %}</td>
                 </tr>
             </thead>
             <tbody>
@@ -235,7 +239,7 @@
     </div>
     {% if observation %}
     <div style="text-align: justify; color: {{secondary_color}}; padding: 10px; border-top: 1px solid {{secondary_color}};">
-        <span style="font-weight: bold; font-family: 'OpenSansBold';">OBSERVACIONS</span> </br>
+        <span style="font-weight: bold; font-family: 'OpenSansBold';">{% trans "OBSERVACIONS" %}</span> </br>
         <span style="font-size: 11px;">{{observation}}</span>
     </div>
     {% endif %}
@@ -246,7 +250,7 @@
             <td style="width: 40%; border: none;">
             <td>
             <td style="width: 30%; font-size: 16px; padding: 8px 4px; border-top: 1px solid black; border-bottom: 1px solid black; border-left: 1px solid black;">
-                    TOTAL COBRAT:
+                    {% trans "TOTAL COBRAT:" %}
             </td>
             <td style="width: 30%; font-size: 16px; padding: 8px 4px; text-align: right; border-top: 1px solid black; border-bottom: 1px solid black; border-right: 1px solid black;">
                     {{ total_amount | floatformat:2 }} EUR
@@ -272,7 +276,7 @@
     <div id="footer_frame_cif">
         <p style="text-align: left; color: DodgerBlue; line-height: 15px; font-size: 10px;">{{ company.invoice_footer_text }}</p>
     </div>
-        {% endlanguage %}
 </body>
 
 </html>
+{% endlanguage %}

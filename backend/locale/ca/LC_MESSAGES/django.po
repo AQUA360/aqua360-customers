@@ -5853,3 +5853,67 @@ msgstr "Lectura inusual"
 #: billing/tasks.py
 msgid "Consum inusualment baix"
 msgstr "Consum inusualment baix"
+
+#: billing/templates/payment_proof_template.html
+msgid "Justificant de pagament"
+msgstr "Justificant de pagament"
+
+#: billing/templates/payment_proof_template.html
+msgid "JUSTIFICANT DE PAGAMENT"
+msgstr "JUSTIFICANT DE PAGAMENT"
+
+#: billing/templates/payment_proof_template.html
+msgid ""
+"Amb aquest document declarem que hem rebut les quantitats següents, per les "
+"factures i els imports que es detallen a continuació:"
+msgstr ""
+"Amb aquest document declarem que hem rebut les quantitats següents, per les "
+"factures i els imports que es detallen a continuació:"
+
+#: billing/templates/payment_proof_template.html
+msgid "ADREÇA SUBMINISTRAMENT"
+msgstr "ADREÇA SUBMINISTRAMENT"
+
+#: billing/templates/payment_proof_template.html
+msgid "PERÍODE"
+msgstr "PERÍODE"
+
+#: billing/templates/payment_proof_template.html
+msgid "NÚM. FACTURA/DOC"
+msgstr "NÚM. FACTURA/DOC"
+
+#: billing/templates/payment_proof_template.html
+msgid "IMPORT COBRAT"
+msgstr "IMPORT COBRAT"
+
+#: billing/templates/payment_proof_template.html
+msgid "OBSERVACIONS"
+msgstr "OBSERVACIONS"
+
+#: billing/templates/payment_proof_template.html
+msgid "TOTAL COBRAT:"
+msgstr "TOTAL COBRAT:"
+
+#: billing/templates/payment_proof_template.html
+msgid "Atenció al client"
+msgstr "Atenció al client"
+
+#: billing/templates/payment_proof_template.html
+msgid "dilluns a divendres de 8 a 15 hores"
+msgstr "dilluns a divendres de 8 a 15 hores"
+
+#: billing/templates/payment_proof_template.html
+msgid "Avaries"
+msgstr "Avaries"
+
+#: billing/templates/payment_proof_template.html
+msgid "24 hores"
+msgstr "24 hores"
+
+#: billing/templates/payment_proof_template.html
+msgid "Efectiu"
+msgstr "Efectiu"
+
+#: billing/templates/payment_proof_template.html
+msgid "Targeta (TPV Físic)"
+msgstr "Targeta (TPV Físic)"
