@@ -28,9 +28,12 @@ from billing.utils.reading_document_import_service import (
     parse_reading_document_preview_params,
 )
 from billing.utils.smart_metering_service import (
+    SMART_METERING_SCOPE_KEYS,
     _parse_request_date,
-    find_smart_metering_document,
+    find_smart_metering_documents,
+    normalize_smart_metering_scope,
     smart_metering_document_is_replaceable,
+    smart_metering_scope_options,
 )
 from coredata.utils.name_utils import generate_token
 
@@ -188,25 +191,37 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
         replace = data.get('replace')
         if isinstance(replace, str):
             replace = replace.strip().lower() in ('true', '1', 'yes', 'on')
-        return reading_date, bool(replace)
+        # Rutes, zones i lots: llistes al cos (POST) o separades per comes (GET).
+        scope = data.get('scope')
+        if not isinstance(scope, dict):
+            scope = {
+                key: [value for value in str(data.get(key) or '').split(',') if value]
+                for key in SMART_METERING_SCOPE_KEYS
+            }
+        return reading_date, bool(replace), normalize_smart_metering_scope(scope)
 
-    def _smart_metering_existing_document(self, reading_date, replace):
+    def _smart_metering_existing_document(self, reading_date, replace, scope):
         """
-        Una sola càrrega de Smart Metering per data. Si ja n'hi ha una, es bloqueja;
-        només es pot substituir (``replace``) si les seves lectures no s'han fet servir
-        en cap lot ni factura i no s'està carregant.
+        Una sola càrrega de Smart Metering per data i comptador: es bloqueja si ja
+        n'hi ha una de la data que comparteixi comptadors amb les rutes, zones o
+        lots demanats. Només es pot substituir (``replace``) si és una sola, les
+        seves lectures no s'han fet servir en cap lot ni factura i no s'està carregant.
 
         Retorna (document existent a substituir o None, resposta d'error o None).
         """
-        existing = find_smart_metering_document(reading_date)
-        if not existing:
+        overlapping = find_smart_metering_documents(reading_date, scope)
+        if not overlapping:
             return None, None
-        existing = self._clear_stale_processing_lock(existing)
+        existing = self._clear_stale_processing_lock(overlapping[0])
         processing = (
             existing.status == ReadingDocument.STATUS_PROCESSING
             and self._celery_task_is_running(existing.task_id)
         )
-        replaceable = not processing and smart_metering_document_is_replaceable(existing)
+        replaceable = (
+            len(overlapping) == 1
+            and not processing
+            and smart_metering_document_is_replaceable(existing)
+        )
         if replace and replaceable:
             return existing, None
         return existing, Response(
@@ -215,8 +230,9 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
                 "code": "smart_metering_document_exists",
                 "existing_document": {
                     "id": existing.id,
-                    "token": existing.token,
+                    "token": ", ".join(document.token or '' for document in overlapping),
                     "replaceable": replaceable,
+                    "count": len(overlapping),
                     "processing": processing,
                 },
             },
@@ -226,25 +242,30 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='smart-metering/preview')
     def smart_metering_preview(self, request):
         try:
-            reading_date, replace = self._smart_metering_request_params(request.query_params)
+            reading_date, replace, scope = self._smart_metering_request_params(request.query_params)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        _, conflict = self._smart_metering_existing_document(reading_date, replace)
+        _, conflict = self._smart_metering_existing_document(reading_date, replace, scope)
         if conflict:
             return conflict
 
-        task = preview_smart_metering_task.delay(reading_date.isoformat())
+        task = preview_smart_metering_task.delay(reading_date.isoformat(), scope)
         return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=False, methods=['get'], url_path='smart-metering/scope-options')
+    def smart_metering_scope_options(self, request):
+        """Rutes, zones i lots amb comptadors Smart Metering per triar què es carrega."""
+        return Response(smart_metering_scope_options())
 
     @action(detail=False, methods=['post'], url_path='smart-metering/import')
     def smart_metering_import(self, request):
         try:
-            reading_date, replace = self._smart_metering_request_params(request.data)
+            reading_date, replace, scope = self._smart_metering_request_params(request.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        document, conflict = self._smart_metering_existing_document(reading_date, replace)
+        document, conflict = self._smart_metering_existing_document(reading_date, replace, scope)
         if conflict:
             return conflict
 
@@ -253,12 +274,14 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
                 token=generate_token(ReadingDocument),
                 source=ReadingDocument.SOURCE_SMART_METERING,
                 reading_date=reading_date,
+                smart_metering_scope=scope,
                 status=ReadingDocument.STATUS_PROCESSING,
             )
         else:
             document.status = ReadingDocument.STATUS_PROCESSING
             document.processed_at = None
-            document.save(update_fields=['status', 'processed_at'])
+            document.smart_metering_scope = scope
+            document.save(update_fields=['status', 'processed_at', 'smart_metering_scope'])
 
         task = import_smart_metering_document_task.delay(document.id, request.data.get('preview'))
         document.task_id = task.id

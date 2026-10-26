@@ -1,8 +1,9 @@
 <script setup>
 // Càrrega de lectures de Smart Metering des d'«Introduir lectures».
 // Genera un document de lectures (amb Excel) que després el lot selecciona
-// com qualsevol altre fitxer de lectures.
-import { ref, watch } from 'vue';
+// com qualsevol altre fitxer de lectures. Es pot limitar a unes rutes, zones o
+// lots, o carregar tots els comptadors Smart Metering.
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { format } from 'date-fns';
 import { useToast } from 'vue-toastification';
@@ -12,7 +13,7 @@ const { t } = useI18n();
 const toast = useToast();
 const { $SmartMeteringApiService, $apiManager } = useNuxtApp();
 
-defineProps({
+const props = defineProps({
   show: {
     type: Boolean,
     default: false,
@@ -28,14 +29,47 @@ const previewTaskId = ref(null);
 const preview = ref(null);
 const showPreviewDialog = ref(false);
 const saving = ref(false);
+const loadAll = ref(false);
+const routeIds = ref([]);
+const routeZoneIds = ref([]);
+const batchIds = ref([]);
+const scopeOptions = ref({ routes: [], route_zones: [], batches: [] });
 
-// La confirmació de substituir només val per a la data en què s'ha demanat.
-watch(readingDate, () => {
+const scope = computed(() => (loadAll.value ? null : {
+  route_ids: routeIds.value,
+  route_zone_ids: routeZoneIds.value,
+  batch_ids: batchIds.value,
+}));
+const hasScope = computed(() => loadAll.value
+  || routeIds.value.length > 0
+  || routeZoneIds.value.length > 0
+  || batchIds.value.length > 0);
+const busy = computed(() => previewLoading.value || !!previewTaskId.value);
+
+const loadScopeOptions = async () => {
+  try {
+    scopeOptions.value = await $SmartMeteringApiService.getScopeOptions();
+  } catch (error) {
+    console.error(error);
+    toast.error(error?.data?.error || error?.message || t('common.error'));
+  }
+};
+
+watch(() => props.show, (show) => {
+  if (show) loadScopeOptions();
+}, { immediate: true });
+
+// La confirmació de substituir només val per a la data i els comptadors en què s'ha demanat.
+watch([readingDate, scope], () => {
   replace.value = false;
-});
+}, { deep: true });
 
 const reset = () => {
   replace.value = false;
+  loadAll.value = false;
+  routeIds.value = [];
+  routeZoneIds.value = [];
+  batchIds.value = [];
   previewLoading.value = false;
   previewTaskId.value = null;
   preview.value = null;
@@ -57,6 +91,10 @@ const confirmReplaceOnConflict = (error) => {
     toast.error(t('reading_block.smart_metering_load_in_progress'));
     return false;
   }
+  if (existing.count > 1) {
+    toast.error(t('reading_block.smart_metering_already_loaded_several', { token: existing.token }));
+    return false;
+  }
   if (!existing.replaceable) {
     toast.error(t('reading_block.smart_metering_already_loaded_locked', { token: existing.token }));
     return false;
@@ -69,11 +107,16 @@ const startPreview = async () => {
     toast.error(t('billing_block.reading_date'));
     return;
   }
+  if (!hasScope.value) {
+    toast.error(t('reading_block.smart_metering_select_scope'));
+    return;
+  }
   previewLoading.value = true;
   try {
     const response = await $SmartMeteringApiService.previewReadings({
       reading_date: readingDate.value,
       replace: replace.value,
+      scope: scope.value,
     });
     if (!response?.task_id) {
       throw new Error(t('common.error'));
@@ -147,6 +190,7 @@ const handleSave = async () => {
       reading_date: readingDate.value,
       preview: preview.value,
       replace: replace.value,
+      scope: scope.value,
     });
     if (!response?.task_id) {
       throw new Error(t('common.error'));
@@ -184,18 +228,41 @@ const handleSave = async () => {
           </button>
         </div>
 
-        <div class="p-6">
+        <div class="p-6 flex flex-col gap-4">
           <AtomsInputDate
             v-model="readingDate"
             :label="t('billing_block.reading_date')"
-            :disabled="previewLoading || !!previewTaskId"
+            :disabled="busy"
           />
+
+          <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input v-model="loadAll" type="checkbox" class="checkbox" :disabled="busy" />
+            {{ t('reading_block.smart_metering_load_all') }}
+          </label>
+
+          <template v-if="!loadAll">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-slate-500 mb-2">{{ t('reading_block.smart_metering_routes') }}</p>
+              <v-select multiple :options="scopeOptions.routes" label="label" :reduce="option => option.id"
+                class="w-full custom-select" v-model="routeIds" :close-on-select="false" :disabled="busy" />
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wide text-slate-500 mb-2">{{ t('reading_block.smart_metering_route_zones') }}</p>
+              <v-select multiple :options="scopeOptions.route_zones" label="label" :reduce="option => option.id"
+                class="w-full custom-select" v-model="routeZoneIds" :close-on-select="false" :disabled="busy" />
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wide text-slate-500 mb-2">{{ t('reading_block.smart_metering_batches') }}</p>
+              <v-select multiple :options="scopeOptions.batches" label="label" :reduce="option => option.id"
+                class="w-full custom-select" v-model="batchIds" :close-on-select="false" :disabled="busy" />
+            </div>
+          </template>
         </div>
 
         <div class="flex justify-end items-center gap-3 p-6 border-t border-gray-200">
           <button
             type="button"
-            :disabled="previewLoading || !!previewTaskId"
+            :disabled="busy"
             class="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
             @click="handleClose"
           >
@@ -213,7 +280,7 @@ const handleSave = async () => {
             v-else
             type="button"
             class="button-primary flex items-center gap-2"
-            :disabled="previewLoading"
+            :disabled="previewLoading || !hasScope"
             @click="startPreview"
           >
             <Icon
