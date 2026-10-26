@@ -49,3 +49,86 @@ class LoginTest(TestCase):
         
         print(self.__class__.token)
         
+
+
+from django.contrib.auth.models import Group, Permission
+from rest_framework.test import APIClient
+
+from coredata.models import MainPermission
+
+
+class UserManagementPermissionTest(TestCase):
+    """Gestió d'usuaris i grups: lectura amb `view_user`, escriptura amb `change_user`."""
+
+    def setUp(self):
+        MainPermission.objects.get_or_create(
+            name="users",
+            defaults={
+                "view_key": "view_user",
+                "change_key": "change_user",
+                "affected_models": "auth.user,auth.group,auth.permission",
+            },
+        )
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser("admin", "admin@example.com", "admin-pwd")
+        self.plain = User.objects.create_user("plain", "plain@example.com", "plain-pwd")
+        self.viewer = User.objects.create_user("viewer", "viewer@example.com", "viewer-pwd")
+        self.viewer.user_permissions.add(Permission.objects.get(codename="view_user"))
+        self.manager = User.objects.create_user("manager", "manager@example.com", "manager-pwd")
+        self.manager.user_permissions.add(
+            Permission.objects.get(codename="view_user"),
+            Permission.objects.get(codename="change_user"),
+        )
+        self.group = Group.objects.create(name="group-test")
+
+    def test_user_without_permission_cannot_change_other_password(self):
+        self.client.force_authenticate(self.plain)
+        response = self.client.patch(f"/auth/user/{self.admin.id}/", {"new_pwd": "hacked"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.check_password("admin-pwd"))
+
+    def test_user_without_permission_cannot_list_users(self):
+        self.client.force_authenticate(self.plain)
+        self.assertEqual(self.client.get("/auth/user/").status_code, 403)
+
+    def test_viewer_can_list_but_not_modify(self):
+        self.client.force_authenticate(self.viewer)
+        self.assertEqual(self.client.get("/auth/user/").status_code, 200)
+        response = self.client.patch(f"/auth/user/{self.plain.id}/", {"first_name": "X"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.client.delete(f"/auth/user/{self.plain.id}/").status_code, 403)
+
+    def test_manager_can_modify_user_but_not_superuser(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.patch(f"/auth/user/{self.plain.id}/", {"new_pwd": "new-pwd"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.plain.refresh_from_db()
+        self.assertTrue(self.plain.check_password("new-pwd"))
+
+        response = self.client.patch(f"/auth/user/{self.admin.id}/", {"new_pwd": "hacked"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.client.delete(f"/auth/user/{self.admin.id}/").status_code, 403)
+        self.assertTrue(User.objects.filter(id=self.admin.id).exists())
+
+    def test_superuser_can_modify_superuser(self):
+        other_admin = User.objects.create_superuser("admin2", "admin2@example.com", "pwd")
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(f"/auth/user/{other_admin.id}/", {"first_name": "Nou"}, format="json")
+        self.assertEqual(response.status_code, 200)
+
+    def test_group_delete_requires_superuser(self):
+        self.client.force_authenticate(self.plain)
+        self.assertEqual(self.client.delete(f"/auth/group/{self.group.id}/").status_code, 403)
+        self.client.force_authenticate(self.manager)
+        self.assertEqual(self.client.delete(f"/auth/group/{self.group.id}/").status_code, 403)
+        self.assertTrue(Group.objects.filter(id=self.group.id).exists())
+
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.delete(f"/auth/group/{self.group.id}/").status_code, 204)
+        self.assertFalse(Group.objects.filter(id=self.group.id).exists())
+
+    def test_permissions_action_only_requires_authentication(self):
+        self.client.force_authenticate(self.plain)
+        self.assertEqual(self.client.get("/auth/user/permissions/").status_code, 200)
+        self.assertEqual(self.client.get("/auth/group/permissions/").status_code, 200)

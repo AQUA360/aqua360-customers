@@ -1482,6 +1482,7 @@ export default {
     categories: 'Categories',
     category: 'Category',
     no_category: 'No category',
+    housing_units: 'No. dwellings',
     surrogation: 'Surrogation',
     surrogate: 'Surrogate',
     bon_var_changes: 'Discount and variable changes',

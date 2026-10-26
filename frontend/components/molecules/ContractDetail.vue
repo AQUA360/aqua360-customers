@@ -71,6 +71,12 @@ const isFireContract = computed(() => {
 const { fetchSupplyPointCutStatusToken, isSupplyPointCut } = useSupplyPointCutStatusToken();
 const isContractSupplyCut = computed(() => isSupplyPointCut(localData.value));
 
+// Value of the contract variable configured in `contract_housing_units_variable_type_token`
+const hasHousingUnits = computed(() => {
+  const value = localData.value?.housing_units;
+  return value !== null && value !== undefined && value !== '';
+});
+
 // Mandate history: overlay dropdown (placeholder data until API is wired).
 const openMandateHistoryDropdown = ref(false);
 const mandateHistoryAnchor = ref(null);
@@ -516,8 +522,8 @@ watch(() => props.data, (newValue) => {
           <FieldDetail :label="$t('contract_block.category')"
             :value="localData.category ? localData.category?.name : t('contract_block.no_category')"></FieldDetail>
         </div>
-        <div v-if="localData.supply_point_default?.meter_code" role="row" class="grid grid-cols-2">
-          <FieldDetail :label="$t('meter')">
+        <div v-if="localData.supply_point_default?.meter_code || hasHousingUnits" role="row" class="grid grid-cols-3 gap-x-3">
+          <FieldDetail v-if="localData.supply_point_default?.meter_code" :label="$t('meter')">
             <div v-if="!isSubRegion" class="flex gap-2">
               <button @click="showDetail('MeterRegion', localData.supply_point_default.meter_id)"
                 class="text-start text-sky-500 underline flex items-center gap-2">
@@ -529,6 +535,8 @@ watch(() => props.data, (newValue) => {
               {{ localData.supply_point_default.meter_code }}
             </span>
           </FieldDetail>
+          <FieldDetail v-if="hasHousingUnits" :label="$t('contract_block.housing_units')"
+            :value="localData.housing_units" class="col-start-2" />
         </div>
 
         <div v-if="localData.owner || localData.tenant">
