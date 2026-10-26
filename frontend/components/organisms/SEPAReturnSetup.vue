@@ -168,6 +168,32 @@ const selectAllForClaims = () => {
     emitSelectionChanged();
 }
 
+// Exporta els pagaments retornats trobats, amb les mateixes columnes que la taula
+const exportColumns = computed(() => [
+    { header: t('contract'), value: (row) => row.contract },
+    { header: t('billing_block.payment'), value: (row) => row.payment_token },
+    { header: `${t('invoice')} / ${t('claim_block.commitment')}`, value: (row) => row.invoice || row.commitment_deposit },
+    { header: t('billing_block.payment_date'), value: (row) => row.payment_date ? formatDate(row.payment_date) : '' },
+    { header: t('common.amount'), value: (row) => row.amount !== null && row.amount !== undefined ? Number(row.amount) : '' },
+    { header: t('common.previous_status'), value: (row) => row.prev_status },
+    { header: t('order_block.reason'), value: (row) => row.motive },
+    { header: t('billing_block.sepa_return_date'), value: (row) => row.rjt_dt ? formatDate(row.rjt_dt) : '' },
+]);
+
+const exportSummary = computed(() => {
+    const returnDate = rejections.value?.find(rejection => rejection.rjt_dt)?.rjt_dt;
+    const totalAmount = (rejections.value || []).reduce((sum, rejection) => sum + (Number(rejection.amount) || 0), 0);
+    return [
+        [t('common.doc_sepa'), sepaFile.value?.name],
+        [t('billing_block.sepa_return_date'), returnDate ? formatDate(returnDate) : ''],
+        [t('invoices'), totalInvoices.value],
+        [t('claim_block.commitments'), totalCommitments.value],
+        [t('billing_block.payments_to_return'), rejections.value?.length || 0],
+        [t('billing_block.total_amount'), Math.round(totalAmount * 100) / 100],
+        [t('common.return_multiple_not_found'), not_found_rejections.value?.length || 0],
+    ];
+});
+
 const showDetail = (region, id) => {
     emit('show-detail', region, id);
 }
@@ -267,9 +293,13 @@ watch(() => props.save_response, (newValue) => {
                     <div class="px-4 py-2 bg-slate-50 border-b border-slate-200">
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-semibold text-slate-700">{{ t("common.return_multiple") }}</h3>
-                            <span class="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded">
-                                {{ rejections.length }}
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <AtomsDownloadXlsxButton :rows="rejections" :columns="exportColumns" :summary="exportSummary" :label="t('billing_block.download_summary_xlsx')"
+                                    file-name="sepa_return" />
+                                <span class="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded">
+                                    {{ rejections.length }}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -380,6 +410,9 @@ watch(() => props.save_response, (newValue) => {
                                             class="inline-flex items-center px-1.5 py-0.5 rounded text-sm font-medium bg-red-100 text-red-800">
                                             {{ element.motive || "-" }}
                                         </span>
+                                        <p v-if="element.method_changed" class="mt-1 text-xs text-amber-700">
+                                            {{ t("informative_block.info_return_method_changed") }}
+                                        </p>
                                     </td>
                                     <td class="px-1 py-2">
                                         <abbr :title="`${t('informative_block.info_select_claim_invoice')}`"

@@ -4,6 +4,7 @@ import json
 import os
 import re
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.template.loader import render_to_string
 from django.http import JsonResponse
@@ -24,7 +25,7 @@ from reportlab.platypus import tables as reportlab_tables
 from billing.templatetags.billing_filters import format_eu
 from django.core.mail import send_mail, EmailMultiAlternatives
 import http.client
-from communication.models import Communication, CommunicationFile, CommunicationStatus, MessageType
+from communication.models import CANCELLED_STATUS_TOKEN, Communication, CommunicationFile, CommunicationStatus, MessageType
 from contract.serializers.contract_serializer import ContractSerializer
 from coredata.models import ConfigProject, Person
 from coredata.serializers import AddressSerializer, PersonAddressSerializer, PersonContractMinimalSerializer, PersonSerializer
@@ -501,14 +502,135 @@ def get_com_values(person, communication, company):
 
 def handle_communication(comm, comm_types):
   print("inside handle communication")
+  # L'SMS va abans que el correu: el correu canvia l'estat de la comunicació, i
+  # amb tots dos canals l'estat final depèn de tots dos.
+  sms_error = send_sms(comm) if 'sms' in comm_types else None
   if 'email' in comm_types:
     send_electronic_mail(comm)
+    if 'sms' in comm_types and not sms_error:
+      comm_db = Communication.objects.get(id=comm.id)
+      if comm_db.sent_at:
+        _set_communication_sent(comm_db)
+  elif 'sms' in comm_types and not sms_error:
+    _set_communication_sent(Communication.objects.get(id=comm.id))
+  if sms_error:
+    _set_sms_rejected(comm, sms_error)
   if 'letter' in comm_types:
     pass
   if 'electronic_invoice' in comm_types:
     pass
   else:
     pass
+
+_FORMAT_MARKER_RE = re.compile(r'\*\*(BOLD|ITALIC|UNDERLINE|ALIGN-RIGHT|ALIGN-CENTER|ALIGN-LEFT|OL|UL|LI)\*\*')
+
+
+def get_sms_text(text, com_values):
+  """Text de l'SMS: les variables resoltes i sense les marques de format, que són per a HTML."""
+  for key, value in com_values.items():
+    text = text.replace(f'%{key}', str(value))
+  text = _FORMAT_MARKER_RE.sub('', text)
+  return re.sub(r'[ \t]+', ' ', text).strip()
+
+
+def get_sms_phones(used_phones):
+  return [phone.strip() for phone in re.split(r'[,;]', used_phones or '') if phone.strip()]
+
+
+def _set_communication_sent(comm):
+  status_sent = CommunicationStatus.objects.get(
+      token=ConfigProject.objects.get(token='communication_status_sent_token').value
+  )
+  # Ni una comunicació ja enviada ni una de cancel·lada canvien d'estat.
+  if comm.status == status_sent or (comm.status and comm.status.token == CANCELLED_STATUS_TOKEN):
+    return
+  try:
+    LogCommunicationStatusChange.objects.create(
+      object=comm,
+      previous_status=comm.status,
+      current_status=status_sent,
+      user=comm.user
+    )
+  except Exception as e:
+    print(f"Error logging communication status change: {str(e)}")
+  comm.sent_at = timezone.now()
+  comm.status = status_sent
+  comm.save()
+
+
+def _set_sms_rejected(comm, sms_error):
+  """Rebutja la comunicació per l'SMS, mantenint el motiu del correu si també ha fallat."""
+  try:
+    rejected_token = ConfigProject.objects.get(token='communication_status_rejected_token').value
+  except Exception:
+    rejected_token = '-2'
+  status_rejected = CommunicationStatus.objects.get(token=rejected_token)
+  comm = Communication.objects.get(id=comm.id)
+  if comm.status == status_rejected and comm.rejection_reason and 'email' in (comm.type_tokens or '').split(','):
+    comm.rejection_reason = f"{comm.rejection_reason}\n{sms_error}"
+  else:
+    comm.rejection_reason = sms_error
+  comm.status = status_rejected
+  comm.save()
+
+
+@transaction.atomic
+def send_sms(comm):
+  """
+  Envia l'SMS de la comunicació via Broadcaster. Retorna el motiu si no s'ha pogut enviar.
+
+  No canvia l'estat de la comunicació (ho fa handle_communication, que també té en compte
+  el correu). `sms_sent_at` evita reenviar l'SMS quan es reintenta una comunicació
+  rebutjada pel correu.
+  """
+  from integrations.outbound.broadcaster.client import BroadcasterClient
+  from integrations.outbound.broadcaster.exceptions import BroadcasterError
+
+  pending_status = CommunicationStatus.objects.get(is_default=True)
+  try:
+    rejected_token = ConfigProject.objects.get(token='communication_status_rejected_token').value
+  except Exception:
+    rejected_token = '-2'
+  status_rejected = CommunicationStatus.objects.get(token=rejected_token)
+
+  # Bloqueja la comunicació fins que es desa sms_sent_at: si dues tasques l'envien
+  # alhora, la segona espera i veu que l'SMS ja ha sortit.
+  comm = Communication.objects.select_for_update().get(id=comm.id)
+  if comm.status not in (pending_status, status_rejected) or comm.sms_sent_at:
+    return None
+
+  try:
+    sms_token = ConfigProject.objects.get(token='message_type_sms_token').value
+    message = comm.messages.filter(type__token=sms_token).first()
+    if not message and comm.process:
+      message = comm.process.messages.filter(type__token=sms_token).first()
+    if not message or not message.body:
+      raise BroadcasterError("No SMS message found")
+
+    companies = comm.company_config.company_configs.all() if comm.company_config else []
+    company_ins = companies.first() if companies else None
+    company = CompanySerializer(company_ins).data if company_ins else None
+    person = PersonSerializer(comm.person).data if comm.person else None
+    text = get_sms_text(message.body, get_com_values(person, comm, company))
+
+    # Sense telèfons ni text: són dades personals dels destinataris.
+    logger.info("Enviant la comunicació %s per SMS", comm.pk)
+    BroadcasterClient().send_sms(
+      recipient_name=person.get('full_name') if person else '',
+      phones=get_sms_phones(comm.used_phones),
+      text=text,
+      object_type='communication',
+      object_id=str(comm.pk),
+    )
+  except Exception as e:
+    logger.warning("Error enviant la comunicació %s per SMS: %s", comm.pk, e)
+    return f"Error sending SMS: {str(e)}"
+
+  comm.sms_sent_at = timezone.now()
+  comm.save(update_fields=['sms_sent_at'])
+  logger.info("Comunicació %s enviada per SMS", comm.pk)
+  return None
+
 
 def send_electronic_mail(comm):
   document_files = []
@@ -524,8 +646,8 @@ def send_electronic_mail(comm):
 
   # Re-check status from DB to avoid double sending in concurrent task chains
   comm_db = Communication.objects.get(id=comm.id)
-  if comm_db.status not in (pending_status, status_rejected):
-    print(f"Skipping send for communication {comm_db.id}: status is not pending/rejected.")
+  if comm_db.status not in (pending_status, status_rejected) or comm_db.sent_at:
+    print(f"Skipping send for communication {comm_db.id}: status is not pending/rejected or email is already sent.")
     return
   comm = comm_db
 

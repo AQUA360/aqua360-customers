@@ -9,7 +9,7 @@ from logger.models import LogCommitmentDepositMovement
 from notification.models import Notification
 from billing.utils.payment_service import log_payment_status, generate_payment_movement
 
-def add_new_payment_deposit(payment, user, is_wallet=False, company_bank=None):
+def add_new_payment_deposit(payment, user, is_wallet=False, company_bank=None, new_payer_name=None, new_payer_nif=None):
     print("1 - adding new payment to commitment deposit")
     deposit = payment.commitment_deposit
     if not deposit:
@@ -69,7 +69,7 @@ def add_new_payment_deposit(payment, user, is_wallet=False, company_bank=None):
     deposit.save()
     #log.save()
     if not is_wallet:
-        add_wallet_payment(payment, user, True, company_bank=company_bank) 
+        add_wallet_payment(payment, user, True, company_bank=company_bank, new_payer_name=new_payer_name, new_payer_nif=new_payer_nif) 
     
     
     payments_currency = payment.currently_paid
@@ -129,7 +129,7 @@ def add_new_payment_deposit(payment, user, is_wallet=False, company_bank=None):
     
 
 
-def add_wallet_payment(commitment_payment, user, is_paid, wallet_payment_date=None, company_bank=None):
+def add_wallet_payment(commitment_payment, user, is_paid, wallet_payment_date=None, company_bank=None, new_payer_name=None, new_payer_nif=None):
     print("2 - adding new payment to commitment deposit")
     print("is paid: ", is_paid)
     payment_paid = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
@@ -168,8 +168,8 @@ def add_wallet_payment(commitment_payment, user, is_paid, wallet_payment_date=No
             "contract": deposit.contract,
             "customer_final": deposit.customer_final,
             "customer_token_final": deposit.customer_token_final,
-            "payer_final": f"{deposit.contract.payment.IBAN.person.name} {deposit.contract.payment.IBAN.person.surname}" if deposit.contract.payment and deposit.contract.payment.IBAN and deposit.contract.payment.IBAN.person else f"{deposit.contract.holder.name} {deposit.contract.holder.surname}" if deposit.contract.holder else deposit.customer_final,
-            "payer_token_final": deposit.contract.payment.IBAN.person.token if deposit.contract.payment and deposit.contract.payment.IBAN and deposit.contract.payment.IBAN.person else deposit.contract.holder.token if deposit.contract.holder else deposit.customer_token_final,
+            "payer_final": new_payer_name if new_payer_name else f"{deposit.contract.payment.IBAN.person.name} {deposit.contract.payment.IBAN.person.surname}" if deposit.contract.payment and deposit.contract.payment.IBAN and deposit.contract.payment.IBAN.person else f"{deposit.contract.holder.name} {deposit.contract.holder.surname}" if deposit.contract.holder else deposit.customer_final,
+            "payer_token_final": new_payer_nif if new_payer_nif else deposit.contract.payment.IBAN.person.token if deposit.contract.payment and deposit.contract.payment.IBAN and deposit.contract.payment.IBAN.person else deposit.contract.holder.token if deposit.contract.holder else deposit.customer_token_final,
             "commitment_deposit": deposit,
             "amount": commitment_payment.amount if commitment_payment.is_guide else commitment_payment.currently_paid,
             "payment_type": commitment_payment.payment_type.name,

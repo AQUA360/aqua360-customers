@@ -48,7 +48,7 @@ const getData = async () => {
     is_bail.value = item.value.is_bail;
     is_return_fee.value = item.value.is_return_fee;
     console.log("selectedProduct", item.value);
-    selectedProduct.value = { 'value': item.value.product.id, 'label': item.value.product.name };
+    selectedProduct.value = item.value.product ? { 'value': item.value.product.id, 'label': item.value.product.name } : null;
   } else {
     item.value = {};
   }
@@ -101,6 +101,7 @@ const save = async () => {
 const isValid = () => {
   if (name.value == '' || name.value == null) return false;
   if (token.value == '' || token.value == null) return false;
+  if (!selectedProduct.value?.value) return false;
   return true;
 }
 

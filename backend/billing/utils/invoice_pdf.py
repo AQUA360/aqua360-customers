@@ -15,7 +15,7 @@ from decouple import config
 from billing.models import Invoice, InvoiceTemplate
 from billing.signals import check_paid_invoice, create_payment_invoice
 from billing.utils.barcode_service import generate_barcode, get_barcode_values
-from billing.utils.invoice_service import get_totals
+from billing.utils.invoice_service import get_totals, reading_has_blocking_invoices
 from billing.utils.pdf_overlap import client_info_overlaps_header
 from billing.utils.message_service import invoice_add_messages
 from contract.models import Contract, ContractRequest, ContractTerminationRequest
@@ -31,7 +31,9 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 
 from documentmanager.utils.main_utils import upload_document
 from service.models import Company, Exploitation
+from service.serializers.company_bank_serializer import CompanyBankSerializer
 from service.serializers.company_serializer import CompanySerializer
+from service.utils.company_bank_service import get_company_bank
 from verifactu.utils.qr_service import generate_qr_base64
 fake = Faker()
 
@@ -83,16 +85,17 @@ def discard_unused_invoice_pdf_document(old_document):
 
 def prepare_invoice_pdf_filename(invoice):
     """
-    Build the PDF filename and optionally remove the previous media file.
+    Build the PDF filename and remove the previous provisional PDF.
 
-    Only the current PDF is kept when THAT document is linked to a communication.
-    Intermediate regenerations not used in any communication are deleted.
-    A unique filename is used when retained communication PDFs may still exist on disk,
+    The definitive PDF lives only in the document manager (invoice_file), so
+    invoice_file_template only holds the provisional (watermarked) preview and is
+    always replaced. The caller must save the invoice to persist the cleared field.
+    A unique filename is used when retained communication PDFs may still exist,
     so their original name is not overwritten.
     """
     keep_previous = invoice_current_file_used_in_communication(invoice)
-    if invoice.invoice_file_template and not keep_previous:
-        invoice.invoice_file_template.delete()
+    if invoice.invoice_file_template:
+        invoice.invoice_file_template.delete(save=False)
 
     base = f"{invoice.serie_final.replace('/', '')}_{invoice.id}"
     if keep_previous or invoice_has_communication_retained_pdfs(invoice):
@@ -313,7 +316,7 @@ def generate(context, invoice, exploitation, temporary=False):
                 if not reading.consumption_days and reading.previous_reading:
                     reading.consumption_days = (reading.reading_date - reading.previous_reading.reading_date).days
 
-                if reading.previous_reading and reading.previous_reading.is_close:
+                if reading.previous_reading and reading.previous_reading.is_close and not reading_has_blocking_invoices(reading.previous_reading):
                     prev = reading.previous_reading
                     # Només l'afegim si NO està ja a les lectures de la factura
                     if prev.id not in readings_ids:
@@ -322,7 +325,7 @@ def generate(context, invoice, exploitation, temporary=False):
                             prev.consumption_days = (prev.reading_date - prev.previous_reading.reading_date).days
                         meter_change_readings.append(prev)
 
-                if reading.previous_reading and reading.previous_reading.previous_reading and reading.previous_reading.previous_reading.is_close:
+                if reading.previous_reading and reading.previous_reading.previous_reading and reading.previous_reading.previous_reading.is_close and not reading_has_blocking_invoices(reading.previous_reading.previous_reading) and not reading_has_blocking_invoices(reading.previous_reading):
                     prev_prev = reading.previous_reading.previous_reading
                     # Només l'afegim si NO està ja a les lectures de la factura
                     if prev_prev.id not in readings_ids:
@@ -358,6 +361,7 @@ def generate(context, invoice, exploitation, temporary=False):
         # Adjust if falls on weekend
         while tomorrow.weekday() >= 5:  
             tomorrow += timedelta(days=1)
+        company_bank_obj = get_company_bank(company_obj, invoice)
         if invoice.payment_type_token_final != 'DIRECT_DEBIT' and invoice.payment_type_token_final != 'BANK_TRANSFER':
             ident = invoice.due_date.strftime("%d%m%y") if invoice.due_date else "000000"
             #ident = tomorrow.strftime("%d%m%y")
@@ -365,6 +369,7 @@ def generate(context, invoice, exploitation, temporary=False):
                 'reference': invoice.token,
                 'total_final': invoice.left_to_pay,
                 'company': company_obj if company_obj else None,
+                'company_bank': company_bank_obj,
                 'ident': ident,
             }
             barcode = generate_barcode(barcode_data)
@@ -558,22 +563,7 @@ def generate(context, invoice, exploitation, temporary=False):
         except:
             pass
 
-        company_bank = None
-        if getattr(invoice, 'payment_company_bank', None):
-            from service.serializers.company_bank_serializer import CompanyBankSerializer
-            company_bank = CompanyBankSerializer(invoice.payment_company_bank).data
-        elif company and company.get("company_banks"):
-            for cb in company.get("company_banks"):
-                if cb.get("is_default") and cb.get("is_active"):
-                    company_bank = cb
-                    break
-            if not company_bank:
-                for cb in company.get("company_banks"):
-                    if cb.get("is_active"):
-                        company_bank = cb
-                        break
-            if not company_bank:
-                company_bank = company.get("company_banks")[0]
+        company_bank = CompanyBankSerializer(company_bank_obj).data if company_bank_obj else None
 
         print(f"[utils/invoice_pdf.py] logo: {logo}")
         print(f"[utils/invoice_pdf.py] exploitation_image: {exploitation_image}")
@@ -688,13 +678,8 @@ def generate(context, invoice, exploitation, temporary=False):
         else:
             if test_watermark_path:
                 pdf_buffer = add_watermark_to_pdf(pdf_buffer, test_watermark_path)
-            try:
-                invoice.invoice_file_template.save(pdf_filename, ContentFile(pdf_buffer.getvalue()))
-            except Exception as e:
-                error_msg = f"Error en guardar PDF: {str(e)}"
-                print(error_msg)
-                raise Exception(error_msg)
-            
+
+            # El PDF definitiu només es desa al gestor documental (invoice_file).
             signed_pdf_buffer = sign_pdf(
                 pdf_buffer, 
                 company, 

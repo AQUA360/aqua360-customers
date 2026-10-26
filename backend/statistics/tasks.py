@@ -23,6 +23,10 @@ class ReportWarning(Exception):
     pass
 
 
+class ReportNoData(Exception):
+    pass
+
+
 def _median(values):
     """
     Compute the median without importing stdlib `statistics` (this project has an app named `statistics`).
@@ -445,7 +449,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
       raise ReportWarning(data['warning'])
     if response.status_code >= 400:
       error_msg = data.get('error', 'Unknown error') if data else str(response.data)
-      raise Exception(f"Generator returned error: {error_msg}")
+      raise Exception(f"{error_msg}")
 
   if isinstance(result, Response):
     _raise_if_generator_error(result)
@@ -455,6 +459,8 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
   _raise_if_generator_error(response)
 
   if not document_id:
+    if response is None and filename is None:
+      raise ReportNoData("No data found for this period")
     raise Exception("Generator did not produce a document")
 
   if not filename:
@@ -801,25 +807,27 @@ def regenerate_daily_document(daily_document_id):
     current_time = daily_document.document_date
     if not daily_document.template:
       raise ValueError("Daily document has no template")
-    now = timezone.now().date()
     document = None
     error_message = None
+    no_data_found = False
     try:
       document = execute_available_report(daily_document.template.available_report, {
         'start_date': current_time.strftime('%Y-%m-%d'),
         'end_date': current_time.strftime('%Y-%m-%d'),
         'name': f"{daily_document.template.name} {current_time.strftime('%Y/%m/%d')}",
       })
+    except ReportNoData:
+      no_data_found = True
     except Exception as e:
       error_message = str(e)
-      
-    if error_message:
-      daily_document.creation_error = error_message
+
+    daily_document.creation_error = error_message
+    daily_document.no_data_found = no_data_found
     if document:
       daily_document.document = document
-      
+
     daily_document.save()
-    
+
   except Exception as e:
     print(f"Error while generating daily documents: {e}")
   

@@ -138,6 +138,19 @@ const edit = function () {
   return navigateTo('/pricing/price-rates/edit/' + props.id);
 }
 
+// El backend rebutja l'eliminació si la tarifa ja s'ha fet servir (el missatge surt com a toast)
+const deleteItem = async () => {
+  if (!confirm(t('confirmation_text_block.confirm_delete'))) return;
+  try {
+    await $PriceRateApiService.deleteItem(props.id);
+    toast.success(t('common.deleted_successfully'));
+    emit('changed');
+    emit('close-subregion');
+  } catch (err) {
+    console.error(err);
+  }
+}
+
 
 const setActiveTab = (tab) => {
   activeTab.value = tab;
@@ -159,8 +172,12 @@ const setActiveTab = (tab) => {
       :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': SubRegion }">
       <div class="flex justify-between relative">
         <H1Region class="mb-3">{{ $t('price_rate') }}</H1Region>
-        <OptionsDropdown v-if="objectPermissions.can_change" id="PriceRateRegionOptions">
-          <DropdownOption :name="t('common.modify') + ' ' + t('price_rate')" @click="edit"></DropdownOption>
+        <OptionsDropdown v-if="objectPermissions.can_change || (objectPermissions.can_delete && data?.is_deletable)" id="PriceRateRegionOptions">
+          <DropdownOption v-if="objectPermissions.can_change" :name="t('common.modify') + ' ' + t('price_rate')" @click="edit"></DropdownOption>
+          <DropdownOption v-if="objectPermissions.can_delete && data?.is_deletable" :name="`${t('common.delete')} ${t('price_rate').toLowerCase()}`"
+            @click="deleteItem" class="text-red-600">
+            <Icon name="fa6-solid:trash" class="display-inline mr-2 text-red-600" /> {{ t('common.delete') }} {{ t('price_rate').toLowerCase() }}
+          </DropdownOption>
         </OptionsDropdown>
       </div>
 

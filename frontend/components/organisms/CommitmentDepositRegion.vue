@@ -352,7 +352,7 @@ onMounted(async () => {
               t('billing_block.payment') }}
           </DropdownOption>
           <DropdownOption
-            :disabled="data.status.token == paidStatusDepositToken || data.status.token == cancelStatusDepositToken || !allowChanges || data.total_pending_payments == 0"
+            :disabled="data.status.token == paidStatusDepositToken || data.status.token == cancelStatusDepositToken || !allowChanges"
             :name="`${t('common.introduce')} ${t('billing_block.payment')}`" @click="showDetail('AddDepositPaymentRegion', props.id)">
             <Icon name="fa6-solid:money-bill-transfer" class="display-inline mr-2" /> {{ t('common.introduce') }} {{
               t('billing_block.payment') }}

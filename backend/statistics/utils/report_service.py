@@ -31,6 +31,7 @@ from order.models import Operator, Order, OrderReport
 from pricing.models import Adjustment, BillingRange, Product, Tax
 from service.models import Company, Exploitation, Meter
 from statistics.utils.incasol import resolve_incasol_num
+from statistics.utils.report_progress import report_progress
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, jump_row, save_report
 from statistics.utils.report_filters import (contract_multi_filter_q, get_billing_ids, get_multi_ids, has_serie_final_range,
                                              invoice_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
@@ -599,8 +600,10 @@ def generate_aqua_remittance_report(request, black_fill=None, white_bold_font=No
               "Nº Factura", "Fecha vencimiento", "Importe factura", "Importe total remesa", 
               ]
 
-    row = add_row(sheet, row, titles, fill=PatternFill(start_color="b8cce4", end_color="b8cce4", fill_type="solid"))
-    for item in payments:
+    row = add_row(sheet, row, titles, fill=PatternFill(start_color="FFB8CCE4", end_color="FFB8CCE4", fill_type="solid"))
+    total_payments = len(payments)
+    for idx_payment, item in enumerate(payments, start=1):
+        report_progress(task, idx_payment, total_payments)
         parent_token = item.invoice.serie_final if item.invoice else item.commitment_deposit.token if item.commitment_deposit else item.token
         used_date = remittance.sent_at.strftime('%d/%m/%Y') if remittance.sent_at else item.payment_date.strftime('%d/%m/%Y') if item.payment_date else item.due_date.strftime('%d/%m/%Y')
         line_row = [
@@ -2635,6 +2638,9 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
         else:
             main_company_token = ConfigProject.objects.get(token="main_company_token").value
             company = Company.objects.get(vat=main_company_token)
+        
+        if invoices.count() == 0:
+            return None, None, None
 
         filename = (
             f'SII_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.xml'
@@ -2660,7 +2666,9 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
         ET.SubElement(sumTitl, "sum1:NIF").text = str(company.vat) 
         ET.SubElement(sumCab, "sum1:TipoComunicacion").text = 'A0'
         
-        for invoice in invoices:
+        total_invoices = invoices.count()
+        for idx_invoice, invoice in enumerate(invoices, start=1):
+            report_progress(task, idx_invoice, total_invoices)
             line_items = invoice.line_items.filter(product__company=company, is_active=True)
             subtotal, taxes, taxes_base, total = get_totals(invoice, None, line_items)
             sumRegLRFactEmt = ET.SubElement(sumSumLRFacEmit, "sum:RegistroLRFacturasEmitidas")

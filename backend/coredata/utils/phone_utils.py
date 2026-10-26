@@ -44,6 +44,19 @@ def is_mobile_phone(phone):
     return bool(SPANISH_MOBILE_RE.match(normalized))
 
 
+def to_broadcaster_format(phone):
+    """Mòbil amb el prefix de país i sense '+' (34600000000), com l'espera Broadcaster.
+
+    Sense prefix, el número es considera espanyol. Retorna '' si no pot rebre SMS.
+    """
+    if not is_mobile_phone(phone):
+        return ''
+    normalized = normalize_phone(phone)
+    if normalized.startswith('+'):
+        return normalized[1:]
+    return f'{SPANISH_PREFIX}{normalized}'
+
+
 def non_mobile_sms_phones(contact_ids, current_ids=()):
     """Telèfons que es volen afegir com a SMS i no són mòbils.
 

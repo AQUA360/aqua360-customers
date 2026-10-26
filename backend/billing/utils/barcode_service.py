@@ -4,6 +4,7 @@ import re
 import barcode
 from barcode.writer import SVGWriter, ImageWriter
 from coredata.models import ConfigProject
+from service.utils.company_bank_service import get_company_bank
 
 class BarcodeResponse(list):
     """
@@ -37,14 +38,10 @@ def get_barcode_values(barcode_data):
     after_format = '00'
     
     vat = company.vat
-    
-    if company.company_banks.count() > 0:
-        if company.company_banks.count() == 1:
-            bank_account = company.company_banks.first()
-        else:
-            bank_account = company.company_banks.filter(is_default=True, is_active=True).first()
-        if bank_account:
-            vat = bank_account.barcode_cif if bank_account.barcode_cif else company.vat
+
+    bank_account = barcode_data.get('company_bank') or get_company_bank(company, barcode_data.get('invoice'))
+    if bank_account and bank_account.barcode_cif:
+        vat = bank_account.barcode_cif
     
     transmitter_numeric = re.sub(r'[^0-9]', '', vat or '')
     if not transmitter_numeric:

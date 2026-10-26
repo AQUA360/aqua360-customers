@@ -272,7 +272,7 @@ watch(() => route.query, () => {
           <span>
             <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
               @click="showPropertyRegion(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+              <abbr :title="item.token" class="no-underline">{{ item.id }}</abbr>
               <Icon name="fa6-solid:eye"
                 class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
             </button>

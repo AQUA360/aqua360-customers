@@ -6,7 +6,7 @@ class PriceRateFilter(filters.FilterSet):
     search = filters.CharFilter(method='filter_search')
     product = filters.CharFilter(field_name='product__id', lookup_expr='exact', method='filter_product')
     origin = filters.CharFilter(field_name='origin__token', lookup_expr='exact', method='filter_origin')
-    exploitation = filters.NumberFilter(field_name='product__exploitation__id', lookup_expr='exact')
+    exploitation = filters.NumberFilter(method='filter_exploitation')
     
     class Meta:
         model = PriceRate
@@ -26,6 +26,10 @@ class PriceRateFilter(filters.FilterSet):
             return queryset.filter(product__id__in=prods_values)
         return queryset
     
+    def filter_exploitation(self, queryset, name, value):
+        # L'explotació d'una tarifa ve del producte: les que no en tenen surten a totes
+        return queryset.filter(Q(product__exploitation__id=value) | Q(product__isnull=True))
+
     def filter_origin(self, queryset, name, value):
         if value:
             origin_values = value.split(',')

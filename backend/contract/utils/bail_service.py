@@ -10,6 +10,21 @@ from coredata.utils.name_utils import generate_token
 from logger.models import LogBailStatus
 from billing.utils.invoice_service import generate_payment_id, invoice_generate_return_bail
 
+BAIL_RETURN_INVOICE_DISABLED_TOKEN = 'BAIL_RETURN_INVOICE_DISABLED'
+
+
+def is_bail_return_invoice_disabled():
+    """
+    Retorna si s'ha de saltar la factura de retorn de fiança, segons el
+    ConfigProject amb token `BAIL_RETURN_INVOICE_DISABLED`. Si és 'true', el
+    retorn de fiances es completa igualment (estat retornat) però sense generar
+    cap factura ni abonar l'import al saldo. Deshabilitat per defecte.
+    """
+    config = ConfigProject.objects.filter(token=BAIL_RETURN_INVOICE_DISABLED_TOKEN).first()
+    if not config or not config.value:
+        return False
+    return config.value.lower() == 'true'
+
 
 def liquidate_bail(user, bails, balance_contract=None):
     bail_status_returned_token = ConfigProject.objects.get(token='bail_status_returned_token').value
@@ -21,6 +36,7 @@ def liquidate_bail(user, bails, balance_contract=None):
         token=ConfigProject.objects.get(token='payment_status_piggy_token').value
     )
     processed_invoice_ids = set()
+    skip_invoice = is_bail_return_invoice_disabled()
 
     for bail in bails:
         prev_status = bail.status
@@ -59,6 +75,10 @@ def liquidate_bail(user, bails, balance_contract=None):
                 payment.save()
                 payment.refresh_from_db()
 
+        # Sense factura de retorn no s'abona res al saldo (del contracte ni de la persona).
+        if skip_invoice and not invoice:
+            continue
+
         # Termination credits bail.contract. An immediate return of one bail credits
         # the contract that lists it in Contract.bails.
         contract = balance_contract or bail.contract
@@ -78,14 +98,16 @@ def liquidate_bail(user, bails, balance_contract=None):
 
 
 def pending_bail_contract_termination(user, instance):
-    if instance.payment:
+    skip_invoice = is_bail_return_invoice_disabled()
+    if instance.payment or skip_invoice:
         bail_unreturned_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
         bails = Bail.objects.filter(contract=instance, status__token=bail_unreturned_token)
         
-        payment_bank = instance.payment.IBAN.id if instance.payment.IBAN else None
-        
         if bails.count() > 0:
-            invoice = invoice_generate_return_bail(user, instance.id, 'RETORN FIANÇA', instance.payment.type.id, payment_bank, True)
+            invoice = None
+            if not skip_invoice:
+                payment_bank = instance.payment.IBAN.id if instance.payment.IBAN else None
+                invoice = invoice_generate_return_bail(user, instance.id, 'RETORN FIANÇA', instance.payment.type.id, payment_bank, True)
             pending_bail_token = ConfigProject.objects.get(token='bail_status_pending_token').value
             pending_bails = []
             for bail in bails:
@@ -115,7 +137,8 @@ def immediate_return_bail(user, bail_id):
 
     The contract is the one that includes this bail in Contract.bails, not Bail.contract.
     Unreturned becomes pending with a pre-invoice, then returned, and the bail amount
-    is added to that contract's balance.
+    is added to that contract's balance. With BAIL_RETURN_INVOICE_DISABLED enabled,
+    no invoice is generated and no balance is credited.
     """
     with transaction.atomic():
         bail = Bail.objects.select_for_update().get(id=bail_id)
@@ -131,28 +154,31 @@ def immediate_return_bail(user, bail_id):
         )
         if not contract:
             raise ValueError("Contract not found for this bail")
-        if not contract.piggy_bank:
+        skip_invoice = is_bail_return_invoice_disabled()
+        if not contract.piggy_bank and not skip_invoice:
             raise ValueError("Contract balance not found")
 
-        payment_type_id = contract.payment.type_id if contract.payment else None
-        if not payment_type_id:
-            default_payment_type = PaymentType.objects.filter(is_default=True).first()
-            if not default_payment_type:
-                raise ValueError("Contract has no payment method")
-            payment_type_id = default_payment_type.id
+        invoice = None
+        if not skip_invoice:
+            payment_type_id = contract.payment.type_id if contract.payment else None
+            if not payment_type_id:
+                default_payment_type = PaymentType.objects.filter(is_default=True).first()
+                if not default_payment_type:
+                    raise ValueError("Contract has no payment method")
+                payment_type_id = default_payment_type.id
 
-        payment_bank = contract.payment.IBAN.id if contract.payment and contract.payment.IBAN else None
-        invoice = invoice_generate_return_bail(
-            user,
-            contract.id,
-            'RETORN FIANÇA',
-            payment_type_id,
-            payment_bank,
-            True,
-            bails=[bail],
-        )
-        if not invoice:
-            raise ValueError("Could not generate return invoice")
+            payment_bank = contract.payment.IBAN.id if contract.payment and contract.payment.IBAN else None
+            invoice = invoice_generate_return_bail(
+                user,
+                contract.id,
+                'RETORN FIANÇA',
+                payment_type_id,
+                payment_bank,
+                True,
+                bails=[bail],
+            )
+            if not invoice:
+                raise ValueError("Could not generate return invoice")
 
         prev_status = bail.status
         pending_status = BailStatus.objects.get(

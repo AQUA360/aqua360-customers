@@ -3,12 +3,12 @@ import math
 import os
 import threading
 from django.core.files.base import ContentFile
-from django.db.models import F, Count, Sum, Q, Max, Case, When, Value, CharField, DecimalField, Subquery
+from django.db.models import F, Count, Sum, Q, Max, Case, When, Value, BooleanField, CharField, DecimalField, Subquery
 from decimal import Decimal
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Window
-from django.db.models.functions import Abs, Coalesce, RowNumber
+from django.db.models.functions import Abs, Cast, Coalesce, RowNumber
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
 import openpyxl
@@ -22,7 +22,7 @@ from billing.utils.aca_company_service import ACACompanyError, get_records_compa
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
-from contract.models import Contract
+from contract.models import Contract, ContractLog, ContractUseType
 from coredata.models import ConfigProject, Person
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.other_utils import round_ceil
@@ -32,6 +32,7 @@ from service.models import Company, Exploitation, SupplyPointType
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, save_report, jump_row
 from statistics.utils.report_filters import (get_billing_ids, get_multi_ids, has_serie_final_range, invoice_multi_filter_q,
                                              payment_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
+from statistics.utils.report_progress import report_progress
 import logging
 
 logger = logging.getLogger(__name__)
@@ -483,15 +484,19 @@ def _social_adjustment_ids():
 
 def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font, task=None):
     """
-    Resum de facturació (com get_report_billing_summary) desglossat per concepte,
-    tarifa, tram i tarifa social. Els subtotals per producte quadren amb el resum.
+    Resum de facturació (com get_report_billing_summary) agrupat per producte i, dins
+    de cada producte, per tipus d'ús del contracte (el que tenia quan es va generar la factura), amb el detall per concepte, tarifa,
+    tram, si el tram està ampliat, si la línia té tarifa social i preu unitari. Els totals per producte quadren amb el resum. Acaba amb el
+    resum de l'IVA.
     """
     try:
-        from django.contrib.postgres.aggregates import StringAgg
-        from django.db.models import OuterRef
-        from openpyxl.styles import Font
+        from django.db.models import Exists, Min, OuterRef
+        from django.utils.dateformat import format as date_format
+        from openpyxl.styles import Alignment, Border, Font, Side
         from billing.models import AppliedAdjustment
-        from statistics.views.reports_views import light_gray_fill
+        from contract.models import Variable
+        from pricing.models import PriceIntervalStretch, PriceVariableIntervalStretch
+        from watchdog.aca_config import aca_tram_members_variable_tokens
 
         name = request.data.get('name', '')
         type_id = request.data.get('type_id', None)
@@ -502,21 +507,86 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
 
         payoff_status_token = ConfigProject.objects.get(token="invoice_status_payoff_token").value
 
-        # Noms dels ajustos de tarifa social aplicats a cada línia. Subquery (i no join)
-        # perquè el M2M d'ajustos no multipliqui les línies a les sumes.
-        social_names = AppliedAdjustment.objects.filter(
+        # Si la línia té algun ajust de tarifa social. Exists (i no join) perquè el M2M
+        # d'ajustos no multipliqui les línies a les sumes.
+        social_adjustments = AppliedAdjustment.objects.filter(
             Q(is_vulnerable=True) | Q(adjustment_id__in=_social_adjustment_ids()),
             line_items=OuterRef('pk'),
-        ).order_by().values('line_items').annotate(
-            names=StringAgg('name', delimiter=' + ', distinct=True, ordering='name'),
-        ).values('names')
+        )
+
+        # Ampliació de trams: el límit del tram de la línia no coincideix amb el configurat
+        # i el contracte té la variable de membres (nombre de persones) vigent a la data de
+        # la factura. Només amb el límit no n'hi ha prou: el prorrateig també el canvia.
+        configured_end_stretch = Coalesce(
+            Subquery(PriceIntervalStretch.objects.filter(
+                price_interval=OuterRef('line_item_type__price_interval'), stretch=OuterRef('interval'),
+            ).order_by('id').values('end_stretch')[:1]),
+            Subquery(PriceVariableIntervalStretch.objects.filter(
+                price_variable_interval=OuterRef('line_item_type__price_variable'), stretch=OuterRef('interval'),
+            ).order_by('id').values('end_stretch')[:1]),
+        )
+        members_variables = Variable.objects.filter(
+            Q(is_active=True) | Q(end_at__isnull=False),
+            Q(start_at__isnull=True) | Q(start_at__lte=OuterRef('invoice__issue_date')),
+            Q(end_at__isnull=True) | Q(end_at__gte=OuterRef('invoice__issue_date')),
+            contract=OuterRef('invoice__contract'),
+            type__token__in=aca_tram_members_variable_tokens(),
+        ).exclude(value__isnull=True).exclude(value__in=['', '0'])
+
+        # Tipus d'ús del contracte quan es va generar la factura, segons l'historial
+        # (ContractLog desa el nom del tipus d'ús): el valor nou de l'últim canvi anterior
+        # o, si no n'hi ha, el valor antic del primer canvi posterior. Sense canvis, el
+        # tipus d'ús actual del contracte.
+        use_type_logs = ContractLog.objects.filter(contract=OuterRef('invoice__contract'), field_name='use_type')
+        use_type_log_before = use_type_logs.filter(created_at__lte=OuterRef('invoice__created_at')).order_by('-created_at', '-id')
+        use_type_log_after = use_type_logs.filter(created_at__gt=OuterRef('invoice__created_at')).order_by('created_at', 'id')
 
         active_line_items = InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True).annotate(
+            has_use_type_log_before=Exists(use_type_log_before),
+            has_use_type_log_after=Exists(use_type_log_after),
+        ).annotate(
+            use_type_log_name=Case(
+                When(has_use_type_log_before=True, then=Subquery(use_type_log_before.values('new_value')[:1])),
+                When(has_use_type_log_after=True, then=Subquery(use_type_log_after.values('old_value')[:1])),
+                default=Value(None),
+                output_field=CharField(),
+            ),
+        ).annotate(
             concept_name=Coalesce('line_item_type__name', 'name'),
-            social_name=Subquery(social_names[:1], output_field=CharField()),
+            is_social=Exists(social_adjustments),
+            use_type_id=Case(
+                When(
+                    Q(has_use_type_log_before=True) | Q(has_use_type_log_after=True),
+                    # Si el nom ja no existeix (tipus d'ús reanomenat), el tipus d'ús actual.
+                    then=Case(
+                        When(use_type_log_name__isnull=True, then=Value(None)),
+                        default=Coalesce(
+                            Subquery(ContractUseType.objects.filter(name=OuterRef('use_type_log_name')).order_by('id').values('id')[:1]),
+                            F('invoice__contract__use_type_id'),
+                        ),
+                    ),
+                ),
+                default=F('invoice__contract__use_type_id'),
+            ),
+            configured_end_stretch=configured_end_stretch,
+            has_members_variable=Exists(members_variables),
+            # Preu unitari aplicat (en valor absolut: els abonaments el desen en negatiu).
+            # Numeric de 10 decimals només per no separar files per soroll de coma flotant.
+            unit_price=Cast(Abs('price_unit'), DecimalField(max_digits=24, decimal_places=10)),
+        ).annotate(
+            is_extended=Case(
+                When(
+                    Q(interval__isnull=False, end_stretch__isnull=False, configured_end_stretch__isnull=False)
+                    & ~Q(end_stretch=F('configured_end_stretch'))
+                    & Q(has_members_variable=True),
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
         )
         groups = active_line_items.values(
-            'product_name', 'tax_percent', 'concept_name', 'price_rate_name', 'interval', 'social_name',
+            'product_name', 'tax_percent', 'use_type_id', 'concept_name', 'price_rate_name', 'interval', 'is_extended', 'is_social', 'unit_price',
         ).annotate(
             count=Count('invoice', distinct=True),
             sum_units=_payoff_signed_sum('units', payoff_status_token),
@@ -524,108 +594,254 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             sum_tax=_payoff_signed_sum('tax_price', payoff_status_token),
         ).order_by()
 
-        # Mateixa agrupació que el resum de facturació, per als subtotals per producte.
+        # Mateixa agrupació que el resum de facturació, per als totals per producte.
         product_counts = {
             (item['product_name'], item['tax_percent']): item['count']
             for item in active_line_items.values('product_name', 'tax_percent').annotate(
                 count=Count('invoice', distinct=True),
             ).order_by()
         }
+        use_types = {use_type.id: use_type for use_type in ContractUseType.objects.filter(
+            id__in={item['use_type_id'] for item in groups if item['use_type_id']},
+        )}
+
+        def use_type_sort(use_type_id):
+            # Ordre del tipus d'ús; les factures sense tipus d'ús al final.
+            use_type = use_types.get(use_type_id)
+            if use_type is None:
+                return (1, 0, '')
+            return (0, use_type.position if use_type.position is not None else 0, use_type.name or '')
+
+        # Ordre i codi dels productes (com al resum en PDF: "1 Consum", "3 Quota", ...).
+        product_positions = {
+            item['product_name']: item['position']
+            for item in active_line_items.values('product_name').annotate(position=Min('product__position')).order_by()
+        }
+        product_tax_counts = {}
+        for product_name, _tax_percent in product_counts:
+            product_tax_counts[product_name] = product_tax_counts.get(product_name, 0) + 1
 
         groups = sorted(groups, key=lambda item: (
+            product_positions.get(item['product_name']) is None,
+            product_positions.get(item['product_name']) or 0,
             item['product_name'] or '',
             item['tax_percent'] if item['tax_percent'] is not None else Decimal('-1'),
+            use_type_sort(item['use_type_id']),
             item['concept_name'] or '',
             item['price_rate_name'] or '',
             item['interval'] or 0,
-            item['social_name'] or '',
+            item['is_extended'],
+            item['is_social'],
+            item['unit_price'] if item['unit_price'] is not None else -1,
         ))
 
         wb = openpyxl.Workbook()
         sheet = wb.active
         sheet.title = _("Facturació per tarifa")
 
-        row = 0
-        title = _("Facturació per tarifa %(date)s") % {"date": billing.created_at.strftime('%d/%m/%Y')} if billing else _("Facturació per tarifa %(start)s - %(end)s") % {"start": start_date.strftime('%d/%m/%Y'), "end": end_date.strftime('%d/%m/%Y')}
-        row = add_row(sheet, row, [title])
-        row = jump_row(row)
+        last_col = 8
+        bold = Font(bold=True)
+        small_bold = Font(bold=True, size=9)
+        thin = Side(style='thin', color='FF000000')
+        medium = Side(style='medium', color='FF000000')
+        center = Alignment(horizontal='center', vertical='center')
 
-        titles = [
-            _("Nom"), _("Concepte"), _("Tarifa"), _("Tram"), _("Tarifa social"), _("IVA %"),
-            _(" Num. Factures"), _("Unitats"), _("Base"), _("IVA"), _("Totals"),
-        ]
-        row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
-        money_cols = (9, 10, 11)
+        def put(row, values, font=None, start_col=1, price_col=5):
+            # Sense add_row: el resum en PDF no té quadrícula a les cel·les.
+            for offset, value in enumerate(values):
+                if value is None or value == "":
+                    continue
+                cell = sheet.cell(row=row, column=start_col + offset, value=value)
+                if font:
+                    cell.font = font
+                if isinstance(value, (int, float)) and cell.column >= 3:
+                    is_integer = float(value).is_integer() and cell.column in (3, 4)
+                    if cell.column == price_col:
+                        # Tots els decimals del preu aplicat (mínim 2).
+                        cell.number_format = '#,##0.00########'
+                    else:
+                        cell.number_format = '#,##0' if is_integer else '#,##0.00'
+            return row
 
-        def format_numbers(row):
-            sheet.cell(row=row, column=8).number_format = '#,##0.00'
-            for col in money_cols:
-                sheet.cell(row=row, column=col).number_format = '#,##0.00'
+        def border_row(row, top=None, bottom=None, first_col=1, box=False):
+            for col in range(first_col, last_col + 1):
+                sheet.cell(row=row, column=col).border = Border(
+                    top=top, bottom=bottom,
+                    left=top if box and col == first_col else None,
+                    right=top if box and col == last_col else None,
+                )
+
+        def period_text():
+            if billing:
+                return billing.created_at.strftime('%d/%m/%Y')
+            start_month = date_format(start_date, 'F').upper()
+            end_month = date_format(end_date, 'F').upper()
+            if (start_date.year, start_date.month) == (end_date.year, end_date.month):
+                return f"{start_month} {start_date.year}"
+            if start_date.year == end_date.year:
+                return f"{start_month}-{end_month} {end_date.year}"
+            return f"{start_month} {start_date.year} - {end_month} {end_date.year}"
+
+        def serie_ranges_text():
+            ranges = list(
+                invoices.exclude(serie_final__isnull=True).exclude(serie_final='')
+                .values('serie_id').annotate(first=Min('serie_final'), last=Max('serie_final'))
+                .order_by('first')
+            )
+            if not ranges:
+                return None
+            parts = [_("Del núm. de factura %(first)s a la %(last)s") % ranges[0]]
+            parts += [_("de la %(first)s a la %(last)s") % item for item in ranges[1:]]
+            separator = " %s " % _("i")
+            return separator.join(parts) + "."
+
+        # Capçalera
+        row = 1
+        company_names = list(invoices.exclude(company__isnull=True).values_list('company__name', flat=True).distinct()[:2])
+        if len(company_names) == 1 and company_names[0]:
+            put(row, [company_names[0]], Font(bold=True, size=16))
+        date_cell = sheet.cell(row=row, column=last_col, value=datetime.date.today().strftime('%d/%m/%Y'))
+        date_cell.alignment = Alignment(horizontal='right')
+
+        row = 3
+        sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
+        put(row, [_("RESUM DE LA FACTURACIÓ GENERAL")], Font(bold=True, size=12))
+        sheet.cell(row=row, column=1).alignment = center
+        border_row(row, top=medium, bottom=medium, box=True)
+        sheet.row_dimensions[row].height = 26
+
+        row = 5
+        sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
+        put(row, [period_text()], Font(bold=True, underline='single'))
+        sheet.cell(row=row, column=1).alignment = center
+
+        serie_text = serie_ranges_text()
+        if serie_text:
+            row += 1
+            put(row, [serie_text], small_bold)
+
+        row += 1
+        titles = [_("Ús"), _("Descripció"), _("Núm. de factures"), _("Unitats"), _("Preu unitari"), _("Base IVA"), _("Quota IVA"), _("Total")]
+        put(row, titles, small_bold)
+        for col in range(2, last_col + 1):
+            sheet.cell(row=row, column=col).alignment = center
+        border_row(row, top=thin, bottom=thin, box=True)
 
         def tax_label(tax_percent):
             return f"{tax_percent} %" if tax_percent is not None else "- %"
 
-        def add_subtotal(row, key, subtotal):
-            row = add_row(sheet, row, [
-                _("Total %(name)s") % {"name": key[0] or "-"},
-                "", "", "", "",
-                tax_label(key[1]),
-                product_counts.get(key, 0),
-                "",
-                round(subtotal[0], 2),
-                round(subtotal[1], 2),
-                round(subtotal[0] + subtotal[1], 2),
-            ], colored=set(range(len(titles))))
-            for col in range(1, len(titles) + 1):
-                sheet.cell(row=row, column=col).font = Font(bold=True)
-            format_numbers(row)
+        def description(item):
+            parts = [
+                item['concept_name'],
+                item['price_rate_name'],
+                _("Tram %(num)s") % {"num": item['interval']} if item['interval'] else None,
+            ]
+            unique_parts = []
+            for part in parts:
+                if part and part not in unique_parts:
+                    unique_parts.append(part)
+            text = " - ".join(unique_parts) or "-"
+            if item['is_extended']:
+                text = f"{text} {_('AMPLIACIÓ')}"
+            if item['is_social']:
+                text = f"{text} {_('SOCIAL')}"
+            return text
+
+        def amounts(totals, unit_price=""):
+            return [round(totals[0], 2), unit_price, round(totals[1], 2), round(totals[2], 2), round(totals[1] + totals[2], 2)]
+
+        def add_product_header(row, key):
+            row += 1
+            product_name = key[0] or "-"
+            # L'IVA només es mostra si el producte surt amb més d'un tipus.
+            if product_tax_counts.get(key[0], 0) > 1:
+                product_name = f"{product_name} ({_('IVA')} {tax_label(key[1])})"
+            position = product_positions.get(key[0])
+            put(row, [position if position is not None else "", product_name], Font(bold=True, size=13))
+            put(row, [_("Factures: %(count)s") % {"count": f"{product_counts.get(key, 0):,}".replace(',', '.')}], Font(size=9), start_col=3)
             return row
 
-        total_base = 0.0
-        total_tax = 0.0
-        current_key = None
-        subtotal = [0.0, 0.0]
+        def add_use_type_header(row, use_type_id):
+            row += 1
+            use_type = use_types.get(use_type_id)
+            if use_type is None:
+                put(row, [_("Ús:"), _("Sense tipus d'ús")], small_bold)
+            else:
+                put(row, [_("Ús: %(code)s") % {"code": use_type.token or ""}, use_type.name or ""], small_bold)
+            return row
+
+        def add_use_type_total(row, totals):
+            row += 1
+            put(row, ["", "", "", *amounts(totals)], bold)
+            return row + 1
+
+        def add_product_total(row, totals):
+            row += 1
+            put(row, ["", "", "", *amounts(totals)], bold)
+            border_row(row, top=thin, first_col=3)
+            return row
+
+        # [unitats, base, iva]
+        grand_total = [0.0, 0.0, 0.0]
+        tax_summary = {}
+        current_product = None
+        current_use_type = None
+        product_total = [0.0, 0.0, 0.0]
+        use_type_total = [0.0, 0.0, 0.0]
         for item in groups:
-            key = (item['product_name'], item['tax_percent'])
-            if current_key is not None and key != current_key:
-                row = add_subtotal(row, current_key, subtotal)
-                subtotal = [0.0, 0.0]
-            current_key = key
+            product_key = (item['product_name'], item['tax_percent'])
+            use_type_key = (*product_key, item['use_type_id'])
+            if current_use_type is not None and use_type_key != current_use_type:
+                row = add_use_type_total(row, use_type_total)
+                use_type_total = [0.0, 0.0, 0.0]
+            if current_product is not None and product_key != current_product:
+                row = add_product_total(row, product_total)
+                product_total = [0.0, 0.0, 0.0]
+            if product_key != current_product:
+                row = add_product_header(row, product_key)
+            if use_type_key != current_use_type:
+                row = add_use_type_header(row, item['use_type_id'])
+            current_product = product_key
+            current_use_type = use_type_key
 
-            base = float(item['sum_price'] or 0)
-            tax = float(item['sum_tax'] or 0)
-            subtotal[0] += base
-            subtotal[1] += tax
-            total_base += base
-            total_tax += tax
+            values = [float(item['sum_units'] or 0), float(item['sum_price'] or 0), float(item['sum_tax'] or 0)]
+            for totals in (use_type_total, product_total, grand_total):
+                for i, value in enumerate(values):
+                    totals[i] += value
+            tax_totals = tax_summary.setdefault(item['tax_percent'], [0.0, 0.0])
+            tax_totals[0] += values[1]
+            tax_totals[1] += values[2]
 
-            row = add_row(sheet, row, [
-                item['product_name'],
-                item['concept_name'] or "-",
-                item['price_rate_name'] or "-",
-                _("Tram %(num)s") % {"num": item['interval']} if item['interval'] else "-",
-                item['social_name'] or "-",
-                tax_label(item['tax_percent']),
-                item['count'],
-                round(float(item['sum_units'] or 0), 2),
-                round(base, 2),
-                round(tax, 2),
-                round(base + tax, 2),
-            ])
-            format_numbers(row)
+            row += 1
+            put(row, ["", f"  {description(item)}", "", *amounts(values, float(item['unit_price']) if item['unit_price'] is not None else "")])
 
-        if current_key is not None:
-            row = add_subtotal(row, current_key, subtotal)
+        if current_product is not None:
+            row = add_use_type_total(row, use_type_total)
+            row = add_product_total(row, product_total)
 
-        row = add_row(sheet, row, [
-            _("Totals"), "", "", "", "", "", "", "",
-            round(total_base, 2),
-            round(total_tax, 2),
-            round(total_base + total_tax, 2),
-        ], fill=black_fill, font=white_bold_font)
-        format_numbers(row)
+        # Total general
+        row += 2
+        put(row, ["", "", "", "", *amounts(grand_total)[1:]], bold)
+        border_row(row, bottom=thin, first_col=2)
 
-        adjust_column_widths(sheet)
+        # Resum de l'IVA
+        row += 1
+        put(row, ["", _("RESUM DE L'IVA")], Font(bold=True, size=13))
+        row += 2
+        put(row, ["", "", "", "", _("Base IVA"), _("% IVA"), _("Import IVA"), _("Total")], small_bold)
+        for col in range(5, last_col + 1):
+            sheet.cell(row=row, column=col).alignment = center
+        border_row(row, top=thin, bottom=thin, first_col=2, box=True)
+        for tax_percent in sorted(tax_summary, key=lambda percent: percent if percent is not None else Decimal('-1')):
+            base, tax = tax_summary[tax_percent]
+            row += 1
+            put(row, ["", "", "", "", round(base, 2), float(tax_percent or 0), round(tax, 2), round(base + tax, 2)], bold, price_col=None)
+        row += 2
+        put(row, ["", "", "", "", round(grand_total[1], 2), "", round(grand_total[2], 2), round(grand_total[1] + grand_total[2], 2)], bold, price_col=None)
+        border_row(row, top=thin, first_col=5)
+
+        for column, width in zip('ABCDEFGH', (10, 42, 16, 12, 14, 14, 14, 14)):
+            sheet.column_dimensions[column].width = width
 
         filename = f"billing_by_rate_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
@@ -769,7 +985,9 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
 
         price_rate_dict = {}
         print("before loop")
-        for exploitation in unique_exploitations:
+        # Cada explotació és una tanda de consultes: el progrés es publica a cada una.
+        for idx_exploitation, exploitation in enumerate(unique_exploitations, start=1):
+            report_progress(task, idx_exploitation, len(unique_exploitations), every=1)
             print(f"exploitation: {exploitation}")
             try:
                 aca_line_items_ex = aca_line_items_qs.filter(invoice__exploitation__name=exploitation).distinct().annotate(
@@ -1340,7 +1558,9 @@ def generate_aca_summary_report_second_ver(request, black_fill=None, white_bold_
         ]
          #TODO LATER, SEPARATE INVOICES BY ISSUE DATE YEAR IN DIFF DOCUMENTS
 
-        for exploitation in unique_exploitations:
+        # Cada explotació és una tanda de consultes: el progrés es publica a cada una.
+        for idx_exploitation, exploitation in enumerate(unique_exploitations, start=1):
+            report_progress(task, idx_exploitation, len(unique_exploitations), every=1)
             try:
                 # SEPARAR CADA CAMP PER |
                 # SI VALOR DE CAMP CHAR NO TÉ CONTINGUT, EL VALOR SERÀ 'NULL', SI ÉS NUMERIC SERÀ 0
@@ -2084,7 +2304,10 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
             sheet = wb.create_sheet(title=_("Sense dades"))
             row = add_row(sheet, 0, [_("No s'han trobat productes per a aquest període")], fill=black_fill, font=white_bold_font)
         else:
-            for product in products:
+            products = list(products)
+            # Cada producte és una tanda de consultes: el progrés es publica a cada un.
+            for idx_product, product in enumerate(products, start=1):
+                report_progress(task, idx_product, len(products), every=1)
                 row = 0
                 # Create a sheet named after the product (keep it <= 31 characters and avoid special chars)
                 sheet_title = str(product.name)[:31]  # Excel has a 31-char limit for sheet names
@@ -2322,8 +2545,10 @@ def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=Non
             'contract__token',
             'origin__name'
         ).order_by('serie_final')
-        
-        for invoice in invoices_with_relations:
+
+        total_invoices_progress = invoices_with_relations.count()
+        for idx_invoice, invoice in enumerate(invoices_with_relations, start=1):
+            report_progress(task, idx_invoice, total_invoices_progress)
             # Get contract token - contract is already fetched via select_related
             contract_token = invoice.contract.token if invoice.contract else ""
             origin_name = invoice.origin.name if invoice.origin else ""
@@ -3227,7 +3452,9 @@ def generate_report_billing_347(request, black_fill=None, white_bold_font=None, 
         multi_q = invoice_multi_filter_q(**get_multi_ids(request.data))
 
         first = True
-        for comp in companies:
+        # Cada empresa és una consulta agregada: el progrés es publica a cada una.
+        for idx_company, comp in enumerate(companies, start=1):
+            report_progress(task, idx_company, len(companies), every=1)
             company_id = comp['effective_company_id']
             company_name = comp.get('effective_company_alias') or f"Company {company_id}"
             # Invoices that belong to this company (direct or via exploitation)
@@ -4673,20 +4900,39 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
             _("Titular"),
             _("Import"),
             _("Consum registrat"),
+            _("Consum pendent"),
             _("Altres consums"),
             _("Consum facturat"),
             ]
         row = add_row(sheet, row, titles, fill=black_fill, font=white_bold_font)
         
-        for invoice in invoices:
+        def _get_close_readings(readings):
+            from billing.utils.invoice_service import get_close_previous_reading, get_close_previous_previous_reading
+            close_readings = []
+            for reading in readings:
+                close_reading = get_close_previous_reading(reading)
+                if not close_reading:
+                    close_reading = get_close_previous_previous_reading(reading)
+                if close_reading:
+                    close_readings.append(close_reading)
+            return close_readings
+            
+
+        total_invoices_progress = invoices.count()
+        for idx_invoice, invoice in enumerate(invoices, start=1):
+            report_progress(task, idx_invoice, total_invoices_progress)
+            
+            close_readings = _get_close_readings(invoice.readings.all())
+            
             row_data = [
                 str(invoice.contract.supply_point_default.address) if invoice.contract and invoice.contract.supply_point_default and invoice.contract.supply_point_default.address else "",
                 invoice.contract.token if invoice.contract else "",
                 invoice.customer_final if invoice.customer_final else "",
                 invoice.total_final,
                 invoice.readings.filter(is_estimated=False).aggregate(total_consumption=Sum('real_consumption'))['total_consumption'] or 0,
+                sum(reading.real_consumption for reading in close_readings) if close_readings else 0,
                 invoice.readings.filter(is_estimated=True).aggregate(total_consumption=Sum('calculated_value'))['total_consumption'] or 0,
-                invoice.real_consumption
+                invoice.real_consumption if invoice.real_consumption else invoice.consumption if invoice.consumption else 0
             ]
             row = add_row(sheet, row, row_data)
 

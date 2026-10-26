@@ -49,17 +49,21 @@ def generate_general_invoice_summary_pdf(invoice):
     rows = []
     subtotal_sum = Decimal('0')
     total_sum = Decimal('0')
+    consumption_sum = Decimal('0')
     for inv in invoices:
         supply_point = inv.contract.supply_point_default if inv.contract else None
         subtotal = inv.subtotal_final or Decimal('0')
         total = inv.total_final or Decimal('0')
+        consumption = Decimal(str(inv.real_consumption if inv.real_consumption is not None else (inv.consumption or 0)))
         rows.append({
             'contract_token': inv.contract.token if inv.contract else '-',
             'serie': inv.serie_final or '-',
             'supply_address': str(supply_point.address) if supply_point and supply_point.address else '-',
+            'consumption': consumption,
             'subtotal': subtotal,
             'total': total,
         })
+        consumption_sum += consumption
         subtotal_sum += subtotal
         total_sum += total
 
@@ -70,6 +74,7 @@ def generate_general_invoice_summary_pdf(invoice):
 
     html_rendered = render_to_string('general_invoice_summary_template.html', {
         'rows': rows,
+        'consumption_sum': consumption_sum,
         'subtotal_sum': subtotal_sum,
         'total_sum': total_sum,
         'title': invoice.billing.name if invoice.billing else invoice.title_final,

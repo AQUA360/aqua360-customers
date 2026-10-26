@@ -157,14 +157,6 @@ const getExploitations = async () => {
   });
 };
 
-const deleteItem = async () => {
-  if (confirm(t('confirmation_text_block.confirm_delete'))) {
-    saving.value = true;
-    await $ProductApiService.deleteItem(props.id);
-    return navigateTo('/pricing/products/')
-  }
-}
-
 const save = async () => {
   attemptedSave.value = true;
   if (isValid()) {
@@ -406,9 +398,6 @@ onMounted(async () => {
 
       <hr class="mb-2 col-span-2" />
       <div class="col-span-2 flex flex-row-reverse mt-4">
-        <button v-if="id != null" @click="deleteItem" :disabled="saving" class="button-default mx-5">
-          &nbsp; {{ $t('common.delete') }}
-        </button>
         <button @click="save" :disabled="saving" class="button-primary">
           <Icon name="fa6-solid:floppy-disk" />&nbsp; {{
             $t('common.save') }}

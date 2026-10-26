@@ -220,7 +220,9 @@ const deleteProperty = async () => {
       <div class="row grid grid-cols-2 gap-3">
         <div class="mb-4">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.identificator') }}</label>
-          <input type="text" :disabled="props.property != null" v-model="token" class="input" :class="{ 'invalid': attemptedSave && ( token == '' || attemptedSave && token == null ) }" />
+          <input v-if="props.property != null" type="text" :value="props.property.id" class="input" disabled />
+          <input v-else type="text" v-model="token" class="input"
+            :class="{ 'invalid': attemptedSave && (token == '' || token == null) }" />
         </div>
         <div class="mb-4">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.name') }}</label>

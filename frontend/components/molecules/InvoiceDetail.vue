@@ -5,7 +5,7 @@ import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { formatDate } from '~/utils/date';
 import { hideIban } from '~/utils/iban';
 import IBAN from '~/components/atoms/IBAN.vue';
-import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
+import { invoiceHasPdf, openInvoicePdf } from '~/utils/open-authenticated-file';
 
 const { t } = useI18n();
 const props = defineProps({
@@ -97,10 +97,10 @@ watch(() => props.data, () => {
 });
 
 const openInvoiceFileTemplate = async () => {
-  if (!localData.value?.invoice_file_template) return;
+  if (!invoiceHasPdf(localData.value)) return;
 
   try {
-    await openAuthenticatedFileUrl(localData.value.invoice_file_template);
+    await openInvoicePdf(localData.value);
   } catch (err) {
     console.error(err);
   }
@@ -160,7 +160,7 @@ const openInvoiceFileTemplate = async () => {
         </div>
       </FieldDetail>
 
-      <FieldDetail :label='$t("common.doc")' v-if="localData.invoice_file_template && !reducedDetail">
+      <FieldDetail :label='$t("common.doc")' v-if="invoiceHasPdf(localData) && !reducedDetail">
         <button type="button" @click="openInvoiceFileTemplate"
           class="text-sky-500 underline flex items-center gap-2">
           <Icon name="fa6-solid:file-pdf" />
@@ -237,6 +237,10 @@ const openInvoiceFileTemplate = async () => {
       <FieldDetail v-else :label='$t("common.status")'>
         <AtomsColorBadge :value="localData.status?.name" :color="localData.status?.color"></AtomsColorBadge>
       </FieldDetail>
+      <FieldDetail v-if="localData.endowment_date" 
+      :label='$t("billing_block.endowment_date")' :value="formatDate(localData.endowment_date)"/>
+      <FieldDetail v-if="localData.irrecoverable_date" 
+      :label='$t("billing_block.irrecoverable_date")' :value="formatDate(localData.irrecoverable_date)"/>
       <FieldDetail :label='$t("billing_block.general_invoice")'
         v-if="!reducedDetail && localData.general_contracts && localData.general_contracts.length > 0">
         <div class="relative" ref="generalContractsButtonRef">

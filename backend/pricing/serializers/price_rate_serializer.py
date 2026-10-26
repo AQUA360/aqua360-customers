@@ -40,6 +40,10 @@ class PriceRateSaveSerializer(TranslatableFieldMixin, serializers.ModelSerialize
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        product = attrs.get('product', self.instance.product if self.instance else None)
+        if not product:
+            # El llistat i el filtre per explotació van pel producte: sense, la tarifa quedaria invisible
+            raise serializers.ValidationError({'product': "Cal indicar el producte de la tarifa."})
         is_return_fee = attrs.get(
             'is_return_fee',
             self.instance.is_return_fee if self.instance else False,

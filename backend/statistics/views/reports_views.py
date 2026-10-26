@@ -43,14 +43,14 @@ logger = logging.getLogger(__name__)
 
 
 row_letters = list(string.ascii_uppercase)
-black_fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
-white_bold_font = Font(color="FFFFFF", bold=True)
-light_gray_fill = PatternFill(start_color="ebebeb", end_color="ebebeb", fill_type="solid")
+black_fill = PatternFill(start_color="FF000000", end_color="FF000000", fill_type="solid")
+white_bold_font = Font(color="FFFFFFFF", bold=True)
+light_gray_fill = PatternFill(start_color="FFebebeb", end_color="FFebebeb", fill_type="solid")
 thin_border = Border(
-    left=Side(style='thin', color='d3d3d3'),
-    right=Side(style='thin', color='d3d3d3'),
-    top=Side(style='thin', color='d3d3d3'),
-    bottom=Side(style='thin', color='d3d3d3')
+    left=Side(style='thin', color='FFd3d3d3'),
+    right=Side(style='thin', color='FFd3d3d3'),
+    top=Side(style='thin', color='FFd3d3d3'),
+    bottom=Side(style='thin', color='FFd3d3d3')
 )
 
 def column_to_excel_letter(column_index):

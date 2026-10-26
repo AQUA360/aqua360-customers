@@ -48,6 +48,7 @@ const documentName = computed(() => {
 });
 
 const hasCreationError = computed(() => !documentId.value && Boolean(data.value?.creation_error));
+const hasNoDataFound = computed(() => !documentId.value && !data.value?.creation_error && Boolean(data.value?.no_data_found));
 
 const isCancelled = computed(() => Boolean(
     data.value?.cancelled_at || data.value?.cancelled_by || data.value?.cancelled_observation
@@ -330,6 +331,14 @@ watch(() => props.id, () => {
                         <p class="text-red-700 font-bold text-sm"> {{ t('common.error') }}: {{ data.creation_error }}
                         </p>
                         <p class="text-red-600 text-xs mt-1">{{ t('statistics_block.creation_error_help') }}</p>
+                    </div>
+                </div>
+
+                <div v-else-if="hasNoDataFound"
+                    class="flex items-start gap-2 py-1 px-3 bg-slate-50 rounded border border-slate-300 mb-3">
+                    <Icon name="fa6-solid:circle-info" class="text-slate-500 mt-0.5 shrink-0" />
+                    <div class="min-w-0 flex-1">
+                        <p class="text-slate-700 text-sm">{{ t('statistics_block.no_document_no_data') }}</p>
                     </div>
                 </div>
 

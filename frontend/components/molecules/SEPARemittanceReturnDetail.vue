@@ -202,6 +202,30 @@ const handleSort = (key) => {
   }
 };
 
+// Exporta els pagaments retornats tal com es mostren (filtres i ordenació aplicats)
+const exportColumns = computed(() => [
+  { header: t('common.identification'), value: (row) => row.token },
+  { header: t('invoice'), value: (row) => row.invoice ? row.invoice.token : t('commitment_deposit') },
+  { header: t('common.total'), value: (row) => row.amount !== null && row.amount !== undefined ? Number(row.amount) : '' },
+  { header: t('contract'), value: (row) => row.contract?.token },
+  { header: t('billing_block.payment'), value: (row) => row.payment_date ? formatDate(row.payment_date) : '' },
+  { header: t('common.status'), value: (row) => row.status?.name },
+  { header: t('common.limit'), value: (row) => row.due_date ? formatDate(row.due_date) : '' },
+]);
+
+const exportSummary = computed(() => {
+  const remittance = remittanceDetails.value;
+  if (!remittance) return [];
+  return [
+    [t('billing_block.return_sepa'), remittance.token || props.info?.token],
+    [t('common.creation_date'), remittance.created_at ? formatDate(remittance.created_at) : ''],
+    [t('common.return_date'), remittance.return_date ? formatDate(remittance.return_date) : ''],
+    [t('common.returned_by'), remittance.returned_by_username],
+    [t('billing_block.remittance_payments'), remittance.total_payments || 0],
+    [t('billing_block.total_amount'), Number(remittance.total_amount) || 0],
+  ];
+});
+
 const resetFilters = () => {
   searchInput.value = '';
   sortBy.value = null;
@@ -311,6 +335,8 @@ const showDetail = async (component, id) => {
                 <Icon name="fa6-solid:download" class="w-4 h-4" />
                 {{ $t('billing_block.download_document') }}
               </button>
+              <AtomsDownloadXlsxButton :rows="sortedPayments" :columns="exportColumns" :summary="exportSummary" :label="$t('billing_block.download_summary_xlsx')"
+                :file-name="`sepa_return_${remittanceDetails.token || props.remittance_id}`" />
             </div>
           </div>
         </fieldset>

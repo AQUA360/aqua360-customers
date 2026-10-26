@@ -5685,6 +5685,9 @@ msgstr "Consumo registrado"
 msgid "Altres consums"
 msgstr "Otros consumos"
 
+msgid "Consum pendent"
+msgstr "Consumo pendiente"
+
 msgid "Consum facturat"
 msgstr "Consumo facturado"
 
@@ -5769,6 +5772,9 @@ msgctxt "date month with preposition"
 msgid "of December"
 msgstr "de diciembre"
 
+#: pricing/utils/accounting_service.py
+msgid "No values found to generate accounting"
+msgstr "No se han encontrado valores para generar el informe de contabilidad"
 #: notification/utils/auto_tasks.py
 msgid "Apply meter change"
 msgstr "Aplicar el cambio de contador"

@@ -24,18 +24,37 @@ const props = defineProps({
   }
 });
 
-const { $VariableApiService } = useNuxtApp();
+const { $VariableApiService, $BonificationApiService } = useNuxtApp();
 
 const emit = defineEmits(['delete', 'edit']);
 
-const onDelete = () => {
+// Bonificació de la qual s'està eliminant l'última variable: obre el modal perquè
+// l'usuari decideixi si també l'elimina.
+const lastVariableBonification = ref(null);
+
+const onDelete = async () => {
   const item = props.item;
-  console.log('onDelete');
-  if (confirm(t('confirmation_text_block.confirm_delete'))) {
-    $VariableApiService.doDelete(item).then(() => {
-      emit('delete', item)
-    });
+  if (item.bonification) {
+    const bonification = await $BonificationApiService.getDetail(item.bonification);
+    if (!bonification.variables?.some(variable => variable.id !== item.id)) {
+      lastVariableBonification.value = bonification;
+      return;
+    }
   }
+  if (confirm(t('confirmation_text_block.confirm_delete'))) {
+    await deleteVariable();
+  }
+}
+
+const deleteVariable = async (deleteBonification = false) => {
+  const item = props.item;
+  const bonification = lastVariableBonification.value;
+  lastVariableBonification.value = null;
+  await $VariableApiService.doDelete(item);
+  if (deleteBonification) {
+    await $BonificationApiService.doDelete(bonification);
+  }
+  emit('delete', item);
 }
 
 const edit = () => {
@@ -80,5 +99,35 @@ onMounted(() => {
       :class="deleteButton ? 'right-12' : 'right-3'">
       <Icon name="fa6-solid:pencil" />
     </button>
+
+    <Teleport to="body">
+      <div v-if="lastVariableBonification">
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-[60]" @click="lastVariableBonification = null" />
+        <div class="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4" role="dialog"
+          aria-modal="true" @click="lastVariableBonification = null">
+          <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full relative" @click.stop>
+            <button type="button" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+              :aria-label="t('common.cancel')" @click="lastVariableBonification = null">
+              <Icon name="fa6-solid:xmark" class="text-xl" />
+            </button>
+            <p class="leading-relaxed text-slate-600 font-medium pr-6">
+              {{ t('confirmation_text_block.confirm_delete_last_bonification_variable', {
+                name: lastVariableBonification.bonification_type?.name || lastVariableBonification.token }) }}
+            </p>
+            <div class="flex flex-wrap justify-end gap-2 mt-6">
+              <button type="button" class="button-default" @click="deleteVariable(true)">
+                {{ t('confirmation_text_block.delete_variable_and_bonification') }}
+              </button>
+              <button type="button" class="button-default" @click="deleteVariable(false)">
+                {{ t('confirmation_text_block.delete_only_variable') }}
+              </button>
+              <button type="button" class="button-primary" @click="lastVariableBonification = null">
+                {{ t('common.cancel') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

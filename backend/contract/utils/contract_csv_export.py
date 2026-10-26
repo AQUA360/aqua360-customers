@@ -313,10 +313,11 @@ def contract_row_values(contract, variable_names, debt_map, variables_by_contrac
     return row
 
 
-def build_contract_export_csv_bytes(filtered_queryset):
+def build_contract_export_csv_bytes(filtered_queryset, progress_callback=None):
     """
     CSV complet (UTF-8 amb BOM) a partir d'un queryset de Contract ja filtrat.
     Compartit per la vista síncrona i per l'informe Celery de statistics.
+    `progress_callback(current, total)` es crida per cada contracte escrit.
     """
     variable_names = variable_names_used_in_queryset(filtered_queryset)
     export_qs = prepare_contract_export_queryset(filtered_queryset)
@@ -328,8 +329,11 @@ def build_contract_export_csv_bytes(filtered_queryset):
     buffer.write('\ufeff')
     writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(build_contract_export_headers(variable_names))
-    for contract in export_qs.iterator(chunk_size=500):
+    total = len(contract_ids)
+    for idx, contract in enumerate(export_qs.iterator(chunk_size=500), start=1):
         writer.writerow(
             contract_row_values(contract, variable_names, debt_map, variables_by_contract)
         )
+        if progress_callback:
+            progress_callback(idx, total)
     return buffer.getvalue().encode('utf-8')

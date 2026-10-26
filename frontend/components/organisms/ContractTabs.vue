@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
@@ -23,6 +23,7 @@ import TenantChange from '~/components/atoms/TenantChange.vue';
 import DataChange from '~/components/atoms/DataChange.vue';
 import TimeRelative from '~/components/atoms/TimeRelative.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
+import { useTabsLayout } from '~/composables/useTabsLayout';
 
 const props = defineProps({
   contract: Object,
@@ -172,6 +173,121 @@ const setInvoiceActiveTab = (tab) => {
 const setActiveTab = (tab) => {
   emit('update-active-tab', tab);
 }
+
+// --- Tab bar ---------------------------------------------------------------
+
+const countOf = (list) => list?.length || 0;
+
+// Every tab the contract can show. `count` is appended to the label; tabs whose
+// `available` is false are not offered at all (neither in the bar nor in the picker).
+const tabDefinitions = computed(() => {
+  const contract = props.contract || {};
+  const documentsCount = (contract.contract_file && contract.contract_file.is_active !== false ? 1 : 0)
+    + (contract.documentation_files?.filter(d => d.is_active !== false)?.length || 0);
+
+  return [
+    { key: 'observations', icon: 'fa6-solid:note-sticky', label: t('common.observations'), count: props.observationNumber },
+    { key: 'billing_reading', icon: 'fa6-solid:list', label: t('readings') },
+    { key: 'invoices', icon: 'fa6-solid:file-invoice', label: t('invoices'), count: props.invoices_count || 0 },
+    { key: 'incident', icon: 'fa6-solid:bug', label: t('common.incidents'), count: props.incidentNumber },
+    { key: 'communication', icon: 'fa6-solid:envelope', label: t('common.comms'), count: props.communicationNumber },
+    { key: 'tasks', icon: 'fa6-solid:calendar', label: t('dashboard.tasks'), count: countOf(contract.calendar_tasks) },
+    {
+      key: 'bonifications', icon: 'fa6-solid:percent', label: t('contract_block.bonifications_and_variables'),
+      count: `${countOf(contract.bonifications)} · ${countOf(contract.variables)}`,
+    },
+    { key: 'price_rate', icon: 'fa6-solid:tag', label: t('price_rate'), count: countOf(contract.price_rates) },
+    { key: 'documents', icon: 'fa6-solid:file', label: t('common.docs'), count: documentsCount },
+    { key: 'call_register', icon: 'fa6-solid:phone', label: t('contract_block.call_register'), count: props.callRegisterNumber },
+    { key: 'bails', icon: 'fa6-solid:users', label: t('common.bails'), count: countOf(contract.bails) },
+    { key: 'debt_mng', icon: 'fa-solid:exclamation-circle', label: t('contract_block.debt_management') },
+    {
+      key: 'supply_point', icon: 'fa6-solid:street-view', label: t('contract_block.additional_supply_points'),
+      count: countOf(contract.supply_points) - 1 || 0,
+      available: props.isPinned && countOf(contract.supply_points) > 0,
+    },
+    { key: 'orders', icon: 'fa6-solid:screwdriver-wrench', label: t('work_orders'), count: props.orderNumber || 0 },
+    { key: 'dataChange', icon: 'fa6-solid:address-card', label: t('common.modifications'), count: props.contractChangeNumber },
+    {
+      key: 'surrogation', icon: 'fa6-solid:person-walking-arrow-right', label: t('contract_block.surrogations'),
+      count: countOf(props.surrogations),
+    },
+    {
+      key: 'tenantChanges', icon: 'fa6-solid:people-arrows', label: t('contract_block.tenant_changes'),
+      count: countOf(props.tenant_changes),
+    },
+    {
+      key: 'change_var', icon: 'fa6-solid:users', label: t('contract_block.bon_var_changes'),
+      count: props.bonVarChangesNumber, available: !!contract.contract_request_type?.has_persons,
+    },
+    { key: 'clauses', icon: 'fa6-solid:file-signature', label: t('contract_block.clauses'), count: countOf(contract.clauses) },
+  ].filter(tab => tab.available !== false);
+});
+
+const {
+  tabs,
+  visibleTabs,
+  collapsed,
+  isVisible,
+  isCustomised,
+  toggleTab,
+  moveTabTo,
+  moveTabBy,
+  toggleCollapsed,
+  resetTabs,
+} = useTabsLayout('contract', tabDefinitions);
+
+const tabTitle = (tab) => tab.count === undefined ? tab.label : `${tab.label} (${tab.count})`;
+
+// If the user hid the active tab, fall back to the first one still shown.
+// A null activeTab is the parent reloading the contract, so it is left alone.
+watch([visibleTabs, () => props.activeTab], () => {
+  if (!props.activeTab || !visibleTabs.value.length) return;
+  if (!visibleTabs.value.some(tab => tab.key === props.activeTab)) {
+    setActiveTab(visibleTabs.value[0].key);
+  }
+});
+
+const draggedTabKey = ref(null);
+const dropTargetTabKey = ref(null);
+
+const onTabDragStart = (tab, event) => {
+  draggedTabKey.value = tab.key;
+  event.dataTransfer.effectAllowed = 'move';
+  // Firefox refuses to start a drag without payload.
+  event.dataTransfer.setData('text/plain', tab.key);
+  // Drag image of the tab itself, never the link inside it.
+  event.dataTransfer.setDragImage(event.currentTarget, 0, 0);
+};
+
+const onTabDragOver = (tab) => {
+  if (!draggedTabKey.value || draggedTabKey.value === tab.key) return;
+  dropTargetTabKey.value = tab.key;
+};
+
+const onTabDrop = (tab) => {
+  if (draggedTabKey.value) moveTabTo(draggedTabKey.value, tab.key);
+  onTabDragEnd();
+};
+
+const onTabDragEnd = () => {
+  draggedTabKey.value = null;
+  dropTargetTabKey.value = null;
+};
+
+const isTabsPickerOpen = ref(false);
+const tabsPicker = ref(null);
+
+const onDocumentClick = (event) => {
+  if (tabsPicker.value && !tabsPicker.value.contains(event.target)) isTabsPickerOpen.value = false;
+};
+
+watch(isTabsPickerOpen, (open) => {
+  if (open) document.addEventListener('click', onDocumentClick);
+  else document.removeEventListener('click', onDocumentClick);
+});
+
+onUnmounted(() => document.removeEventListener('click', onDocumentClick));
 
 /**
  * Contextual tab actions - related contract actions
@@ -396,166 +512,74 @@ const groupedPriceRates = computed(() => {
 </script>
 
 <template>
-  <AtomsTabs>
-    <li class="me-2">
-      <a href="#tab_observations" @click.prevent="setActiveTab('observations')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'observations', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'observations' }">
-        <Icon name="fa6-solid:note-sticky" class="display-inline mr-2" />
-        {{ $t("common.observations") }} ({{ observationNumber }})
-      </a>
-    </li>
+  <div class="flex items-stretch">
+    <AtomsTabs class="flex-1 min-w-0">
+      <li v-for="tab in visibleTabs" :key="tab.key" :class="collapsed ? 'me-1' : 'me-2'"
+        :draggable="true" @dragstart="onTabDragStart(tab, $event)" @dragover.prevent="onTabDragOver(tab)"
+        @drop.prevent="onTabDrop(tab)" @dragend="onTabDragEnd">
+        <!-- No natiu: si l'enllaç s'arrossega, el navegador mostra la URL en lloc de la pestanya -->
+        <a :href="`#tab_${tab.key}`" draggable="false" class="[-webkit-user-drag:none]"
+          @click.prevent="setActiveTab(tab.key)"
+          :title="collapsed ? tabTitle(tab) : null"
+          :class="{
+            'text-sky-600 border-sky-600': activeTab === tab.key,
+            'hover:text-gray-600 hover:border-gray-300': activeTab !== tab.key,
+            'opacity-50': draggedTabKey === tab.key,
+            'bg-sky-50': dropTargetTabKey === tab.key,
+          }">
+          <Icon :name="tab.icon" class="display-inline" :class="{ 'mr-2': !collapsed }" />
+          <template v-if="!collapsed">{{ tabTitle(tab) }}</template>
+        </a>
+      </li>
+    </AtomsTabs>
 
-    <li class="me-2">
-      <a href="#tab_billing_reading" @click.prevent="setActiveTab('billing_reading')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'billing_reading', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'billing_reading' }">
-        <Icon name="fa6-solid:list" class="display-inline mr-2" />
-        {{ $t("readings") }}
-      </a>
-    </li>
+    <div ref="tabsPicker" class="relative shrink-0 flex items-center gap-1 border-b border-gray-200 pl-1" @click.stop>
+      <button type="button" class="px-2 py-1 hover:bg-slate-200 rounded text-slate-500"
+        :title="t('common.configure_tabs')" @click="isTabsPickerOpen = !isTabsPickerOpen">
+        <Icon name="fa6-solid:gear" />
+      </button>
 
-    <li class="me-2">
-      <a href="#tab_invoices" @click.prevent="setActiveTab('invoices')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'invoices', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'invoices' }">
-        <Icon name="fa6-solid:file-invoice" class="display-inline mr-2" />
-        {{ $t("invoices") }} ({{ invoices_count || 0 }})
-      </a>
-    </li>
-
-
-    <li class="me-2">
-      <a href="#tab_incident" @click.prevent="setActiveTab('incident')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'incident', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'incident' }">
-        <Icon name="fa6-solid:bug" class="display-inline mr-2" />
-        {{ $t("common.incidents") }} ({{ incidentNumber }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_communication" @click.prevent="setActiveTab('communication')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'communication', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'communication' }">
-        <Icon name="fa6-solid:envelope" class="display-inline mr-2" />
-        {{ $t("common.comms") }} ({{ communicationNumber }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_tasks" @click.prevent="setActiveTab('tasks')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'tasks', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'tasks' }">
-        <Icon name="fa6-solid:calendar" class="display-inline mr-2" />
-        {{ $t("dashboard.tasks") }} ({{ contract.calendar_tasks?.length || 0 }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_bonifications" @click.prevent="setActiveTab('bonifications')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'bonifications', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'bonifications' }"
-        aria-current="page">
-        <Icon name="fa6-solid:percent" class="display-inline mr-2" />
-        {{ $t("contract_block.bonifications_and_variables") }}
-        ({{ contract.bonifications?.length || 0 }} · {{ contract.variables?.length || 0 }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_price_rate" @click.prevent="setActiveTab('price_rate')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'price_rate', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'price_rate' }">
-        <Icon name="fa6-solid:tag" class="display-inline mr-2" />
-        {{ $t("price_rate") }} ({{ contract?.price_rates?.length || 0 }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_documents" @click.prevent="setActiveTab('documents')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'documents', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'documents' }">
-        <Icon name="fa6-solid:file" class="display-inline mr-2" />
-        {{ $t("common.docs") }} ({{ (contract.contract_file && contract.contract_file.is_active !== false ? 1 : 0) + (contract?.documentation_files?.filter(d => d.is_active !== false)?.length || 0) }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_call_register" @click.prevent="setActiveTab('call_register')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'call_register', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'call_register' }">
-        <Icon name="fa6-solid:phone" class="display-inline mr-2" />
-        {{ $t("contract_block.call_register") }} ({{ callRegisterNumber }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_bails" @click.prevent="setActiveTab('bails')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'bails', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'bails' }"
-        aria-current="page">
-        <Icon name="fa6-solid:users" class="display-inline mr-2" />
-        {{ $t("common.bails") }} ({{ contract?.bails ? contract.bails.length : 0 }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_debt_mng" @click.prevent="setActiveTab('debt_mng')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'debt_mng', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'debt_mng' }"
-        aria-current="page">
-        <Icon name="fa-solid:exclamation-circle" class="display-inline mr-2" />
-        {{ $t("contract_block.debt_management") }}
-      </a>
-    </li>
-
-    <li v-if="isPinned && contract?.supply_points?.length > 0" class="me-2">
-      <a href="#tab_supply_point" @click.prevent="setActiveTab('supply_point')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'supply_point', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'supply_point' }">
-        <Icon name="fa6-solid:street-view" class="display-inline mr-2" />
-        {{ $t("contract_block.additional_supply_points") }} ({{ contract?.supply_points?.length - 1 || 0 }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_orders" @click.prevent="setActiveTab('orders')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'orders', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'orders' }">
-        <Icon name="fa6-solid:screwdriver-wrench" class="display-inline mr-2" />
-        {{ $t("work_orders") }} ({{ orderNumber || 0 }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_dataChange" @click.prevent="setActiveTab('dataChange')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'dataChange', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'dataChange' }">
-        <Icon name="fa6-solid:address-card" class="display-inline mr-2" />
-        {{ $t("common.modifications") }} ({{ contractChangeNumber }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_surrogation" @click.prevent="setActiveTab('surrogation')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'surrogation', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'surrogation' }">
-        <Icon name="fa6-solid:person-walking-arrow-right" class="display-inline mr-2" />
-        {{ $t("contract_block.surrogations") }} ({{ surrogations?.length || 0 }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_tenantChange" @click.prevent="setActiveTab('tenantChanges')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'tenantChanges', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'tenantChanges' }">
-        <Icon name="fa6-solid:people-arrows" class="display-inline mr-2" />
-        {{ $t("contract_block.tenant_changes") }} ({{ tenant_changes?.length || 0 }})
-      </a>
-    </li>
-
-    <li v-if="contract?.contract_request_type?.has_persons" class="me-2">
-      <a href="#tab_change_var" @click.prevent="setActiveTab('change_var')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'change_var', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'change_var' }"
-        aria-current="page">
-        <Icon name="fa6-solid:users" class="display-inline mr-2" />
-        {{ $t("contract_block.bon_var_changes") }} ({{ bonVarChangesNumber }})
-      </a>
-    </li>
-
-    <li class="me-2">
-      <a href="#tab_clauses" @click.prevent="setActiveTab('clauses')"
-        :class="{ 'text-sky-600 border-sky-600': activeTab === 'clauses', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'clauses' }"
-        aria-current="page">
-        <Icon name="fa6-solid:file-signature" class="display-inline mr-2" />
-        {{ $t("contract_block.clauses") }} ({{ contract.clauses?.length || 0 }})
-      </a>
-    </li>
-  </AtomsTabs>
+      <div v-if="isTabsPickerOpen"
+        class="absolute top-full right-0 mt-1 z-20 bg-white rounded customers-shadow p-2 w-[300px] max-h-[60vh] overflow-y-auto">
+        <button type="button"
+          class="w-full flex items-center gap-2 px-1 py-1 mb-2 hover:bg-slate-100 rounded text-sm text-slate-700"
+          @click="toggleCollapsed">
+          <Icon :name="collapsed ? 'mdi:arrow-expand-horizontal' : 'mdi:arrow-collapse-horizontal'"
+            class="text-slate-500 shrink-0" />
+          <span>{{ collapsed ? t('common.expand_tabs') : t('common.collapse_tabs') }}</span>
+        </button>
+        <p class="text-xs uppercase tracking-wider text-gray-400 px-1 pb-1">
+          {{ t('common.visible_tabs') }}
+        </p>
+        <div v-for="(tab, index) in tabs" :key="tab.key"
+          class="flex items-center gap-1 px-1 py-1 hover:bg-slate-100 rounded text-sm"
+          :class="{ 'opacity-50': draggedTabKey === tab.key, 'bg-sky-50': dropTargetTabKey === tab.key }"
+          draggable="true" @dragstart="onTabDragStart(tab, $event)" @dragover.prevent="onTabDragOver(tab)"
+          @drop.prevent="onTabDrop(tab)" @dragend="onTabDragEnd">
+          <Icon name="fa6-solid:grip-vertical" class="text-slate-300 cursor-grab shrink-0"
+            :title="t('common.drag_to_reorder')" />
+          <label class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+            <input type="checkbox" :checked="isVisible(tab.key)"
+              :disabled="isVisible(tab.key) && visibleTabs.length <= 1" @change="toggleTab(tab.key)" />
+            <Icon :name="tab.icon" class="text-slate-500 shrink-0" />
+            <span class="truncate">{{ tab.label }}</span>
+          </label>
+          <button type="button" class="px-1 text-slate-400 hover:text-sky-600 disabled:opacity-30"
+            :disabled="index === 0" :title="t('common.move_up')" @click="moveTabBy(tab.key, -1)">
+            <Icon name="fa6-solid:chevron-up" />
+          </button>
+          <button type="button" class="px-1 text-slate-400 hover:text-sky-600 disabled:opacity-30"
+            :disabled="index === tabs.length - 1" :title="t('common.move_down')" @click="moveTabBy(tab.key, 1)">
+            <Icon name="fa6-solid:chevron-down" />
+          </button>
+        </div>
+        <button v-if="isCustomised" type="button"
+          class="mt-2 w-full text-sm text-sky-600 hover:underline text-left px-1" @click="resetTabs">
+          {{ t('common.restore_default_tabs') }}
+        </button>
+      </div>
+    </div>
+  </div>
 
   <div id="contract_tabpanels" class="overflow-y-auto scrollbar-hide pb-20">
     <section v-show="activeTab === 'observations'" role="tabpanel" id="tab_observations" class="bg-white antialiased">

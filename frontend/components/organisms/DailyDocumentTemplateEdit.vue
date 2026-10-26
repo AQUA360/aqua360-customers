@@ -1,5 +1,6 @@
 <script setup>
 import H1Region from '../atoms/H1Region.vue';
+import SelectorType from '../atoms/SelectorType.vue';
 import { useToast } from 'vue-toastification';
 
 const toast = useToast();
@@ -37,6 +38,17 @@ const reportMatchesSearch = (report) => {
 const name = ref('');
 const description = ref('');
 const daysToComplete = ref(2);
+const isWorkDays = ref(false);
+
+const dayTypeOptions = computed(() => [
+    { value: 'work', label: t('common.work') },
+    { value: 'natural', label: t('common.natural') },
+]);
+
+const dayType = computed({
+    get: () => (isWorkDays.value ? 'work' : 'natural'),
+    set: (value) => { isWorkDays.value = value === 'work'; },
+});
 
 const normalizeReport = (report) => ({
     id: report.id,
@@ -83,6 +95,7 @@ const getData = async () => {
         name.value = response.name;
         description.value = response.description;
         daysToComplete.value = response.days_to_complete;
+        isWorkDays.value = !!response.is_work_days;
         const report = response.available_report;
         if (report) {
             const normalized = normalizeReport(report);
@@ -154,6 +167,7 @@ const save = async () => {
             name: name.value,
             description: description.value,
             days_to_complete: daysToComplete.value,
+            is_work_days: isWorkDays.value,
             available_report_id: selectedAvailableReport.value?.id
         }
         const response = await $DailyDocumentTemplateApiService.save(payload);
@@ -202,13 +216,16 @@ onMounted(async () => {
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.expires_in') }}</label>
-                    <div class="relative">
-                        <input type="number" min="1" v-model="daysToComplete" class="input pr-14"
-                            :class="{ 'invalid': attemptedSave && (daysToComplete == '' || daysToComplete == null) }" />
-                        <span
-                            class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
-                            {{ t('common.days') }}
-                        </span>
+                    <div class="flex gap-2 items-center">
+                        <div class="relative min-w-0 flex-1">
+                            <input type="number" min="1" v-model="daysToComplete" class="input pr-14"
+                                :class="{ 'invalid': attemptedSave && (daysToComplete == '' || daysToComplete == null) }" />
+                            <span
+                                class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                                {{ t('common.days') }}
+                            </span>
+                        </div>
+                        <SelectorType v-model="dayType" :options="dayTypeOptions" class="shrink-0" />
                     </div>
                 </div>
                 <div class="col-span-2">

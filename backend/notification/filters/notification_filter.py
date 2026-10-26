@@ -34,13 +34,10 @@ class NotificationFilter(filters.FilterSet):
         return queryset
     
     def filter_is_archived(self, queryset, name, value):
-        if not hasattr(self, 'request'):
+        user = getattr(self.request, 'user', None)
+        if not user or not user.is_authenticated:
             return queryset
-            
-        user = self.request.user if self.request else None
-        if user:
-            if value:
-                return queryset.exclude(archived_by=user)
-            else:
-                return queryset.filter(archived_by=user)
-        return queryset
+    
+        if value:
+            return queryset.filter(archived_by=user)
+        return queryset.exclude(archived_by=user)

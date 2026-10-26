@@ -24,7 +24,7 @@ const emit = defineEmits(['delete']);
 const onDelete = () => {
   const item = props.item;
   console.log('onDelete');
-  if (confirm(t('confirmation_text_block.confirm_delete'))) {
+  if (confirm(t('confirmation_text_block.confirm_delete_bonification'))) {
     $BonificationApiService.doDelete(item).then(() => {
       emit('delete', item)
     });

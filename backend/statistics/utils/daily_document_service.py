@@ -20,10 +20,32 @@ def execute_available_report(available_report, report_data):
     return Document.objects.get(id=document_id)
 
 
+def add_working_days(start_date, work_days):
+    current_date = start_date
+    added_days = 0
+    while added_days < work_days:
+        current_date += timedelta(days=1)
+        if current_date.weekday() < 5: 
+            added_days += 1
+    return current_date
+
+
+def compute_due_date(start_date, days_to_complete, is_work_days=False):
+    days = days_to_complete if days_to_complete is not None else 2
+    if days <= 0:
+        return None
+    if is_work_days:
+        return add_working_days(start_date, days)
+    return start_date + timedelta(days=days)
+
+
 def generate_daily_document(template, current_time, pending_status):
     try:
+        from statistics.tasks import ReportNoData
+
         document = None
         error_message = None
+        no_data_found = False
         try:
             date_str = current_time.strftime('%Y-%m-%d')
             report_data = {
@@ -32,11 +54,18 @@ def generate_daily_document(template, current_time, pending_status):
                 'name': f"{template.name} {current_time.strftime('%Y/%m/%d')}",
             }
             document = execute_available_report(template.available_report, report_data)
+        except ReportNoData:
+            document = None
+            no_data_found = True
         except Exception as e:
             document = None
             error_message = str(e)
-        
-        due_date = current_time.date() + timedelta(days=template.days_to_complete or 2) if template.days_to_complete > 0 else None
+
+        due_date = compute_due_date(
+            current_time.date(),
+            template.days_to_complete,
+            is_work_days=bool(template.is_work_days),
+        )
 
         DailyDocument.objects.create(
             token=f"{template.token}_{current_time.strftime('%Y%m%d')}",
@@ -46,7 +75,8 @@ def generate_daily_document(template, current_time, pending_status):
             status=pending_status,
             template=template,
             document=document,
-            creation_error=error_message
+            creation_error=error_message,
+            no_data_found=no_data_found,
         )
 
     except Exception as e:

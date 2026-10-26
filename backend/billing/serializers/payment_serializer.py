@@ -108,6 +108,16 @@ class PaymentSaveSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         print("update payment")
         status_token = validated_data.pop('status_token', None)
+        # Un cobrament ja fet no pot canviar de mètode: no en quedaria cap moviment i la comptabilitat
+        # continuaria dient el mètode original. Primer s'ha de fer el retorn i tornar-lo a pagar
+        paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+        new_payment_type_token = validated_data.get('payment_type_token')
+        if (instance.status and instance.status.token == paid_token
+                and (not status_token or status_token == paid_token)
+                and new_payment_type_token and new_payment_type_token != instance.payment_type_token):
+            raise serializers.ValidationError({
+                'payment_type_token': "No es pot canviar el mètode de pagament d'un pagament cobrat: primer cal fer-ne el retorn i tornar-lo a pagar."
+            })
         due_date = validated_data.pop('due_date', None)
         if 'is_excluded' in validated_data and not status_token:
             disconnect_payment_signals()

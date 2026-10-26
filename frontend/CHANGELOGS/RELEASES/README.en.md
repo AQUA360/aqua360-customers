@@ -2,6 +2,8 @@
 
 [Català](./README.ca.md) · [Español](./README.es.md) · [English](./README.en.md)
 
+> **History up to `v1.135.02`.** Since then there is a single version for the whole monorepo, and the version, baseline and calculation sections of this document no longer apply. The current policy, including the changelog rules, is in [`RELEASES/README.en.md`](../../../RELEASES/README.en.md). Older notes are kept.
+
 This document aligns frontend versioning with the backend: **Conventional Commits + SemVer**, without inflating MINOR for small changes.
 
 ## Version format
@@ -102,9 +104,9 @@ Example:
    FEAT  → 1.52.00   (PATCH resets)
 ```
 
-## Release deliverables
+## Release deliverables (history)
 
-When closing a period, create:
+Up to `v1.135.02`, closing a period created the following files. Release notes now go to [`RELEASES/`](../../../RELEASES/README.en.md):
 
 - `CHANGELOGS/RELEASES/<version>.{ca,es,en}.md` — release notes (methodology, day→version table, highlights)
 - Optional: `CHANGELOGS/RELEASES/PLAN_RELEASE_<version>.{ca,es,en}.md` — plan/checklist

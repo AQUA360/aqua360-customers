@@ -800,6 +800,9 @@ class Invoice(models.Model):
     suppressed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     suppressed_at = models.DateTimeField(null=True, blank=True)
     
+    endowment_date = models.DateField(null=True, blank=True) # accounting reference value
+    irrecoverable_date = models.DateField(null=True, blank=True) # accounting reference value
+    
     is_general = models.BooleanField(default=False)
     general_contracts = models.ManyToManyField(Contract, blank=True, related_name="general_invoices")
     
