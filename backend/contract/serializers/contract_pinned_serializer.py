@@ -20,6 +20,7 @@ from coredata.serializers import PersonContactSerializer, PersonSerializer, Pers
 from billing.serializers.general_payment_serializer import GeneralPaymentSerializer
 from contract.serializers.contract_data_change_serializer import ContractDataChangeSerializer
 from contract.serializers.variable_serializer import VariableSerializer
+from contract.utils.contract_service import get_contract_housing_units
 from contract.serializers.contract_representative_serializer import ContractRepresentativeSerializer
 from service.serializers.supply_point_serializer import SupplyPointSerializer
 from auth.serializers import UserMinimalSerializer
@@ -122,11 +123,15 @@ class PinnedContractSerializer(serializers.ModelSerializer):
     incidents = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
+    housing_units = serializers.SerializerMethodField()
     
     class Meta:
         model = Contract
         fields = '__all__'
     
+    def get_housing_units(self, obj):
+        return get_contract_housing_units(obj)
+
     def get_general_invoice(self, obj):
         if obj.general_invoice:
             return {

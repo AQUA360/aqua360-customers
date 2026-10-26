@@ -1482,6 +1482,7 @@ export default {
     categories: 'Categorías',
     category: 'Categoría',
     no_category: 'Sen categoría',
+    housing_units: 'Núm. vivendas',
     surrogation: 'Subrogación',
     surrogate: 'Subrogado',
     bon_var_changes: 'Cambios de bonificación e variable',

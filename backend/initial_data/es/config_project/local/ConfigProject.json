@@ -3070,5 +3070,17 @@
             "value": null,
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 259,
+        "fields": {
+            "created_at": "2026-10-26T00:00:00.000Z",
+            "updated_at": "2026-10-26T00:00:00.000Z",
+            "token": "contract_housing_units_variable_type_token",
+            "name": "Token del VariableType que indica el número de viviendas del contrato (se muestra en el detalle del contrato)",
+            "value": "general",
+            "file": null
+        }
     }
 ]
