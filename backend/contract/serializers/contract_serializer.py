@@ -173,6 +173,7 @@ class ContractSerializer(serializers.ModelSerializer):
     members_change_count = serializers.SerializerMethodField()
     orders_count = serializers.SerializerMethodField()
     pending_billing = serializers.SerializerMethodField()
+    housing_units = serializers.SerializerMethodField()
     
     mandate_id = serializers.CharField(required=False, allow_null=True)
     mandate_id_overwrite = serializers.BooleanField(required=False, allow_null=True)
@@ -286,6 +287,18 @@ class ContractSerializer(serializers.ModelSerializer):
         owner_observations = PersonObservation.objects.filter(is_important=True, is_active=True, person=obj.owner)
         return PersonObservationSerializer(holder_observations | tenant_observations | owner_observations, many=True, context=self.context).data
     
+    def get_housing_units(self, obj):
+        """Valor de la variable activa del contracte que indica el nombre d'habitatges. El
+        VariableType es configura a `ConfigProject.contract_housing_units_variable_type_token`."""
+        config = ConfigProject.objects.filter(token='contract_housing_units_variable_type_token').first()
+        variable_type_token = (config.value or '').strip() if config else ''
+        if not variable_type_token:
+            return None
+        variable = obj.variables.filter(
+            is_active=True, type__token=variable_type_token,
+        ).order_by('-start_at', '-id').first()
+        return variable.value if variable else None
+
     def get_supply_point_ids(self, obj):
         supply_points = obj.supply_points.all()
         return [supply_point.id for supply_point in supply_points]
