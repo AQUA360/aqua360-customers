@@ -14,11 +14,15 @@ info:
     | `/ov/billing-data/` | GET / POST | Consulta y actualización de datos de facturación |
     | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN |
     | `/ov/contact-data/` | GET | Consulta de la configuración del perfil (datos de facturación + dirección del titular) |
+    | `/ov/person-data/` | GET | Datos de contacto de la persona por DNI (teléfonos, correos y direcciones, incluidas las inactivas) |
     | `/ov/invoices/` | GET | Listado de facturas (excluye pre-facturas) |
     | `/ov/invoices/download/` | POST | Descarga en lote de facturas seleccionadas (ZIP) |
     | `/ov/invoice/` | GET | Detalle de una factura |
     | `/ov/invoice/{token}/detail/` | GET | Detalle completo de una factura (tarifas y desglose fiscal) |
     | `/ov/invoice/paid/` | POST | Marcar factura como pagada (TPV online) |
+    | `/ov/invoice/quick-pay/` | POST | Resolver factura por número de contrato, número de factura e importe exacto para el pago rápido (solo lectura) |
+    | `/ov/invoice/return-request/` | POST | Solicitar la devolución de una factura (abre una incidencia; no cambia el estado) |
+    | `/ov/payment-receipt/` | GET | Justificante de pago en PDF codificado en base64 (pagos en efectivo o con tarjeta en TPV físico) |
     | `/ov/unpayed-invoices/` | GET | Facturas impagadas filtradas por estado |
     | `/ov/billed-consumptions/` | GET | Consumos facturados |
     | `/ov/consumptions/` | GET | Historial de consumos paginado con filtro por fechas |
@@ -31,9 +35,15 @@ info:
     | `/ov/contract/{token}/` | GET | Detalle del contrato por token (incluye datos de la cuenta) |
     | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (punto de suministro) |
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
+    | `/ov/procedures/contract/` | POST | Solicitar el alta de un contrato (crea una solicitud; no crea contrato) |
     | `/ov/procedures/{contract_token}/upload-sepa-signed/` | POST | Subir y archivar el mandato SEPA firmado del contrato |
     | `/ov/procedures/{contract_token}/sepa-signed/` | GET | Descargar el mandato SEPA firmado archivado |
     | `/ov/procedures/{contract_token}/cancel-direct-debit/` | POST | Cancelar la domiciliación (revocación del mandato SEPA) y cambiar el tipo de pago |
+    | `/ov/dictionary/contract-statuses/` | GET | Diccionario de estados de contrato (`token`, `name`) |
+    | `/ov/dictionary/payment-types/` | GET | Diccionario de formas de pago (`token`, `name`) |
+    | `/ov/dictionary/invoice-statuses/` | GET | Diccionario de estados de factura (`token`, `name`) |
+    | `/ov/dictionary/procedure-tariffs/` | GET | Diccionario de tarifas activas de trámites con precio fijo o tabla por calibre/consumo |
+    | `/ov/properties/` | GET | Autocompletado de propiedades por dirección (resultados paginados) |
 
     ## Autenticación
 
@@ -86,6 +96,8 @@ tags:
     description: Trámites del abonado (alta, domiciliación, etc.) y documentos adjuntos
   - name: Perfil
     description: Configuración del perfil del abonado
+  - name: Diccionarios
+    description: Catálogos de valores de referencia para rellenar selectores sin hardcodear tokens
 
 paths:
   /auth/login/:
@@ -391,6 +403,95 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /ov/person-data/:
+    get:
+      tags:
+        - Perfil
+      summary: Consultar los datos de contacto de una persona por DNI
+      description: |
+        Devuelve los teléfonos, correos electrónicos y direcciones de la
+        persona identificada por `dni`, sin depender de ningún contrato. El
+        frontal OV lo usa globalmente para prellenar formularios y para la
+        verificación por SMS OTP.
+
+        Se incluyen también las filas históricas/inactivas; cada teléfono,
+        correo y dirección lleva su propio `is_active`. Los teléfonos y los
+        correos proceden de las mismas filas `PersonContact`: una fila con
+        ambos valores aparece en las dos listas compartiendo `token`. Las
+        filas sin teléfono ni correo se omiten.
+
+        El `dni` es obligatorio y se normaliza ignorando espacios, guiones y
+        puntos y pasando a mayúsculas. La persona se resuelve primero por
+        `Person.token` y, si no hay coincidencia, por el DNI de su cuenta
+        bancaria (`PersonBank.dni`), de modo que los pagadores también
+        pueden consultar sus datos de contacto. Si varias personas comparten
+        token (datos heredados), se devuelve la que tiene más contactos y, a
+        igualdad, la de menor `id`. Responde `400` si falta el DNI y `404` si
+        no se encuentra la persona. El endpoint está limitado a 35
+        peticiones por minuto y cuenta.
+      operationId: getPersonData
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: dni
+          in: query
+          required: true
+          description: |
+            DNI/NIF de la persona. Se normaliza ignorando espacios, guiones y
+            puntos y pasando a mayúsculas. Si no coincide con ningún
+            `Person.token`, se busca en `PersonBank.dni` para localizar al
+            pagador.
+          schema:
+            type: string
+          example: "12345678A"
+      responses:
+        "200":
+          description: Datos de contacto de la persona
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonDataResponse"
+              example:
+                person:
+                  token: "12345678A"
+                  name: Anna
+                  surname: Garcia
+                  is_juridic: false
+                phones:
+                  - token: "12345678A_CONTACT_1"
+                    phone: "600123456"
+                    role: MÒBIL
+                    is_default: true
+                    is_active: true
+                emails:
+                  - token: "12345678A_CONTACT_1"
+                    email: anna.garcia@example.com
+                    role: PARTICULAR
+                    is_default: true
+                    is_active: true
+                addresses:
+                  - token: "12345678A_ADDRESS_1"
+                    address: "C. Major, 123 2-B, Barcelona"
+                    street: "C. Major"
+                    street_number: "123"
+                    postal_code: "08001"
+                    city: Barcelona
+                    floor: "2"
+                    door: B
+                    stair: null
+                    building: null
+                    attention_to: null
+                    is_billing: true
+                    is_active: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /ov/invoices/:
     get:
@@ -698,6 +799,323 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /ov/invoice/quick-pay/:
+    post:
+      tags:
+        - Facturas
+      summary: Resolver factura para el pago rápido
+      description: |
+        Resuelve una factura a partir de los tres datos que el abonado tiene
+        impresos en el papel: número de contrato (`Contract.token`), número de
+        factura (`Invoice.serie_final`) e importe total exacto (`Invoice.total_final`).
+
+        Es una consulta de **solo lectura**: no crea ni modifica pagos. El frontal
+        de la OV debe cobrar con su propio TPV y, a continuación, confirmar el cobro
+        con `POST /ov/invoice/paid/` usando los tokens devueltos.
+
+        Si cualquiera de los tres datos no coincide, o el documento no es una
+        factura definitiva, la respuesta es siempre el mismo `404` para no revelar
+        coincidencias parciales. Si los tres coinciden pero la factura no es
+        pagable (estado de pago, anulación, abono, prefactura, impagado
+        irrecuperable o importe pendiente cero), se devuelve `409` con el estado
+        actual.
+      operationId: quickPayInvoice
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuickPayRequest"
+            example:
+              contract_number: "3451189"
+              invoice_number: FC/202609/000001
+              amount: 101.73
+      responses:
+        "200":
+          description: Factura resuelta y pagable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuickPayResponse"
+              example:
+                contract_token: "3451189"
+                invoice_token: INV-001
+                invoice_number: FC/202609/000001
+                issue_date: "2026-09-01"
+                due_date: "2026-09-30"
+                invoice_amount: 101.73
+                left_to_pay: 101.73
+                status:
+                  token: "2"
+                  name: Confirmada
+                payable: true
+        "400":
+          description: Datos inválidos (campos obligatorios, importe con más de dos decimales o negativo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrors"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: |
+            No existe una factura definitiva que coincida con los tres datos.
+            El mensaje es idéntico para cualquier discrepancia.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Invoice not found
+        "409":
+          description: La factura existe pero no es pagable en su estado actual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuickPayNotPayableResponse"
+              example:
+                error: Invoice is not payable
+                status:
+                  token: "0"
+                  name: Pagada
+                left_to_pay: 101.73
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /ov/invoice/return-request/:
+    post:
+      tags:
+        - Facturas
+      summary: Solicitar la devolución de una factura
+      description: |
+        Abre una incidencia automática para que atención al cliente haga
+        seguimiento de una devolución solicitada por el abonado.
+
+        **No cambia el estado de la factura, su `left_to_pay` ni ningún pago.**
+        La factura solo vuelve a confirmada/vencida días después, cuando el
+        banco procesa el fichero de devoluciones (flujo externo a este endpoint).
+
+        Solo se acepta una factura definitiva, del contrato indicado y con
+        estado pagado. El token de estado pagado es la fuente de verdad; no se
+        comprueba `left_to_pay`, porque el flujo de pagos actualiza el estado
+        sin re-sincronizar ese campo y puede quedar obsoleto (o `NULL`) en
+        facturas realmente pagadas. La misma respuesta `404` cubre factura
+        inexistente, prefactura y contrato erróneo, para no revelar
+        coincidencias parciales. Si ya existe una solicitud abierta para la
+        factura, o un pago ya está devuelto por el banco, se devuelve `409`.
+      operationId: requestInvoiceReturn
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnRequest"
+            example:
+              invoice_token: INV-001
+              contract_token: "3451189"
+              reason: Domiciliación devuelta por el banco
+      responses:
+        "201":
+          description: Incidencia de devolución creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnRequestResponse"
+              example:
+                incident_token: "20261023001"
+                invoice_token: INV-001
+                contract_token: "3451189"
+                status:
+                  token: "1"
+                  name: Oberta
+                type:
+                  token: reclamacio
+                  name: Reclamació
+                created_at: "2026-10-23T09:30:00Z"
+        "400":
+          description: Campos obligatorios ausentes o inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrors"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: |
+            No existe una factura definitiva que coincida con el token de
+            factura y el de contrato, o la configuración de estados no está
+            disponible. El mensaje es idéntico para cualquier discrepancia.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Invoice not found
+        "409":
+          description: |
+            La factura existe pero no se puede solicitar la devolución: no está
+            pagada, ya la ha devuelto el banco o ya tiene una solicitud abierta.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnRequestConflictResponse"
+              examples:
+                notPaid:
+                  value:
+                    error: Invoice is not paid
+                    status:
+                      token: "2"
+                      name: Confirmada
+                alreadyReturned:
+                  value:
+                    error: Invoice already returned
+                    status:
+                      token: "2"
+                      name: Confirmada
+                duplicate:
+                  value:
+                    error: Return request already exists
+                    incident_token: "20261023001"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: No se ha podido crear la incidencia (diccionarios de incidencias no configurados)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Return request could not be created
+
+  /ov/payment-receipt/:
+    get:
+      tags:
+        - Facturas
+      summary: Obtener justificante de pago (base64)
+      description: |
+        Devuelve el justificante de pago en PDF de un pago realizado **en efectivo
+        (`CASH`) o con tarjeta en el TPV físico (`CARD`)**. Los pagos online
+        (`TPV_ONLINE`) no se sirven porque la OV emite su propio justificante, y
+        los pagos por domiciliación SEPA o transferencia no tienen justificante.
+
+        Solo se aceptan pagos cobrados (estado pagado) asociados a una factura
+        definitiva (`type_final`). El pago debe pertenecer al contrato indicado y
+        el DNI debe coincidir con el pagador, el cliente, el titular del contrato
+        o el titular de la cuenta de domiciliación. Cualquier discrepancia
+        devuelve el mismo `404` para no revelar qué pagos existen.
+
+        El PDF se genera en memoria: no se guarda ningún documento ni se modifica
+        el pago. El PDF se devuelve codificado en base64 dentro de
+        `pdf_base64`, no como descarga binaria.
+
+        El idioma del justificante se elige con `lang` (preferente) o con la
+        cabecera `Accept-Language`; si no se indica ninguno, se usa catalán.
+        Solo afecta a este endpoint de la OV: el resto de consumidores del mismo
+        servicio (administración/ERP) siguen generando el PDF en catalán.
+      operationId: getPaymentReceipt
+      security:
+        - tokenAuth: []
+      parameters:
+        - in: query
+          name: contract_token
+          required: true
+          description: Token del contrato (`Contract.token`) al que pertenece el pago
+          schema:
+            type: string
+          example: "RECEIPT-CONTRACT-1"
+        - in: query
+          name: payment_token
+          required: true
+          description: Token del pago (`Payment.token`)
+          schema:
+            type: string
+          example: PAY-CASH-1
+        - in: query
+          name: dni
+          required: true
+          description: |
+            DNI/NIF del pagador, cliente, titular del contrato o titular de la
+            cuenta de domiciliación. Se normaliza como en `/ov/person-data/`
+            (ignora espacios, guiones y puntos; no distingue mayúsculas).
+          schema:
+            type: string
+          example: 12345678A
+        - in: query
+          name: lang
+          required: false
+          description: |
+            Idioma del justificante. Tiene prioridad sobre `Accept-Language`.
+            Admite `ca`, `es`, `gl` y `en` (también con región o mayúsculas,
+            p. ej. `ES`, `es-ES`, `es_ES`). Un valor no soportado se ignora y se
+            usa `Accept-Language` o, en su defecto, catalán.
+          schema:
+            type: string
+            enum: [ca, es, gl, en]
+            default: ca
+          example: es
+      responses:
+        "200":
+          description: Justificante de pago en PDF codificado en base64
+          headers:
+            Cache-Control:
+              description: Siempre `no-store` (documento sensible)
+              schema:
+                type: string
+            Content-Language:
+              description: Idioma efectivo del PDF (`ca`, `es`, `gl` o `en`)
+              schema:
+                type: string
+              example: es
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pdf_base64]
+                properties:
+                  pdf_base64:
+                    type: string
+                    format: byte
+                    description: |
+                      Contenido del PDF codificado en base64 (estándar, sin
+                      prefijo `data:` ni saltos de línea).
+              example:
+                pdf_base64: JVBERi0xLjQK...
+        "400":
+          description: Faltan el token de contrato, el token de pago o el DNI
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: DNI is required
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: |
+            No existe un pago válido que coincida con el contrato, el pago y el
+            DNI, o el pago no es de efectivo/TPV físico, no está cobrado, no
+            tiene factura definitiva o no se puede generar el justificante.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Payment receipt not found
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: Error generando el PDF
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: PDF generation failed
+
   /ov/unpayed-invoices/:
     get:
       tags:
@@ -711,8 +1129,11 @@ paths:
         `statuses` (en ese caso la lista puede quedar vacía). Sobre esa base,
         `statuses` añade el filtro de estados impagados.
 
-        El parámetro `statuses` es obligatorio y acepta tokens de `InvoiceStatus` separados por comas.
-        Ejemplo: `statuses=-3,2` devuelve facturas en morosidad o confirmadas.
+        Para compatibilidad, `statuses` sigue aceptando tokens de `InvoiceStatus`
+        separados por comas y conserva prioridad cuando se envía. Como alternativa,
+        `unpaid=true` activa el modo automatizado, que resuelve desde `ConfigProject`
+        los estados confirmados, vencidos, de morosidad/impago y de compromiso,
+        excluyendo estados terminales y pre-facturas.
 
         Tokens de estado habituales (pueden variar según la configuración del despliegue):
         - `0`: Pagada
@@ -731,11 +1152,21 @@ paths:
         - $ref: "#/components/parameters/contractToken"
         - name: statuses
           in: query
-          required: true
+          required: false
           description: Tokens de estado de factura (`InvoiceStatus.token`), separados por comas
           schema:
             type: string
           example: "-3,2"
+        - name: unpaid
+          in: query
+          required: false
+          description: |
+            Si vale `true` y no se proporciona `statuses`, activa la selección
+            automática de estados impagados configurados. Si se proporciona
+            `statuses`, ese filtro explícito conserva prioridad.
+          schema:
+            type: boolean
+            default: false
         - name: exc_payment_type_token
           in: query
           required: false
@@ -1158,6 +1589,61 @@ paths:
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
+  /ov/properties/:
+    get:
+      tags:
+        - Contrato
+      summary: Autocompletado de propiedades por dirección
+      description: |
+        Devuelve las propiedades activas cuya dirección, nombre o referencia
+        catastral coincide con `search`, para que el abonado pueda iniciar
+        trámites sobre una propiedad existente desde la Oficina Virtual. No
+        permite crear ni modificar propiedades.
+
+        `search` es obligatorio y debe tener al menos 3 caracteres (si no,
+        `400`). La puntuación (espacios, `,`, `.`, `;`, `/`) se trata como
+        separador: cada término debe coincidir con algún campo (nombre de
+        calle, número, ciudad, código postal, nombre o referencia catastral)
+        y todos los términos se combinan con AND. Así `CR.` encuentra las
+        propiedades del tipo de calle `CR` y `CR. Major 33` exige que se
+        cumplan todos los términos. Un `search` compuesto solo por
+        puntuación devuelve `400` (`Search must contain at least one valid
+        term`). Los resultados se devuelven paginados y `address` ya llega
+        formateada (`calle, número, código postal ciudad`).
+      operationId: listProperties
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: search
+          in: query
+          required: true
+          description: Texto a buscar (mínimo 3 caracteres)
+          schema:
+            type: string
+            minLength: 3
+          example: Major
+        - $ref: "#/components/parameters/pageParam"
+        - $ref: "#/components/parameters/limitParam"
+      responses:
+        "200":
+          description: Propiedades coincidentes, paginadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyListResponse"
+              example:
+                count: 1
+                page: 1
+                limit: 20
+                total_pages: 1
+                results:
+                  - token: PR-001
+                    address: C/ Major, 123, 08001 Barcelona
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /ov/contract/{token}/:
     get:
       tags:
@@ -1365,6 +1851,131 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /ov/procedures/contract/:
+    post:
+      tags:
+        - Trámites
+      summary: Solicitar el alta de un contrato
+      description: |
+        Crea una **solicitud de contrato** (`ContractRequest`) para un nuevo
+        suministro, que atención al cliente finalizará posteriormente.
+
+        **No crea ningún contrato, ni órdenes, ni aprueba nada.** La solicitud
+        queda en el estado por defecto (borrador) para que atención al cliente
+        complete los datos que faltan (contador, fecha de alta, dirección de
+        facturación, ...) y la finalice con el flujo existente.
+
+        La tarifa (`tariff_token`) es la que la Oficina Virtual ha mostrado y
+        cobrado al abonado, por lo que es la fuente de verdad de la solicitud.
+        No se deduce del tipo de trámite: `ContractRequestType.price_rates` es
+        una relación M2M que puede contener cero, una o varias tarifas y no
+        está relacionada con el catálogo de tarifas activas que expone la OV.
+
+        Se exige que el DNI corresponda a una persona existente, que la
+        propiedad exista y tenga un punto de suministro, y que el tipo de
+        trámite y la tarifa estén activos. Si el pago es por domiciliación
+        (`DIRECT_DEBIT`) se exigen los datos bancarios. Si la propiedad tiene
+        más de un punto de suministro activo debe enviarse `supply_point_token`.
+      operationId: requestContractProcedure
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractProcedureRequest"
+            example:
+              holder_dni: "12345678A"
+              property_token: PROV-0001
+              supply_point_token: "1234/1234"
+              procedure_type_token: domestic
+              tariff_token: TD-2.0TD
+              payment_type_token: DIRECT_DEBIT
+              iban: ES9121000418450200051332
+              iban_holder_name: Nombre Titular
+              iban_holder_dni: "12345678A"
+              iban_holder_swift: CAIXESBBXXX
+              language: ca
+              observation: Alta solicitada desde la OV
+      responses:
+        "201":
+          description: Solicitud de contrato creada (estado borrador)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractProcedureResponse"
+              example:
+                contract_request_token: "20261026001"
+                status:
+                  token: "1"
+                  name: Esborrany
+                type:
+                  token: domestic
+                  name: Domèstic
+                person:
+                  token: "12345678A"
+                  name: Anna
+                supply_point:
+                  token: "1234/1234"
+                payment:
+                  iban: ES912100********051332
+                created_at: "2026-10-26T09:30:00Z"
+        "400":
+          description: |
+            Campos obligatorios ausentes o inválidos, datos bancarios
+            incompletos para domiciliación, o propiedad con varios puntos de
+            suministro sin `supply_point_token`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrors"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: |
+            No existe la persona (DNI), la propiedad, el punto de suministro,
+            el tipo de trámite, la tarifa o la forma de pago indicados. Los
+            tipos y tarifas inactivos también devuelven `404`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              examples:
+                person:
+                  value: {error: Person not found}
+                property:
+                  value: {error: Property not found}
+                supplyPoint:
+                  value: {error: Supply point not found}
+                procedureType:
+                  value: {error: Procedure type not found}
+                tariff:
+                  value: {error: Tariff not found}
+                paymentType:
+                  value: {error: Payment type not found}
+        "409":
+          description: |
+            Ya existe una solicitud activa (no cancelada ni finalizada) para la
+            misma persona y punto de suministro.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractProcedureConflictResponse"
+              example:
+                error: Contract request already exists
+                contract_request_token: "20261026001"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: No se ha podido crear la solicitud (estado por defecto no configurado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Contract procedure could not be created
 
   /ov/procedures/{contract_token}/upload-sepa-signed/:
     post:
@@ -1602,6 +2213,176 @@ paths:
                 $ref: "#/components/schemas/ErrorMessage"
               example:
                 error: Default payment type BANK_TRANSFER not found
+
+  /ov/dictionary/contract-statuses/:
+    get:
+      tags:
+        - Diccionarios
+      summary: Estados de contrato disponibles
+      description: |
+        Devuelve los estados de contrato definidos en el PA como pares
+        `token`/`name`, ordenados por su `position` de presentación. Permite
+        al frontal externo rellenar selectores y traducir tokens sin
+        hardcodearlos. No incluye campos de presentación (color, etc.).
+      operationId: listContractStatusesDictionary
+      security:
+        - tokenAuth: []
+      responses:
+        "200":
+          description: Estados de contrato ordenados por `position`
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DictionaryItem"
+              example:
+                - token: "1"
+                  name: Activo
+                - token: "2"
+                  name: Inactivo
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/dictionary/payment-types/:
+    get:
+      tags:
+        - Diccionarios
+      summary: Formas de pago disponibles
+      description: |
+        Devuelve las formas de pago definidas en el PA como pares
+        `token`/`name`, ordenadas por su `position` de presentación. El
+        `token` es el mismo que aceptan los endpoints de facturación
+        (p. ej. `exc_payment_type_token`).
+      operationId: listPaymentTypesDictionary
+      security:
+        - tokenAuth: []
+      responses:
+        "200":
+          description: Formas de pago ordenadas por `position`
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DictionaryItem"
+              example:
+                - token: DIRECT_DEBIT
+                  name: Domiciliació bancària (SEPA)
+                - token: BANK_TRANSFER
+                  name: Transferència bancària
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/dictionary/invoice-statuses/:
+    get:
+      tags:
+        - Diccionarios
+      summary: Estados de factura disponibles
+      description: |
+        Devuelve los estados de factura definidos en el PA como pares
+        `token`/`name`, ordenados por su `position` de presentación. Los
+        tokens son los mismos que acepta el filtro `statuses` de
+        `/ov/unpayed-invoices/`.
+      operationId: listInvoiceStatusesDictionary
+      security:
+        - tokenAuth: []
+      responses:
+        "200":
+          description: Estados de factura ordenados por `position`
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DictionaryItem"
+              example:
+                - token: "0"
+                  name: Pagada
+                - token: "-1"
+                  name: Vencida
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/dictionary/procedure-tariffs/:
+    get:
+      tags:
+        - Diccionarios
+      summary: Tarifas activas aplicables a trámites
+      description: |
+        Devuelve el catálogo de tarifas activas (`PriceRate.is_active`) con su
+        coste, ordenado por `name`. Para cada tarifa se resuelve su periodo de
+        facturación activo (`billing_range_active`) y sus conceptos:
+
+        - `type_price`: `fixed` si todos los conceptos son importes fijos;
+          `variable` si alguno se tarifa por tramos.
+        - `price`: suma de los conceptos fijos (importe unitario sin
+          impuestos); `null` cuando no hay conceptos fijos.
+        - `price_table`: tabla del primer concepto variable (se prioriza
+          `price_interval` sobre `price_variable`); `null` si la tarifa es
+          fija. `units` indica la dimensión del tramo: `m3` (consumo),
+          `dm_met` (calibre del contador) o `dm_con` (diámetro de conexión).
+        - `components`: desglose completo de cada concepto con la misma forma
+          (`token`, `name`, `type_price`, `price`, `price_table`).
+
+        El frontal externo lo usa para calcular el coste total de un trámite
+        antes de cobrar al abonado.
+      operationId: listProcedureTariffsDictionary
+      security:
+        - tokenAuth: []
+      responses:
+        "200":
+          description: Tarifas activas ordenadas por `name`
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProcedureTariffItem"
+              example:
+                - token: TR-001
+                  name: Tarifa 2.0TD
+                  type_price: variable
+                  price: null
+                  price_table:
+                    units: dm_met
+                    stretches:
+                      - name: Calibre 13
+                        min: 1
+                        max: 13
+                        price: 45.0
+                        proportional_price: null
+                      - name: Calibre 20
+                        min: 14
+                        max: 20
+                        price: 78.5
+                        proportional_price: null
+                  components:
+                    - token: LIT-001
+                      name: Alta por calibre
+                      type_price: variable
+                      price: null
+                      price_table:
+                        units: dm_met
+                        stretches:
+                          - name: Calibre 13
+                            min: 1
+                            max: 13
+                            price: 45.0
+                            proportional_price: null
+                - token: TR-BAIL
+                  name: Fianza contador
+                  type_price: fixed
+                  price: 100.0
+                  price_table: null
+                  components:
+                    - token: LIT-002
+                      name: Fianza
+                      type_price: fixed
+                      price: 100.0
+                      price_table: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
 components:
   securitySchemes:
@@ -1865,7 +2646,7 @@ components:
             error: "Failed to update billing data: ..."
 
     TooManyRequests:
-      description: Se ha superado el límite de consultas por DNI para esta cuenta
+      description: Se ha superado el límite de consultas para esta cuenta
       content:
         application/json:
           schema:
@@ -1933,6 +2714,17 @@ components:
           type: string
           nullable: true
           description: Nombre del estado del contrato
+        status:
+          type: object
+          nullable: true
+          description: Estado del contrato como objeto, añadido sin retirar los campos legacy
+          properties:
+            token:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
         holder_token:
           type: string
           nullable: true
@@ -2025,6 +2817,167 @@ components:
             `true` si la forma de pago del contrato tiene un mandato SEPA
             firmado archivado (`GeneralPaymentSepaDocument`); `false` si no hay
             mandato o el contrato no tiene forma de pago.
+
+    PersonDataResponse:
+      type: object
+      description: Datos de contacto de una persona, incluidas sus filas inactivas.
+      required:
+        - person
+        - phones
+        - emails
+        - addresses
+      properties:
+        person:
+          $ref: "#/components/schemas/PersonSummary"
+        phones:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonPhoneItem"
+        emails:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonEmailItem"
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonAddressItem"
+
+    PersonSummary:
+      type: object
+      required:
+        - token
+        - name
+        - surname
+        - is_juridic
+      properties:
+        token:
+          type: string
+          description: DNI/NIF de la persona (`Person.token`)
+          example: "12345678A"
+        name:
+          type: string
+          nullable: true
+          example: Anna
+        surname:
+          type: string
+          nullable: true
+          example: Garcia
+        is_juridic:
+          type: boolean
+          description: Indica si la persona es jurídica (empresa) en lugar de física
+
+    PersonPhoneItem:
+      type: object
+      required:
+        - token
+        - phone
+        - role
+        - is_default
+        - is_active
+      properties:
+        token:
+          type: string
+          description: Token de la fila `PersonContact`
+          nullable: true
+        phone:
+          type: string
+          example: "600123456"
+        role:
+          type: string
+          nullable: true
+          description: Rol del contacto (etiqueta libre)
+        is_default:
+          type: boolean
+        is_active:
+          type: boolean
+
+    PersonEmailItem:
+      type: object
+      required:
+        - token
+        - email
+        - role
+        - is_default
+        - is_active
+      properties:
+        token:
+          type: string
+          description: Token de la fila `PersonContact`
+          nullable: true
+        email:
+          type: string
+          format: email
+          example: anna.garcia@example.com
+        role:
+          type: string
+          nullable: true
+          description: Rol del contacto (etiqueta libre)
+        is_default:
+          type: boolean
+        is_active:
+          type: boolean
+
+    PersonAddressItem:
+      type: object
+      description: |
+        Dirección de una persona (`PersonAddress`). `address` es `null` cuando
+        la fila no tiene dirección asociada; en ese caso los campos de la
+        dirección también son `null`.
+      required:
+        - token
+        - address
+        - attention_to
+        - is_billing
+        - is_active
+      properties:
+        token:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+          description: Dirección completa ya formateada
+          example: "C. Major, 123 2-B, Barcelona"
+        street:
+          type: string
+          nullable: true
+          example: "C. Major"
+        street_number:
+          type: string
+          nullable: true
+          example: "123"
+        postal_code:
+          type: string
+          nullable: true
+          example: "08001"
+        city:
+          type: string
+          nullable: true
+          example: Barcelona
+        floor:
+          type: string
+          nullable: true
+          example: "2"
+        door:
+          type: string
+          nullable: true
+          example: B
+        stair:
+          type: string
+          nullable: true
+        building:
+          type: string
+          nullable: true
+        attention_to:
+          type: string
+          nullable: true
+          description: Persona o entidad a la que va dirigida la dirección
+        is_billing:
+          type: boolean
+          description: Indica si es la dirección de facturación
+        is_active:
+          type: boolean
+          description: Indica si la dirección está activa (false = histórica)
 
     ContactData:
       allOf:
@@ -2177,6 +3130,294 @@ components:
           nullable: true
           description: Nombre del nuevo estado de la factura
 
+    QuickPayRequest:
+      type: object
+      required:
+        - contract_number
+        - invoice_number
+        - amount
+      properties:
+        contract_number:
+          type: string
+          description: Token del contrato (`Contract.token`), el número que figura en la factura
+          example: "3451189"
+        invoice_number:
+          type: string
+          description: Número oficial de la factura (`Invoice.serie_final`), el impreso en el PDF
+          example: FC/202609/000001
+        amount:
+          type: number
+          format: double
+          description: |
+            Importe total exacto impreso en la factura (`Invoice.total_final`).
+            Debe coincidir al céntimo (máximo dos decimales y positivo).
+          example: 101.73
+
+    QuickPayStatus:
+      type: object
+      nullable: true
+      description: Estado de la factura como objeto `{token, name}`
+      properties:
+        token:
+          type: string
+          nullable: true
+          description: Token del estado (`InvoiceStatus.token`)
+        name:
+          type: string
+          nullable: true
+          description: Nombre del estado
+
+    QuickPayResponse:
+      type: object
+      properties:
+        contract_token:
+          type: string
+          description: Token del contrato, necesario para `POST /ov/invoice/paid/`
+        invoice_token:
+          type: string
+          description: Token de la factura, necesario para `POST /ov/invoice/paid/`
+        invoice_number:
+          type: string
+          description: Número oficial de la factura (`serie_final`)
+        issue_date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de emisión
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de vencimiento
+        invoice_amount:
+          type: number
+          format: double
+          nullable: true
+          description: Importe total de la factura (`total_final`)
+        left_to_pay:
+          type: number
+          format: double
+          nullable: true
+          description: Importe pendiente de pago (`left_to_pay`)
+        status:
+          $ref: "#/components/schemas/QuickPayStatus"
+        payable:
+          type: boolean
+          description: Siempre `true` en una respuesta `200`
+
+    QuickPayNotPayableResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Invoice is not payable
+        status:
+          $ref: "#/components/schemas/QuickPayStatus"
+        left_to_pay:
+          type: number
+          format: double
+          nullable: true
+          description: Importe pendiente de pago en el momento de la consulta
+
+    ReturnRequest:
+      type: object
+      required:
+        - invoice_token
+        - contract_token
+        - reason
+      properties:
+        invoice_token:
+          type: string
+          description: Token de la factura (`Invoice.token`)
+          example: INV-001
+        contract_token:
+          type: string
+          description: Token del contrato (`Contract.token`) al que debe pertenecer la factura
+          example: "3451189"
+        reason:
+          type: string
+          maxLength: 500
+          description: Motivo de la devolución indicado por el abonado
+          example: Domiciliación devuelta por el banco
+
+    ReturnRequestCategory:
+      type: object
+      description: Diccionario `{token, name}` de estado o tipo de incidencia
+      properties:
+        token:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+
+    ReturnRequestResponse:
+      type: object
+      required:
+        - incident_token
+        - invoice_token
+        - contract_token
+        - status
+        - type
+        - created_at
+      properties:
+        incident_token:
+          type: string
+          description: Token de la incidencia creada (`Incident.token`)
+        invoice_token:
+          type: string
+        contract_token:
+          type: string
+        status:
+          $ref: "#/components/schemas/ReturnRequestCategory"
+        type:
+          $ref: "#/components/schemas/ReturnRequestCategory"
+        created_at:
+          type: string
+          format: date-time
+
+    ReturnRequestConflictResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Invoice is not paid
+        status:
+          $ref: "#/components/schemas/ReturnRequestCategory"
+        incident_token:
+          type: string
+          nullable: true
+          description: Token de la solicitud abierta existente (solo en el caso duplicado)
+
+    ContractProcedureRequest:
+      type: object
+      required:
+        - holder_dni
+        - property_token
+        - procedure_type_token
+        - tariff_token
+        - payment_type_token
+      properties:
+        holder_dni:
+          type: string
+          description: DNI del titular de la solicitud (`Person.token`)
+          example: "12345678A"
+        property_token:
+          type: string
+          description: Token de la propiedad (`Property.token`) obtenido en `/ov/properties/`
+          example: PROV-0001
+        supply_point_token:
+          type: string
+          nullable: true
+          description: |
+            NIC del punto de suministro (`SupplyPoint.token`). Obligatorio solo
+            si la propiedad tiene más de un punto de suministro activo.
+          example: "1234/1234"
+        procedure_type_token:
+          type: string
+          description: Tipo de solicitud de contrato (`ContractRequestType.token`)
+          example: domestic
+        tariff_token:
+          type: string
+          description: |
+            Tarifa que la OV ha mostrado y cobrado (`PriceRate.token`). Es la
+            fuente de verdad de la tarifa de la solicitud.
+          example: TD-2.0TD
+        payment_type_token:
+          type: string
+          description: Forma de pago (`PaymentType.token`)
+          example: DIRECT_DEBIT
+        iban:
+          type: string
+          nullable: true
+          description: Obligatorio si `payment_type_token` es `DIRECT_DEBIT`
+          example: ES9121000418450200051332
+        iban_holder_name:
+          type: string
+          nullable: true
+          description: Obligatorio si `payment_type_token` es `DIRECT_DEBIT`
+        iban_holder_dni:
+          type: string
+          nullable: true
+          description: Obligatorio si `payment_type_token` es `DIRECT_DEBIT`
+        iban_holder_swift:
+          type: string
+          nullable: true
+          maxLength: 11
+          description: SWIFT/BIC de la cuenta. Obligatorio si `payment_type_token` es `DIRECT_DEBIT`
+        language:
+          type: string
+          nullable: true
+          enum:
+            - ca
+            - es
+            - gl
+            - en
+          description: Idioma de la solicitud (por defecto el del sistema)
+        observation:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: Observación que se registra en el historial de estados
+
+    ContractProcedureResponse:
+      type: object
+      required:
+        - contract_request_token
+        - status
+        - type
+        - person
+        - supply_point
+        - payment
+        - created_at
+      properties:
+        contract_request_token:
+          type: string
+          description: Token de la solicitud creada (`ContractRequest.token`)
+        status:
+          $ref: "#/components/schemas/DictionaryItem"
+        type:
+          $ref: "#/components/schemas/DictionaryItem"
+        person:
+          type: object
+          properties:
+            token:
+              type: string
+            name:
+              type: string
+              nullable: true
+        supply_point:
+          type: object
+          properties:
+            token:
+              type: string
+        payment:
+          type: object
+          properties:
+            iban:
+              type: string
+              description: IBAN enmascarado (8 primeros + asteriscos + 8 últimos); vacío si no hay cuenta
+        created_at:
+          type: string
+          format: date-time
+
+    ContractProcedureConflictResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Contract request already exists
+        contract_request_token:
+          type: string
+          nullable: true
+          description: Token de la solicitud abierta existente
+
     BilledConsumption:
       type: object
       properties:
@@ -2322,6 +3563,17 @@ components:
           type: string
           nullable: true
           description: Nombre del estado del contrato
+        status:
+          type: object
+          nullable: true
+          description: Estado del contrato como objeto, añadido sin retirar los campos legacy
+          properties:
+            token:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
         payment_type:
           type: string
           nullable: true
@@ -2354,6 +3606,18 @@ components:
             domiciliación. En este endpoint el `dni` es obligatorio, por lo que la
             clave siempre está presente.
           example: true
+        es_titular:
+          type: boolean
+          description: |
+            `true` si el `dni` recibido coincide con el titular del contrato.
+            Solo aparece cuando se envía `dni`.
+          example: true
+        es_pagador:
+          type: boolean
+          description: |
+            `true` si el `dni` recibido coincide con el titular de la cuenta
+            de domiciliación. Solo aparece cuando se envía `dni`.
+          example: false
 
     ContractHolder:
       type: object
@@ -2529,6 +3793,19 @@ components:
             cuenta de domiciliación (normalizado). **Solo aparece en la respuesta
             si se envía `dni`**; sin `dni` la clave se omite por completo. Es un
             alias explícito de la misma comprobación que `is_account_holder`.
+          example: true
+        es_titular:
+          type: boolean
+          description: |
+            Alias aditivo de `is_holder`: `true` si el `dni` coincide con el
+            titular del contrato. Solo aparece cuando se envía `dni`.
+          example: true
+        es_pagador:
+          type: boolean
+          description: |
+            Alias aditivo de `is_payer`: `true` si el `dni` coincide con el
+            titular de la cuenta de domiciliación. Solo aparece cuando se envía
+            `dni`.
           example: true
         holder_address:
           type: string
@@ -2958,3 +4235,203 @@ components:
             tenía el tipo de pago objetivo (respuesta idempotente, sin
             escrituras).
           example: Direct debit cancelled successfully.
+
+    DictionaryItem:
+      type: object
+      required:
+        - token
+        - name
+      properties:
+        token:
+          type: string
+          description: Identificador estable del valor (el que espera la API)
+          example: "1"
+        name:
+          type: string
+          description: Etiqueta legible para mostrar al usuario
+          example: Activo
+
+    PropertyItem:
+      type: object
+      required:
+        - token
+        - address
+      properties:
+        token:
+          type: string
+          description: Token de la propiedad (`Property.token`)
+          example: PR-001
+        address:
+          type: string
+          description: |
+            Dirección completa ya formateada
+            (`calle, número, código postal ciudad`).
+          example: C/ Major, 123, 08001 Barcelona
+
+    PropertyListResponse:
+      type: object
+      description: Envoltorio paginado del autocompletado de propiedades.
+      required:
+        - count
+        - page
+        - limit
+        - total_pages
+        - results
+      properties:
+        count:
+          type: integer
+          description: Número total de propiedades que cumplen la búsqueda
+        page:
+          type: integer
+          description: Página actual
+        limit:
+          type: integer
+          description: Tamaño de página aplicado
+        total_pages:
+          type: integer
+          description: Número total de páginas
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyItem"
+
+    ProcedureTariffItem:
+      type: object
+      required:
+        - token
+        - name
+        - type_price
+        - price
+        - price_table
+        - components
+      properties:
+        token:
+          type: string
+          description: Token de la tarifa (`PriceRate.token`)
+          example: TR-001
+        name:
+          type: string
+          nullable: true
+          description: Nombre de la tarifa
+          example: Tarifa 2.0TD
+        type_price:
+          type: string
+          enum:
+            - fixed
+            - variable
+          description: |
+            `variable` si algún concepto de la tarifa se tarifa por tramos
+            (`price_interval` o `price_variable`); `fixed` en caso contrario.
+          example: variable
+        price:
+          type: number
+          nullable: true
+          description: |
+            Suma de los importes de los conceptos fijos (importe unitario sin
+            impuestos). `null` si la tarifa no tiene conceptos fijos.
+          example: 100.0
+        price_table:
+          nullable: true
+          description: |
+            Tabla del primer concepto variable (se prioriza `price_interval`
+            sobre `price_variable`). `null` si la tarifa es fija.
+          allOf:
+            - $ref: "#/components/schemas/ProcedureTariffPriceTable"
+        components:
+          type: array
+          description: Desglose completo de los conceptos activos de la tarifa
+          items:
+            $ref: "#/components/schemas/ProcedureTariffComponent"
+
+    ProcedureTariffPriceTable:
+      type: object
+      required:
+        - units
+        - stretches
+      properties:
+        units:
+          type: string
+          enum:
+            - m3
+            - dm_met
+            - dm_con
+          description: |
+            Dimensión del tramo: `m3` (consumo), `dm_met` (calibre del
+            contador) o `dm_con` (diámetro de conexión).
+          example: dm_met
+        stretches:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcedureTariffStretch"
+
+    ProcedureTariffStretch:
+      type: object
+      required:
+        - name
+        - min
+        - max
+        - price
+        - proportional_price
+      properties:
+        name:
+          type: string
+          nullable: true
+          description: Nombre del tramo
+          example: Calibre 13
+        min:
+          type: integer
+          nullable: true
+          description: Límite inferior del tramo
+          example: 1
+        max:
+          type: integer
+          nullable: true
+          description: Límite superior del tramo; `null` si es abierto
+          example: 13
+        price:
+          type: number
+          nullable: true
+          description: Importe por unidad del tramo, sin impuestos
+          example: 45.0
+        proportional_price:
+          type: number
+          nullable: true
+          description: Importe proporcional del tramo, sin impuestos
+          example: null
+
+    ProcedureTariffComponent:
+      type: object
+      required:
+        - token
+        - name
+        - type_price
+        - price
+        - price_table
+      properties:
+        token:
+          type: string
+          nullable: true
+          description: Token del concepto (`LineItemType.token`)
+          example: LIT-001
+        name:
+          type: string
+          nullable: true
+          description: Nombre del concepto
+          example: Alta por calibre
+        type_price:
+          type: string
+          enum:
+            - fixed
+            - variable
+          description: Tipo de precio del concepto
+          example: variable
+        price:
+          type: number
+          nullable: true
+          description: Importe fijo del concepto; `null` si es variable
+          example: null
+        price_table:
+          nullable: true
+          description: Tabla de tramos del concepto; `null` si es fijo
+          allOf:
+            - $ref: "#/components/schemas/ProcedureTariffPriceTable"

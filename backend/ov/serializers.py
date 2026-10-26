@@ -1,12 +1,15 @@
+from django.conf import settings
 from rest_framework import serializers
 from contract.models import (
     Contract,
     ContractDataChange,
     ContractLog,
     ContractObservation,
+    ContractStatus,
     ContractTerminationRequest,
     PaymentType,
 )
+from pricing.models import PriceRate
 from billing.models import (
     GeneralPaymentSepaDocument,
     Invoice,
@@ -23,6 +26,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.utils.dateparse import parse_date
 import logging
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -814,11 +818,14 @@ class ContractListItemOVSerializer(serializers.Serializer):
     token = serializers.SerializerMethodField()
     status_token = serializers.SerializerMethodField()
     status_name = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
     payment_type = serializers.SerializerMethodField()
     contract_holder = serializers.SerializerMethodField()
     direct_debit_holder = serializers.SerializerMethodField()
     allowed_actions = serializers.SerializerMethodField()
     is_account_holder = serializers.SerializerMethodField()
+    es_titular = serializers.SerializerMethodField()
+    es_pagador = serializers.SerializerMethodField()
 
     def _request_dni(self):
         """DNI passat per query, normalitzat (`None` si no n'hi ha)."""
@@ -849,6 +856,11 @@ class ContractListItemOVSerializer(serializers.Serializer):
 
     def get_status_name(self, obj):
         return obj.status.name if obj.status else None
+
+    def get_status(self, obj):
+        if not obj.status:
+            return None
+        return {"token": obj.status.token, "name": obj.status.name}
 
     def get_payment_type(self, obj):
         return obj.payment.type.token if obj.payment and obj.payment.type else None
@@ -881,10 +893,24 @@ class ContractListItemOVSerializer(serializers.Serializer):
             return False
         return dni == iban_dni
 
+    def get_es_titular(self, obj):
+        dni = self._request_dni()
+        holder_dni = (
+            str(obj.holder.token).strip().upper()
+            if obj.holder and obj.holder.token
+            else None
+        )
+        return bool(dni and holder_dni and dni == holder_dni)
+
+    def get_es_pagador(self, obj):
+        return self.get_is_account_holder(obj)
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if not self._request_dni():
             data.pop("is_account_holder", None)
+            data.pop("es_titular", None)
+            data.pop("es_pagador", None)
         return data
 
 
@@ -929,6 +955,8 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
     is_account_holder = serializers.SerializerMethodField()
     is_holder = serializers.SerializerMethodField()
     is_payer = serializers.SerializerMethodField()
+    es_titular = serializers.SerializerMethodField()
+    es_pagador = serializers.SerializerMethodField()
     holder_address = serializers.SerializerMethodField()
     iban = serializers.SerializerMethodField()
     has_sepa_document = serializers.SerializerMethodField()
@@ -966,6 +994,8 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             "status",
             "is_holder",
             "is_payer",
+            "es_titular",
+            "es_pagador",
             "has_sepa_document",
         ]
 
@@ -1144,6 +1174,12 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             return False
         return dni == iban_dni
 
+    def get_es_titular(self, obj):
+        return self.get_is_holder(obj)
+
+    def get_es_pagador(self, obj):
+        return self.get_is_payer(obj)
+
     def get_holder_address(self, obj):
         holder = obj.holder
         if not holder:
@@ -1175,6 +1211,8 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             data.pop("is_account_holder", None)
             data.pop("is_holder", None)
             data.pop("is_payer", None)
+            data.pop("es_titular", None)
+            data.pop("es_pagador", None)
         return data
 
 
@@ -1565,3 +1603,450 @@ class BatchInvoiceDownloadSerializer(serializers.Serializer):
                 seen.add(token)
                 deduped.append(token)
         return deduped
+
+
+class ContractStatusDictionarySerializer(serializers.ModelSerializer):
+    """Entrada del diccionari d'estats de contracte.
+
+    Només `token` i `name`: l'ordre el fixa la vista per `position` i el
+    consumidor mapeja els estils pel `token`, sense camps d'UI.
+    """
+
+    class Meta:
+        model = ContractStatus
+        fields = ("token", "name")
+
+
+class PaymentTypeDictionarySerializer(serializers.ModelSerializer):
+    """Entrada del diccionari de formes de pagament (`token`, `name`)."""
+
+    class Meta:
+        model = PaymentType
+        fields = ("token", "name")
+
+
+class InvoiceStatusDictionarySerializer(serializers.ModelSerializer):
+    """Entrada del diccionari d'estats de factura (`token`, `name`)."""
+
+    class Meta:
+        model = InvoiceStatus
+        fields = ("token", "name")
+
+
+class ProcedureTariffDictionarySerializer(serializers.Serializer):
+    """Tarifa de tràmit amb el seu cost (fix o variable per calibre).
+
+    `type_price` és `variable` si algun component de la tarifa es tarifa per
+    trams (`price_interval` o `price_variable`); `price` és la suma dels
+    components fixos i `price_table` la taula del primer component variable
+    (es prioritza `price_interval`). `components` exposa el desglossament
+    complet de les línies de la tarifa. Els imports són unitaris i sense
+    impostos, igual que a la facturació.
+    """
+
+    token = serializers.CharField()
+    name = serializers.CharField(allow_null=True)
+    type_price = serializers.CharField()
+    price = serializers.FloatField(allow_null=True)
+    price_table = serializers.DictField(allow_null=True)
+    components = serializers.ListField(child=serializers.DictField())
+
+    def to_representation(self, instance):
+        billing_range = instance.billing_range_active
+        if not billing_range:
+            billing_range = (
+                instance.billing_ranges.filter(is_active=True)
+                .order_by("-start")
+                .first()
+            )
+
+        components = []
+        if billing_range:
+            line_item_types = [
+                line_item_type
+                for line_item_type in billing_range.line_item_types.all()
+                if line_item_type.is_active
+            ]
+            components = [
+                _procedure_tariff_component(line_item_type)
+                for line_item_type in line_item_types
+            ]
+
+        variable_components = [
+            component
+            for component in components
+            if component["type_price"] == "variable"
+        ]
+        fixed_prices = [
+            component["price"]
+            for component in components
+            if component["type_price"] == "fixed"
+            and component["price"] is not None
+        ]
+
+        price_table = None
+        if variable_components:
+            price_table = next(
+                (
+                    component["price_table"]
+                    for component in variable_components
+                    if component["price_table"]["source"] == "price_interval"
+                ),
+                variable_components[0]["price_table"],
+            )["data"]
+
+        return {
+            "token": instance.token,
+            "name": instance.name,
+            "type_price": "variable" if variable_components else "fixed",
+            "price": round(sum(fixed_prices), 2) if fixed_prices else None,
+            "price_table": price_table,
+            "components": [
+                {
+                    "token": component["token"],
+                    "name": component["name"],
+                    "type_price": component["type_price"],
+                    "price": component["price"],
+                    "price_table": component["price_table"]["data"]
+                    if component["price_table"]
+                    else None,
+                }
+                for component in components
+            ],
+        }
+
+
+def _procedure_tariff_stretches(interval, related_name):
+    stretches = sorted(
+        getattr(interval, related_name).all(),
+        key=lambda stretch: stretch.stretch if stretch.stretch is not None else 0,
+    )
+    return {
+        "units": interval.units,
+        "stretches": [
+            {
+                "name": stretch.name_stretch,
+                "min": stretch.stretch,
+                "max": stretch.end_stretch,
+                "price": stretch.price,
+                "proportional_price": stretch.proportional_price,
+            }
+            for stretch in stretches
+        ],
+    }
+
+
+def _procedure_tariff_component(line_item_type):
+    price_table = None
+    if line_item_type.price_interval:
+        price_table = {
+            "source": "price_interval",
+            "data": _procedure_tariff_stretches(
+                line_item_type.price_interval, "price_interval_stretches"
+            ),
+        }
+    elif line_item_type.price_variable:
+        price_table = {
+            "source": "price_variable",
+            "data": _procedure_tariff_stretches(
+                line_item_type.price_variable,
+                "price_variable_interval_stretches",
+            ),
+        }
+
+    price = line_item_type.price
+    if price is None:
+        price = line_item_type.proportional_price
+
+    return {
+        "token": line_item_type.token,
+        "name": line_item_type.name,
+        "type_price": "variable" if price_table else "fixed",
+        "price": price if price_table is None else None,
+        "price_table": price_table,
+    }
+
+
+class PropertyItemSerializer(serializers.Serializer):
+    """Adreça d'una propietat per a l'autocompletat del frontal OV.
+
+    Retorna el `token` de la propietat i l'adreça completa ja formatada
+    (`carrer, número, codi postal ciutat`), sense que el consumidor hagi de
+    compondre els camps.
+    """
+
+    token = serializers.CharField()
+    address = serializers.SerializerMethodField()
+
+    def get_address(self, obj):
+        return _property_address(obj)
+
+
+def _property_address(property):
+    parts = []
+    if property.address_street:
+        parts.append(str(property.address_street))
+    if property.address_street_number:
+        parts.append(str(property.address_street_number))
+
+    location = " ".join(
+        part
+        for part in (
+            str(property.address_postal_code)
+            if property.address_postal_code
+            else "",
+            str(property.address_city) if property.address_city else "",
+        )
+        if part
+    )
+    if location:
+        parts.append(location)
+    return ", ".join(parts)
+
+
+class PersonSummarySerializer(serializers.ModelSerializer):
+    """Dades bàsiques de la persona identificada pel DNI."""
+
+    class Meta:
+        model = Person
+        fields = ["token", "name", "surname", "is_juridic"]
+
+
+class PersonPhoneSerializer(serializers.ModelSerializer):
+    """Telèfon d'un `PersonContact` (pot incloure's també a la llista d'emails
+    si la mateixa fila té els dos valors)."""
+
+    class Meta:
+        model = PersonContact
+        fields = ["token", "phone", "role", "is_default", "is_active"]
+
+
+class PersonEmailSerializer(serializers.ModelSerializer):
+    """Correu electrònic d'un `PersonContact`."""
+
+    class Meta:
+        model = PersonContact
+        fields = ["token", "email", "role", "is_default", "is_active"]
+
+
+class PersonAddressItemSerializer(serializers.ModelSerializer):
+    """Adreça d'una persona amb la línia ja formatada i els camps clau per
+    emplenar formularis; `address` és `null` si la fila no té adreça."""
+
+    address = serializers.SerializerMethodField()
+    street = serializers.SerializerMethodField()
+    street_number = serializers.SerializerMethodField()
+    postal_code = serializers.SerializerMethodField()
+    city = serializers.SerializerMethodField()
+    floor = serializers.SerializerMethodField()
+    door = serializers.SerializerMethodField()
+    stair = serializers.SerializerMethodField()
+    building = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PersonAddress
+        fields = [
+            "token",
+            "address",
+            "street",
+            "street_number",
+            "postal_code",
+            "city",
+            "floor",
+            "door",
+            "stair",
+            "building",
+            "attention_to",
+            "is_billing",
+            "is_active",
+        ]
+
+    def get_address(self, obj):
+        return str(obj.address) if obj.address else None
+
+    def get_street(self, obj):
+        if not obj.address or not obj.address.street:
+            return None
+        return str(obj.address.street)
+
+    def get_street_number(self, obj):
+        if not obj.address or not obj.address.street_number:
+            return None
+        return str(obj.address.street_number)
+
+    def get_postal_code(self, obj):
+        return obj.address.postal_code if obj.address else None
+
+    def get_city(self, obj):
+        if not obj.address:
+            return None
+        if obj.address.city:
+            return str(obj.address.city)
+        return obj.address.city_name
+
+    def get_floor(self, obj):
+        return obj.address.floor if obj.address else None
+
+    def get_door(self, obj):
+        return obj.address.door if obj.address else None
+
+    def get_stair(self, obj):
+        return obj.address.stair if obj.address else None
+
+    def get_building(self, obj):
+        return obj.address.building if obj.address else None
+
+
+class PersonDataSerializer(serializers.Serializer):
+    """Dades de contacte d'una persona: telèfons, correus i adreces.
+
+    Els telèfons i els correus surten de les mateixes files `PersonContact`
+    (una fila amb tots dos valors apareix a les dues llistes amb el mateix
+    `token`); les files sense cap valor s'ometen. S'inclouen les files
+    inactives perquè el consumidor pugui mostrar l'historial.
+    """
+
+    person = PersonSummarySerializer(source="*", read_only=True)
+    phones = serializers.SerializerMethodField()
+    emails = serializers.SerializerMethodField()
+    addresses = serializers.SerializerMethodField()
+
+    def get_phones(self, obj):
+        contacts = [
+            contact
+            for contact in obj.contacts.all()
+            if (contact.phone or "").strip()
+        ]
+        return PersonPhoneSerializer(contacts, many=True).data
+
+    def get_emails(self, obj):
+        contacts = [
+            contact
+            for contact in obj.contacts.all()
+            if (contact.email or "").strip()
+        ]
+        return PersonEmailSerializer(contacts, many=True).data
+
+    def get_addresses(self, obj):
+        return PersonAddressItemSerializer(obj.addresses.all(), many=True).data
+
+
+class QuickPayRequestSerializer(serializers.Serializer):
+    """Identificació d'una factura per al pagament ràpid de l'OV: número de
+    contracte, número de factura (`serie_final`) i import exacte imprès
+    (`total_final`)."""
+
+    contract_number = serializers.CharField(max_length=255)
+    invoice_number = serializers.CharField(max_length=255)
+    amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal("0.01")
+    )
+
+    def validate_contract_number(self, value):
+        return value.strip()
+
+    def validate_invoice_number(self, value):
+        return value.strip()
+
+
+class QuickPayResponseSerializer(serializers.Serializer):
+    """Factura resolta pel pagament ràpid, amb els tokens que el frontal
+    necessita per continuar el flux TPV i confirmar amb `/ov/invoice/paid/`."""
+
+    contract_token = serializers.CharField()
+    invoice_token = serializers.CharField()
+    invoice_number = serializers.CharField()
+    issue_date = serializers.DateField(allow_null=True)
+    due_date = serializers.DateField(allow_null=True)
+    invoice_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, allow_null=True
+    )
+    left_to_pay = serializers.DecimalField(
+        max_digits=10, decimal_places=2, allow_null=True
+    )
+    status = serializers.DictField(allow_null=True)
+    payable = serializers.BooleanField()
+
+
+class ReturnRequestSerializer(serializers.Serializer):
+    """Petició de devolució d'una factura des de l'OV: factura, contracte al
+    qual ha de pertànyer i motiu indicat per l'abonat."""
+
+    invoice_token = serializers.CharField(max_length=255)
+    contract_token = serializers.CharField(max_length=255)
+    reason = serializers.CharField(max_length=500)
+
+    def validate_invoice_token(self, value):
+        return value.strip()
+
+    def validate_contract_token(self, value):
+        return value.strip()
+
+
+class ReturnRequestResponseSerializer(serializers.Serializer):
+    """Incidència automàtica creada per la sol·licitud de devolució."""
+
+    incident_token = serializers.CharField()
+    invoice_token = serializers.CharField()
+    contract_token = serializers.CharField()
+    status = serializers.DictField()
+    type = serializers.DictField()
+    created_at = serializers.DateTimeField()
+
+
+class ContractProcedureRequestSerializer(serializers.Serializer):
+    """Sol·licitud d'alta de contracte enviada per l'OV.
+
+    El `tariff_token` és la tarifa que l'OV ha mostrat i cobrat a l'abonat, i
+    és la font de veritat de la tarifa de la sol·licitud (`ContractRequest`).
+    """
+
+    holder_dni = serializers.CharField(max_length=255)
+    property_token = serializers.CharField(max_length=255)
+    supply_point_token = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    procedure_type_token = serializers.CharField(max_length=255)
+    tariff_token = serializers.CharField(max_length=255)
+    payment_type_token = serializers.CharField(max_length=255)
+    iban = serializers.CharField(
+        max_length=34, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_dni = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_swift = serializers.CharField(
+        max_length=11, required=False, allow_blank=True, allow_null=True
+    )
+    language = serializers.CharField(
+        max_length=2, required=False, allow_blank=True, allow_null=True
+    )
+    observation = serializers.CharField(
+        max_length=1000, required=False, allow_blank=True, allow_null=True
+    )
+
+    def validate_language(self, value):
+        if value and value not in dict(settings.LANGUAGES):
+            raise serializers.ValidationError("Unsupported language.")
+        return value
+
+    def validate_iban(self, value):
+        return (value or "").replace(" ", "").upper()
+
+    def validate_iban_holder_dni(self, value):
+        return (value or "").upper()
+
+
+class ContractProcedureResponseSerializer(serializers.Serializer):
+    """Sol·licitud d'alta de contracte creada (estat esborrany/pendent)."""
+
+    contract_request_token = serializers.CharField()
+    status = serializers.DictField()
+    type = serializers.DictField()
+    person = serializers.DictField()
+    supply_point = serializers.DictField()
+    payment = serializers.DictField()
+    created_at = serializers.DateTimeField()

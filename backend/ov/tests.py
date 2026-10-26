@@ -1,14 +1,19 @@
+import base64
 import csv
 import os
 import shutil
 import tempfile
 from datetime import date
-from io import StringIO
+from decimal import Decimal
+from io import BytesIO, StringIO
+from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.urls import resolve, reverse
+from django.utils import translation
 from rest_framework.test import APIClient
 
 from billing.models import (
@@ -16,12 +21,63 @@ from billing.models import (
     GeneralPaymentSepaDocument,
     Invoice,
     InvoiceStatus,
+    Payment,
+    PaymentMovement,
+    PaymentRemittanceReturn,
+    PaymentStatus,
     Reading,
 )
-from coredata.models import ConfigProject, Person, PersonBank
-from contract.models import Contract, ContractStatus, PaymentType
+from coredata.models import (
+    Address,
+    City,
+    ConfigProject,
+    Country,
+    Person,
+    PersonAddress,
+    PersonBank,
+    PersonContact,
+    PostalCode,
+    Street,
+    StreetNumber,
+    StreetType,
+)
+from contract.models import (
+    Contract,
+    ContractPriceRate,
+    ContractRequest,
+    ContractRequestStatus,
+    ContractRequestType,
+    ContractStatus,
+    PaymentType,
+)
 from documentmanager.models import Document
-from service.models import Meter, SupplyPoint
+from logger.models import LogContractRequestStatus, LogIncidentStatusChange
+from notification.models import Incident, IncidentStatus, IncidentType
+from order.models import OrderType
+from pricing.models import (
+    BillingRange,
+    LineItemType,
+    PriceInterval,
+    PriceIntervalStretch,
+    PriceRate,
+    PriceVariableInterval,
+    PriceVariableIntervalStretch,
+)
+from service.models import Company, Exploitation, Meter, Property, SupplyPoint
+from ov.throttles import (
+    ContractProcedureThrottle,
+    PaymentReceiptThrottle,
+    PersonDataThrottle,
+    QuickPayThrottle,
+    ReturnRequestThrottle,
+)
+from ov.views import (
+    ContractProcedureOVView,
+    InvoiceReturnRequestOVView,
+    PaymentReceiptOVView,
+    PersonDataOVView,
+    QuickPayOVView,
+)
 
 SLASH_TOKEN = "12345678/001"
 PLAIN_TOKEN = "12345678"
@@ -116,6 +172,16 @@ class ContractOVViewTests(TestCase):
         self.assertIn("is_account_holder", response.data)
         self.assertFalse(response.data["is_account_holder"])
 
+    def test_contract_detail_adds_spanish_role_flags(self):
+        response = self.client.get(
+            reverse("contract-ov"),
+            {"contract_token": SLASH_TOKEN, "dni": HOLDER_TOKEN},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["es_titular"])
+        self.assertFalse(response.data["es_pagador"])
+
 
 class ContractDetailRoleFlagsTests(TestCase):
     """Phase 2: `status` objectiu i banderes `is_holder` / `is_payer` als tres
@@ -196,6 +262,8 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertTrue(response.data["is_holder"])
         self.assertFalse(response.data["is_account_holder"])
         self.assertFalse(response.data["is_payer"])
+        self.assertTrue(response.data["es_titular"])
+        self.assertFalse(response.data["es_pagador"])
 
     def test_is_payer_true_when_dni_matches_direct_debit_account_holder(self):
         response = self._contract_detail(PLAIN_TOKEN, dni=PAYER_DNI)
@@ -204,6 +272,8 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertTrue(response.data["is_payer"])
         self.assertTrue(response.data["is_account_holder"])
         self.assertFalse(response.data["is_holder"])
+        self.assertFalse(response.data["es_titular"])
+        self.assertTrue(response.data["es_pagador"])
 
     def test_flags_are_present_on_contract_by_token_endpoint(self):
         response = self.client.get(
@@ -215,6 +285,23 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertEqual(response.data["status"], {"token": "1", "name": "Activo"})
         self.assertTrue(response.data["is_holder"])
         self.assertFalse(response.data["is_payer"])
+
+    def test_contract_list_adds_status_and_spanish_role_flags(self):
+        response = self.client.get(
+            reverse("contracts-ov"),
+            {"dni": HOLDER_TOKEN},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = next(
+            result
+            for result in response.data["results"]
+            if result["token"] == PLAIN_TOKEN
+        )
+        self.assertEqual(item["status"], {"token": "1", "name": "Activo"})
+        self.assertTrue(item["es_titular"])
+        self.assertFalse(item["es_pagador"])
+        self.assertIn("is_account_holder", item)
 
     def test_flags_are_present_on_contract_by_nic_endpoint(self):
         response = self.client.get(
@@ -352,10 +439,13 @@ class InvoiceFilterAlignmentTests(TestCase):
             ("contract_termination_completed_token", "3"),
             ("contract_terminated_status", "-1"),
             ("invoice_status_paid_token", "0"),
-            ("invoice_status_cancelled_token", "-1"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("invoice_status_confirmed_token", "2"),
+            ("invoice_status_expired_token", "-1"),
+            ("invoice_status_endowment_token", "-3"),
+            ("invoice_status_commitment_token", "4"),
         ):
-            if not ConfigProject.objects.filter(token=token).exists():
-                ConfigProject.objects.create(token=token, value=value)
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
 
         cls.holder = Person.objects.create(
             token=HOLDER_TOKEN, name="Test", surname="Holder"
@@ -366,6 +456,12 @@ class InvoiceFilterAlignmentTests(TestCase):
         cls.confirmed_status = InvoiceStatus.objects.create(token="2", name="Confirmada")
         cls.preinvoice_status = InvoiceStatus.objects.create(
             token="1", name="Prefactura"
+        )
+        cls.endowment_status = InvoiceStatus.objects.create(
+            token="-3", name="Morosidad"
+        )
+        cls.commitment_status = InvoiceStatus.objects.create(
+            token="4", name="En compromiso"
         )
 
         cls.sent_invoice = Invoice.objects.create(
@@ -385,6 +481,18 @@ class InvoiceFilterAlignmentTests(TestCase):
             contract=cls.contract,
             status=cls.preinvoice_status,
             issue_date=date(2026, 1, 17),
+        )
+        cls.endowment_invoice = Invoice.objects.create(
+            token="INV-004",
+            contract=cls.contract,
+            status=cls.endowment_status,
+            issue_date=date(2026, 1, 18),
+        )
+        cls.commitment_invoice = Invoice.objects.create(
+            token="INV-005",
+            contract=cls.contract,
+            status=cls.commitment_status,
+            issue_date=date(2026, 1, 19),
         )
         cls.orphan_invoice = Invoice.objects.create(
             token="INV-ORPHAN",
@@ -433,6 +541,31 @@ class InvoiceFilterAlignmentTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_unpaid_mode_uses_configured_unpaid_states(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": PLAIN_TOKEN, "unpaid": "true"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._tokens(response.data),
+            {"INV-002", "INV-004", "INV-005"},
+        )
+
+    def test_explicit_statuses_take_precedence_over_unpaid_mode(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {
+                "contract_token": PLAIN_TOKEN,
+                "statuses": "2",
+                "unpaid": "true",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._tokens(response.data), {"INV-002"})
 
     def test_list_unknown_contract_returns_404(self):
         response = self.client.get(
@@ -885,3 +1018,2254 @@ class SepaDocumentUploadTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.data, {"error": "SEPA document not found"})
+
+
+class DictionaryEndpointsTests(TestCase):
+    """Diccionaris `token`/`name` per al frontal OV: estats de contracte,
+    formes de pagament, estats de factura i tarifes de tràmits actives."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-dictionary-test", password="not-used"
+        )
+        cls.status_late = ContractStatus.objects.create(
+            token="2", name="Inactivo", position=2
+        )
+        cls.status_first = ContractStatus.objects.create(
+            token="1", name="Activo", position=1
+        )
+        cls.payment_late = PaymentType.objects.create(
+            token="BANK_TRANSFER", name="Transferència", position=2
+        )
+        cls.payment_first = PaymentType.objects.create(
+            token="DIRECT_DEBIT", name="Domiciliació", position=1, is_default=True
+        )
+        cls.invoice_status_late = InvoiceStatus.objects.create(
+            token="-1", name="Vencida", position=2
+        )
+        cls.invoice_status_first = InvoiceStatus.objects.create(
+            token="0", name="Pagada", position=1
+        )
+        cls.tariff_inactive = PriceRate.objects.create(
+            token="TR-OFF", name="Tarifa Z", is_active=False
+        )
+
+        cls.tariff_variable = cls._tariff_with_range("TR-VAR", "Tarifa A")
+        caliber_interval = PriceInterval.objects.create(
+            token="PI-DM-MET", units="dm_met"
+        )
+        LineItemType.objects.create(
+            billing_range=cls.tariff_variable.billing_range_active,
+            token="LIT-VAR",
+            name="Alta per calibre",
+            price_interval=caliber_interval,
+        )
+        PriceIntervalStretch.objects.create(
+            price_interval=caliber_interval,
+            name_stretch="Calibre 13",
+            stretch=1,
+            end_stretch=13,
+            price=45.0,
+        )
+        PriceIntervalStretch.objects.create(
+            price_interval=caliber_interval,
+            name_stretch="Calibre 20",
+            stretch=14,
+            end_stretch=20,
+            price=78.5,
+        )
+
+        cls.tariff_fixed = cls._tariff_with_range("TR-FIXED", "Tarifa B")
+        LineItemType.objects.create(
+            billing_range=cls.tariff_fixed.billing_range_active,
+            token="LIT-FIX",
+            name="Fiança",
+            price=100.0,
+        )
+
+        cls.tariff_mixed = cls._tariff_with_range("TR-MIXED", "Tarifa C")
+        mixed_range = cls.tariff_mixed.billing_range_active
+        LineItemType.objects.create(
+            billing_range=mixed_range,
+            token="LIT-MIX-FIX",
+            name="Canon",
+            price=3.5,
+        )
+        consumption_interval = PriceVariableInterval.objects.create(
+            token="PVI-M3", units="m3"
+        )
+        LineItemType.objects.create(
+            billing_range=mixed_range,
+            token="LIT-MIX-VAR",
+            name="Consum",
+            price_variable=consumption_interval,
+        )
+        PriceVariableIntervalStretch.objects.create(
+            price_variable_interval=consumption_interval,
+            name_stretch="Bloc 1",
+            stretch=1,
+            end_stretch=10,
+            price=0.5,
+        )
+
+    @classmethod
+    def _tariff_with_range(cls, token, name):
+        tariff = PriceRate.objects.create(token=token, name=name, is_active=True)
+        billing_range = BillingRange.objects.create(
+            price_rate=tariff, start=date(2026, 1, 1), is_active=True
+        )
+        tariff.billing_range_active = billing_range
+        tariff.save(update_fields=["billing_range_active"])
+        return tariff
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _tariffs_by_token(self):
+        response = self.client.get(
+            reverse("procedure-tariffs-dictionary-ov")
+        )
+
+        self.assertEqual(response.status_code, 200)
+        return {item["token"]: item for item in response.data}
+
+    def test_contract_statuses_returns_token_and_name_ordered_by_position(self):
+        response = self.client.get(
+            reverse("contract-statuses-dictionary-ov")
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data,
+            [
+                {"token": "1", "name": "Activo"},
+                {"token": "2", "name": "Inactivo"},
+            ],
+        )
+        self.assertEqual(set(response.data[0]), {"token", "name"})
+
+    def test_payment_types_returns_token_and_name_ordered_by_position(self):
+        response = self.client.get(reverse("payment-types-dictionary-ov"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data,
+            [
+                {"token": "DIRECT_DEBIT", "name": "Domiciliació"},
+                {"token": "BANK_TRANSFER", "name": "Transferència"},
+            ],
+        )
+        self.assertEqual(set(response.data[0]), {"token", "name"})
+
+    def test_invoice_statuses_returns_token_and_name_ordered_by_position(self):
+        response = self.client.get(
+            reverse("invoice-statuses-dictionary-ov")
+        )
+
+        self.assertEqual(response.status_code, 200)
+        by_token = {item["token"]: item for item in response.data}
+        self.assertEqual(by_token["0"], {"token": "0", "name": "Pagada"})
+        self.assertEqual(by_token["-1"], {"token": "-1", "name": "Vencida"})
+        tokens = [item["token"] for item in response.data]
+        self.assertLess(tokens.index("0"), tokens.index("-1"))
+        self.assertEqual(set(response.data[0]), {"token", "name"})
+
+    def test_procedure_tariffs_returns_active_tariffs_ordered_by_name(self):
+        response = self.client.get(
+            reverse("procedure-tariffs-dictionary-ov")
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["token"] for item in response.data],
+            ["TR-VAR", "TR-FIXED", "TR-MIXED"],
+        )
+        self.assertEqual(
+            set(response.data[0]),
+            {"token", "name", "type_price", "price", "price_table", "components"},
+        )
+        self.assertNotIn("is_bail", response.data[0])
+        self.assertNotIn("is_return_fee", response.data[0])
+
+    def test_fixed_tariff_returns_price_and_no_price_table(self):
+        fixed = self._tariffs_by_token()["TR-FIXED"]
+
+        self.assertEqual(fixed["type_price"], "fixed")
+        self.assertEqual(fixed["price"], 100.0)
+        self.assertIsNone(fixed["price_table"])
+        self.assertEqual(len(fixed["components"]), 1)
+        self.assertEqual(fixed["components"][0]["token"], "LIT-FIX")
+        self.assertEqual(fixed["components"][0]["type_price"], "fixed")
+        self.assertEqual(fixed["components"][0]["price"], 100.0)
+        self.assertIsNone(fixed["components"][0]["price_table"])
+
+    def test_variable_tariff_returns_caliber_price_table(self):
+        variable = self._tariffs_by_token()["TR-VAR"]
+
+        self.assertEqual(variable["type_price"], "variable")
+        self.assertIsNone(variable["price"])
+        self.assertEqual(
+            variable["price_table"],
+            {
+                "units": "dm_met",
+                "stretches": [
+                    {
+                        "name": "Calibre 13",
+                        "min": 1,
+                        "max": 13,
+                        "price": 45.0,
+                        "proportional_price": None,
+                    },
+                    {
+                        "name": "Calibre 20",
+                        "min": 14,
+                        "max": 20,
+                        "price": 78.5,
+                        "proportional_price": None,
+                    },
+                ],
+            },
+        )
+        self.assertEqual(len(variable["components"]), 1)
+        self.assertEqual(
+            variable["components"][0]["price_table"]["units"], "dm_met"
+        )
+
+    def test_mixed_tariff_sums_fixed_components_and_keeps_breakdown(self):
+        mixed = self._tariffs_by_token()["TR-MIXED"]
+
+        self.assertEqual(mixed["type_price"], "variable")
+        self.assertEqual(mixed["price"], 3.5)
+        self.assertEqual(mixed["price_table"]["units"], "m3")
+        self.assertEqual(len(mixed["components"]), 2)
+        by_token = {item["token"]: item for item in mixed["components"]}
+        self.assertEqual(by_token["LIT-MIX-FIX"]["type_price"], "fixed")
+        self.assertEqual(by_token["LIT-MIX-FIX"]["price"], 3.5)
+        self.assertEqual(by_token["LIT-MIX-VAR"]["type_price"], "variable")
+        self.assertIsNone(by_token["LIT-MIX-VAR"]["price"])
+        self.assertEqual(
+            by_token["LIT-MIX-VAR"]["price_table"]["units"], "m3"
+        )
+
+    def test_inactive_tariff_excluded(self):
+        self.assertNotIn("TR-OFF", self._tariffs_by_token())
+
+    def test_dictionary_endpoints_require_authentication(self):
+        anonymous = APIClient()
+
+        for name in (
+            "contract-statuses-dictionary-ov",
+            "payment-types-dictionary-ov",
+            "invoice-statuses-dictionary-ov",
+            "procedure-tariffs-dictionary-ov",
+        ):
+            with self.subTest(endpoint=name):
+                self.assertEqual(anonymous.get(reverse(name)).status_code, 401)
+
+
+class PropertiesOVTests(TestCase):
+    """`GET /ov/properties/?search=` — autocompletat d'adreces de propietats
+    actives amb el resultat paginat i l'adreça ja formatada."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-properties-test", password="not-used"
+        )
+        street_type = StreetType.objects.create(
+            abbreviation="C", name="Carrer"
+        )
+        city = City.objects.create(token="CITY-08001", name="Barcelona")
+        postal_code = PostalCode.objects.create(code="08001")
+        cls.street_major = Street.objects.create(
+            name="Major", type=street_type, city=city
+        )
+        number = StreetNumber.objects.create(street=cls.street_major, number=123)
+        cls.property = Property.objects.create(
+            token="PR-001",
+            name="Edifici Major",
+            address_street=cls.street_major,
+            address_street_number=number,
+            address_postal_code=postal_code,
+            address_city=city,
+            is_active=True,
+        )
+        cls.other = Property.objects.create(
+            token="PR-002",
+            name="Casal Petit",
+            cadastral="CAD-999",
+            address_street=Street.objects.create(name="Petit"),
+            address_postal_code=postal_code,
+            address_city=city,
+            is_active=True,
+        )
+        cls.inactive = Property.objects.create(
+            token="PR-OFF",
+            name="Major inactiva",
+            address_street=cls.street_major,
+            address_postal_code=postal_code,
+            address_city=city,
+            is_active=False,
+        )
+        street_type_cr = StreetType.objects.create(
+            abbreviation="CR", name=""
+        )
+        street_cr = Street.objects.create(
+            name="Sant Miquel", type=street_type_cr, city=city
+        )
+        cls.cr_property = Property.objects.create(
+            token="PR-CR",
+            name="CR/SANT MIQUEL, 33",
+            address_street=street_cr,
+            address_street_number=StreetNumber.objects.create(
+                street=street_cr, number=33
+            ),
+            address_postal_code=postal_code,
+            address_city=city,
+            is_active=True,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _search(self, term, **params):
+        return self.client.get(
+            reverse("properties-ov"), {"search": term, **params}
+        )
+
+    def test_search_by_street_name_returns_formatted_address(self):
+        response = self._search("Major")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["results"],
+            [
+                {
+                    "token": "PR-001",
+                    "address": "C. Major, 123, 08001 Barcelona",
+                }
+            ],
+        )
+
+    def test_search_by_number_matches_exact_value(self):
+        response = self._search("123")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["token"] for item in response.data["results"]], ["PR-001"]
+        )
+
+    def test_search_by_postal_code_returns_matching_properties(self):
+        response = self._search("08001")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["token"] for item in response.data["results"]],
+            ["PR-001", "PR-002", "PR-CR"],
+        )
+
+    def test_search_ignores_trailing_dot_in_street_type(self):
+        response = self._search("CR.")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["results"],
+            [
+                {
+                    "token": "PR-CR",
+                    "address": "CR. Sant Miquel, 33, 08001 Barcelona",
+                }
+            ],
+        )
+
+    def test_multi_term_search_matches_across_columns(self):
+        response = self._search("CR. Sant 33")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["token"] for item in response.data["results"]], ["PR-CR"]
+        )
+
+    def test_punctuation_only_search_returns_400(self):
+        response = self._search("...")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data,
+            {"error": "Search must contain at least one valid term"},
+        )
+
+    def test_search_matches_property_name_and_cadastral(self):
+        self.assertEqual(
+            [item["token"] for item in self._search("Casal").data["results"]],
+            ["PR-002"],
+        )
+        self.assertEqual(
+            [item["token"] for item in self._search("CAD-999").data["results"]],
+            ["PR-002"],
+        )
+
+    def test_inactive_properties_are_excluded(self):
+        self.assertNotIn(
+            "PR-OFF",
+            [item["token"] for item in self._search("Major").data["results"]],
+        )
+
+    def test_search_is_required(self):
+        response = self.client.get(reverse("properties-ov"))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {"error": "Search is required"})
+
+    def test_search_requires_at_least_three_characters(self):
+        response = self._search("Ma")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data,
+            {"error": "Search must be at least 3 characters"},
+        )
+
+    def test_results_use_pagination_envelope(self):
+        response = self._search("08001")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(response.data),
+            {"count", "page", "limit", "total_pages", "results"},
+        )
+        self.assertEqual(response.data["count"], 3)
+        self.assertEqual(response.data["page"], 1)
+        self.assertEqual(response.data["limit"], 20)
+        self.assertEqual(response.data["total_pages"], 1)
+
+    def test_invalid_page_returns_400(self):
+        response = self._search("08001", page=99)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {"error": "Invalid page"})
+
+    def test_properties_requires_authentication(self):
+        anonymous = APIClient()
+
+        response = anonymous.get(reverse("properties-ov"), {"search": "Major"})
+
+        self.assertEqual(response.status_code, 401)
+
+
+class PersonDataOVTests(TestCase):
+    """`GET /ov/person-data/?dni=` — dades de contacte de la persona
+    identificada pel DNI, sense contracte, incloent-hi les files inactives."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-person-data-test", password="not-used"
+        )
+        cls.dni = "12345678A"
+        cls.person = Person.objects.create(
+            token=cls.dni, name="Anna", surname="Garcia"
+        )
+        cls.default_contact = PersonContact.objects.create(
+            token="CONTACT-1",
+            person=cls.person,
+            phone="600123456",
+            email="anna.garcia@example.com",
+            role="PARTICULAR",
+        )
+        cls.inactive_phone = PersonContact.objects.create(
+            token="CONTACT-2",
+            person=cls.person,
+            phone="600999888",
+            role="MÒBIL",
+            is_active=False,
+        )
+        cls.email_only = PersonContact.objects.create(
+            token="CONTACT-3",
+            person=cls.person,
+            email="altre@example.com",
+            role="ALTRES",
+        )
+        cls.empty_contact = PersonContact.objects.create(
+            token="CONTACT-4", person=cls.person, phone=None, email=""
+        )
+
+        street_type = StreetType.objects.create(abbreviation="C", name="Carrer")
+        city = City.objects.create(token="CITY-PERSON", name="Barcelona")
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        street = Street.objects.create(
+            name="Major", type=street_type, city=city
+        )
+        number = StreetNumber.objects.create(street=street, number=123)
+        cls.address = Address.objects.create(
+            token="ADDRESS-1",
+            street=street,
+            street_number=number,
+            city=city,
+            country=country,
+            postal_code="08001",
+            floor="2",
+            door="B",
+        )
+        cls.billing_address = PersonAddress.objects.create(
+            token="PADDRESS-1",
+            person=cls.person,
+            address=cls.address,
+            attention_to="Anna Garcia",
+            is_billing=True,
+            is_active=True,
+        )
+        cls.inactive_address = PersonAddress.objects.create(
+            token="PADDRESS-2",
+            person=cls.person,
+            address=None,
+            is_billing=False,
+            is_active=False,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, dni=None):
+        params = {} if dni is None else {"dni": dni}
+        return self.client.get(reverse("person-data-ov"), params)
+
+    def test_returns_person_phones_emails_and_addresses(self):
+        response = self._get(self.dni)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(response.data), {"person", "phones", "emails", "addresses"}
+        )
+        self.assertEqual(
+            response.data["person"],
+            {
+                "token": self.dni,
+                "name": "Anna",
+                "surname": "Garcia",
+                "is_juridic": False,
+            },
+        )
+
+    def test_phones_include_inactive_and_exclude_empty_rows(self):
+        response = self._get(self.dni)
+
+        phones = response.data["phones"]
+        self.assertEqual(
+            [item["token"] for item in phones],
+            ["CONTACT-1", "CONTACT-2"],
+        )
+        self.assertTrue(phones[0]["is_default"])
+        self.assertFalse(phones[1]["is_active"])
+
+    def test_emails_include_inactive_and_exclude_empty_rows(self):
+        response = self._get(self.dni)
+
+        emails = response.data["emails"]
+        self.assertEqual(
+            [item["token"] for item in emails],
+            ["CONTACT-1", "CONTACT-3"],
+        )
+        self.assertTrue(emails[0]["is_default"])
+
+    def test_contact_with_phone_and_email_appears_in_both_lists(self):
+        response = self._get(self.dni)
+
+        phone_tokens = [item["token"] for item in response.data["phones"]]
+        email_tokens = [item["token"] for item in response.data["emails"]]
+        self.assertIn("CONTACT-1", phone_tokens)
+        self.assertIn("CONTACT-1", email_tokens)
+
+    def test_addresses_include_inactive_and_null_address(self):
+        response = self._get(self.dni)
+
+        addresses = response.data["addresses"]
+        self.assertEqual(
+            [item["token"] for item in addresses],
+            ["PADDRESS-1", "PADDRESS-2"],
+        )
+        billing = addresses[0]
+        self.assertTrue(billing["is_billing"])
+        self.assertTrue(billing["is_active"])
+        self.assertEqual(billing["address"], str(self.address))
+        self.assertEqual(billing["street"], "C. Major")
+        self.assertEqual(billing["street_number"], "123")
+        self.assertEqual(billing["postal_code"], "08001")
+        self.assertEqual(billing["city"], "Barcelona")
+        self.assertEqual(billing["floor"], "2")
+        self.assertEqual(billing["door"], "B")
+        self.assertEqual(billing["attention_to"], "Anna Garcia")
+        inactive = addresses[1]
+        self.assertFalse(inactive["is_active"])
+        self.assertFalse(inactive["is_billing"])
+        self.assertIsNone(inactive["address"])
+        self.assertIsNone(inactive["street"])
+        self.assertIsNone(inactive["postal_code"])
+
+    def test_dni_is_normalized(self):
+        response = self._get(f"  {self.dni.lower()} ")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["person"]["token"], self.dni)
+
+    def test_dni_is_required(self):
+        response = self._get()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {"error": "DNI is required"})
+
+    def test_unknown_dni_returns_404(self):
+        response = self._get("99999999X")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Person not found"})
+
+    def test_person_data_requires_authentication(self):
+        anonymous = APIClient()
+
+        response = anonymous.get(
+            reverse("person-data-ov"), {"dni": self.dni}
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(PersonDataOVView.throttle_classes, [PersonDataThrottle])
+        self.assertEqual(PersonDataThrottle.rate, "35/min")
+        self.assertEqual(PersonDataThrottle.scope, "ov_person_data_dni")
+
+    def test_token_is_matched_case_insensitively(self):
+        person = Person.objects.create(token="87654321z", name="Bea")
+        PersonContact.objects.create(
+            token="LOWERCASE-1", person=person, phone="611000111"
+        )
+
+        response = self._get("87654321Z")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["person"]["token"], "87654321z")
+        self.assertEqual(
+            [item["phone"] for item in response.data["phones"]],
+            ["611000111"],
+        )
+
+    def test_spaces_hyphens_and_dots_are_ignored(self):
+        person = Person.objects.create(token="12345678-Z", name="Carla")
+        PersonContact.objects.create(
+            token="HYPHEN-1", person=person, phone="622000222"
+        )
+
+        for dni in ("12345678Z", "12345678-Z", " 1234.5678-Z "):
+            with self.subTest(dni=dni):
+                response = self._get(dni)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.data["person"]["token"], "12345678-Z"
+                )
+
+    def test_payer_dni_resolved_through_bank_account(self):
+        payer = Person.objects.create(token="PAYER-TOKEN", name="Payer")
+        PersonContact.objects.create(
+            token="PAYER-CONTACT-1", person=payer, phone="633000333"
+        )
+        PersonBank.objects.create(
+            person=payer,
+            dni=" Y7654-321.Q ",
+            iban="ES9121000418450200051332",
+        )
+
+        response = self._get("y7654321q")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["person"]["token"], "PAYER-TOKEN")
+        self.assertEqual(
+            [item["phone"] for item in response.data["phones"]],
+            ["633000333"],
+        )
+
+    def test_duplicate_token_prefers_person_with_contacts(self):
+        Person.objects.create(token="11111111H", name="Sense")
+        with_contacts = Person.objects.create(
+            token="11111111H", name="Amb", surname="Contactes"
+        )
+        PersonContact.objects.create(
+            token="DUPLICATE-1", person=with_contacts, phone="644000444"
+        )
+
+        response = self._get("11111111H")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["person"]["name"], "Amb")
+        self.assertEqual(
+            [item["phone"] for item in response.data["phones"]],
+            ["644000444"],
+        )
+
+
+class QuickPayOVTests(TestCase):
+    """`POST /ov/invoice/quick-pay/` — resolució sense escriptures d'una
+    factura a partir de número de contracte, número de factura (`serie_final`)
+    i import exacte (`total_final`)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-quick-pay-test", password="not-used"
+        )
+
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("bail_status_returned_token", "-1"),
+            ("payment_status_paid_token", "0"),
+            ("invoice_type_invoice_token", "F"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_pending_token", "1"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("invoice_status_dropped_token", "-7"),
+            ("invoice_status_payoff_token", "-2"),
+            ("invoice_status_irrecoverable_token", "-5"),
+            (
+                "invoice_status_part_irrecoverable_token",
+                "-4",
+            ),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+
+        cls.holder = Person.objects.create(
+            token="12345678A", name="Test", surname="QuickPay"
+        )
+        cls.contract = Contract.objects.create(
+            token="QP-CONTRACT-1", holder=cls.holder
+        )
+
+        statuses = {}
+        for token, name in (
+            ("2", "Confirmada"),
+            ("3", "Enviada"),
+            ("-1", "Vençuda"),
+            ("-3", "Morositat"),
+            ("4", "En compromís"),
+            ("0", "Pagada"),
+            ("1", "Prefactura"),
+            ("-6", "Abonada"),
+            ("-7", "Anul·lada"),
+            ("-2", "Abonament"),
+            ("-5", "Irrecuperable"),
+            ("-4", "Parcialment Irrecuperable"),
+        ):
+            statuses[token], _ = InvoiceStatus.objects.get_or_create(
+                token=token, defaults={"name": name}
+            )
+        cls.statuses = statuses
+
+        cls.payable = cls._create_invoice(
+            token="QP-INV-1",
+            serie_final="FC/202609/000001",
+            type_final="F",
+            total="101.73",
+            left_to_pay="101.73",
+            status=statuses["3"],
+        )
+        cls.second_payable = cls._create_invoice(
+            token="QP-INV-2",
+            serie_final="FC/202609/000002",
+            type_final="F",
+            total="50.00",
+            left_to_pay="50.00",
+            status=statuses["2"],
+        )
+        cls.proforma = cls._create_invoice(
+            token="QP-INV-3",
+            serie_final="PF/202609/000003",
+            type_final="P",
+            total="50.00",
+            left_to_pay="50.00",
+            status=statuses["3"],
+        )
+        cls.non_payable_invoices = {}
+        for index, status_token in enumerate(
+            ("0", "1", "-6", "-7", "-2", "-5", "-4"), start=10
+        ):
+            cls.non_payable_invoices[status_token] = cls._create_invoice(
+                token=f"QP-INV-{index}",
+                serie_final=f"FC/202609/00{index:04d}",
+                type_final="F",
+                total="30.00",
+                left_to_pay="30.00",
+                status=statuses[status_token],
+            )
+        cls.zero_left = cls._create_invoice(
+            token="QP-INV-20",
+            serie_final="FC/202609/000020",
+            type_final="F",
+            total="15.00",
+            left_to_pay="0.00",
+            status=statuses["3"],
+        )
+        cls.without_status = cls._create_invoice(
+            token="QP-INV-21",
+            serie_final="FC/202609/000021",
+            type_final="F",
+            total="10.00",
+            left_to_pay="10.00",
+            status=None,
+        )
+
+    @classmethod
+    def _create_invoice(
+        cls, token, serie_final, type_final, total, left_to_pay, status
+    ):
+        return Invoice.objects.create(
+            token=token,
+            contract=cls.contract,
+            serie_final=serie_final,
+            type_final=type_final,
+            total_final=Decimal(total),
+            left_to_pay=Decimal(left_to_pay),
+            status=status,
+            issue_date=date(2026, 9, 1),
+            due_date=date(2026, 9, 30),
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _payload(self, **overrides):
+        payload = {
+            "contract_number": "QP-CONTRACT-1",
+            "invoice_number": "FC/202609/000001",
+            "amount": "101.73",
+        }
+        payload.update(overrides)
+        return payload
+
+    def _post(self, **overrides):
+        return self.client.post(
+            reverse("quick-pay-ov"), self._payload(**overrides), format="json"
+        )
+
+    def test_resolves_invoice_without_writes(self):
+        invoice_count = Invoice.objects.count()
+        payment_count = self.payable.payments.count()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "QP-CONTRACT-1")
+        self.assertEqual(response.data["invoice_token"], "QP-INV-1")
+        self.assertEqual(response.data["invoice_number"], "FC/202609/000001")
+        self.assertEqual(response.data["issue_date"], "2026-09-01")
+        self.assertEqual(response.data["due_date"], "2026-09-30")
+        self.assertEqual(response.data["invoice_amount"], "101.73")
+        self.assertEqual(response.data["left_to_pay"], "101.73")
+        self.assertEqual(
+            response.data["status"],
+            {
+                "token": self.statuses["3"].token,
+                "name": self.statuses["3"].name,
+            },
+        )
+        self.assertTrue(response.data["payable"])
+
+        self.assertEqual(Invoice.objects.count(), invoice_count)
+        self.assertEqual(self.payable.payments.count(), payment_count)
+
+    def test_input_is_trimmed(self):
+        response = self._post(
+            contract_number="  QP-CONTRACT-1  ",
+            invoice_number="  FC/202609/000001  ",
+            amount=" 101.73 ",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["invoice_token"], "QP-INV-1")
+
+    def test_amount_is_matched_exactly(self):
+        response = self._post(amount="101.74")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_unknown_contract_returns_uniform_404(self):
+        response = self._post(contract_number="QP-CONTRACT-UNKNOWN")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_unknown_invoice_number_returns_uniform_404(self):
+        response = self._post(invoice_number="FC/202609/999999")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_invoice_number_is_matched_by_serie_final_not_token(self):
+        response = self._post(invoice_number="QP-INV-1")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_proforma_is_not_resolved(self):
+        response = self._post(
+            invoice_number="PF/202609/000003", amount="50.00"
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_non_payable_statuses_return_409(self):
+        for status_token, invoice in self.non_payable_invoices.items():
+            with self.subTest(status=status_token):
+                response = self._post(
+                    invoice_number=invoice.serie_final, amount="30.00"
+                )
+
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(
+                    response.data["error"], "Invoice is not payable"
+                )
+                self.assertEqual(
+                    response.data["status"]["token"], status_token
+                )
+                self.assertEqual(response.data["left_to_pay"], "30.00")
+
+    def test_zero_left_to_pay_returns_409(self):
+        response = self._post(
+            invoice_number="FC/202609/000020", amount="15.00"
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["error"], "Invoice is not payable")
+
+    def test_invoice_without_status_returns_409(self):
+        response = self._post(
+            invoice_number="FC/202609/000021", amount="10.00"
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["error"], "Invoice is not payable")
+        self.assertIsNone(response.data["status"])
+
+    def test_other_payable_invoices_can_be_resolved(self):
+        response = self._post(
+            invoice_number="FC/202609/000002", amount="50.00"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["invoice_token"], "QP-INV-2")
+
+    def test_more_than_two_decimals_returns_400(self):
+        response = self._post(amount="101.731")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("amount", response.data)
+
+    def test_negative_amount_returns_400(self):
+        response = self._post(amount="-101.73")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("amount", response.data)
+
+    def test_missing_fields_return_400(self):
+        response = self.client.post(reverse("quick-pay-ov"), {}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("contract_number", response.data)
+        self.assertIn("invoice_number", response.data)
+        self.assertIn("amount", response.data)
+
+    def test_quick_pay_requires_authentication(self):
+        anonymous = APIClient()
+
+        response = anonymous.post(
+            reverse("quick-pay-ov"), self._payload(), format="json"
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(QuickPayOVView.throttle_classes, [QuickPayThrottle])
+        self.assertEqual(QuickPayThrottle.rate, "35/min")
+        self.assertEqual(QuickPayThrottle.scope, "ov_quick_pay")
+
+
+class PaymentReceiptOVTests(TestCase):
+    """`GET /ov/payment-receipt/` — justificant de pagament en PDF per a
+    pagaments en efectiu o amb targeta al TPV físic, lligat al contracte i al
+    DNI del pagador/titular."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-payment-receipt-test", password="not-used"
+        )
+
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("bail_status_returned_token", "-1"),
+            ("payment_status_paid_token", "0"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("invoice_type_invoice_token", "F"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+
+        cls.company = Company.objects.create(
+            name="Aigua Test", vat="B12345678"
+        )
+        cls.exploitation = Exploitation.objects.create(
+            token="EXP-RECEIPT-1",
+            name="Explotació Test",
+            company=cls.company,
+            is_active=True,
+        )
+
+        cls.holder = Person.objects.create(
+            token="12345678A", name="Anna", surname="Titular"
+        )
+        cls.other_holder = Person.objects.create(
+            token="11111111A", name="Bernat", surname="Altre"
+        )
+        cls.contract = Contract.objects.create(
+            token="RECEIPT-CONTRACT-1", holder=cls.holder
+        )
+        cls.other_contract = Contract.objects.create(
+            token="RECEIPT-CONTRACT-2", holder=cls.other_holder
+        )
+
+        cls.paid_status, _ = PaymentStatus.objects.get_or_create(
+            token="0", defaults={"name": "Pagat"}
+        )
+        cls.pending_status, _ = PaymentStatus.objects.get_or_create(
+            token="1", defaults={"name": "Pendent"}
+        )
+        cls.invoice_status, _ = InvoiceStatus.objects.get_or_create(
+            token="3", defaults={"name": "Enviada"}
+        )
+
+        cls.invoice = cls._create_invoice(
+            token="RECEIPT-INV-1",
+            serie_final="FC/202609/010001",
+            type_final="F",
+            contract=cls.contract,
+        )
+        cls.payment = cls._create_payment(
+            token="PAY-CASH-1",
+            invoice=cls.invoice,
+            payment_type_token="CASH",
+            status=cls.paid_status,
+            payer="12345678A",
+        )
+
+        cls.card_invoice = cls._create_invoice(
+            token="RECEIPT-INV-2",
+            serie_final="FC/202609/010002",
+            type_final="F",
+            contract=cls.contract,
+        )
+        cls.card_payment = cls._create_payment(
+            token="PAY-CARD-1",
+            invoice=cls.card_invoice,
+            payment_type_token="CARD",
+            status=cls.paid_status,
+            payer="12345678A",
+        )
+
+        cls.online_invoice = cls._create_invoice(
+            token="RECEIPT-INV-3",
+            serie_final="FC/202609/010003",
+            type_final="F",
+            contract=cls.contract,
+        )
+        cls.online_payment = cls._create_payment(
+            token="PAY-ONLINE-1",
+            invoice=cls.online_invoice,
+            payment_type_token="TPV_ONLINE",
+            status=cls.paid_status,
+            payer="12345678A",
+        )
+
+        cls.debit_invoice = cls._create_invoice(
+            token="RECEIPT-INV-4",
+            serie_final="FC/202609/010004",
+            type_final="F",
+            contract=cls.contract,
+        )
+        cls.debit_payment = cls._create_payment(
+            token="PAY-DEBIT-1",
+            invoice=cls.debit_invoice,
+            payment_type_token="DIRECT_DEBIT",
+            status=cls.paid_status,
+            payer="12345678A",
+        )
+        cls.transfer_payment = cls._create_payment(
+            token="PAY-TRANSFER-1",
+            invoice=cls.debit_invoice,
+            payment_type_token="BANK_TRANSFER",
+            status=cls.paid_status,
+            payer="12345678A",
+        )
+
+        cls.unpaid_invoice = cls._create_invoice(
+            token="RECEIPT-INV-5",
+            serie_final="FC/202609/010005",
+            type_final="F",
+            contract=cls.contract,
+        )
+        cls.unpaid_payment = cls._create_payment(
+            token="PAY-UNPAID-1",
+            invoice=cls.unpaid_invoice,
+            payment_type_token="CASH",
+            status=cls.pending_status,
+            payer="12345678A",
+        )
+
+        cls.other_invoice = cls._create_invoice(
+            token="RECEIPT-INV-6",
+            serie_final="FC/202609/010006",
+            type_final="F",
+            contract=cls.other_contract,
+        )
+        cls.other_payment = cls._create_payment(
+            token="PAY-OTHER-1",
+            invoice=cls.other_invoice,
+            payment_type_token="CASH",
+            status=cls.paid_status,
+            payer="11111111A",
+        )
+
+        cls.proforma_invoice = cls._create_invoice(
+            token="RECEIPT-INV-7",
+            serie_final="PF/202609/010007",
+            type_final="P",
+            contract=cls.contract,
+        )
+        cls.proforma_payment = cls._create_payment(
+            token="PAY-PROFORMA-1",
+            invoice=cls.proforma_invoice,
+            payment_type_token="CASH",
+            status=cls.paid_status,
+            payer="12345678A",
+        )
+
+        cls.invoiceless_payment = cls._create_payment(
+            token="PAY-NOINVOICE-1",
+            invoice=None,
+            payment_type_token="CASH",
+            status=cls.paid_status,
+            payer="12345678A",
+        )
+
+        iban_holder = Person.objects.create(token="87654321Z", name="Carla")
+        cls.person_bank = PersonBank.objects.create(
+            token="RECEIPT-BANK-1",
+            person=iban_holder,
+            dni="87654321-Z",
+            iban="ES12345678901234567890",
+        )
+        cls.general_payment = GeneralPayment.objects.create(
+            token="RECEIPT-GP-1",
+            type=PaymentType.objects.filter(token="DIRECT_DEBIT").first(),
+            IBAN=cls.person_bank,
+        )
+        cls.iban_contract = Contract.objects.create(
+            token="RECEIPT-CONTRACT-3",
+            holder=cls.other_holder,
+            payment=cls.general_payment,
+        )
+        cls.iban_invoice = cls._create_invoice(
+            token="RECEIPT-INV-8",
+            serie_final="FC/202609/010008",
+            type_final="F",
+            contract=cls.iban_contract,
+        )
+        cls.iban_payment = cls._create_payment(
+            token="PAY-IBAN-1",
+            invoice=cls.iban_invoice,
+            payment_type_token="CASH",
+            status=cls.paid_status,
+            payer="22222222B",
+        )
+
+    @classmethod
+    def _create_invoice(cls, token, serie_final, type_final, contract):
+        return Invoice.objects.create(
+            token=token,
+            contract=contract,
+            serie_final=serie_final,
+            type_final=type_final,
+            total_final=Decimal("40.00"),
+            left_to_pay=Decimal("0.00"),
+            status=cls.invoice_status,
+            exploitation=cls.exploitation,
+            issue_date=date(2026, 9, 1),
+            due_date=date(2026, 9, 30),
+        )
+
+    @classmethod
+    def _create_payment(
+        cls, token, invoice, payment_type_token, status, payer
+    ):
+        return Payment.objects.create(
+            token=token,
+            status=status,
+            invoice=invoice,
+            contract=invoice.contract if invoice else cls.contract,
+            payment_type=payment_type_token,
+            payment_type_token=payment_type_token,
+            amount=Decimal("40.00"),
+            payment_date=date(2026, 9, 15),
+            customer_token_final=payer,
+            payer_token_final=payer,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, headers=None, **overrides):
+        params = {
+            "contract_token": "RECEIPT-CONTRACT-1",
+            "payment_token": "PAY-CASH-1",
+            "dni": "12345678A",
+        }
+        params.update(overrides)
+        return self.client.get(
+            reverse("payment-receipt-ov"), params, **(headers or {})
+        )
+
+    def _get_with_mocked_pdf(self, headers=None, **overrides):
+        captured = {}
+
+        def fake_render(payments, request, **kwargs):
+            captured["active_language"] = translation.get_language()
+            captured["language"] = kwargs.get("language")
+            captured["observation"] = kwargs.get("observation")
+            return BytesIO(b"%PDF-1.4 mocked"), "receipt.pdf"
+
+        with patch(
+            "billing.utils.payment_proof_service.render_payment_proof_pdf",
+            side_effect=fake_render,
+        ):
+            response = self._get(headers=headers, **overrides)
+        return response, captured
+
+    def _pdf_bytes(self, response):
+        return base64.b64decode(response.data["pdf_base64"], validate=True)
+
+    def test_cash_receipt_returns_base64_pdf_without_writes(self):
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertNotIn("Content-Disposition", response)
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(response["Content-Language"], "ca")
+        self.assertIn("pdf_base64", response.data)
+        self.assertTrue(self._pdf_bytes(response).startswith(b"%PDF"))
+
+        self.payment.refresh_from_db()
+        self.assertIsNone(self.payment.document)
+
+    def test_card_receipt_returns_base64_pdf(self):
+        response = self._get(payment_token="PAY-CARD-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self._pdf_bytes(response).startswith(b"%PDF"))
+
+    def test_dni_is_normalized(self):
+        response = self._get(dni=" 1234.5678-a ")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self._pdf_bytes(response).startswith(b"%PDF"))
+
+    def test_iban_holder_dni_is_accepted(self):
+        response = self._get(
+            contract_token="RECEIPT-CONTRACT-3",
+            payment_token="PAY-IBAN-1",
+            dni=" 87654321-z ",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self._pdf_bytes(response).startswith(b"%PDF"))
+
+    def test_unknown_dni_returns_uniform_404(self):
+        response = self._get(dni="99999999X")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Payment receipt not found"})
+
+    def test_tpv_online_payment_returns_404(self):
+        response = self._get(payment_token="PAY-ONLINE-1")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Payment receipt not found"})
+
+    def test_direct_debit_and_transfer_return_404(self):
+        for payment_token in ("PAY-DEBIT-1", "PAY-TRANSFER-1"):
+            with self.subTest(payment_token=payment_token):
+                response = self._get(payment_token=payment_token)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(
+                    response.data, {"error": "Payment receipt not found"}
+                )
+
+    def test_unpaid_payment_returns_404(self):
+        response = self._get(payment_token="PAY-UNPAID-1")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Payment receipt not found"})
+
+    def test_payment_of_another_contract_returns_404(self):
+        response = self._get(
+            contract_token="RECEIPT-CONTRACT-1",
+            payment_token="PAY-OTHER-1",
+            dni="11111111A",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Payment receipt not found"})
+
+    def test_proforma_invoice_returns_404(self):
+        response = self._get(payment_token="PAY-PROFORMA-1")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Payment receipt not found"})
+
+    def test_payment_without_invoice_returns_404(self):
+        response = self._get(payment_token="PAY-NOINVOICE-1")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Payment receipt not found"})
+
+    def test_unknown_payment_token_returns_404(self):
+        response = self._get(payment_token="PAY-UNKNOWN-1")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Payment receipt not found"})
+
+    def test_dni_is_required(self):
+        response = self._get(dni="")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {"error": "DNI is required"})
+
+    def test_contract_and_payment_tokens_are_required(self):
+        response = self.client.get(reverse("payment-receipt-ov"), {})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data,
+            {"error": "Contract token and payment token are required"},
+        )
+
+    def test_receipt_requires_authentication(self):
+        anonymous = APIClient()
+
+        response = anonymous.get(
+            reverse("payment-receipt-ov"),
+            {
+                "contract_token": "RECEIPT-CONTRACT-1",
+                "payment_token": "PAY-CASH-1",
+                "dni": "12345678A",
+            },
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_lang_query_parameter_selects_spanish(self):
+        response, captured = self._get_with_mocked_pdf(lang="es")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Language"], "es")
+        self.assertEqual(captured["active_language"], "es")
+        self.assertEqual(captured["language"], "es")
+
+    def test_lang_accepts_region_and_case(self):
+        for lang in ("ES", "es-ES", "es_ES"):
+            with self.subTest(lang=lang):
+                response, captured = self._get_with_mocked_pdf(lang=lang)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Language"], "es")
+                self.assertEqual(captured["active_language"], "es")
+
+    def test_accept_language_is_used_without_lang(self):
+        response, captured = self._get_with_mocked_pdf(
+            headers={"HTTP_ACCEPT_LANGUAGE": "es-ES,es;q=0.9"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Language"], "es")
+        self.assertEqual(captured["active_language"], "es")
+        self.assertEqual(captured["language"], "es")
+
+    def test_lang_takes_precedence_over_accept_language(self):
+        response, captured = self._get_with_mocked_pdf(
+            lang="en", headers={"HTTP_ACCEPT_LANGUAGE": "es-ES,es;q=0.9"}
+        )
+
+        self.assertEqual(response["Content-Language"], "en")
+        self.assertEqual(captured["active_language"], "en")
+
+    def test_unsupported_lang_falls_back_to_accept_language(self):
+        response, captured = self._get_with_mocked_pdf(
+            lang="fr", headers={"HTTP_ACCEPT_LANGUAGE": "gl"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Language"], "gl")
+        self.assertEqual(captured["active_language"], "gl")
+
+    def test_language_defaults_to_catalan(self):
+        response, captured = self._get_with_mocked_pdf()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Language"], "ca")
+        self.assertEqual(captured["active_language"], "ca")
+        self.assertEqual(captured["language"], "ca")
+
+    def test_template_keeps_catalan_by_default_and_honours_receipt_language(self):
+        from django.template import Context, Template
+
+        with open(
+            os.path.join(
+                settings.BASE_DIR,
+                "billing",
+                "templates",
+                "payment_proof_template.html",
+            ),
+            encoding="utf-8",
+        ) as template_file:
+            template = Template(template_file.read())
+
+        catalan = template.render(Context({}))
+        self.assertIn('<html lang="ca">', catalan)
+        self.assertIn("<title>Justificant de pagament</title>", catalan)
+
+        with translation.override("es"):
+            admin_render = template.render(Context({}))
+        self.assertIn('<html lang="ca">', admin_render)
+        self.assertIn(
+            "<title>Justificant de pagament</title>", admin_render
+        )
+
+        english = template.render(Context({"receipt_language": "en"}))
+        self.assertIn('<html lang="en">', english)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            PaymentReceiptOVView.throttle_classes, [PaymentReceiptThrottle]
+        )
+        self.assertEqual(PaymentReceiptThrottle.rate, "35/min")
+        self.assertEqual(PaymentReceiptThrottle.scope, "ov_payment_receipt")
+
+
+class InvoiceReturnRequestOVTests(TestCase):
+    """`POST /ov/invoice/return-request/` — obre una incidència automàtica per
+    a una devolució sol·licitada per l'abonat, sense tocar l'estat de la
+    factura ni cap pagament."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-return-request-test", password="not-used"
+        )
+
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("bail_status_returned_token", "-1"),
+            ("payment_status_paid_token", "0"),
+            ("payment_status_returned_token", "-2"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_confirmed_token", "2"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("invoice_type_invoice_token", "F"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+
+        cls.paid_invoice_status, _ = InvoiceStatus.objects.get_or_create(
+            token="0", defaults={"name": "Pagada"}
+        )
+        cls.confirmed_invoice_status, _ = (
+            InvoiceStatus.objects.get_or_create(
+                token="2", defaults={"name": "Confirmada"}
+            )
+        )
+        cls.pending_invoice_status, _ = InvoiceStatus.objects.get_or_create(
+            token="1", defaults={"name": "Pre-factura"}
+        )
+
+        cls.paid_payment_status, _ = PaymentStatus.objects.get_or_create(
+            token="0", defaults={"name": "Pagat"}
+        )
+        cls.returned_payment_status, _ = PaymentStatus.objects.get_or_create(
+            token="-2", defaults={"name": "Retornat"}
+        )
+
+        cls.open_incident_status, _ = IncidentStatus.objects.update_or_create(
+            token="1",
+            defaults={"name": "Oberta", "is_default": True, "position": 1},
+        )
+        IncidentStatus.objects.update_or_create(
+            token="2",
+            defaults={"name": "Tancada", "is_default": False, "position": 3},
+        )
+        cls.return_incident_type, _ = IncidentType.objects.update_or_create(
+            token="reclamacio", defaults={"name": "Reclamació"}
+        )
+
+        cls.holder = Person.objects.create(
+            token="12345678A", name="Anna"
+        )
+        cls.other_holder = Person.objects.create(
+            token="11111111A", name="Bernat"
+        )
+        cls.contract = Contract.objects.create(
+            token="RETURN-CONTRACT-1", holder=cls.holder
+        )
+        cls.other_contract = Contract.objects.create(
+            token="RETURN-CONTRACT-2", holder=cls.other_holder
+        )
+
+        cls.invoice = cls._create_invoice(
+            token="RETURN-INV-1", contract=cls.contract
+        )
+        cls._create_payment(
+            token="RETURN-PAY-1",
+            invoice=cls.invoice,
+            status=cls.paid_payment_status,
+        )
+
+        cls.returned_invoice = cls._create_invoice(
+            token="RETURN-INV-2", contract=cls.contract
+        )
+        cls._create_payment(
+            token="RETURN-PAY-2",
+            invoice=cls.returned_invoice,
+            status=cls.returned_payment_status,
+        )
+
+        cls.unpaid_invoice = cls._create_invoice(
+            token="RETURN-INV-3",
+            contract=cls.contract,
+            status=cls.confirmed_invoice_status,
+            left_to_pay=Decimal("40.00"),
+        )
+        # Pagada (status '0') però amb `left_to_pay` obsolet positiu: el senyal
+        # de pagaments actualitza l'estat sense re-sincronitzar `left_to_pay`.
+        cls.stale_left_to_pay_invoice = cls._create_invoice(
+            token="RETURN-INV-4",
+            contract=cls.contract,
+            left_to_pay=Decimal("10.00"),
+        )
+        cls._create_payment(
+            token="RETURN-PAY-4",
+            invoice=cls.stale_left_to_pay_invoice,
+            status=cls.paid_payment_status,
+        )
+        # Pagada (status '0') amb `left_to_pay` NULL.
+        cls.null_left_to_pay_invoice = cls._create_invoice(
+            token="RETURN-INV-8",
+            contract=cls.contract,
+            left_to_pay=None,
+        )
+        cls._create_payment(
+            token="RETURN-PAY-8",
+            invoice=cls.null_left_to_pay_invoice,
+            status=cls.paid_payment_status,
+        )
+        cls.proforma_invoice = cls._create_invoice(
+            token="RETURN-INV-5", contract=cls.contract, type_final="P"
+        )
+        cls.prefactura_invoice = cls._create_invoice(
+            token="RETURN-INV-6",
+            contract=cls.contract,
+            status=cls.pending_invoice_status,
+        )
+        cls.other_invoice = cls._create_invoice(
+            token="RETURN-INV-7", contract=cls.other_contract
+        )
+
+    @classmethod
+    def _create_invoice(
+        cls,
+        token,
+        contract,
+        status=None,
+        type_final="F",
+        left_to_pay=Decimal("0.00"),
+    ):
+        return Invoice.objects.create(
+            token=token,
+            contract=contract,
+            serie_final=f"FC/202609/{token}",
+            type_final=type_final,
+            total_final=Decimal("40.00"),
+            left_to_pay=left_to_pay,
+            status=status or cls.paid_invoice_status,
+            issue_date=date(2026, 9, 1),
+            due_date=date(2026, 9, 30),
+        )
+
+    @classmethod
+    def _create_payment(cls, token, invoice, status):
+        return Payment.objects.create(
+            token=token,
+            status=status,
+            invoice=invoice,
+            contract=invoice.contract,
+            payment_type="DIRECT_DEBIT",
+            payment_type_token="DIRECT_DEBIT",
+            amount=Decimal("40.00"),
+            payment_date=date(2026, 9, 15),
+            customer_token_final="12345678A",
+            payer_token_final="12345678A",
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, **overrides):
+        payload = {
+            "invoice_token": "RETURN-INV-1",
+            "contract_token": "RETURN-CONTRACT-1",
+            "reason": "Domiciliació retornada pel banc",
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("invoice-return-request-ov"), payload, format="json"
+        )
+
+    def test_creates_open_incident_without_changing_invoice(self):
+        payment_count = Payment.objects.count()
+        movement_count = PaymentMovement.objects.count()
+        remittance_return_count = PaymentRemittanceReturn.objects.count()
+        status_id = self.invoice.status_id
+        left_to_pay = self.invoice.left_to_pay
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIn("incident_token", response.data)
+        self.assertEqual(response.data["invoice_token"], "RETURN-INV-1")
+        self.assertEqual(response.data["contract_token"], "RETURN-CONTRACT-1")
+        self.assertEqual(response.data["status"]["token"], "1")
+        self.assertEqual(response.data["type"]["token"], "reclamacio")
+
+        incident = Incident.objects.get(
+            token=response.data["incident_token"]
+        )
+        self.assertEqual(incident.invoice, self.invoice)
+        self.assertEqual(incident.contract, self.contract)
+        self.assertEqual(incident.type, self.return_incident_type)
+        self.assertEqual(incident.status, self.open_incident_status)
+        self.assertTrue(incident.is_active)
+        self.assertEqual(
+            incident.description, "Domiciliació retornada pel banc"
+        )
+
+        self.assertTrue(
+            LogIncidentStatusChange.objects.filter(
+                object=incident,
+                current_status=self.open_incident_status,
+                user=self.user,
+            ).exists()
+        )
+
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status_id, status_id)
+        self.assertEqual(self.invoice.left_to_pay, left_to_pay)
+        self.assertEqual(Payment.objects.count(), payment_count)
+        self.assertEqual(PaymentMovement.objects.count(), movement_count)
+        self.assertEqual(
+            PaymentRemittanceReturn.objects.count(),
+            remittance_return_count,
+        )
+
+    def test_duplicate_request_returns_409_and_reuses_incident(self):
+        first = self._post()
+        second = self._post()
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(
+            second.data["error"], "Return request already exists"
+        )
+        self.assertEqual(
+            second.data["incident_token"], first.data["incident_token"]
+        )
+        self.assertEqual(
+            Incident.objects.filter(invoice=self.invoice).count(), 1
+        )
+
+    def test_invoice_already_returned_by_bank_returns_409(self):
+        response = self._post(invoice_token="RETURN-INV-2")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["error"], "Invoice already returned")
+        self.assertEqual(
+            Incident.objects.filter(invoice=self.returned_invoice).count(), 0
+        )
+
+    def test_unpaid_invoice_returns_409(self):
+        response = self._post(invoice_token="RETURN-INV-3")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["error"], "Invoice is not paid")
+        self.assertEqual(response.data["status"]["token"], "2")
+        self.assertEqual(
+            Incident.objects.filter(invoice=self.unpaid_invoice).count(), 0
+        )
+
+    def test_stale_left_to_pay_on_paid_invoice_is_accepted(self):
+        # El senyal de pagaments marca la factura com a pagada però no
+        # re-sincronitza `left_to_pay`, que pot quedar amb un valor positiu.
+        # L'estat '0' (Pagada) és la font de veritat i no s'ha de bloquejar.
+        self.assertEqual(
+            self.stale_left_to_pay_invoice.left_to_pay, Decimal("10.00")
+        )
+
+        response = self._post(invoice_token="RETURN-INV-4")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["invoice_token"], "RETURN-INV-4")
+        self.assertEqual(
+            Incident.objects.filter(
+                invoice=self.stale_left_to_pay_invoice
+            ).count(),
+            1,
+        )
+
+    def test_null_left_to_pay_on_paid_invoice_is_accepted(self):
+        self.assertIsNone(self.null_left_to_pay_invoice.left_to_pay)
+
+        response = self._post(invoice_token="RETURN-INV-8")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["invoice_token"], "RETURN-INV-8")
+        self.assertEqual(
+            Incident.objects.filter(
+                invoice=self.null_left_to_pay_invoice
+            ).count(),
+            1,
+        )
+
+    def test_unknown_invoice_returns_uniform_404(self):
+        response = self._post(invoice_token="RETURN-INV-UNKNOWN")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_proforma_and_prefactura_return_uniform_404(self):
+        for invoice_token in ("RETURN-INV-5", "RETURN-INV-6"):
+            with self.subTest(invoice_token=invoice_token):
+                response = self._post(invoice_token=invoice_token)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(
+                    response.data, {"error": "Invoice not found"}
+                )
+
+    def test_invoice_of_another_contract_returns_uniform_404(self):
+        wrong_contract = self._post(
+            invoice_token="RETURN-INV-7",
+            contract_token="RETURN-CONTRACT-1",
+        )
+        wrong_invoice = self._post(
+            invoice_token="RETURN-INV-1",
+            contract_token="RETURN-CONTRACT-2",
+        )
+
+        for response in (wrong_contract, wrong_invoice):
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_missing_fields_return_400(self):
+        for overrides in (
+            {"invoice_token": ""},
+            {"contract_token": ""},
+            {"reason": ""},
+            {"reason": "   "},
+        ):
+            with self.subTest(overrides=overrides):
+                response = self._post(**overrides)
+
+                self.assertEqual(response.status_code, 400)
+
+    def test_missing_config_returns_404(self):
+        ConfigProject.objects.filter(
+            token="invoice_type_invoice_token"
+        ).delete()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
+
+    def test_requires_authentication(self):
+        anonymous = APIClient()
+
+        response = anonymous.post(
+            reverse("invoice-return-request-ov"),
+            {
+                "invoice_token": "RETURN-INV-1",
+                "contract_token": "RETURN-CONTRACT-1",
+                "reason": "Domiciliació retornada pel banc",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            InvoiceReturnRequestOVView.throttle_classes,
+            [ReturnRequestThrottle],
+        )
+        self.assertEqual(ReturnRequestThrottle.rate, "35/min")
+        self.assertEqual(
+            ReturnRequestThrottle.scope, "ov_invoice_return_request"
+        )
+
+
+class ContractProcedureOVTests(TestCase):
+    """`POST /ov/procedures/contract/` — crea una sol·licitud d'alta de
+    contracte (`ContractRequest`) en estat esborrany, sense crear cap
+    contracte ni cap ordre, perquè atenció al client la finalitzi."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-procedure-test", password="not-used"
+        )
+
+        cls.default_status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        ContractRequestStatus.objects.update_or_create(
+            token="2", defaults={"name": "Pendent", "is_default": False}
+        )
+        ContractRequestStatus.objects.update_or_create(
+            token="3", defaults={"name": "Finalitzat", "is_default": False}
+        )
+        cls.cancelled_status, _ = (
+            ContractRequestStatus.objects.update_or_create(
+                token="-1", defaults={"name": "Cancel·lat", "is_default": False}
+            )
+        )
+
+        cls.procedure_type, _ = (
+            ContractRequestType.objects.update_or_create(
+                token="domestic",
+                defaults={"name": "Domèstic", "is_active": True},
+            )
+        )
+        cls.inactive_type, _ = (
+            ContractRequestType.objects.update_or_create(
+                token="industrial",
+                defaults={"name": "Industrial", "is_active": False},
+            )
+        )
+
+        cls.payment_type, _ = PaymentType.objects.update_or_create(
+            token="DIRECT_DEBIT", defaults={"name": "Domiciliació bancària"}
+        )
+        cls.cash_payment_type, _ = PaymentType.objects.update_or_create(
+            token="CASH", defaults={"name": "Efectiu"}
+        )
+
+        cls.tariff = PriceRate.objects.create(
+            token="TR-CHOSEN", name="Tarifa triada", is_active=True
+        )
+        cls.type_tariff = PriceRate.objects.create(
+            token="TR-TYPE", name="Tarifa del tipus", is_active=True
+        )
+        cls.inactive_tariff = PriceRate.objects.create(
+            token="TR-OFF", name="Tarifa inactiva", is_active=False
+        )
+        cls.order_type = OrderType.objects.create(
+            token="OT-ALTA", name="Alta"
+        )
+
+        # El tipus té una altra tarifa enllaçada: la triada per l'OV ha de
+        # guanyar igualment (Option 2a).
+        cls.procedure_type.price_rates.set([cls.type_tariff])
+        cls.procedure_type.registration_price_rates.set([cls.type_tariff])
+        cls.procedure_type.order_types.set([cls.order_type])
+
+        cls.holder = Person.objects.create(
+            token="12345678A", name="Anna", surname="Prova"
+        )
+        cls.other_holder = Person.objects.create(
+            token="11111111A", name="Bernat", surname="Prova"
+        )
+
+        cls.property = Property.objects.create(
+            token="PROP-1", name="Finca 1", is_active=True
+        )
+        cls.supply_point = SupplyPoint.objects.create(
+            token="SP-1", property=cls.property, is_active=True
+        )
+
+        cls.property_2 = Property.objects.create(
+            token="PROP-2", name="Finca 2", is_active=True
+        )
+        cls.supply_point_2 = SupplyPoint.objects.create(
+            token="SP-2", property=cls.property_2, is_active=True
+        )
+
+        cls.property_without_sp = Property.objects.create(
+            token="PROP-3", name="Finca 3", is_active=True
+        )
+        cls.inactive_property = Property.objects.create(
+            token="PROP-OFF", name="Finca off", is_active=False
+        )
+
+        cls.multi_property = Property.objects.create(
+            token="PROP-4", name="Finca 4", is_active=True
+        )
+        cls.multi_sp_a = SupplyPoint.objects.create(
+            token="SP-A", property=cls.multi_property, is_active=True
+        )
+        cls.multi_sp_b = SupplyPoint.objects.create(
+            token="SP-B", property=cls.multi_property, is_active=True
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, **overrides):
+        payload = {
+            "holder_dni": "12345678A",
+            "property_token": "PROP-1",
+            "procedure_type_token": "domestic",
+            "tariff_token": "TR-CHOSEN",
+            "payment_type_token": "DIRECT_DEBIT",
+            "iban": "ES91 2100 0418 4502 0005 1332",
+            "iban_holder_name": "Anna Prova",
+            "iban_holder_dni": "12345678a",
+            "iban_holder_swift": "CAIXESBBXXX",
+            "observation": "Alta sol·licitada des de l'OV",
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("contract-procedure-ov"), payload, format="json"
+        )
+
+    def _created_request(self, response):
+        return ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+
+    def test_creates_draft_request_without_creating_contract(self):
+        contract_count = Contract.objects.count()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.person, self.holder)
+        self.assertEqual(request_obj.holder, self.holder)
+        self.assertEqual(
+            request_obj.supply_point_default, self.supply_point
+        )
+        self.assertEqual(
+            list(request_obj.supply_points.all()), [self.supply_point]
+        )
+        self.assertEqual(request_obj.type, self.procedure_type)
+        self.assertEqual(request_obj.status, self.default_status)
+        self.assertIsNotNone(request_obj.requested_at)
+        self.assertIsNone(request_obj.approved_at)
+        self.assertTrue(request_obj.is_active)
+        self.assertIsNotNone(request_obj.payment)
+        self.assertEqual(Contract.objects.count(), contract_count)
+
+        self.assertEqual(
+            response.data["contract_request_token"], request_obj.token
+        )
+        self.assertEqual(response.data["status"]["token"], "1")
+        self.assertEqual(response.data["type"]["token"], "domestic")
+        self.assertEqual(response.data["person"]["token"], "12345678A")
+        self.assertEqual(response.data["supply_point"]["token"], "SP-1")
+        self.assertEqual(
+            response.data["payment"]["iban"],
+            "ES912100********00051332",
+        )
+
+    def test_chosen_tariff_wins_over_procedure_type_tariffs(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        contract_price_rates = list(
+            request_obj.price_rates.select_related(
+                "price_rate", "supply_point"
+            )
+        )
+        self.assertEqual(len(contract_price_rates), 1)
+        self.assertEqual(
+            contract_price_rates[0].price_rate, self.tariff
+        )
+        self.assertEqual(
+            contract_price_rates[0].supply_point, self.supply_point
+        )
+        self.assertNotIn(
+            self.type_tariff,
+            [cpr.price_rate for cpr in contract_price_rates],
+        )
+
+    def test_registration_rates_and_order_types_come_from_type(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        self.assertEqual(
+            set(request_obj.registration_price_rates.all()),
+            set(self.procedure_type.registration_price_rates.all()),
+        )
+        self.assertEqual(
+            set(request_obj.order_types.all()),
+            set(self.procedure_type.order_types.all()),
+        )
+
+    def test_creates_person_bank_and_general_payment(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        general_payment = request_obj.payment
+        self.assertEqual(general_payment.type, self.payment_type)
+        self.assertTrue(general_payment.is_active)
+
+        person_bank = general_payment.IBAN
+        self.assertIsNotNone(person_bank)
+        self.assertEqual(person_bank.person, self.holder)
+        self.assertEqual(
+            person_bank.iban, "ES9121000418450200051332"
+        )
+        self.assertEqual(person_bank.swift, "CAIXESBBXXX")
+        self.assertEqual(person_bank.name, "Anna Prova")
+        self.assertEqual(person_bank.dni, "12345678A")
+
+    def test_writes_status_change_log(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        log = LogContractRequestStatus.objects.get(object=request_obj)
+        self.assertIsNone(log.previous_status)
+        self.assertEqual(log.current_status, self.default_status)
+        self.assertEqual(log.user, self.user)
+        self.assertEqual(
+            log.observation, "Alta sol·licitada des de l'OV"
+        )
+
+    def test_non_direct_debit_does_not_require_iban(self):
+        response = self._post(
+            payment_type_token="CASH",
+            iban="",
+            iban_holder_name="",
+            iban_holder_dni="",
+            iban_holder_swift="",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.payment.type, self.cash_payment_type)
+        self.assertIsNone(request_obj.payment.IBAN)
+        self.assertEqual(response.data["payment"]["iban"], "")
+
+    def test_duplicate_open_request_returns_409_and_reuses_token(self):
+        first = self._post()
+        second = self._post()
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(
+            second.data["error"], "Contract request already exists"
+        )
+        self.assertEqual(
+            second.data["contract_request_token"],
+            first.data["contract_request_token"],
+        )
+        self.assertEqual(
+            ContractRequest.objects.filter(
+                person=self.holder,
+                supply_point_default=self.supply_point,
+            ).count(),
+            1,
+        )
+
+    def test_cancelled_request_does_not_block(self):
+        ContractRequest.objects.create(
+            token="CR-CANCELLED",
+            person=self.holder,
+            holder=self.holder,
+            supply_point_default=self.supply_point,
+            status=self.cancelled_status,
+            is_active=True,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_unknown_person_returns_404(self):
+        response = self._post(holder_dni="99999999Z")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Person not found"})
+
+    def test_unknown_or_inactive_property_returns_404(self):
+        for property_token in ("PROP-UNKNOWN", "PROP-OFF"):
+            with self.subTest(property_token=property_token):
+                response = self._post(property_token=property_token)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(
+                    response.data, {"error": "Property not found"}
+                )
+
+    def test_property_without_supply_point_returns_404(self):
+        response = self._post(property_token="PROP-3")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.data, {"error": "Supply point not found"}
+        )
+
+    def test_supply_point_of_another_property_returns_404(self):
+        response = self._post(
+            property_token="PROP-1", supply_point_token="SP-2"
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.data, {"error": "Supply point not found"}
+        )
+
+    def test_ambiguous_supply_point_requires_token(self):
+        ambiguous = self._post(property_token="PROP-4")
+        resolved = self._post(
+            property_token="PROP-4", supply_point_token="SP-A"
+        )
+
+        self.assertEqual(ambiguous.status_code, 400)
+        self.assertEqual(
+            ambiguous.data, {"error": "supply_point_token is required"}
+        )
+        self.assertEqual(resolved.status_code, 201)
+        request_obj = self._created_request(resolved)
+        self.assertEqual(request_obj.supply_point_default, self.multi_sp_a)
+
+    def test_unknown_or_inactive_procedure_type_returns_404(self):
+        for type_token in ("unknown", "industrial"):
+            with self.subTest(type_token=type_token):
+                response = self._post(
+                    procedure_type_token=type_token
+                )
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(
+                    response.data, {"error": "Procedure type not found"}
+                )
+
+    def test_unknown_or_inactive_tariff_returns_404(self):
+        for tariff_token in ("TR-UNKNOWN", "TR-OFF"):
+            with self.subTest(tariff_token=tariff_token):
+                response = self._post(tariff_token=tariff_token)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(
+                    response.data, {"error": "Tariff not found"}
+                )
+
+    def test_unknown_payment_type_returns_404(self):
+        response = self._post(payment_type_token="UNKNOWN")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.data, {"error": "Payment type not found"}
+        )
+
+    def test_missing_or_blank_fields_return_400(self):
+        for field in (
+            "holder_dni",
+            "property_token",
+            "procedure_type_token",
+            "tariff_token",
+            "payment_type_token",
+        ):
+            for value in ("", "   "):
+                with self.subTest(field=field, value=value):
+                    response = self._post(**{field: value})
+                    self.assertEqual(response.status_code, 400)
+
+    def test_direct_debit_requires_bank_fields(self):
+        response = self._post(
+            iban="",
+            iban_holder_name="",
+            iban_holder_dni="",
+            iban_holder_swift="",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            set(response.data["error"].keys()),
+            {
+                "iban",
+                "iban_holder_name",
+                "iban_holder_dni",
+                "iban_holder_swift",
+            },
+        )
+
+    def test_requires_authentication(self):
+        anonymous = APIClient()
+
+        response = anonymous.post(
+            reverse("contract-procedure-ov"),
+            {
+                "holder_dni": "12345678A",
+                "property_token": "PROP-1",
+                "procedure_type_token": "domestic",
+                "tariff_token": "TR-CHOSEN",
+                "payment_type_token": "DIRECT_DEBIT",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            ContractProcedureOVView.throttle_classes,
+            [ContractProcedureThrottle],
+        )
+        self.assertEqual(ContractProcedureThrottle.rate, "35/min")
+
+    def test_route_does_not_shadow_existing_procedures_endpoints(self):
+        match = resolve(reverse("contract-procedure-ov"))
+        self.assertIs(match.func.view_class, ContractProcedureOVView)
+
+        # Les rutes de SEPA del mateix prefix continuen resolent-se a la seva
+        # vista i no a la nova.
+        sepa_match = resolve(
+            reverse("upload-sepa-signed-ov", args=["CONTRACT-1"])
+        )
+        self.assertNotEqual(sepa_match.url_name, "contract-procedure-ov")
