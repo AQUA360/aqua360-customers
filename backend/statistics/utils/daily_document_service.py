@@ -41,8 +41,11 @@ def compute_due_date(start_date, days_to_complete, is_work_days=False):
 
 def generate_daily_document(template, current_time, pending_status):
     try:
+        from statistics.tasks import ReportNoData
+
         document = None
         error_message = None
+        no_data_found = False
         try:
             date_str = current_time.strftime('%Y-%m-%d')
             report_data = {
@@ -51,6 +54,9 @@ def generate_daily_document(template, current_time, pending_status):
                 'name': f"{template.name} {current_time.strftime('%Y/%m/%d')}",
             }
             document = execute_available_report(template.available_report, report_data)
+        except ReportNoData:
+            document = None
+            no_data_found = True
         except Exception as e:
             document = None
             error_message = str(e)
@@ -69,7 +75,8 @@ def generate_daily_document(template, current_time, pending_status):
             status=pending_status,
             template=template,
             document=document,
-            creation_error=error_message
+            creation_error=error_message,
+            no_data_found=no_data_found,
         )
 
     except Exception as e:
