@@ -99,9 +99,14 @@ class MessageTemplate(models.Model):
     
     origin = models.ForeignKey(MessageOrigin, on_delete=models.SET_NULL, null=True, blank=True)
     templates = models.ManyToManyField(MessageTypeTemplate, blank=True, related_name='message_templates')
-    
+
+    # Només aplica a la gestió d'impagats: valor per defecte del checkbox del procés que
+    # decideix si el document del pas (carta de suspensió / recordatori) s'envia amb la
+    # comunicació. Cada procés el pot canviar.
+    attach_claim_documents = models.BooleanField(default=True)
+
     is_active = models.BooleanField(default=True)
-    
+
     def __str__(self):
         return self.name if self.name else "MessageTemplate ID {}".format(self.token)
 
