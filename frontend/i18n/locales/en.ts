@@ -2782,6 +2782,8 @@ export default {
     daily_file_help: 'This file will be generated automatically every day.',
     required_parameters: 'Parameters',
     no_available_report: 'No report linked',
+    creation_error_help: 'Try regenerating, and if the error persists, contact support',
+    no_document_no_data: 'No document generated, no data found for this day',
     report_section: 'Section',
     choose_daily_report: 'Choose the daily file',
     choose_daily_report_help: 'Select a section first, then the report that will be generated every day.',

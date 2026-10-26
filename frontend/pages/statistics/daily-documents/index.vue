@@ -252,8 +252,17 @@ watch(() => route.query, () => {
                 class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
             </button>
           </span>
-          <span class="p-1 truncate" :class="{ 'text-red-500 font-bold': item.creation_error && !item.document_name }">
-            {{ item.creation_error && !item.document_name ? `${t('common.error')}: ${item.creation_error}` : item.document_name || '-' }}</span>
+          <span class="p-1 truncate" :class="{
+            'text-red-500 font-bold': item.creation_error && !item.document_name,
+            'text-slate-500': item.no_data_found && !item.document_name && !item.creation_error,
+          }">
+            {{
+              item.creation_error && !item.document_name
+                ? `${t('common.error')}: ${item.creation_error}`
+                : item.no_data_found && !item.document_name
+                  ? t('statistics_block.no_document_no_data')
+                  : item.document_name || '-'
+            }}</span>
           <span class="p-1"><AtomsColorBadge :value="item.status_name" :color="item.status_color" /></span>
           <span class="p-1 font-bold text-slate-400">{{ item.due_date ? formatDate(item.due_date) : t('common.doe_not_expire') }}</span>
         </div><!-- end for items -->

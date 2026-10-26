@@ -2013,7 +2013,7 @@ def generate_general_accounting(request):
     # print("total irrecoverable invoices: ", irrecoverable_invoices.count())
     # print("total movements: ", movements.count())
     if invoices.count() == 0 and endowment_invoices.count() == 0 and irrecoverable_invoices.count() == 0 and movements.count() == 0:
-        raise Exception(f"{_('No values found to generate accounting')}")
+        return None
     
     total_invoices = sum(invoice.total_final for invoice in invoices)
     # print("total invoices: ", total_invoices)

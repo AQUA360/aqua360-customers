@@ -2913,6 +2913,7 @@ export default {
     required_parameters: 'Parámetros',
     no_available_report: 'Sin informe asociado',
     creation_error_help: 'Pruebe a regenerar y, si el error persiste, contacte con soporte',
+    no_document_no_data: 'No se ha generado documento, no se han encontrado datos para este día',
     daily_document_cancelled: 'Informe cancelado',
     report_section: 'Sección',
     choose_daily_report: 'Elige el fichero diario',

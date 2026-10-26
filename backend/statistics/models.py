@@ -312,6 +312,7 @@ class DailyDocument(models.Model):
     
     document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True)
     creation_error = models.TextField(null=True, blank=True)
+    no_data_found = models.BooleanField(default=False)
     
     is_active = models.BooleanField(default=True)
     def __str__(self):

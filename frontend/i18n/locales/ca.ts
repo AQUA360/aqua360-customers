@@ -2913,6 +2913,7 @@ export default {
     required_parameters: 'Paràmetres',
     no_available_report: 'Sense informe associat',
     creation_error_help: 'Proveu de regenerar i, si l\'error persisteix, contacteu amb suport',
+    no_document_no_data: 'No s\'ha generat document, no s\'han trobat dades per a aquest dia',
     daily_document_cancelled: 'Informe cancel·lat',
     report_section: 'Secció',
     choose_daily_report: 'Tria el fitxer diari',
