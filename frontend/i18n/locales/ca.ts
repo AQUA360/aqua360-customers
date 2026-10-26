@@ -1492,6 +1492,7 @@ export default {
     categories: 'Categories',
     category: 'Categoria',
     no_category: 'Sense categoria',
+    housing_units: 'Núm. habitatges',
     surrogation: 'Subrogació',
     surrogate: 'Subrogat',
     bon_var_changes: 'Canvis de bonificació i variable',

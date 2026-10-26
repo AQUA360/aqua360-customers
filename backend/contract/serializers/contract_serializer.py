@@ -36,7 +36,7 @@ from .contract_payment_serializer import ContractPaymentSerializer
 from django.db.models import Q, Sum
 from billing.models import CommitmentDepositStatus, GeneralPaymentMandateLog, Invoice, InvoiceStatus, Payment, PaymentStatus
 from logger.models import LogContractTotalMembers
-from contract.utils.contract_service import log_contract_phones_change
+from contract.utils.contract_service import get_contract_housing_units, log_contract_phones_change
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
 
 class ContractObservationSerializer(serializers.ModelSerializer):
@@ -173,6 +173,7 @@ class ContractSerializer(serializers.ModelSerializer):
     members_change_count = serializers.SerializerMethodField()
     orders_count = serializers.SerializerMethodField()
     pending_billing = serializers.SerializerMethodField()
+    housing_units = serializers.SerializerMethodField()
     
     mandate_id = serializers.CharField(required=False, allow_null=True)
     mandate_id_overwrite = serializers.BooleanField(required=False, allow_null=True)
@@ -286,6 +287,9 @@ class ContractSerializer(serializers.ModelSerializer):
         owner_observations = PersonObservation.objects.filter(is_important=True, is_active=True, person=obj.owner)
         return PersonObservationSerializer(holder_observations | tenant_observations | owner_observations, many=True, context=self.context).data
     
+    def get_housing_units(self, obj):
+        return get_contract_housing_units(obj)
+
     def get_supply_point_ids(self, obj):
         supply_points = obj.supply_points.all()
         return [supply_point.id for supply_point in supply_points]
