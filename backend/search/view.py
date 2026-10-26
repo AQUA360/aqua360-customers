@@ -9,7 +9,11 @@ from service.models import Meter, SupplyPoint, Cluster, Connection, ConnectionRe
 from django.db.models.functions import Concat, Cast
 from django.db.models import CharField, Value
 from django.core.paginator import Paginator
+from rest_framework.decorators import api_view
 
+
+# Amb @api_view s'aplica l'autenticació per token i el permís per defecte (IsAuthenticated)
+@api_view(['GET'])
 def search_results(request):
     query = request.GET.get('q', '').strip()
     entity_filter = request.GET.get('entity', '').strip()
