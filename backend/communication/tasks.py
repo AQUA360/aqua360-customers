@@ -850,8 +850,9 @@ def get_communication_process_data(request_data):
     group_same = request_data.get('group_same', [])
 
     persons = []
-    # Persones que no poden rebre cap dels canals triats, amb el motiu. Només les
-    # informen els filtres basats en contractes (contracte, punt i tall).
+    # Persones que queden fora del procés, amb el motiu: sense cap canal dels
+    # triats, amb el contracte que no està d'alta, o excloses de la gestió
+    # d'impagats. Només les informen els filtres basats en contractes.
     excluded = []
     time_start = time.time()
 
@@ -887,7 +888,7 @@ def get_communication_process_data(request_data):
         fixed_filter = fixed_filters.get(entity, None)
         if fixed_filter is None:
             raise ValueError(f"Unknown fixed_data entity: {entity!r}")
-        if fixed_filter is filter_by_supply_cut:
+        if fixed_filter in (filter_by_supply_cut, filter_by_claim_request):
             persons = fixed_filter(filter_data, group_same, excluded=excluded)
         else:
             persons = fixed_filter(filter_data, group_same)

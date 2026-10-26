@@ -266,6 +266,41 @@ def filter_by_communication(filter_data, group_same):
     serialized_communications = CommunicationListSerializer(communications, many=True).data
     return serialized_communications
 
+def contract_exclusion_entries(contract_ids, person_types, reason):
+    """Entrades per a la llista d'exclosos del wizard, a partir de contractes.
+
+    Mateixa forma que les que omple `filter_by_contract` quan una persona no té
+    cap canal disponible, perquè el wizard les pinta totes amb la mateixa llista.
+    """
+    contract_ids = [contract_id for contract_id in contract_ids if contract_id]
+    if not contract_ids:
+        return []
+
+    entries = []
+    contracts = Contract.objects.filter(id__in=contract_ids).select_related(
+        'status', 'supply_point_default', 'supply_point_default__address', *person_types
+    )
+    for contract in contracts:
+        for person_type in person_types:
+            person = getattr(contract, person_type, None)
+            if not person:
+                continue
+            entries.append({
+                'id': person.id,
+                'token': person.token,
+                'full_name': get_person_full_name(person),
+                'person_type': person_type,
+                'contracts': [{
+                    'id': contract.id,
+                    'token': contract.token,
+                    'supply_address': str(contract.supply_point_default.address) if contract.supply_point_default else None,
+                    'communication_type': contract.communication_type,
+                }],
+                'reasons': [reason],
+            })
+    return entries
+
+
 def filter_by_contract(filter_data, group_same, excluded=None):
     """Destinataris dels contractes filtrats.
 
@@ -945,6 +980,17 @@ def filter_by_person(filter_data, group_same):
     # Convert dictionary to list and sort
     persons = list(persons_dict.values())
     persons.sort(key=lambda x: x['id'])
+
+    # Els contractes demanats que han quedat fora per no estar d'alta (o per estar
+    # esborrats) no desapareixen sense deixar rastre: s'informen amb el motiu.
+    if excluded is not None and contract_ids:
+        kept_ids = {contract.id for contract in contracts}
+        dropped_ids = [contract_id for contract_id in contract_ids if contract_id not in kept_ids]
+        inactive_ids = Contract.objects.filter(id__in=dropped_ids).exclude(
+            is_active=True, status__token=contract_status_token
+        ).values_list('id', flat=True)
+        excluded.extend(contract_exclusion_entries(inactive_ids, person_types, 'contract_not_active'))
+
     return persons
 
 def filter_by_supply_point(filter_data, group_same, excluded=None):
@@ -1096,7 +1142,7 @@ def filter_by_fixed_billing(filter_data, group_same):
         
     return persons
 
-def filter_by_claim_request(filter_data, group_same):
+def filter_by_claim_request(filter_data, group_same, excluded=None):
     filters = Q()
     object_id = filter_data.get('id', None)
     filters &= Q(claim_request__id=object_id)
@@ -1149,18 +1195,31 @@ def filter_by_claim_request(filter_data, group_same):
         filters &= return_date_filter
     
     claim_request_payment = ClaimRequestPayment.objects.filter(filters)
-    contracts = Contract.objects.filter(id__in=claim_request_payment.values_list('contract', flat=True))
+    # Un contracte exclòs de la gestió no s'ha de comunicar. Només queda fora quan
+    # no li resta cap pagament reclamable, el mateix criteri que fa servir el
+    # llistat de la gestió per pintar-lo com a exclòs.
+    claimable_payments = claim_request_payment.filter(is_excluded=False, contract__isnull=False)
+    contracts = Contract.objects.filter(id__in=claimable_payments.values_list('contract', flat=True))
+    person_types = ['holder']
     persons = []
     if len(contracts) > 0:
         filter_contract_data = {
             'company': filter_data.get('company'),
             'message_types': message_types,
             'contracts': [{'id': contract.id} for contract in contracts],
-            'person_type': ['holder'],
+            'person_type': person_types,
             'address_type': 'contract'
         }
-        persons = filter_by_contract(filter_contract_data, group_same)
-    
+        persons = filter_by_contract(filter_contract_data, group_same, excluded=excluded)
+
+    if excluded is not None:
+        excluded_contract_ids = claim_request_payment.filter(is_excluded=True).exclude(
+            contract__in=contracts
+        ).values_list('contract', flat=True).distinct()
+        excluded.extend(
+            contract_exclusion_entries(excluded_contract_ids, person_types, 'claim_payment_excluded')
+        )
+
     return persons
 
 def filter_by_sepa_remittance(filter_data, group_same):
