@@ -468,7 +468,10 @@ def get_contract_housing_units(contract):
     variable_type_token = (config.value or '').strip() if config else ''
     if not variable_type_token:
         return None
+    today = timezone.now().date()
     variable = contract.variables.filter(
+        Q(start_at__isnull=True) | Q(start_at__lte=today),
+        Q(end_at__isnull=True) | Q(end_at__gte=today),
         is_active=True, type__token=variable_type_token,
     ).order_by('-start_at', '-id').first()
     return variable.value if variable else None
