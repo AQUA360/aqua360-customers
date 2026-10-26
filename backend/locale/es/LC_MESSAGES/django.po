@@ -5685,6 +5685,9 @@ msgstr "Consumo registrado"
 msgid "Altres consums"
 msgstr "Otros consumos"
 
+msgid "Consum pendent"
+msgstr "Consumo pendiente"
+
 msgid "Consum facturat"
 msgstr "Consumo facturado"
 

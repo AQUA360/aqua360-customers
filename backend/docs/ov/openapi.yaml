@@ -431,10 +431,12 @@ paths:
         `contract_token` va en la query y la lista de fitxes en el cuerpo
         JSON (`invoice_tokens`).
 
-        Reutiliza el mismo servicio de generación que
-        `GET /ov/invoice-pdf/` (`generate_report_invoice_pdf`) pero con
-        `save_pdf=False`: los bytes del PDF son idénticos sin registrar el
-        documento ni actualizar `invoice_file`.
+        Reutiliza el PDF almacenado y finalizado en `invoice_file` cuando está
+        disponible. Si no existe o no se puede recuperar, genera el PDF con
+        el mismo servicio que `GET /ov/invoice-pdf/`
+        (`generate_report_invoice_pdf`) y `save_pdf=False`. La generación de
+        fallback mantiene los bytes del PDF sin registrar un nuevo documento
+        desde esta descarga por lote.
 
         Seguridad IDOR: todas las fitxes solicitadas deben pertenecer al
         contrato indicado y ser definitivas (`type_final`), el mismo filtro
@@ -966,7 +968,9 @@ paths:
         - Facturas
       summary: Obtener PDF de factura
       description: |
-        Genera y devuelve el PDF de una factura en formato Base64.
+        Devuelve en formato Base64 el PDF almacenado y finalizado de una
+        factura cuando está disponible. Si no existe o no se puede recuperar,
+        genera un PDF nuevo como fallback.
 
         La factura se identifica por `invoice_token` (campo `Invoice.token`) o, en su defecto,
         por `serie_final` si no se encuentra por token. Solo se consideran facturas de tipo factura

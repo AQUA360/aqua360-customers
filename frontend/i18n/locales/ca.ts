@@ -1711,6 +1711,8 @@ export default {
     initial_reading_new_contract: 'Lectura inicial del nou contracte'
   },
   billing_block:   {
+    new_payer_name: 'Nom del nou pagador',
+    new_payer_nif: 'NIF del nous pagador',
     endowment_date: 'Data de morositat',
     irrecoverable_date: 'Data irrecuperable',
     holder_change: 'Canvi de titular',
@@ -3389,6 +3391,10 @@ export default {
     confirm_create: 'Segur que vols crear aquest registre?',
     confirm_create_process: 'Segur que vols crear aquest procés?',
     confirm_delete: 'Segur que vols eliminar aquest registre?',
+    confirm_delete_bonification: 'Segur que vols eliminar aquesta bonificació? També se n\'eliminaran les variables.',
+    confirm_delete_last_bonification_variable: 'Aquesta és l\'última variable de la bonificació «{name}». Vols eliminar també la bonificació?',
+    delete_variable_and_bonification: 'Eliminar variable i bonificació',
+    delete_only_variable: 'Eliminar només la variable',
     confirm_cancel: 'Segur que vols cancel·lar aquest registre?',
     confirm_delete_cancelled_comm: 'Segur que vols eliminar aquesta comunicació cancel·lada? Deixarà de mostrar-se al programa.',
     confirm_delete_cancelled_process: 'Segur que vols eliminar aquest procés cancel·lat? Deixaran de mostrar-se al programa el procés i les seves comunicacions cancel·lades.',
