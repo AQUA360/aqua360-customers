@@ -4422,3 +4422,32 @@ msgstr "Consumo inusualmente baixo"
 
 msgid "Attach invoices in claims"
 msgstr "Adxuntar facturas nas reclamacións"
+msgid "Adreça subministrament"
+msgstr "Enderezo de subministración"
+
+msgid "Factures impagades"
+msgstr "Facturas impagadas"
+
+msgid "Deute total"
+msgstr "Débeda total"
+
+msgid "Estat contracte"
+msgstr "Estado contrato"
+
+msgid "Estat punt de subministrament"
+msgstr "Estado punto de subministración"
+
+msgid "Data de tall"
+msgstr "Data de corte"
+
+msgid "Contractes de la reclamació"
+msgstr "Contratos da reclamación"
+
+msgid "Cal indicar la gestió de reclamació o la tasca de filtratge."
+msgstr "Hai que indicar a xestión de reclamación ou a tarefa de filtrado."
+
+msgid "La tasca de filtratge no existeix o encara no ha acabat."
+msgstr "A tarefa de filtrado non existe ou aínda non rematou."
+
+msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
+msgstr "Hai contratos que non pertencen a esta xestión de reclamación."
