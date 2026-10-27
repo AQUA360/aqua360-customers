@@ -13,8 +13,6 @@ import CommunicationProcessPersonMessageList from '~/components/organisms/Commun
 import CommunicationProcessCreationData from '~/components/molecules/CommunicationProcessCreationData.vue';
 import CommunicationSelectManageOptions from '~/components/molecules/CommunicationSelectManageOptions.vue';
 import { checkPermission } from '~/middleware/permission';
-import { storeToRefs } from 'pinia';
-import { useConfigStore } from '~/stores/useConfigStore';
 const route = useRoute();
 const router = useRouter();
 
@@ -25,9 +23,6 @@ const props = defineProps({
 const toast = useToast()
 const { t } = useI18n();
 const { $CommunicationProcessApiService, $CommunicationApiService, $apiManager, $ConfigProjectApiService, $ExploitationApiService } = useNuxtApp();
-const configStore = useConfigStore();
-const { attachClaimDocumentsEnabled } = storeToRefs(configStore);
-configStore.fetchAttachClaimDocumentsEnabled();
 const objectPermissions = ref(null);
 // Estats generals
 const loadingRequestData = ref(false);
@@ -93,16 +88,6 @@ const unreachablePersons = shallowRef([])
 const setupType = ref(null)
 const attachInvoices = ref(false)
 const attachReadings = ref(false)
-// Només aplica a la gestió d'impagats: el document del pas (carta de suspensió /
-// recordatori) es genera i queda arxivat sempre; això només decideix si s'adjunta al correu.
-// El valor per defecte ve marcat pel configProject ATTACH_CLAIM_DOCUMENTS_ENABLED.
-const attachClaimDocuments = ref(true)
-
-watch(attachClaimDocumentsEnabled, (value) => {
-  if (value !== null) {
-    attachClaimDocuments.value = value
-  }
-}, { immediate: true })
 const excludedPersons = ref([])
 const messageData = ref({})
 const finalData = ref({})
@@ -506,7 +491,8 @@ const save = async () => {
         messages_data: rawFinalData.messages_data ? JSON.parse(JSON.stringify(toRaw(rawFinalData.messages_data))) : null,
         attach_letter: rawFinalData.attach_letter,
         attach_reading_invoices: rawFinalData.attach_invoices,
-        attach_claim_documents: attachClaimDocuments.value,
+        // Gestió d'impagats: el checkbox del pas 4 (valor de la plantilla si no s'ha tocat)
+        attach_claim_documents: isClaimRequest.value ? (rawMessageData.attach_claim_documents ?? null) : null,
         company_id: rawCompany?.id,
         company_config_email_id: rawFinalData.company_config_email?.id,
         message_template_id: rawMessageData.message_template,
@@ -744,15 +730,6 @@ onMounted(async () => {
 
         <!-- Pas 6: Resum i finalització -->
         <div v-if="currentStep === 5" class="space-y-4">
-          <div v-if="isClaimRequest" class="p-3 border border-slate-200 rounded bg-white">
-            <div class="flex items-center gap-2">
-              <abbr class="flex items-center" :title="$t('informative_block.info_attach_claim_documents')">
-                <Icon name="fa6-solid:circle-info" class="text-slate-500" />
-              </abbr>
-              <span>{{ $t('common.attach_claim_documents_to_email') }}</span>
-              <input type="checkbox" v-model="attachClaimDocuments" />
-            </div>
-          </div>
           <CommunicationProcessPersonMessageList :excludedPersons="excludedPersons" :persons="persons" :final_data="finalData"
           @change="onPersonsChange" @change-excluded="onExcludedPersonsChange" :fixed_data="objectSearchData"
           :unreachable-persons="notReceivingPersons" :no-channel-entries="noChannelEntries" />
