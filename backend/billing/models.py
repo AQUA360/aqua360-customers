@@ -544,6 +544,9 @@ class ReadingDocument(models.Model):
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=SOURCE_FILE)
     # Data de lectura sol·licitada (només per a documents de Smart Metering).
     reading_date = models.DateField(null=True, blank=True)
+    # Rutes, zones i lots de la càrrega de Smart Metering ({"route_ids": [...],
+    # "route_zone_ids": [...], "batch_ids": [...]}); buit = tots els comptadors.
+    smart_metering_scope = models.JSONField(null=True, blank=True)
     batch = models.ForeignKey(ReadingBatch, on_delete=models.SET_NULL, related_name="documents", null=True, blank=True)
     template = models.ForeignKey(
         'statistics.ReadingBatchImportTemplate',

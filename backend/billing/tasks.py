@@ -1989,7 +1989,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
 
 
 @shared_task(bind=True)
-def preview_smart_metering_task(self, reading_date):
+def preview_smart_metering_task(self, reading_date, scope=None):
   progress_recorder = ProgressRecorder(self)
 
   def on_progress(current, total, description=""):
@@ -1999,6 +1999,7 @@ def preview_smart_metering_task(self, reading_date):
       reading_date,
       api_timeout=SMART_METERING_PREVIEW_API_TIMEOUT,
       progress_callback=on_progress,
+      scope=scope,
   )
   return _json_safe(result)
 
