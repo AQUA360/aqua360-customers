@@ -517,7 +517,7 @@ onMounted(async () => {
             <span class="font-semibold tabular-nums text-slate-800">{{ filteredContracts.length }}</span>
           </span>
           <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
-            :disabled="loading || !exportContracts.length"
+            :disabled="loading || filterLoading || !exportContracts.length"
             :export-name="[$t(title), request?.token].filter(Boolean).join(' – ')" />
         </div>
       </div>
