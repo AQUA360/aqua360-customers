@@ -824,8 +824,6 @@ class ContractListItemOVSerializer(serializers.Serializer):
     direct_debit_holder = serializers.SerializerMethodField()
     allowed_actions = serializers.SerializerMethodField()
     is_account_holder = serializers.SerializerMethodField()
-    es_titular = serializers.SerializerMethodField()
-    es_pagador = serializers.SerializerMethodField()
 
     def _request_dni(self):
         """DNI passat per query, normalitzat (`None` si no n'hi ha)."""
@@ -893,24 +891,10 @@ class ContractListItemOVSerializer(serializers.Serializer):
             return False
         return dni == iban_dni
 
-    def get_es_titular(self, obj):
-        dni = self._request_dni()
-        holder_dni = (
-            str(obj.holder.token).strip().upper()
-            if obj.holder and obj.holder.token
-            else None
-        )
-        return bool(dni and holder_dni and dni == holder_dni)
-
-    def get_es_pagador(self, obj):
-        return self.get_is_account_holder(obj)
-
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if not self._request_dni():
             data.pop("is_account_holder", None)
-            data.pop("es_titular", None)
-            data.pop("es_pagador", None)
         return data
 
 
@@ -955,8 +939,6 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
     is_account_holder = serializers.SerializerMethodField()
     is_holder = serializers.SerializerMethodField()
     is_payer = serializers.SerializerMethodField()
-    es_titular = serializers.SerializerMethodField()
-    es_pagador = serializers.SerializerMethodField()
     holder_address = serializers.SerializerMethodField()
     iban = serializers.SerializerMethodField()
     has_sepa_document = serializers.SerializerMethodField()
@@ -994,8 +976,6 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             "status",
             "is_holder",
             "is_payer",
-            "es_titular",
-            "es_pagador",
             "has_sepa_document",
         ]
 
@@ -1174,12 +1154,6 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             return False
         return dni == iban_dni
 
-    def get_es_titular(self, obj):
-        return self.get_is_holder(obj)
-
-    def get_es_pagador(self, obj):
-        return self.get_is_payer(obj)
-
     def get_holder_address(self, obj):
         holder = obj.holder
         if not holder:
@@ -1211,8 +1185,6 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
             data.pop("is_account_holder", None)
             data.pop("is_holder", None)
             data.pop("is_payer", None)
-            data.pop("es_titular", None)
-            data.pop("es_pagador", None)
         return data
 
 

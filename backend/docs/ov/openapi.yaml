@@ -3610,18 +3610,6 @@ components:
             domiciliación. En este endpoint el `dni` es obligatorio, por lo que la
             clave siempre está presente.
           example: true
-        es_titular:
-          type: boolean
-          description: |
-            `true` si el `dni` recibido coincide con el titular del contrato.
-            Solo aparece cuando se envía `dni`.
-          example: true
-        es_pagador:
-          type: boolean
-          description: |
-            `true` si el `dni` recibido coincide con el titular de la cuenta
-            de domiciliación. Solo aparece cuando se envía `dni`.
-          example: false
 
     ContractHolder:
       type: object
@@ -3797,19 +3785,6 @@ components:
             cuenta de domiciliación (normalizado). **Solo aparece en la respuesta
             si se envía `dni`**; sin `dni` la clave se omite por completo. Es un
             alias explícito de la misma comprobación que `is_account_holder`.
-          example: true
-        es_titular:
-          type: boolean
-          description: |
-            Alias aditivo de `is_holder`: `true` si el `dni` coincide con el
-            titular del contrato. Solo aparece cuando se envía `dni`.
-          example: true
-        es_pagador:
-          type: boolean
-          description: |
-            Alias aditivo de `is_payer`: `true` si el `dni` coincide con el
-            titular de la cuenta de domiciliación. Solo aparece cuando se envía
-            `dni`.
           example: true
         holder_address:
           type: string

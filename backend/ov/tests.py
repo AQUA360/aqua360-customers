@@ -172,16 +172,6 @@ class ContractOVViewTests(TestCase):
         self.assertIn("is_account_holder", response.data)
         self.assertFalse(response.data["is_account_holder"])
 
-    def test_contract_detail_adds_spanish_role_flags(self):
-        response = self.client.get(
-            reverse("contract-ov"),
-            {"contract_token": SLASH_TOKEN, "dni": HOLDER_TOKEN},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["es_titular"])
-        self.assertFalse(response.data["es_pagador"])
-
 
 class ContractDetailRoleFlagsTests(TestCase):
     """Phase 2: `status` objectiu i banderes `is_holder` / `is_payer` als tres
@@ -262,8 +252,6 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertTrue(response.data["is_holder"])
         self.assertFalse(response.data["is_account_holder"])
         self.assertFalse(response.data["is_payer"])
-        self.assertTrue(response.data["es_titular"])
-        self.assertFalse(response.data["es_pagador"])
 
     def test_is_payer_true_when_dni_matches_direct_debit_account_holder(self):
         response = self._contract_detail(PLAIN_TOKEN, dni=PAYER_DNI)
@@ -272,8 +260,6 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertTrue(response.data["is_payer"])
         self.assertTrue(response.data["is_account_holder"])
         self.assertFalse(response.data["is_holder"])
-        self.assertFalse(response.data["es_titular"])
-        self.assertTrue(response.data["es_pagador"])
 
     def test_flags_are_present_on_contract_by_token_endpoint(self):
         response = self.client.get(
@@ -286,7 +272,7 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertTrue(response.data["is_holder"])
         self.assertFalse(response.data["is_payer"])
 
-    def test_contract_list_adds_status_and_spanish_role_flags(self):
+    def test_contract_list_adds_status_object(self):
         response = self.client.get(
             reverse("contracts-ov"),
             {"dni": HOLDER_TOKEN},
@@ -299,8 +285,6 @@ class ContractDetailRoleFlagsTests(TestCase):
             if result["token"] == PLAIN_TOKEN
         )
         self.assertEqual(item["status"], {"token": "1", "name": "Activo"})
-        self.assertTrue(item["es_titular"])
-        self.assertFalse(item["es_pagador"])
         self.assertIn("is_account_holder", item)
 
     def test_flags_are_present_on_contract_by_nic_endpoint(self):
