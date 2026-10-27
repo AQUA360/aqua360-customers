@@ -605,6 +605,16 @@ def smart_metering_scope_supply_point_ids(scope):
     return set(queryset.values_list("id", flat=True).distinct())
 
 
+def smart_metering_document_supply_point_ids(reading_document):
+    """
+    Supply points of a Smart Metering document: those of its scope plus those of
+    the readings it already holds (a supply point may have changed route since).
+    """
+    return smart_metering_scope_supply_point_ids(reading_document.smart_metering_scope) | set(
+        reading_document.readings.values_list("supply_point_id", flat=True)
+    )
+
+
 def _label(obj):
     return " - ".join(str(value) for value in (obj.token, obj.name) if value) or str(obj.id)
 
@@ -1279,8 +1289,8 @@ SKIP_REASON_NOT_SAVED = "existing_reading_protected_or_older"
 def find_smart_metering_documents(reading_date, scope=None):
     """
     Smart Metering reading documents of ``reading_date`` whose routes, zones or
-    batches share some meter with ``scope``. Only one load per date and meter:
-    different routes can be loaded separately for the same date.
+    batches (or its readings) share some meter with ``scope``. Only one load per
+    date and meter: different routes can be loaded separately for the same date.
     """
     documents = ReadingDocument.objects.filter(
         source=ReadingDocument.SOURCE_SMART_METERING,
@@ -1290,7 +1300,7 @@ def find_smart_metering_documents(reading_date, scope=None):
     return [
         document
         for document in documents
-        if target_ids & smart_metering_scope_supply_point_ids(document.smart_metering_scope)
+        if target_ids & smart_metering_document_supply_point_ids(document)
         or (not target_ids and not normalize_smart_metering_scope(document.smart_metering_scope))
     ]
 
@@ -1373,11 +1383,19 @@ def import_smart_metering_readings(reading_document, preview=None):
     saved_readings = []
     reading_ids = set()
     set_added_readings = set()
+    # The preview may come from the client: keep only rows of the document's scope.
+    scope_supply_point_ids = smart_metering_scope_supply_point_ids(reading_document.smart_metering_scope)
+    preview_rows = [row for row in preview["readings"] if row.get("id") in scope_supply_point_ids]
+    if len(preview_rows) != len(preview["readings"]):
+        logger.warning(
+            "Smart metering import: %s preview rows outside the document scope ignored",
+            len(preview["readings"]) - len(preview_rows),
+        )
     not_loaded_rows = [
-        (row, SKIP_REASON_NO_API_READING) for row in preview["readings"] if not row.get("matched")
+        (row, SKIP_REASON_NO_API_READING) for row in preview_rows if not row.get("matched")
     ]
 
-    matched_rows = [row for row in preview["readings"] if row.get("matched")]
+    matched_rows = [row for row in preview_rows if row.get("matched")]
     supply_points_by_id = {
         sp.id: sp
         for sp in SupplyPoint.objects.filter(

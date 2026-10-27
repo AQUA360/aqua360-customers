@@ -33,6 +33,7 @@ from billing.utils.smart_metering_service import (
     find_smart_metering_documents,
     normalize_smart_metering_scope,
     smart_metering_document_is_replaceable,
+    smart_metering_document_supply_point_ids,
     smart_metering_scope_options,
     smart_metering_scope_supply_point_ids,
 )
@@ -221,7 +222,7 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
             and self._celery_task_is_running(existing.task_id)
         )
         scope_reduced = not (
-            smart_metering_scope_supply_point_ids(existing.smart_metering_scope)
+            smart_metering_document_supply_point_ids(existing)
             <= smart_metering_scope_supply_point_ids(scope)
         )
         replaceable = (

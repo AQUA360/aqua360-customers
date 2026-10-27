@@ -310,3 +310,52 @@ class TestSmartMeteringDocument(TestCase):
         self.assertEqual(widened.data['document_id'], document.id)
         document.refresh_from_db()
         self.assertIsNone(document.smart_metering_scope)
+
+    def test_import_ignores_client_preview_rows_outside_the_scope(self):
+        route_a = Route.objects.create(token='RA')
+        route_b = Route.objects.create(token='RB')
+        sp_a = self._smart_metering_sp_on_route('SM-A', route_a)
+        sp_b = self._smart_metering_sp_on_route('SM-B', route_b)
+        scope = {'route_ids': [route_a.id]}
+        document = self._new_document()
+        document.smart_metering_scope = scope
+        document.save(update_fields=['smart_metering_scope'])
+        row = {
+            'matched': True, 'reading_value': 130, 'reading_date': READING_DATE.isoformat(),
+            'meter_code': '', 'contracts': [{}],
+        }
+        preview = {
+            'reading_date': READING_DATE.isoformat(),
+            'scope': scope,
+            'readings': [
+                {**row, 'id': sp_a.id, 'contract_id': sp_a.contracts.get().id},
+                {**row, 'id': sp_b.id, 'contract_id': sp_b.contracts.get().id},
+            ],
+        }
+
+        result = import_smart_metering_readings(document, preview=preview)
+
+        self.assertEqual(result['saved_readings'], 1)
+        self.assertEqual(list(document.readings.values_list('supply_point_id', flat=True)), [sp_a.id])
+
+    def test_document_keeps_supply_points_that_changed_route(self):
+        route_b = Route.objects.create(token='RB')
+        route_c = Route.objects.create(token='RC')
+        sp_b = self._smart_metering_sp_on_route('SM-B', route_b)
+        first = self._post_import(scope={'route_ids': [route_b.id]})
+        document = ReadingDocument.objects.get(id=first.data['document_id'])
+        document.status = ReadingDocument.STATUS_PROCESSED
+        document.save(update_fields=['status'])
+        Reading.objects.create(
+            meter=sp_b.meter, contract=sp_b.contracts.get(), supply_point=sp_b, document=document,
+            reading_date=READING_DATE, reading_value=130, calculated_value=0,
+        )
+        # The supply point moves to another route after the load.
+        sp_b.property.route_position.route = route_c
+        sp_b.property.route_position.save()
+
+        load_c = self._post_import(scope={'route_ids': [route_c.id]})
+
+        self.assertEqual(load_c.status_code, 409)
+        self.assertEqual(load_c.data['existing_document']['id'], document.id)
+        self.assertTrue(load_c.data['existing_document']['replaceable'])
