@@ -43,7 +43,7 @@ class MeterModelViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            meter_model = get_or_create_dictionary_value(
+            meter_model, created = get_or_create_dictionary_value(
                 MeterModel,
                 request.data.get('name'),
                 manufacturer=manufacturer,
@@ -53,4 +53,7 @@ class MeterModelViewSet(viewsets.ModelViewSet):
                 {'name': ['Invalid meter model value.']},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response(self.get_serializer(meter_model).data, status=status.HTTP_200_OK)
+        return Response(
+            self.get_serializer(meter_model).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )

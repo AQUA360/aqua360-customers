@@ -2,6 +2,7 @@
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Upper
 from coredata.models import Address, Bank, Country, PersonAddress, Street, StreetNumber, PostalCode, Person, City
 from django.contrib.auth.models import User
 from documentmanager.models import Document
@@ -1155,16 +1156,36 @@ class SupplyCutObservation(models.Model):
 class MeterManufacturer(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Upper('name'), name='meter_manufacturer_name_ci_unique'),
+        ]
     
 class MeterModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     manufacturer = models.ForeignKey(MeterManufacturer, on_delete=models.CASCADE, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Upper('name'), 'manufacturer', name='meter_model_name_manufacturer_ci_unique'),
+            models.UniqueConstraint(
+                Upper('name'),
+                condition=models.Q(manufacturer__isnull=True),
+                name='meter_model_name_no_manufacturer_ci_unique',
+            ),
+        ]
+
 
 class MeterCommTechnology(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Upper('name'), name='meter_comm_technology_name_ci_unique'),
+        ]
 
 
 class ClusterDocumentationType(models.Model):

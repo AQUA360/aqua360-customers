@@ -401,7 +401,7 @@ const save = async () => {
       manufacturing_year: manufacturing_year.value,
       comm_module: comm_module.value,
       comm_module_type: comm_module_type.value,
-      comm_technology: commTechnology?.label || commTechnology || comm_technology.value,
+      comm_technology: commTechnology?.label || null,
       network_provider: network_provider.value,
       uninstallation_at: uninstallation_at.value,
       installation_at: installation_at.value,

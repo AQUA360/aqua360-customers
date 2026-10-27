@@ -1,15 +1,24 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 
 @transaction.atomic
 def get_or_create_dictionary_value(model, name, **filters):
-    normalized_name = (name or '').strip()
+    if not isinstance(name, str):
+        raise ValueError('The dictionary value must be a string.')
+    normalized_name = name.strip()
     if not normalized_name:
         raise ValueError('The dictionary value cannot be empty.')
 
     lookup = {**filters, 'name__iexact': normalized_name}
     value = model.objects.filter(**lookup).order_by('id').first()
     if value:
-        return value
+        return value, False
 
-    return model.objects.create(name=normalized_name, **filters)
+    try:
+        with transaction.atomic():
+            return model.objects.create(name=normalized_name, **filters), True
+    except IntegrityError:
+        value = model.objects.filter(**lookup).order_by('id').first()
+        if value is None:
+            raise
+        return value, False

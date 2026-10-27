@@ -21,7 +21,7 @@ class MeterManufacturerViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='get-or-create')
     def get_or_create(self, request):
         try:
-            manufacturer = get_or_create_dictionary_value(
+            manufacturer, created = get_or_create_dictionary_value(
                 MeterManufacturer,
                 request.data.get('name'),
             )
@@ -31,4 +31,7 @@ class MeterManufacturerViewSet(viewsets.ModelViewSet):
                 {'name': ['Invalid manufacturer name.']},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        return Response(self.get_serializer(manufacturer).data, status=status.HTTP_200_OK)
+        return Response(
+            self.get_serializer(manufacturer).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )

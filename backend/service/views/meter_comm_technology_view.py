@@ -15,7 +15,7 @@ from service.utils.meter_dictionary_service import get_or_create_dictionary_valu
 logger = logging.getLogger(__name__)
 
 
-class MeterCommTechnologyViewSet(viewsets.ModelViewSet):
+class MeterCommTechnologyViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = MeterCommTechnology.objects.all().order_by('name')
     serializer_class = MeterCommTechnologySerializer
     permission_classes = [IsAuthenticated, MeterPermission]
@@ -25,7 +25,7 @@ class MeterCommTechnologyViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='get-or-create')
     def get_or_create(self, request):
         try:
-            technology = get_or_create_dictionary_value(
+            technology, created = get_or_create_dictionary_value(
                 MeterCommTechnology,
                 request.data.get('name'),
             )
@@ -35,4 +35,7 @@ class MeterCommTechnologyViewSet(viewsets.ModelViewSet):
                 {'name': ['Invalid value provided.']},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response(self.get_serializer(technology).data, status=status.HTTP_200_OK)
+        return Response(
+            self.get_serializer(technology).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
