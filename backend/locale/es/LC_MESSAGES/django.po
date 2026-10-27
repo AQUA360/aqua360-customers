@@ -5859,3 +5859,6 @@ msgstr "Lectura inusual"
 #: billing/tasks.py
 msgid "Consum inusualment baix"
 msgstr "Consumo inusualmente bajo"
+
+msgid "Attach invoices in claims"
+msgstr "Adjuntar facturas en las gestiones de impagos"

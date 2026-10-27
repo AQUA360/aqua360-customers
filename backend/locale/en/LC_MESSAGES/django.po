@@ -3844,3 +3844,6 @@ msgstr "Unusual reading"
 #: billing/tasks.py
 msgid "Consum inusualment baix"
 msgstr "Unusually low consumption"
+
+msgid "Attach invoices in claims"
+msgstr "Attach invoices in claims"
