@@ -278,9 +278,12 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
             preview = request.data.get('preview')
             if preview is not None:
                 _coerce_client_preview(preview, reading_date.isoformat(), scope)
-        except SmartMeteringPreviewOutdated as exc:
+        except SmartMeteringPreviewOutdated:
             return Response(
-                {"error": str(exc), "code": "smart_metering_preview_outdated"},
+                {
+                    "error": "The provided preview is outdated. Please refresh and try again.",
+                    "code": "smart_metering_preview_outdated",
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except ValueError as exc:
