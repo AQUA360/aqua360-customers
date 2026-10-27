@@ -11,7 +11,7 @@ from django.core.files.base import ContentFile
 from billing.utils.barcode_service import generate_barcode, get_barcode_values
 from billing.utils.confirm_invoice_service import confirm_invoice
 from billing.utils.invoice_service import generate_empty_invoice
-from contract.models import Contract, PaymentType
+from contract.models import Contract, ContractTerminationRequest, PaymentType
 from coredata.models import ConfigProject
 from django.utils import timezone, translation
 from coredata.serializers import AddressSerializer, PersonSerializer
@@ -23,6 +23,12 @@ from django.db.models import Q, Count, Sum
 from billing.models import Invoice, InvoiceStatus, JoinedPayment, JoinedPaymentStatus, Payment, PaymentStatus
 from pricing.models import PriceRate
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, VulnerabilityRequest, VulnerabilityRequestStatus
+from claimrequest.utils.claim_request_service import (
+    closed_termination_tokens,
+    contract_from_finished_request,
+    is_claimable_contract,
+    resolve_invoice_contract,
+)
 from contract.models import Contract
 from contract.serializers.contract_serializer import ContractWithPaymentsSerializer
 from notification.models import Notification
@@ -115,7 +121,9 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             None,
         )
         
-        claim_payments = ClaimRequestPayment.objects.filter(claim_request=claim_request)
+        claim_payments = ClaimRequestPayment.objects.filter(
+            claim_request=claim_request, is_excluded=False
+        )
         payments = claim_payments.values_list("payment", flat=True).distinct()
         
         invoices = Invoice.objects.filter(payments__id__in=payments).distinct()
@@ -277,6 +285,11 @@ def notify_claim_request_step_due_date():
 def _build_claim_request_filters(payload):
     filters = Q()
     payment_filters = Q()
+    # Subconjunt de `filters` amb només les condicions del contracte en si (sense
+    # les que travessen `invoices__...`). Cal a part per poder filtrar els
+    # contractes que arriben pel deute d'una sol·licitud, que no penja de
+    # `Contract.invoices` i per tant no es pot trobar amb `filters`.
+    contract_filters = Q()
     
     payment_config_tokens = [
         'payment_status_expired_token',
@@ -292,6 +305,10 @@ def _build_claim_request_filters(payload):
     payment_statuses = PaymentStatus.objects.filter(token__in=payment_status_tokens)
     filters &= Q(invoices__payments__status__in=payment_statuses, invoices__total_final__gt=0)
     payment_filters &= Q(status__in=payment_statuses, amount__gt=0)
+
+    # `is_active` és l'esborrat lògic, no l'estat d'alta/baixa: un contracte
+    # esborrat no ha de sortir enlloc, encara que se'n triïn els estats a mà.
+    contract_filters &= Q(is_active=True)
 
     date_start = payload.get('filter_date_start')
     date_end = payload.get('filter_date_end')
@@ -336,7 +353,7 @@ def _build_claim_request_filters(payload):
     selected_contracts_ids = payload.get('selected_contracts_id')
 
     if selected_contracts_ids:
-        filters &= Q(id__in=selected_contracts_ids)
+        contract_filters &= Q(id__in=selected_contracts_ids)
 
     # Limitar als pagaments d'una devolució de remesa SEPA concreta
     remittance_return_payment_ids = None
@@ -348,20 +365,28 @@ def _build_claim_request_filters(payload):
         filters &= Q(invoices__payments__id__in=remittance_return_payment_ids)
         payment_filters &= Q(id__in=remittance_return_payment_ids)
     if use_types:
-        filters &= Q(use_type__id__in=use_types)
+        contract_filters &= Q(use_type__id__in=use_types)
     if client_types:
-        filters &= Q(client_type__id__in=client_types)
+        contract_filters &= Q(client_type__id__in=client_types)
     if zones:
-        filters &= Q(supply_point_default__property__route_position__route__route_zone__id__in=zones)
+        contract_filters &= Q(supply_point_default__property__route_position__route__route_zone__id__in=zones)
     if reading_batch_templates:
-        filters &= Q(supply_point_default__property__route_position__route__reading_batch_template__id__in=reading_batch_templates)
+        contract_filters &= Q(supply_point_default__property__route_position__route__reading_batch_template__id__in=reading_batch_templates)
     if contract_statuses:
-        filters &= Q(status__id__in=contract_statuses)
+        # Es poden triar les baixes expressament per consultar-ne el deute. Crear-hi
+        # una gestió, en canvi, no: ho talla el serializer de l'alta.
+        contract_filters &= Q(status__id__in=contract_statuses)
+    else:
+        active_contract_token = ConfigProject.objects.filter(
+            token='contract_active_token'
+        ).values_list('value', flat=True).first()
+        if active_contract_token:
+            contract_filters &= Q(status__token=active_contract_token)
     if rejection_motives:
         filters &= Q(invoices__payments__reject__id__in=rejection_motives)
         payment_filters &= Q(reject__id__in=rejection_motives)
     if debt_management:
-        filters &= Q(holder__vulnerability_level__in=debt_management, holder__is_juridic=False) | Q(tenant__vulnerability_level__in=debt_management, holder__is_juridic=True) | Q(holder__vulnerability_level__isnull=True)
+        contract_filters &= Q(holder__vulnerability_level__in=debt_management, holder__is_juridic=False) | Q(tenant__vulnerability_level__in=debt_management, holder__is_juridic=True) | Q(holder__vulnerability_level__isnull=True)
     # if debt_management:
     #     include_null = "null" in debt_management or len(debt_management) == 0
     #     debt_management = [v for v in debt_management if v != "null"]
@@ -372,11 +397,11 @@ def _build_claim_request_filters(payload):
     #         debt_query |= Q(debt_management__isnull=True)
     #     filters &= debt_query
     elif not check_without_debt:
-        filters &= Q(debt_management__isnull=False)
+        contract_filters &= Q(debt_management__isnull=False)
 
     contracts_ignored = payload.get('ignore_contracts')
     if contracts_ignored:
-        filters &= ~Q(id__in=contracts_ignored)
+        contract_filters &= ~Q(id__in=contracts_ignored)
 
     ignore_payments = payload.get('ignore_payments', [])
 
@@ -446,6 +471,19 @@ def _build_claim_request_filters(payload):
     
     annotation_filters &= ~Q(invoices__payments__claim_requests__claim_request__status__token__in=[claim_request_status_accepted_token,claim_request_status_pending_token])
 
+    # Factures d'una baixa tancada (cancel·lada o finalitzada): no es reclamen.
+    # Es restringeix per id de factura elegible. Negar `invoices__contract_termination`
+    # faria desaparèixer el contracte sencer encara que tingui altres factures.
+    closed_tokens = closed_termination_tokens()
+    if len(closed_tokens) >= 2:
+        eligible_invoice_ids = Invoice.objects.exclude(
+            contract_termination__status__isnull=False,
+            contract_termination__status__token__in=closed_tokens,
+        ).values('id')
+        filters &= Q(invoices__id__in=eligible_invoice_ids)
+        payment_filters &= Q(invoice_id__in=eligible_invoice_ids)
+        annotation_filters &= Q(invoices__id__in=eligible_invoice_ids)
+
     has_min_pending_invoices = min_pending_invoices and min_pending_invoices != "" and min_pending_invoices != 0
     has_max_pending_invoices = max_pending_invoices and max_pending_invoices != "" and max_pending_invoices != 0
     if has_min_pending_invoices or has_max_pending_invoices:
@@ -466,7 +504,9 @@ def _build_claim_request_filters(payload):
             )
         filters &= Q(id__in=pending_invoices_qs.values('id'))
 
-    return filters, payment_filters, annotation_filters, ignore_payments, return_fee_invoice_ids
+    filters &= contract_filters
+
+    return filters, payment_filters, annotation_filters, ignore_payments, return_fee_invoice_ids, contract_filters
 
 
 @shared_task(bind=True)
@@ -507,16 +547,7 @@ def generate_claim_expenses(self, claim_request_id, claim_request_step_id, contr
             ]
             
             for contract_invoice in contract_invoices:
-                contract = None
-                if contract_invoice.contract:
-                    contract = contract_invoice.contract
-                elif contract_invoice.contract_request:
-                    try:
-                        contract = Contract.objects.get(contract_request=contract_invoice.contract_request)
-                    except Contract.DoesNotExist:
-                        contract = None
-                elif contract_invoice.contract_termination:
-                    contract = contract_invoice.contract_termination.contract
+                contract = resolve_invoice_contract(contract_invoice)
                 if not contract:
                     print(f"Contract not found for invoice {contract_invoice.serie_final}")
                     continue
@@ -548,7 +579,7 @@ def generate_claim_expenses(self, claim_request_id, claim_request_step_id, contr
             claim_request_payment = ClaimRequestPayment(
                 claim_request=claim_request,
                 payment=payment,
-                contract=payment.invoice.contract,
+                contract=resolve_invoice_contract(payment.invoice),
                 claim_step=claim_request_step,
             )
             new_request_payments.append(claim_request_payment)
@@ -678,6 +709,9 @@ def create_joined_payments_for_claim_request(claim_request):
     claim_payments = ClaimRequestPayment.objects.filter(
         claim_request=claim_request,
         payment__isnull=False,
+        # Sense contracte el pagament agrupat no es pot emparellar després amb la
+        # comunicació, que busca per contracte: quedaria orfe.
+        contract__isnull=False,
         is_excluded=False,
     ).exclude(payment__status__token=paid_payment_status_token).distinct().select_related(
         'contract',
@@ -799,10 +833,226 @@ def _generate_claim_expenses_invoice(invoices, progress_recorder, contract, pric
         )
         return invoices, progress_recorder, expense_invoice
 
+def _open_claim_status_tokens():
+    """Estats d'una gestió d'impagats encara viva: pendent i acceptada."""
+    return list(
+        ConfigProject.objects.filter(
+            token__in=['claim_request_status_accepted_token', 'claim_request_status_pending_token']
+        ).values_list('value', flat=True)
+    )
+
+
+def _open_termination_contract_ids(contract_ids):
+    """Contractes amb una baixa demanada i encara no resolta.
+
+    Obertа vol dir en qualsevol estat que no sigui cancel·lada ni finalitzada
+    (dels quatre possibles: esborrany, pendent, finalitzada i cancel·lada). Mateix
+    criteri que `contract_list_queryset`. Sense els dos tokens configurats no es
+    pot distingir, i val més no avisar que avisar en fals.
+    """
+    if not contract_ids:
+        return set()
+
+    closed_tokens = closed_termination_tokens()
+    if len(closed_tokens) < 2:
+        return set()
+
+    return set(
+        ContractTerminationRequest.objects.filter(
+            contract_id__in=contract_ids,
+            is_active=True,
+            # Sense estat no és una baixa oberta: l'exclude de sota, sobre un
+            # FK nul, també deixaria passar status NULL.
+            status__isnull=False,
+        ).exclude(status__token__in=closed_tokens).values_list('contract_id', flat=True)
+    )
+
+
+def _open_termination_debt(payment_filters, contract_filters):
+    """Deute de factures que només pengen d'una sol·licitud de baixa.
+
+    Mentre la baixa no estigui acabada ni cancel·lada el contracte encara hi és,
+    així que el deute es reclama a aquell contracte, igual que la resta de les
+    seves factures. El contracte ja surt marcat com a "baixa en curs" per poder
+    excloure'l a mà. Si la baixa ja està tancada no entra enlloc: no hi ha ningú
+    a qui reclamar-ho.
+    """
+    closed_tokens = closed_termination_tokens()
+    if len(closed_tokens) < 2:
+        return {}, {}
+
+    payments = Payment.objects.filter(
+        payment_filters,
+        invoice__isnull=False,
+        invoice__contract__isnull=True,
+        invoice__contract_request__isnull=True,
+        invoice__contract_termination__isnull=False,
+        invoice__contract_termination__is_active=True,
+        invoice__contract_termination__contract__isnull=False,
+        invoice__contract_termination__status__isnull=False,
+        invoice__total_final__gt=0,
+        invoice__is_active=True,
+    ).exclude(invoice__contract_termination__status__token__in=closed_tokens)
+
+    open_claim_tokens = _open_claim_status_tokens()
+    if open_claim_tokens:
+        payments = payments.exclude(claim_requests__claim_request__status__token__in=open_claim_tokens)
+    payments = payments.values_list('id', 'invoice_id', 'invoice__contract_termination__contract_id').distinct()
+
+    rows = list(payments)
+    if not rows:
+        return {}, {}
+
+    # El contracte de la baixa ha de passar els filtres de la cerca com qualsevol
+    # altre: es comprova en una sola consulta, no una per fila.
+    claimable_ids = set(
+        Contract.objects.filter(
+            contract_filters, id__in={row[2] for row in rows}
+        ).values_list('id', flat=True)
+    )
+
+    payments_by_contract = {}
+    invoices_by_contract = {}
+    for payment_id, invoice_id, contract_id in rows:
+        if contract_id not in claimable_ids:
+            continue
+        payments_by_contract.setdefault(contract_id, []).append(payment_id)
+        invoices_by_contract.setdefault(contract_id, set()).add(invoice_id)
+
+    return (
+        payments_by_contract,
+        {contract_id: list(invoice_ids) for contract_id, invoice_ids in invoices_by_contract.items()},
+    )
+
+
+def _contract_request_debt(payment_filters, contract_filters):
+    """Deute de factures emeses durant una sol·licitud d'alta.
+
+    Aquestes factures no tenen `Contract`, només `contract_request`, i per això no
+    es troben recorrent `Contract.invoices` com la resta de la cerca. Es reparteix
+    en dos: el que es pot reclamar, agrupat pel contracte que va néixer de la
+    sol·licitud, i el que no, perquè la sol·licitud no en va generar cap.
+    """
+    open_claim_tokens = _open_claim_status_tokens()
+
+    payments = Payment.objects.filter(
+        payment_filters,
+        invoice__isnull=False,
+        invoice__contract__isnull=True,
+        invoice__contract_request__isnull=False,
+        invoice__total_final__gt=0,
+        invoice__is_active=True,
+    )
+    if open_claim_tokens:
+        payments = payments.exclude(claim_requests__claim_request__status__token__in=open_claim_tokens)
+    payments = payments.select_related(
+        'invoice',
+        'invoice__contract_request',
+        'invoice__contract_request__status',
+    ).distinct()
+
+    payments_by_request = {}
+    for payment in payments:
+        payments_by_request.setdefault(payment.invoice.contract_request_id, []).append(payment)
+
+    if not payments_by_request:
+        return {}, {}, []
+
+    request_ids = list(payments_by_request.keys())
+    # Qualsevol contracte vinculat compta, encara que estigui esborrat
+    # lògicament o de baixa: el deute és d'aquell contracte i l'avís només ha de
+    # parlar de sol·licituds que no en van generar cap.
+    requests_with_contract = set(
+        Contract.objects.filter(
+            contract_request_id__in=request_ids
+        ).values_list('contract_request_id', flat=True)
+    )
+    finalize_request_token = ConfigProject.objects.filter(
+        token='contract_request_finalize_token'
+    ).values_list('value', flat=True).first()
+    # Mateix criteri que `resolve_invoice_contract`: si la sol·licitud té més d'un
+    # contracte, el darrer.
+    contract_by_request = {}
+    for contract in Contract.objects.filter(contract_filters, contract_request_id__in=request_ids).order_by('-id'):
+        contract_by_request.setdefault(contract.contract_request_id, contract)
+
+    payments_by_contract = {}
+    invoices_by_contract = {}
+    unlinked_by_invoice = {}
+    for request_id, request_payments in payments_by_request.items():
+        contract = contract_by_request.get(request_id)
+        has_contract = contract is not None or request_id in requests_with_contract
+        if not has_contract:
+            # Sol·licitud finalitzada sense el vincle `Contract.contract_request`:
+            # el contracte existeix i el deute es pot reclamar, només cal trobar-lo
+            # pel codi o pel punt de subministrament.
+            fallback = contract_from_finished_request(request_payments[0].invoice.contract_request)
+            if fallback:
+                has_contract = True
+                if Contract.objects.filter(contract_filters, id=fallback.id).exists():
+                    contract = fallback
+        if contract:
+            payments_by_contract.setdefault(contract.id, []).extend(payment.id for payment in request_payments)
+            invoices_by_contract.setdefault(contract.id, set()).update(
+                payment.invoice_id for payment in request_payments
+            )
+            continue
+        if has_contract:
+            # Té contracte, però no passa els filtres de la cerca (de baixa,
+            # esborrat, altra zona...): es descarta com qualsevol altre contracte.
+            continue
+        for payment in request_payments:
+            invoice = payment.invoice
+            contract_request = invoice.contract_request
+            request_status_token = (
+                contract_request.status.token if contract_request and contract_request.status else None
+            )
+            # Perquè la pantalla pugui dir per què no es reclama, en lloc de
+            # deixar l'usuari endevinant-ho.
+            if finalize_request_token and request_status_token == finalize_request_token:
+                reason = 'contract_not_found'
+            else:
+                reason = 'request_not_finished'
+            entry = unlinked_by_invoice.setdefault(invoice.id, {
+                'invoice_id': invoice.id,
+                'invoice_serie': invoice.serie_final,
+                'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+                'customer': invoice.customer_final,
+                'customer_token': invoice.customer_token_final,
+                'contract_request_id': contract_request.id if contract_request else None,
+                'contract_request_token': contract_request.token if contract_request else None,
+                'contract_request_status': (
+                    contract_request.status.name if contract_request and contract_request.status else None
+                ),
+                'reason': reason,
+                'amount': Decimal('0'),
+            })
+            entry['amount'] += payment.amount or Decimal('0')
+
+    unlinked_invoices = sorted(unlinked_by_invoice.values(), key=lambda item: item['invoice_serie'] or '')
+    for entry in unlinked_invoices:
+        entry['amount'] = float(entry['amount'])
+
+    return (
+        payments_by_contract,
+        {contract_id: list(invoice_ids) for contract_id, invoice_ids in invoices_by_contract.items()},
+        unlinked_invoices,
+    )
+
+
 @shared_task
 def obtain_claim_request_data(payload=None):
     payload = payload or {}
-    filters, payment_filters, annotation_filters, ignore_payments, return_fee_invoice_ids = _build_claim_request_filters(payload)
+    filters, payment_filters, annotation_filters, ignore_payments, return_fee_invoice_ids, contract_filters = _build_claim_request_filters(payload)
+
+    # Deute que no penja de `Contract.invoices` i que la consulta de sota no pot
+    # trobar: el d'una sol·licitud d'alta i el d'una baixa encara oberta.
+    extra_payments, extra_invoices, unlinked_invoices = _contract_request_debt(payment_filters, contract_filters)
+    termination_payments, termination_invoices = _open_termination_debt(payment_filters, contract_filters)
+    for contract_id, payment_ids in termination_payments.items():
+        extra_payments.setdefault(contract_id, []).extend(payment_ids)
+    for contract_id, invoice_ids in termination_invoices.items():
+        extra_invoices.setdefault(contract_id, []).extend(invoice_ids)
 
     contracts = Contract.objects.filter(filters).annotate(
         payments_count=Count('invoices__payments', filter=annotation_filters),
@@ -813,11 +1063,34 @@ def obtain_claim_request_data(payload=None):
     total_payments = contracts.aggregate(total=Sum('payments_count'))['total'] or 0
     total_amount = contracts.aggregate(total=Sum('total_amount'))['total'] or 0
 
-    serialized_contracts = ContractWithPaymentsSerializer(contracts, many=True, context={
+    contract_list = list(contracts)
+    # Contractes que només tenen deute per la sol·licitud: no els troba la consulta
+    # de dalt, que va per `Contract.invoices`.
+    found_ids = {contract.id for contract in contract_list}
+    missing_ids = [contract_id for contract_id in extra_payments if contract_id not in found_ids]
+    if missing_ids:
+        contract_list += list(Contract.objects.filter(id__in=missing_ids))
+        total_contracts += len(missing_ids)
+    if extra_payments:
+        extra_payment_ids = [
+            payment_id for payment_ids in extra_payments.values() for payment_id in payment_ids
+        ]
+        total_payments += len(extra_payment_ids)
+        total_amount = (total_amount or 0) + (
+            Payment.objects.filter(id__in=extra_payment_ids).aggregate(total=Sum('amount'))['total'] or 0
+        )
+
+    serialized_contracts = ContractWithPaymentsSerializer(contract_list, many=True, context={
         'payments_ignored': ignore_payments,
         'filters': filters,
         'payment_filters': payment_filters,
         'exclude_return_fee_invoice_ids': return_fee_invoice_ids,
+        'extra_payments_by_contract': extra_payments,
+        'extra_invoices_by_contract': extra_invoices,
+        'closed_termination_tokens': closed_termination_tokens(),
+        'open_termination_contract_ids': _open_termination_contract_ids(
+            [contract.id for contract in contract_list]
+        ),
     }).data
     # how many expired invoices are there in the contracts (if contract 1 has 2 expired invoices, and contract 2 has 1 expired invoice, return 3)
     total_expired_invoices = sum(contract['expired_invoices'] for contract in serialized_contracts)
@@ -828,4 +1101,9 @@ def obtain_claim_request_data(payload=None):
         "total_payments": total_payments,
         "total_amount": float(total_amount) if total_amount is not None else 0,
         "total_expired_invoices": total_expired_invoices,
+        # Deute que no entra a la gestió: factures d'una sol·licitud que no va
+        # arribar a generar contracte. Es calcula a cada cerca, no es desa.
+        "unlinked_invoices": unlinked_invoices,
+        "total_unlinked_invoices": len(unlinked_invoices),
+        "total_unlinked_amount": float(sum(entry['amount'] for entry in unlinked_invoices)),
     }

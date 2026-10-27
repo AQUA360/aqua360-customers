@@ -1133,3 +1133,62 @@ class SmsSendingTests(TestCase):
         self.assertEqual(comm.status, self.rejected)
         self.assertIn('Error sending email', comm.rejection_reason)
         self.assertIn('HTTP 500', comm.rejection_reason)
+
+
+class ClaimDocumentsAttachDefaultTests(SupplyCutProcessTestCase):
+    """El checkbox d'adjuntar el document del pas d'impagats ve de la plantilla i el procés el pot canviar."""
+
+    def save_and_get_attach(self, **payload):
+        from unittest import mock
+        serializer = CommunicationProcessSaveSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        with mock.patch(
+            'communication.serializers.communication_process_serializer.process_communication_creation_task'
+        ) as task:
+            with self.captureOnCommitCallbacks(execute=True):
+                serializer.save()
+        return task.delay.call_args.kwargs['attach_claim_documents']
+
+    def make_template(self, attach):
+        return MessageTemplate.objects.create(name='Avís impagament', attach_claim_documents=attach)
+
+    def test_template_value_is_used_when_process_does_not_send_it(self):
+        template = self.make_template(False)
+        self.assertFalse(self.save_and_get_attach(message_template_id=str(template.id)))
+
+    def test_process_can_enable_it_against_the_template(self):
+        template = self.make_template(False)
+        self.assertTrue(self.save_and_get_attach(message_template_id=str(template.id), attach_claim_documents=True))
+
+    def test_process_can_disable_it_against_the_template(self):
+        template = self.make_template(True)
+        self.assertFalse(self.save_and_get_attach(message_template_id=str(template.id), attach_claim_documents=False))
+
+    def test_without_template_it_is_attached(self):
+        self.assertTrue(self.save_and_get_attach())
+
+
+class ClaimDocumentsAttachMigrationTests(TestCase):
+    """La migració 0036 passa el configProject ATTACH_CLAIM_DOCUMENTS_ENABLED a les plantilles."""
+
+    def run_migration(self):
+        from importlib import import_module
+        from django.apps import apps
+        migration = import_module('communication.migrations.0036_messagetemplate_attach_claim_documents')
+        migration.move_config_to_templates(apps, None)
+
+    def test_disabled_config_disables_every_template(self):
+        ConfigProject.objects.create(token='ATTACH_CLAIM_DOCUMENTS_ENABLED', value='false')
+        MessageTemplate.objects.create(name='A')
+        MessageTemplate.objects.create(name='B')
+        self.run_migration()
+        self.assertFalse(MessageTemplate.objects.filter(attach_claim_documents=True).exists())
+        self.assertFalse(ConfigProject.objects.filter(token='ATTACH_CLAIM_DOCUMENTS_ENABLED').exists())
+
+    def test_enabled_or_missing_config_keeps_templates_enabled(self):
+        ConfigProject.objects.create(token='ATTACH_CLAIM_DOCUMENTS_ENABLED', value='true')
+        MessageTemplate.objects.create(name='A')
+        self.run_migration()
+        self.run_migration()  # sense config
+        self.assertTrue(MessageTemplate.objects.get().attach_claim_documents)
+        self.assertFalse(ConfigProject.objects.filter(token='ATTACH_CLAIM_DOCUMENTS_ENABLED').exists())
