@@ -5859,3 +5859,24 @@ msgstr "Lectura inusual"
 #: billing/tasks.py
 msgid "Consum inusualment baix"
 msgstr "Consumo inusualmente bajo"
+
+msgid "Adreça subministrament"
+msgstr "Dirección suministro"
+
+msgid "Factures impagades"
+msgstr "Facturas impagadas"
+
+msgid "Deute total"
+msgstr "Deuda total"
+
+msgid "Estat contracte"
+msgstr "Estado contrato"
+
+msgid "Estat punt de subministrament"
+msgstr "Estado punto de suministro"
+
+msgid "Data de tall"
+msgstr "Fecha de corte"
+
+msgid "Contractes de la reclamació"
+msgstr "Contratos de la reclamación"

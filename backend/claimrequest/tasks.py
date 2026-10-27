@@ -829,3 +829,42 @@ def obtain_claim_request_data(payload=None):
         "total_amount": float(total_amount) if total_amount is not None else 0,
         "total_expired_invoices": total_expired_invoices,
     }
+
+@shared_task
+def export_claim_contracts_task(contract_ids):
+    """
+    Exporta a Excel els contractes d'un llistat de gestió de reclamació.
+    `contract_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    """
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
+    from claimrequest.utils.claim_contract_export_service import claim_contracts_export_columns, claim_contracts_export_queryset
+
+    try:
+        contract_ids = contract_ids or []
+        file_bytes = build_export_xlsx_bytes_from_objects(
+            iter_objects_by_ids(claim_contracts_export_queryset(), contract_ids),
+            claim_contracts_export_columns(contract_ids),
+        )
+        filename = f"claim_contracts_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        document = upload_document(
+            file=ContentFile(file_bytes, name=filename),
+            entity="CLAIM_REQUEST",
+            field="EXPORT",
+            entity_id=0,
+            entity_token="CLAIM_REQUEST_EXPORT",
+            folder="",
+            service=settings.DOCUMENT_MANAGER_SERVICES.get("claimrequest", "hdd"),
+            document_name=filename,
+            date=timezone.now(),
+        )
+        return {
+            "status": "success",
+            "message": "claim contracts export generated successfully",
+            "document_id": document.id,
+            "document_name": filename,
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error generating claim contracts export: {str(e)}",
+        }

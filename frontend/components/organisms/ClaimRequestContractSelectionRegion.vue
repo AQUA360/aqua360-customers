@@ -159,6 +159,9 @@ const filteredContracts = computed(() => {
   });
 });
 
+// Exporta els contractes que es veuen al llistat (amb la cerca i els filtres aplicats).
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(filteredContracts.value.map(c => c.id));
+
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage;
   const end = start + itemsPerPage;
@@ -506,6 +509,9 @@ onMounted(async () => {
             {{ $t('common.total') }}
             <span class="font-semibold tabular-nums text-slate-800">{{ filteredContracts.length }}</span>
           </span>
+          <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
+            :disabled="loading || !filteredContracts.length"
+            :export-name="[$t(title), request?.token].filter(Boolean).join(' – ')" />
         </div>
       </div>
 

@@ -715,6 +715,9 @@ watch(
   },
 );
 
+// Exporta els contractes que es veuen al llistat (amb la cerca i el filtre d'exclosos aplicats).
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(filteredContracts.value.map(c => c.id));
+
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
   const end = start + itemsPerPage.value;
@@ -1071,6 +1074,9 @@ watch(() => selectedZones.value, () => {
                   }}</span>)
                 </span>
               </span>
+              <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
+                :disabled="!filteredContracts.length"
+                :export-name="[$t('common.contracts'), claimName].filter(Boolean).join(' – ')" />
             </div>
 
             <div class="divide-y divide-gray-200 h-[55vh] overflow-auto">
