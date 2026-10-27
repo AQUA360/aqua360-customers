@@ -3,6 +3,7 @@ import csv
 import os
 import shutil
 import tempfile
+import zipfile
 from datetime import date
 from decimal import Decimal
 from io import BytesIO, StringIO
@@ -425,6 +426,7 @@ class InvoiceFilterAlignmentTests(TestCase):
             ("invoice_status_paid_token", "0"),
             ("invoice_status_cancelled_token", "-6"),
             ("invoice_status_confirmed_token", "2"),
+            ("invoice_status_sent_token", "3"),
             ("invoice_status_expired_token", "-1"),
             ("invoice_status_endowment_token", "-3"),
             ("invoice_status_commitment_token", "4"),
@@ -453,6 +455,7 @@ class InvoiceFilterAlignmentTests(TestCase):
             contract=cls.contract,
             status=cls.sent_status,
             issue_date=date(2026, 1, 15),
+            left_to_pay=Decimal("25.00"),
         )
         cls.confirmed_invoice = Invoice.objects.create(
             token="INV-002",
@@ -535,7 +538,7 @@ class InvoiceFilterAlignmentTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             self._tokens(response.data),
-            {"INV-002", "INV-004", "INV-005"},
+            {"INV-001", "INV-002", "INV-004", "INV-005"},
         )
 
     def test_explicit_statuses_take_precedence_over_unpaid_mode(self):
@@ -875,6 +878,63 @@ class SepaDocumentUploadTests(TestCase):
         )
         self.assertEqual(linked.file.document_name, "second.pdf")
 
+    def test_reupload_keeps_version_chain_for_existing_document(self):
+        from documentmanager.utils.main_utils import upload_document
+
+        legacy = upload_document(
+            SimpleUploadedFile("sepa_mandate.pdf", b"legacy mandate"),
+            "SEPA", "CONTRACT", self.payment.id, self.payment.token,
+            "SEPA", "hdd", "sepa_mandate.pdf",
+        )
+        GeneralPaymentSepaDocument.objects.create(
+            general_payment=self.payment, file=legacy, checked=True
+        )
+
+        response = self._upload(content=b"replacement mandate")
+
+        self.assertEqual(response.status_code, 201)
+        document = GeneralPaymentSepaDocument.objects.get(
+            general_payment=self.payment
+        ).file
+        self.assertEqual(document.version, 2)
+        self.assertEqual(document.parent_document_id, legacy.pk)
+        self.assertEqual(document.document_name, "sepa_mandate(2).pdf")
+        self.assertEqual(
+            os.path.dirname(document.location),
+            os.path.join(os.path.dirname(legacy.location), str(self.payment.id)),
+        )
+        with open(legacy.location, "rb") as stored:
+            self.assertEqual(stored.read(), b"legacy mandate")
+
+    def test_same_filename_for_different_payments_preserves_each_version(self):
+        other_payment = GeneralPayment.objects.create(
+            token="GP-002", type=self.payment_type, IBAN=self.person_bank
+        )
+        other_contract = Contract.objects.create(
+            token="OTHER-SEPA-CONTRACT", holder=self.holder, payment=other_payment
+        )
+        self.assertEqual(self._upload(content=b"first").status_code, 201)
+        self.assertEqual(self._upload(content=b"second").status_code, 201)
+        self.assertEqual(
+            self._upload(
+                content=b"other", contract_token=other_contract.token
+            ).status_code,
+            201,
+        )
+
+        documents = Document.objects.filter(
+            entity="SEPA", field="CONTRACT", entity_id=self.payment.id
+        ).order_by("version")
+        other_document = GeneralPaymentSepaDocument.objects.get(
+            general_payment=other_payment
+        ).file
+        all_documents = [*documents, other_document]
+        self.assertEqual(len({doc.location for doc in all_documents}), 3)
+        for document, content in zip(all_documents, (b"first", b"second", b"other")):
+            with open(document.location, "rb") as stored:
+                self.assertEqual(stored.read(), content)
+        self.assertEqual(other_document.version, 1)
+
     def test_iban_mismatch_returns_400_without_storing_document(self):
         before = Document.objects.count()
 
@@ -982,6 +1042,17 @@ class SepaDocumentUploadTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"%PDF-1.4 archived mandate")
         self.assertIn("sepa_mandate.pdf", response["Content-Disposition"])
+
+    def test_download_sepa_signed_returns_404_when_storage_returns_none(self):
+        self._upload()
+
+        with patch("ov.views.download_document", return_value=None):
+            response = self.client.get(
+                reverse("sepa-signed-ov", kwargs={"contract_token": PLAIN_TOKEN})
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "SEPA document not found"})
 
     def test_download_sepa_signed_unknown_contract_returns_404(self):
         response = self.client.get(
@@ -1652,7 +1723,7 @@ class PersonDataOVTests(TestCase):
                     response.data["person"]["token"], "12345678-Z"
                 )
 
-    def test_payer_dni_resolved_through_bank_account(self):
+    def test_bank_account_dni_does_not_expose_another_person(self):
         payer = Person.objects.create(token="PAYER-TOKEN", name="Payer")
         PersonContact.objects.create(
             token="PAYER-CONTACT-1", person=payer, phone="633000333"
@@ -1665,8 +1736,22 @@ class PersonDataOVTests(TestCase):
 
         response = self._get("y7654321q")
 
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Person not found"})
+
+    def test_payer_with_matching_person_token_can_access_contacts(self):
+        payer = Person.objects.create(token=" Y7654-321.Q ", name="Payer")
+        PersonContact.objects.create(
+            token="PAYER-CONTACT-1", person=payer, phone="633000333"
+        )
+        PersonBank.objects.create(
+            person=payer, dni="Y7654321Q", iban="ES9121000418450200051332"
+        )
+
+        response = self._get("y7654321q")
+
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["person"]["token"], "PAYER-TOKEN")
+        self.assertEqual(response.data["person"]["token"], payer.token)
         self.assertEqual(
             [item["phone"] for item in response.data["phones"]],
             ["633000333"],
@@ -1826,6 +1911,82 @@ class InvoicePDFOVTests(TestCase):
         self.assertEqual(self.invoice.invoice_file_id, document.pk)
         self.assertEqual(Document.objects.count(), document_count)
 
+    def _batch_download(self):
+        return self.client.post(
+            reverse("batch-invoice-download-ov"),
+            {"invoice_tokens": [self.invoice.token]},
+            format="json",
+            QUERY_STRING=f"contract_token={self.contract.token}",
+        )
+
+    def test_batch_download_reuses_stored_pdf(self):
+        pdf_bytes = b"%PDF-1.4 archived batch invoice"
+        path = os.path.join(self._storage_dir, "batch.pdf")
+        with open(path, "wb") as stored:
+            stored.write(pdf_bytes)
+        document = Document.objects.create(
+            entity_id=self.invoice.pk, service="hdd", location=path,
+            document_name="batch.pdf",
+        )
+        Invoice.objects.filter(pk=self.invoice.pk).update(invoice_file=document)
+        document_count = Document.objects.count()
+
+        with patch("ov.views.generate_report_invoice_pdf") as generate:
+            response = self._batch_download()
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(BytesIO(b"".join(response.streaming_content))) as archive:
+            self.assertEqual(archive.namelist(), ["factura_FC-2026-1.pdf"])
+            self.assertEqual(archive.read("factura_FC-2026-1.pdf"), pdf_bytes)
+        generate.assert_not_called()
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.invoice_file_id, document.pk)
+        self.assertEqual(Document.objects.count(), document_count)
+
+    def test_batch_download_generates_pdf_when_no_archive_exists(self):
+        with patch(
+            "ov.views.generate_report_invoice_pdf",
+            return_value=(None, None, BytesIO(b"generated batch")),
+        ) as generate:
+            response = self._batch_download()
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(BytesIO(b"".join(response.streaming_content))) as archive:
+            self.assertEqual(archive.read("factura_FC-2026-1.pdf"), b"generated batch")
+        generate.assert_called_once()
+        self.assertIs(generate.call_args.kwargs["save_pdf"], False)
+        self.invoice.refresh_from_db()
+        self.assertIsNone(self.invoice.invoice_file_id)
+
+    def test_batch_download_falls_back_when_archive_is_unavailable(self):
+        document = Document.objects.create(entity_id=self.invoice.pk, service="hdd")
+        Invoice.objects.filter(pk=self.invoice.pk).update(invoice_file=document)
+        document_count = Document.objects.count()
+
+        for download_result in (None, FileNotFoundError("missing archive")):
+            with self.subTest(download_result=download_result):
+                download_kwargs = (
+                    {"side_effect": download_result}
+                    if isinstance(download_result, Exception)
+                    else {"return_value": download_result}
+                )
+                with patch("ov.views.download_document", **download_kwargs), patch(
+                    "ov.views.generate_report_invoice_pdf",
+                    return_value=(None, None, BytesIO(b"fallback batch")),
+                ) as generate:
+                    response = self._batch_download()
+
+                self.assertEqual(response.status_code, 200)
+                with zipfile.ZipFile(BytesIO(b"".join(response.streaming_content))) as archive:
+                    self.assertEqual(
+                        archive.read("factura_FC-2026-1.pdf"), b"fallback batch"
+                    )
+                generate.assert_called_once()
+                self.assertIs(generate.call_args.kwargs["save_pdf"], False)
+                self.invoice.refresh_from_db()
+                self.assertEqual(self.invoice.invoice_file_id, document.pk)
+                self.assertEqual(Document.objects.count(), document_count)
+
 
 class QuickPayOVTests(TestCase):
     """`POST /ov/invoice/quick-pay/` — resolució sense escriptures d'una
@@ -1943,7 +2104,7 @@ class QuickPayOVTests(TestCase):
     def _create_invoice(
         cls, token, serie_final, type_final, total, left_to_pay, status
     ):
-        return Invoice.objects.create(
+        invoice = Invoice.objects.create(
             token=token,
             contract=cls.contract,
             serie_final=serie_final,
@@ -1954,6 +2115,8 @@ class QuickPayOVTests(TestCase):
             issue_date=date(2026, 9, 1),
             due_date=date(2026, 9, 30),
         )
+        Payment.objects.create(invoice=invoice, amount=Decimal(left_to_pay))
+        return invoice
 
     def setUp(self):
         self.client = APIClient()
@@ -2065,6 +2228,31 @@ class QuickPayOVTests(TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data["error"], "Invoice is not payable")
         self.assertEqual(response.json()["left_to_pay"], 0)
+
+    def test_missing_or_empty_paid_status_config_returns_409(self):
+        for value in (None, ""):
+            with self.subTest(value=value):
+                config = ConfigProject.objects.filter(token="invoice_status_paid_token")
+                if value is None:
+                    config.delete()
+                else:
+                    ConfigProject.objects.create(
+                        token="invoice_status_paid_token", value=value
+                    )
+
+                response = self._post()
+
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.data["error"], "Invoice is not payable")
+
+    def test_invoice_without_payment_returns_409(self):
+        self.payable.payments.all().delete()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["error"], "Invoice is not payable")
+        self.assertFalse(self.payable.payments.exists())
 
     def test_null_left_to_pay_returns_409_with_null_amount(self):
         Invoice.objects.filter(pk=self.payable.pk).update(left_to_pay=None)
@@ -3328,6 +3516,18 @@ class ContractProcedureOVTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.data, {"error": "Person not found"})
+
+    def test_bank_account_dni_cannot_resolve_a_different_holder(self):
+        PersonBank.objects.create(
+            person=self.holder, dni="99999999Z", iban="ES9121000418450200051332"
+        )
+        request_count = ContractRequest.objects.count()
+
+        response = self._post(holder_dni="99999999Z")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Person not found"})
+        self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_unknown_or_inactive_property_returns_404(self):
         for property_token in ("PROP-UNKNOWN", "PROP-OFF"):

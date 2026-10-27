@@ -425,8 +425,10 @@ paths:
         puntos y pasando a mayúsculas. La persona se resuelve primero por
         `Person.token` y, si no hay coincidencia, por el DNI de su cuenta
         bancaria (`PersonBank.dni`), de modo que los pagadores también
-        pueden consultar sus datos de contacto. Si varias personas comparten
-        token (datos heredados), se devuelve la que tiene más contactos y, a
+        pueden consultar sus datos de contacto. También en esa búsqueda, el
+        `Person.token` debe coincidir con el DNI normalizado consultado.
+        Si varias personas comparten token (datos heredados), se devuelve la
+        que tiene más contactos y, a
         igualdad, la de menor `id`. Responde `400` si falta el DNI y `404` si
         no se encuentra la persona. El endpoint está limitado a 35
         peticiones por minuto y cuenta.
@@ -441,7 +443,7 @@ paths:
             DNI/NIF de la persona. Se normaliza ignorando espacios, guiones y
             puntos y pasando a mayúsculas. Si no coincide con ningún
             `Person.token`, se busca en `PersonBank.dni` para localizar al
-            pagador.
+            pagador, siempre que su `Person.token` coincida con el DNI normalizado.
           schema:
             type: string
           example: "12345678A"
@@ -820,7 +822,9 @@ paths:
         coincidencias parciales. Si los tres coinciden pero la factura no es
         pagable (estado de pago, anulación, abono, prefactura, impagado
         irrecuperable o importe pendiente cero), se devuelve `409` con el estado
-        actual.
+        actual. También se devuelve `409` si falta la configuración
+        `invoice_status_paid_token` o no existe ningún `Payment` para confirmar
+        el cobro mediante `POST /ov/invoice/paid/`.
       operationId: quickPayInvoice
       security:
         - tokenAuth: []
@@ -1134,7 +1138,7 @@ paths:
         Para compatibilidad, `statuses` sigue aceptando tokens de `InvoiceStatus`
         separados por comas y conserva prioridad cuando se envía. Como alternativa,
         `unpaid=true` activa el modo automatizado, que resuelve desde `ConfigProject`
-        los estados confirmados, vencidos, de morosidad/impago y de compromiso,
+        los estados confirmados, enviados, vencidos, de morosidad/impago y de compromiso,
         excluyendo estados terminales y pre-facturas.
 
         Tokens de estado habituales (pueden variar según la configuración del despliegue):

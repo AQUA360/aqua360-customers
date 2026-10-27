@@ -323,6 +323,7 @@ class UnpayedInvoicesOVView(APIView):
     def _automated_unpaid_status_tokens():
         unpaid_config_tokens = (
             "invoice_status_confirmed_token",
+            "invoice_status_sent_token",
             "invoice_status_expired_token",
             "invoice_status_endowment_token",
             "invoice_status_default_token",
@@ -1190,6 +1191,7 @@ class SepaDocumentUploadView(APIView):
             folder_name,
             service,
             uploaded_file.name,
+            hdd_subfolder=str(general_payment.id),
         )
 
         with transaction.atomic():
@@ -1245,7 +1247,13 @@ class SepaDocumentDownloadView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        return download_document(sepa_document.file)
+        response = download_document(sepa_document.file)
+        if response is None:
+            return Response(
+                {"error": "SEPA document not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return response
 
 
 class CancelDirectDebitView(APIView):
@@ -1392,10 +1400,11 @@ class BatchInvoiceDownloadView(APIView):
     """POST /ov/invoices/download/?contract_token=<token>
 
     Descarga en lote: cos JSON `{"invoice_tokens": [...]}` → ZIP amb un PDF
-    per factura. Reutilitza `generate_report_invoice_pdf` (el mateix servei
-    que `/ov/invoice-pdf/`) amb `save_pdf=False`: bytes idèntics sense
-    registrar documents ni tocar `invoice_file`. Seguretat IDOR: totes les
-    fitxes han de pertanyer al contracte indicat i han de ser definitives
+    per factura. Reutilitza el PDF arxivat i, si no està disponible,
+    `generate_report_invoice_pdf` (el mateix servei que `/ov/invoice-pdf/`)
+    amb `save_pdf=False`, sense registrar documents ni tocar `invoice_file`.
+    Seguretat IDOR: totes les fitxes han de pertanyer al contracte indicat
+    i han de ser definitives
     (`type_final`), mateix filtre que la descàrrega individual.
     """
 
@@ -1452,12 +1461,24 @@ class BatchInvoiceDownloadView(APIView):
             with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 used_names = set()
                 for invoice in ordered:
-                    _, _, pdf_buffer = generate_report_invoice_pdf(
-                        invoice,
-                        request,
-                        context={"request": request},
-                        save_pdf=False,
-                    )
+                    pdf_bytes = None
+                    if invoice.invoice_file:
+                        try:
+                            response = download_document(invoice.invoice_file)
+                            if response is not None:
+                                pdf_bytes = response.content
+                        except Exception:
+                            logger.warning(
+                                "Could not retrieve stored PDF for invoice %s", invoice.id
+                            )
+                    if pdf_bytes is None:
+                        _, _, pdf_buffer = generate_report_invoice_pdf(
+                            invoice,
+                            request,
+                            context={"request": request},
+                            save_pdf=False,
+                        )
+                        pdf_bytes = pdf_buffer.getvalue()
                     raw_name = str(
                         invoice.serie_final or invoice.token or invoice.id
                     )
@@ -1472,7 +1493,7 @@ class BatchInvoiceDownloadView(APIView):
                     if name in used_names:
                         name = f"factura_{safe_name}_{invoice.id}.pdf"
                     used_names.add(name)
-                    zip_file.writestr(name, pdf_buffer.getvalue())
+                    zip_file.writestr(name, pdf_bytes)
         except Exception as e:
             logger.exception("Error inesperat")
             return Response(
@@ -1680,8 +1701,9 @@ class PersonDataOVView(APIView):
 
     La resolució és: primer `Person.token`; si no hi ha cap coincidència, el
     DNI de la compte bancària (`PersonBank.dni`), que és com s'identifiquen
-    els pagadors. Quan diverses persones comparteixen token, es prefereix la
-    que té més contactes (útil per a l'OTP) i, a igualtat, la de menor `id`.
+    els pagadors. El token de la persona també ha de coincidir amb el DNI.
+    Quan diverses persones comparteixen token, es prefereix la que té més
+    contactes (útil per a l'OTP) i, a igualtat, la de menor `id`.
     Retorna `400` si falta el DNI i `404` si no es troba cap persona.
     """
 
@@ -1710,9 +1732,10 @@ class PersonDataOVView(APIView):
             person_id = (
                 PersonBank.objects.annotate(
                     normalized_dni=_normalized_dni_expression("dni"),
+                    normalized_token=_normalized_dni_expression("person__token"),
                     contact_count=Count("person__contacts"),
                 )
-                .filter(normalized_dni=dni, person__isnull=False)
+                .filter(normalized_dni=dni, normalized_token=dni, person__isnull=False)
                 .order_by("-contact_count", "id")
                 .values_list("person_id", flat=True)
                 .first()
@@ -1758,14 +1781,15 @@ QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS = [
 
 
 def _quick_pay_non_payable_status_tokens():
-    return set(
+    configured_values = dict(
         ConfigProject.objects.filter(
             token__in=QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS
         )
-        .exclude(value__isnull=True)
-        .exclude(value="")
-        .values_list("value", flat=True)
+        .values_list("token", "value")
     )
+    if not configured_values.get("invoice_status_paid_token"):
+        return None
+    return {value for value in configured_values.values() if value}
 
 
 class QuickPayOVView(APIView):
@@ -1822,11 +1846,13 @@ class QuickPayOVView(APIView):
             else None
         )
 
+        non_payable_status_tokens = _quick_pay_non_payable_status_tokens()
         payable = (
-            invoice.status is not None
-            and invoice.status.token
-            not in _quick_pay_non_payable_status_tokens()
+            non_payable_status_tokens is not None
+            and invoice.status is not None
+            and invoice.status.token not in non_payable_status_tokens
             and (invoice.left_to_pay or 0) > 0
+            and invoice.payments.exists()
         )
 
         if not payable:
@@ -2220,8 +2246,9 @@ def _resolve_contract_procedure_person(dni):
 
     Replica la resolució de `PersonDataOVView`: primer `Person.token` i, si no
     hi ha coincidència, el DNI de la compte bancària (`PersonBank.dni`), que és
-    com s'identifiquen els pagadors. Així l'OV rep el mateix resultat que en el
-    preomplert de `GET /ov/person-data/`.
+    com s'identifiquen els pagadors. El token de la persona també ha de coincidir
+    amb el DNI. Així l'OV rep el mateix resultat que en el preomplert de
+    `GET /ov/person-data/`.
     """
     person_id = (
         Person.objects.annotate(
@@ -2238,9 +2265,10 @@ def _resolve_contract_procedure_person(dni):
         person_id = (
             PersonBank.objects.annotate(
                 normalized_dni=_normalized_dni_expression("dni"),
+                normalized_token=_normalized_dni_expression("person__token"),
                 contact_count=Count("person__contacts"),
             )
-            .filter(normalized_dni=dni, person__isnull=False)
+            .filter(normalized_dni=dni, normalized_token=dni, person__isnull=False)
             .order_by("-contact_count", "id")
             .values_list("person_id", flat=True)
             .first()
