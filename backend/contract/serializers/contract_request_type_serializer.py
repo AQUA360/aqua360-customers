@@ -15,6 +15,7 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
     clause_templates = serializers.SerializerMethodField()
     
     registration_price_rates = serializers.SerializerMethodField()
+    change_of_name_registration_price_rates = serializers.SerializerMethodField()
     price_rates = serializers.SerializerMethodField()
     #write only
     variable_types_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
@@ -22,6 +23,7 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
     clause_templates_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
     price_rates_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
     registration_price_rates_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
+    change_of_name_registration_price_rates_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
 
     
     class Meta:
@@ -31,6 +33,9 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
 
     def get_registration_price_rates(self, obj):
         return PriceRateSerializer(obj.registration_price_rates.filter(product__origin__token="contracte"), many=True).data
+
+    def get_change_of_name_registration_price_rates(self, obj):
+        return PriceRateSerializer(obj.change_of_name_registration_price_rates.filter(product__origin__token="contracte"), many=True).data
 
     def get_price_rates(self, obj):
         return PriceRateSerializer(obj.price_rates.filter(product__origin__token="aigua"), many=True).data
@@ -46,6 +51,7 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
         clause_templates_ids = validated_data.pop('clause_templates_ids', None)
         price_rates_ids = validated_data.pop('price_rates_ids', None)
         registration_price_rates_ids = validated_data.pop('registration_price_rates_ids', None)
+        change_of_name_registration_price_rates_ids = validated_data.pop('change_of_name_registration_price_rates_ids', None)
         
         instance = super().update(instance, validated_data)
         
@@ -63,6 +69,9 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
         
         if registration_price_rates_ids is not None:
             instance.registration_price_rates.set(registration_price_rates_ids)
+        
+        if change_of_name_registration_price_rates_ids is not None:
+            instance.change_of_name_registration_price_rates.set(change_of_name_registration_price_rates_ids)
         
         instance.save()
         

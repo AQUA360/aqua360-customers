@@ -69,7 +69,7 @@ def contract_request_pre_save(sender, instance, **kwargs):
                         )
                         contract_price_rates.append(contract_price_rate)
                 instance.price_rates.set(contract_price_rates)
-                instance.registration_price_rates.set(instance.type.registration_price_rates.all())
+                instance.registration_price_rates.set(instance.type.get_registration_price_rates(instance.is_change_of_name))
                 instance.order_types.set(instance.type.order_types.all())
         except ContractRequest.DoesNotExist:
             pass
