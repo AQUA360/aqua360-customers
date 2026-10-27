@@ -3845,6 +3845,69 @@ msgstr "Unusual reading"
 msgid "Consum inusualment baix"
 msgstr "Unusually low consumption"
 
+#: billing/templates/payment_proof_template.html
+msgid "Justificant de pagament"
+msgstr "Payment receipt"
+
+#: billing/templates/payment_proof_template.html
+msgid "JUSTIFICANT DE PAGAMENT"
+msgstr "PAYMENT RECEIPT"
+
+#: billing/templates/payment_proof_template.html
+msgid ""
+"Amb aquest document declarem que hem rebut les quantitats següents, per les "
+"factures i els imports que es detallen a continuació:"
+msgstr ""
+"We hereby acknowledge receipt of the following amounts for the invoices and "
+"amounts detailed below:"
+
+#: billing/templates/payment_proof_template.html
+msgid "ADREÇA SUBMINISTRAMENT"
+msgstr "SUPPLY ADDRESS"
+
+#: billing/templates/payment_proof_template.html
+msgid "PERÍODE"
+msgstr "PERIOD"
+
+#: billing/templates/payment_proof_template.html
+msgid "NÚM. FACTURA/DOC"
+msgstr "INVOICE/DOC NO."
+
+#: billing/templates/payment_proof_template.html
+msgid "IMPORT COBRAT"
+msgstr "AMOUNT RECEIVED"
+
+#: billing/templates/payment_proof_template.html
+msgid "OBSERVACIONS"
+msgstr "OBSERVATIONS"
+
+#: billing/templates/payment_proof_template.html
+msgid "TOTAL COBRAT:"
+msgstr "TOTAL RECEIVED:"
+
+#: billing/templates/payment_proof_template.html
+msgid "Atenció al client"
+msgstr "Customer service"
+
+#: billing/templates/payment_proof_template.html
+msgid "dilluns a divendres de 8 a 15 hores"
+msgstr "Monday to Friday from 8 a.m. to 3 p.m."
+
+#: billing/templates/payment_proof_template.html
+msgid "Avaries"
+msgstr "Breakdowns"
+
+#: billing/templates/payment_proof_template.html
+msgid "24 hores"
+msgstr "24 hours"
+
+#: billing/templates/payment_proof_template.html
+msgid "Efectiu"
+msgstr "Cash"
+
+#: billing/templates/payment_proof_template.html
+msgid "Targeta (TPV Físic)"
+msgstr "Card (physical POS)"
 msgid "Adreça subministrament"
 msgstr "Supply address"
 
