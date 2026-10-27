@@ -48,9 +48,13 @@ const dueAt = ref('');
 const firstResponseAt = ref('');
 const resolution = ref('');
 
-// Valors carregats, per saber si cal que el backend recalculi el venciment en canviar el tipus
+// Valors carregats: només s'envien els camps que l'usuari modifica (el camp de data
+// no té segons i, si es reenviés sense canvis, alteraria el venciment i els avisos).
+// També permeten que el backend recalculi el venciment en canviar el tipus.
 const loadedTypeId = ref(null);
 const loadedDueAt = ref('');
+const loadedFirstResponseAt = ref('');
+const loadedResolution = ref('');
 
 const types = ref([]);
 const users = ref([]);
@@ -86,6 +90,8 @@ const getData = async () => {
       selectedSupplyCut.value = detail.supply_cut;
       loadedTypeId.value = detail.type?.id || null;
       loadedDueAt.value = dueAt.value;
+      loadedFirstResponseAt.value = firstResponseAt.value;
+      loadedResolution.value = resolution.value;
 
       selectedContract.value = detail.contract;
       selectedInvoice.value = detail.invoice;
@@ -271,15 +277,25 @@ const save = async () => {
       contact_email: contactEmail.value || null,
     };
     if (props.id) {
-      save_data.resolution = resolution.value;
-      save_data.first_response_at = fromLocalInput(firstResponseAt.value);
+      if (resolution.value !== loadedResolution.value) {
+        save_data.resolution = resolution.value;
+      }
+      if (firstResponseAt.value !== loadedFirstResponseAt.value) {
+        save_data.first_response_at = fromLocalInput(firstResponseAt.value);
+      }
     }
     // Sense data (o si es canvia el tipus sense tocar-la), el backend la calcula segons el tipus
     const typeChanged = props.id && selectedType.value.code !== loadedTypeId.value;
-    if (dueAt.value && !(typeChanged && dueAt.value === loadedDueAt.value)) {
-      save_data.due_at = fromLocalInput(dueAt.value);
-    } else if (!dueAt.value && props.id && !typeChanged) {
-      save_data.due_at = null;
+    if (!props.id) {
+      if (dueAt.value) {
+        save_data.due_at = fromLocalInput(dueAt.value);
+      }
+    } else if (dueAt.value !== loadedDueAt.value) {
+      if (dueAt.value) {
+        save_data.due_at = fromLocalInput(dueAt.value);
+      } else if (!typeChanged) {
+        save_data.due_at = null;
+      }
     }
 
     let response = await $IncidentApiService.save(save_data);
