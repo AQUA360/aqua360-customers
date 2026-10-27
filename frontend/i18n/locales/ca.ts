@@ -2343,6 +2343,7 @@ export default {
     smart_metering_replace_confirm: 'Ja hi ha una càrrega de Smart Metering per a aquesta data i aquests comptadors ({token}). Vols substituir-la amb les lectures actuals?',
     smart_metering_already_loaded_several: 'Hi ha diverses càrregues de Smart Metering per a aquesta data que inclouen aquests comptadors ({token}). Tria les rutes, zones o lots d\'una sola càrrega per substituir-la.',
     smart_metering_scope_reduced: 'La nova selecció no inclou tots els comptadors de la càrrega existent ({token}). Tria les mateixes rutes, zones o lots, o més, per substituir-la.',
+    smart_metering_preview_outdated: 'La previsualització ja no correspon a les rutes, zones o lots triats. Torna-la a generar.',
     smart_metering_load_all: 'Carregar tots els comptadors Smart Metering',
     smart_metering_all_meters: 'Tots els comptadors',
     smart_metering_routes: 'Rutes',

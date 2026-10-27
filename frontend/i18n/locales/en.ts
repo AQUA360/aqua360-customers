@@ -2279,6 +2279,7 @@ export default {
     smart_metering_replace_confirm: 'There is already a Smart Metering load for this date and these meters ({token}). Do you want to replace it with the current readings?',
     smart_metering_already_loaded_several: 'There are several Smart Metering loads for this date that include these meters ({token}). Choose the routes, zones or batches of a single load to replace it.',
     smart_metering_scope_reduced: 'The new selection does not include every meter of the existing load ({token}). Choose the same routes, zones or batches, or more, to replace it.',
+    smart_metering_preview_outdated: 'The preview no longer matches the chosen routes, zones or batches. Generate it again.',
     smart_metering_load_all: 'Load every Smart Metering meter',
     smart_metering_all_meters: 'All meters',
     smart_metering_routes: 'Routes',

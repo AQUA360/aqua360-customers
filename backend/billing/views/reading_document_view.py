@@ -29,6 +29,8 @@ from billing.utils.reading_document_import_service import (
 )
 from billing.utils.smart_metering_service import (
     SMART_METERING_SCOPE_KEYS,
+    SmartMeteringPreviewOutdated,
+    _coerce_client_preview,
     _parse_request_date,
     find_smart_metering_documents,
     normalize_smart_metering_scope,
@@ -272,6 +274,15 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
     def smart_metering_import(self, request):
         try:
             reading_date, replace, scope = self._smart_metering_request_params(request.data)
+            # Es valida abans de crear el document: si no, quedaria a mitges.
+            preview = request.data.get('preview')
+            if preview is not None:
+                _coerce_client_preview(preview, reading_date.isoformat(), scope)
+        except SmartMeteringPreviewOutdated as exc:
+            return Response(
+                {"error": str(exc), "code": "smart_metering_preview_outdated"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

@@ -2279,6 +2279,7 @@ export default {
     smart_metering_replace_confirm: 'Xa existe unha carga de Smart Metering para esta data e estes contadores ({token}). Queres substituíla coas lecturas actuais?',
     smart_metering_already_loaded_several: 'Hai varias cargas de Smart Metering para esta data que inclúen estes contadores ({token}). Escolle as rutas, zonas ou lotes dunha soa carga para substituíla.',
     smart_metering_scope_reduced: 'A nova selección non inclúe todos os contadores da carga existente ({token}). Escolle as mesmas rutas, zonas ou lotes, ou máis, para substituíla.',
+    smart_metering_preview_outdated: 'A previsualización xa non corresponde ás rutas, zonas ou lotes escollidos. Xérea de novo.',
     smart_metering_load_all: 'Cargar todos os contadores Smart Metering',
     smart_metering_all_meters: 'Todos os contadores',
     smart_metering_routes: 'Rutas',

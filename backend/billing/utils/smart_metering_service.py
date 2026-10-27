@@ -36,6 +36,10 @@ class SmartMeteringApiError(Exception):
     pass
 
 
+class SmartMeteringPreviewOutdated(ValueError):
+    """The preview has rows outside the selected routes, zones or batches."""
+
+
 def _response_payload_for_log(data):
     """Avoid storing huge massive-readings payloads in IntegrationRequestLog."""
     if isinstance(data, list):
@@ -611,7 +615,7 @@ def smart_metering_document_supply_point_ids(reading_document):
     the readings it already holds (a supply point may have changed route since).
     """
     return smart_metering_scope_supply_point_ids(reading_document.smart_metering_scope) | set(
-        reading_document.readings.values_list("supply_point_id", flat=True)
+        reading_document.readings.filter(supply_point__isnull=False).values_list("supply_point_id", flat=True)
     )
 
 
@@ -1103,7 +1107,7 @@ def _coerce_client_preview(preview, reading_date_str, scope=None):
     if not isinstance(preview, dict):
         raise ValueError("Invalid preview payload")
     readings = preview.get("readings")
-    if not isinstance(readings, list):
+    if not isinstance(readings, list) or not all(isinstance(row, dict) for row in readings):
         raise ValueError("Invalid preview readings")
     expected_date = _parse_request_date(reading_date_str)
     preview_date = preview.get("reading_date")
@@ -1113,6 +1117,11 @@ def _coerce_client_preview(preview, reading_date_str, scope=None):
             raise ValueError("Preview reading_date does not match request")
     if normalize_smart_metering_scope(preview.get("scope")) != normalize_smart_metering_scope(scope):
         raise ValueError("Preview scope does not match request")
+    # The rows come from the client and the routes may have changed since the
+    # preview: reject it (instead of skipping rows) so the user previews again.
+    scope_supply_point_ids = smart_metering_scope_supply_point_ids(scope)
+    if any(row.get("id") not in scope_supply_point_ids for row in readings):
+        raise SmartMeteringPreviewOutdated("Preview rows do not match the selected scope")
     return preview
 
 
@@ -1383,14 +1392,7 @@ def import_smart_metering_readings(reading_document, preview=None):
     saved_readings = []
     reading_ids = set()
     set_added_readings = set()
-    # The preview may come from the client: keep only rows of the document's scope.
-    scope_supply_point_ids = smart_metering_scope_supply_point_ids(reading_document.smart_metering_scope)
-    preview_rows = [row for row in preview["readings"] if row.get("id") in scope_supply_point_ids]
-    if len(preview_rows) != len(preview["readings"]):
-        logger.warning(
-            "Smart metering import: %s preview rows outside the document scope ignored",
-            len(preview["readings"]) - len(preview_rows),
-        )
+    preview_rows = preview["readings"]
     not_loaded_rows = [
         (row, SKIP_REASON_NO_API_READING) for row in preview_rows if not row.get("matched")
     ]

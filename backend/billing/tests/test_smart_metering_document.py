@@ -13,6 +13,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from billing.models import Reading, ReadingBatch, ReadingDocument
 from billing.utils.smart_metering_service import (
     build_smart_metering_preview,
+    SmartMeteringPreviewOutdated,
     import_smart_metering_readings,
     smart_metering_document_is_replaceable,
     smart_metering_scope_options,
@@ -311,7 +312,18 @@ class TestSmartMeteringDocument(TestCase):
         document.refresh_from_db()
         self.assertIsNone(document.smart_metering_scope)
 
-    def test_import_ignores_client_preview_rows_outside_the_scope(self):
+    def _preview_with_rows_of(self, scope, *supply_points):
+        row = {
+            'matched': True, 'reading_value': 130, 'reading_date': READING_DATE.isoformat(),
+            'meter_code': '', 'contracts': [{}],
+        }
+        return {
+            'reading_date': READING_DATE.isoformat(),
+            'scope': scope,
+            'readings': [{**row, 'id': sp.id, 'contract_id': sp.contracts.get().id} for sp in supply_points],
+        }
+
+    def test_import_rejects_client_preview_rows_outside_the_scope(self):
         route_a = Route.objects.create(token='RA')
         route_b = Route.objects.create(token='RB')
         sp_a = self._smart_metering_sp_on_route('SM-A', route_a)
@@ -320,23 +332,44 @@ class TestSmartMeteringDocument(TestCase):
         document = self._new_document()
         document.smart_metering_scope = scope
         document.save(update_fields=['smart_metering_scope'])
-        row = {
-            'matched': True, 'reading_value': 130, 'reading_date': READING_DATE.isoformat(),
-            'meter_code': '', 'contracts': [{}],
-        }
-        preview = {
-            'reading_date': READING_DATE.isoformat(),
-            'scope': scope,
-            'readings': [
-                {**row, 'id': sp_a.id, 'contract_id': sp_a.contracts.get().id},
-                {**row, 'id': sp_b.id, 'contract_id': sp_b.contracts.get().id},
-            ],
-        }
 
-        result = import_smart_metering_readings(document, preview=preview)
+        with self.assertRaises(SmartMeteringPreviewOutdated):
+            import_smart_metering_readings(document, preview=self._preview_with_rows_of(scope, sp_a, sp_b))
+        self.assertFalse(document.readings.exists())
 
+        view = ReadingDocumentViewSet.as_view({'post': 'smart_metering_import'})
+        request = APIRequestFactory().post(
+            '/billing/reading-document/smart-metering/import/',
+            {'reading_date': READING_DATE.isoformat(), 'scope': scope,
+             'preview': self._preview_with_rows_of(scope, sp_a, sp_b)},
+            format='json',
+        )
+        force_authenticate(request, user=self.user)
+        with patch('billing.views.reading_document_view.import_smart_metering_document_task.delay') as delay:
+            response = view(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'smart_metering_preview_outdated')
+        delay.assert_not_called()
+        self.assertEqual(ReadingDocument.objects.count(), 1)
+
+        result = import_smart_metering_readings(document, preview=self._preview_with_rows_of(scope, sp_a))
         self.assertEqual(result['saved_readings'], 1)
-        self.assertEqual(list(document.readings.values_list('supply_point_id', flat=True)), [sp_a.id])
+
+    def test_readings_without_supply_point_do_not_block_replace(self):
+        first = self._post_import()
+        document = ReadingDocument.objects.get(id=first.data['document_id'])
+        document.status = ReadingDocument.STATUS_PROCESSED
+        document.save(update_fields=['status'])
+        # Reading of a deleted supply point (SET_NULL).
+        Reading.objects.create(
+            meter=self.meter, contract=self.contract, supply_point=None, document=document,
+            reading_date=READING_DATE, reading_value=130, calculated_value=0,
+        )
+
+        replaced = self._post_import(replace=True)
+
+        self.assertEqual(replaced.status_code, 202, replaced.data)
+        self.assertEqual(replaced.data['document_id'], document.id)
 
     def test_document_keeps_supply_points_that_changed_route(self):
         route_b = Route.objects.create(token='RB')

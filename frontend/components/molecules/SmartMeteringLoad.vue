@@ -209,6 +209,13 @@ const handleSave = async () => {
     emit('loaded', documentId);
   } catch (error) {
     console.error(error);
+    if (error?.data?.code === 'smart_metering_preview_outdated') {
+      // Les rutes han canviat des de la previsualització: cal tornar-la a generar.
+      toast.error(t('reading_block.smart_metering_preview_outdated'));
+      showPreviewDialog.value = false;
+      preview.value = null;
+      return;
+    }
     toast.error(error?.data?.error || error?.message || t('common.error'));
   } finally {
     saving.value = false;
