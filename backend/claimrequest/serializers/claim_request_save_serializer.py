@@ -65,14 +65,12 @@ class ClaimRequestSaveSerializer(serializers.ModelSerializer):
         if contract_ids:
             contracts = Contract.objects.filter(id__in=contract_ids).distinct('id')
             validated_data['contracts'] = contracts
-        
-        # Crear el ClaimRequest
-        claim_request = super(ClaimRequestSaveSerializer, self).create(validated_data)
-        
-        # Crear els ClaimRequestPayment per cada pagament
+
+        # Resoldre els pagaments abans de desar: el post_save de ClaimRequest ja
+        # crea els passos, i un ValidationError posterior deixaria la gestió buida.
         from claimrequest.utils.claim_request_service import is_claimable_contract, resolve_invoice_contract
 
-        claim_payments = []
+        claimable_payments = []
         payment_status_paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
         active_contract_token = ConfigProject.objects.get(token='contract_active_token').value
         if payment_ids:
@@ -92,22 +90,25 @@ class ClaimRequestSaveSerializer(serializers.ModelSerializer):
                     continue
                 if contract.id in ignored_contract_ids:
                     continue
-                claim_payment = ClaimRequestPayment(
-                    claim_request=claim_request,
-                    payment=payment,
-                    contract=contract,
-                    is_paid=payment.status and payment.status.token == payment_status_paid_token,
-                    is_vulnerable=False,
-                )
-                claim_payments.append(claim_payment)
-        
-        if payment_ids and not claim_payments:
-            # Millor un error que una gestió buida: passa si només s'han triat
-            # contractes de baixa o factures de sol·licituds sense contracte.
+                claimable_payments.append((payment, contract))
+
+        if payment_ids and not claimable_payments:
             raise serializers.ValidationError(
                 "Cap dels pagaments triats es pot reclamar: el contracte no està d'alta o no existeix."
             )
 
+        claim_request = super(ClaimRequestSaveSerializer, self).create(validated_data)
+
+        claim_payments = [
+            ClaimRequestPayment(
+                claim_request=claim_request,
+                payment=payment,
+                contract=contract,
+                is_paid=payment.status and payment.status.token == payment_status_paid_token,
+                is_vulnerable=False,
+            )
+            for payment, contract in claimable_payments
+        ]
         ClaimRequestPayment.objects.bulk_create(claim_payments)
 
         if claim_payments:

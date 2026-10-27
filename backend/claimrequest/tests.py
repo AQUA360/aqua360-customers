@@ -5,8 +5,10 @@ from rest_framework.test import APIClient
 
 from billing.models import InvoiceStatus, ReadingBatchTemplate
 from claimrequest.tasks import _build_claim_request_filters
-from coredata.models import ConfigProject
-from service.models import Route, RouteZone
+from claimrequest.utils.claim_request_service import contract_from_finished_request
+from contract.models import Contract, ContractRequest, ContractRequestStatus
+from coredata.models import ConfigProject, Person
+from service.models import Route, RouteZone, SupplyPoint
 
 
 def q_lookups(q):
@@ -49,6 +51,55 @@ class ClaimRequestReadingBatchTemplateFilterTests(TestCase):
     def test_no_filter_without_reading_batch_template(self):
         filters, *_ = _build_claim_request_filters({})
         self.assertFalse(any('reading_batch_template' in lookup for lookup, _ in q_lookups(filters)))
+
+
+class ContractFromFinishedRequestIdentityTests(TestCase):
+    """El codi compartit no n'hi ha prou: el titular i el punt també han de coincidir."""
+
+    def setUp(self):
+        ConfigProject.objects.update_or_create(
+            token='contract_request_finalize_token', defaults={'value': 'finalitzada'}
+        )
+        ConfigProject.objects.update_or_create(
+            token='contract_terminated_status', defaults={'value': 'baixa'}
+        )
+        self.finalized = ContractRequestStatus.objects.create(token='finalitzada', name='Finalitzada')
+        self.holder = Person.objects.create(token='H1', name='Titular')
+        self.other_holder = Person.objects.create(token='H2', name='Altre')
+        self.supply_point = SupplyPoint.objects.create(token='SP1')
+        self.other_point = SupplyPoint.objects.create(token='SP2')
+
+    def request(self, **kwargs):
+        return ContractRequest.objects.create(
+            status=self.finalized,
+            holder=self.holder,
+            supply_point_default=self.supply_point,
+            **kwargs,
+        )
+
+    def test_accepts_token_when_holder_and_supply_point_match(self):
+        request = self.request(token='C-1')
+        contract = Contract.objects.create(
+            token='C-1', holder=self.holder, supply_point_default=self.supply_point, is_active=True,
+        )
+        self.assertEqual(contract_from_finished_request(request).id, contract.id)
+
+    def test_rejects_token_when_holder_differs_and_uses_the_matching_contract(self):
+        request = self.request(token='C-1')
+        Contract.objects.create(
+            token='C-1', holder=self.other_holder, supply_point_default=self.supply_point, is_active=True,
+        )
+        matching = Contract.objects.create(
+            token='C-ALT', holder=self.holder, supply_point_default=self.supply_point, is_active=True,
+        )
+        self.assertEqual(contract_from_finished_request(request).id, matching.id)
+
+    def test_rejects_token_when_supply_point_differs(self):
+        request = self.request(token='C-1')
+        Contract.objects.create(
+            token='C-1', holder=self.holder, supply_point_default=self.other_point, is_active=True,
+        )
+        self.assertIsNone(contract_from_finished_request(request))
 
 
 class ReadingBatchTemplateSelectorFilterTests(TestCase):

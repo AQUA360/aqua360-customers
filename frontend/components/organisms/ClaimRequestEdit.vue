@@ -1103,7 +1103,7 @@ watch(() => selectedZones.value, () => {
                   <span class="ml-2 text-sm text-gray-700">{{ $t('common.show') }} {{
                     $t('billing_block.excluded_multiple') }}</span>
                 </label>
-                <label v-if="totalOpenTermination > 0" class="inline-flex items-center">
+                <label v-if="totalOpenTermination > 0 || onlyOpenTermination" class="inline-flex items-center">
                   <input type="checkbox" v-model="onlyOpenTermination"
                     class="form-checkbox h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500" />
                   <span class="ml-2 text-sm text-amber-700" :title="$t('claim_block.open_termination_info')">

@@ -975,7 +975,7 @@ export default {
       manual: 'Excluida manualmente',
       communication_none: 'El contrato no quiere comunicaciones',
       email_paper_contract: 'Correo: el contrato es en papel',
-      contract_not_active: 'El contrato no está de alta',
+      contract_not_active: 'El contrato no está activo',
       claim_payment_excluded: 'Excluida de la gestión de impagados',
     },
     channel: 'Canal',

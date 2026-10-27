@@ -6,7 +6,7 @@ from claimrequest.tasks import (
     claim_request_groups_payments_without_rates,
     create_joined_payments_for_claim_request,
 )
-from claimrequest.utils.claim_request_service import resolve_invoice_contract
+from claimrequest.utils.claim_request_service import is_claimable_contract, resolve_invoice_contract
 from coredata.models import ConfigProject
 
 
@@ -70,6 +70,20 @@ class Command(BaseCommand):
         claims = claims.select_related('current_step', 'current_step__step_template').order_by('id')
         self.stdout.write(f"🔍 Gestions a revisar: {claims.count()}")
 
+        active_contract_token = (
+            ConfigProject.objects.filter(token='contract_active_token')
+            .values_list('value', flat=True)
+            .first()
+        )
+        if not active_contract_token:
+            self.stdout.write(
+                self.style.ERROR(
+                    "❌ No s'ha trobat el token de contracte actiu. "
+                    "Sense ell no es pot saber si un contracte es pot reclamar."
+                )
+            )
+            return
+
         filled = 0
         unresolved = 0
         joined_payments_touched = 0
@@ -84,8 +98,11 @@ class Command(BaseCommand):
                     'payment',
                     'payment__invoice',
                     'payment__invoice__contract',
+                    'payment__invoice__contract__status',
                     'payment__invoice__contract_request',
                     'payment__invoice__contract_termination',
+                    'payment__invoice__contract_termination__contract',
+                    'payment__invoice__contract_termination__contract__status',
                 )
                 if not orphan_payments.exists():
                     continue
@@ -95,12 +112,20 @@ class Command(BaseCommand):
                 for claim_payment in orphan_payments:
                     invoice = claim_payment.payment.invoice if claim_payment.payment else None
                     contract = resolve_invoice_contract(invoice)
-                    if not contract:
+                    # Mateix criteri que a l'alta de la gestió: un contracte de baixa
+                    # o esborrat no es desa ni entra a l'agrupat, perquè la
+                    # comunicació només accepta contractes actius.
+                    if not is_claimable_contract(contract, active_contract_token):
                         unresolved += 1
+                        if contract:
+                            detail = (
+                                f"el contracte {contract.token} no està d'alta, no es pot reclamar"
+                            )
+                        else:
+                            detail = "la sol·licitud no té contracte, no es pot reclamar"
                         self.stdout.write(
                             self.style.WARNING(
-                                f"   ⚠️  Factura {invoice.serie_final if invoice else '—'}: "
-                                "la sol·licitud no té contracte, no es pot reclamar"
+                                f"   ⚠️  Factura {invoice.serie_final if invoice else '—'}: {detail}"
                             )
                         )
                         continue

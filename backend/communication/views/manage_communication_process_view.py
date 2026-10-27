@@ -491,7 +491,17 @@ def filter_by_contract(filter_data, group_same, excluded=None):
     # Convert dictionary to list and sort once at the end
     persons = list(persons_dict.values())
     persons.sort(key=lambda x: x['id'])
-    
+
+    # Els contractes demanats que han quedat fora per no estar d'alta (o per estar
+    # esborrats) no desapareixen sense deixar rastre: s'informen amb el motiu.
+    if excluded is not None and contract_ids:
+        kept_ids = {contract.id for contract in contracts}
+        dropped_ids = [contract_id for contract_id in contract_ids if contract_id not in kept_ids]
+        inactive_ids = Contract.objects.filter(id__in=dropped_ids).exclude(
+            is_active=True, status__token=contract_status_token
+        ).values_list('id', flat=True)
+        excluded.extend(contract_exclusion_entries(inactive_ids, person_types, 'contract_not_active'))
+
     return persons
 
 def filter_by_contract_request(filter_data, group_same):
@@ -980,16 +990,6 @@ def filter_by_person(filter_data, group_same):
     # Convert dictionary to list and sort
     persons = list(persons_dict.values())
     persons.sort(key=lambda x: x['id'])
-
-    # Els contractes demanats que han quedat fora per no estar d'alta (o per estar
-    # esborrats) no desapareixen sense deixar rastre: s'informen amb el motiu.
-    if excluded is not None and contract_ids:
-        kept_ids = {contract.id for contract in contracts}
-        dropped_ids = [contract_id for contract_id in contract_ids if contract_id not in kept_ids]
-        inactive_ids = Contract.objects.filter(id__in=dropped_ids).exclude(
-            is_active=True, status__token=contract_status_token
-        ).values_list('id', flat=True)
-        excluded.extend(contract_exclusion_entries(inactive_ids, person_types, 'contract_not_active'))
 
     return persons
 

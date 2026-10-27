@@ -46,14 +46,35 @@ def _prefer_active_contract(contracts):
     return contracts.first()
 
 
+def _request_supply_point_ids(contract_request):
+    supply_point_ids = set(contract_request.supply_points.values_list('id', flat=True))
+    if contract_request.supply_point_default_id:
+        supply_point_ids.add(contract_request.supply_point_default_id)
+    return supply_point_ids
+
+
+def _contract_matches_request_identity(contract, contract_request):
+    """El codi sol no identifica el contracte: el titular i algun punt de
+    subministrament de la sol·licitud han de ser els del contracte."""
+    if not contract_request.holder_id or contract.holder_id != contract_request.holder_id:
+        return False
+    supply_point_ids = _request_supply_point_ids(contract_request)
+    if not supply_point_ids:
+        return False
+    if contract.supply_point_default_id in supply_point_ids:
+        return True
+    return contract.supply_points.filter(id__in=supply_point_ids).exists()
+
+
 def contract_from_finished_request(contract_request):
     """Contracte d'una sol·licitud finalitzada que no té el vincle directe.
 
     Una sol·licitud finalitzada sempre va acabar en contracte, però amb dades
     migrades el contracte pot no apuntar enrere a la sol·licitud
     (`Contract.contract_request` buit). Es busca primer pel codi, que el contracte
-    hereta de la sol·licitud (`contract_service._contract_create_locked`), i si no
-    hi és (canvi de nom mantenint el codi antic) pel punt de subministrament i el
+    hereta de la sol·licitud (`contract_service._contract_create_locked`), només
+    si el titular i el punt de subministrament també coincideixen. Si no, o si
+    el codi el va heretar un canvi de nom, pel punt de subministrament i el
     titular. En un canvi de nom el titular canvia, per això serveix per distingir
     el contracte dels anteriors del mateix punt.
     """
@@ -72,15 +93,13 @@ def contract_from_finished_request(contract_request):
         contract = _prefer_active_contract(
             Contract.objects.filter(token=contract_request.token, is_active=True).order_by('-id')
         )
-        if contract:
+        if contract and _contract_matches_request_identity(contract, contract_request):
             return contract
 
     if not contract_request.holder_id:
         return None
 
-    supply_point_ids = set(contract_request.supply_points.values_list('id', flat=True))
-    if contract_request.supply_point_default_id:
-        supply_point_ids.add(contract_request.supply_point_default_id)
+    supply_point_ids = _request_supply_point_ids(contract_request)
     if not supply_point_ids:
         return None
 

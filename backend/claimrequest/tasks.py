@@ -846,6 +846,9 @@ def _open_termination_contract_ids(contract_ids):
         ContractTerminationRequest.objects.filter(
             contract_id__in=contract_ids,
             is_active=True,
+            # Sense estat no és una baixa oberta: l'exclude de sota, sobre un
+            # FK nul, també deixaria passar status NULL.
+            status__isnull=False,
         ).exclude(status__token__in=closed_tokens).values_list('contract_id', flat=True)
     )
 
@@ -871,6 +874,7 @@ def _open_termination_debt(payment_filters, contract_filters):
         invoice__contract_termination__isnull=False,
         invoice__contract_termination__is_active=True,
         invoice__contract_termination__contract__isnull=False,
+        invoice__contract_termination__status__isnull=False,
         invoice__total_final__gt=0,
         invoice__is_active=True,
     ).exclude(invoice__contract_termination__status__token__in=closed_tokens)
