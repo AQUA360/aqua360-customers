@@ -48,6 +48,9 @@ class MeterModelViewSet(viewsets.ModelViewSet):
                 request.data.get('name'),
                 manufacturer=manufacturer,
             )
-        except ValueError as error:
-            return Response({'name': [str(error)]}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError:
+            return Response(
+                {'name': ['Invalid meter model value.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(self.get_serializer(meter_model).data, status=status.HTTP_200_OK)
