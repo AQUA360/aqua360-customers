@@ -1162,6 +1162,11 @@ class MeterModel(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
 
 
+class MeterCommTechnology(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+
+
 class ClusterDocumentationType(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)

@@ -22,7 +22,7 @@ const props = defineProps({
 
 const { t,te } = useI18n();
 const toast = useToast();
-const { $MeterApiService, $ConfiglistApiService, $AddressHelper, $MeterManufacturerApiService, $MeterModelApiService, $AddressApiService } = useNuxtApp();
+const { $MeterApiService, $ConfiglistApiService, $AddressHelper, $MeterManufacturerApiService, $MeterModelApiService, $MeterCommTechnologyApiService, $AddressApiService } = useNuxtApp();
 
 const emit = defineEmits(['created']);
 
@@ -39,6 +39,7 @@ const manufacturing_year = ref(null);
 const comm_module = ref(null);
 const comm_module_type = ref(null);
 const comm_technology = ref(null);
+const meter_comm_technology = ref(null);
 const network_provider = ref(null);
 
 const uninstallation_at = ref(null)
@@ -69,8 +70,10 @@ const meter_manufacturers = ref([])
 
 const meter_model = ref(null)
 const meter_models = ref([])
+const meter_comm_technologies = ref([])
 
 const loading_meter_manufacturers = ref(true);
+const loading_meter_comm_technologies = ref(true);
 
 const loading_calibers = ref(true);
 const loading_meter_status = ref(true);
@@ -90,6 +93,7 @@ const getData = async () => {
   await getCalibers();
   await getMeterStatus();
   await getMeterManufacturers();
+  await getMeterCommTechnologies();
 
   if (props.meter != null && props.meter.id > 0) {
     setValues();
@@ -168,6 +172,21 @@ const getMeterManufacturers = async () => {
     console.error('Error fetching meter manufacturers:', error);
   }
   loading_meter_manufacturers.value = false;
+}
+
+const getMeterCommTechnologies = async () => {
+  loading_meter_comm_technologies.value = true
+  try {
+    const technologies = await $MeterCommTechnologyApiService.getAll();
+    meter_comm_technologies.value = technologies.results.map(technology => ({
+      label: technology.name,
+      code: technology.id
+    }));
+  } catch (error) {
+    console.error('Error fetching meter communication technologies:', error);
+  } finally {
+    loading_meter_comm_technologies.value = false;
+  }
 }
 
 const getMeterModelsByManufacturer = async (manufacturerId) => {
@@ -266,11 +285,25 @@ const updateSelected = (e) => {
     meter_status.value = e.id;
   }
   else if (e.entity == 'meter_manufacturer') {
-    meter_manufacturer.value = e.id
-    getMeterModelsByManufacturer(e.id.code)
+    meter_manufacturer.value = typeof e.id === 'string'
+      ? { label: e.id.trim(), code: null }
+      : e.id
+    if (meter_manufacturer.value?.code) {
+      getMeterModelsByManufacturer(meter_manufacturer.value.code)
+    } else {
+      meter_models.value = [];
+      meter_model.value = null;
+    }
   }
   else if (e.entity == 'meter_model') {
-    meter_model.value = e.id
+    meter_model.value = typeof e.id === 'string'
+      ? { label: e.id.trim(), code: null }
+      : e.id
+  }
+  else if (e.entity == 'meter_comm_technology') {
+    meter_comm_technology.value = typeof e.id === 'string'
+      ? { label: e.id.trim(), code: null }
+      : e.id
   }
 }
 
@@ -322,6 +355,40 @@ const save = async () => {
 
   if (isValid()) {
     saving.value = true;
+    let manufacturer = meter_manufacturer.value;
+    let model = meter_model.value;
+    let commTechnology = meter_comm_technology.value;
+    try {
+      if (manufacturer?.label && !manufacturer.code) {
+        const persistedManufacturer = await $MeterManufacturerApiService.getOrCreate(manufacturer.label);
+        manufacturer = { label: persistedManufacturer.name, code: persistedManufacturer.id };
+        meter_manufacturer.value = manufacturer;
+        await getMeterModelsByManufacturer(manufacturer.code);
+      }
+      if (model?.label && !model.code && manufacturer?.code) {
+        const persistedModel = await $MeterModelApiService.getOrCreate(manufacturer.code, model.label);
+        model = { label: persistedModel.name, code: persistedModel.id };
+        meter_model.value = model;
+        meter_models.value = [
+          ...meter_models.value.filter(option => option.code !== model.code),
+          model
+        ];
+      }
+      if (commTechnology?.label && !commTechnology.code) {
+        const persistedTechnology = await $MeterCommTechnologyApiService.getOrCreate(commTechnology.label);
+        commTechnology = { label: persistedTechnology.name, code: persistedTechnology.id };
+        meter_comm_technology.value = commTechnology;
+        meter_comm_technologies.value = [
+          ...meter_comm_technologies.value.filter(option => option.code !== commTechnology.code),
+          commTechnology
+        ];
+      }
+    } catch (error) {
+      console.error('Error persisting meter dictionary values:', error);
+      saving.value = false;
+      return;
+    }
+
     const selectedOptions = {
       code: code.value,
       code2: code2.value,
@@ -329,12 +396,12 @@ const save = async () => {
       is_property: is_property.value || false,
       is_general: is_general.value || false,
       has_remote_reading: has_remote_reading.value || false,
-      manufacturer: meter_manufacturer.value?.label ? meter_manufacturer.value.label : meter_manufacturer.value,
-      model: meter_model.value?.label ? meter_model.value.label : meter_model.value,
+      manufacturer: manufacturer?.label || manufacturer || null,
+      model: model?.label || model || null,
       manufacturing_year: manufacturing_year.value,
       comm_module: comm_module.value,
       comm_module_type: comm_module_type.value,
-      comm_technology: comm_technology.value,
+      comm_technology: commTechnology?.label || commTechnology || comm_technology.value,
       network_provider: network_provider.value,
       uninstallation_at: uninstallation_at.value,
       installation_at: installation_at.value,
@@ -458,6 +525,16 @@ const setValues = async () => {
   if (manufacturerId && meter_model_name) {
     let meter_model_object = await $MeterModelApiService.getByName(manufacturerId, meter_model_name);
     meter_model.value = { code: meter_model_object[0].id, label: meter_model_object[0].name }
+  }
+
+  if (props.meter.comm_technology) {
+    const technology = meter_comm_technologies.value.find(
+      option => option.label === props.meter.comm_technology
+    );
+    meter_comm_technology.value = technology || {
+      code: null,
+      label: props.meter.comm_technology
+    };
   }
 
   manufacturing_year.value = props.meter.manufacturing_year;
@@ -759,7 +836,14 @@ onMounted(() => {
         </div>
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.comm_tech') }}</label>
-          <input type="text" v-model="comm_technology" class="input" />
+          <v-select :model-value="meter_comm_technology" :options="meter_comm_technologies"
+            :disabled="loading_meter_comm_technologies"
+            @update:modelValue="updateSelected({ entity: 'meter_comm_technology', id: $event })"
+            taggable tag-placeholder="Create">
+            <template #no-options="{ search, searching, loading }">
+              {{ t('common.no_records') }}
+            </template>
+          </v-select>
         </div>
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.network_provider') }}</label>
