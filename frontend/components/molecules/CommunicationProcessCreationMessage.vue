@@ -189,6 +189,8 @@ const applyContextDefaults = async () => {
     await getMessageTemplates()
     if (templates.value.length == 1) {
         selectedTemplate.value = templates.value[0]
+        // El watcher de selectedTemplate està aturat (stopWatch) durant la càrrega inicial
+        attachClaimDocuments.value = selectedTemplate.value.attach_claim_documents
         await getMessageTypeTemplates(true)
     }
 }
