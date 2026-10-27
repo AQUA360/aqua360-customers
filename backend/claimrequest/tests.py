@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.test import TestCase
@@ -5,7 +7,10 @@ from rest_framework.test import APIClient
 
 from billing.models import InvoiceStatus, ReadingBatchTemplate
 from claimrequest.tasks import _build_claim_request_filters
-from claimrequest.utils.claim_request_service import contract_from_finished_request
+from claimrequest.utils.claim_request_service import (
+    contract_from_finished_request,
+    resolve_invoice_contract,
+)
 from contract.models import Contract, ContractRequest, ContractRequestStatus
 from coredata.models import ConfigProject, Person
 from service.models import Route, RouteZone, SupplyPoint
@@ -51,6 +56,19 @@ class ClaimRequestReadingBatchTemplateFilterTests(TestCase):
     def test_no_filter_without_reading_batch_template(self):
         filters, *_ = _build_claim_request_filters({})
         self.assertFalse(any('reading_batch_template' in lookup for lookup, _ in q_lookups(filters)))
+
+    def test_closed_termination_invoices_stay_eligible_by_positive_id(self):
+        ConfigProject.objects.update_or_create(
+            token='contract_termination_cancelled_token', defaults={'value': 'cancelled'}
+        )
+        ConfigProject.objects.update_or_create(
+            token='contract_termination_completed_token', defaults={'value': 'completed'}
+        )
+        filters, payment_filters, annotation_filters, *_ = _build_claim_request_filters({})
+        self.assertIn('invoices__id__in', [lookup for lookup, _ in q_lookups(filters)])
+        self.assertIn('invoice_id__in', [lookup for lookup, _ in q_lookups(payment_filters)])
+        self.assertIn('invoices__id__in', [lookup for lookup, _ in q_lookups(annotation_filters)])
+        self.assertFalse(any('contract_termination' in lookup for lookup, _ in q_lookups(filters)))
 
 
 class ContractFromFinishedRequestIdentityTests(TestCase):
@@ -100,6 +118,53 @@ class ContractFromFinishedRequestIdentityTests(TestCase):
             token='C-1', holder=self.holder, supply_point_default=self.other_point, is_active=True,
         )
         self.assertIsNone(contract_from_finished_request(request))
+
+
+class ResolveInvoiceContractTerminationTests(TestCase):
+    """Una baixa tancada deixa la factura sense contracte reclamable, encara que
+    la factura encara apunti al contracte. Sense baixa, o amb la baixa oberta,
+    es conserva el contracte."""
+
+    def setUp(self):
+        ConfigProject.objects.update_or_create(
+            token='contract_termination_cancelled_token', defaults={'value': 'cancelled'}
+        )
+        ConfigProject.objects.update_or_create(
+            token='contract_termination_completed_token', defaults={'value': 'completed'}
+        )
+        self.contract = SimpleNamespace(id=1)
+
+    def invoice(self, *, contract_id=1, termination_id=None, status_token=None, termination_active=True):
+        termination = None
+        if termination_id:
+            termination = SimpleNamespace(
+                is_active=termination_active,
+                status=SimpleNamespace(token=status_token) if status_token else None,
+                contract=self.contract,
+            )
+        return SimpleNamespace(
+            contract_id=contract_id,
+            contract=self.contract if contract_id else None,
+            contract_request_id=None,
+            contract_termination_id=termination_id,
+            contract_termination=termination,
+        )
+
+    def test_closed_termination_hides_the_invoice_contract(self):
+        invoice = self.invoice(termination_id=5, status_token='completed')
+        self.assertIsNone(resolve_invoice_contract(invoice))
+
+    def test_invoice_without_termination_keeps_its_contract(self):
+        invoice = self.invoice()
+        self.assertIs(resolve_invoice_contract(invoice), self.contract)
+
+    def test_open_termination_keeps_the_invoice_contract(self):
+        invoice = self.invoice(termination_id=5, status_token='pending')
+        self.assertIs(resolve_invoice_contract(invoice), self.contract)
+
+    def test_open_termination_without_contract_uses_the_termination_contract(self):
+        invoice = self.invoice(contract_id=None, termination_id=5, status_token='pending')
+        self.assertIs(resolve_invoice_contract(invoice), self.contract)
 
 
 class ReadingBatchTemplateSelectorFilterTests(TestCase):

@@ -453,6 +453,8 @@ const getContractStatuses = async () => {
 
 const getClaimData = async () => {
   loading_contracts.value = true
+  unlinkedInvoices.value = []
+  totalUnlinkedAmount.value = 0
   try {
     let save_data = {
       selectedUseTypesIds: selectedUseTypes.value.map(el => el.code),

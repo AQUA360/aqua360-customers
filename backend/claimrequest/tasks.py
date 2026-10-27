@@ -121,7 +121,9 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             None,
         )
         
-        claim_payments = ClaimRequestPayment.objects.filter(claim_request=claim_request)
+        claim_payments = ClaimRequestPayment.objects.filter(
+            claim_request=claim_request, is_excluded=False
+        )
         payments = claim_payments.values_list("payment", flat=True).distinct()
         
         invoices = Invoice.objects.filter(payments__id__in=payments).distinct()
@@ -468,6 +470,19 @@ def _build_claim_request_filters(payload):
         annotation_filters &= Q(invoices__exploitation__id=exploitation_id) | Q(invoices__exploitation__isnull=True)
     
     annotation_filters &= ~Q(invoices__payments__claim_requests__claim_request__status__token__in=[claim_request_status_accepted_token,claim_request_status_pending_token])
+
+    # Factures d'una baixa tancada (cancel·lada o finalitzada): no es reclamen.
+    # Es restringeix per id de factura elegible. Negar `invoices__contract_termination`
+    # faria desaparèixer el contracte sencer encara que tingui altres factures.
+    closed_tokens = closed_termination_tokens()
+    if len(closed_tokens) >= 2:
+        eligible_invoice_ids = Invoice.objects.exclude(
+            contract_termination__status__isnull=False,
+            contract_termination__status__token__in=closed_tokens,
+        ).values('id')
+        filters &= Q(invoices__id__in=eligible_invoice_ids)
+        payment_filters &= Q(invoice_id__in=eligible_invoice_ids)
+        annotation_filters &= Q(invoices__id__in=eligible_invoice_ids)
 
     has_min_pending_invoices = min_pending_invoices and min_pending_invoices != "" and min_pending_invoices != 0
     has_max_pending_invoices = max_pending_invoices and max_pending_invoices != "" and max_pending_invoices != 0
@@ -1072,6 +1087,7 @@ def obtain_claim_request_data(payload=None):
         'exclude_return_fee_invoice_ids': return_fee_invoice_ids,
         'extra_payments_by_contract': extra_payments,
         'extra_invoices_by_contract': extra_invoices,
+        'closed_termination_tokens': closed_termination_tokens(),
         'open_termination_contract_ids': _open_termination_contract_ids(
             [contract.id for contract in contract_list]
         ),
