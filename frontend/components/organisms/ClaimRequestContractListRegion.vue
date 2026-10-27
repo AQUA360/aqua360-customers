@@ -103,7 +103,8 @@ const filteredContracts = computed(() => {
 });
 
 // Exporta els contractes que es veuen al llistat (amb la cerca i els filtres aplicats).
-const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(filteredContracts.value.map(c => c.id));
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
+  filteredContracts.value.map(c => c.id), { claim_request_id: props.request.id });
 
 // Excloure un contracte i els seus pagaments
 const excludeContract = async (contractId) => {

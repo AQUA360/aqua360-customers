@@ -5880,3 +5880,12 @@ msgstr "Fecha de corte"
 
 msgid "Contractes de la reclamació"
 msgstr "Contratos de la reclamación"
+
+msgid "Cal indicar la gestió de reclamació o la tasca de filtratge."
+msgstr "Hay que indicar la gestión de reclamación o la tarea de filtrado."
+
+msgid "La tasca de filtratge no existeix o encara no ha acabat."
+msgstr "La tarea de filtrado no existe o aún no ha terminado."
+
+msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
+msgstr "Hay contratos que no pertenecen a esta gestión de reclamación."

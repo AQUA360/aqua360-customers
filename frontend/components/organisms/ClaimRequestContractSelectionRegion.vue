@@ -233,7 +233,8 @@ const exportContracts = computed(() => {
   return filteredContracts.value;
 });
 
-const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(exportContracts.value.map(c => c.id));
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
+  exportContracts.value.map(c => c.id), { claim_request_id: props.request.id });
 
 const hasNumericRangeFilter = (min, max) => {
   return Number(min) > 0 || Number(max) > 0;

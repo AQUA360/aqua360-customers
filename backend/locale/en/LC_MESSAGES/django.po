@@ -3865,3 +3865,12 @@ msgstr "Cut-off date"
 
 msgid "Contractes de la reclamació"
 msgstr "Claim contracts"
+
+msgid "Cal indicar la gestió de reclamació o la tasca de filtratge."
+msgstr "Either the claim request or the filtering task must be provided."
+
+msgid "La tasca de filtratge no existeix o encara no ha acabat."
+msgstr "The filtering task does not exist or has not finished yet."
+
+msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
+msgstr "Some contracts do not belong to this claim request."

@@ -326,16 +326,50 @@ class ClaimContractsExportTests(TestCase):
 
     def test_export_endpoint_queues_download_job(self):
         from documentmanager.models import ExportJob
+        from claimrequest.models import ClaimRequest, ClaimRequestPayment
+
+        claim_request = ClaimRequest.objects.create(token='CR-TEST')
+        ClaimRequestPayment.objects.create(claim_request=claim_request, contract=self.contract)
+        scope = {'claim_request_id': claim_request.id}
 
         client = APIClient()
         client.force_authenticate(User.objects.create_user('no-perms', 'no-perms@test.local', 'x'))
         url = '/claimrequest/claim-request-manage/contracts-export/'
-        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id]}, format='json').status_code, 403)
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], **scope}, format='json').status_code, 403)
 
         client.force_authenticate(User.objects.create_superuser('admin-export', 'admin-export@test.local', 'x'))
-        self.assertEqual(client.post(url, {'contract_ids': []}, format='json').status_code, 400)
-        response = client.post(url, {'contract_ids': [self.contract.id, self.contract.id]}, format='json')
+        self.assertEqual(client.post(url, {'contract_ids': [], **scope}, format='json').status_code, 400)
+        response = client.post(url, {'contract_ids': [self.contract.id, self.contract.id], **scope}, format='json')
         self.assertEqual(response.status_code, 202)
         job = ExportJob.objects.get(id=response.data['export_job_id'])
         self.assertEqual(job.kind, 'claim_contracts')
         self.assertEqual(job.params, {'total': 1})
+
+    def test_export_endpoint_rejects_contracts_outside_scope(self):
+        import json
+        from django_celery_results.models import TaskResult
+        from claimrequest.models import ClaimRequest
+        from contract.models import Contract
+
+        other_contract = Contract.objects.create(token='C-OTHER')
+        client = APIClient()
+        client.force_authenticate(User.objects.create_superuser('admin-scope', 'admin-scope@test.local', 'x'))
+        url = '/claimrequest/claim-request-manage/contracts-export/'
+
+        # Sense abast, o amb tots dos alhora, no s'accepta.
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id]}, format='json').status_code, 400)
+
+        # Gestió creada: només els seus contractes.
+        claim_request = ClaimRequest.objects.create(token='CR-SCOPE')
+        response = client.post(url, {'contract_ids': [other_contract.id], 'claim_request_id': claim_request.id}, format='json')
+        self.assertEqual(response.status_code, 403)
+
+        # En crear la gestió: només els contractes que ha retornat la tasca de filtratge.
+        TaskResult.objects.create(
+            task_id='filter-task-test', status='SUCCESS', content_type='application/json', content_encoding='utf-8',
+            result=json.dumps({'contracts': [{'id': self.contract.id}]}),
+        )
+        scope = {'filter_task_id': 'filter-task-test'}
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id, other_contract.id], **scope}, format='json').status_code, 403)
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], **scope}, format='json').status_code, 202)
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], 'filter_task_id': 'unknown'}, format='json').status_code, 400)

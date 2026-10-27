@@ -385,13 +385,14 @@ export default defineNuxtPlugin(nuxtApp => {
   /**
    * Exporta a Excel els contractes d'un llistat de reclamació (va a la cua de descàrregues)
    * @param {Array<number>} contract_ids - IDs dels contractes, en l'ordre del llistat
+   * @param {Object} scope - Abast del llistat: `{ claim_request_id }` o, en crear la gestió, `{ filter_task_id }`
    * @returns {Promise<Object>} - `{ task_id, export_job_id }`
    */
-  const exportContracts = async (contract_ids) => {
+  const exportContracts = async (contract_ids, scope) => {
     const apiUrl = `${apiHost}/claimrequest/claim-request-manage/contracts-export/`;
     // Nom per a la cua de descàrregues (el fixa useServerExport).
     const export_name = $apiManager.pendingExportName || null;
-    return await $apiManager.fetch(apiUrl, 'POST', { contract_ids, export_name }, { 'Content-Type': 'application/json' })
+    return await $apiManager.fetch(apiUrl, 'POST', { contract_ids, export_name, ...scope }, { 'Content-Type': 'application/json' })
   }
 
   /**
