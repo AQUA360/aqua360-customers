@@ -1,3 +1,5 @@
+from contextlib import ExitStack
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase, override_settings
@@ -116,3 +118,76 @@ class SingleCompanyUntouchedTests(SimpleTestCase):
         communication = MagicMock()
         get_communication_logo(communication, {'logo': None})
         communication.contracts.select_related.assert_not_called()
+
+
+@override_settings(DOMAIN_MEDIA='https://media.example')
+class CommunicationLetterCompanyTests(SimpleTestCase):
+    def test_letter_identity_and_branding_follow_contract_company_with_fallbacks(self):
+        from communication.utils import communication_service as service
+
+        for multiple, has_company, has_logo in (
+            (True, True, True), (True, True, False),
+            (True, False, False), (False, True, True),
+        ):
+            with self.subTest(multiple=multiple, has_company=has_company, has_logo=has_logo), ExitStack() as stack:
+                config_data = {
+                    'name': 'Configured company', 'phone': '111',
+                    'contact_email': 'config@example.test', 'address_complete': 'Config street',
+                    'logo': 'uploads/logo/config.png',
+                }
+                contract_data = {
+                    'name': 'Contract company', 'phone': '222',
+                    'contact_email': 'contract@example.test', 'address_complete': 'Contract street',
+                    'logo': 'uploads/logo/contract.png' if has_logo else None,
+                }
+                config_company = MagicMock(invoice_main_color='#111111', invoice_secondary_color='#222222')
+                contract_company = MagicMock(invoice_main_color='#333333', invoice_secondary_color='#444444')
+                contract_company.logo = MagicMock(name=contract_data['logo']) if has_logo else None
+                if has_logo:
+                    contract_company.logo.name = contract_data['logo']
+                contract = MagicMock(company=contract_company if has_company else None, token='C1', total_persons=1)
+                contract.consumption_stats.exists.return_value = False
+                contract.supply_point_default.connection = None
+                communication = MagicMock(person=None, due_date=None, company_config_email=None, process_id=None)
+                communication.company_config.company_configs.all.return_value = MagicMock(
+                    **{'__len__.return_value': 1, 'first.return_value': config_company})
+                communication.contracts.first.return_value = contract
+                communication.contracts.select_related.return_value.first.return_value = contract
+                communication.contracts.all.return_value = [contract]
+                for relation in (communication.invoices, communication.readings):
+                    relation.first.return_value = None
+                    relation.all.return_value = []
+                message = communication.messages.get.return_value
+                message.subject = '%company.name'
+                message.body = '%company.phone %company.email %company.address_complete'
+
+                def mock(name, **kwargs):
+                    return stack.enter_context(patch.object(service, name, **kwargs))
+
+                stack.enter_context(patch('service.utils.contract_company.use_multiple_companies', return_value=multiple))
+                mock('use_multiple_companies', return_value=multiple)
+                mock('ConfigProject')
+                files = mock('CommunicationFile')
+                files.objects.get.return_value.communication = communication
+                mock('CompanySerializer', side_effect=lambda company: MagicMock(
+                    data=contract_data if company is contract_company else config_data))
+                render = mock('render_to_string', return_value='<html></html>')
+                mock('pisa').CreatePDF.return_value.err = False
+                sign = mock('sign_pdf', return_value=BytesIO(b'pdf'))
+                mock('upload_document')
+
+                service.get_communication_file(1)
+
+                uses_contract = multiple and has_company
+                expected = contract_data if uses_contract else config_data
+                context = render.call_args.args[1]
+                self.assertEqual(render.call_args.args[0], 'basic_letter.html')
+                self.assertEqual(context['company'], expected)
+                self.assertEqual(context['subject'], expected['name'])
+                for key in ('phone', 'contact_email', 'address_complete'):
+                    self.assertIn(expected[key], context['body'])
+                self.assertEqual(context['main_color'], '#333333' if uses_contract else '#111111')
+                self.assertEqual(context['secondary_color'], '#444444' if uses_contract else '#222222')
+                logo = contract_data['logo'] if uses_contract and has_logo else config_data['logo']
+                self.assertEqual(context['logo'], f'https://media.example/media/{logo}')
+                self.assertEqual(sign.call_args.args[1], expected)
