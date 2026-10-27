@@ -1252,12 +1252,23 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         if filters:
             payments = payments.filter(filters)
 
+        # Deute que no penja del contracte: factures emeses durant la sol·licitud
+        # d'alta. Arriben ja filtrades des d'`obtain_claim_request_data`, per això
+        # s'afegeixen per id i no es tornen a filtrar.
+        extra_payment_ids = (self.context.get('extra_payments_by_contract') or {}).get(instance.id)
+        if extra_payment_ids:
+            payments = Payment.objects.filter(
+                Q(id__in=payments.values('id')) | Q(id__in=extra_payment_ids)
+            )
+
         # Excloure pagaments especificats
         payments_ignored = self.context.get('payments_ignored', None)
         if payments_ignored:
             payments = payments.exclude(id__in=payments_ignored)
         
-        representation['payments'] = ContractPaymentSerializer(payments, many=True).data
+        representation['payments'] = ContractPaymentSerializer(
+            payments.select_related('invoice', 'invoice__contract_request'), many=True
+        ).data
         representation['payments_count'] = payments.count()
         representation['total_amount'] = payments.aggregate(total=Sum('amount'))['total'] or 0
         
@@ -1276,14 +1287,34 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         elif instance.tenant and instance.holder.is_juridic:
             representation['vulnerability_level'] = instance.tenant.vulnerability_level
 
+        # Baixa demanada però no finalitzada: el contracte segueix d'alta i es pot
+        # reclamar, però la pantalla ha d'avisar-ne. Els ids arriben calculats de
+        # cop per no fer una consulta per fila.
+        representation['has_open_termination'] = instance.id in (
+            self.context.get('open_termination_contract_ids') or set()
+        )
+
         return representation
     
     def get_expired_invoices(self, obj):
-        invoices = Invoice.objects.filter(contract=obj, status=InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_expired_token').value))
+        expired_status = InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_expired_token').value)
+        invoice_filters = Q(contract=obj)
+
+        extra_invoice_ids = (self.context.get('extra_invoices_by_contract') or {}).get(obj.id)
+        if extra_invoice_ids:
+            invoice_filters |= Q(id__in=extra_invoice_ids)
+
+        invoices = Invoice.objects.filter(invoice_filters, status=expired_status)
 
         return_fee_invoice_ids = self.context.get('exclude_return_fee_invoice_ids')
         if return_fee_invoice_ids:
             invoices = invoices.exclude(id__in=return_fee_invoice_ids)
 
+        closed_tokens = self.context.get('closed_termination_tokens') or []
+        if len(closed_tokens) >= 2:
+            invoices = invoices.exclude(
+                contract_termination__status__isnull=False,
+                contract_termination__status__token__in=closed_tokens,
+            )
+
         return invoices.count()
-    
