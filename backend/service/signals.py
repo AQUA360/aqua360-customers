@@ -11,7 +11,10 @@ from .models import Cluster, MeterLog, SupplyCut, SupplyPointStatus, Meter, Mete
 def get_or_create_manufacturer(manufacturer_name):
     if not manufacturer_name:
         return None
-    manufacturer, created = MeterManufacturer.objects.get_or_create(name=manufacturer_name)
+    manufacturer, created = MeterManufacturer.objects.get_or_create(
+        name__iexact=manufacturer_name,
+        defaults={'name': manufacturer_name},
+    )
     if created:
         print('MANUFACTURER CREATED', created, manufacturer_name)
     return manufacturer
@@ -19,13 +22,20 @@ def get_or_create_manufacturer(manufacturer_name):
 def get_or_create_model(model_name, manufacturer):
     if not model_name:
         return None
-    model, created = MeterModel.objects.get_or_create(name=model_name, manufacturer=manufacturer)
+    model, created = MeterModel.objects.get_or_create(
+        name__iexact=model_name,
+        manufacturer=manufacturer,
+        defaults={'name': model_name},
+    )
     if created:
         print('MODEL CREATED', created, model_name)
     return model
 
 @receiver(post_save, sender=Meter)
 def create_manufacturer_and_model(sender, instance, **kwargs):
+    if kwargs.get('raw', False):
+        return
+
     created = kwargs.get('created', False)
     if created:
         current_user = get_current_user()
