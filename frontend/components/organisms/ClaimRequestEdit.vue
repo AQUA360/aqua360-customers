@@ -184,6 +184,8 @@ const totalOpenTermination = computed(() => {
 });
 
 const filteringTaskId = ref(null);
+// Tasca de filtratge que ha retornat el llistat actual (abast de l'exportació de contractes).
+const claimDataTaskId = ref(null);
 const savingTaskId = ref(null);
 
 const allowSearch = computed(() => {
@@ -638,8 +640,10 @@ const handleSubRegionEvent = (event) => {
 
 const refreshData = async () => {
   if (filteringTaskId.value) {
-    const response = await $ClaimRequestApiService.getClaimData(null, filteringTaskId.value)
+    const taskId = filteringTaskId.value
+    const response = await $ClaimRequestApiService.getClaimData(null, taskId)
     filteringTaskId.value = response.task_id
+    if (response.contracts) claimDataTaskId.value = taskId
     contracts.value = response.contracts
     totalExpiredInvoices.value = response.total_expired_invoices
     unlinkedInvoices.value = response.unlinked_invoices || []
@@ -738,6 +742,10 @@ watch(
     triggerStatsBoxPing();
   },
 );
+
+// Exporta els contractes que es veuen al llistat (amb la cerca i el filtre d'exclosos aplicats).
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
+  filteredContracts.value.map(c => c.id), { filter_task_id: claimDataTaskId.value });
 
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
@@ -1124,6 +1132,9 @@ watch(() => selectedZones.value, () => {
                   }}</span>)
                 </span>
               </span>
+              <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
+                :disabled="!filteredContracts.length || !claimDataTaskId"
+                :export-name="[$t('common.contracts'), claimName].filter(Boolean).join(' – ')" />
             </div>
 
             <div class="divide-y divide-gray-200 h-[55vh] overflow-auto">

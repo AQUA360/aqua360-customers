@@ -201,3 +201,175 @@ class ReadingBatchTemplateSelectorFilterTests(TestCase):
 
     def test_without_params_returns_all(self):
         self.assertEqual(len(self.get_ids()), 4)
+
+
+class ClaimContractsExportTests(TestCase):
+    """Columnes calculades de l'exportació de contractes dels llistats de reclamació."""
+
+    def setUp(self):
+        from billing.models import Invoice, InvoiceLineItem, Payment, PaymentStatus
+        from contract.models import Contract
+        from pricing.models import PriceRate
+        from service.models import SupplyPoint
+
+        # Els signals de contracte, factura i pagament llegeixen aquests valors en desar.
+        for token, value in (
+            ('contract_terminated_status', '99'),
+            ('payment_status_paid_token', '0'),
+            ('payment_status_expired_token', '-1'),
+            ('payment_status_returned_token', '-2'),
+            ('payment_status_cancelled_token', '-4'),
+            ('invoice_status_paid_token', 'PAID'),
+            ('invoice_status_cancelled_token', 'CANCELLED'),
+        ):
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': value})
+
+        self.supply_point = SupplyPoint.objects.create(token='SP-TEST')
+        self.contract = Contract.objects.create(token='C-TEST', supply_point_default=self.supply_point)
+        expired = PaymentStatus.objects.get_or_create(token='-1', defaults={'name': 'Vençut'})[0]
+        paid = PaymentStatus.objects.get_or_create(token='0', defaults={'name': 'Pagat'})[0]
+
+        return_fee_rate = PriceRate.objects.create(token='RETURN-FEE')
+        ConfigProject.objects.update_or_create(
+            token='invoice_return_price_rate_token', defaults={'value': return_fee_rate.token}
+        )
+
+        def invoice_with_payments(*payments, return_fee=False):
+            invoice = Invoice.objects.create(contract=self.contract)
+            for payment_status, amount in payments:
+                Payment.objects.create(invoice=invoice, status=payment_status, amount=amount)
+            if return_fee:
+                InvoiceLineItem.objects.create(invoice=invoice, price_rate=return_fee_rate)
+            return invoice
+
+        # Dues factures impagades (una amb dos pagaments), una de pagada i una de recàrrec per devolució.
+        invoice_with_payments((expired, 10), (expired, 5))
+        invoice_with_payments((expired, 20))
+        invoice_with_payments((paid, 30))
+        invoice_with_payments((expired, 3), return_fee=True)
+
+    def test_unpaid_invoices_exclude_paid_and_return_fee_invoices(self):
+        from claimrequest.utils.claim_contract_export_service import unpaid_invoices_count_by_contract_id
+
+        self.assertEqual(unpaid_invoices_count_by_contract_id([self.contract.id]), {self.contract.id: 2})
+
+    def test_unpaid_invoice_with_expired_and_paid_payments_is_counted_once(self):
+        from billing.models import Invoice, Payment, PaymentStatus
+        from claimrequest.utils.claim_contract_export_service import unpaid_invoices_count_by_contract_id
+
+        invoice = Invoice.objects.create(contract=self.contract)
+        for token, amount in (('-1', 10), ('-1', 5), ('0', 20)):
+            Payment.objects.create(
+                invoice=invoice, status=PaymentStatus.objects.get(token=token), amount=amount,
+            )
+
+        self.assertEqual(unpaid_invoices_count_by_contract_id([self.contract.id]), {self.contract.id: 3})
+
+    def test_exports_in_the_same_second_keep_separate_files_and_contents(self):
+        from io import BytesIO
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+
+        from django.utils import timezone
+        from openpyxl import load_workbook
+
+        from claimrequest.tasks import export_claim_contracts_task
+        from documentmanager.models import Document
+
+        now = timezone.now()
+        with TemporaryDirectory() as storage_path, self.settings(
+            DOCUMENT_STORAGE_PATH=storage_path, DOCUMENT_MANAGER_SERVICES={'claimrequest': 'hdd'},
+        ), patch('claimrequest.tasks.timezone.now', return_value=now), patch(
+            # Dues tasques poden llegir la mateixa versió abans de desar cap document.
+            'documentmanager.utils.main_utils.get_next_version', return_value=1,
+        ):
+            first = export_claim_contracts_task([self.contract.id])
+            second = export_claim_contracts_task([])
+            self.assertEqual(first['status'], 'success', first)
+            self.assertEqual(second['status'], 'success', second)
+
+            first_document = Document.objects.get(pk=first['document_id'])
+            second_document = Document.objects.get(pk=second['document_id'])
+            self.assertNotEqual(first['document_name'], second['document_name'])
+            self.assertNotEqual(first_document.location, second_document.location)
+            first_rows = list(load_workbook(BytesIO(Path(first_document.location).read_bytes())).active.values)
+            second_rows = list(load_workbook(BytesIO(Path(second_document.location).read_bytes())).active.values)
+            self.assertEqual(first_rows[1][0], self.contract.token)
+            self.assertEqual(len(first_rows), 2)
+            self.assertEqual(len(second_rows), 1)
+
+    def test_supply_cut_date_only_for_open_cuts(self):
+        import datetime
+        from django.utils import timezone
+        from claimrequest.utils.claim_contract_export_service import claim_contracts_export_queryset, _supply_cut_date
+        from service.models import SupplyCut, SupplyCutStatus
+
+        # Catàlegs sembrats per migracions: reutilitzar, no duplicar.
+        finished = SupplyCutStatus.objects.get_or_create(token='2', defaults={'name': 'Acabat'})[0]
+        planned = SupplyCutStatus.objects.get_or_create(token='0', defaults={'name': 'Planificat'})[0]
+        closed_cut = SupplyCut.objects.create(
+            status=finished, date_start=timezone.make_aware(datetime.datetime(2026, 1, 10, 9)),
+        )
+        closed_cut.supply_points.add(self.supply_point)
+
+        contract = claim_contracts_export_queryset().get(id=self.contract.id)
+        self.assertEqual(_supply_cut_date(contract), '')
+
+        planned_cut = SupplyCut.objects.create(
+            status=planned, date_start=timezone.make_aware(datetime.datetime(2026, 11, 5, 9)),
+        )
+        planned_cut.supply_points.add(self.supply_point)
+
+        contract = claim_contracts_export_queryset().get(id=self.contract.id)
+        self.assertEqual(_supply_cut_date(contract), '05/11/2026')
+
+    def test_export_endpoint_queues_download_job(self):
+        from documentmanager.models import ExportJob
+        from claimrequest.models import ClaimRequest, ClaimRequestPayment
+
+        claim_request = ClaimRequest.objects.create(token='CR-TEST')
+        ClaimRequestPayment.objects.create(claim_request=claim_request, contract=self.contract)
+        scope = {'claim_request_id': claim_request.id}
+
+        client = APIClient()
+        client.force_authenticate(User.objects.create_user('no-perms', 'no-perms@test.local', 'x'))
+        url = '/claimrequest/claim-request-manage/contracts-export/'
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], **scope}, format='json').status_code, 403)
+
+        client.force_authenticate(User.objects.create_superuser('admin-export', 'admin-export@test.local', 'x'))
+        self.assertEqual(client.post(url, {'contract_ids': [], **scope}, format='json').status_code, 400)
+        response = client.post(url, {'contract_ids': [self.contract.id, self.contract.id], **scope}, format='json')
+        self.assertEqual(response.status_code, 202)
+        job = ExportJob.objects.get(id=response.data['export_job_id'])
+        self.assertEqual(job.kind, 'claim_contracts')
+        self.assertEqual(job.params, {'total': 1})
+
+    def test_export_endpoint_rejects_contracts_outside_scope(self):
+        import json
+        from django_celery_results.models import TaskResult
+        from claimrequest.models import ClaimRequest
+        from contract.models import Contract
+
+        other_contract = Contract.objects.create(token='C-OTHER')
+        client = APIClient()
+        client.force_authenticate(User.objects.create_superuser('admin-scope', 'admin-scope@test.local', 'x'))
+        url = '/claimrequest/claim-request-manage/contracts-export/'
+
+        # Sense abast, o amb tots dos alhora, no s'accepta.
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id]}, format='json').status_code, 400)
+
+        # Gestió creada: només els seus contractes.
+        claim_request = ClaimRequest.objects.create(token='CR-SCOPE')
+        response = client.post(url, {'contract_ids': [other_contract.id], 'claim_request_id': claim_request.id}, format='json')
+        self.assertEqual(response.status_code, 403)
+
+        # En crear la gestió: només els contractes que ha retornat la tasca de filtratge.
+        TaskResult.objects.create(
+            task_id='filter-task-test', status='SUCCESS', content_type='application/json', content_encoding='utf-8',
+            result=json.dumps({'contracts': [{'id': self.contract.id}]}),
+        )
+        scope = {'filter_task_id': 'filter-task-test'}
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id, other_contract.id], **scope}, format='json').status_code, 403)
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], **scope}, format='json').status_code, 202)
+        self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], 'filter_task_id': 'unknown'}, format='json').status_code, 400)
