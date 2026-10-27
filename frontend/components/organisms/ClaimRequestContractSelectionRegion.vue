@@ -159,9 +159,6 @@ const filteredContracts = computed(() => {
   });
 });
 
-// Exporta els contractes que es veuen al llistat (amb la cerca i els filtres aplicats).
-const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(filteredContracts.value.map(c => c.id));
-
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage;
   const end = start + itemsPerPage;
@@ -228,6 +225,15 @@ const filterSelectedContracts = computed(() => {
     .map(id => contracts.value.find(contract => contract.id === id))
     .filter(Boolean);
 });
+
+// Exporta tots els resultats de la pestanya activa, en l'ordre del llistat.
+const exportContracts = computed(() => {
+  if (selectedTypeTab.value === 'filter') return filterSelectedContracts.value;
+  if (selectedTypeTab.value === 'document') return documentSelectedContracts.value;
+  return filteredContracts.value;
+});
+
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(exportContracts.value.map(c => c.id));
 
 const hasNumericRangeFilter = (min, max) => {
   return Number(min) > 0 || Number(max) > 0;
@@ -510,7 +516,7 @@ onMounted(async () => {
             <span class="font-semibold tabular-nums text-slate-800">{{ filteredContracts.length }}</span>
           </span>
           <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
-            :disabled="loading || !filteredContracts.length"
+            :disabled="loading || !exportContracts.length"
             :export-name="[$t(title), request?.token].filter(Boolean).join(' – ')" />
         </div>
       </div>

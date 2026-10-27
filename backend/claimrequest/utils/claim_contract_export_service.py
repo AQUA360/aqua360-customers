@@ -8,7 +8,7 @@ from django.db.models import Count, Prefetch
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from billing.models import Invoice
+from billing.models import Invoice, Payment
 from billing.utils.joined_payment_service import CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS
 from contract.models import Contract
 from contract.utils.contract_csv_export import _person_label, _supply_point_address
@@ -24,24 +24,24 @@ def unpaid_invoices_count_by_contract_id(contract_ids):
     vw_contract_debt), sense comptar les factures de recàrrec per devolució
     (línia amb la PriceRate de `invoice_return_price_rate_token`).
     """
-    invoices = Invoice.objects.filter(
-        contract_id__in=contract_ids,
-        payments__status__isnull=False,
-        payments__amount__gt=0,
-    ).exclude(payments__status__token__in=CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS)
+    payments = Payment.objects.filter(
+        invoice__contract_id__in=contract_ids,
+        status__isnull=False,
+        amount__gt=0,
+    ).exclude(status__token__in=CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS)
 
     return_fee_price_rate_token = ConfigProject.objects.filter(
         token='invoice_return_price_rate_token'
     ).values_list('value', flat=True).first()
     if return_fee_price_rate_token:
         # Subconsulta d'ids: filtrar per `line_items__...` aquí duplicaria files al Count.
-        invoices = invoices.exclude(id__in=Invoice.objects.filter(
+        payments = payments.exclude(invoice_id__in=Invoice.objects.filter(
             contract_id__in=contract_ids,
             line_items__price_rate__token=return_fee_price_rate_token,
         ).values('id'))
 
-    rows = invoices.values('contract_id').annotate(total=Count('id', distinct=True))
-    return {row['contract_id']: row['total'] for row in rows}
+    rows = payments.values('invoice__contract_id').annotate(total=Count('invoice_id', distinct=True))
+    return {row['invoice__contract_id']: row['total'] for row in rows}
 
 
 def _supply_cut_date(contract):

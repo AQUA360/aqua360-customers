@@ -253,6 +253,52 @@ class ClaimContractsExportTests(TestCase):
 
         self.assertEqual(unpaid_invoices_count_by_contract_id([self.contract.id]), {self.contract.id: 2})
 
+    def test_unpaid_invoice_with_expired_and_paid_payments_is_counted_once(self):
+        from billing.models import Invoice, Payment, PaymentStatus
+        from claimrequest.utils.claim_contract_export_service import unpaid_invoices_count_by_contract_id
+
+        invoice = Invoice.objects.create(contract=self.contract)
+        for token, amount in (('-1', 10), ('-1', 5), ('0', 20)):
+            Payment.objects.create(
+                invoice=invoice, status=PaymentStatus.objects.get(token=token), amount=amount,
+            )
+
+        self.assertEqual(unpaid_invoices_count_by_contract_id([self.contract.id]), {self.contract.id: 3})
+
+    def test_exports_in_the_same_second_keep_separate_files_and_contents(self):
+        from io import BytesIO
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+
+        from django.utils import timezone
+        from openpyxl import load_workbook
+
+        from claimrequest.tasks import export_claim_contracts_task
+        from documentmanager.models import Document
+
+        now = timezone.now()
+        with TemporaryDirectory() as storage_path, self.settings(
+            DOCUMENT_STORAGE_PATH=storage_path, DOCUMENT_MANAGER_SERVICES={'claimrequest': 'hdd'},
+        ), patch('claimrequest.tasks.timezone.now', return_value=now), patch(
+            # Dues tasques poden llegir la mateixa versió abans de desar cap document.
+            'documentmanager.utils.main_utils.get_next_version', return_value=1,
+        ):
+            first = export_claim_contracts_task([self.contract.id])
+            second = export_claim_contracts_task([])
+            self.assertEqual(first['status'], 'success', first)
+            self.assertEqual(second['status'], 'success', second)
+
+            first_document = Document.objects.get(pk=first['document_id'])
+            second_document = Document.objects.get(pk=second['document_id'])
+            self.assertNotEqual(first['document_name'], second['document_name'])
+            self.assertNotEqual(first_document.location, second_document.location)
+            first_rows = list(load_workbook(BytesIO(Path(first_document.location).read_bytes())).active.values)
+            second_rows = list(load_workbook(BytesIO(Path(second_document.location).read_bytes())).active.values)
+            self.assertEqual(first_rows[1][0], self.contract.token)
+            self.assertEqual(len(first_rows), 2)
+            self.assertEqual(len(second_rows), 1)
+
     def test_supply_cut_date_only_for_open_cuts(self):
         import datetime
         from django.utils import timezone

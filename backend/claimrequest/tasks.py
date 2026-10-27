@@ -1123,7 +1123,7 @@ def export_claim_contracts_task(contract_ids):
             iter_objects_by_ids(claim_contracts_export_queryset(), contract_ids),
             claim_contracts_export_columns(contract_ids),
         )
-        filename = f"claim_contracts_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = f"claim_contracts_{timezone.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}.xlsx"
         document = upload_document(
             file=ContentFile(file_bytes, name=filename),
             entity="CLAIM_REQUEST",
