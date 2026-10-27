@@ -122,14 +122,41 @@ class SingleCompanyUntouchedTests(SimpleTestCase):
 
 @override_settings(DOMAIN_MEDIA='https://media.example')
 class CommunicationLetterCompanyTests(SimpleTestCase):
+    def test_letter_rejects_contracts_from_different_companies_before_rendering(self):
+        from communication.utils import communication_service as service
+
+        for company_ids in ([1, 2], [1, None], [None, 1]):
+            with self.subTest(company_ids=company_ids), ExitStack() as stack:
+                communication = MagicMock()
+                communication.contracts.values_list.return_value = company_ids
+                stack.enter_context(patch.object(service, 'use_multiple_companies', return_value=True))
+                stack.enter_context(patch.object(service, 'ConfigProject'))
+                files = stack.enter_context(patch.object(service, 'CommunicationFile'))
+                files.objects.get.return_value.communication = communication
+                values = stack.enter_context(patch.object(service, 'get_com_values'))
+                render = stack.enter_context(patch.object(service, 'render_to_string'))
+                pdf = stack.enter_context(patch.object(service, 'pisa'))
+                sign = stack.enter_context(patch.object(service, 'sign_pdf'))
+                upload = stack.enter_context(patch.object(service, 'upload_document'))
+
+                with self.assertRaisesMessage(ValueError, 'contracts from different companies'):
+                    service.get_communication_file(1)
+
+                values.assert_not_called()
+                render.assert_not_called()
+                pdf.CreatePDF.assert_not_called()
+                sign.assert_not_called()
+                upload.assert_not_called()
+
     def test_letter_identity_and_branding_follow_contract_company_with_fallbacks(self):
         from communication.utils import communication_service as service
 
-        for multiple, has_company, has_logo in (
-            (True, True, True), (True, True, False),
-            (True, False, False), (False, True, True),
+        for multiple, company_ids, has_logo in (
+            (True, [1], True), (True, [1, 1], True), (True, [1], False),
+            (True, [None], False), (True, [None, None], False),
+            (True, [], False), (False, [1], True), (False, [1, 2], True),
         ):
-            with self.subTest(multiple=multiple, has_company=has_company, has_logo=has_logo), ExitStack() as stack:
+            with self.subTest(multiple=multiple, company_ids=company_ids, has_logo=has_logo), ExitStack() as stack:
                 config_data = {
                     'name': 'Configured company', 'phone': '111',
                     'contact_email': 'config@example.test', 'address_complete': 'Config street',
@@ -145,21 +172,29 @@ class CommunicationLetterCompanyTests(SimpleTestCase):
                 contract_company.logo = MagicMock(name=contract_data['logo']) if has_logo else None
                 if has_logo:
                     contract_company.logo.name = contract_data['logo']
-                contract = MagicMock(company=contract_company if has_company else None, token='C1', total_persons=1)
-                contract.consumption_stats.exists.return_value = False
-                contract.supply_point_default.connection = None
+                contracts = []
+                for index, company_id in enumerate(company_ids, start=1):
+                    contract = MagicMock(
+                        company=contract_company if company_id else None,
+                        company_id=company_id, token=f'C{index}', total_persons=index,
+                    )
+                    contract.consumption_stats.exists.return_value = False
+                    contract.supply_point_default.connection = None
+                    contracts.append(contract)
+                contract = contracts[0] if contracts else None
                 communication = MagicMock(person=None, due_date=None, company_config_email=None, process_id=None)
                 communication.company_config.company_configs.all.return_value = MagicMock(
                     **{'__len__.return_value': 1, 'first.return_value': config_company})
                 communication.contracts.first.return_value = contract
                 communication.contracts.select_related.return_value.first.return_value = contract
-                communication.contracts.all.return_value = [contract]
+                communication.contracts.all.return_value = contracts
+                communication.contracts.values_list.return_value = company_ids
                 for relation in (communication.invoices, communication.readings):
                     relation.first.return_value = None
                     relation.all.return_value = []
                 message = communication.messages.get.return_value
                 message.subject = '%company.name'
-                message.body = '%company.phone %company.email %company.address_complete'
+                message.body = '%company.phone %company.email %company.address_complete %contract.token %contract.persons'
 
                 def mock(name, **kwargs):
                     return stack.enter_context(patch.object(service, name, **kwargs))
@@ -178,7 +213,7 @@ class CommunicationLetterCompanyTests(SimpleTestCase):
 
                 service.get_communication_file(1)
 
-                uses_contract = multiple and has_company
+                uses_contract = multiple and bool(company_ids) and company_ids[0] is not None
                 expected = contract_data if uses_contract else config_data
                 context = render.call_args.args[1]
                 self.assertEqual(render.call_args.args[0], 'basic_letter.html')
@@ -186,6 +221,12 @@ class CommunicationLetterCompanyTests(SimpleTestCase):
                 self.assertEqual(context['subject'], expected['name'])
                 for key in ('phone', 'contact_email', 'address_complete'):
                     self.assertIn(expected[key], context['body'])
+                if contracts:
+                    self.assertIn('<br>'.join(contract.token for contract in contracts), context['body'])
+                    total_persons = sum(contract.total_persons for contract in contracts)
+                    self.assertTrue(context['body'].endswith(f'{total_persons}</p>'))
+                if not multiple:
+                    communication.contracts.values_list.assert_not_called()
                 self.assertEqual(context['main_color'], '#333333' if uses_contract else '#111111')
                 self.assertEqual(context['secondary_color'], '#444444' if uses_contract else '#222222')
                 logo = contract_data['logo'] if uses_contract and has_logo else config_data['logo']
