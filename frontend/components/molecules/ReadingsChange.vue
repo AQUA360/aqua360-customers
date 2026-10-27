@@ -996,22 +996,29 @@ const fetchReadingFromSmartMetering = async () => {
     if (!canFetchFromSmartMetering.value) return;
 
     const reading = addedReadings.value[0];
+    const requestedMeterId = reading.meter_id;
+    const requestedDate = reading.reading_date;
     fetchingSmartMetering.value = true;
     try {
         const response = await $SmartMeteringApiService.getMeterReading({
-            meter_id: reading.meter_id,
-            date: reading.reading_date || format(new Date(), 'yyyy-MM-dd'),
+            meter_id: requestedMeterId,
+            date: requestedDate || format(new Date(), 'yyyy-MM-dd'),
             margin: 5,
         });
 
-        // The dialog may have been closed or reset while waiting for the response
-        if (!addedReadings.value.includes(reading)) return;
+        // The dialog may have been closed, reset or edited while waiting for the response
+        if (
+            !showAddingReadingDialog.value ||
+            !addedReadings.value.includes(reading) ||
+            reading.meter_id !== requestedMeterId ||
+            reading.reading_date !== requestedDate
+        ) return;
 
         if (response?.found && response.reading_value != null) {
             reading.reading_value = response.reading_value;
             // The initial reading date is fixed to the contract registration date
             if (response.reading_date && !reading.is_initial) {
-                reading.reading_date = format(new Date(response.reading_date), 'yyyy-MM-dd');
+                reading.reading_date = response.reading_date;
             }
             reading.origin = response.origin;
             addedIsEstimated.value = false;
