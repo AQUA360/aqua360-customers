@@ -28,7 +28,7 @@ class IncidentPagination(PageNumberPagination):
 
 class IncidentViewSet(viewsets.ModelViewSet):
   queryset = Incident.objects.filter(is_active=True).select_related(
-      'status', 'type', 'channel', 'assigned_to', 'contract', 'invoice', 'order_incident',
+      'status', 'type', 'channel', 'assigned_to', 'contract', 'invoice', 'order_incident', 'receipt_document',
   ).order_by('status__position', '-created_at')
   permission_classes = [IsAuthenticated, DjangoModelPermissions]
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]

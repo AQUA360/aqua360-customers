@@ -609,11 +609,19 @@ class CallRegisterSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         validated_data['user'] = user
         call = super().create(validated_data)
-        # Una trucada sortint vinculada a una incidència compta com a primera resposta
-        if call.incident and call.direction == CallRegister.DIRECTION_OUTBOUND:
+        # Una trucada sortint contestada i vinculada a una incidència compta com a
+        # primera resposta, si l'usuari pot modificar incidències
+        if (call.incident and call.direction == CallRegister.DIRECTION_OUTBOUND and call.answered
+                and user.has_perm('notification.change_incident')):
             from notification.utils.incident_utils import record_first_response
             record_first_response(call.incident, call.time_call)
         if call.callback_requested:
+            create_callback_task(call)
+        return call
+
+    def update(self, instance, validated_data):
+        call = super().update(instance, validated_data)
+        if call.callback_requested and not call.callback_task_id:
             create_callback_task(call)
         return call
 
@@ -627,9 +635,12 @@ def create_callback_task(call):
     from django.utils import timezone
     from coredata.utils.working_days import add_working_days, get_holidays
     from notification.models import CalendarTask
+    from notification.utils.incident_utils import incident_exploitation
 
+    # Festius propis de l'explotació de la incidència o, si no n'hi ha, del contracte
+    exploitation = incident_exploitation(call.incident or call)
     today = timezone.localdate()
-    is_working_day = today.weekday() < 5 and today not in get_holidays(today, today)
+    is_working_day = today.weekday() < 5 and today not in get_holidays(today, today, exploitation)
     contact = call.person_contact
     task = CalendarTask.objects.create(
         token=str(uuid.uuid4()),
@@ -637,7 +648,7 @@ def create_callback_task(call):
         description=call.comment,
         user=call.user,
         contract=call.contract,
-        set_date=today if is_working_day else add_working_days(today, 1),
+        set_date=today if is_working_day else add_working_days(today, 1, exploitation),
     )
     if call.incident:
         call.incident.tasks.add(task)

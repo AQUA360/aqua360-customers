@@ -190,9 +190,14 @@ class ExcludeContractSerializer(serializers.Serializer):
 
 
 def add_working_days(start_date, work_days):
-    # Dies hàbils comuns a tota l'aplicació (també descompta els festius configurats)
+    # Dies hàbils comuns a tota l'aplicació (també descompta els festius configurats).
+    # Conserva el tipus d'entrada: si rep un datetime, en manté l'hora.
+    import datetime as dt
     from coredata.utils.working_days import add_working_days as add_business_days
-    return add_business_days(start_date, work_days)
+    result = add_business_days(start_date, work_days)
+    if isinstance(start_date, dt.datetime):
+        return dt.datetime.combine(result, start_date.timetz())
+    return result
 
 def generate_claim_id():
     current_year = datetime.now().strftime('%y')

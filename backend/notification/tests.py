@@ -736,18 +736,43 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         from notification.models import Incident
         incident = self.incident(self.create_incident())
         request = mock.Mock(user=self.user)
+        # Una trucada no contestada no compta com a primera resposta
+        unanswered = CallRegisterSerializer(data={
+            'incident': incident.id, 'comment': 'No contesta', 'time_call': timezone.now().isoformat(),
+        }, context={'request': request})
+        self.assertTrue(unanswered.is_valid(), unanswered.errors)
+        unanswered = unanswered.save()
+        self.assertIsNone(Incident.objects.get(pk=incident.pk).first_response_at)
         serializer = CallRegisterSerializer(data={
             'incident': incident.id, 'comment': 'Truca de nou', 'time_call': timezone.now().isoformat(),
-            'callback_requested': True,
+            'answered': True, 'callback_requested': True,
         }, context={'request': request})
         self.assertTrue(serializer.is_valid(), serializer.errors)
         call = serializer.save()
         CallRegister.objects.create(comment='Altra', user=self.user)
         result = CallRegisterFilter({'incident': str(incident.id)}, queryset=CallRegister.objects.all()).qs
-        self.assertEqual(list(result), [call])
+        self.assertEqual(set(result), {call, unanswered})
         self.assertIsNotNone(Incident.objects.get(pk=incident.pk).first_response_at)
         self.assertIsNotNone(call.callback_task)
         self.assertIn(call.callback_task, incident.tasks.all())
+        # Demanar que el truquin en modificar la trucada també crea la tasca, un sol cop
+        for _ in range(2):
+            update = CallRegisterSerializer(unanswered, data={'callback_requested': True}, partial=True, context={'request': request})
+            self.assertTrue(update.is_valid(), update.errors)
+            update.save()
+        unanswered.refresh_from_db()
+        self.assertIsNotNone(unanswered.callback_task)
+        self.assertEqual(incident.tasks.count(), 2)
+
+    def test_legacy_working_days_keep_input_type(self):
+        """Check that claim requests and daily documents still get a datetime when they pass one."""
+        import datetime
+        from claimrequest.serializers.claim_request_save_serializer import add_working_days as claim_add
+        from statistics.utils.daily_document_service import add_working_days as daily_add
+        start = datetime.datetime(2026, 10, 23, 10, 30)  # divendres
+        for add in (claim_add, daily_add):
+            self.assertEqual(add(start, 1), datetime.datetime(2026, 10, 26, 10, 30))
+            self.assertEqual(add(start.date(), 1), datetime.date(2026, 10, 26))
 
     def test_blocking_incident_on_contract(self):
         """Check that an open incident of a blocking type is exposed for the contract."""

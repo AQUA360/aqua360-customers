@@ -47,8 +47,16 @@ const exportColumns = computed(() => [
 
 const getData = async () => {
     try {
-        const response = await $CallRegisterApiService.getAll('', 1, props.contract_id || null, props.person_id || null, props.incident_id || null);
-        localData.value = response.results;
+        // Es recuperen totes les pàgines perquè la llista, el recompte i l'export no en perdin cap
+        const results = [];
+        let page = 1;
+        let response;
+        do {
+            response = await $CallRegisterApiService.getAll('', page, props.contract_id || null, props.person_id || null, props.incident_id || null);
+            results.push(...(response.results || []));
+            page += 1;
+        } while (response.next);
+        localData.value = results;
         emit('update:count', localData.value.length);
     } catch (error) {
         console.error(error);

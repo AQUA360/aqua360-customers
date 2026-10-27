@@ -16,17 +16,20 @@ const { $ContractApiService } = useNuxtApp();
 const { t } = useI18n();
 
 const loading = ref(true);
+const loadError = ref(false);
 const contract = ref(null);
 const newCall = ref(null);
 
-const contacts = computed(() => (contract.value?.contacts || []).filter(contact => contact.phone));
+const contacts = computed(() => (contract.value?.contacts || []).filter(contact => contact.phone && contact.is_active !== false));
 
 const getData = async () => {
   loading.value = true;
+  loadError.value = false;
   try {
     contract.value = props.incident.contract ? await $ContractApiService.getDetail(props.incident.contract.id) : null;
   } catch (err) {
     console.error('Error obtenint el contracte:', err);
+    loadError.value = true;
   } finally {
     loading.value = false;
   }
@@ -52,6 +55,11 @@ onMounted(getData);
   <div>
     <div v-if="loading" class="flex justify-center items-center h-48">
       <span class="text-lg text-gray-600">{{ $t('common.loading') }}...</span>
+    </div>
+
+    <div v-else-if="loadError" class="text-sm text-red-600">
+      {{ t('common.error_loading_data') }}
+      <button class="text-sky-500 underline ml-2" @click="getData">{{ t('common.retry') }}</button>
     </div>
 
     <AddNewCall v-else-if="newCall" :data="newCall" @exit="handleExit" />

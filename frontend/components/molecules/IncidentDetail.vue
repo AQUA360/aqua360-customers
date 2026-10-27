@@ -55,12 +55,32 @@ const formatDue = (data) => {
   return data.type?.due_unit === 'hours' ? formatDateTime(data.due_at) : formatDate(data.due_at);
 };
 
+// El servidor retorna el fitxer sense tipus: es marca com a PDF perquè el navegador el mostri
+const receiptUrl = async () => {
+  const file = await $DocumentManagerApiService.viewDocument(localData.value.receipt_document);
+  return URL.createObjectURL(new Blob([file], { type: 'application/pdf' }));
+};
+
 const openReceipt = async () => {
   try {
-    const file = await $DocumentManagerApiService.viewDocument(localData.value.receipt_document);
-    window.open(URL.createObjectURL(file), '_blank');
+    const url = await receiptUrl();
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (err) {
     console.error('Error obrint el justificant:', err);
+  }
+};
+
+const downloadReceipt = async () => {
+  try {
+    const url = await receiptUrl();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = localData.value.receipt_document_name || `Justificant_registre_incidencia_${localData.value.token}.pdf`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 250);
+  } catch (err) {
+    console.error('Error descarregant el justificant:', err);
   }
 };
 
@@ -131,6 +151,7 @@ watch(() => props.id, (newId, oldId) => {
       <FieldDetail v-if="localData.contact_email" :label='$t("incident_block.contact_email")' :value="localData.contact_email" />
       <FieldDetail v-if="localData.receipt_document" :label='$t("incident_block.receipt")'>
         <button class="text-sky-500 underline" @click="openReceipt">{{ $t('incident_block.view_receipt') }}</button>
+        <button class="text-sky-500 underline ml-2" @click="downloadReceipt">{{ $t('incident_block.download_receipt') }}</button>
         <span v-if="localData.receipt_sent_at" class="text-slate-400 ml-2">({{ $t('incident_block.sent') }} {{ formatDateTime(localData.receipt_sent_at) }})</span>
       </FieldDetail>
       <FieldDetail :label='$t("common.description")' class="col-span-2">

@@ -15,7 +15,7 @@ from coredata.models import CallRegister
 from coredata.utils.working_days import count_working_days
 from logger.models import LogIncidentStatusChange
 from notification.models import Incident
-from notification.utils.incident_utils import get_closed_status_token, is_overdue
+from notification.utils.incident_utils import get_closed_status_token, incident_exploitation, is_overdue
 from statistics.utils.report_advanced_billing_service import parse_date
 from statistics.views.reports_views import add_row, adjust_column_widths, save_report
 
@@ -47,15 +47,25 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
         end_date = parse_date(date_range[1], make_aware=True)
         if not start_date or not end_date:
             return None, None, None
-        end_date = end_date + datetime.timedelta(days=1)
+        # Límit exclusiu: l'inici del dia següent a la data final, tant si arriba
+        # com a data sola com amb l'hora de final de dia
+        end_date = timezone.make_aware(datetime.datetime.combine(end_date.date() + datetime.timedelta(days=1), datetime.time.min))
 
         closed_token = get_closed_status_token()
         now = timezone.now()
         incidents = Incident.objects.filter(
             created_at__gte=start_date, created_at__lt=end_date, is_active=True,
-        ).select_related('type', 'status', 'channel', 'assigned_to')
+        ).select_related(
+            'type', 'status', 'channel', 'assigned_to',
+            'contract__supply_point_default__connection__exploitation',
+            'supply_point__connection__exploitation', 'cluster__connection__exploitation',
+        )
+        calls = CallRegister.objects.filter(
+            direction=CallRegister.DIRECTION_INBOUND, incoming_at__gte=start_date, incoming_at__lt=end_date,
+        )
         if exploitation_id and exploitation_id != 'all':
             incidents = incidents.filter(contract__supply_point_default__connection__exploitation_id=exploitation_id)
+            calls = calls.filter(contract__supply_point_default__connection__exploitation_id=exploitation_id)
 
         reopened_ids = set(
             LogIncidentStatusChange.objects.filter(
@@ -71,13 +81,14 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
                 task.update_state(state='PROGRESS', meta={
                     'current': counter, 'total': total, 'percent': round(counter * 100 / total, 2) if total else 0.0})
             created = timezone.localtime(incident.created_at).date()
-            response_days = count_working_days(created, timezone.localtime(incident.first_response_at).date()) if incident.first_response_at else None
-            resolution_days = count_working_days(created, timezone.localtime(incident.closed_at).date()) if incident.closed_at else None
+            exploitation = incident_exploitation(incident)
+            response_days = count_working_days(created, timezone.localtime(incident.first_response_at).date(), exploitation) if incident.first_response_at else None
+            resolution_days = count_working_days(created, timezone.localtime(incident.closed_at).date(), exploitation) if incident.closed_at else None
             on_time = incident.closed_on_time
             overdue = is_overdue(incident, closed_token, now)
 
-            for key, label in (('type', incident.type.name if incident.type else _("Sense tipus")),
-                               ('channel', incident.channel.name if incident.channel else _("Sense canal"))):
+            for key, label in (('type', (incident.type.name if incident.type else None) or _("Sense tipus")),
+                               ('channel', (incident.channel.name if incident.channel else None) or _("Sense canal"))):
                 data = groups[key].setdefault(label, {
                     'total': 0, 'closed': 0, 'on_time': 0, 'late': 0, 'overdue': 0, 'reopened': 0,
                     'response': [], 'resolution': [],
@@ -138,9 +149,6 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
         adjust_column_widths(detail)
 
         # Atenció telefònica: només les trucades entrants amb marques de temps (centraleta)
-        calls = CallRegister.objects.filter(
-            direction=CallRegister.DIRECTION_INBOUND, incoming_at__gte=start_date, incoming_at__lt=end_date,
-        )
         waits = [
             (call.answered_at - call.incoming_at).total_seconds()
             for call in calls.filter(answered_at__isnull=False).only('incoming_at', 'answered_at')

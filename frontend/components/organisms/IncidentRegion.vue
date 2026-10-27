@@ -52,7 +52,8 @@ const callNumber = ref(0)
 const callReload = ref(false)
 const timelineNumber = ref(0)
 const timelineReload = ref(false)
-const incidentStatusClosedToken = ref(null)
+// Mateix valor per defecte que el backend si la configuració no existeix
+const incidentStatusClosedToken = ref('2')
 
 const SubRegion = ref(props.isSubRegionOpen);
 const showRegionDetailComponent = ref(null);
@@ -194,7 +195,9 @@ watch(() => props.id, () => {
 
 onMounted(async () => {
   $ConfigProjectApiService.get('incident_status_closed_token').then(token => {
-    incidentStatusClosedToken.value = token || null;
+    incidentStatusClosedToken.value = token || '2';
+  }).catch(() => {
+    incidentStatusClosedToken.value = '2';
   });
   await getPermissions();
   if (objectPermissions.value?.can_view) {

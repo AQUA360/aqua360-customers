@@ -68,6 +68,7 @@ class IncidentSerializer(OverdueMixin, serializers.ModelSerializer):
     deleted_by = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
     is_overdue = serializers.SerializerMethodField()
     closed_on_time = serializers.BooleanField(read_only=True)
+    receipt_document_name = serializers.CharField(source='receipt_document.document_name', read_only=True, default=None)
 
     class Meta:
         model = Incident

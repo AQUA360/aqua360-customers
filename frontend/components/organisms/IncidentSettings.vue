@@ -51,18 +51,21 @@ const getHolidays = async () => {
 const getData = async () => {
   loading.value = true;
   try {
-    const [typeList, statusList, userList, groupList, exploitationList] = await Promise.all([
+    // Cada secció es carrega per separat: sense permís per veure usuaris o grups,
+    // la resta de la configuració es pot continuar fent servir
+    const [typeList, statusList, userList, groupList, exploitationList] = await Promise.allSettled([
       fetchList('notification/incident-type'),
       fetchList('notification/incident-status'),
       $UserApiService.getAll(),
       $GroupApiService.getAll(),
       $ExploitationApiService.getAll(),
     ]);
-    types.value = typeList;
-    statuses.value = statusList;
-    users.value = userList.results.map(user => ({ code: user.id, label: user.username }));
-    groups.value = groupList.results.map(group => ({ code: group.id, label: group.name }));
-    exploitations.value = exploitationList.results.map(item => ({ code: item.id, label: item.name }));
+    const value = (result) => (result.status === 'fulfilled' ? result.value : null);
+    types.value = value(typeList) || [];
+    statuses.value = value(statusList) || [];
+    users.value = (value(userList)?.results || []).map(user => ({ code: user.id, label: user.username }));
+    groups.value = (value(groupList)?.results || []).map(group => ({ code: group.id, label: group.name }));
+    exploitations.value = (value(exploitationList)?.results || []).map(item => ({ code: item.id, label: item.name }));
     await getHolidays();
   } catch (err) {
     console.error('Error carregant la configuració d\'incidències:', err);

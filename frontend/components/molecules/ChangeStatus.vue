@@ -223,8 +223,9 @@ const doSaveChanges = async () => {
     'close_associated_orders': closeAssociatedOrders
   }
 
-  // Només enviem el motiu si s'ha omplert, per no esborrar el que ja tingui l'objecte.
-  if (reason.value.trim() !== '') {
+  // Només enviem el motiu si el camp és visible i s'ha omplert, per no esborrar el que ja
+  // tingui l'objecte ni desar la plantilla de resolució en un estat que no és de tancament.
+  if (showReason.value && reason.value.trim() !== '') {
     payload['reason'] = reason.value;
   }
 

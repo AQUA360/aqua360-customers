@@ -397,7 +397,8 @@ def generate_receipt(incident):
     status = _create_pdf_with_table_rowheight_retry(build_receipt_html(incident), buffer)
     if status.err:
         raise Exception("Error generating incident receipt PDF")
-    filename = f"justificant_{incident.token}.pdf"
+    # Nom descriptiu i amb extensió perquè es reconegui com a PDF en descarregar-lo
+    filename = f"Justificant_registre_incidencia_{incident.token}.pdf"
     document = upload_document(
         file=ContentFile(buffer.getvalue(), name=filename),
         entity="INCIDENT",
@@ -429,7 +430,7 @@ def send_receipt(incident):
     with translation.override(settings.LANGUAGE_CODE):
         subject = _("Receipt of your request %(reference)s") % {'reference': incident.token}
         html = build_receipt_html(incident)
-    send_staff_email(email, subject, html, attachments=[(document.document_name or f"justificant_{incident.token}.pdf", pdf)])
+    send_staff_email(email, subject, html, attachments=[(document.document_name or f"Justificant_registre_incidencia_{incident.token}.pdf", pdf)])
     Incident.objects.filter(pk=incident.pk).update(receipt_sent_at=timezone.now())
     return True
 
