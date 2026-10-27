@@ -12,7 +12,9 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from django.utils import translation
 from rest_framework.test import APIClient
@@ -43,6 +45,7 @@ from coredata.models import (
     StreetType,
 )
 from contract.models import (
+    ContractDataChange,
     Contract,
     ContractPriceRate,
     ContractRequest,
@@ -867,6 +870,125 @@ class SepaDocumentUploadTests(TestCase):
         self.assertEqual(linked.file_id, documents.last().id)
         self.assertEqual(linked.file.parent_document_id, documents.first().id)
         self.assertTrue(linked.checked)
+
+    def test_upload_locks_payment_before_calculating_document_version(self):
+        from documentmanager.utils.main_utils import upload_document
+
+        outer_savepoints = list(connection.savepoint_ids)
+        with CaptureQueriesContext(connection) as queries:
+            def upload_with_lock(*args, **kwargs):
+                self.assertEqual(len(connection.savepoint_ids), len(outer_savepoints) + 1)
+                self.assertTrue(any(
+                    '"billing_generalpayment"' in query["sql"]
+                    and "FOR UPDATE" in query["sql"]
+                    for query in queries.captured_queries
+                ))
+                return upload_document(*args, **kwargs)
+
+            with patch("ov.views.upload_document", side_effect=upload_with_lock):
+                response = self._upload()
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_upload_rejects_iban_changed_before_payment_lock(self):
+        new_bank = PersonBank.objects.create(
+            person=self.holder, iban="ES00000000000000000000", name="New holder"
+        )
+        select_for_update = GeneralPayment.objects.select_for_update
+
+        def change_before_lock():
+            GeneralPayment.objects.filter(pk=self.payment.pk).update(IBAN=new_bank)
+            return select_for_update()
+
+        with patch(
+            "ov.views.GeneralPayment.objects.select_for_update", side_effect=change_before_lock
+        ), patch("ov.views.upload_document") as upload:
+            response = self._upload()
+
+        self.assertEqual(response.status_code, 400)
+        upload.assert_not_called()
+        self.assertFalse(Document.objects.filter(entity="SEPA").exists())
+
+    def test_upload_uses_iban_and_folder_from_locked_payment(self):
+        from documentmanager.utils.main_utils import upload_document
+
+        new_bank = PersonBank.objects.create(
+            person=self.holder, iban="ES00000000000000000000", name="New holder"
+        )
+        select_for_update = GeneralPayment.objects.select_for_update
+
+        def change_before_lock():
+            GeneralPayment.objects.filter(pk=self.payment.pk).update(IBAN=new_bank)
+            return select_for_update()
+
+        with patch(
+            "ov.views.GeneralPayment.objects.select_for_update", side_effect=change_before_lock
+        ), patch("ov.views.upload_document", wraps=upload_document) as upload:
+            response = self._upload(iban=new_bank.iban)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(upload.call_args.args[5], "NEW_HOLDER")
+
+    def test_update_iban_locks_and_modifies_reloaded_payment(self):
+        from ov.serializers import UpdateBillingDataOVIBANSerializer
+
+        contract = Contract.objects.select_related("payment__IBAN").get(pk=self.contract.pk)
+        current_bank = PersonBank.objects.create(
+            person=self.holder, iban="ES00000000000000000000", name="Current holder"
+        )
+        GeneralPayment.objects.filter(pk=self.payment.pk).update(
+            IBAN=current_bank, dir3="concurrent change"
+        )
+        serializer = UpdateBillingDataOVIBANSerializer(data={
+            "iban": "es11111111111111111111", "nif": self.holder.token,
+            "iban_holder_name": "New holder", "iban_holder_dni": self.holder.token,
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        outer_savepoints = list(connection.savepoint_ids)
+        save = PersonBank.save
+
+        with CaptureQueriesContext(connection) as queries:
+            def save_with_payment_lock(bank, *args, **kwargs):
+                self.assertEqual(len(connection.savepoint_ids), len(outer_savepoints) + 1)
+                self.assertTrue(any(
+                    '"billing_generalpayment"' in query["sql"] and "FOR UPDATE" in query["sql"]
+                    for query in queries.captured_queries
+                ))
+                return save(bank, *args, **kwargs)
+
+            with patch.object(PersonBank, "save", save_with_payment_lock):
+                updated = serializer.update(contract, serializer.validated_data)
+
+        self.payment.refresh_from_db()
+        current_bank.refresh_from_db()
+        self.person_bank.refresh_from_db()
+        self.assertEqual(self.payment.IBAN.iban, "ES11111111111111111111")
+        self.assertEqual(updated.payment.IBAN_id, self.payment.IBAN_id)
+        self.assertEqual(self.payment.dir3, "concurrent change")
+        self.assertFalse(current_bank.is_active)
+        self.assertFalse(current_bank.is_default)
+        self.assertIsNotNone(current_bank.deactivated_at)
+        self.assertTrue(self.person_bank.is_active)
+        change = ContractDataChange.objects.get(contract=self.contract)
+        self.assertEqual(change.previous_payment_id, current_bank.pk)
+        self.assertEqual(change.new_payment_id, self.payment.IBAN_id)
+
+    def test_failed_link_replacement_rolls_back_new_document_and_keeps_old_link(self):
+        self.assertEqual(self._upload(content=b"original").status_code, 201)
+        original = GeneralPaymentSepaDocument.objects.get(general_payment=self.payment)
+        document_ids = list(Document.objects.values_list("pk", flat=True))
+
+        with patch(
+            "ov.views.GeneralPaymentSepaDocument.objects.create",
+            side_effect=RuntimeError("link replacement failed"),
+        ), self.assertRaisesMessage(RuntimeError, "link replacement failed"):
+            self._upload(content=b"replacement")
+
+        self.assertEqual(list(Document.objects.values_list("pk", flat=True)), document_ids)
+        self.assertEqual(
+            GeneralPaymentSepaDocument.objects.get(general_payment=self.payment).pk,
+            original.pk,
+        )
 
     def test_reupload_with_different_filename_replaces_link(self):
         self._upload(filename="first.pdf")
@@ -2020,6 +2142,9 @@ class QuickPayOVTests(TestCase):
                 token=token, defaults={"value": value}
             )
 
+        cls.paid_payment_status, _ = PaymentStatus.objects.get_or_create(
+            token="0", defaults={"name": "Pagat"}
+        )
         cls.holder = Person.objects.create(
             token="12345678A", name="Test", surname="QuickPay"
         )
@@ -2253,6 +2378,52 @@ class QuickPayOVTests(TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data["error"], "Invoice is not payable")
         self.assertFalse(self.payable.payments.exists())
+
+    def test_missing_empty_or_unknown_paid_payment_status_config_returns_409(self):
+        payment_ids = list(self.payable.payments.values_list("pk", flat=True))
+        for value in (None, "", "unknown-payment-status"):
+            with self.subTest(value=value):
+                ConfigProject.objects.filter(token="payment_status_paid_token").delete()
+                if value is not None:
+                    ConfigProject.objects.create(token="payment_status_paid_token", value=value)
+
+                response = self._post()
+
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.data["error"], "Invoice is not payable")
+                self.assertEqual(list(self.payable.payments.values_list("pk", flat=True)), payment_ids)
+
+        ConfigProject.objects.update_or_create(
+            token="payment_status_paid_token", defaults={"value": "0"}
+        )
+        self.assertEqual(self._post().status_code, 200)
+        self.assertEqual(list(self.payable.payments.values_list("pk", flat=True)), payment_ids)
+
+    def test_missing_paid_payment_status_row_blocks_until_restored(self):
+        self.paid_payment_status.delete()
+        self.assertEqual(self._post().status_code, 409)
+
+        PaymentStatus.objects.create(token="0", name="Pagat")
+        self.assertEqual(self._post().status_code, 200)
+
+    def test_only_paid_payments_return_409_even_with_stale_invoice_balance(self):
+        paid_status = PaymentStatus.objects.create(token="SETTLED", name="Pagat")
+        ConfigProject.objects.filter(token="payment_status_paid_token").update(value="SETTLED")
+        self.payable.payments.update(status=paid_status)
+        Payment.objects.create(invoice=self.payable, amount=Decimal("1.00"), status=paid_status)
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["error"], "Invoice is not payable")
+        self.assertEqual(response.json()["left_to_pay"], 101.73)
+
+    def test_mixed_paid_and_unpaid_payments_remain_payable(self):
+        Payment.objects.create(
+            invoice=self.payable, amount=Decimal("1.00"), status=self.paid_payment_status
+        )
+
+        self.assertEqual(self._post().status_code, 200)
 
     def test_null_left_to_pay_returns_409_with_null_amount(self):
         Invoice.objects.filter(pk=self.payable.pk).update(left_to_pay=None)
