@@ -1260,6 +1260,8 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
         floor = address_data.get('floor') or ''
         door = address_data.get('door') or ''
         stair = address_data.get('stair') or ''
+        # L'ampliació no es normalitza a '' perquè les adreces existents la tenen a NULL
+        address_extra = address_data.get('address_extra') or None
 
         # Create Address
         if Address.objects.filter(street=street,
@@ -1271,7 +1273,8 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
             building=building,
             floor=floor,
             door=door,
-            stair=stair).exists():
+            stair=stair,
+            address_extra=address_extra).exists():
             
             address = Address.objects.filter(street=street,
                 street_number=street_number,
@@ -1282,7 +1285,8 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
                 building=building,
                 floor=floor,
                 door=door,
-                stair=stair).first()
+                stair=stair,
+                address_extra=address_extra).first()
         else:
             address = Address.objects.create(
                 street=street,
@@ -1294,7 +1298,8 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
                 building=building,
                 floor=floor,
                 door=door,
-                stair=stair
+                stair=stair,
+                address_extra=address_extra
             )
         
         return address
