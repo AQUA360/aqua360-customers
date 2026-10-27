@@ -1,7 +1,6 @@
 import logging
 
 from django.db import transaction
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import serializers, status, views
@@ -41,14 +40,18 @@ class BillingDocumentDownloadSerializer(serializers.ModelSerializer):
     source = serializers.SerializerMethodField()
     billing_ids = serializers.SerializerMethodField()
     billing_tokens = serializers.SerializerMethodField()
+    communication_process_ids = serializers.SerializerMethodField()
+    communication_process_tokens = serializers.SerializerMethodField()
     communication_process_token = serializers.SerializerMethodField()
 
     class Meta:
         model = BillingDocumentDownload
         fields = [
             'id', 'source', 'billing_ids', 'billing_tokens', 'communication_process',
+            'communication_process_ids', 'communication_process_tokens',
             'communication_process_token', 'payment_type_tokens', 'delivery', 'ordering',
-            'descending', 'invoice_count', 'status', 'error_message', 'document_id',
+            'descending', 'batch_mode', 'batch_size', 'batch_count', 'invoice_count',
+            'status', 'error_message', 'document_id',
             'document_name', 'created_at', 'completed_at', 'requested_by_name',
         ]
 
@@ -65,7 +68,7 @@ class BillingDocumentDownloadSerializer(serializers.ModelSerializer):
         return obj.document.document_name
 
     def get_source(self, obj):
-        return 'process' if obj.communication_process_id else 'billings'
+        return 'process' if self._processes(obj) else 'billings'
 
     def _billings(self, obj):
         billings = list(obj.billings.all())
@@ -81,11 +84,23 @@ class BillingDocumentDownloadSerializer(serializers.ModelSerializer):
     def get_billing_tokens(self, obj):
         return [billing.token for billing in self._billings(obj)]
 
+    def _processes(self, obj):
+        processes = list(obj.communication_processes.all())
+        if processes:
+            return processes
+        if obj.communication_process_id and obj.communication_process is not None:
+            return [obj.communication_process]
+        return []
+
+    def get_communication_process_ids(self, obj):
+        return [process.id for process in self._processes(obj)]
+
+    def get_communication_process_tokens(self, obj):
+        return [process.token for process in self._processes(obj) if process.token]
+
     def get_communication_process_token(self, obj):
-        process = obj.communication_process
-        if process is None:
-            return None
-        return process.token
+        tokens = self.get_communication_process_tokens(obj)
+        return ', '.join(tokens) or None
 
 
 def reconcile_download(record):
@@ -113,8 +128,11 @@ def reconcile_download(record):
 def _options_error(exc):
     messages = {
         'delivery': _("El filtre de carta o correu només es pot fer des d'un procés de comunicació."),
-        'source': _("Selecciona facturacions o un procés de comunicació."),
+        'source': _("Selecciona facturacions o processos de comunicació."),
         'billing_ids': _("Les facturacions indicades no són vàlides."),
+        'communication_process_ids': _("Els processos de comunicació indicats no són vàlids."),
+        'batch_mode': _("La manera d'agrupar els lots no és vàlida."),
+        'batch_size': _("Indica un nombre de documents o de MB més gran que zero."),
     }
     return Response(
         {"error": exc.field, "message": messages.get(exc.field, _("Els filtres de la descàrrega no són vàlids."))},
@@ -126,7 +144,7 @@ def _history():
     records = list(
         BillingDocumentDownload.objects.select_related(
             'requested_by', 'document', 'billing', 'communication_process',
-        ).prefetch_related('billings')[:100]
+        ).prefetch_related('billings', 'communication_processes')[:100]
     )
     for record in records:
         reconcile_download(record)
@@ -142,7 +160,7 @@ class BillingDocumentDownloadPreviewView(views.APIView):
             count = _selection_count(options)
         except DownloadOptionsError as exc:
             return _options_error(exc)
-        return Response({"count": count})
+        return Response({"count": count, "batch_count": _batch_count(count, options)})
 
 
 class BillingDocumentDownloadView(views.APIView):
@@ -157,13 +175,19 @@ class BillingDocumentDownloadView(views.APIView):
         except DownloadOptionsError as exc:
             return _options_error(exc)
 
-        process = None
+        processes = []
         billings = []
         try:
-            if options['communication_process_id']:
-                process = get_object_or_404(CommunicationProcess, id=options['communication_process_id'])
+            if options['communication_process_ids']:
+                found = {
+                    process.id: process
+                    for process in CommunicationProcess.objects.filter(id__in=options['communication_process_ids'])
+                }
+                if len(found) != len(options['communication_process_ids']):
+                    raise DownloadOptionsError('communication_process_ids')
+                processes = [found[process_id] for process_id in options['communication_process_ids']]
                 count = len(ordered_process_files(
-                    process.id,
+                    options['communication_process_ids'],
                     payment_type_tokens=options['payment_type_tokens'],
                     delivery=options['delivery'],
                     ordering=options['ordering'],
@@ -197,17 +221,21 @@ class BillingDocumentDownloadView(views.APIView):
         with transaction.atomic():
             record = BillingDocumentDownload.objects.create(
                 billing=billings[0] if len(billings) == 1 else None,
-                communication_process=process,
+                communication_process=processes[0] if len(processes) == 1 else None,
                 requested_by=request.user if request.user.is_authenticated else None,
                 payment_type_tokens=options['payment_type_tokens'],
                 delivery=options['delivery'],
                 ordering=options['ordering'],
                 descending=options['descending'],
+                batch_mode=options['batch_mode'],
+                batch_size=options['batch_size'],
                 invoice_count=count,
             )
             if billings:
                 record.billings.set(billings)
-            name = _download_name(billings, process)
+            if processes:
+                record.communication_processes.set(processes)
+            name = _download_name(billings, processes)
             job = enqueue_export(
                 request,
                 generate_billing_document_download,
@@ -216,12 +244,14 @@ class BillingDocumentDownloadView(views.APIView):
                 args=[record.id],
                 params={
                     "billing_ids": [billing.id for billing in billings],
-                    "communication_process_id": process.id if process else None,
+                    "communication_process_ids": [process.id for process in processes],
                     "download_id": record.id,
                     "delivery": options['delivery'],
                     "ordering": options['ordering'],
                     "descending": options['descending'],
                     "payment_type_tokens": options['payment_type_tokens'],
+                    "batch_mode": options['batch_mode'],
+                    "batch_size": options['batch_size'],
                     "invoice_count": count,
                 },
             )
@@ -234,10 +264,12 @@ class BillingDocumentDownloadView(views.APIView):
 
 
 def _selection_count(options):
-    if options['communication_process_id']:
-        get_object_or_404(CommunicationProcess, id=options['communication_process_id'])
+    if options['communication_process_ids']:
+        found = CommunicationProcess.objects.filter(id__in=options['communication_process_ids']).count()
+        if found != len(options['communication_process_ids']):
+            raise DownloadOptionsError('communication_process_ids')
         return len(ordered_process_files(
-            options['communication_process_id'],
+            options['communication_process_ids'],
             payment_type_tokens=options['payment_type_tokens'],
             delivery=options['delivery'],
             ordering=options['ordering'],
@@ -254,11 +286,19 @@ def _selection_count(options):
     ).count()
 
 
-def _download_name(billings, process):
-    if process is not None:
+def _batch_count(count, options):
+    if options['batch_mode'] != BillingDocumentDownload.BATCH_COUNT or not count:
+        return None
+    size = options['batch_size']
+    return (count + size - 1) // size
+
+
+def _download_name(billings, processes):
+    if processes:
         name = str(_("Procés"))
-        if process.token:
-            name = f"{name} {process.token}"
+        tokens = [process.token for process in processes if process.token]
+        if tokens:
+            name = f"{name} {', '.join(tokens)}"
         return name
     name = str(_("Factures"))
     tokens = [billing.token for billing in billings if billing.token]

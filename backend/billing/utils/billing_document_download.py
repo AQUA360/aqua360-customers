@@ -21,6 +21,12 @@ ORDER_CONTRACT_TOKEN = BillingDocumentDownload.ORDER_CONTRACT_TOKEN
 ORDER_INVOICE_CODE = BillingDocumentDownload.ORDER_INVOICE_CODE
 ORDERINGS = {ORDER_CONTACT_ADDRESS, ORDER_CONTRACT_TOKEN, ORDER_INVOICE_CODE}
 
+BATCH_NONE = BillingDocumentDownload.BATCH_NONE
+BATCH_COUNT = BillingDocumentDownload.BATCH_COUNT
+BATCH_SIZE = BillingDocumentDownload.BATCH_SIZE
+BATCH_MODES = {BATCH_NONE, BATCH_COUNT, BATCH_SIZE}
+MAX_BATCH_SIZE = 100000
+
 
 class DownloadOptionsError(ValueError):
     def __init__(self, field):
@@ -57,12 +63,38 @@ def parse_download_options(data):
     elif not isinstance(descending, bool):
         raise DownloadOptionsError('descending')
 
+    batch_mode = data.get('batch_mode') or BATCH_NONE
+    if isinstance(batch_mode, str):
+        batch_mode = batch_mode.strip().lower()
+    if batch_mode not in BATCH_MODES:
+        raise DownloadOptionsError('batch_mode')
+    batch_size = None
+    if batch_mode != BATCH_NONE:
+        batch_size = _positive_int(data.get('batch_size'), 'batch_size')
+
     return {
         'payment_type_tokens': tokens,
         'delivery': delivery,
         'ordering': ordering,
         'descending': descending,
+        'batch_mode': batch_mode,
+        'batch_size': batch_size,
     }
+
+
+def _positive_int(raw, field):
+    if isinstance(raw, bool) or raw in (None, ''):
+        raise DownloadOptionsError(field)
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw.isdigit():
+            raise DownloadOptionsError(field)
+        raw = int(raw)
+    elif not isinstance(raw, int):
+        raise DownloadOptionsError(field)
+    if raw < 1 or raw > MAX_BATCH_SIZE:
+        raise DownloadOptionsError(field)
+    return raw
 
 
 def _int_ids(raw, field):
@@ -92,24 +124,24 @@ def _int_ids(raw, field):
 
 
 def parse_download_request(data):
-    """Origen excloent: facturacions o un procés. El canal només val amb procés."""
+    """Origen excloent: facturacions o processos. El canal només val amb processos."""
     options = parse_download_options(data)
     data = data or {}
     billing_ids = _int_ids(data.get('billing_ids'), 'billing_ids')
-    process_raw = data.get('communication_process_id')
-    if process_raw in (None, '', 'null'):
-        process_id = None
-    else:
-        process_id = _int_ids(process_raw, 'communication_process_id')
-        process_id = process_id[0] if process_id else None
+    process_ids = _int_ids(data.get('communication_process_ids'), 'communication_process_ids')
+    legacy = data.get('communication_process_id')
+    if legacy not in (None, '', 'null'):
+        for process_id in _int_ids(legacy, 'communication_process_id'):
+            if process_id not in process_ids:
+                process_ids.append(process_id)
 
-    if bool(billing_ids) == bool(process_id):
+    if bool(billing_ids) == bool(process_ids):
         raise DownloadOptionsError('source')
     if billing_ids and options['delivery'] != DELIVERY_ALL:
         raise DownloadOptionsError('delivery')
 
     options['billing_ids'] = billing_ids
-    options['communication_process_id'] = process_id
+    options['communication_process_ids'] = process_ids
     return options
 
 
@@ -269,11 +301,13 @@ def _sort_key(comm_file, ordering, descending):
     )
 
 
-def ordered_process_files(process_id, *, payment_type_tokens=None, delivery=DELIVERY_ALL,
+def ordered_process_files(process_ids, *, payment_type_tokens=None, delivery=DELIVERY_ALL,
                           ordering=ORDER_CONTACT_ADDRESS, descending=False):
-    """Documents del procés, amb el mateix criteri de canal que el seu menú."""
+    """Documents dels processos, amb el mateix criteri de canal que el seu menú."""
     from communication.models import Communication, CommunicationFile
 
+    if isinstance(process_ids, int):
+        process_ids = [process_ids]
     if delivery not in DELIVERIES:
         raise DownloadOptionsError('delivery')
     postal_token, email_token = _channel_tokens()
@@ -284,7 +318,7 @@ def ordered_process_files(process_id, *, payment_type_tokens=None, delivery=DELI
     ).select_related(
         'file', 'invoice', 'invoice__contract', 'invoice__contract__address_contact__address',
     )
-    communications = Communication.objects.filter(process_id=process_id).prefetch_related(
+    communications = Communication.objects.filter(process_id__in=list(process_ids or [])).prefetch_related(
         Prefetch('files', queryset=file_queryset),
         'contracts',
         'invoices',
@@ -350,3 +384,110 @@ def render_documents_pdf(documents):
         return data
     finally:
         merger.close()
+
+
+def stored_file_size(file_field):
+    """Bytes del fitxer, o 0 si no es pot saber sense descarregar-lo sencer."""
+    if not file_field:
+        return 0
+    try:
+        return int(file_field.size or 0)
+    except Exception:
+        return 0
+
+
+def invoice_source_size(invoice):
+    document = getattr(invoice, 'invoice_file', None)
+    if document is not None:
+        size = stored_file_size(getattr(document, 'file', None))
+        if size:
+            return size
+    return stored_file_size(getattr(invoice, 'invoice_file_template', None))
+
+
+def document_source_size(document):
+    if document is None:
+        return 0
+    return stored_file_size(getattr(document, 'file', None))
+
+
+def pack_by_count(items, size):
+    """Trossos consecutius, conservant l'ordre."""
+    items = list(items)
+    if not isinstance(size, int) or isinstance(size, bool) or size < 1:
+        raise DownloadOptionsError('batch_size')
+    return [items[index:index + size] for index in range(0, len(items), size)]
+
+
+def pack_by_size(items, sizes, limit_bytes):
+    """Agrupa fins al límit. Un document sense mida, o més gran que el límit, va sol."""
+    if not isinstance(limit_bytes, int) or limit_bytes < 1:
+        raise DownloadOptionsError('batch_size')
+    batches = []
+    current = []
+    used = 0
+    for item, size in zip(items, sizes):
+        weight = size if isinstance(size, int) and not isinstance(size, bool) and size > 0 else limit_bytes
+        if current and used + weight > limit_bytes:
+            batches.append(current)
+            current = []
+            used = 0
+        current.append(item)
+        used += weight
+    if current:
+        batches.append(current)
+    return batches
+
+
+def pdfs_under_limit(batch, limit_bytes, render_batch):
+    """Si el PDF ajuntat passa del límit, el parteix. Un sol document es deixa sencer."""
+    content = render_batch(batch)
+    if len(content) <= limit_bytes or len(batch) <= 1:
+        return [content]
+    middle = len(batch) // 2
+    return (
+        pdfs_under_limit(batch[:middle], limit_bytes, render_batch)
+        + pdfs_under_limit(batch[middle:], limit_bytes, render_batch)
+    )
+
+
+def iter_download_parts(items, sizes, render_batch, batch_mode, batch_size):
+    """Genera els PDF de la descàrrega, un a un, sense acumular-los tots en memòria."""
+    items = list(items)
+    if batch_mode == BATCH_COUNT:
+        for batch in pack_by_count(items, batch_size):
+            yield render_batch(batch)
+        return
+    if batch_mode == BATCH_SIZE:
+        limit = batch_size * 1024 * 1024
+        size_list = list(sizes) if sizes is not None else [0] * len(items)
+        for batch in pack_by_size(items, size_list, limit):
+            yield from pdfs_under_limit(batch, limit, render_batch)
+        return
+    yield render_batch(items)
+
+
+def open_pdf_zip(parts, name_for):
+    """Escriu els PDF en un zip al disc. El cridant ha de tancar i esborrar el fitxer."""
+    import tempfile
+    import zipfile
+
+    temp = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
+    count = 0
+    try:
+        with zipfile.ZipFile(temp, 'w', compression=zipfile.ZIP_STORED) as archive:
+            for content in parts:
+                count += 1
+                archive.writestr(name_for(count), content)
+        if count == 0:
+            raise DownloadOptionsError('empty_pdf')
+        temp.flush()
+        temp.seek(0)
+        return temp, count
+    except Exception:
+        temp.close()
+        try:
+            os.unlink(temp.name)
+        except OSError:
+            pass
+        raise

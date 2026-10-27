@@ -43,6 +43,10 @@ const openDownloadPanel = () => {
   return navigateTo('/billing/document-downloads/add?billing=' + props.id);
 }
 
+const isProcessed = computed(() => (
+  !!statusProcessedToken.value && data.value?.status?.token == statusProcessedToken.value
+));
+
 const getPermissions = async () => {
   error.value = null;
   try {
@@ -161,22 +165,39 @@ const cancelBilling = async () => {
           {{ $t('billing') }}
         </H1Region>
         <OptionsDropdown v-slot:default v-if="objectPermissions?.can_change" id="ConnectionRequestRegionOptions">
-          <DropdownOption :name="`${$t('common.check')} ${$t('billing')}`" @click="editBilling"></DropdownOption>
+          <DropdownOption :name="`${$t('common.check')} ${$t('billing')}`" @click="editBilling">
+            <Icon name="fa6-solid:eye" class="display-inline mr-2" />
+            {{ $t('common.check') }} {{ $t('billing') }}
+          </DropdownOption>
           <hr class="my-2" />
-          <DropdownOption :name="t('billing_block.download_new')" @click="openDownloadPanel"></DropdownOption>
+          <DropdownOption :name="t('billing_block.download_new')" @click="openDownloadPanel">
+            <Icon name="fa6-solid:download" class="display-inline mr-2" />
+            {{ t('billing_block.download_new') }}
+          </DropdownOption>
           <DropdownOption :disabled="!data.status?.token == statusProcessedToken" :name="t('customer_service_block.new_comms_process')"
-            @click="clickCommunicationProcess"></DropdownOption>
+            @click="clickCommunicationProcess">
+            <Icon name="fa6-solid:envelopes-bulk" class="display-inline mr-2" />
+            {{ t('customer_service_block.new_comms_process') }}
+          </DropdownOption>
+          <hr v-if="data.status?.token !== '-1'" class="my-2" />
           <DropdownOption v-if="data.status?.token !== '-1'" :name="`${t('common.cancel')} ${t('billing').toLowerCase()}`"
-            @click="cancelBilling"></DropdownOption>
-          <!-- <DropdownOption v-if="data.status?.token == status_pending_token" name="Confirmar Factura" @click="confirmInvoice"></DropdownOption> -->
+            @click="cancelBilling">
+            <Icon name="fa6-solid:xmark" class="display-inline mr-2" />
+            {{ t('common.cancel') }} {{ t('billing').toLowerCase() }}
+          </DropdownOption>
         </OptionsDropdown>
       </div>
 
       <div v-if="data" id="item_data" :data-rel=id>
         <BillingDetail :id="id" :data="data" :isSubRegion="isSubRegion" :isRegion="true" @show-detail="showDetail" />
-        <div v-if="objectPermissions?.can_change" class="flex flex-row-reverse mt-4">
-          <button class="button-default" @click="editBilling">
+        <div v-if="objectPermissions?.can_change" class="flex flex-row-reverse gap-2 mt-4">
+          <button class="button-default inline-flex items-center gap-2" @click="editBilling">
+            <Icon name="fa6-solid:eye" />
             {{ t('common.check') }} {{ t('billing') }}
+          </button>
+          <button v-if="isProcessed" class="button-primary inline-flex items-center gap-2" @click="openDownloadPanel">
+            <Icon name="fa6-solid:download" />
+            {{ t('billing_block.download_new') }}
           </button>
         </div>
 

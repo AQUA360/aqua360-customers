@@ -262,13 +262,19 @@ export default defineNuxtPlugin(nuxtApp => {
   const documentDownloadQuery = (params = {}) => {
     const query = new URLSearchParams();
     if (params.billing_ids?.length) query.set('billing_ids', params.billing_ids.join(','));
-    if (params.communication_process_id) query.set('communication_process_id', params.communication_process_id);
+    if (params.communication_process_ids?.length) {
+      query.set('communication_process_ids', params.communication_process_ids.join(','));
+    }
     if (params.payment_type_tokens?.length) {
       query.set('payment_type_tokens', params.payment_type_tokens.join(','));
     }
     if (params.delivery) query.set('delivery', params.delivery);
     if (params.ordering) query.set('ordering', params.ordering);
     query.set('descending', params.descending ? '1' : '0');
+    if (params.batch_mode && params.batch_mode !== 'none') {
+      query.set('batch_mode', params.batch_mode);
+      if (params.batch_size) query.set('batch_size', params.batch_size);
+    }
     return query.toString();
   }
 

@@ -437,6 +437,11 @@ onMounted(async () => {
             <Icon name="fa6-solid:envelope" class="display-inline mr-2" /> 
             {{ t('common.generate') }} {{ t('customer_service_block.letters') }}
           </DropdownOption> -->
+          <hr class="my-2" />
+          <DropdownOption @click="openDownloadPanel()">
+            <Icon name="fa6-solid:sliders" class="display-inline mr-2" />
+            {{ t('billing_block.download_new') }}
+          </DropdownOption>
           <DropdownOption :disabled="!data.com_files || data.com_files.length === 0 || downloadEinvoicesTaskId"
             @click="downloadLetters()">
             <Icon name="fa6-solid:download" class="display-inline mr-2" />
@@ -457,15 +462,12 @@ onMounted(async () => {
             <Icon name="fa6-solid:download" class="display-inline mr-2" />
             {{ t('common.download') }} {{ t('common.docs') }} ({{ t('common.email_long') }})
           </DropdownOption>
-          <DropdownOption @click="openDownloadPanel()">
-            <Icon name="fa6-solid:sliders" class="display-inline mr-2" />
-            {{ t('billing_block.download_new') }}
-          </DropdownOption>
           <DropdownOption :disabled="!data.has_electronic_invoices || downloadEinvoicesTaskId || downloading"
             @click="downloadEinvoices()">
             <Icon name="fa6-solid:download" class="display-inline mr-2" />
             {{ t('common.download') }} {{ t('common.docs') }} ({{ t('billing_block.einvoices') }})
           </DropdownOption>
+          <hr v-if="['0', '1'].includes(data?.status?.token) || (data?.status?.token === '-1' && objectPermissions?.can_delete)" class="my-2" />
           <DropdownOption v-if="['0', '1'].includes(data?.status?.token)" :name="`${t('common.cancel')} ${t('common.comms_process_detail').toLowerCase()}`" @click="cancelProcess()">
             <Icon name="fa6-solid:xmark" class="display-inline mr-2" /> {{ t('common.cancel') }} {{ t('common.comms_process_detail').toLowerCase() }}
           </DropdownOption>

@@ -23,7 +23,7 @@ const source = ref('billings');
 const billingOptions = ref([]);
 const processOptions = ref([]);
 const selectedBillings = ref([]);
-const selectedProcess = ref(null);
+const selectedProcesses = ref([]);
 const loadingBillings = ref(false);
 const loadingProcesses = ref(false);
 const paymentTypes = ref([]);
@@ -32,7 +32,10 @@ const selectedPaymentTypes = ref([]);
 const delivery = ref('all');
 const ordering = ref('contact_address');
 const descending = ref(false);
+const batchMode = ref('none');
+const batchSize = ref(null);
 const previewCount = ref(null);
+const previewBatchCount = ref(null);
 const previewing = ref(false);
 const submitting = ref(false);
 const linkedBillingId = ref(null);
@@ -53,16 +56,39 @@ const processOption = (process) => ({
 });
 
 const hasSelection = computed(() => (
-  source.value === 'process' ? !!selectedProcess.value : selectedBillings.value.length > 0
+  source.value === 'process' ? selectedProcesses.value.length > 0 : selectedBillings.value.length > 0
 ));
 
-const payload = () => ({
-  billing_ids: source.value === 'billings' ? selectedBillings.value.map(item => item.value) : [],
-  communication_process_id: source.value === 'process' ? selectedProcess.value?.value : null,
-  payment_type_tokens: selectedPaymentTypes.value.map(item => item.token),
-  delivery: source.value === 'process' ? delivery.value : 'all',
-  ordering: ordering.value,
-  descending: descending.value,
+const batchReady = computed(() => batchMode.value === 'none' || Number(batchSize.value) >= 1);
+
+const payload = () => {
+  const data = {
+    billing_ids: source.value === 'billings' ? selectedBillings.value.map(item => item.value) : [],
+    communication_process_ids: source.value === 'process' ? selectedProcesses.value.map(item => item.value) : [],
+    payment_type_tokens: selectedPaymentTypes.value.map(item => item.token),
+    delivery: source.value === 'process' ? delivery.value : 'all',
+    ordering: ordering.value,
+    descending: descending.value,
+  };
+  if (batchMode.value !== 'none' && Number(batchSize.value) >= 1) {
+    data.batch_mode = batchMode.value;
+    data.batch_size = Number(batchSize.value);
+  }
+  return data;
+};
+
+const batchSummary = computed(() => {
+  if (!batchReady.value || batchMode.value === 'none' || !previewCount.value) return '';
+  if (batchMode.value === 'count' && previewBatchCount.value) {
+    return t('billing_block.download_batch_count_summary', {
+      count: previewBatchCount.value,
+      size: Number(batchSize.value),
+    });
+  }
+  if (batchMode.value === 'size') {
+    return t('billing_block.download_batch_size_summary', { size: Number(batchSize.value) });
+  }
+  return '';
 });
 
 const footerTitle = computed(() => {
@@ -99,7 +125,7 @@ const loadProcessOptions = async (search = '') => {
   try {
     const data = await $CommunicationProcessApiService.getAll(search, [], 1, 'created_at', true);
     const fetched = (data.results || []).map(processOption);
-    processOptions.value = mergeOptions(selectedProcess.value, fetched);
+    processOptions.value = mergeOptions(selectedProcesses.value, fetched);
   } catch (err) {
     console.error(err);
   } finally {
@@ -120,6 +146,7 @@ const onSearchProcesses = debounce((search, loading) => {
 const refreshPreview = async () => {
   if (!hasSelection.value) {
     previewCount.value = null;
+    previewBatchCount.value = null;
     previewing.value = false;
     return;
   }
@@ -129,10 +156,12 @@ const refreshPreview = async () => {
     const result = await $BillingApiService.previewDocumentDownload(payload());
     if (token !== previewToken) return;
     previewCount.value = result.count;
+    previewBatchCount.value = result.batch_count;
   } catch (err) {
     console.error(err);
     if (token !== previewToken) return;
     previewCount.value = null;
+    previewBatchCount.value = null;
   } finally {
     if (token === previewToken) previewing.value = false;
   }
@@ -158,12 +187,14 @@ const loadPaymentTypes = async () => {
 };
 
 const requestDownload = async () => {
-  if (submitting.value || !hasSelection.value || previewCount.value === 0) return;
+  if (submitting.value || !batchReady.value || !hasSelection.value || previewCount.value === 0) return;
   submitting.value = true;
   try {
     if (source.value === 'process' && delivery.value === 'postal') {
       if (confirm(t('confirmation_text_block.confirm_sent_postal'))) {
-        await $CommunicationApiService.markAsSent({ process_id: selectedProcess.value.value });
+        for (const process of selectedProcesses.value) {
+          await $CommunicationApiService.markAsSent({ process_id: process.value });
+        }
       }
     }
     const response = await $BillingApiService.requestDocumentDownload(payload());
@@ -182,8 +213,12 @@ watch(source, (value) => {
   if (value === 'billings') delivery.value = 'all';
 });
 
+watch(batchMode, (mode) => {
+  if (mode !== 'none' && !(Number(batchSize.value) >= 1)) batchSize.value = 100;
+});
+
 watch(
-  [source, selectedBillings, selectedProcess, selectedPaymentTypes, delivery, ordering, descending],
+  [source, selectedBillings, selectedProcesses, selectedPaymentTypes, delivery, ordering, descending, batchMode, batchSize],
   schedulePreview,
   { deep: true },
 );
@@ -212,7 +247,7 @@ onMounted(async () => {
     } else if (route.query.process) {
       source.value = 'process';
       const process = await $CommunicationProcessApiService.getDetail(route.query.process);
-      selectedProcess.value = processOption(process);
+      selectedProcesses.value = [processOption(process)];
     }
     await Promise.all([
       loadPaymentTypes(),
@@ -276,8 +311,8 @@ onBeforeUnmount(() => {
         <div v-else>
           <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('billing_block.download_process') }}</label>
           <p class="text-xs text-slate-500 mb-2">{{ t('billing_block.download_process_help') }}</p>
-          <v-select class="block w-full custom-select" v-model="selectedProcess" :options="processOptions"
-            :filterable="false" :clearable="true" :loading="loadingProcesses" @search="onSearchProcesses" />
+          <v-select multiple class="block w-full custom-select" v-model="selectedProcesses" :options="processOptions"
+            :filterable="false" :loading="loadingProcesses" @search="onSearchProcesses" />
         </div>
 
         <div>
@@ -313,33 +348,67 @@ onBeforeUnmount(() => {
           </div>
         </fieldset>
 
-        <fieldset>
-          <legend class="text-sm font-medium text-slate-700 mb-2">{{ t('billing_block.download_ordering') }}</legend>
-          <div class="space-y-2">
-            <label class="flex items-center gap-2">
-              <input type="radio" value="contact_address" v-model="ordering" />
-              {{ t('billing_block.download_order_contact_address') }}
-            </label>
-            <label class="flex items-center gap-2">
-              <input type="radio" value="contract_token" v-model="ordering" />
-              {{ t('billing_block.download_order_contract_token') }}
-            </label>
-            <label class="flex items-center gap-2">
-              <input type="radio" value="invoice_code" v-model="ordering" />
-              {{ t('billing_block.download_order_invoice_code') }}
-            </label>
-          </div>
-          <div class="mt-3 flex flex-wrap gap-4">
-            <label class="inline-flex items-center gap-2">
-              <input type="radio" :value="false" v-model="descending" />
-              {{ t('billing_block.download_order_asc') }}
-            </label>
-            <label class="inline-flex items-center gap-2">
-              <input type="radio" :value="true" v-model="descending" />
-              {{ t('billing_block.download_order_desc') }}
-            </label>
-          </div>
-        </fieldset>
+        <div class="grid gap-6 border-t border-slate-100 pt-5 lg:grid-cols-2">
+          <fieldset>
+            <legend class="text-sm font-medium text-slate-700 mb-2">{{ t('billing_block.download_ordering') }}</legend>
+            <div class="flex flex-wrap gap-x-4 gap-y-2">
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" value="contact_address" v-model="ordering" />
+                {{ t('billing_block.download_order_contact_address') }}
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" value="contract_token" v-model="ordering" />
+                {{ t('billing_block.download_order_contract_token') }}
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" value="invoice_code" v-model="ordering" />
+                {{ t('billing_block.download_order_invoice_code') }}
+              </label>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-4">
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" :value="false" v-model="descending" />
+                {{ t('billing_block.download_order_asc') }}
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" :value="true" v-model="descending" />
+                {{ t('billing_block.download_order_desc') }}
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend class="text-sm font-medium text-slate-700 mb-2">{{ t('billing_block.download_batch') }}</legend>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" value="none" v-model="batchMode" />
+                {{ t('billing_block.download_batch_none') }}
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" value="count" v-model="batchMode" />
+                {{ t('billing_block.download_batch_count') }}
+              </label>
+              <label class="inline-flex items-center gap-2">
+                <input type="radio" value="size" v-model="batchMode" />
+                {{ t('billing_block.download_batch_size') }}
+              </label>
+            </div>
+            <div v-if="batchMode !== 'none'" class="mt-3 inline-flex items-stretch">
+              <input type="number" min="1" v-model.number="batchSize"
+                class="w-24 shrink-0 rounded-l-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500" />
+              <span class="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 bg-slate-50 px-3 text-sm text-slate-600">
+                {{ batchMode === 'count' ? t('billing_block.download_batch_count_unit') : t('billing_block.download_batch_size_unit') }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-slate-500 max-w-md">
+              {{ batchMode === 'count'
+                ? t('billing_block.download_batch_count_help')
+                : batchMode === 'size'
+                  ? t('billing_block.download_batch_size_help')
+                  : t('billing_block.download_batch_help') }}
+            </p>
+          </fieldset>
+        </div>
       </form>
 
       <div class="fixed right-0 bottom-0 z-[10] border-t border-gray-200 py-4 px-4 shadow-lg bg-[#FAE2DA] transition-[left] duration-200 ease-in-out"
@@ -354,9 +423,12 @@ onBeforeUnmount(() => {
             <span class="text-sm font-semibold text-slate-700 whitespace-nowrap">
               {{ source === 'process' ? t('billing_block.download_document_count') : t('billing_block.download_invoice_count') }}
             </span>
+            <span v-if="batchSummary" class="text-sm font-semibold text-slate-600 whitespace-nowrap">
+              · {{ batchSummary }}
+            </span>
           </div>
           <button type="button" class="button-default flex items-center gap-2 shrink-0"
-            :disabled="submitting || previewing || !hasSelection || previewCount === 0"
+            :disabled="submitting || previewing || !batchReady || !hasSelection || previewCount === 0"
             @click="requestDownload">
             <Icon :name="submitting ? 'fa6-solid:spinner' : 'fa6-solid:download'" :class="{ 'animate-spin': submitting }" />
             {{ t('billing_block.download_request') }}

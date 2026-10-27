@@ -1,16 +1,20 @@
 from django.contrib.auth.models import Permission, User
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from billing.models import Billing, BillingDocumentDownload, Invoice
 from billing.utils.billing_document_download import (
     DownloadOptionsError,
+    open_pdf_zip,
     ordered_billing_invoices,
     ordered_process_files,
+    pack_by_count,
+    pack_by_size,
     parse_download_options,
     parse_download_request,
+    pdfs_under_limit,
 )
 from communication.models import Communication, CommunicationFile, CommunicationProcess
 from contract.models import Contract
@@ -23,6 +27,45 @@ def seed_configs():
     ConfigProject.objects.get_or_create(token='invoice_status_cancelled_token', defaults={'value': '-1'})
     ConfigProject.objects.get_or_create(token='message_type_letter_token', defaults={'value': 'letter'})
     ConfigProject.objects.get_or_create(token='message_type_email_token', defaults={'value': 'email'})
+
+
+class BatchPackingTests(SimpleTestCase):
+    def test_count_chunks_keep_order(self):
+        self.assertEqual(
+            pack_by_count(['a', 'b', 'c', 'd', 'e'], 2),
+            [['a', 'b'], ['c', 'd'], ['e']],
+        )
+
+    def test_size_respects_the_limit_and_isolates_oversized_or_unknown_files(self):
+        self.assertEqual(
+            pack_by_size(['a', 'b', 'c', 'd'], [40, 50, 30, 200], 100),
+            [['a', 'b'], ['c'], ['d']],
+        )
+        self.assertEqual(
+            pack_by_size(['a', 'b', 'c'], [10, 0, 10], 100),
+            [['a'], ['b'], ['c']],
+        )
+
+    def test_merged_pdf_over_the_limit_is_split_but_a_single_document_stays_whole(self):
+        def render(batch):
+            return b'x' * sum(batch)
+
+        self.assertEqual([len(part) for part in pdfs_under_limit([60, 60], 100, render)], [60, 60])
+        self.assertEqual(len(pdfs_under_limit([150], 100, render)[0]), 150)
+
+    def test_zip_names_the_lots_in_order(self):
+        import os
+        import zipfile
+
+        temp, count = open_pdf_zip([b'%PDF-a', b'%PDF-b'], lambda index: f'lot_{index:03d}.pdf')
+        try:
+            self.assertEqual(count, 2)
+            with zipfile.ZipFile(temp.name) as archive:
+                self.assertEqual(archive.namelist(), ['lot_001.pdf', 'lot_002.pdf'])
+                self.assertEqual(archive.read('lot_002.pdf'), b'%PDF-b')
+        finally:
+            temp.close()
+            os.unlink(temp.name)
 
 
 class BillingDocumentDownloadSelectionTests(TestCase):
@@ -110,8 +153,15 @@ class BillingDocumentDownloadSelectionTests(TestCase):
         self.assertEqual(options['payment_type_tokens'], ['CASH', 'DIRECT_DEBIT'])
         self.assertTrue(options['descending'])
         self.assertEqual(parse_download_options({})['ordering'], 'contact_address')
+        self.assertEqual(parse_download_options({})['batch_mode'], 'none')
+        self.assertIsNone(parse_download_options({})['batch_size'])
         with self.assertRaises(DownloadOptionsError):
             parse_download_options({'delivery': 'sms'})
+        with self.assertRaises(DownloadOptionsError) as raised:
+            parse_download_options({'batch_mode': 'size'})
+        self.assertEqual(raised.exception.field, 'batch_size')
+        with self.assertRaises(DownloadOptionsError):
+            parse_download_options({'batch_mode': 'count', 'batch_size': 0})
 
     def test_channel_filter_requires_a_process(self):
         parsed = parse_download_request({
@@ -119,7 +169,7 @@ class BillingDocumentDownloadSelectionTests(TestCase):
             'ordering': 'invoice_code',
         })
         self.assertEqual(parsed['billing_ids'], [self.billing.id, self.other_billing.id])
-        self.assertIsNone(parsed['communication_process_id'])
+        self.assertEqual(parsed['communication_process_ids'], [])
         with self.assertRaises(DownloadOptionsError) as raised:
             parse_download_request({'billing_ids': '1', 'delivery': 'postal'})
         self.assertEqual(raised.exception.field, 'delivery')
@@ -137,9 +187,10 @@ class ProcessDocumentDownloadSelectionTests(TestCase):
         self.billing = Billing.objects.create(token='FAC-P')
 
     def add_file(self, type_tokens, *, address, serie=None, payment='DIRECT_DEBIT',
-                 attach_letter=True, attach_email=True, is_letter=False, contract_token=None):
+                 attach_letter=True, attach_email=True, is_letter=False, contract_token=None,
+                 process=None):
         communication = Communication.objects.create(
-            process=self.process,
+            process=process or self.process,
             type_tokens=type_tokens,
             used_address=address,
         )
@@ -197,6 +248,16 @@ class ProcessDocumentDownloadSelectionTests(TestCase):
         self.assertEqual(self.names(ordering='contract_token'), ['F-10', 'F-2'])
         self.assertEqual(self.names(ordering='invoice_code'), ['F-10', 'F-2'])
 
+    def test_several_processes_are_sorted_together(self):
+        other = CommunicationProcess.objects.create(token='PROC-2')
+        self.add_file('letter', address='Carrer B', serie='B')
+        self.add_file('letter', address='Carrer A', serie='A', process=other)
+
+        files = ordered_process_files(
+            [self.process.id, other.id], ordering='contact_address',
+        )
+        self.assertEqual([comm_file.file.document_name for comm_file in files], ['A', 'B'])
+
 
 class BillingDocumentDownloadApiTests(TestCase):
     def setUp(self):
@@ -233,6 +294,15 @@ class BillingDocumentDownloadApiTests(TestCase):
         })
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview.data['count'], 2)
+        self.assertIsNone(preview.data['batch_count'])
+
+        batched = self.client.get(reverse('billing-document-download-preview'), {
+            'billing_ids': f'{self.billing.id},{self.other.id}',
+            'batch_mode': 'count',
+            'batch_size': '1',
+        })
+        self.assertEqual(batched.status_code, 200)
+        self.assertEqual(batched.data['batch_count'], 2)
 
         response = self.client.post(self.url, {
             'billing_ids': [self.billing.id],
@@ -254,6 +324,28 @@ class BillingDocumentDownloadApiTests(TestCase):
         record = BillingDocumentDownload.objects.get(id=download['id'])
         self.assertEqual(record.task_id, response.data['task_id'])
         self.assertEqual(list(record.billings.values_list('id', flat=True)), [self.billing.id])
+        self.assertEqual(record.batch_mode, 'none')
+
+    def test_count_batches_are_stored_on_the_request(self):
+        response = self.client.post(self.url, {
+            'billing_ids': [self.billing.id, self.other.id],
+            'batch_mode': 'count',
+            'batch_size': 1,
+            'ordering': 'invoice_code',
+        }, format='json')
+        self.assertEqual(response.status_code, 202)
+        download = response.data['download']
+        self.assertEqual(download['batch_mode'], 'count')
+        self.assertEqual(download['batch_size'], 1)
+        self.assertEqual(download['invoice_count'], 2)
+        self.assertIsNone(download['batch_count'])
+
+        missing = self.client.post(self.url, {
+            'billing_ids': [self.billing.id],
+            'batch_mode': 'size',
+        }, format='json')
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.data['error'], 'batch_size')
 
     def test_billing_source_rejects_a_channel_filter(self):
         response = self.client.post(self.url, {
@@ -276,6 +368,13 @@ class BillingDocumentDownloadApiTests(TestCase):
         self.assertEqual(download['delivery'], 'email')
         self.assertEqual(download['invoice_count'], 1)
         self.assertEqual(download['communication_process_token'], 'PROC-API')
+        self.assertEqual(download['communication_process_ids'], [self.process.id])
+        record = BillingDocumentDownload.objects.get(id=download['id'])
+        self.assertEqual(record.communication_process_id, self.process.id)
+        self.assertEqual(
+            list(record.communication_processes.values_list('id', flat=True)),
+            [self.process.id],
+        )
 
         postal = self.client.post(self.url, {
             'communication_process_id': self.process.id,
@@ -283,6 +382,30 @@ class BillingDocumentDownloadApiTests(TestCase):
         }, format='json')
         self.assertEqual(postal.status_code, 400)
         self.assertEqual(postal.data['error'], 'no_documents')
+
+    def test_several_processes_are_stored_together(self):
+        other = CommunicationProcess.objects.create(token='PROC-API-2')
+        communication = Communication.objects.create(process=other, type_tokens='email', used_address='Altra')
+        document = Document.objects.create(entity_id=communication.id, service='hdd', document_name='altre')
+        CommunicationFile.objects.create(
+            communication=communication, file=document, attach_to_email=True, attach_to_letter=False,
+        )
+        response = self.client.post(self.url, {
+            'communication_process_ids': [other.id, self.process.id],
+            'delivery': 'email',
+        }, format='json')
+        self.assertEqual(response.status_code, 202)
+        download = response.data['download']
+        self.assertEqual(download['source'], 'process')
+        self.assertEqual(download['invoice_count'], 2)
+        self.assertCountEqual(download['communication_process_ids'], [other.id, self.process.id])
+        self.assertCountEqual(download['communication_process_tokens'], ['PROC-API-2', 'PROC-API'])
+        record = BillingDocumentDownload.objects.get(id=download['id'])
+        self.assertIsNone(record.communication_process_id)
+        self.assertCountEqual(
+            record.communication_processes.values_list('id', flat=True),
+            [other.id, self.process.id],
+        )
 
     def test_empty_selection_is_rejected(self):
         response = self.client.post(self.url, {

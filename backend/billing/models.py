@@ -1293,10 +1293,11 @@ class BankRNDDocument(models.Model): # Done to avoid repeated payments when ente
 class BillingDocumentDownload(models.Model):
     """Petició de descàrrega de PDF, amb els filtres i l'ordre demanats.
 
-    L'origen és una o més facturacions, o un procés de comunicació. El filtre
-    de carta o correu només es fa servir amb un procés. La cua general de
-    descàrregues només guarda el fitxer uns dies; aquí queda constància de
-    què s'ha demanat.
+    L'origen és una o més facturacions, o un o més processos de comunicació. El
+    filtre de carta o correu només es fa servir amb processos. La sortida pot ser un
+    sol PDF o lots (per nombre de documents o per MB) dins d'un zip. La cua
+    general de descàrregues només guarda el fitxer uns dies; aquí queda
+    constància de què s'ha demanat.
     """
 
     DELIVERY_ALL = 'all'
@@ -1317,6 +1318,15 @@ class BillingDocumentDownload(models.Model):
         (ORDER_INVOICE_CODE, 'Invoice code'),
     ]
 
+    BATCH_NONE = 'none'
+    BATCH_COUNT = 'count'
+    BATCH_SIZE = 'size'
+    BATCH_CHOICES = [
+        (BATCH_NONE, 'Single PDF'),
+        (BATCH_COUNT, 'By document count'),
+        (BATCH_SIZE, 'By megabytes'),
+    ]
+
     STATUS_PENDING = 'pending'
     STATUS_RUNNING = 'running'
     STATUS_COMPLETED = 'completed'
@@ -1335,11 +1345,17 @@ class BillingDocumentDownload(models.Model):
         'communication.CommunicationProcess', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='document_downloads',
     )
+    communication_processes = models.ManyToManyField(
+        'communication.CommunicationProcess', blank=True, related_name='document_download_sets',
+    )
     requested_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='billing_document_downloads')
     payment_type_tokens = models.JSONField(default=list, blank=True)
     delivery = models.CharField(max_length=20, choices=DELIVERY_CHOICES, default=DELIVERY_ALL)
     ordering = models.CharField(max_length=40, choices=ORDER_CHOICES, default=ORDER_CONTACT_ADDRESS)
     descending = models.BooleanField(default=False)
+    batch_mode = models.CharField(max_length=20, choices=BATCH_CHOICES, default=BATCH_NONE)
+    batch_size = models.PositiveIntegerField(null=True, blank=True)
+    batch_count = models.PositiveIntegerField(null=True, blank=True)
     invoice_count = models.IntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     error_message = models.TextField(null=True, blank=True)

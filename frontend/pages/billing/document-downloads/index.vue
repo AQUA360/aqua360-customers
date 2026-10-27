@@ -43,8 +43,25 @@ const paymentLabel = (tokens) => {
   return tokens.map(token => paymentTypes.value.find(item => item.token === token)?.label || token).join(', ');
 };
 
+const batchLabel = (item) => {
+  if (!item.batch_mode || item.batch_mode === 'none') return t('billing_block.download_batch_none');
+  if (item.batch_mode === 'count') {
+    return item.batch_count
+      ? t('billing_block.download_batch_count_summary', { count: item.batch_count, size: item.batch_size })
+      : t('billing_block.download_batch_count_pending', { size: item.batch_size });
+  }
+  return item.batch_count
+    ? t('billing_block.download_batch_size_done', { count: item.batch_count, size: item.batch_size })
+    : t('billing_block.download_batch_size_summary', { size: item.batch_size });
+};
+
 const originLabel = (item) => {
-  if (item.source === 'process') return item.communication_process_token || '—';
+  if (item.source === 'process') {
+    const tokens = item.communication_process_tokens?.length
+      ? item.communication_process_tokens
+      : [item.communication_process_token];
+    return tokens.filter(Boolean).join(', ') || '—';
+  }
   return (item.billing_tokens || []).filter(Boolean).join(', ') || '—';
 };
 
@@ -161,8 +178,9 @@ onBeforeUnmount(() => {
               <th class="p-3 font-medium">{{ t('billing_block.download_payment_types') }}</th>
               <th class="p-3 font-medium">{{ t('billing_block.download_delivery') }}</th>
               <th class="p-3 font-medium">{{ t('billing_block.download_ordering') }}</th>
-              <th class="p-3 font-medium">{{ t('billing_block.download_document_count') }}</th>
-              <th class="p-3 font-medium">{{ t('common.status') }}</th>
+                <th class="p-3 font-medium">{{ t('billing_block.download_document_count') }}</th>
+                <th class="p-3 font-medium">{{ t('billing_block.download_batch') }}</th>
+                <th class="p-3 font-medium">{{ t('common.status') }}</th>
               <th class="p-3 font-medium"></th>
             </tr>
           </thead>
@@ -177,8 +195,9 @@ onBeforeUnmount(() => {
                 {{ orderLabel(item.ordering) }}
                 <span class="text-slate-400">({{ item.descending ? t('billing_block.download_order_desc') : t('billing_block.download_order_asc') }})</span>
               </td>
-              <td class="p-3">{{ item.invoice_count }}</td>
-              <td class="p-3">
+                <td class="p-3">{{ item.invoice_count }}</td>
+                <td class="p-3">{{ batchLabel(item) }}</td>
+                <td class="p-3">
                 <span class="rounded px-1.5 py-0.5 text-xs" :class="statusClass[item.status]">
                   {{ t(`export_jobs.status_${item.status}`) }}
                 </span>
