@@ -4420,6 +4420,8 @@ msgstr "Lectura inusual"
 msgid "Consum inusualment baix"
 msgstr "Consumo inusualmente baixo"
 
+msgid "Attach invoices in claims"
+msgstr "Adxuntar facturas nas reclamacións"
 #: billing/templates/payment_proof_template.html
 msgid "Justificant de pagament"
 msgstr "Xustificante de pago"

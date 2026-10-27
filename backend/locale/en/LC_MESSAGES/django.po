@@ -3845,6 +3845,8 @@ msgstr "Unusual reading"
 msgid "Consum inusualment baix"
 msgstr "Unusually low consumption"
 
+msgid "Attach invoices in claims"
+msgstr "Attach invoices in claims"
 #: billing/templates/payment_proof_template.html
 msgid "Justificant de pagament"
 msgstr "Payment receipt"

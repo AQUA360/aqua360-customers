@@ -5860,6 +5860,8 @@ msgstr "Lectura inusual"
 msgid "Consum inusualment baix"
 msgstr "Consumo inusualmente bajo"
 
+msgid "Attach invoices in claims"
+msgstr "Adjuntar facturas en las gestiones de impagos"
 #: billing/templates/payment_proof_template.html
 msgid "Justificant de pagament"
 msgstr "Justificante de pago"
