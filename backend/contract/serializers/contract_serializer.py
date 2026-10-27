@@ -1310,5 +1310,11 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         if return_fee_invoice_ids:
             invoices = invoices.exclude(id__in=return_fee_invoice_ids)
 
+        closed_tokens = self.context.get('closed_termination_tokens') or []
+        if len(closed_tokens) >= 2:
+            invoices = invoices.exclude(
+                contract_termination__status__isnull=False,
+                contract_termination__status__token__in=closed_tokens,
+            )
+
         return invoices.count()
-    

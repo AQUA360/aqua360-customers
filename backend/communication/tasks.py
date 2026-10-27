@@ -357,7 +357,7 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
             invoice_attached_to_comm = False
             for contract in comm.contracts.all():
                 # Collect all invoices for this claim_request/contract pair
-                claim_payments = claim_request.payments.filter(contract=contract).select_related("payment__invoice")
+                claim_payments = claim_request.payments.filter(contract=contract, is_excluded=False).select_related("payment__invoice")
                 joined_payments = claim_request.joined_payments.filter(contract=contract).values_list('id', flat=True)
                 add_joined_payments = bool(
                     joined_payments.exists()
