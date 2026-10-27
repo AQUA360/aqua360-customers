@@ -123,13 +123,16 @@ def get_communication_file(id):
     companies = config_company.company_configs.all()
     company_ins = companies.first() if len(companies) > 0 else None
     company = CompanySerializer(company_ins).data if company_ins else None
+    contract = communication.contracts.first()
+    contract_company = get_contract_company(contract)
+    letter_company = CompanySerializer(contract_company).data if contract_company else company
     # try:
     #   person = PersonSerializer(communication.person, context=None).data if communication.person else None
     # except:
     person = PersonContractMinimalSerializer(communication.person, context=None).data if communication.person else None
     
     now_date = datetime.now().date()
-    com_values = get_com_values(person, communication, company)
+    com_values = get_com_values(person, communication, letter_company)
     letter_msg = None
     try:
       letter_msg = communication.messages.get(type__token=letter_token)
@@ -153,7 +156,6 @@ def get_communication_file(id):
     
     logo = get_communication_logo(communication, company)
     full_name_upper = person.get('full_name', '').upper() if person else ''
-    contract = communication.contracts.first()
     contract_address = None
     exploitation_image = None
     
@@ -164,8 +166,7 @@ def get_communication_file(id):
         secondary_color = company_ins.invoice_secondary_color if company_ins.invoice_secondary_color else ConfigProject.objects.get(token='invoice_secondary_color').value
     except:
         pass
-    # Amb `use_multiple_companies` els colors i la signatura són els de l'empresa del contracte
-    contract_company = get_contract_company(contract)
+    # Amb `use_multiple_companies` les dades, els colors i la signatura són els de l'empresa del contracte
     if contract_company:
         main_color, secondary_color = company_colors(contract_company, company_ins)
     
@@ -180,7 +181,7 @@ def get_communication_file(id):
     html_content = render_to_string(
       'basic_letter.html', 
       {
-        'company': company,
+        'company': letter_company,
         'exploitation_image': exploitation_image,
         'main_color': main_color,
         'secondary_color': secondary_color,
@@ -203,8 +204,7 @@ def get_communication_file(id):
         return JsonResponse({"error": "PDF generation failed"}, status=500)
 
     #SIGNATURE
-    sign_company = CompanySerializer(contract_company).data if contract_company else company
-    signed_pdf_buffer = sign_pdf(pdf_buffer, sign_company, subject, 'COMMUNICATION')
+    signed_pdf_buffer = sign_pdf(pdf_buffer, letter_company, subject, 'COMMUNICATION')
 
     # Save PDF to `contract_file` field in ContractRequest instance
     pdf_filename = f"{communication_file.token}.pdf"
