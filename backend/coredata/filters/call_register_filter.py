@@ -14,6 +14,11 @@ class CallRegisterFilter(filters.FilterSet):
         lookup_expr='exact'
     )
 
+    incident = filters.CharFilter(
+        field_name='incident__id',
+        lookup_expr='exact'
+    )
+
     class Meta:
         model = CallRegister
-        fields = ['contract', 'person']
+        fields = ['contract', 'person', 'incident']

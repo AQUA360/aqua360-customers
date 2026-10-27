@@ -9,6 +9,7 @@ from notification.views.incident_report_view import IncidentReportViewSet
 from notification.views.incident_status_view import IncidentStatusViewSet
 from notification.views.incident_type_view import IncidentTypeViewSet
 from notification.views.incident_observation_view import IncidentObservationViewSet
+from notification.views.incident_config_view import IncidentChannelViewSet
 from notification.views.notification_view import NotificationViewSet
 from notification.views.notification_preference_view import NotificationPreferenceView
 
@@ -26,6 +27,7 @@ router.register(r'incident-documentation', IncidentDocumentationViewSet)
 router.register(r'incident-status', IncidentStatusViewSet)
 router.register(r'incident-type', IncidentTypeViewSet)
 router.register(r'incident-observation', IncidentObservationViewSet)
+router.register(r'incident-channel', IncidentChannelViewSet)
 
 urlpatterns = [
     path('preference/', NotificationPreferenceView.as_view(), name='notification-preference'),

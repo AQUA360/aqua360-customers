@@ -3,7 +3,9 @@ import { useI18n } from 'vue-i18n';
 
 import { formatDate } from '~/utils/date';
 import IBAN from '../atoms/IBAN.vue';
+import { useToast } from 'vue-toastification';
 const { t } = useI18n();
+const toast = useToast();
 
 const props = defineProps({
   id: Number,    //Incident id
@@ -17,6 +19,7 @@ const emit = defineEmits(['show-detail', 'update:count']);
 const { $IncidentReportApiService } = useNuxtApp();
 
 const loading = ref(false);
+const error = ref(null);
 
 const showDetail = function (component, id) {
   selectedId.value = id
@@ -24,7 +27,7 @@ const showDetail = function (component, id) {
 }
 
 const gridTemplateColumns = computed(() => {
-  return '100px 1fr 100px 100px';
+  return props.isSubRegion ? '100px 1fr 100px 100px' : '100px 1fr 100px 100px 40px';
 });
 
 const selectedId = ref(null)
@@ -39,6 +42,22 @@ const getData = async () => {
     error.value = err;
   } finally {
     loading.value = false
+  }
+}
+
+// Esborrat lògic: el motiu és obligatori i queda com a justificant
+const deleteReport = async (item) => {
+  const reason = prompt(t('incident_block.report_deletion_reason'));
+  if (reason === null) return;
+  if (reason.trim() === '') {
+    toast.error(t('common.reason_required'));
+    return;
+  }
+  try {
+    await $IncidentReportApiService.deleteItem(item.id, reason.trim());
+    await getData();
+  } catch (err) {
+    console.error('Error esborrant l\'informe:', err);
   }
 }
 
@@ -69,6 +88,7 @@ watch(() => props.item, (newVal) => {
         <span class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('common.report_detail') }} </span>
         <span class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('common.documentation') }} </span>
         <span class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('user') }} </span>
+        <span v-if="!props.isSubRegion"></span>
       </div>
       <div v-for="item in localData" class="border-b group grid text-sm leading-4 transition-all duration-100"
         :style="{ gridTemplateColumns: gridTemplateColumns }" :class="{ 'bg-yellow-50': item.id === selectedId }">
@@ -89,6 +109,13 @@ watch(() => props.item, (newVal) => {
   
         <div class="footering text-slate-500 p-2 w-full">
           <p>{{ item.user_username? item.user_username : t('common.admin') }}</p>
+        </div>
+
+        <div v-if="!props.isSubRegion" class="p-1 flex items-center justify-center">
+          <button @click="deleteReport(item)" :title="t('incident_block.delete_report')"
+            class="px-2 py-1 hover:bg-slate-200 rounded active:bg-slate-300">
+            <Icon name="fa6-solid:trash-can" class="text-slate-500" />
+          </button>
         </div>
   
       </div>

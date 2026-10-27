@@ -8,8 +8,21 @@ from ..models import *
 
 class IncidentStatusSerializer(serializers.ModelSerializer):
     
+    # Tokens dels estats als quals es pot passar (buit: a qualsevol), per al canvi d'estat
+    allowed_next_tokens = serializers.SerializerMethodField()
+    
     class Meta:
         model = IncidentStatus
+        fields = '__all__'
+
+    def get_allowed_next_tokens(self, obj):
+        return [status.token for status in obj.allowed_next.all()]
+
+
+class IncidentChannelSerializer(serializers.ModelSerializer):
+    
+    class Meta:
+        model = IncidentChannel
         fields = '__all__'
 
 
@@ -37,10 +50,9 @@ class IncidentReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncidentReport
         fields = '__all__'
+        read_only_fields = ['is_active', 'deleted_at', 'deleted_by', 'deletion_reason']
     
     def create(self, validated_data):
-        print("creating incident report")
-        print(validated_data)
         now = datetime.date.today().strftime('%Y%m%d')
         incident = validated_data.get('incident')
         incident_reports = IncidentReport.objects.filter(incident=incident).count()
@@ -48,7 +60,11 @@ class IncidentReportSerializer(serializers.ModelSerializer):
         validated_data['token'] = f"{incident.token}{str(incident_reports).zfill(3)}"
         validated_data['user'] = self.context['request'].user
         
-        return super().create(validated_data)
+        report = super().create(validated_data)
+        # El primer informe compta com a primera resposta de la incidència
+        from notification.utils.incident_utils import record_first_response
+        record_first_response(incident)
+        return report
 
 class IncidentReportListSerializer(serializers.ModelSerializer):
     

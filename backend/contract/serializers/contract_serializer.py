@@ -158,6 +158,8 @@ class ContractSerializer(serializers.ModelSerializer):
     
     request_invoices = serializers.SerializerMethodField()
     incidents = serializers.SerializerMethodField()
+    # Incidència oberta d'un tipus que bloqueja les ofertes comercials (art. 16.2)
+    blocking_incident = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
     total_in_commitment_deposits = serializers.SerializerMethodField()
@@ -353,8 +355,13 @@ class ContractSerializer(serializers.ModelSerializer):
         vulnerability_requests = obj.vulnerability_requests.filter(status__token=vulnerability_pending_token)
         return vulnerability_requests.count() > 0
     
+    def get_blocking_incident(self, obj):
+        from notification.utils.incident_utils import blocking_incident
+        incident = blocking_incident(obj)
+        return {'id': incident.id, 'token': incident.token, 'name': incident.name} if incident else None
+
     def get_incidents(self, obj):
-            return obj.incidents.all().count()
+            return obj.incidents.filter(is_active=True).count()
         
     def get_active_commitment_deposits(self, obj):
         deposit_paid_token = ConfigProject.objects.get(token='commitment_deposit_status_paid_token').value

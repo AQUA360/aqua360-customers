@@ -598,15 +598,52 @@ class CallRegisterSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['contract_token'] = instance.contract.token if instance.contract else None
-        representation['person_name'] = str(instance.person_contact.person)
-        representation['person_token'] = instance.person_contact.person.token
-        representation['phone'] = instance.person_contact.phone
+        contact = instance.person_contact
+        representation['person_name'] = str(contact.person) if contact and contact.person else None
+        representation['person_token'] = contact.person.token if contact and contact.person else None
+        representation['phone'] = contact.phone if contact else None
+        representation['incident_token'] = instance.incident.token if instance.incident else None
         return representation
     
     def create(self, validated_data):
         user = self.context['request'].user
         validated_data['user'] = user
-        return super().create(validated_data)
+        call = super().create(validated_data)
+        # Una trucada sortint vinculada a una incidència compta com a primera resposta
+        if call.incident and call.direction == CallRegister.DIRECTION_OUTBOUND:
+            from notification.utils.incident_utils import record_first_response
+            record_first_response(call.incident, call.time_call)
+        if call.callback_requested:
+            create_callback_task(call)
+        return call
+
+
+def create_callback_task(call):
+    """
+    Tasca per retornar la trucada el mateix dia laborable (o el següent si avui
+    no ho és), assignada a l'agent que l'ha atès.
+    """
+    import uuid
+    from django.utils import timezone
+    from coredata.utils.working_days import add_working_days, get_holidays
+    from notification.models import CalendarTask
+
+    today = timezone.localdate()
+    is_working_day = today.weekday() < 5 and today not in get_holidays(today, today)
+    contact = call.person_contact
+    task = CalendarTask.objects.create(
+        token=str(uuid.uuid4()),
+        name=f"Retornar trucada: {contact.phone if contact else ''}".strip(),
+        description=call.comment,
+        user=call.user,
+        contract=call.contract,
+        set_date=today if is_working_day else add_working_days(today, 1),
+    )
+    if call.incident:
+        call.incident.tasks.add(task)
+    CallRegister.objects.filter(pk=call.pk).update(callback_task=task)
+    call.callback_task = task
+    return task
 
 class PersonAddressSerializer(serializers.ModelSerializer):
     person = serializers.IntegerField(write_only=True)

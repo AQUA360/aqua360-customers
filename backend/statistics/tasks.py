@@ -366,6 +366,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
   )
   from statistics.utils.report_accounting_service import generate_general_accounting_report
   from statistics.utils.report_billing_by_zone_service import generate_billing_by_zone_report
+  from statistics.utils.report_incident_compliance_service import generate_incident_compliance_report
 
   generator_funcs = {
     'accounting_values_report': generate_accounting_values_report,
@@ -414,6 +415,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
     'social_tariff_evolution_report': generate_social_tariff_evolution_report,
     'claim_response_time_report': generate_claim_response_time_report,
     'management_volume_report': generate_management_volume_report,
+    'incident_compliance_report': generate_incident_compliance_report,
     'recaptacio_conceptes_report': generate_recaptacio_conceptes_excel,
     'clavegueram_invoices_report': generate_clavegueram_invoices_excel,
     'wincen_export_report': generate_wincen_export_report,

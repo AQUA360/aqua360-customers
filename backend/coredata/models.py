@@ -473,13 +473,49 @@ class CallRegister(models.Model):
     token = models.CharField(max_length=255, null=True, blank=True)
     person_contact = models.ForeignKey(PersonContact, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
     contract = models.ForeignKey('contract.Contract', on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
+    incident = models.ForeignKey('notification.Incident', on_delete=models.SET_NULL, null=True, blank=True, related_name='call_registers')
     time_call = models.DateTimeField(null=True, blank=True)
     answered = models.BooleanField(default=False)
     comment = models.TextField(null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
+
+    # Dades que pot informar la centraleta (integració) o l'agent
+    DIRECTION_INBOUND = 'inbound'
+    DIRECTION_OUTBOUND = 'outbound'
+    DIRECTION_CHOICES = [
+        (DIRECTION_INBOUND, 'Entrant'),
+        (DIRECTION_OUTBOUND, 'Sortint'),
+    ]
+    direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES, default=DIRECTION_OUTBOUND)
+    external_id = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    incoming_at = models.DateTimeField(null=True, blank=True)
+    answered_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    abandoned = models.BooleanField(default=False)
+    transferred_to = models.CharField(max_length=255, null=True, blank=True)
+    supervisor_requested = models.BooleanField(default=False)
+    # Si el client demana que el truquin, es crea una tasca per al mateix dia laborable
+    callback_requested = models.BooleanField(default=False)
+    callback_task = models.ForeignKey('notification.CalendarTask', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    recording_url = models.TextField(null=True, blank=True)
+    recording_consent = models.BooleanField(default=False)
     
     def __str__(self):
         return f"{self.person_contact.person.name if self.person_contact.person else 'Person'} - {self.contract.token if self.contract else 'No Contract'} - {self.time_call if self.time_call else 'Time call'}"
+
+class Holiday(models.Model):
+    """Dia festiu per al càlcul de dies hàbils. Sense explotació, s'aplica a totes."""
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    date = models.DateField()
+    name = models.CharField(max_length=255, null=True, blank=True)
+    exploitation = models.ForeignKey('service.Exploitation', on_delete=models.CASCADE, null=True, blank=True, related_name='holidays')
+
+    class Meta:
+        ordering = ['date']
+
+    def __str__(self):
+        return f"{self.date} {self.name or ''}".strip()
 
 class PersonBank(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)

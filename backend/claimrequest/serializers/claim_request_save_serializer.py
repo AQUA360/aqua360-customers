@@ -168,13 +168,9 @@ class ExcludeContractSerializer(serializers.Serializer):
 
 
 def add_working_days(start_date, work_days):
-    current_date = start_date
-    added_days = 0
-    while added_days < work_days:
-        current_date += timedelta(days=1)
-        if current_date.weekday() < 5: 
-            added_days += 1
-    return current_date
+    # Dies hàbils comuns a tota l'aplicació (també descompta els festius configurats)
+    from coredata.utils.working_days import add_working_days as add_business_days
+    return add_business_days(start_date, work_days)
 
 def generate_claim_id():
     current_year = datetime.now().strftime('%y')
