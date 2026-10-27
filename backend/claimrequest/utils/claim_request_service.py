@@ -34,6 +34,17 @@ def is_open_termination(termination):
     return bool(termination.status and termination.status.token not in closed)
 
 
+def is_closed_termination(termination):
+    """Baixa finalitzada o cancel·lada. Sense els dos estats configurats, o sense
+    estat a la baixa, no es pot afirmar que estigui tancada."""
+    if termination is None:
+        return False
+    closed = closed_termination_tokens()
+    if len(closed) < 2:
+        return False
+    return bool(termination.status and termination.status.token in closed)
+
+
 def _prefer_active_contract(contracts):
     """D'entre diversos candidats, el que està d'alta; si no, el més nou."""
     active_contract_token = ConfigProject.objects.filter(
@@ -124,9 +135,11 @@ def resolve_invoice_contract(invoice):
     reclamen al contracte de la baixa mentre aquesta no estigui acabada, igual que
     les factures d'un contracte que ha entrat en baixa. Un cop la baixa és
     finalitzada o cancel·lada es queden sense contracte a propòsit: no hi ha ningú
-    a qui reclamar-les.
+    a qui reclamar-les, encara que la factura conservi `contract`.
     """
     if invoice is None:
+        return None
+    if invoice.contract_termination_id and is_closed_termination(invoice.contract_termination):
         return None
     if invoice.contract_id:
         return invoice.contract

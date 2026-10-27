@@ -23,13 +23,18 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   /**
    * Starts the smart metering preview Celery task (Introduir lectures).
-   * Returns `{ task_id }`; 409 if a load already exists for that date
+   * `scope` limits the load to some routes, zones or batches
+   * (`{ route_ids, route_zone_ids, batch_ids }`; empty = every meter).
+   * Returns `{ task_id }`; 409 if a load already exists for that date and meters
    * (`existing_document.replaceable` tells whether it can be replaced).
    */
-  const previewReadings = async ({ reading_date, replace = false } = {}) => {
+  const previewReadings = async ({ reading_date, replace = false, scope = null } = {}) => {
     const params = new URLSearchParams();
     params.set('reading_date', reading_date ?? '');
     if (replace) params.set('replace', 'true');
+    Object.entries(scope || {}).forEach(([key, ids]) => {
+      if (ids?.length) params.set(key, ids.join(','));
+    });
     const apiUrl = `${apiHost}/billing/reading-document/smart-metering/preview/?${params.toString()}`;
 
     try {
@@ -50,8 +55,20 @@ export default defineNuxtPlugin((nuxtApp) => {
     }
   };
 
+  /** Routes, zones and open batches with Smart Metering meters. */
+  const getScopeOptions = async () => {
+    const apiUrl = `${apiHost}/billing/reading-document/smart-metering/scope-options/`;
+
+    try {
+      return await $apiManager.fetch(apiUrl, 'GET');
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const apiService = {
     getMeterReading,
+    getScopeOptions,
     previewReadings,
     importReadings,
   };

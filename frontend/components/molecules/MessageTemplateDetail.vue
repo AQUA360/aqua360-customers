@@ -77,6 +77,8 @@ watch(() => props.id, (newId, oldId) => {
     <div role="row" class="grid grid-cols-2">
       <FieldDetail :label='$t("common.name")' :value=localData.name />
       <FieldDetail :label='$t("common.origin")' :value="localData.origin? localData.origin.name : t('common.no_origin')" />
+      <FieldDetail v-if="localData.origin?.token === 'claim'" :label='$t("common.attach_claim_documents_to_email")'
+        :value="localData.attach_claim_documents ? $t('common.yes') : $t('common.no')" />
     </div>
 
   </div>
