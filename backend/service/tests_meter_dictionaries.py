@@ -57,6 +57,18 @@ class MeterDictionaryTests(TestCase):
                 get_or_create_dictionary_value(MeterManufacturer, name)
         self.assertFalse(MeterManufacturer.objects.exists())
 
+    def test_normalized_names_respect_the_field_length_limit(self):
+        for model in (MeterManufacturer, MeterModel, MeterCommTechnology):
+            with self.subTest(model=model):
+                name = 'é' * model._meta.get_field('name').max_length
+                value, created = get_or_create_dictionary_value(model, f'  {name}  ')
+
+                self.assertTrue(created)
+                self.assertEqual(value.name, name)
+                with self.assertRaises(ValueError):
+                    get_or_create_dictionary_value(model, f'  {name}é  ')
+                self.assertEqual(model.objects.count(), 1)
+
     def test_database_rejects_case_insensitive_duplicates(self):
         manufacturer = MeterManufacturer.objects.create(name='Acme')
         for model, filters in (
@@ -133,7 +145,7 @@ class MeterDictionaryAPITests(TestCase):
 
     def test_invalid_names_return_400_for_every_dictionary(self):
         for endpoint, filters in self.dictionary_endpoints():
-            for name in (None, False, 0, 42, [], {}, '', '   '):
+            for name in (None, False, 0, 42, [], {}, '', '   ', 'x' * 256):
                 with self.subTest(endpoint=endpoint, name=name):
                     response = self.client.post(
                         f'/service/{endpoint}/get-or-create/',
@@ -228,4 +240,5 @@ class MeterDictionaryMigrationTests(TransactionTestCase):
             self.assertEqual(list(MeterModel.objects.filter(manufacturer=None).values_list('pk', flat=True)), [orphan.pk])
             self.assertEqual(list(MeterCommTechnology.objects.values_list('pk', flat=True)), [technology.pk])
         finally:
-            MigrationExecutor(connection).migrate(current)
+            executor = MigrationExecutor(connection)
+            executor.migrate(executor.loader.graph.leaf_nodes())
