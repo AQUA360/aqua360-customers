@@ -12,7 +12,8 @@ export default defineNuxtPlugin(nuxtApp => {
       searchQuery = '',
       page = 1,
       contract_id = null,
-      person_id = null
+      person_id = null,
+      incident_id = null
     ) => {
       let apiUrl =
         apiHost +
@@ -27,6 +28,10 @@ export default defineNuxtPlugin(nuxtApp => {
   
       if (person_id) {
         apiUrl += `&person=${person_id}`;
+      }
+
+      if (incident_id) {
+        apiUrl += `&incident=${incident_id}`;
       }
   
       try {

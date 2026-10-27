@@ -53,6 +53,15 @@ beat_schedule = {
         'task': 'notification.tasks.notify_today_tasks',
         'schedule': crontab(minute=25, hour=0)
     },
+    'check-due-incidents': {
+        'task': 'notification.tasks.notify_due_incidents',
+        'schedule': crontab(minute=27, hour=0)
+    },
+    # Els terminis poden ser en hores: avisos i escalats cada 15 minuts
+    'check-incident-deadlines': {
+        'task': 'notification.tasks.check_incident_deadlines',
+        'schedule': crontab(minute='*/15')
+    },
     # El resum per correu surt a primera hora del matí, no de matinada.
     'send-daily-tasks-email': {
         'task': 'notification.tasks.send_daily_tasks_email',

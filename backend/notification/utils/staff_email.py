@@ -18,8 +18,12 @@ def _company_config():
     )
 
 
-def send_staff_email(to, subject, html_content):
-    """Envia un correu HTML. Llança una excepció si no es pot enviar."""
+def send_staff_email(to, subject, html_content, attachments=None):
+    """
+    Envia un correu HTML, amb adjunts PDF opcionals [(nom, bytes)]. Llança una
+    excepció si no es pot enviar. També el fan servir els avisos a l'abonat de
+    les incidències (justificant i enquesta), amb la mateixa configuració de correu.
+    """
     from communication.utils.communication_service import (
         _send_via_msgraph, _send_via_smtp, get_smtp_config_email,
     )
@@ -35,6 +39,6 @@ def send_staff_email(to, subject, html_content):
         raise Exception("No sender email address found")
 
     if getattr(settings, "EMAIL_BACKEND", "") == "msgraphbackend.MSGraphBackend":
-        _send_via_msgraph(recipients, subject, html_content, from_email, [])
+        _send_via_msgraph(recipients, subject, html_content, from_email, attachments or [])
     else:
-        _send_via_smtp(recipients, subject, html_content, from_email, [], comm_config, config_email)
+        _send_via_smtp(recipients, subject, html_content, from_email, attachments or [], comm_config, config_email)

@@ -65,6 +65,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  reasonDefault: { // text inicial del motiu (p. ex. plantilla de resolució)
+    type: String,
+    default: '',
+  },
   has_observation: {
     type: Boolean,
     default: true,
@@ -90,7 +94,7 @@ const statusSelectedToken = ref(null); // el token selected
 
 const statuses = ref([]);
 const observation = ref('');
-const reason = ref('');
+const reason = ref(props.reasonDefault || '');
 
 const orderStatusCompletedToken = ref('CLOSED');
 const incidentStatusClosedToken = ref('CLOSED');
@@ -219,8 +223,9 @@ const doSaveChanges = async () => {
     'close_associated_orders': closeAssociatedOrders
   }
 
-  // Només enviem el motiu si s'ha omplert, per no esborrar el que ja tingui l'objecte.
-  if (reason.value.trim() !== '') {
+  // Només enviem el motiu si el camp és visible i s'ha omplert, per no esborrar el que ja
+  // tingui l'objecte ni desar la plantilla de resolució en un estat que no és de tancament.
+  if (showReason.value && reason.value.trim() !== '') {
     payload['reason'] = reason.value;
   }
 
@@ -280,7 +285,7 @@ watch(() => statusSelected.value, (newVal) => {
 
   <div v-if="showReason" class="mt-4">
     <label>{{ t(reasonLabel) }}:</label>
-    <AtomsInputTextarea :autosave="false" @update:text="handleReasonTextareaUpdate" text="" :placeholder="reasonPlaceholder"></AtomsInputTextarea>
+    <AtomsInputTextarea :autosave="false" @update:text="handleReasonTextareaUpdate" :text="reasonDefault" :placeholder="reasonPlaceholder"></AtomsInputTextarea>
   </div>
 
   <div v-if="has_observation" class="mt-4">
