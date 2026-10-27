@@ -1153,40 +1153,41 @@ class SepaDocumentUploadView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         uploaded_iban = serializer.validated_data["iban"]
-        active_iban = None
-        if contract.payment and contract.payment.IBAN:
-            active_iban = contract.payment.IBAN.iban
-        if self._normalize_iban(uploaded_iban) != self._normalize_iban(active_iban):
-            return Response(
-                {
-                    "error": "The IBAN does not match the contract's current active account."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         uploaded_file = serializer.validated_data["sepa"]
-        general_payment = contract.payment
         service = settings.DOCUMENT_MANAGER_SERVICES.get("contract")
 
-        person_bank = general_payment.IBAN or general_payment.company_iban
-        folder_name = "SEPA"
-        if person_bank:
-            if hasattr(person_bank, "name") and person_bank.name:
-                folder_name = person_bank.name
-            elif hasattr(person_bank, "person") and person_bank.person:
-                folder_name = (
-                    f"{person_bank.person.name} {person_bank.person.surname or ''}"
-                ).strip()
-            elif hasattr(person_bank, "company") and person_bank.company:
-                folder_name = person_bank.company.name
-            elif hasattr(person_bank, "iban") and person_bank.iban:
-                folder_name = person_bank.iban
-        folder_name = folder_name.replace(" ", "_").upper()
-
         with transaction.atomic():
-            general_payment = GeneralPayment.objects.select_for_update().get(
-                pk=general_payment.pk
-            )
+            general_payment = None
+            if contract.payment_id:
+                general_payment = GeneralPayment.objects.select_for_update().get(
+                    pk=contract.payment_id
+                )
+            active_iban = None
+            if general_payment and general_payment.IBAN:
+                active_iban = general_payment.IBAN.iban
+            if self._normalize_iban(uploaded_iban) != self._normalize_iban(active_iban):
+                return Response(
+                    {
+                        "error": "The IBAN does not match the contract's current active account."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            person_bank = general_payment.IBAN or general_payment.company_iban
+            folder_name = "SEPA"
+            if person_bank:
+                if hasattr(person_bank, "name") and person_bank.name:
+                    folder_name = person_bank.name
+                elif hasattr(person_bank, "person") and person_bank.person:
+                    folder_name = (
+                        f"{person_bank.person.name} {person_bank.person.surname or ''}"
+                    ).strip()
+                elif hasattr(person_bank, "company") and person_bank.company:
+                    folder_name = person_bank.company.name
+                elif hasattr(person_bank, "iban") and person_bank.iban:
+                    folder_name = person_bank.iban
+            folder_name = folder_name.replace(" ", "_").upper()
+
             document = upload_document(
                 uploaded_file,
                 "SEPA",

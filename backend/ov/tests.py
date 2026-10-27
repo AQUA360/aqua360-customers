@@ -45,6 +45,7 @@ from coredata.models import (
     StreetType,
 )
 from contract.models import (
+    ContractDataChange,
     Contract,
     ContractPriceRate,
     ContractRequest,
@@ -888,6 +889,89 @@ class SepaDocumentUploadTests(TestCase):
                 response = self._upload()
 
         self.assertEqual(response.status_code, 201)
+
+    def test_upload_rejects_iban_changed_before_payment_lock(self):
+        new_bank = PersonBank.objects.create(
+            person=self.holder, iban="ES00000000000000000000", name="New holder"
+        )
+        select_for_update = GeneralPayment.objects.select_for_update
+
+        def change_before_lock():
+            GeneralPayment.objects.filter(pk=self.payment.pk).update(IBAN=new_bank)
+            return select_for_update()
+
+        with patch(
+            "ov.views.GeneralPayment.objects.select_for_update", side_effect=change_before_lock
+        ), patch("ov.views.upload_document") as upload:
+            response = self._upload()
+
+        self.assertEqual(response.status_code, 400)
+        upload.assert_not_called()
+        self.assertFalse(Document.objects.filter(entity="SEPA").exists())
+
+    def test_upload_uses_iban_and_folder_from_locked_payment(self):
+        from documentmanager.utils.main_utils import upload_document
+
+        new_bank = PersonBank.objects.create(
+            person=self.holder, iban="ES00000000000000000000", name="New holder"
+        )
+        select_for_update = GeneralPayment.objects.select_for_update
+
+        def change_before_lock():
+            GeneralPayment.objects.filter(pk=self.payment.pk).update(IBAN=new_bank)
+            return select_for_update()
+
+        with patch(
+            "ov.views.GeneralPayment.objects.select_for_update", side_effect=change_before_lock
+        ), patch("ov.views.upload_document", wraps=upload_document) as upload:
+            response = self._upload(iban=new_bank.iban)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(upload.call_args.args[5], "NEW_HOLDER")
+
+    def test_update_iban_locks_and_modifies_reloaded_payment(self):
+        from ov.serializers import UpdateBillingDataOVIBANSerializer
+
+        contract = Contract.objects.select_related("payment__IBAN").get(pk=self.contract.pk)
+        current_bank = PersonBank.objects.create(
+            person=self.holder, iban="ES00000000000000000000", name="Current holder"
+        )
+        GeneralPayment.objects.filter(pk=self.payment.pk).update(
+            IBAN=current_bank, dir3="concurrent change"
+        )
+        serializer = UpdateBillingDataOVIBANSerializer(data={
+            "iban": "es11111111111111111111", "nif": self.holder.token,
+            "iban_holder_name": "New holder", "iban_holder_dni": self.holder.token,
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        outer_savepoints = list(connection.savepoint_ids)
+        save = PersonBank.save
+
+        with CaptureQueriesContext(connection) as queries:
+            def save_with_payment_lock(bank, *args, **kwargs):
+                self.assertEqual(len(connection.savepoint_ids), len(outer_savepoints) + 1)
+                self.assertTrue(any(
+                    '"billing_generalpayment"' in query["sql"] and "FOR UPDATE" in query["sql"]
+                    for query in queries.captured_queries
+                ))
+                return save(bank, *args, **kwargs)
+
+            with patch.object(PersonBank, "save", save_with_payment_lock):
+                updated = serializer.update(contract, serializer.validated_data)
+
+        self.payment.refresh_from_db()
+        current_bank.refresh_from_db()
+        self.person_bank.refresh_from_db()
+        self.assertEqual(self.payment.IBAN.iban, "ES11111111111111111111")
+        self.assertEqual(updated.payment.IBAN_id, self.payment.IBAN_id)
+        self.assertEqual(self.payment.dir3, "concurrent change")
+        self.assertFalse(current_bank.is_active)
+        self.assertFalse(current_bank.is_default)
+        self.assertIsNotNone(current_bank.deactivated_at)
+        self.assertTrue(self.person_bank.is_active)
+        change = ContractDataChange.objects.get(contract=self.contract)
+        self.assertEqual(change.previous_payment_id, current_bank.pk)
+        self.assertEqual(change.new_payment_id, self.payment.IBAN_id)
 
     def test_failed_link_replacement_rolls_back_new_document_and_keeps_old_link(self):
         self.assertEqual(self._upload(content=b"original").status_code, 201)

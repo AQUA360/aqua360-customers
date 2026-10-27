@@ -11,6 +11,7 @@ from contract.models import (
 )
 from pricing.models import PriceRate
 from billing.models import (
+    GeneralPayment,
     GeneralPaymentSepaDocument,
     Invoice,
     InvoiceLineItem,
@@ -473,7 +474,11 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
                     {"error": "Contract has no payment method to update IBAN"}
                 )
             with transaction.atomic():
-                person_bank_current = instance.payment.IBAN
+                general_payment = GeneralPayment.objects.select_for_update().get(
+                    pk=instance.payment_id
+                )
+                instance.payment = general_payment
+                person_bank_current = general_payment.IBAN
                 if person_bank_current:
                     person_bank_current.is_active = False
                     person_bank_current.is_default = False
@@ -493,8 +498,8 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
                     ).first(),
                     token=f"{holder.token}_BANK_{PersonBank.objects.filter(person=holder).count() + 1}",
                 )
-                instance.payment.IBAN = person_bank_new
-                instance.payment.save()
+                general_payment.IBAN = person_bank_new
+                general_payment.save()
                 instance.save()
 
                 # Log the change in ContractDataChange
