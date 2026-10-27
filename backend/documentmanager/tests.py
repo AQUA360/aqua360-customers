@@ -21,7 +21,7 @@ from integrations.outbound.signing.exceptions import SigningApiError
 
 @override_settings(AWS_STORAGE_BUCKET_NAME="test-documents")
 class AwsUploadTests(TestCase):
-    def _upload(self, name, existing_keys, reservations=None):
+    def _upload(self, name, reservations=None):
         from documentmanager.utils.aws_service import upload_to_aws
 
         document = Document(entity_id=1, service="aws", document_name=name)
@@ -30,13 +30,14 @@ class AwsUploadTests(TestCase):
             "documentmanager.utils.aws_service.boto3.client"
         ) as client, patch(
             "documentmanager.utils.aws_service.file_already_exists_check",
-            side_effect=existing_keys,
         ) as exists:
             client.return_value.put_object.side_effect = reservations
             upload_to_aws(uploaded_file, document, name, "CONTRACT", "SEPA")
 
         document.refresh_from_db()
-        checked_keys = [call.args[1] for call in exists.call_args_list]
+        exists.assert_not_called()
+        client.return_value.get_object.assert_not_called()
+        checked_keys = [call.kwargs["Key"] for call in client.return_value.put_object.call_args_list]
         self.assertEqual(document.folder, checked_keys[-1])
         self.assertEqual(document.document_name, document.folder.rsplit("/", 1)[-1])
         client.return_value.upload_fileobj.assert_called_once_with(
@@ -51,7 +52,7 @@ class AwsUploadTests(TestCase):
         })
         return document, checked_keys
 
-    def test_collisions_check_new_keys_without_accumulating_suffixes(self):
+    def test_collisions_reserve_new_keys_without_accumulating_suffixes(self):
         for name, expected_names in (
             ("mandate.pdf", ["mandate.pdf", "mandate(1).pdf", "mandate(2).pdf"]),
             ("mandate", ["mandate", "mandate(1)", "mandate(2)"]),
@@ -59,12 +60,13 @@ class AwsUploadTests(TestCase):
             ("mandate(2).pdf", ["mandate(2).pdf", "mandate(2)(1).pdf", "mandate(2)(2).pdf"]),
         ):
             with self.subTest(name=name):
-                document, checked_keys = self._upload(name, [True, True, False])
+                error = ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
+                document, checked_keys = self._upload(name, [error, error, {}])
                 self.assertEqual([key.rsplit("/", 1)[-1] for key in checked_keys], expected_names)
                 self.assertEqual(document.document_name, expected_names[-1])
 
     def test_no_collision_keeps_original_name_and_key(self):
-        document, checked_keys = self._upload("mandate.pdf", [False])
+        document, checked_keys = self._upload("mandate.pdf")
 
         self.assertEqual(document.document_name, "mandate.pdf")
         self.assertEqual(len(checked_keys), 1)
@@ -73,14 +75,15 @@ class AwsUploadTests(TestCase):
         for code in ("PreconditionFailed", "ConditionalRequestConflict"):
             with self.subTest(code=code):
                 error = ClientError({"Error": {"Code": code}}, "PutObject")
-                document, keys = self._upload("mandate.pdf", [False, False], [error, {}])
+                document, keys = self._upload("mandate.pdf", [error, {}])
                 self.assertEqual(document.document_name, "mandate(1).pdf")
                 self.assertNotEqual(keys[0], keys[1])
 
     def test_long_names_fit_folder_limit_and_preserve_extension_and_version(self):
         for extension in ("", ".pdf", ".signed.pdf"):
             with self.subTest(extension=extension):
-                document, keys = self._upload("m" * 300 + extension, [True] * 10 + [False])
+                error = ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
+                document, keys = self._upload("m" * 300 + extension, [error] * 10 + [{}])
                 prefix = keys[0].rsplit("/", 1)[0] + "/"
                 for version, key in enumerate(keys):
                     suffix = (f"({version})" if version else "") + extension
@@ -117,34 +120,36 @@ class AwsUploadTests(TestCase):
                         file_already_exists_check("bucket", "key")
                     self.assertIs(raised.exception, error)
 
-    def test_check_and_reservation_errors_prevent_upload(self):
+    def test_non_collision_reservation_errors_prevent_upload(self):
         from documentmanager.utils.aws_service import upload_to_aws
 
-        for operation in ("get_object", "put_object"):
-            with self.subTest(operation=operation), patch(
+        errors = [
+            ClientError({"Error": {"Code": code}}, "PutObject")
+            for code in ("AccessDenied", "NoSuchBucket", "SlowDown", "InternalError")
+        ] + [RuntimeError("connection failed")]
+        for error in errors:
+            with self.subTest(error=error), patch(
                 "documentmanager.utils.aws_service.boto3.client"
             ) as client, patch(
                 "documentmanager.utils.aws_service.get_current_user", return_value=None
             ):
                 document = Mock()
-                getattr(client.return_value, operation).side_effect = ClientError(
-                    {"Error": {"Code": "AccessDenied"}}, operation
-                )
-                if operation == "put_object":
-                    client.return_value.get_object.side_effect = ClientError(
-                        {"Error": {"Code": "NoSuchKey"}}, "GetObject"
-                    )
-                with self.assertRaises(ValidationError):
+                client.return_value.put_object.side_effect = error
+                with self.assertRaises(ValidationError) as raised:
                     upload_to_aws(io.BytesIO(b"mandate"), document, "m.pdf", "CONTRACT", "SEPA")
+                self.assertIs(raised.exception.__context__, error)
+                client.return_value.get_object.assert_not_called()
+                client.return_value.put_object.assert_called_once()
                 client.return_value.upload_fileobj.assert_not_called()
+                client.return_value.delete_object.assert_not_called()
                 document.save.assert_not_called()
 
     def test_failed_transfer_releases_reservation(self):
         from documentmanager.utils.aws_service import upload_to_aws
 
         with patch("documentmanager.utils.aws_service.boto3.client") as client, patch(
-            "documentmanager.utils.aws_service.file_already_exists_check", return_value=False
-        ), patch("documentmanager.utils.aws_service.get_current_user", return_value=None):
+            "documentmanager.utils.aws_service.get_current_user", return_value=None
+        ):
             client.return_value.upload_fileobj.side_effect = RuntimeError("transfer failed")
             document = Mock()
             with self.assertRaisesMessage(RuntimeError, "transfer failed"):
@@ -159,16 +164,12 @@ class AwsUploadTests(TestCase):
 
         objects = {}
         lock = Lock()
-        checked = Barrier(2, timeout=5)
-
-        def get_object(Bucket, Key):
-            # Both original-key reads see absence before either upload reserves it.
-            if Key.endswith("/mandate.pdf"):
-                checked.wait()
-            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        reserving = Barrier(2, timeout=5)
 
         def put_object(Bucket, Key, Body, IfNoneMatch):
             self.assertEqual(IfNoneMatch, "*")
+            if Key.endswith("/mandate.pdf"):
+                reserving.wait()
             with lock:
                 if Key in objects:
                     raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
@@ -181,7 +182,6 @@ class AwsUploadTests(TestCase):
         with patch("documentmanager.utils.aws_service.boto3.client") as client, patch(
             "documentmanager.utils.aws_service.get_current_user", return_value=None
         ):
-            client.return_value.get_object.side_effect = get_object
             client.return_value.put_object.side_effect = put_object
             client.return_value.upload_fileobj.side_effect = transfer
             documents = [Mock(), Mock()]
@@ -191,6 +191,7 @@ class AwsUploadTests(TestCase):
                 ) for document, content in zip(documents, (b"first", b"second"))]
                 for future in futures:
                     future.result(timeout=10)
+            client.return_value.get_object.assert_not_called()
 
         self.assertEqual({document.document_name for document in documents}, {"mandate.pdf", "mandate(1).pdf"})
         for document, content in zip(documents, (b"first", b"second")):

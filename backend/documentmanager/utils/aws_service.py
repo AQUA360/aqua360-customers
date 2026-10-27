@@ -55,18 +55,17 @@ def upload_to_aws(file, document, name, field, entity):
                 raise ValidationError("S3 key prefix and extension exceed the document folder limit.")
             name = f"{base_name[:available]}{suffix}{extension}"
             s3_file_path = f"{prefix}{name}"
-            if not file_already_exists_check(bucket_name, s3_file_path):
-                try:
-                    # Reserve atomically before using the multipart-capable transfer.
-                    s3_client.put_object(
-                        Bucket=bucket_name, Key=s3_file_path, Body=b"", IfNoneMatch="*"
-                    )
-                    break
-                except ClientError as e:
-                    if e.response["Error"]["Code"] not in (
-                        "PreconditionFailed", "ConditionalRequestConflict"
-                    ):
-                        raise
+            try:
+                # Reserve atomically before using the multipart-capable transfer.
+                s3_client.put_object(
+                    Bucket=bucket_name, Key=s3_file_path, Body=b"", IfNoneMatch="*"
+                )
+                break
+            except ClientError as e:
+                if e.response["Error"]["Code"] not in (
+                    "PreconditionFailed", "ConditionalRequestConflict"
+                ):
+                    raise
             version += 1
     except Exception as e:
         raise ValidationError(f"Error checking if file already exists: {e}")
