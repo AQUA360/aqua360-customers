@@ -975,6 +975,8 @@ export default {
       manual: 'Exclosa manualment',
       communication_none: 'El contracte no vol comunicacions',
       email_paper_contract: 'Correu: el contracte és en paper',
+      contract_not_active: "El contracte no està d'alta",
+      claim_payment_excluded: "Exclosa de la gestió d'impagats",
     },
     channel: 'Canal',
     with_custom_msg: 'Conté missatge(s) personalitzat(s)',
@@ -3583,7 +3585,17 @@ export default {
     debt_acknowledgment: 'Reconeixement del deute',
     fractions: 'Fraccionaments',
     fractions_paid: 'Frac. cobrats',
-    wallet_mov: 'Mov. cartera'
+    wallet_mov: 'Mov. cartera',
+    from_contract_request: 'Factura emesa durant una sol·licitud de contracte',
+    unlinked_invoices: 'Factures sense contracte',
+    unlinked_invoices_warning: '{count} factures impagades de sol·licituds de contracte que no han generat cap contracte, per un total de {amount} €.',
+    unlinked_invoices_info: 'Aquest deute es deu igualment, però no entra a la gestió d\'impagats ni al procés de comunicació perquè no hi ha cap contracte a qui reclamar-lo.',
+    unlinked_invoices_review: 'Revisar factures',
+    unlinked_reason_request_not_finished: 'La sol·licitud no està finalitzada: encara no hi ha contracte',
+    unlinked_reason_contract_not_found: 'La sol·licitud està finalitzada però no es troba el seu contracte',
+    open_termination: 'Baixa en curs',
+    open_termination_info: 'Té una sol·licitud de baixa començada i sense acabar: entrarà a la gestió si no l\'exclous a mà',
+    only_open_termination: 'Només amb baixa en curs'
   },
   editor_block:   {
     head: 'Encapçalament',

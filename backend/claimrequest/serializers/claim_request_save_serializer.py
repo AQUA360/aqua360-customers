@@ -65,28 +65,50 @@ class ClaimRequestSaveSerializer(serializers.ModelSerializer):
         if contract_ids:
             contracts = Contract.objects.filter(id__in=contract_ids).distinct('id')
             validated_data['contracts'] = contracts
-        
-        # Crear el ClaimRequest
-        claim_request = super(ClaimRequestSaveSerializer, self).create(validated_data)
-        
-        # Crear els ClaimRequestPayment per cada pagament
-        claim_payments = []
+
+        # Resoldre els pagaments abans de desar: el post_save de ClaimRequest ja
+        # crea els passos, i un ValidationError posterior deixaria la gestió buida.
+        from claimrequest.utils.claim_request_service import is_claimable_contract, resolve_invoice_contract
+
+        claimable_payments = []
         payment_status_paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+        active_contract_token = ConfigProject.objects.get(token='contract_active_token').value
         if payment_ids:
             payments = Payment.objects.filter(
                 id__in=payment_ids).exclude(
                     id__in=ignore_payment_ids).exclude(
-                        invoice__contract__id__in=ignore_contract_ids)
+                        invoice__contract__id__in=ignore_contract_ids).select_related(
+                            'status', 'invoice', 'invoice__contract', 'invoice__contract__status')
+            ignored_contract_ids = set(ignore_contract_ids or [])
             for payment in payments:
-                claim_payment = ClaimRequestPayment(
-                    claim_request=claim_request,
-                    payment=payment,
-                    contract=payment.invoice.contract if payment.invoice else None,
-                    is_paid=payment.status and payment.status.token == payment_status_paid_token,
-                    is_vulnerable=False,
-                )
-                claim_payments.append(claim_payment)
-        
+                contract = resolve_invoice_contract(payment.invoice)
+                # Garantia al servidor, no només a la pantalla: sense contracte
+                # reclamable (sol·licitud sense contracte, contracte de baixa o
+                # esborrat) el deute no entra a la gestió, perquè després no se li
+                # podria comunicar res.
+                if not is_claimable_contract(contract, active_contract_token):
+                    continue
+                if contract.id in ignored_contract_ids:
+                    continue
+                claimable_payments.append((payment, contract))
+
+        if payment_ids and not claimable_payments:
+            raise serializers.ValidationError(
+                "Cap dels pagaments triats es pot reclamar: el contracte no està d'alta o no existeix."
+            )
+
+        claim_request = super(ClaimRequestSaveSerializer, self).create(validated_data)
+
+        claim_payments = [
+            ClaimRequestPayment(
+                claim_request=claim_request,
+                payment=payment,
+                contract=contract,
+                is_paid=payment.status and payment.status.token == payment_status_paid_token,
+                is_vulnerable=False,
+            )
+            for payment, contract in claimable_payments
+        ]
         ClaimRequestPayment.objects.bulk_create(claim_payments)
 
         if claim_payments:

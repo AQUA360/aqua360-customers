@@ -966,6 +966,8 @@ export default {
       manual: 'Manually excluded',
       communication_none: 'The contract opts out of communications',
       email_paper_contract: 'Email: the contract is on paper',
+      contract_not_active: 'The contract is not active',
+      claim_payment_excluded: 'Excluded from the delinquency management',
     },
     channel: 'Channel',
     with_custom_msg: 'Contains custom message(s)',
@@ -3436,7 +3438,17 @@ export default {
     debt_acknowledgment: 'Debt acknowledgment',
     fractions: 'Installment plans',
     fractions_paid: 'Collected installments',
-    wallet_mov: 'Wallet mvmt.'
+    wallet_mov: 'Wallet mvmt.',
+    from_contract_request: 'Invoice issued during a contract request',
+    unlinked_invoices: 'Invoices without contract',
+    unlinked_invoices_warning: '{count} unpaid invoices from contract requests that never created a contract, totalling {amount} €.',
+    unlinked_invoices_info: 'This debt is still owed, but it does not enter the delinquency management nor the communication process because there is no contract to claim it from.',
+    unlinked_invoices_review: 'Review invoices',
+    unlinked_reason_request_not_finished: 'The request is not finished: there is no contract yet',
+    unlinked_reason_contract_not_found: 'The request is finished but its contract cannot be found',
+    open_termination: 'Termination in progress',
+    open_termination_info: 'It has a termination request started and unfinished: it will enter the management unless you exclude it manually',
+    only_open_termination: 'Only with termination in progress'
   },
   editor_block:   {
     head: 'Header',

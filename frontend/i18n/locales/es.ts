@@ -975,6 +975,8 @@ export default {
       manual: 'Excluida manualmente',
       communication_none: 'El contrato no quiere comunicaciones',
       email_paper_contract: 'Correo: el contrato es en papel',
+      contract_not_active: 'El contrato no está activo',
+      claim_payment_excluded: 'Excluida de la gestión de impagados',
     },
     channel: 'Canal',
     with_custom_msg: 'Contiene mensaje(s) personalizado(s)',
@@ -3583,7 +3585,17 @@ supply_cut_actions:   {
     debt_acknowledgment: 'Reconocimiento de deuda',
     fractions: 'Fraccionamientos',
     fractions_paid: 'Frac. cobrados',
-    wallet_mov: 'Mov. cartera'
+    wallet_mov: 'Mov. cartera',
+    from_contract_request: 'Factura emitida durante una solicitud de contrato',
+    unlinked_invoices: 'Facturas sin contrato',
+    unlinked_invoices_warning: '{count} facturas impagadas de solicitudes de contrato que no han generado ningún contrato, por un total de {amount} €.',
+    unlinked_invoices_info: 'Esta deuda se debe igualmente, pero no entra en la gestión de impagados ni en el proceso de comunicación porque no hay ningún contrato al que reclamarla.',
+    unlinked_invoices_review: 'Revisar facturas',
+    unlinked_reason_request_not_finished: 'La solicitud no está finalizada: todavía no hay contrato',
+    unlinked_reason_contract_not_found: 'La solicitud está finalizada pero no se encuentra su contrato',
+    open_termination: 'Baja en curso',
+    open_termination_info: 'Tiene una solicitud de baja empezada y sin finalizar: entrará en la gestión si no lo excluyes a mano',
+    only_open_termination: 'Solo con baja en curso'
   },
   editor_block:   {
     head: 'Encabezado',
