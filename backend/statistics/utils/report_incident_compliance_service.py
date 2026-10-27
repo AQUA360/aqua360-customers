@@ -50,19 +50,19 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
             return None, None, None
         # Límit exclusiu: l'inici del dia següent a la data final, tant si arriba
         # com a data sola com amb l'hora de final de dia
-        end_date = timezone.make_aware(datetime.datetime.combine(end_date.date() + datetime.timedelta(days=1), datetime.time.min))
+        end_limit = timezone.make_aware(datetime.datetime.combine(end_date.date() + datetime.timedelta(days=1), datetime.time.min))
 
         closed_token = get_closed_status_token()
         now = timezone.now()
         incidents = Incident.objects.filter(
-            created_at__gte=start_date, created_at__lt=end_date, is_active=True,
+            created_at__gte=start_date, created_at__lt=end_limit, is_active=True,
         ).select_related(
             'type', 'status', 'channel', 'assigned_to',
             'contract__supply_point_default__connection__exploitation',
             'supply_point__connection__exploitation', 'cluster__connection__exploitation',
         )
         calls = CallRegister.objects.filter(
-            direction=CallRegister.DIRECTION_INBOUND, incoming_at__gte=start_date, incoming_at__lt=end_date,
+            direction=CallRegister.DIRECTION_INBOUND, incoming_at__gte=start_date, incoming_at__lt=end_limit,
         )
         if exploitation_id and exploitation_id != 'all':
             # Mateixes rutes que incident_exploitation: contracte, punt de subministrament o agrupació
