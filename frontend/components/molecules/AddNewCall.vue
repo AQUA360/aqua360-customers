@@ -17,6 +17,12 @@ const time_called = ref(null)
 
 const has_answered = ref(false)
 const comment = ref(null)
+// Dades d'atenció: sentit, retorn de trucada, supervisor, transferència i consentiment de gravació
+const direction = ref('outbound')
+const callback_requested = ref(false)
+const supervisor_requested = ref(false)
+const transferred_to = ref('')
+const recording_consent = ref(false)
 
 const callPerson = () => {
     has_called.value = true
@@ -39,10 +45,16 @@ const save = async () => {
     try {
         let save_data = {
             contract: contract?.value?.id || null,
+            incident: props.data.incident?.id || null,
             person_contact: contact.value?.id || null,
             answered: has_answered.value,
             comment: comment.value,
             time_call: time_called.value || new Date(),
+            direction: direction.value,
+            callback_requested: callback_requested.value,
+            supervisor_requested: supervisor_requested.value,
+            transferred_to: transferred_to.value || null,
+            recording_consent: recording_consent.value,
         }
         let response = await $CallRegisterApiService.save(save_data)
         if (response) {
@@ -71,6 +83,10 @@ onMounted(() => {
                                 <span v-if="contract"
                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
                     {{ t('contract') }}: {{ contract.token }}
+                </span>
+                <span v-if="data.incident"
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                    {{ t('incident') }}: {{ data.incident.token }}
                 </span>
             </div>
         </div>
@@ -112,6 +128,23 @@ onMounted(() => {
                 <label for="has_answered" class="text-sm font-medium text-slate-700 cursor-pointer">
                     {{ $t('contract_block.has_answered') }}
                 </label>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg text-sm">
+                <label class="flex items-center gap-2">
+                    <span class="text-slate-600">{{ $t('call_block.direction') }}:</span>
+                    <select v-model="direction" class="border border-slate-300 rounded p-1">
+                        <option value="outbound">{{ $t('call_block.outbound') }}</option>
+                        <option value="inbound">{{ $t('call_block.inbound') }}</option>
+                    </select>
+                </label>
+                <label class="flex items-center gap-2">
+                    <span class="text-slate-600">{{ $t('call_block.transferred_to') }}:</span>
+                    <input type="text" v-model="transferred_to" class="border border-slate-300 rounded p-1 flex-1" />
+                </label>
+                <label class="flex items-center gap-2"><input type="checkbox" v-model="callback_requested" /> {{ $t('call_block.callback_requested') }}</label>
+                <label class="flex items-center gap-2"><input type="checkbox" v-model="supervisor_requested" /> {{ $t('call_block.supervisor_requested') }}</label>
+                <label class="flex items-center gap-2 col-span-2"><input type="checkbox" v-model="recording_consent" /> {{ $t('call_block.recording_consent') }}</label>
             </div>
 
             <div>

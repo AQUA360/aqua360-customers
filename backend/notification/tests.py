@@ -427,3 +427,393 @@ class TestChangeMeterAutoTask(TestCase):
         order.status = self.completed
         order.save()
         self.assertFalse(CalendarTask.objects.filter(order=order).exists())
+INCIDENT_URL = '/notification/incident/'
+INCIDENT_REPORT_URL = '/notification/incident-report/'
+
+
+class IncidentTestBase(TestCase):
+    """Estats, tipus i usuaris comuns dels tests d'incidències."""
+
+    def setUp(self):
+        """Create incident statuses and types and authenticate a user with incident permissions."""
+        from notification.models import IncidentStatus, IncidentType
+        self.user = User.objects.create_user(username='incidencies', password='x')
+        self.user.user_permissions.add(*Permission.objects.filter(content_type__app_label='notification', codename__contains='incident'))
+        self.assignee = User.objects.create_user(username='assignat', password='x')
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+        self.open_status = IncidentStatus.objects.create(token='1', name='Oberta', position=1, is_default=True, phase='registration')
+        self.pending_status = IncidentStatus.objects.create(token='0', name='Pendent', position=2, phase='processing')
+        self.closed_status = IncidentStatus.objects.create(token='2', name='Tancada', position=3, phase='closing')
+        ConfigProject.objects.update_or_create(token='incident_status_closed_token', defaults={'value': '2'})
+        self.business_type = IncidentType.objects.create(token='reclamacio', name='Reclamació', due_term=5, due_unit='business_days')
+        self.natural_type = IncidentType.objects.create(token='altres', name='Altres', due_term=10, due_unit='natural_days')
+        self.hours_type = IncidentType.objects.create(token='continuitat', name='Continuïtat', due_term=2, due_unit='hours')
+        self.no_due_type = IncidentType.objects.create(token='sense', name='Sense termini')
+
+    def create_incident(self, **data):
+        """Create an incident through the API and return the response."""
+        payload = {'name': 'Fuita al carrer', 'type': self.business_type.id}
+        payload.update(data)
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(INCIDENT_URL, payload, format='json')
+
+    def incident(self, response):
+        from notification.models import Incident
+        return Incident.objects.get(pk=response.data['id'])
+
+
+class TestIncidentLifecycle(IncidentTestBase):
+    """Registre, venciment, assignació, tancament i esborrat lògic de les incidències."""
+
+    def test_create_sets_creator_unique_token_and_business_due_date(self):
+        """Check the creator, a non-truncated reference and the due date in business days."""
+        from coredata.utils.working_days import add_working_days
+        incident = self.incident(self.create_incident())
+        self.assertEqual(incident.created_by, self.user)
+        self.assertTrue(incident.token.endswith(f'{incident.id:03d}'))
+        self.assertEqual(timezone.localtime(incident.due_at).date(),
+                         add_working_days(timezone.localtime(incident.created_at).date(), 5))
+
+    def test_default_channels(self):
+        """Check the default channels: phone for new incidents and the reading app channel for app incidents."""
+        from notification.models import IncidentChannel
+        from notification.serializers.incident_serializer import IncidentAppSerializer
+        self.assertEqual(
+            set(IncidentChannel.objects.values_list('token', flat=True)),
+            {'telefon', 'email', 'ov', 'presencial', 'postal', 'app'},
+        )
+        self.assertEqual(self.incident(self.create_incident()).channel.token, 'telefon')
+        serializer = IncidentAppSerializer(data={'title': 'Comptador trencat'})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.save().channel.token, 'app')
+
+    def test_holidays_are_skipped_in_business_days(self):
+        """Check that configured holidays do not count as business days."""
+        from coredata.models import Holiday
+        from coredata.utils.working_days import add_working_days
+        # 2026-10-05 és dilluns
+        monday = datetime.date(2026, 10, 5)
+        self.assertEqual(add_working_days(monday, 2), datetime.date(2026, 10, 7))
+        Holiday.objects.create(date=datetime.date(2026, 10, 6), name='Festa')
+        self.assertEqual(add_working_days(monday, 2), datetime.date(2026, 10, 8))
+
+    def test_hours_and_explicit_due_and_type_without_term(self):
+        """Check hour terms, explicit due dates and types without a term."""
+        incident = self.incident(self.create_incident(type=self.hours_type.id))
+        self.assertEqual(incident.due_at, incident.created_at + datetime.timedelta(hours=2))
+        incident = self.incident(self.create_incident(due_at='2030-01-15T12:00:00Z'))
+        self.assertEqual(incident.due_at.isoformat(), '2030-01-15T12:00:00+00:00')
+        self.assertIsNone(self.incident(self.create_incident(type=self.no_due_type.id)).due_at)
+
+    def test_type_change_recalculates_due_date_and_logs_change(self):
+        """Check that changing the type recalculates the due date and is recorded in the change history."""
+        from logger.models import LogIncidentChange
+        incident_id = self.create_incident().data['id']
+        response = self.client.patch(f'{INCIDENT_URL}{incident_id}/', {'type': self.natural_type.id}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        from notification.models import Incident
+        incident = Incident.objects.get(pk=incident_id)
+        self.assertEqual(timezone.localtime(incident.due_at).date(),
+                         timezone.localtime(incident.created_at).date() + datetime.timedelta(days=10))
+        log = LogIncidentChange.objects.get(object=incident, field='type')
+        self.assertEqual((log.old_value, log.new_value, log.user), ('Reclamació', 'Altres', self.user))
+
+    def test_assignment_notifies_assignee_once(self):
+        """Check that assigning an incident notifies the assignee only when the assignee changes."""
+        incident_id = self.create_incident().data['id']
+        for _ in range(2):
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.patch(f'{INCIDENT_URL}{incident_id}/', {'assigned_to': self.assignee.id}, format='json')
+        notifications = Notification.objects.filter(user=self.assignee, entity='incidents')
+        self.assertEqual(notifications.count(), 1)
+        self.assertEqual(notifications.get().object_id, str(incident_id))
+
+    def test_close_sets_closed_at_resolution_and_status_log_user(self):
+        """Check closing data, the status log user, and that reopening clears the closing date."""
+        from logger.models import LogIncidentStatusChange
+        from notification.models import Incident
+        incident_id = self.create_incident().data['id']
+        response = self.client.put(f'{INCIDENT_URL}{incident_id}/', {
+            'status': self.closed_status.id, 'reason': 'Reparada la canonada',
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        incident = Incident.objects.get(pk=incident_id)
+        self.assertIsNotNone(incident.closed_at)
+        self.assertEqual(incident.resolution, 'Reparada la canonada')
+        self.assertTrue(incident.closed_on_time)
+        log = LogIncidentStatusChange.objects.get(object=incident, current_status=self.closed_status)
+        self.assertEqual(log.user, self.user)
+
+        self.client.put(f'{INCIDENT_URL}{incident_id}/', {'status': self.open_status.id}, format='json')
+        self.assertIsNone(Incident.objects.get(pk=incident_id).closed_at)
+
+    def test_allowed_transitions(self):
+        """Check that configured transitions restrict status changes and empty ones allow any."""
+        self.open_status.allowed_next.set([self.pending_status])
+        incident_id = self.create_incident().data['id']
+        response = self.client.put(f'{INCIDENT_URL}{incident_id}/', {'status': self.closed_status.id}, format='json')
+        self.assertEqual(response.status_code, 400)
+        response = self.client.put(f'{INCIDENT_URL}{incident_id}/', {'status': self.pending_status.id}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.put(f'{INCIDENT_URL}{incident_id}/', {'status': self.closed_status.id}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_pause_extends_due_date(self):
+        """Check that a pausing status stops the term and extends the due date on resume."""
+        from notification.models import Incident
+        self.pending_status.pauses_due = True
+        self.pending_status.save()
+        incident = self.incident(self.create_incident(type=self.hours_type.id))
+        original_due = incident.due_at
+        self.client.put(f'{INCIDENT_URL}{incident.id}/', {'status': self.pending_status.id}, format='json')
+        incident = Incident.objects.get(pk=incident.id)
+        self.assertIsNotNone(incident.paused_at)
+        Incident.objects.filter(pk=incident.id).update(paused_at=incident.paused_at - datetime.timedelta(hours=3))
+        self.client.put(f'{INCIDENT_URL}{incident.id}/', {'status': self.open_status.id}, format='json')
+        incident = Incident.objects.get(pk=incident.id)
+        self.assertIsNone(incident.paused_at)
+        self.assertGreaterEqual(incident.due_at - original_due, datetime.timedelta(hours=3))
+
+    def test_create_with_pausing_default_status_starts_paused(self):
+        """Check that an incident created in a status that stops the term is paused from the start."""
+        from notification.models import IncidentStatus
+        IncidentStatus.objects.filter(is_default=True).update(pauses_due=True)
+        incident = self.incident(self.create_incident())
+        self.assertIsNotNone(incident.paused_at)
+
+    def test_delete_is_logical_and_records_who(self):
+        """Check that deleting an incident only deactivates it and hides it from the list."""
+        from django.core.exceptions import ValidationError
+        incident_id = self.create_incident().data['id']
+        response = self.client.delete(f'{INCIDENT_URL}{incident_id}/')
+        self.assertEqual(response.status_code, 204)
+        from notification.models import Incident
+        incident = Incident.objects.get(pk=incident_id)
+        self.assertFalse(incident.is_active)
+        self.assertEqual(incident.deleted_by, self.user)
+        self.assertEqual(self.client.get(INCIDENT_URL).data['count'], 0)
+        self.assertEqual(self.client.get(f'{INCIDENT_URL}{incident_id}/').status_code, 404)
+        # Dins del període de retenció no es pot eliminar físicament
+        with self.assertRaises(ValidationError):
+            incident.delete()
+
+    def test_report_delete_requires_reason_and_report_is_first_response(self):
+        """Check that a report sets the first response and deleting it needs a reason."""
+        from notification.models import Incident, IncidentReport
+        incident_id = self.create_incident().data['id']
+        report_id = self.client.post(INCIDENT_REPORT_URL, {
+            'incident': incident_id, 'incident_data': timezone.localdate().isoformat(), 'description': 'Visita',
+        }, format='json').data['id']
+        self.assertIsNotNone(Incident.objects.get(pk=incident_id).first_response_at)
+
+        response = self.client.delete(f'{INCIDENT_REPORT_URL}{report_id}/', {'deletion_reason': ' '}, format='json')
+        self.assertEqual(response.status_code, 400)
+        response = self.client.delete(f'{INCIDENT_REPORT_URL}{report_id}/', {'deletion_reason': 'Duplicat'}, format='json')
+        self.assertEqual(response.status_code, 204)
+        report = IncidentReport.objects.get(pk=report_id)
+        self.assertFalse(report.is_active)
+        self.assertEqual((report.deletion_reason, report.deleted_by), ('Duplicat', self.user))
+        self.assertEqual(self.client.get(f'{INCIDENT_URL}{incident_id}/').data['reports'], [])
+
+    def test_list_filters(self):
+        """Check the overdue, assigned-to-me and closed-out-of-term filters."""
+        from notification.models import Incident
+        past = timezone.now() - datetime.timedelta(days=5)
+        overdue_id = self.create_incident(due_at=past.isoformat()).data['id']
+        self.create_incident(due_at='2099-01-01T00:00:00Z')
+        late_id = self.create_incident(due_at=past.isoformat()).data['id']
+        Incident.objects.filter(pk=late_id).update(status=self.closed_status, closed_at=timezone.now())
+        Incident.objects.filter(pk=overdue_id).update(assigned_to=self.user)
+
+        response = self.client.get(INCIDENT_URL, {'overdue': 'true'})
+        self.assertEqual([item['id'] for item in response.data['results']], [overdue_id])
+        self.assertTrue(response.data['results'][0]['is_overdue'])
+        response = self.client.get(INCIDENT_URL, {'assigned_to_me': 'true'})
+        self.assertEqual([item['id'] for item in response.data['results']], [overdue_id])
+        response = self.client.get(INCIDENT_URL, {'closed_out_of_term': 'true'})
+        self.assertEqual([item['id'] for item in response.data['results']], [late_id])
+
+    def test_timeline(self):
+        """Check that the timeline joins registration, changes and reports."""
+        incident_id = self.create_incident().data['id']
+        self.client.patch(f'{INCIDENT_URL}{incident_id}/', {'name': 'Fuita gran'}, format='json')
+        self.client.post(INCIDENT_REPORT_URL, {
+            'incident': incident_id, 'incident_data': timezone.localdate().isoformat(),
+        }, format='json')
+        kinds = [event['kind'] for event in self.client.get(f'{INCIDENT_URL}{incident_id}/timeline/').data]
+        self.assertIn('created', kinds)
+        self.assertIn('change', kinds)
+        self.assertIn('report', kinds)
+
+
+class TestIncidentDeadlines(IncidentTestBase):
+    """Avisos de venciment, escalats i pauses."""
+
+    def test_notify_due_incidents_groups_by_assignee(self):
+        """Check that the daily task notifies each assignee of their due pending incidents."""
+        from notification.models import Incident
+        from notification.tasks import notify_due_incidents
+        past = timezone.now() - datetime.timedelta(days=3)
+        for due in [past, past - datetime.timedelta(days=1), timezone.now() + datetime.timedelta(days=30)]:
+            incident_id = self.create_incident(due_at=due.isoformat()).data['id']
+            Incident.objects.filter(pk=incident_id).update(assigned_to=self.assignee)
+        closed_id = self.create_incident(due_at=past.isoformat()).data['id']
+        Incident.objects.filter(pk=closed_id).update(assigned_to=self.user, status=self.closed_status)
+
+        self.assertEqual(notify_due_incidents(), {'notifications': 1})
+        self.assertIsNone(Notification.objects.get(user=self.assignee, name='Pending incidents').object_id)
+        self.assertFalse(Notification.objects.filter(user=self.user, name='Pending incidents').exists())
+
+    def test_warning_and_escalation_are_sent_once(self):
+        """Check the warning before the due date and the escalation after it."""
+        from django.contrib.auth.models import Group
+        from notification.models import Incident
+        from notification.utils.incident_utils import check_incident_deadlines
+        supervisor = User.objects.create_user(username='supervisor', password='x')
+        group = Group.objects.create(name='Supervisors SAC')
+        supervisor.groups.add(group)
+        self.hours_type.warning_before = 1
+        self.hours_type.escalation_after = 1
+        self.hours_type.escalation_group = group
+        self.hours_type.save()
+        incident = self.incident(self.create_incident(type=self.hours_type.id))
+        Incident.objects.filter(pk=incident.pk).update(assigned_to=self.assignee)
+
+        due = incident.due_at
+        self.assertEqual(check_incident_deadlines(now=due - datetime.timedelta(hours=2)), {'warned': 0, 'escalated': 0, 'pause_warned': 0})
+        self.assertEqual(check_incident_deadlines(now=due - datetime.timedelta(minutes=30))['warned'], 1)
+        self.assertEqual(check_incident_deadlines(now=due - datetime.timedelta(minutes=20))['warned'], 0)
+        self.assertEqual(check_incident_deadlines(now=due + datetime.timedelta(hours=2))['escalated'], 1)
+        self.assertTrue(Notification.objects.filter(user=supervisor, name='Incident escalated').exists())
+        self.assertTrue(Notification.objects.filter(user=self.assignee, name='Incident about to expire').exists())
+
+    def test_long_pause_warning(self):
+        """Check the warning when an incident stays paused longer than allowed."""
+        from notification.models import Incident
+        from notification.utils.incident_utils import check_incident_deadlines
+        self.pending_status.pauses_due = True
+        self.pending_status.max_pause_days = 10
+        self.pending_status.save()
+        incident = self.incident(self.create_incident())
+        Incident.objects.filter(pk=incident.pk).update(
+            status=self.pending_status, assigned_to=self.assignee,
+            paused_at=timezone.now() - datetime.timedelta(days=30),
+        )
+        self.assertEqual(check_incident_deadlines()['pause_warned'], 1)
+        self.assertEqual(check_incident_deadlines()['pause_warned'], 0)
+
+
+class TestIncidentCustomerCommunications(IncidentTestBase):
+    """Justificant, trucades i avís comercial."""
+
+    @mock.patch('notification.utils.staff_email.send_staff_email')
+    def test_receipt_is_generated_and_sent(self, send_email):
+        """Check that a type with receipt generates the PDF and emails it to the contact."""
+        self.business_type.send_receipt = True
+        self.business_type.save()
+        with mock.patch('notification.utils.incident_utils.generate_receipt') as generate:
+            generate.return_value = (mock.Mock(document_name='justificant.pdf'), b'%PDF')
+            with mock.patch('notification.tasks.send_incident_receipt.delay',
+                            side_effect=lambda incident_id: __import__('notification.tasks', fromlist=['x']).send_incident_receipt(incident_id)):
+                incident = self.incident(self.create_incident(contact_email='abonat@example.com'))
+        send_email.assert_called_once()
+        self.assertEqual(send_email.call_args.args[0], 'abonat@example.com')
+        self.assertIsNotNone(incident.receipt_sent_at)
+
+    def test_receipt_html_has_reference_and_channel(self):
+        """Check that the receipt content includes the reference, the channel and the type text."""
+        from notification.models import IncidentChannel
+        from notification.utils.incident_utils import build_receipt_html
+        channel = IncidentChannel.objects.create(token='tel', name='Telèfon')
+        self.business_type.receipt_text = 'Hem registrat {referencia}.'
+        self.business_type.save()
+        incident = self.incident(self.create_incident(channel=channel.id))
+        html = build_receipt_html(incident)
+        self.assertIn(incident.token, html)
+        self.assertIn('Telèfon', html)
+        self.assertIn(f'Hem registrat {incident.token}.', html)
+
+    def test_call_register_links_incident_and_creates_callback_task(self):
+        """Check call filtering by incident, first response and the callback task."""
+        from coredata.filters.call_register_filter import CallRegisterFilter
+        from coredata.models import CallRegister
+        from coredata.serializers import CallRegisterSerializer
+        from notification.models import Incident
+        incident = self.incident(self.create_incident())
+        request = mock.Mock(user=self.user)
+        # Una trucada no contestada no compta com a primera resposta
+        unanswered = CallRegisterSerializer(data={
+            'incident': incident.id, 'comment': 'No contesta', 'time_call': timezone.now().isoformat(),
+        }, context={'request': request})
+        self.assertTrue(unanswered.is_valid(), unanswered.errors)
+        unanswered = unanswered.save()
+        self.assertIsNone(Incident.objects.get(pk=incident.pk).first_response_at)
+        serializer = CallRegisterSerializer(data={
+            'incident': incident.id, 'comment': 'Truca de nou', 'time_call': timezone.now().isoformat(),
+            'answered': True, 'callback_requested': True,
+        }, context={'request': request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        call = serializer.save()
+        CallRegister.objects.create(comment='Altra', user=self.user)
+        result = CallRegisterFilter({'incident': str(incident.id)}, queryset=CallRegister.objects.all()).qs
+        self.assertEqual(set(result), {call, unanswered})
+        self.assertIsNotNone(Incident.objects.get(pk=incident.pk).first_response_at)
+        self.assertIsNotNone(call.callback_task)
+        self.assertIn(call.callback_task, incident.tasks.all())
+        # Demanar que el truquin en modificar la trucada també crea la tasca, un sol cop
+        for _ in range(2):
+            update = CallRegisterSerializer(unanswered, data={'callback_requested': True}, partial=True, context={'request': request})
+            self.assertTrue(update.is_valid(), update.errors)
+            update.save()
+        unanswered.refresh_from_db()
+        self.assertIsNotNone(unanswered.callback_task)
+        self.assertEqual(incident.tasks.count(), 2)
+
+    def test_call_without_incident_permission_does_not_touch_incident(self):
+        """Check that a user without change_incident cannot add tasks or first response to the incident."""
+        from coredata.serializers import CallRegisterSerializer
+        from notification.models import Incident
+        incident = self.incident(self.create_incident())
+        agent = User.objects.create_user(username='agent', password='x')
+        serializer = CallRegisterSerializer(data={
+            'incident': incident.id, 'comment': 'Truca', 'time_call': timezone.now().isoformat(),
+            'answered': True, 'callback_requested': True,
+        }, context={'request': mock.Mock(user=agent)})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        call = serializer.save()
+        self.assertIsNotNone(call.callback_task)
+        self.assertEqual(incident.tasks.count(), 0)
+        self.assertIsNone(Incident.objects.get(pk=incident.pk).first_response_at)
+
+    def test_recording_url_only_accepts_web_links(self):
+        """Check that the recording link only accepts http or https addresses."""
+        from coredata.serializers import CallRegisterSerializer
+        request = mock.Mock(user=self.user)
+        for url, valid in (('javascript:alert(1)', False), ('https://example.com/a.mp3', True)):
+            serializer = CallRegisterSerializer(data={'comment': 'Truca', 'recording_url': url}, context={'request': request})
+            self.assertEqual(serializer.is_valid(), valid, url)
+
+    def test_legacy_working_days_keep_input_type(self):
+        """Check that claim requests and daily documents still get a datetime when they pass one."""
+        import datetime
+        from claimrequest.serializers.claim_request_save_serializer import add_working_days as claim_add
+        from statistics.utils.daily_document_service import add_working_days as daily_add
+        start = datetime.datetime(2026, 10, 23, 10, 30)  # divendres
+        for add in (claim_add, daily_add):
+            self.assertEqual(add(start, 1), datetime.datetime(2026, 10, 26, 10, 30))
+            self.assertEqual(add(start.date(), 1), datetime.date(2026, 10, 26))
+
+    def test_blocking_incident_on_contract(self):
+        """Check that an open incident of a blocking type is exposed for the contract."""
+        from contract.models import Contract
+        from notification.models import Incident
+        from notification.utils.incident_utils import blocking_incident
+        contract = Contract.objects.bulk_create([Contract(token='C-TEST')])[0]
+        self.business_type.blocks_commercial = True
+        self.business_type.save()
+        incident = self.incident(self.create_incident(contract=contract.id))
+        self.assertEqual(blocking_incident(contract), incident)
+        Incident.objects.filter(pk=incident.pk).update(status=self.closed_status)
+        self.assertIsNone(blocking_incident(contract))

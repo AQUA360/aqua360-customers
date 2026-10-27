@@ -6,6 +6,7 @@ const { t } = useI18n();
 const props = defineProps({
     contract_id: Number,
     person_id: Number,
+    incident_id: Number,
     reload: Boolean,
     max_height: {
         type: String,
@@ -27,6 +28,9 @@ const { $CallRegisterApiService } = useNuxtApp();
 
 console.log('CallRegisterApiService:', $CallRegisterApiService);
 const loading = ref(true);
+
+// Només s'enllacen adreces web (evita enllaços javascript: o similars)
+const isWebUrl = (url) => /^https?:\/\//i.test(url || '');
 const localData = ref([]);
 
 // Column definitions for the XLSX export — mirror the visible fields above.
@@ -37,14 +41,25 @@ const exportColumns = computed(() => [
     { header: t('common.tlf'), value: (row) => row.phone, key: 'phone' },
     { header: t('common.date'), value: (row) => row.time_call ? formatTime(row.time_call) : '', key: 'time_call' },
     { header: t('user'), value: (row) => row.user?.username },
+    { header: t('call_block.direction'), value: (row) => row.direction === 'inbound' ? t('call_block.inbound') : t('call_block.outbound'), key: 'direction' },
+    { header: t('incident'), value: (row) => row.incident_token, key: 'incident_token' },
+    { header: t('call_block.callback_requested'), value: (row) => row.callback_requested ? t('common.yes') : t('common.no'), key: 'callback_requested' },
     { header: t('contract_block.has_answered'), value: (row) => row.answered ? t('common.yes') : t('common.no'), key: 'answered' },
     { header: t('common.comment'), value: (row) => row.comment, key: 'comment' },
 ]);
 
 const getData = async () => {
     try {
-        const response = await $CallRegisterApiService.getAll('', 1, props.contract_id || null, props.person_id || null);
-        localData.value = response.results;
+        // Es recuperen totes les pàgines perquè la llista, el recompte i l'export no en perdin cap
+        const results = [];
+        let page = 1;
+        let response;
+        do {
+            response = await $CallRegisterApiService.getAll('', page, props.contract_id || null, props.person_id || null, props.incident_id || null);
+            results.push(...(response.results || []));
+            page += 1;
+        } while (response.next);
+        localData.value = results;
         emit('update:count', localData.value.length);
     } catch (error) {
         console.error(error);
@@ -103,7 +118,7 @@ watch(() => props.reload, () => {
                                 <Icon name="fa6-solid:clock" class="text-xs" />
                                 <span class="text-xs font-medium">{{ formatTime(item.time_call) }}</span>
                                 -
-                                <span class="text-xs font-medium">{{ item.user.username }}</span>
+                                <span class="text-xs font-medium">{{ item.user?.username }}</span>
                             </div>
                             <div class="flex items-center gap-1.5">
                                 <div class="relative">
@@ -125,6 +140,14 @@ watch(() => props.reload, () => {
                         </div>
                     </div>
 
+                    <div class="flex flex-wrap gap-1 mt-1">
+                        <span v-if="item.direction === 'inbound'" class="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">{{ t('call_block.inbound') }}</span>
+                        <span v-if="item.incident_token && !props.incident_id" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{{ t('incident') }}: {{ item.incident_token }}</span>
+                        <span v-if="item.callback_requested" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{{ t('call_block.callback_requested') }}</span>
+                        <span v-if="item.supervisor_requested" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{{ t('call_block.supervisor_requested') }}</span>
+                        <span v-if="item.transferred_to" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{{ t('call_block.transferred_to') }}: {{ item.transferred_to }}</span>
+                        <a v-if="isWebUrl(item.recording_url)" :href="item.recording_url" target="_blank" class="text-xs text-sky-500 underline">{{ t('call_block.recording') }}</a>
+                    </div>
                     <div v-if="item.comment" class="mt-2 px-2 py-1 bg-slate-50 rounded-md">
                         <div class="flex items-center gap-2">
                             <Icon name="fa6-solid:comment" class="text-slate-400 text-xs" />
