@@ -1288,3 +1288,75 @@ class BankRNDDocument(models.Model): # Done to avoid repeated payments when ente
     
     def __str__(self):
         return f"Bank RND Document {self.token}"
+
+
+class BillingDocumentDownload(models.Model):
+    """Petició de descàrrega de PDF, amb els filtres i l'ordre demanats.
+
+    L'origen és una o més facturacions, o un procés de comunicació. El filtre
+    de carta o correu només es fa servir amb un procés. La cua general de
+    descàrregues només guarda el fitxer uns dies; aquí queda constància de
+    què s'ha demanat.
+    """
+
+    DELIVERY_ALL = 'all'
+    DELIVERY_POSTAL = 'postal'
+    DELIVERY_EMAIL = 'email'
+    DELIVERY_CHOICES = [
+        (DELIVERY_ALL, 'All'),
+        (DELIVERY_POSTAL, 'Postal'),
+        (DELIVERY_EMAIL, 'Email'),
+    ]
+
+    ORDER_CONTACT_ADDRESS = 'contact_address'
+    ORDER_CONTRACT_TOKEN = 'contract_token'
+    ORDER_INVOICE_CODE = 'invoice_code'
+    ORDER_CHOICES = [
+        (ORDER_CONTACT_ADDRESS, 'Contact address'),
+        (ORDER_CONTRACT_TOKEN, 'Contract code'),
+        (ORDER_INVOICE_CODE, 'Invoice code'),
+    ]
+
+    STATUS_PENDING = 'pending'
+    STATUS_RUNNING = 'running'
+    STATUS_COMPLETED = 'completed'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_RUNNING, 'Running'),
+        (STATUS_COMPLETED, 'Completed'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+    ACTIVE_STATUSES = (STATUS_PENDING, STATUS_RUNNING)
+
+    billing = models.ForeignKey(Billing, on_delete=models.CASCADE, related_name='document_downloads', null=True, blank=True)
+    billings = models.ManyToManyField(Billing, blank=True, related_name='document_download_sets')
+    communication_process = models.ForeignKey(
+        'communication.CommunicationProcess', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='document_downloads',
+    )
+    requested_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='billing_document_downloads')
+    payment_type_tokens = models.JSONField(default=list, blank=True)
+    delivery = models.CharField(max_length=20, choices=DELIVERY_CHOICES, default=DELIVERY_ALL)
+    ordering = models.CharField(max_length=40, choices=ORDER_CHOICES, default=ORDER_CONTACT_ADDRESS)
+    descending = models.BooleanField(default=False)
+    invoice_count = models.IntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    error_message = models.TextField(null=True, blank=True)
+    document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['billing', '-created_at'], name='billing_docdownload_bill_idx'),
+        ]
+
+    def __str__(self):
+        if self.communication_process_id:
+            origin = f"Process {self.communication_process_id}"
+        else:
+            origin = f"Billing {self.billing_id}"
+        return f"BillingDocumentDownload {self.id} ({self.status}) for {origin}"

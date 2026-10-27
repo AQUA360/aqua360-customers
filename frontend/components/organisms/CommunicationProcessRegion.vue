@@ -168,6 +168,10 @@ const generateLetters = async () => {
   }
 }
 
+const openDownloadPanel = () => {
+  return navigateTo('/billing/document-downloads/add?process=' + props.id);
+}
+
 const downloadLetters = async (postal = false, email = false, no_invoices = false) => {
   try {
     downloading.value = true;
@@ -452,6 +456,10 @@ onMounted(async () => {
             @click="downloadLetters(false, true)">
             <Icon name="fa6-solid:download" class="display-inline mr-2" />
             {{ t('common.download') }} {{ t('common.docs') }} ({{ t('common.email_long') }})
+          </DropdownOption>
+          <DropdownOption @click="openDownloadPanel()">
+            <Icon name="fa6-solid:sliders" class="display-inline mr-2" />
+            {{ t('billing_block.download_new') }}
           </DropdownOption>
           <DropdownOption :disabled="!data.has_electronic_invoices || downloadEinvoicesTaskId || downloading"
             @click="downloadEinvoices()">

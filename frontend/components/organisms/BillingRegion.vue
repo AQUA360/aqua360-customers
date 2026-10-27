@@ -39,16 +39,8 @@ const activeTab = ref('billings');
 const SubRegion = ref(props.isSubRegionOpen);
 const objectPermissions = ref(null);
 
-const clickPdf = async () => {
-  $BillingApiService.getBatchPdf(props.id).then(response => response.arrayBuffer())
-    .then(buffer => {
-      const blob = new Blob([buffer], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `billing_${new Date().toLocaleString('default', { month: '2-digit', year: '2-digit' }).replace(/\//g, '_')}.pdf`;
-      a.click();
-    })
+const openDownloadPanel = () => {
+  return navigateTo('/billing/document-downloads/add?billing=' + props.id);
 }
 
 const getPermissions = async () => {
@@ -171,8 +163,7 @@ const cancelBilling = async () => {
         <OptionsDropdown v-slot:default v-if="objectPermissions?.can_change" id="ConnectionRequestRegionOptions">
           <DropdownOption :name="`${$t('common.check')} ${$t('billing')}`" @click="editBilling"></DropdownOption>
           <hr class="my-2" />
-          <DropdownOption :disabled="!data.status?.token == statusProcessedToken" :name="`${t('common.download')} ${t('common.doc')}`"
-            @click="clickPdf"></DropdownOption>
+          <DropdownOption :name="t('billing_block.download_new')" @click="openDownloadPanel"></DropdownOption>
           <DropdownOption :disabled="!data.status?.token == statusProcessedToken" :name="t('customer_service_block.new_comms_process')"
             @click="clickCommunicationProcess"></DropdownOption>
           <DropdownOption v-if="data.status?.token !== '-1'" :name="`${t('common.cancel')} ${t('billing').toLowerCase()}`"
