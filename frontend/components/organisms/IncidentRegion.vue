@@ -117,9 +117,10 @@ const sendReceipt = async () => {
   }
 }
 
+// La trucada pot omplir la primera resposta i crear una tasca: es recarreguen les dades i la cronologia
 const onCallChanged = async () => {
   callReload.value = !callReload.value;
-  closeSubRegion();
+  await refresh();
 }
 
 watch(() => props.isSubRegionOpen, (newValue) => {
@@ -223,7 +224,8 @@ onMounted(async () => {
       :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': SubRegion }">
       <div class="flex justify-between relative mb-3">
         <H1Region class="mb-3">{{ $t('incident') }}</H1Region>
-        <OptionsDropdown v-if="objectPermissions?.can_change" id="FraudRegionOptions">
+        <OptionsDropdown v-if="objectPermissions?.can_change || objectPermissions?.can_delete" id="FraudRegionOptions">
+          <template v-if="objectPermissions?.can_change">
           <DropdownOption :name="`${t('common.modify')}`" @click="showDetail('IncidentEdit', props.id)">
             <Icon name="fa6-solid:pencil" class="display-inline mr-2" /> {{ t('common.modify') }}
           </DropdownOption>
@@ -245,6 +247,7 @@ onMounted(async () => {
           <DropdownOption :name="t('incident_block.send_receipt')" @click="sendReceipt">
             <Icon name="fa6-solid:file-pdf" class="display-inline mr-2" /> {{ t('incident_block.send_receipt') }}
           </DropdownOption>
+          </template>
           <DropdownOption v-if="objectPermissions?.can_delete" :name="t('incident_block.delete')" @click="deleteIncident">
             <Icon name="fa6-solid:trash-can" class="display-inline mr-2" /> {{ t('incident_block.delete') }}
           </DropdownOption>
@@ -327,7 +330,7 @@ onMounted(async () => {
       </section>
 
       <section v-show="activeTab === 'reports'" role="tabpanel" id="tab_reports" class="bg-white antialiased">
-        <IncidentReportMiniDetail v-if="data" @show-detail="showDetail" :id="props.id" @update:count="updateReportCount" />
+        <IncidentReportMiniDetail v-if="data" @show-detail="showDetail" :id="props.id" :canDelete="!!objectPermissions?.can_delete" @update:count="updateReportCount" />
       </section>
 
       <section v-if="permissions?.permissions?.view_order" v-show="activeTab === 'orders'" role="tabpanel" id="tab_orders" class="bg-white antialiased">

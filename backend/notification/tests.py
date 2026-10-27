@@ -576,6 +576,13 @@ class TestIncidentLifecycle(IncidentTestBase):
         self.assertIsNone(incident.paused_at)
         self.assertGreaterEqual(incident.due_at - original_due, datetime.timedelta(hours=3))
 
+    def test_create_with_pausing_default_status_starts_paused(self):
+        """Check that an incident created in a status that stops the term is paused from the start."""
+        from notification.models import IncidentStatus
+        IncidentStatus.objects.filter(is_default=True).update(pauses_due=True)
+        incident = self.incident(self.create_incident())
+        self.assertIsNotNone(incident.paused_at)
+
     def test_delete_is_logical_and_records_who(self):
         """Check that deleting an incident only deactivates it and hides it from the list."""
         from django.core.exceptions import ValidationError
@@ -763,6 +770,30 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         unanswered.refresh_from_db()
         self.assertIsNotNone(unanswered.callback_task)
         self.assertEqual(incident.tasks.count(), 2)
+
+    def test_call_without_incident_permission_does_not_touch_incident(self):
+        """Check that a user without change_incident cannot add tasks or first response to the incident."""
+        from coredata.serializers import CallRegisterSerializer
+        from notification.models import Incident
+        incident = self.incident(self.create_incident())
+        agent = User.objects.create_user(username='agent', password='x')
+        serializer = CallRegisterSerializer(data={
+            'incident': incident.id, 'comment': 'Truca', 'time_call': timezone.now().isoformat(),
+            'answered': True, 'callback_requested': True,
+        }, context={'request': mock.Mock(user=agent)})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        call = serializer.save()
+        self.assertIsNotNone(call.callback_task)
+        self.assertEqual(incident.tasks.count(), 0)
+        self.assertIsNone(Incident.objects.get(pk=incident.pk).first_response_at)
+
+    def test_recording_url_only_accepts_web_links(self):
+        """Check that the recording link only accepts http or https addresses."""
+        from coredata.serializers import CallRegisterSerializer
+        request = mock.Mock(user=self.user)
+        for url, valid in (('javascript:alert(1)', False), ('https://example.com/a.mp3', True)):
+            serializer = CallRegisterSerializer(data={'comment': 'Truca', 'recording_url': url}, context={'request': request})
+            self.assertEqual(serializer.is_valid(), valid, url)
 
     def test_legacy_working_days_keep_input_type(self):
         """Check that claim requests and daily documents still get a datetime when they pass one."""

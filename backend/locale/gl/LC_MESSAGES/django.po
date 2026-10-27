@@ -4859,3 +4859,7 @@ msgstr "A tarefa de filtrado non existe ou aínda non rematou."
 
 msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
 msgstr "Hai contratos que non pertencen a esta xestión de reclamación."
+
+#: coredata/serializers.py
+msgid "The recording link must be an http or https address."
+msgstr "A ligazón da gravación debe ser un enderezo http ou https."

@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 
+from documentmanager.utils.main_utils import delete_document
 from notification.models import Incident
 from notification.utils.incident_utils import retention_limit, retention_years
 
@@ -25,6 +26,15 @@ class Command(BaseCommand):
         if options['purge']:
             purged = 0
             for incident in incidents:
+                # El justificant no s'elimina amb la incidència (SET_NULL): s'esborra el fitxer i el registre
+                document = incident.receipt_document
                 incident.delete()
+                if document:
+                    if document.service == 'hdd':
+                        delete_document(document)
+                        document.delete()
+                    else:
+                        # Sense rutina d'esborrat per a aquest servei: es manté el registre per poder-lo localitzar
+                        self.stderr.write(f"  Justificant de {incident.token} pendent d'esborrar manualment (document {document.id})")
                 purged += 1
             self.stdout.write(self.style.SUCCESS(f"Eliminades: {purged}"))

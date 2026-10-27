@@ -28,6 +28,9 @@ const { $CallRegisterApiService } = useNuxtApp();
 
 console.log('CallRegisterApiService:', $CallRegisterApiService);
 const loading = ref(true);
+
+// Només s'enllacen adreces web (evita enllaços javascript: o similars)
+const isWebUrl = (url) => /^https?:\/\//i.test(url || '');
 const localData = ref([]);
 
 // Column definitions for the XLSX export — mirror the visible fields above.
@@ -143,7 +146,7 @@ watch(() => props.reload, () => {
                         <span v-if="item.callback_requested" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{{ t('call_block.callback_requested') }}</span>
                         <span v-if="item.supervisor_requested" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{{ t('call_block.supervisor_requested') }}</span>
                         <span v-if="item.transferred_to" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{{ t('call_block.transferred_to') }}: {{ item.transferred_to }}</span>
-                        <a v-if="item.recording_url" :href="item.recording_url" target="_blank" class="text-xs text-sky-500 underline">{{ t('call_block.recording') }}</a>
+                        <a v-if="isWebUrl(item.recording_url)" :href="item.recording_url" target="_blank" class="text-xs text-sky-500 underline">{{ t('call_block.recording') }}</a>
                     </div>
                     <div v-if="item.comment" class="mt-2 px-2 py-1 bg-slate-50 rounded-md">
                         <div class="flex items-center gap-2">

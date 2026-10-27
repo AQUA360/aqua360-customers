@@ -12,6 +12,10 @@ const props = defineProps({
   isSubRegion: {
     type: Boolean,
     default: false
+  },
+  canDelete: { // permís per esborrar informes (delete_incident)
+    type: Boolean,
+    default: false
   }
 });
 const emit = defineEmits(['show-detail', 'update:count']);
@@ -112,7 +116,7 @@ watch(() => props.item, (newVal) => {
         </div>
 
         <div v-if="!props.isSubRegion" class="p-1 flex items-center justify-center">
-          <button @click="deleteReport(item)" :title="t('incident_block.delete_report')"
+          <button v-if="props.canDelete" @click="deleteReport(item)" :title="t('incident_block.delete_report')"
             class="px-2 py-1 hover:bg-slate-200 rounded active:bg-slate-300">
             <Icon name="fa6-solid:trash-can" class="text-slate-500" />
           </button>

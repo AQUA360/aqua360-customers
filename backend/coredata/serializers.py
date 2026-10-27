@@ -4,6 +4,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from auth.serializers import UserMinimalSerializer
 from billing.models import CommitmentDeposit, CommitmentDepositStatus
 from django.utils import timezone
+from django.utils.translation import gettext
 from contract.models import Contract
 from service.models import SupplyPoint
 from django.db.models import Min
@@ -616,20 +617,27 @@ class CallRegisterSerializer(serializers.ModelSerializer):
             from notification.utils.incident_utils import record_first_response
             record_first_response(call.incident, call.time_call)
         if call.callback_requested:
-            create_callback_task(call)
+            create_callback_task(call, user)
         return call
 
     def update(self, instance, validated_data):
         call = super().update(instance, validated_data)
         if call.callback_requested and not call.callback_task_id:
-            create_callback_task(call)
+            create_callback_task(call, self.context['request'].user)
         return call
 
+    def validate_recording_url(self, value):
+        # Només enllaços web: el valor es mostra com a enllaç a la llista de trucades
+        if value and not value.lower().startswith(('https://', 'http://')):
+            raise serializers.ValidationError(gettext("The recording link must be an http or https address."))
+        return value
 
-def create_callback_task(call):
+
+def create_callback_task(call, user=None):
     """
     Tasca per retornar la trucada el mateix dia laborable (o el següent si avui
-    no ho és), assignada a l'agent que l'ha atès.
+    no ho és), assignada a l'agent que l'ha atès. Només es vincula a la
+    incidència si l'usuari pot modificar incidències.
     """
     import uuid
     from django.utils import timezone
@@ -650,7 +658,7 @@ def create_callback_task(call):
         contract=call.contract,
         set_date=today if is_working_day else add_working_days(today, 1, exploitation),
     )
-    if call.incident:
+    if call.incident and (user is None or user.has_perm('notification.change_incident')):
         call.incident.tasks.add(task)
     CallRegister.objects.filter(pk=call.pk).update(callback_task=task)
     call.callback_task = task

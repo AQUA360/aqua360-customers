@@ -6264,3 +6264,7 @@ msgstr "Efectiu"
 #: billing/templates/payment_proof_template.html
 msgid "Targeta (TPV Físic)"
 msgstr "Targeta (TPV Físic)"
+
+#: coredata/serializers.py
+msgid "The recording link must be an http or https address."
+msgstr "L'enllaç de la gravació ha de ser una adreça http o https."

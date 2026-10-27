@@ -11,6 +11,7 @@ import uuid
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.template import Context, Template
 from django.utils import timezone, translation
 from django.utils.translation import gettext as _
@@ -201,10 +202,18 @@ def check_incident_deadlines(now=None):
     """
     now = now or timezone.now()
     result = {'warned': 0, 'escalated': 0, 'pause_warned': 0}
-    incidents = pending_incidents().select_related('type', 'status', 'type__escalation_group')
+    incidents = pending_incidents().select_related(
+        'type', 'status', 'type__escalation_group',
+        'contract__supply_point_default__connection__exploitation',
+        'supply_point__connection__exploitation', 'cluster__connection__exploitation',
+    )
 
     with translation.override(settings.LANGUAGE_CODE):
-        for incident in incidents.filter(due_at__isnull=False, paused_at__isnull=True):
+        # Només les que encara poden generar un avís o un escalat
+        for incident in incidents.filter(due_at__isnull=False, paused_at__isnull=True).filter(
+            Q(warned_at__isnull=True, type__warning_before__isnull=False, assigned_to__isnull=False)
+            | Q(escalated_at__isnull=True, type__escalation_after__isnull=False)
+        ):
             incident_type = incident.type
             if not incident_type:
                 continue

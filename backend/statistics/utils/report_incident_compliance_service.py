@@ -8,6 +8,7 @@ import datetime
 import traceback
 
 import openpyxl
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
@@ -64,7 +65,12 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
             direction=CallRegister.DIRECTION_INBOUND, incoming_at__gte=start_date, incoming_at__lt=end_date,
         )
         if exploitation_id and exploitation_id != 'all':
-            incidents = incidents.filter(contract__supply_point_default__connection__exploitation_id=exploitation_id)
+            # Mateixes rutes que incident_exploitation: contracte, punt de subministrament o agrupació
+            incidents = incidents.filter(
+                Q(contract__supply_point_default__connection__exploitation_id=exploitation_id)
+                | Q(supply_point__connection__exploitation_id=exploitation_id)
+                | Q(cluster__connection__exploitation_id=exploitation_id)
+            )
             calls = calls.filter(contract__supply_point_default__connection__exploitation_id=exploitation_id)
 
         reopened_ids = set(

@@ -6,7 +6,10 @@ from notification.models import Incident, Notification
 
 @receiver(pre_save, sender=Incident)
 def detect_status_change(sender, instance, **kwargs):
+    from notification.utils.incident_utils import apply_status_change
     if not instance.pk:
+        # En crear-la, l'estat inicial també pot aturar el termini o tancar-la
+        apply_status_change(instance, None)
         return
     try:
         previous = sender.objects.get(pk=instance.pk)
@@ -16,7 +19,6 @@ def detect_status_change(sender, instance, **kwargs):
         return
     
     # Data de tancament i pausa del termini segons el nou estat
-    from notification.utils.incident_utils import apply_status_change
     apply_status_change(instance, previous.status)
     
     # L'usuari el posa el serialitzador que desa el canvi

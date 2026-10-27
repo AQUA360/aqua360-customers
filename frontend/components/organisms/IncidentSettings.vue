@@ -78,9 +78,16 @@ const editType = (item) => {
   selectedType.value = {
     ...item,
     due_unit: unitOptions.value.find(option => option.code === item.due_unit) || unitOptions.value[0],
-    escalation_user: users.value.find(option => option.code === item.escalation_user) || null,
-    escalation_group: groups.value.find(option => option.code === item.escalation_group) || null,
+    escalation_user: findOrKeep(users.value, item.escalation_user),
+    escalation_group: findOrKeep(groups.value, item.escalation_group),
   };
+};
+
+// Si no s'han pogut carregar les opcions (sense permís), es conserva l'identificador
+// desat perquè en desar el tipus no es perdi el destinatari de l'escalat
+const findOrKeep = (options, id) => {
+  if (!id) return null;
+  return options.find(option => option.code === id) || { code: id, label: `#${id}` };
 };
 
 const numberOrNull = (value) => (value === '' || value === null || value === undefined ? null : Number(value));
