@@ -232,33 +232,36 @@ const handleSave = async () => {
           </button>
         </div>
 
-        <div class="p-6 flex flex-col gap-4">
+        <div class="p-6">
           <AtomsInputDate
             v-model="readingDate"
             :label="t('billing_block.reading_date')"
             :disabled="busy"
           />
 
-          <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-            <input v-model="loadAll" type="checkbox" class="checkbox" :disabled="busy" />
+          <label class="flex items-center gap-2 mb-4 text-sm font-medium text-slate-600 cursor-pointer">
+            <input v-model="loadAll" type="checkbox" :disabled="busy" />
             {{ t('reading_block.smart_metering_load_all') }}
           </label>
 
           <template v-if="!loadAll">
-            <div>
-              <p class="text-xs uppercase tracking-wide text-slate-500 mb-2">{{ t('reading_block.smart_metering_routes') }}</p>
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-600 mb-2">{{ t('reading_block.smart_metering_routes') }}</label>
               <v-select multiple :options="scopeOptions.routes" label="label" :reduce="option => option.id"
-                class="w-full custom-select" v-model="routeIds" :close-on-select="false" :disabled="busy" />
+                class="block w-full custom-select" v-model="routeIds" :close-on-select="false" :disabled="busy"
+                :placeholder="t('common.select')" />
             </div>
-            <div>
-              <p class="text-xs uppercase tracking-wide text-slate-500 mb-2">{{ t('reading_block.smart_metering_route_zones') }}</p>
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-600 mb-2">{{ t('reading_block.smart_metering_route_zones') }}</label>
               <v-select multiple :options="scopeOptions.route_zones" label="label" :reduce="option => option.id"
-                class="w-full custom-select" v-model="routeZoneIds" :close-on-select="false" :disabled="busy" />
+                class="block w-full custom-select" v-model="routeZoneIds" :close-on-select="false" :disabled="busy"
+                :placeholder="t('common.select')" />
             </div>
             <div>
-              <p class="text-xs uppercase tracking-wide text-slate-500 mb-2">{{ t('reading_block.smart_metering_batches') }}</p>
+              <label class="block text-sm font-medium text-slate-600 mb-2">{{ t('reading_block.smart_metering_batches') }}</label>
               <v-select multiple :options="scopeOptions.batches" label="label" :reduce="option => option.id"
-                class="w-full custom-select" v-model="batchIds" :close-on-select="false" :disabled="busy" />
+                class="block w-full custom-select" v-model="batchIds" :close-on-select="false" :disabled="busy"
+                :placeholder="t('common.select')" />
             </div>
           </template>
         </div>
@@ -306,3 +309,19 @@ const handleSave = async () => {
     @save="handleSave"
   />
 </template>
+
+<style scoped>
+/* Mateix aspecte i focus que els camps .input del diàleg (p. ex. la data). */
+.custom-select :deep(.vs__dropdown-toggle) {
+  @apply border-gray-300 rounded-md bg-white shadow-sm sm:text-sm transition-all focus-within:ring-1 focus-within:ring-indigo-500 focus-within:border-indigo-500;
+}
+
+.custom-select :deep(.vs__search::placeholder) {
+  @apply text-slate-400 text-sm;
+}
+
+.custom-select.vs--disabled :deep(.vs__dropdown-toggle),
+.custom-select.vs--disabled :deep(.vs__search) {
+  @apply bg-slate-100 text-slate-400;
+}
+</style>
