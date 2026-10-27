@@ -32,7 +32,9 @@ def upload_to_aws(file, document, name, field, entity):
     print("got s3_client")
     print(s3_client)
     bucket_name = settings.AWS_STORAGE_BUCKET_NAME  
-    s3_file_path = f"{field}/{entity}/{date_year}/{month_folder_name}/{name}"  
+    original_name = name
+    base_name, separator, extension = original_name.partition('.')
+    extension = f"{separator}{extension}"
     
     current_user = get_current_user()
     
@@ -46,9 +48,10 @@ def upload_to_aws(file, document, name, field, entity):
     version = 1
     try:
         while file_exists:
+            s3_file_path = f"{field}/{entity}/{date_year}/{month_folder_name}/{name}"
             file_exists = file_already_exists_check(bucket_name, s3_file_path)
             if file_exists:
-                name = f"{name[:name.find('.'):]}({version}){name[name.find('.'):]}"
+                name = f"{base_name}({version}){extension}"
                 version += 1
     except Exception as e:
         raise ValidationError(f"Error checking if file already exists: {e}")
@@ -166,4 +169,4 @@ def file_already_exists_check(location, folder):
         return True
     except ClientError as e:
         logging.error(e)
-        return False    
+        return False

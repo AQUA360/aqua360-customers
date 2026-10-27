@@ -50,6 +50,7 @@ from billing.models import (
     Invoice,
     InvoiceStatus,
     Payment,
+    PaymentStatus,
     Reading,
 )
 from documentmanager.utils.main_utils import download_document, upload_document
@@ -1182,19 +1183,21 @@ class SepaDocumentUploadView(APIView):
                 folder_name = person_bank.iban
         folder_name = folder_name.replace(" ", "_").upper()
 
-        document = upload_document(
-            uploaded_file,
-            "SEPA",
-            "CONTRACT",
-            general_payment.id,
-            general_payment.token or "",
-            folder_name,
-            service,
-            uploaded_file.name,
-            hdd_subfolder=str(general_payment.id),
-        )
-
         with transaction.atomic():
+            general_payment = GeneralPayment.objects.select_for_update().get(
+                pk=general_payment.pk
+            )
+            document = upload_document(
+                uploaded_file,
+                "SEPA",
+                "CONTRACT",
+                general_payment.id,
+                general_payment.token or "",
+                folder_name,
+                service,
+                uploaded_file.name,
+                hdd_subfolder=str(general_payment.id),
+            )
             GeneralPaymentSepaDocument.objects.filter(
                 general_payment=general_payment
             ).delete()
@@ -1780,14 +1783,18 @@ QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS = [
 ]
 
 
-def _quick_pay_non_payable_status_tokens():
+def _quick_pay_non_payable_status_tokens(paid_payment_status_token):
     configured_values = dict(
         ConfigProject.objects.filter(
             token__in=QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS
         )
         .values_list("token", "value")
     )
-    if not configured_values.get("invoice_status_paid_token"):
+    if (
+        not configured_values.get("invoice_status_paid_token")
+        or not paid_payment_status_token
+        or not PaymentStatus.objects.filter(token=paid_payment_status_token).exists()
+    ):
         return None
     return {value for value in configured_values.values() if value}
 
@@ -1846,13 +1853,20 @@ class QuickPayOVView(APIView):
             else None
         )
 
-        non_payable_status_tokens = _quick_pay_non_payable_status_tokens()
+        paid_payment_status_token = (
+            ConfigProject.objects.filter(token="payment_status_paid_token")
+            .values_list("value", flat=True)
+            .first()
+        )
+        non_payable_status_tokens = _quick_pay_non_payable_status_tokens(
+            paid_payment_status_token
+        )
         payable = (
             non_payable_status_tokens is not None
             and invoice.status is not None
             and invoice.status.token not in non_payable_status_tokens
             and (invoice.left_to_pay or 0) > 0
-            and invoice.payments.exists()
+            and invoice.payments.exclude(status__token=paid_payment_status_token).exists()
         )
 
         if not payable:

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.http import HttpResponse
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -13,6 +13,52 @@ from contract.models import Contract, ContractRequest
 from coredata.models import ConfigProject
 from documentmanager.models import Document, DocumentSign
 from integrations.outbound.signing.exceptions import SigningApiError
+
+
+@override_settings(AWS_STORAGE_BUCKET_NAME="test-documents")
+class AwsUploadTests(TestCase):
+    def _upload(self, name, existing_keys):
+        from documentmanager.utils.aws_service import upload_to_aws
+
+        document = Document(entity_id=1, service="aws", document_name=name)
+        uploaded_file = io.BytesIO(b"mandate")
+        with patch("documentmanager.utils.aws_service.get_current_user", return_value=None), patch(
+            "documentmanager.utils.aws_service.boto3.client"
+        ) as client, patch(
+            "documentmanager.utils.aws_service.file_already_exists_check",
+            side_effect=existing_keys,
+        ) as exists:
+            upload_to_aws(uploaded_file, document, name, "CONTRACT", "SEPA")
+
+        document.refresh_from_db()
+        checked_keys = [call.args[1] for call in exists.call_args_list]
+        self.assertEqual(document.folder, checked_keys[-1])
+        self.assertEqual(document.document_name, document.folder.rsplit("/", 1)[-1])
+        client.return_value.upload_fileobj.assert_called_once_with(
+            uploaded_file,
+            "test-documents",
+            document.folder,
+            ExtraArgs={"Tagging": "user=Admin&category=SEPA"},
+        )
+        return document, checked_keys
+
+    def test_collisions_check_new_keys_without_accumulating_suffixes(self):
+        for name, expected_names in (
+            ("mandate.pdf", ["mandate.pdf", "mandate(1).pdf", "mandate(2).pdf"]),
+            ("mandate", ["mandate", "mandate(1)", "mandate(2)"]),
+            ("mandate.signed.pdf", ["mandate.signed.pdf", "mandate(1).signed.pdf", "mandate(2).signed.pdf"]),
+            ("mandate(2).pdf", ["mandate(2).pdf", "mandate(2)(1).pdf", "mandate(2)(2).pdf"]),
+        ):
+            with self.subTest(name=name):
+                document, checked_keys = self._upload(name, [True, True, False])
+                self.assertEqual([key.rsplit("/", 1)[-1] for key in checked_keys], expected_names)
+                self.assertEqual(document.document_name, expected_names[-1])
+
+    def test_no_collision_keeps_original_name_and_key(self):
+        document, checked_keys = self._upload("mandate.pdf", [False])
+
+        self.assertEqual(document.document_name, "mandate.pdf")
+        self.assertEqual(len(checked_keys), 1)
 
 
 class DocumentSignApiTest(TestCase):
