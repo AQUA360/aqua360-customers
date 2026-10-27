@@ -137,6 +137,7 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
         return_fee_amount = None
         try:
             return_fee_config = ConfigProject.objects.filter(token='claim_letter_return_fee_price_rate_token').first()
+            
             price_rate_token = return_fee_config.value if return_fee_config else None
             if price_rate_token:
                 price_rate = PriceRate.objects.filter(token=price_rate_token, is_active=True).first()
@@ -157,13 +158,17 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
         joined_payment = None
         if claim_request.current_step.step_template.group_payments and joined_payment_id:
             try:
+                joined_payment_status_cancelled_token = ConfigProject.objects.get(token='joined_payment_status_cancelled_token').value
                 joined_payment = JoinedPayment.objects.get(id=joined_payment_id)
-                original_payments = joined_payment.payments.filter(claim_requests__claim_step__isnull=True).distinct()
-                expense_payments = joined_payment.payments.filter(claim_requests__claim_step__isnull=False).distinct()
-                contract_invoices = Invoice.objects.filter(payments__in=original_payments, contract=contract).distinct()
-                invoice_total = original_payments.aggregate(total=Sum('amount'))['total'] or Decimal(0)
-                return_fee_amount = expense_payments.aggregate(total=Sum('amount'))['total'] or Decimal(0)  
-                invoice_total_with_fees = invoice_total + return_fee_amount
+                if joined_payment.status.token == joined_payment_status_cancelled_token:
+                    joined_payment = None
+                else:
+                    original_payments = joined_payment.payments.filter(claim_requests__claim_step__isnull=True).distinct()
+                    expense_payments = joined_payment.payments.filter(claim_requests__claim_step__isnull=False).distinct()
+                    contract_invoices = Invoice.objects.filter(payments__in=original_payments, contract=contract).distinct()
+                    invoice_total = original_payments.aggregate(total=Sum('amount'))['total'] or Decimal(0)
+                    return_fee_amount = expense_payments.aggregate(total=Sum('amount'))['total'] or Decimal(0)  
+                    invoice_total_with_fees = invoice_total + return_fee_amount
             except JoinedPayment.DoesNotExist:
                 joined_payment = None
         

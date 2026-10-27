@@ -2152,6 +2152,346 @@ msgstr "TOTAL IVE 21"
 msgid "Explotación"
 msgstr "Explotación"
 
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "You have been assigned the incident %(incident)s"
+msgstr "Asignóuseche a incidencia %(incident)s"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "(due %(date)s)"
+msgstr "(vence o %(date)s)"
+
+#: notification/utils/incident_utils.py
+msgid "Incident assigned"
+msgstr "Incidencia asignada"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "You have a pending incident due: %(incidents)s"
+msgstr "Tes unha incidencia pendente vencida: %(incidents)s"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "You have %(count)s pending incidents due: %(incidents)s"
+msgstr "Tes %(count)s incidencias pendentes vencidas: %(incidents)s"
+
+#: notification/utils/incident_utils.py
+msgid "Pending incidents"
+msgstr "Incidencias pendentes"
+
+#: notification/views/incident_report_view.py
+msgid "A reason is required to delete the report."
+msgstr "Hai que indicar un motivo para borrar o informe."
+
+#: notification/utils/incident_csv_export.py
+msgid "Creada per"
+msgstr "Creada por"
+
+#: notification/utils/incident_csv_export.py
+msgid "Assignada a"
+msgstr "Asignada a"
+
+#: notification/utils/incident_csv_export.py
+msgid "Data Venciment"
+msgstr "Data Vencemento"
+
+#: notification/utils/incident_csv_export.py
+msgid "Data Tancament"
+msgstr "Data Peche"
+
+#: notification/utils/incident_csv_export.py
+msgid "Resolució"
+msgstr "Resolución"
+
+#: notification/utils/incident_csv_export.py
+msgid "Tall de Subministrament"
+msgstr "Corte de Subministración"
+
+#: notification/utils/incident_utils.py
+msgid "Incident about to expire"
+msgstr "Incidencia a piques de vencer"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "The incident %(incident)s is due %(date)s"
+msgstr "A incidencia %(incident)s vence o %(date)s"
+
+#: notification/utils/incident_utils.py
+msgid "Incident escalated"
+msgstr "Incidencia escalada"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "The incident %(incident)s is overdue since %(date)s"
+msgstr "A incidencia %(incident)s venceu o %(date)s"
+
+#: notification/utils/incident_utils.py
+msgid "Incident paused for too long"
+msgstr "Incidencia detida demasiado tempo"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "The incident %(incident)s has been in %(status)s for %(days)s business days"
+msgstr "A incidencia %(incident)s leva %(days)s días hábiles en %(status)s"
+
+#: notification/utils/incident_utils.py
+msgid "Reference"
+msgstr "Referencia"
+
+#: notification/utils/incident_utils.py
+msgid "Date and time"
+msgstr "Data e hora"
+
+#: notification/utils/incident_utils.py
+msgid "Channel"
+msgstr "Canle"
+
+#: notification/utils/incident_utils.py
+msgid "Type"
+msgstr "Tipo"
+
+#: notification/utils/incident_utils.py
+msgid "Subject"
+msgstr "Asunto"
+
+#: notification/utils/incident_utils.py
+msgid "Content"
+msgstr "Contido"
+
+#: notification/utils/incident_utils.py
+msgid "Maximum resolution date"
+msgstr "Data máxima de resolución"
+
+#: notification/utils/incident_utils.py
+msgid "Registration receipt"
+msgstr "Xustificante de rexistro"
+
+#: notification/utils/incident_utils.py
+msgid "Keep this reference to check the status of your request."
+msgstr "Conserve esta referencia para consultar o estado da súa solicitude."
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "Receipt of your request %(reference)s"
+msgstr "Xustificante da súa solicitude %(reference)s"
+
+#: notification/utils/incident_timeline.py
+msgid "Incident registered"
+msgstr "Incidencia rexistrada"
+
+#: notification/utils/incident_timeline.py
+msgid "Status change"
+msgstr "Cambio de estado"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Field modified: %(field)s"
+msgstr "Campo modificado: %(field)s"
+
+#: notification/utils/incident_timeline.py
+msgid "answered"
+msgstr "atendida"
+
+#: notification/utils/incident_timeline.py
+msgid "not answered"
+msgstr "non atendida"
+
+#: notification/utils/incident_timeline.py
+msgid "Inbound call"
+msgstr "Chamada entrante"
+
+#: notification/utils/incident_timeline.py
+msgid "Outbound call"
+msgstr "Chamada saínte"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Report %(token)s"
+msgstr "Informe %(token)s"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Report %(token)s deleted"
+msgstr "Informe %(token)s borrado"
+
+#: notification/utils/incident_timeline.py
+msgid "Observation"
+msgstr "Observación"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Task: %(name)s"
+msgstr "Tarefa: %(name)s"
+
+#: notification/utils/incident_timeline.py
+msgid "Receipt sent"
+msgstr "Xustificante enviado"
+
+#: notification/utils/incident_timeline.py
+msgid "Incident closed"
+msgstr "Incidencia pechada"
+
+#: notification/utils/incident_timeline.py
+msgid "Incident deleted"
+msgstr "Incidencia borrada"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Sense tipus"
+msgstr "Sen tipo"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Sense canal"
+msgstr "Sen canle"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Tancades"
+msgstr "Pechadas"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Dins de termini"
+msgstr "Dentro de prazo"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Fora de termini"
+msgstr "Fóra de prazo"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "% dins de termini"
+msgstr "% dentro de prazo"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Pendents vençudes"
+msgstr "Pendentes vencidas"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Reobertes"
+msgstr "Reabertas"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Mitjana 1a resposta (dies hàbils)"
+msgstr "Media 1ª resposta (días hábiles)"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Mitjana resolució (dies hàbils)"
+msgstr "Media resolución (días hábiles)"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Per tipus"
+msgstr "Por tipo"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Per canal"
+msgstr "Por canle"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Canal"
+msgstr "Canle"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Fase"
+msgstr "Fase"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Registre"
+msgstr "Rexistro"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Primera resposta"
+msgstr "Primeira resposta"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Tancament"
+msgstr "Peche"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Dies hàbils fins a resposta"
+msgstr "Días hábiles ata resposta"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Dies hàbils fins a resolució"
+msgstr "Días hábiles ata resolución"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Vençuda"
+msgstr "Vencida"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Reoberta"
+msgstr "Reaberta"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Atenció telefònica"
+msgstr "Atención telefónica"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Indicador"
+msgstr "Indicador"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Trucades entrants"
+msgstr "Chamadas entrantes"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Ateses"
+msgstr "Atendidas"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Abandonades"
+msgstr "Abandonadas"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Ateses en menys de 3 minuts"
+msgstr "Atendidas en menos de 3 minutos"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "% ateses en menys de 3 minuts"
+msgstr "% atendidas en menos de 3 minutos"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Espera mitjana (segons)"
+msgstr "Espera media (segundos)"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Transferides"
+msgstr "Transferidas"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Peticions de supervisor"
+msgstr "Peticións de supervisor"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Peticions de trucada de retorn"
+msgstr "Peticións de devolución de chamada"
+
+#: notification/utils/incident_csv_export.py
+msgid "Primera Resposta"
+msgstr "Primeira Resposta"
+
+#: notification/utils/incident_csv_export.py
+msgid "Dins de Termini"
+msgstr "Dentro de Prazo"
+
+#: notification/utils/incident_csv_export.py
+msgid "Extracció"
+msgstr "Extracción"
+
+#: notification/utils/incident_csv_export.py
+msgid "Data d'extracció"
+msgstr "Data de extracción"
+
+#: notification/utils/incident_csv_export.py
+msgid "Registres"
+msgstr "Rexistros"
+
+#: notification/serializers/incident_serializer.py
+msgid "This status change is not allowed."
+msgstr "Este cambio de estado non está permitido."
+
+#: coredata/serializers.py
+msgid "The recording link must be an http or https address."
+msgstr "A ligazón da gravación debe ser un enderezo http ou https."
+
 msgid "Emisora"
 msgstr "Emisora"
 
@@ -2769,8 +3109,6 @@ msgid ""
 "S'ha iniciat el procés d'actualització de dades de facturació en segon pla."
 msgstr ""
 
-
-
 msgid "Consum registrat"
 msgstr "Consumo rexistrado"
 
@@ -2782,7 +3120,6 @@ msgstr "Consumo pendente"
 
 msgid "Consum facturat"
 msgstr "Consumo facturado"
-
 
 msgid "Expired daily documents"
 msgstr "Documentos diarios caducados"
@@ -4420,353 +4757,8 @@ msgstr "Lectura inusual"
 msgid "Consum inusualment baix"
 msgstr "Consumo inusualmente baixo"
 
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "You have been assigned the incident %(incident)s"
-msgstr "Asignóuseche a incidencia %(incident)s"
-
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "(due %(date)s)"
-msgstr "(vence o %(date)s)"
-
-#: notification/utils/incident_utils.py
-msgid "Incident assigned"
-msgstr "Incidencia asignada"
-
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "You have a pending incident due: %(incidents)s"
-msgstr "Tes unha incidencia pendente vencida: %(incidents)s"
-
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "You have %(count)s pending incidents due: %(incidents)s"
-msgstr "Tes %(count)s incidencias pendentes vencidas: %(incidents)s"
-
-#: notification/utils/incident_utils.py
-msgid "Pending incidents"
-msgstr "Incidencias pendentes"
-
-#: notification/views/incident_report_view.py
-msgid "A reason is required to delete the report."
-msgstr "Hai que indicar un motivo para borrar o informe."
-
-#: notification/utils/incident_csv_export.py
-msgid "Creada per"
-msgstr "Creada por"
-
-#: notification/utils/incident_csv_export.py
-msgid "Assignada a"
-msgstr "Asignada a"
-
-#: notification/utils/incident_csv_export.py
-msgid "Data Venciment"
-msgstr "Data Vencemento"
-
-#: notification/utils/incident_csv_export.py
-msgid "Data Tancament"
-msgstr "Data Peche"
-
-#: notification/utils/incident_csv_export.py
-msgid "Resolució"
-msgstr "Resolución"
-
-#: notification/utils/incident_csv_export.py
-msgid "Tall de Subministrament"
-msgstr "Corte de Subministración"
-
-#: notification/utils/incident_utils.py
-msgid "Incident about to expire"
-msgstr "Incidencia a piques de vencer"
-
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "The incident %(incident)s is due %(date)s"
-msgstr "A incidencia %(incident)s vence o %(date)s"
-
-#: notification/utils/incident_utils.py
-msgid "Incident escalated"
-msgstr "Incidencia escalada"
-
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "The incident %(incident)s is overdue since %(date)s"
-msgstr "A incidencia %(incident)s venceu o %(date)s"
-
-#: notification/utils/incident_utils.py
-msgid "Incident paused for too long"
-msgstr "Incidencia detida demasiado tempo"
-
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "The incident %(incident)s has been in %(status)s for %(days)s business days"
-msgstr "A incidencia %(incident)s leva %(days)s días hábiles en %(status)s"
-
-#: notification/utils/incident_utils.py
-msgid "Reference"
-msgstr "Referencia"
-
-#: notification/utils/incident_utils.py
-msgid "Date and time"
-msgstr "Data e hora"
-
-#: notification/utils/incident_utils.py
-msgid "Channel"
-msgstr "Canle"
-
-#: notification/utils/incident_utils.py
-msgid "Type"
-msgstr "Tipo"
-
-#: notification/utils/incident_utils.py
-msgid "Subject"
-msgstr "Asunto"
-
-#: notification/utils/incident_utils.py
-msgid "Content"
-msgstr "Contido"
-
-#: notification/utils/incident_utils.py
-msgid "Maximum resolution date"
-msgstr "Data máxima de resolución"
-
-#: notification/utils/incident_utils.py
-msgid "Registration receipt"
-msgstr "Xustificante de rexistro"
-
-#: notification/utils/incident_utils.py
-msgid "Keep this reference to check the status of your request."
-msgstr "Conserve esta referencia para consultar o estado da súa solicitude."
-
-#: notification/utils/incident_utils.py
-#, python-format
-msgid "Receipt of your request %(reference)s"
-msgstr "Xustificante da súa solicitude %(reference)s"
-
-
-
-
-#: notification/utils/incident_timeline.py
-msgid "Incident registered"
-msgstr "Incidencia rexistrada"
-
-#: notification/utils/incident_timeline.py
-msgid "Status change"
-msgstr "Cambio de estado"
-
-#: notification/utils/incident_timeline.py
-#, python-format
-msgid "Field modified: %(field)s"
-msgstr "Campo modificado: %(field)s"
-
-#: notification/utils/incident_timeline.py
-msgid "answered"
-msgstr "atendida"
-
-#: notification/utils/incident_timeline.py
-msgid "not answered"
-msgstr "non atendida"
-
-#: notification/utils/incident_timeline.py
-msgid "Inbound call"
-msgstr "Chamada entrante"
-
-#: notification/utils/incident_timeline.py
-msgid "Outbound call"
-msgstr "Chamada saínte"
-
-#: notification/utils/incident_timeline.py
-#, python-format
-msgid "Report %(token)s"
-msgstr "Informe %(token)s"
-
-#: notification/utils/incident_timeline.py
-#, python-format
-msgid "Report %(token)s deleted"
-msgstr "Informe %(token)s borrado"
-
-#: notification/utils/incident_timeline.py
-msgid "Observation"
-msgstr "Observación"
-
-#: notification/utils/incident_timeline.py
-#, python-format
-msgid "Task: %(name)s"
-msgstr "Tarefa: %(name)s"
-
-#: notification/utils/incident_timeline.py
-msgid "Receipt sent"
-msgstr "Xustificante enviado"
-
-#: notification/utils/incident_timeline.py
-msgid "Incident closed"
-msgstr "Incidencia pechada"
-
-
-
-#: notification/utils/incident_timeline.py
-msgid "Incident deleted"
-msgstr "Incidencia borrada"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Sense tipus"
-msgstr "Sen tipo"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Sense canal"
-msgstr "Sen canle"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Tancades"
-msgstr "Pechadas"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Dins de termini"
-msgstr "Dentro de prazo"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Fora de termini"
-msgstr "Fóra de prazo"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "% dins de termini"
-msgstr "% dentro de prazo"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Pendents vençudes"
-msgstr "Pendentes vencidas"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Reobertes"
-msgstr "Reabertas"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Mitjana 1a resposta (dies hàbils)"
-msgstr "Media 1ª resposta (días hábiles)"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Mitjana resolució (dies hàbils)"
-msgstr "Media resolución (días hábiles)"
-
-
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Per tipus"
-msgstr "Por tipo"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Per canal"
-msgstr "Por canle"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Canal"
-msgstr "Canle"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Fase"
-msgstr "Fase"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Registre"
-msgstr "Rexistro"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Primera resposta"
-msgstr "Primeira resposta"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Tancament"
-msgstr "Peche"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Dies hàbils fins a resposta"
-msgstr "Días hábiles ata resposta"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Dies hàbils fins a resolució"
-msgstr "Días hábiles ata resolución"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Vençuda"
-msgstr "Vencida"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Reoberta"
-msgstr "Reaberta"
-
-
-
-
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Atenció telefònica"
-msgstr "Atención telefónica"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Indicador"
-msgstr "Indicador"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Trucades entrants"
-msgstr "Chamadas entrantes"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Ateses"
-msgstr "Atendidas"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Abandonades"
-msgstr "Abandonadas"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Ateses en menys de 3 minuts"
-msgstr "Atendidas en menos de 3 minutos"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "% ateses en menys de 3 minuts"
-msgstr "% atendidas en menos de 3 minutos"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Espera mitjana (segons)"
-msgstr "Espera media (segundos)"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Transferides"
-msgstr "Transferidas"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Peticions de supervisor"
-msgstr "Peticións de supervisor"
-
-#: statistics/utils/report_incident_compliance_service.py
-msgid "Peticions de trucada de retorn"
-msgstr "Peticións de devolución de chamada"
-
-#: notification/utils/incident_csv_export.py
-msgid "Primera Resposta"
-msgstr "Primeira Resposta"
-
-#: notification/utils/incident_csv_export.py
-msgid "Dins de Termini"
-msgstr "Dentro de Prazo"
-
-#: notification/utils/incident_csv_export.py
-msgid "Extracció"
-msgstr "Extracción"
-
-#: notification/utils/incident_csv_export.py
-msgid "Data d'extracció"
-msgstr "Data de extracción"
-
-#: notification/utils/incident_csv_export.py
-msgid "Registres"
-msgstr "Rexistros"
-
-#: notification/serializers/incident_serializer.py
-msgid "This status change is not allowed."
-msgstr "Este cambio de estado non está permitido."
-
+msgid "Attach invoices in claims"
+msgstr "Adxuntar facturas nas reclamacións"
 #: billing/templates/payment_proof_template.html
 msgid "Justificant de pagament"
 msgstr "Xustificante de pago"
@@ -4859,7 +4851,3 @@ msgstr "A tarefa de filtrado non existe ou aínda non rematou."
 
 msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
 msgstr "Hai contratos que non pertencen a esta xestión de reclamación."
-
-#: coredata/serializers.py
-msgid "The recording link must be an http or https address."
-msgstr "A ligazón da gravación debe ser un enderezo http ou https."
