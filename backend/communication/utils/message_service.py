@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
 from billing.models import Invoice, Reading
+from billing.utils.aca_company_service import use_multiple_companies
 from billing.tasks import generate_and_upload_xml
 from claimrequest.tasks import generate_claim_document_pdf
 from communication.utils.communication_service import create_email_template, get_communication_file
@@ -91,11 +92,22 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                 )
                 all_contract_ids.update(cid for cid in reading_contract_lookup.values() if cid)
 
+            # Clau d'agrupació per contracte: el tipus de comunicació i, amb `use_multiple_companies`,
+            # també l'empresa, perquè cada comunicació porti el logo, els colors, la signatura i les
+            # dades d'una sola empresa.
             contract_type_map = {}
             if all_contract_ids:
-                contract_type_map = dict(
-                    Contract.objects.filter(id__in=all_contract_ids).values_list('id', 'communication_type')
-                )
+                if use_multiple_companies():
+                    contract_type_map = {
+                        contract_id: (comm_type, company_id)
+                        for contract_id, comm_type, company_id in Contract.objects.filter(
+                            id__in=all_contract_ids
+                        ).values_list('id', 'communication_type', 'company_id')
+                    }
+                else:
+                    contract_type_map = dict(
+                        Contract.objects.filter(id__in=all_contract_ids).values_list('id', 'communication_type')
+                    )
 
             split_person_groups = []
             for group in person_groups:

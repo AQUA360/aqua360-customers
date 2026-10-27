@@ -443,6 +443,10 @@ def _supply_cut_values(person, communication):
 
 
 def get_com_values(person, communication, company):
+    # Amb `use_multiple_companies` les dades d'empresa són les del contracte, com el logo i la signatura
+    contract_company = get_contract_company(communication.contracts.select_related('company').first())
+    if contract_company:
+        company = CompanySerializer(contract_company).data
     return {
         'person.token': person.get('token') if person else '',
         'person.name': person.get('full_name') if person else '',
