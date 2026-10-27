@@ -1709,6 +1709,21 @@ class PersonDataOVTests(TestCase):
 
 class InvoicePDFOVTests(TestCase):
     @classmethod
+    def setUpClass(cls):
+        cls._storage_dir = tempfile.mkdtemp()
+        cls._storage_override = override_settings(
+            DOCUMENT_STORAGE_PATH=cls._storage_dir
+        )
+        cls._storage_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._storage_override.disable()
+        shutil.rmtree(cls._storage_dir, ignore_errors=True)
+
+    @classmethod
     def setUpTestData(cls):
         cls.user = User.objects.create_user(username="ov-invoice-pdf-test")
         for token, value in (
@@ -1742,31 +1757,38 @@ class InvoicePDFOVTests(TestCase):
 
     def test_reuses_stored_pdf_without_generating_or_replacing_it(self):
         pdf_bytes = b"%PDF-1.4 stored invoice"
-        with tempfile.TemporaryDirectory() as directory:
-            path = os.path.join(directory, "stored.pdf")
-            with open(path, "wb") as stored:
-                stored.write(pdf_bytes)
-            document = Document.objects.create(
-                entity_id=self.invoice.pk,
-                service="hdd",
-                location=path,
-                document_name="original.pdf",
-            )
-            Invoice.objects.filter(pk=self.invoice.pk).update(invoice_file=document)
-            document_count = Document.objects.count()
+        path = os.path.join(self._storage_dir, "stored.pdf")
+        with open(path, "wb") as stored:
+            stored.write(pdf_bytes)
+        document = Document.objects.create(
+            entity_id=self.invoice.pk,
+            service="hdd",
+            location=path,
+            document_name="original.pdf",
+        )
+        Invoice.objects.filter(pk=self.invoice.pk).update(invoice_file=document)
+        document_count = Document.objects.count()
 
-            with patch("ov.views.generate_report_invoice_pdf") as generate:
-                response = self._get(invoice_token=self.invoice.serie_final)
+        with patch("ov.views.generate_report_invoice_pdf") as generate:
+            response = self._get(invoice_token=self.invoice.serie_final)
 
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(base64.b64decode(response.data["pdf"]), pdf_bytes)
-            self.assertEqual(response.data["document_name"], "original.pdf")
-            generate.assert_not_called()
-            self.invoice.refresh_from_db()
-            self.assertEqual(self.invoice.invoice_file_id, document.pk)
-            self.assertEqual(Document.objects.count(), document_count)
-            with open(path, "rb") as stored:
-                self.assertEqual(stored.read(), pdf_bytes)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(base64.b64decode(response.data["pdf"]), pdf_bytes)
+        self.assertEqual(response.data["document_name"], "original.pdf")
+        generate.assert_not_called()
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.invoice_file_id, document.pk)
+        self.assertEqual(Document.objects.count(), document_count)
+        with open(path, "rb") as stored:
+            self.assertEqual(stored.read(), pdf_bytes)
+
+    def test_missing_invoice_type_config_returns_not_found(self):
+        ConfigProject.objects.filter(token="invoice_type_invoice_token").delete()
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Invoice not found"})
 
     def test_generates_missing_pdf_in_memory_with_fallback_document_name(self):
         for serie_final in ("FC/2026/1", None):

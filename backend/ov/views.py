@@ -491,11 +491,14 @@ class InvoicePDFView(APIView):
 
         from coredata.models import ConfigProject
 
-        file_type_value = (
-            ConfigProject.objects.filter(token="invoice_type_invoice_token")
-            .first()
-            .value
-        )
+        invoice_type_config = ConfigProject.objects.filter(
+            token="invoice_type_invoice_token"
+        ).first()
+        if not invoice_type_config or not invoice_type_config.value:
+            return Response(
+                {"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        file_type_value = invoice_type_config.value
         invoice: Invoice = self.queryset.filter(
             token=invoice_token,
             contract__token=contract_token,
