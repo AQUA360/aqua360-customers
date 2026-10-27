@@ -6,7 +6,7 @@ from django.http import Http404, HttpResponse
 
 #from documentmanager.utils.main_utils import get_unique_document_name
 
-def upload_to_hdd(file, entity, field, entity_id, entity_token, folder, document_name, document, date=None):
+def upload_to_hdd(file, entity, field, entity_id, entity_token, folder, document_name, document, date=None, subfolder=None):
     try:
         locale.setlocale(locale.LC_TIME, 'ca_ES.UTF-8')
     except locale.Error:
@@ -19,6 +19,7 @@ def upload_to_hdd(file, entity, field, entity_id, entity_token, folder, document
     storage_path = os.path.abspath(settings.DOCUMENT_STORAGE_PATH)
     file_path = os.path.normpath(os.path.join(storage_path, 
                              f"{field}/{entity}/{date_year}/{month_folder_name}", 
+                             subfolder or "",
                              document_name))
     # El nom del document no pot sortir de la carpeta de documents (p. ex. amb '..').
     if not file_path.startswith(storage_path + os.sep):

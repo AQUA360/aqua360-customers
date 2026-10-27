@@ -9,6 +9,9 @@ from .views import (
     InvoicePDFView,
     BillingDataOVUpdateIBANView,
     InvoicePaidView,
+    QuickPayOVView,
+    PaymentReceiptOVView,
+    InvoiceReturnRequestOVView,
     CreateReadingOVView,
     ContractsListOVView,
     ContractDetailByTokenOVView,
@@ -20,9 +23,17 @@ from .views import (
     ConsumptionsDownloadOVView,
     BillingPeriodsOVView,
     SepaDocumentUploadView,
+    SepaDocumentDownloadView,
     CancelDirectDebitView,
+    ContractProcedureOVView,
     ContactDataOVView,
+    PersonDataOVView,
     BatchInvoiceDownloadView,
+    ContractStatusDictionaryOVView,
+    PaymentTypeDictionaryOVView,
+    InvoiceStatusDictionaryOVView,
+    ProcedureTariffDictionaryOVView,
+    PropertiesOVView,
 )
 
 urlpatterns = [
@@ -44,6 +55,12 @@ urlpatterns = [
         ContactDataOVView.as_view(),
         name="contact-data-ov",
     ),  # Get method
+    # /ov/person-data/?dni=<DNI>
+    path(
+        "person-data/",
+        PersonDataOVView.as_view(),
+        name="person-data-ov",
+    ),  # Get method
     # /ov/invoices/?contract_token=<token>
     path("invoices/", BillingContractInvoicesOVView.as_view(), name="invoices-ov"),
     # /ov/invoices/download/?contract_token=<token>  body: {invoice_tokens: [...]}
@@ -56,6 +73,20 @@ urlpatterns = [
     path("invoice/", BillingContractInvoiceOVView.as_view(), name="invoice-ov"),
     # post -> body
     path("invoice/paid/", InvoicePaidView.as_view(), name="invoice-paid-ov"),
+    # post -> body {contract_number, invoice_number, amount}
+    path("invoice/quick-pay/", QuickPayOVView.as_view(), name="quick-pay-ov"),
+    # get -> ?contract_token=<token>&payment_token=<token>&dni=<DNI>
+    path(
+        "payment-receipt/",
+        PaymentReceiptOVView.as_view(),
+        name="payment-receipt-ov",
+    ),
+    # post -> body {invoice_token, contract_token, reason}
+    path(
+        "invoice/return-request/",
+        InvoiceReturnRequestOVView.as_view(),
+        name="invoice-return-request-ov",
+    ),
     # here we can filter by statuses query param, comma separated like ? statuses=-3,1
     # e.g. with demo data the link will be like:
     # /ov/unpayed-invoices/?contract_token=<token>&statuses=<invoice_status_token>
@@ -111,11 +142,25 @@ urlpatterns = [
         MeterDetailByTokenOVView.as_view(),
         name="meter-detail-by-token-ov",
     ),
+    # /ov/procedures/contract/  POST body: alta de contracte (ContractRequest)
+    # Ruta de dos segments; no entra en conflicte amb
+    # procedures/<contract_token>/upload-sepa-signed/ (quatre segments).
+    path(
+        "procedures/contract/",
+        ContractProcedureOVView.as_view(),
+        name="contract-procedure-ov",
+    ),
     # /ov/procedures/<contract_token>/upload-sepa-signed/
     path(
         "procedures/<str:contract_token>/upload-sepa-signed/",
         SepaDocumentUploadView.as_view(),
         name="upload-sepa-signed-ov",
+    ),
+    # /ov/procedures/<contract_token>/sepa-signed/
+    path(
+        "procedures/<str:contract_token>/sepa-signed/",
+        SepaDocumentDownloadView.as_view(),
+        name="sepa-signed-ov",
     ),
     # /ov/procedures/<contract_token>/cancel-direct-debit/
     path(
@@ -129,5 +174,31 @@ urlpatterns = [
         InvoiceDetailByTokenOVView.as_view(),
         name="invoice-detail-by-token-ov",
     ),
+    # /ov/dictionary/contract-statuses/
+    path(
+        "dictionary/contract-statuses/",
+        ContractStatusDictionaryOVView.as_view(),
+        name="contract-statuses-dictionary-ov",
+    ),
+    # /ov/dictionary/payment-types/
+    path(
+        "dictionary/payment-types/",
+        PaymentTypeDictionaryOVView.as_view(),
+        name="payment-types-dictionary-ov",
+    ),
+    # /ov/dictionary/invoice-statuses/
+    path(
+        "dictionary/invoice-statuses/",
+        InvoiceStatusDictionaryOVView.as_view(),
+        name="invoice-statuses-dictionary-ov",
+    ),
+    # /ov/dictionary/procedure-tariffs/
+    path(
+        "dictionary/procedure-tariffs/",
+        ProcedureTariffDictionaryOVView.as_view(),
+        name="procedure-tariffs-dictionary-ov",
+    ),
+    # /ov/properties/?search=<text>
+    path("properties/", PropertiesOVView.as_view(), name="properties-ov"),
 ]
 

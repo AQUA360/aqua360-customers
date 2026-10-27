@@ -1,5 +1,7 @@
 
 import json
+import logging
+
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,11 +12,14 @@ from billing.serializers.invoice_serializer import InvoiceFullSerializer
 from billing.utils.invoice_service import *
 from contract.models import ContractTerminationRequest
 
+logger = logging.getLogger(__name__)
+
+
 class ManageNewBudgetLineView(APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Invoice.objects.all().order_by('-created_at')
     def post(self, request, *args, **kwargs):
-        print("in manage new budget line view")
+        logger.debug("Managing a new budget line")
         invoice_id = request.data.get('invoice_id', None)
         line_item_type_id = request.data.get('line_item_type_id', None)
         
@@ -41,8 +46,8 @@ class ManageNewBudgetLineView(APIView):
         elif invoice.connection_request:
             connection = invoice.connection_request
         
-        print("contract: ", contract)
-        print("connection: ", connection)
+        source = "contract" if contract else "connection" if connection else "none"
+        logger.debug("Resolved budget line source: %s", source)
         
         if contract:
             line_items = create_from_lineitemtype(contract, line_item_type, None, None, None)
