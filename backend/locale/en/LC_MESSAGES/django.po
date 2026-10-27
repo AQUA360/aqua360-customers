@@ -3908,3 +3908,32 @@ msgstr "Cash"
 #: billing/templates/payment_proof_template.html
 msgid "Targeta (TPV Físic)"
 msgstr "Card (physical POS)"
+msgid "Adreça subministrament"
+msgstr "Supply address"
+
+msgid "Factures impagades"
+msgstr "Unpaid invoices"
+
+msgid "Deute total"
+msgstr "Total debt"
+
+msgid "Estat contracte"
+msgstr "Contract status"
+
+msgid "Estat punt de subministrament"
+msgstr "Supply point status"
+
+msgid "Data de tall"
+msgstr "Cut-off date"
+
+msgid "Contractes de la reclamació"
+msgstr "Claim contracts"
+
+msgid "Cal indicar la gestió de reclamació o la tasca de filtratge."
+msgstr "Either the claim request or the filtering task must be provided."
+
+msgid "La tasca de filtratge no existeix o encara no ha acabat."
+msgstr "The filtering task does not exist or has not finished yet."
+
+msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
+msgstr "Some contracts do not belong to this claim request."
