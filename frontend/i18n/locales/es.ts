@@ -2340,6 +2340,7 @@ export default {
     smart_metering_already_loaded_locked: 'Ya existe una carga de Smart Metering para esta fecha y estos contadores ({token}) y sus lecturas ya se han usado en un lote o una factura. No se puede volver a cargar.',
     smart_metering_replace_confirm: 'Ya existe una carga de Smart Metering para esta fecha y estos contadores ({token}). ¿Quieres sustituirla con las lecturas actuales?',
     smart_metering_already_loaded_several: 'Hay varias cargas de Smart Metering para esta fecha que incluyen estos contadores ({token}). Elige las rutas, zonas o lotes de una sola carga para sustituirla.',
+    smart_metering_scope_reduced: 'La nueva selección no incluye todos los contadores de la carga existente ({token}). Elige las mismas rutas, zonas o lotes, o más, para sustituirla.',
     smart_metering_load_all: 'Cargar todos los contadores Smart Metering',
     smart_metering_all_meters: 'Todos los contadores',
     smart_metering_routes: 'Rutas',

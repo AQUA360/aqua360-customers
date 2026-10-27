@@ -548,15 +548,23 @@ def normalize_smart_metering_scope(scope):
     """
     Keep only the known keys with integer ids. Returns None when nothing is
     selected, which means "every Smart Metering meter".
+
+    Invalid ids raise ValueError instead of being dropped: dropping them could
+    turn the scope into None and load every meter.
     """
     if not isinstance(scope, dict):
         return None
     normalized = {}
     for key in SMART_METERING_SCOPE_KEYS:
-        values = scope.get(key) or []
+        values = scope.get(key)
+        if values is None:
+            continue
         if not isinstance(values, (list, tuple)):
             values = [values]
-        ids = sorted({int(value) for value in values if str(value).strip().isdigit()})
+        tokens = [str(value).strip() for value in values]
+        if any(not token.isascii() or not token.isdigit() or int(token) <= 0 for token in tokens):
+            raise ValueError(f"Invalid ids for '{key}'")
+        ids = sorted({int(token) for token in tokens})
         if ids:
             normalized[key] = ids
     return normalized or None

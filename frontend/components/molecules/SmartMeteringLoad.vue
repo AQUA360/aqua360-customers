@@ -95,6 +95,10 @@ const confirmReplaceOnConflict = (error) => {
     toast.error(t('reading_block.smart_metering_already_loaded_several', { token: existing.token }));
     return false;
   }
+  if (existing.scope_reduced) {
+    toast.error(t('reading_block.smart_metering_scope_reduced', { token: existing.token }));
+    return false;
+  }
   if (!existing.replaceable) {
     toast.error(t('reading_block.smart_metering_already_loaded_locked', { token: existing.token }));
     return false;

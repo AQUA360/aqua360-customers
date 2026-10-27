@@ -283,3 +283,30 @@ class TestSmartMeteringDocument(TestCase):
 
         same_route = self._post_import(scope={'route_ids': [route_a.id]})
         self.assertEqual(same_route.status_code, 409)
+
+    def test_import_endpoint_rejects_invalid_scope_ids(self):
+        for scope in ({'route_ids': ['abc']}, {'route_ids': ['\u00b2']}, {'batch_ids': [0]}):
+            response = self._post_import(scope=scope)
+            self.assertEqual(response.status_code, 400, scope)
+        self.assertFalse(ReadingDocument.objects.exists())
+
+    def test_import_endpoint_allows_replace_only_without_losing_meters(self):
+        route_a = Route.objects.create(token='RA')
+        route_b = Route.objects.create(token='RB')
+        self._smart_metering_sp_on_route('SM-A', route_a)
+        self._smart_metering_sp_on_route('SM-B', route_b)
+        first = self._post_import(scope={'route_ids': [route_a.id, route_b.id]})
+        document = ReadingDocument.objects.get(id=first.data['document_id'])
+        document.status = ReadingDocument.STATUS_PROCESSED
+        document.save(update_fields=['status'])
+
+        reduced = self._post_import(replace=True, scope={'route_ids': [route_a.id]})
+        self.assertEqual(reduced.status_code, 409)
+        self.assertTrue(reduced.data['existing_document']['scope_reduced'])
+        self.assertFalse(reduced.data['existing_document']['replaceable'])
+
+        widened = self._post_import(replace=True)
+        self.assertEqual(widened.status_code, 202, widened.data)
+        self.assertEqual(widened.data['document_id'], document.id)
+        document.refresh_from_db()
+        self.assertIsNone(document.smart_metering_scope)

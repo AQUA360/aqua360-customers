@@ -34,6 +34,7 @@ from billing.utils.smart_metering_service import (
     normalize_smart_metering_scope,
     smart_metering_document_is_replaceable,
     smart_metering_scope_options,
+    smart_metering_scope_supply_point_ids,
 )
 from coredata.utils.name_utils import generate_token
 
@@ -204,8 +205,10 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
         """
         Una sola càrrega de Smart Metering per data i comptador: es bloqueja si ja
         n'hi ha una de la data que comparteixi comptadors amb les rutes, zones o
-        lots demanats. Només es pot substituir (``replace``) si és una sola, les
-        seves lectures no s'han fet servir en cap lot ni factura i no s'està carregant.
+        lots demanats. Només es pot substituir (``replace``) si és una sola, la nova
+        selecció inclou tots els seus comptadors (si no, les lectures dels que en
+        queden fora restarien al document), les seves lectures no s'han fet servir
+        en cap lot ni factura i no s'està carregant.
 
         Retorna (document existent a substituir o None, resposta d'error o None).
         """
@@ -217,9 +220,14 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
             existing.status == ReadingDocument.STATUS_PROCESSING
             and self._celery_task_is_running(existing.task_id)
         )
+        scope_reduced = not (
+            smart_metering_scope_supply_point_ids(existing.smart_metering_scope)
+            <= smart_metering_scope_supply_point_ids(scope)
+        )
         replaceable = (
             len(overlapping) == 1
             and not processing
+            and not scope_reduced
             and smart_metering_document_is_replaceable(existing)
         )
         if replace and replaceable:
@@ -233,6 +241,7 @@ class ReadingDocumentViewSet(viewsets.ModelViewSet):
                     "token": ", ".join(document.token or '' for document in overlapping),
                     "replaceable": replaceable,
                     "count": len(overlapping),
+                    "scope_reduced": scope_reduced,
                     "processing": processing,
                 },
             },
