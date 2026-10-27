@@ -1,3 +1,4 @@
+import logging
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +8,8 @@ from service.serializers.value_objects_serializer import MeterManufacturerSerial
 from rest_framework.filters import SearchFilter
 from service.permissions import MeterPermission
 from service.utils.meter_dictionary_service import get_or_create_dictionary_value
+
+logger = logging.getLogger(__name__)
 
 class MeterManufacturerViewSet(viewsets.ModelViewSet):
     queryset = MeterManufacturer.objects.all().order_by('name')
@@ -23,5 +26,9 @@ class MeterManufacturerViewSet(viewsets.ModelViewSet):
                 request.data.get('name'),
             )
         except ValueError as error:
-            return Response({'name': [str(error)]}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Failed to get or create meter manufacturer dictionary value.")
+            return Response(
+                {'name': ['Invalid manufacturer name.']},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         return Response(self.get_serializer(manufacturer).data, status=status.HTTP_200_OK)
