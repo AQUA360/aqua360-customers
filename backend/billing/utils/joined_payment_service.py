@@ -18,6 +18,7 @@ from xhtml2pdf import pisa
 from billing.models import JoinedPayment, Payment, PaymentRemittance, PaymentStatus
 from billing.serializers.payment_serializer import PaymentListSerializer
 from billing.utils.barcode_service import generate_barcode
+from billing.utils.invoice_service import get_use_exploitation_token_for_payment
 from billing.utils.payment_service import disconnect_payment_signals, generate_payment_movement, log_payment_status, reconnect_payment_signals
 from contract.models import Contract, PaymentType
 from contract.serializers.contract_serializer import ContractMinimalListSerializer
@@ -211,9 +212,17 @@ def register_joined_payment_log(joined_payment, previous_status, current_status,
     )
 
 
-def generate_joined_payment_id(used_token, count = 1):
+def generate_joined_payment_id(used_token, count = 1, exploitation_token='0'):
     from django.db.models import Max
-    
+    if get_use_exploitation_token_for_payment().lower() == 'true' and exploitation_token:
+        try:
+            if int(exploitation_token) > 0 and int(exploitation_token) < 10:
+                used_token = exploitation_token + used_token[1:]
+            else:
+                used_token = used_token
+        except Exception:
+            used_token = used_token
+            
     max_token = JoinedPayment.objects.filter(
         token__startswith=used_token
     ).aggregate(
