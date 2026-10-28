@@ -2,7 +2,6 @@ import base64
 from datetime import datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
-import os
 import uuid
 from celery import shared_task
 from celery_progress.backend import ProgressRecorder
@@ -37,6 +36,7 @@ from django.template.loader import render_to_string
 from xhtml2pdf import pisa
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
+from service.utils.contract_company import build_logo_path, company_colors, contract_company_logo, get_contract_company
 
 
 
@@ -75,22 +75,14 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             company = CompanySerializer(
                 company_obj
             ).data
-        logo_db = company['logo'] if company else None
-        logo = None
-        if not logo_db:
-            c = Company.objects.all().first()
-            company = CompanySerializer(c, context={'request': None}).data if c else None
+        logo = contract_company_logo(contract)
+        if not logo:
             logo_db = company['logo'] if company else None
-        
-        if logo_db:
-            # netejem logo_db assegurant-nos que sempre arriba el mateix format, potser que arribi una url o un path que comenci per /media/
-            logo_db = f'uploads/{logo_db.split("uploads/")[1]}'
-            
-            # Logo és un path relatiu, construir path complet
-            if hasattr(settings, 'DOMAIN_MEDIA') and settings.DOMAIN_MEDIA:
-                logo = os.path.join(settings.DOMAIN_MEDIA, f'media/{logo_db}')
-            else:
-                logo = os.path.join(settings.MEDIA_ROOT, logo_db)
+            if not logo_db:
+                c = Company.objects.all().first()
+                company = CompanySerializer(c, context={'request': None}).data if c else None
+                logo_db = company['logo'] if company else None
+            logo = build_logo_path(logo_db)
 
         if contract.supply_point_default and contract.supply_point_default.address:
             sp_address = AddressSerializer(contract.supply_point_default.address).data
@@ -195,6 +187,10 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             secondary_color = company_obj.invoice_secondary_color if company_obj and company_obj.invoice_secondary_color else ConfigProject.objects.get(token='invoice_secondary_color').value
         except:
             pass
+        # Amb `use_multiple_companies` els colors i la signatura són els de l'empresa del contracte
+        contract_company = get_contract_company(contract)
+        if contract_company:
+            main_color, secondary_color = company_colors(contract_company, company_obj)
         
         template_candidates = build_template_candidates(
             f"{document_type.token}_template.html", lang=claim_lang
@@ -236,7 +232,8 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
         pdf_buffer.seek(0)
         
         #SIGNATURE
-        signed_pdf_buffer = sign_pdf(pdf_buffer, company, document_type.name, document_type.token)
+        sign_company = CompanySerializer(contract_company).data if contract_company else company
+        signed_pdf_buffer = sign_pdf(pdf_buffer, sign_company, document_type.name, document_type.token)
         
         return {"status": "success", "pdf_content": signed_pdf_buffer.getvalue()}
     except Exception as e:
