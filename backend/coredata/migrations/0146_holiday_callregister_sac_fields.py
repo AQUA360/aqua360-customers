@@ -50,11 +50,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='callregister',
-            name='incident',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='call_registers', to='notification.incident'),
-        ),
-        migrations.AddField(
-            model_name='callregister',
             name='incoming_at',
             field=models.DateTimeField(blank=True, null=True),
         ),
