@@ -23,7 +23,7 @@ from billing.utils.payment_service import get_status_map
 from billing.views.detailed_billing_document_generate_view import normalize_text, repeat_to_at_least_length
 from contract.models import Bail, Contract, ContractTerminationRequest, PaymentType, Variable
 from coredata.models import Bank, ConfigProject, StreetType
-from coredata.utils.address_utils import get_address_complete_without_city
+from coredata.utils.address_utils import get_address_complete_without_city, get_address_extra_suffix
 from coredata.utils.other_utils import round_ceil
 from coredata.utils.validators_utils import validate_nif
 from logger.models import LogCommitmentDepositMovement, LogPaymentStatusChange
@@ -1464,7 +1464,7 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
         
             i_data.extend([
                 i.persons_final if not i.customer_is_juridic else 0, 
-                f"{str(contract.address_contact.address.street)}, {str(contract.address_contact.address.street_number)}" if contract and contract.address_contact and contract.address_contact.address and different_address else "",
+                f"{str(contract.address_contact.address.street)}, {str(contract.address_contact.address.street_number)}{get_address_extra_suffix(contract.address_contact.address)}" if contract and contract.address_contact and contract.address_contact.address and different_address else "",
                 contract.address_contact.address.postal_code if contract and contract.address_contact and contract.address_contact.address and different_address else "",
                 contract.address_contact.attention_to if contract and contract.address_contact and different_address else "",
                 contract.supply_point_default.property.route_position.route.token if contract and contract.supply_point_default and contract.supply_point_default.property and contract.supply_point_default.property.route_position and contract.supply_point_default.property.route_position.route else "",
@@ -2640,7 +2640,7 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
             company = Company.objects.get(vat=main_company_token)
         
         if invoices.count() == 0:
-            raise Exception("No invoices found to generate SII report")
+            return None, None, None
 
         filename = (
             f'SII_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}.xml'

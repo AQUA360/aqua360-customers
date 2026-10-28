@@ -38,6 +38,11 @@ const preferedType = ref(null)
 
 const messageData = ref({})
 
+// Només a la gestió d'impagats: si el document del pas (carta de suspensió / recordatori)
+// s'envia amb la comunicació. Agafa el valor de la plantilla i es pot canviar per a aquest procés.
+const isClaimContext = computed(() => props.defaultOriginToken === 'claim')
+const attachClaimDocuments = ref(true)
+
 const persons_no_contracts = computed(() => {
     if (props.persons) {
         return props.persons.some(person => !person?.contracts)
@@ -92,7 +97,8 @@ const getMessageTemplates = async () => {
         response.results.forEach(data => {
             templates.value.push({
                 label: data.name || data.token,
-                code: data.id
+                code: data.id,
+                attach_claim_documents: data.attach_claim_documents !== false
             })
         })
     } catch (error) {
@@ -158,6 +164,7 @@ const loadData = async () => {
         messageData.value = props.message
         selectedOrigin.value = origins.value.find(origin => origin.code == messageData.value.origin)
         selectedTemplate.value = templates.value.find(template => template.code == messageData.value.message_template)
+        attachClaimDocuments.value = messageData.value.attach_claim_documents ?? selectedTemplate.value?.attach_claim_documents ?? true
         await getMessageTypeTemplates()
         //preferedType.value = message_type_templates.value.find(message_type_template => message_type_template.id == messageData.value.prefered_type)
         const messageTypeIds = messageData.value.message_types?messageData.value.message_types.map(mt => mt !== null ? mt.id : mt): [];
@@ -182,6 +189,8 @@ const applyContextDefaults = async () => {
     await getMessageTemplates()
     if (templates.value.length == 1) {
         selectedTemplate.value = templates.value[0]
+        // El watcher de selectedTemplate està aturat (stopWatch) durant la càrrega inicial
+        attachClaimDocuments.value = selectedTemplate.value.attach_claim_documents
         await getMessageTypeTemplates(true)
     }
 }
@@ -195,15 +204,20 @@ const emitChange = () => {
             selectedMessageTypes.value.map(message_type_template => message_type_template.id) :
             selectedMessageTypes.value.map(message_type_template => message_type_template.type.id),
         message_type_names: selectedMessageTypes.value.map(message_type_template => message_type_template.type.name),
-        type_ids: selectedMessageTypes.value.filter(msg => msg.type?.id).map(msg => msg.type.id)
-
+        type_ids: selectedMessageTypes.value.filter(msg => msg.type?.id).map(msg => msg.type.id),
+        attach_claim_documents: isClaimContext.value ? attachClaimDocuments.value : null
     }
     emit('change', messageData.value)
+}
+
+const onAttachClaimDocumentsChange = () => {
+    if (selectedOrigin.value && selectedTemplate.value) emitChange()
 }
 
 watch(selectedTemplate, async (newVal) => {
     if (stopWatch.value) return
     if (newVal) {
+        attachClaimDocuments.value = newVal.attach_claim_documents
         await getMessageTypeTemplates(true)
     }
 })
@@ -225,6 +239,7 @@ watch(props.message, async (newVal) => {
         messageData.value = newVal
         selectedOrigin.value = origins.value.find(origin => origin.code == newVal.origin)
         selectedTemplate.value = templates.value.find(template => template.code == newVal.message_template)
+        attachClaimDocuments.value = newVal.attach_claim_documents ?? selectedTemplate.value?.attach_claim_documents ?? true
         await getMessageTypeTemplates()
         //preferedType.value = message_type_templates.value.find(message_type_template => message_type_template.id == newVal.prefered_type)
         const messageTypeIds = newVal.message_types? newVal.message_types.map(mt => mt !== null ? mt.id : mt) : [];
@@ -266,6 +281,16 @@ onMounted(async () => {
                     :disabled="loadingTemplates || templates.length == 0 || selectedOrigin == null"
                     :model-value="selectedTemplate" @update:modelValue="selectedTemplate = $event"></v-select>
             </div>
+        </div>
+
+        <div v-if="isClaimContext && selectedTemplate" class="mb-3 p-3 border border-slate-200 rounded bg-white">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <abbr class="flex items-center" :title="t('informative_block.info_attach_claim_documents')">
+                    <Icon name="fa6-solid:circle-info" class="text-slate-500" />
+                </abbr>
+                <span>{{ t('common.attach_claim_documents_to_email') }}</span>
+                <input type="checkbox" v-model="attachClaimDocuments" @change="onAttachClaimDocumentsChange" />
+            </label>
         </div>
 
         <hr class="my-2">

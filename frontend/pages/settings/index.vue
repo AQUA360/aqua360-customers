@@ -8,6 +8,7 @@ import VariableTypeEdit from '../../components/organisms/VariableTypeEdit.vue';
 import OrderReasonEdit from '../../components/organisms/OrderReasonEdit.vue';
 import BailTypeEdit from '../../components/organisms/BailTypeEdit.vue';
 import BankConfigList from '~/components/organisms/BankConfigList.vue';
+import IncidentSettings from '~/components/organisms/IncidentSettings.vue';
 import AccountValuesRegion from '~/components/molecules/AccountValuesRegion.vue';
 const { $ConfigProjectApiService } = useNuxtApp();
 import { usePermissions } from '~/middleware/permission';
@@ -30,6 +31,7 @@ const configureColor = ref(false);
 const configureMandatory = ref(false);
 const configureDescription = ref(false);
 const configureSerieDigits = ref(false);
+const configureChangeOfName = ref(false);
 
 // Blocks GMAO edits when NUXT_EXTERNAL_GOT=True is set in .env
 const runtimeConfig = useRuntimeConfig();
@@ -40,7 +42,7 @@ const configListTitle = ref(null);
 const configListEntity = ref(null);
 
 const RegionActive = ref(false);
-const showConfigList = (title, entity, hasColor = false, hasMandatoryCheck = false, hasDescription = false, blockEditsParam = false, hasSerieDigits = false) => {
+const showConfigList = (title, entity, hasColor = false, hasMandatoryCheck = false, hasDescription = false, blockEditsParam = false, hasSerieDigits = false, hasChangeOfNameCheck = false) => {
   configListTitle.value = title;
   configListEntity.value = entity;
   configureColor.value = hasColor
@@ -48,6 +50,7 @@ const showConfigList = (title, entity, hasColor = false, hasMandatoryCheck = fal
   configureDescription.value = hasDescription
   blockEdits.value = blockEditsParam
   configureSerieDigits.value = hasSerieDigits
+  configureChangeOfName.value = hasChangeOfNameCheck
 
   console.log('blockEdits', blockEdits.value);
   console.log('blockGmaoEdits', blockGmaoEdits.value);
@@ -112,6 +115,11 @@ const showConfigOrderReasons = () => {
 
 const showConfigBailTypes = () => {
   RegionActive.value = 'BailType';
+  toggleRegion(true);
+}
+
+const showIncidentSettings = () => {
+  RegionActive.value = 'IncidentSettings';
   toggleRegion(true);
 }
 
@@ -322,7 +330,7 @@ getConfigProject();
             }}</button></li>
 
         <li class="mb-1"><button
-            @click="showConfigList((t('contract_termination_request') + ': ' + t('common.type')), 'contract/contract-termination-request-type', false, false, false)"
+            @click="showConfigList((t('contract_termination_request') + ': ' + t('common.type')), 'contract/contract-termination-request-type', false, false, false, false, false, true)"
             class="text-sky-500 underline hover:no-underline">{{ t('contract_termination_request') }}: {{
               t('common.type') }}</button></li>
         <li class="mb-1"><button
@@ -545,6 +553,11 @@ getConfigProject();
             @click="showConfigList((t('common.incidents') + ': ' + t('common.statuses')), 'notification/incident-status', true, false, false, true)"
             class="text-sky-500 underline hover:no-underline">{{ t('common.incidents') }}: {{ t('common.statuses')
             }}</button></li>
+        <li class="mb-1"><button
+            @click="showConfigList((t('common.incidents') + ': ' + t('incident_settings.channels')), 'notification/incident-channel', false, false, false)"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.incidents') }}: {{ t('incident_settings.channels') }}</button></li>
+        <li class="mb-1"><button @click="showIncidentSettings()"
+            class="text-sky-500 underline hover:no-underline">{{ t('incident_settings.title') }}</button></li>
       </ul>
 
       <h3 v-if="permissions?.permissions?.view_customer_service" class="text-lg mb-2 font-bold pl-3">{{
@@ -640,11 +653,13 @@ getConfigProject();
       <div class="pl-10 h-full">
         <ConfigList v-if="RegionActive == 'ConfigListEntity' && configListEntity" :title="configListTitle"
           :entity="configListEntity" :hasColor="configureColor" :hasMandatoryCheck="configureMandatory"
-          :hasDescription="configureDescription" :blockEdits="blockEdits" :hasSerieDigits="configureSerieDigits" />
+          :hasDescription="configureDescription" :blockEdits="blockEdits" :hasSerieDigits="configureSerieDigits"
+          :hasChangeOfNameCheck="configureChangeOfName" />
         <VariableTypeEdit v-if="RegionActive == 'VariableType'" />
         <OrderReasonEdit v-if="RegionActive == 'OrderReason'" />
         <BailTypeEdit v-if="RegionActive == 'BailType'" />
         <BankConfigList v-if="RegionActive == 'Bank'" />
+        <IncidentSettings v-if="RegionActive == 'IncidentSettings'" />
         <AccountValuesRegion v-if="RegionActive == 'AccountValues'" @close="toggleRegion(false)" />
       </div>
     </div>

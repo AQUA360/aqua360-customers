@@ -3070,5 +3070,29 @@
             "value": null,
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 259,
+        "fields": {
+            "created_at": "2026-10-26T00:00:00.000Z",
+            "updated_at": "2026-10-26T00:00:00.000Z",
+            "token": "contract_housing_units_variable_type_token",
+            "name": "Token del VariableType que indica el nombre d'habitatges del contracte (es mostra al detall del contracte)",
+            "value": "general",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 260,
+        "fields": {
+            "created_at": "2026-10-28T00:00:00.000Z",
+            "updated_at": "2026-10-28T00:00:00.000Z",
+            "token": "contract_min_persons",
+            "name": "Mínim de persones d'un contracte (persons_min a les fórmules i valor quan el contracte no en té)",
+            "value": "3",
+            "file": null
+        }
     }
 ]

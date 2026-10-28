@@ -1,6 +1,6 @@
 """Tests for the supply cut <-> communication process link and its guard policy."""
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.serializers import ValidationError
 
 from communication import process_policy
@@ -1133,3 +1133,139 @@ class SmsSendingTests(TestCase):
         self.assertEqual(comm.status, self.rejected)
         self.assertIn('Error sending email', comm.rejection_reason)
         self.assertIn('HTTP 500', comm.rejection_reason)
+
+
+class ClaimDocumentsAttachDefaultTests(SupplyCutProcessTestCase):
+    """El checkbox d'adjuntar el document del pas d'impagats ve de la plantilla i el procés el pot canviar."""
+
+    def save_and_get_attach(self, **payload):
+        from unittest import mock
+        serializer = CommunicationProcessSaveSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        with mock.patch(
+            'communication.serializers.communication_process_serializer.process_communication_creation_task'
+        ) as task:
+            with self.captureOnCommitCallbacks(execute=True):
+                serializer.save()
+        return task.delay.call_args.kwargs['attach_claim_documents']
+
+    def make_template(self, attach):
+        return MessageTemplate.objects.create(name='Avís impagament', attach_claim_documents=attach)
+
+    def test_template_value_is_used_when_process_does_not_send_it(self):
+        template = self.make_template(False)
+        self.assertFalse(self.save_and_get_attach(message_template_id=str(template.id)))
+
+    def test_process_can_enable_it_against_the_template(self):
+        template = self.make_template(False)
+        self.assertTrue(self.save_and_get_attach(message_template_id=str(template.id), attach_claim_documents=True))
+
+    def test_process_can_disable_it_against_the_template(self):
+        template = self.make_template(True)
+        self.assertFalse(self.save_and_get_attach(message_template_id=str(template.id), attach_claim_documents=False))
+
+    def test_without_template_it_is_attached(self):
+        self.assertTrue(self.save_and_get_attach())
+
+
+class ClaimDocumentsAttachMigrationTests(TestCase):
+    """La migració 0036 passa el configProject ATTACH_CLAIM_DOCUMENTS_ENABLED a les plantilles."""
+
+    def run_migration(self):
+        from importlib import import_module
+        from django.apps import apps
+        migration = import_module('communication.migrations.0036_messagetemplate_attach_claim_documents')
+        migration.move_config_to_templates(apps, None)
+
+    def test_disabled_config_disables_every_template(self):
+        ConfigProject.objects.create(token='ATTACH_CLAIM_DOCUMENTS_ENABLED', value='false')
+        MessageTemplate.objects.create(name='A')
+        MessageTemplate.objects.create(name='B')
+        self.run_migration()
+        self.assertFalse(MessageTemplate.objects.filter(attach_claim_documents=True).exists())
+        self.assertFalse(ConfigProject.objects.filter(token='ATTACH_CLAIM_DOCUMENTS_ENABLED').exists())
+
+    def test_enabled_or_missing_config_keeps_templates_enabled(self):
+        ConfigProject.objects.create(token='ATTACH_CLAIM_DOCUMENTS_ENABLED', value='true')
+        MessageTemplate.objects.create(name='A')
+        self.run_migration()
+        self.run_migration()  # sense config
+        self.assertTrue(MessageTemplate.objects.get().attach_claim_documents)
+        self.assertFalse(ConfigProject.objects.filter(token='ATTACH_CLAIM_DOCUMENTS_ENABLED').exists())
+
+
+class ValidateEmailListTests(SimpleTestCase):
+    """Validació del camp used_email: un o diversos emails separats per ';'."""
+
+    def test_accepts_single_and_multiple_emails(self):
+        from communication.models import validate_email_list
+        for value in (None, '', 'a@example.com', 'a@example.com;b@example.com', ' a@example.com ; b@example.com ;'):
+            validate_email_list(value)
+
+    def test_rejects_invalid_email(self):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from communication.models import validate_email_list
+        for value in ('no-es-email', 'a@example.com;no-es-email', 'a@example.com,b@example.com'):
+            with self.assertRaises(DjangoValidationError):
+                validate_email_list(value)
+
+
+class CommunicationUpdateKeepsMessagesTests(TestCase):
+    """Modificar les dades d'enviament d'una comunicació no ha de perdre els missatges editats."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from communication.models import Communication, Message, MessageTemplate, MessageType, MessageTypeTemplate
+        cls.email_type = MessageType.objects.create(token='email', name='Correu')
+        cls.sms_type = MessageType.objects.create(token='sms', name='SMS')
+        template = MessageTemplate.objects.create(name='Plantilla')
+        template.templates.add(
+            MessageTypeTemplate.objects.create(type=cls.email_type, subject='Assumpte plantilla', body='Cos plantilla'),
+            MessageTypeTemplate.objects.create(type=cls.sms_type, subject='', body='SMS plantilla'),
+        )
+        process = CommunicationProcess.objects.create(token='PROC-UPD', template=template)
+        cls.communication = Communication.objects.create(
+            process=process, used_email='old@example.com', type_tokens='email',
+        )
+        cls.communication.types.set([cls.email_type])
+        cls.edited_message = Message.objects.create(type=cls.email_type, subject='Assumpte editat', body='Cos editat')
+        cls.communication.messages.set([cls.edited_message])
+
+    def _update(self, data):
+        from unittest.mock import patch
+        from communication.serializers.communication_serializer import CommunicationSaveSerializer
+        serializer = CommunicationSaveSerializer(self.communication, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        with patch('communication.serializers.communication_serializer.create_email_template'):
+            return serializer.save()
+
+    def test_changing_email_keeps_edited_message(self):
+        communication = self._update({'used_email': 'new@example.com', 'types': [self.email_type.id]})
+        message = communication.messages.get()
+        self.assertEqual(message.id, self.edited_message.id)
+        self.assertEqual(message.body, 'Cos editat')
+        self.assertEqual(communication.used_email, 'new@example.com')
+
+    def test_message_shared_with_process_is_detached(self):
+        from communication.serializers.message_serializer import MessageSaveSerializer
+        process = self.communication.process
+        process.messages.set([self.edited_message])
+
+        communication = self._update({'used_email': 'new@example.com', 'types': [self.email_type.id]})
+        message = communication.messages.get()
+        self.assertNotEqual(message.id, self.edited_message.id)
+        self.assertEqual(message.body, 'Cos editat')
+
+        # Editar el missatge de la comunicació no ha de canviar el del procés.
+        serializer = MessageSaveSerializer(message, data={'body': 'Cos nou', 'type_id': self.email_type.id}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        from unittest.mock import patch
+        with patch('communication.serializers.message_serializer.create_email_template'):
+            serializer.save()
+        self.assertEqual(communication.messages.get().body, 'Cos nou')
+        self.assertEqual(process.messages.get().body, 'Cos editat')
+
+    def test_new_type_takes_template_message(self):
+        communication = self._update({'types': [self.email_type.id, self.sms_type.id]})
+        self.assertEqual(communication.messages.get(type=self.email_type).body, 'Cos editat')
+        self.assertEqual(communication.messages.get(type=self.sms_type).body, 'SMS plantilla')

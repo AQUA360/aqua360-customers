@@ -172,7 +172,7 @@ const handleSavedAdd = (item) => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,1fr,1fr,1fr,1fr,1fr,1fr,1fr"
+      grid-template="150px,minmax(0,2fr),repeat(8,minmax(0,1fr))"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
@@ -185,33 +185,37 @@ const handleSavedAdd = (item) => {
         <TableHeader :label="$t('common.docs')" :sortable="false" />
         <TableHeader :label="$t('variables')" :sortable="false" />
         <TableHeader :label="$t('common.orders')" :sortable="false" />
+        <TableHeader :label="$t('contract_block.change_of_name_orders')" :sortable="false" />
         <!-- <TableHeader :label="$t('Fiances')" :sortable="false" /> -->
         <TableHeader :label="$t('contract_block.clauses')" :sortable="false" />
         <TableHeader :label="$t('contract_block.contract_price_rate')" :sortable="false" />
         <TableHeader :label="$t('contract_block.registration_price_rate')" :sortable="false" />
+        <TableHeader :label="$t('contract_block.change_of_name_registration_price_rate')" :sortable="false" />
       </template>
 
       <template #default="{ gridStyle }">
         <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
+          class="gap-3 text-base border-b items-center bg-white px-1"
           :style="gridStyle"
           :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
+          <span class="min-w-0">
             <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
               @click="showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+              <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
               <Icon name="fa6-solid:eye"
                 class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
             </button>
           </span>
-          <span class="p-0">{{ item.name }}</span>
-          <span class="p-0">{{ item.documentation_types?.length }}</span>
-          <span class="p-0">{{ item.variable_types?.length }}</span>
-          <span class="p-0">{{ item.order_types?.length }}</span>
-          <!-- <span class="p-0">{{ item.bail_types?.length }}</span> -->
-          <span class="p-0">{{ item.clause_templates?.length }}</span>
-          <span class="p-0">{{ item.price_rates?.length }}</span>
-          <span class="p-0">{{ item.registration_price_rates?.length }}</span>
+          <span class="p-1 truncate" :title="item.name">{{ item.name }}</span>
+          <span class="p-1">{{ item.documentation_types?.length }}</span>
+          <span class="p-1">{{ item.variable_types?.length }}</span>
+          <span class="p-1">{{ item.order_types?.length }}</span>
+          <span class="p-1">{{ item.change_of_name_order_types?.length }}</span>
+          <!-- <span class="p-1">{{ item.bail_types?.length }}</span> -->
+          <span class="p-1">{{ item.clause_templates?.length }}</span>
+          <span class="p-1">{{ item.price_rates?.length }}</span>
+          <span class="p-1">{{ item.registration_price_rates?.length }}</span>
+          <span class="p-1">{{ item.change_of_name_registration_price_rates?.length }}</span>
         </div><!-- end for items -->
       </template>
     </DataTable>

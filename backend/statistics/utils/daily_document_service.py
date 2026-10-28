@@ -21,13 +21,14 @@ def execute_available_report(available_report, report_data):
 
 
 def add_working_days(start_date, work_days):
-    current_date = start_date
-    added_days = 0
-    while added_days < work_days:
-        current_date += timedelta(days=1)
-        if current_date.weekday() < 5: 
-            added_days += 1
-    return current_date
+    # Dies hàbils comuns a tota l'aplicació (també descompta els festius configurats).
+    # Conserva el tipus d'entrada: si rep un datetime, en manté l'hora.
+    import datetime as dt
+    from coredata.utils.working_days import add_working_days as add_business_days
+    result = add_business_days(start_date, work_days)
+    if isinstance(start_date, dt.datetime):
+        return dt.datetime.combine(result, start_date.timetz())
+    return result
 
 
 def compute_due_date(start_date, days_to_complete, is_work_days=False):
@@ -41,8 +42,11 @@ def compute_due_date(start_date, days_to_complete, is_work_days=False):
 
 def generate_daily_document(template, current_time, pending_status):
     try:
+        from statistics.tasks import ReportNoData
+
         document = None
         error_message = None
+        no_data_found = False
         try:
             date_str = current_time.strftime('%Y-%m-%d')
             report_data = {
@@ -51,6 +55,9 @@ def generate_daily_document(template, current_time, pending_status):
                 'name': f"{template.name} {current_time.strftime('%Y/%m/%d')}",
             }
             document = execute_available_report(template.available_report, report_data)
+        except ReportNoData:
+            document = None
+            no_data_found = True
         except Exception as e:
             document = None
             error_message = str(e)
@@ -69,7 +76,8 @@ def generate_daily_document(template, current_time, pending_status):
             status=pending_status,
             template=template,
             document=document,
-            creation_error=error_message
+            creation_error=error_message,
+            no_data_found=no_data_found,
         )
 
     except Exception as e:

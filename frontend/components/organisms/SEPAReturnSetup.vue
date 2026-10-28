@@ -1,6 +1,9 @@
 <script setup>
 import { ca } from 'date-fns/locale';
 import { useI18n } from 'vue-i18n';
+import LegacyExploitationTabs from '~/components/molecules/LegacyExploitationTabs.vue';
+import LegacyExploitationPaymentsPanel from '~/components/molecules/LegacyExploitationPaymentsPanel.vue';
+import { useLegacyExploitationPayments } from '~/composables/useLegacyExploitationPayments';
 
 
 const props = defineProps({
@@ -34,11 +37,40 @@ const ogMsgId = ref(null);
 const not_found_rejections = ref(null);
 const save = ref(false)
 
+const {
+    useExploitationToken,
+    activeTab,
+    loadConfig,
+    splitItems,
+    resetExclusions,
+    isExcluded,
+    toggleExcluded,
+    setAllExcluded,
+    amountsMatch,
+    holdersMatch,
+    tokensMatch,
+} = useLegacyExploitationPayments();
+
+const paymentBuckets = computed(() => splitItems(rejections.value || []));
+const standardRejections = computed(() => paymentBuckets.value.standard);
+const legacyRejections = computed(() => paymentBuckets.value.legacy);
+const showLegacyTab = computed(() => useExploitationToken.value && legacyRejections.value.length > 0);
+const visibleRejections = computed(() =>
+    showLegacyTab.value && activeTab.value === 'legacy'
+        ? []
+        : (showLegacyTab.value ? standardRejections.value : (rejections.value || []))
+);
+const processableRejections = computed(() =>
+    (rejections.value || []).filter((rejection) => !isExcluded(rejection))
+);
+
 const allSelectedReturnPayments = computed(() => {
-    return rejections.value.every(rejection => selectedReturnPayments.value.includes(rejection.payment_id))
+    const list = processableRejections.value;
+    return list.length > 0 && list.every(rejection => selectedReturnPayments.value.includes(rejection.payment_id))
 })
 const allSelectedClaimPayments = computed(() => {
-    return rejections.value.every(rejection => selectedClaimPayments.value.includes(rejection.payment_id))
+    const list = processableRejections.value;
+    return list.length > 0 && list.every(rejection => selectedClaimPayments.value.includes(rejection.payment_id))
 })
 
 const emit = defineEmits(['changed', 'show-detail', 'update-file']);
@@ -65,6 +97,7 @@ const getRejections = async (file) => {
     // al desar surt acumulada (els de la devolució nova + els de les anteriors).
     selectedClaimPayments.value = []
     selectedReturnPayments.value = []
+    resetExclusions();
     try {
         sepaFile.value = file;
         emit('update-file', file);
@@ -87,11 +120,7 @@ const getRejections = async (file) => {
             }
             return sum;
         }, 0);
-        const mapped_rejections = mapRejections(rejections.value);
-        console.log('mapped_rejections', mapped_rejections);
-        console.log('selectedReturnPayments', selectedReturnPayments.value);
-        console.log('selectedClaimPayments', selectedClaimPayments.value);
-        emit('changed', mapped_rejections, selectedReturnPayments.value, selectedClaimPayments.value, ogMsgId.value);
+        emitSelectionChanged();
 
     } catch (error) {
         console.error('Error saving document:', error);
@@ -102,29 +131,56 @@ const getRejections = async (file) => {
     }
 }
 
-const mapRejections = (rejections) => {
-    const mapped_rejections = rejections.map(rejection => ({
+const mapRejections = (rejectionsList) => {
+    const mapped_rejections = rejectionsList.map(rejection => ({
         'id': rejection.payment_id,
         'motive_id': rejection.motive_id,
-        'motive':rejection.motive,
+        'motive': rejection.motive,
         'skip_return': rejection.skip_return,
         'rjt_dt': rejection.rjt_dt
     }));
     return mapped_rejections;
 }
 
+const syncExcludedSelections = () => {
+    const excludedIds = new Set(
+        (rejections.value || []).filter((rejection) => isExcluded(rejection)).map((rejection) => rejection.payment_id)
+    );
+    if (!excludedIds.size) return;
+    selectedReturnPayments.value = selectedReturnPayments.value.filter((id) => !excludedIds.has(id));
+    selectedClaimPayments.value = selectedClaimPayments.value.filter((id) => !excludedIds.has(id));
+};
+
 // En canviar la selecció s'ha de reenviar el mateix que en carregar el fitxer (rjt_dt i og_msg_id
 // inclosos): si no, el pare es queda sense data de retorn i el backend no té cap data per filtrar.
 const emitSelectionChanged = () => {
-    const mapped_rejections = mapRejections(rejections.value.filter(rejection => !rejection.skip_return));
+    syncExcludedSelections();
+    const mapped_rejections = mapRejections(
+        processableRejections.value.filter(rejection => !rejection.skip_return)
+    );
     emit('changed', mapped_rejections, selectedReturnPayments.value, selectedClaimPayments.value, ogMsgId.value);
 }
+
+const onToggleLegacyExclude = (item) => {
+    toggleExcluded(item);
+    emitSelectionChanged();
+};
+
+const onExcludeAllLegacy = () => {
+    setAllExcluded(legacyRejections.value, true);
+    emitSelectionChanged();
+};
+
+const onIncludeAllLegacy = () => {
+    setAllExcluded(legacyRejections.value, false);
+    emitSelectionChanged();
+};
 
 const selectAllForInvoices = () => {
     if (allSelectedReturnPayments.value) {
         selectedReturnPayments.value = [];
     } else {
-        selectedReturnPayments.value = rejections.value.map(rejection => rejection.payment_id);
+        selectedReturnPayments.value = processableRejections.value.map(rejection => rejection.payment_id);
         if (selectedClaimPayments.value.length > 0) {
             selectedClaimPayments.value = [];
         }
@@ -160,13 +216,41 @@ const selectAllForClaims = () => {
     if (allSelectedClaimPayments.value) {
         selectedClaimPayments.value = [];
     } else {
-        selectedClaimPayments.value = rejections.value.map(rejection => rejection.payment_id);
+        selectedClaimPayments.value = processableRejections.value.map(rejection => rejection.payment_id);
         if (selectedReturnPayments.value.length > 0) {
             selectedReturnPayments.value = [];
         }
     }
     emitSelectionChanged();
 }
+
+// Exporta els pagaments retornats trobats, amb les mateixes columnes que la taula
+const exportColumns = computed(() => [
+    { header: t('contract'), value: (row) => row.contract },
+    { header: t('common.holder'), value: (row) => row.contract_holder_name },
+    { header: t('common.person_id'), value: (row) => row.contract_holder_nif },
+    { header: t('billing_block.payment'), value: (row) => row.payment_token },
+    { header: `${t('invoice')} / ${t('claim_block.commitment')}`, value: (row) => row.invoice || row.commitment_deposit },
+    { header: t('billing_block.payment_date'), value: (row) => row.payment_date ? formatDate(row.payment_date) : '' },
+    { header: t('common.amount'), value: (row) => row.amount !== null && row.amount !== undefined ? Number(row.amount) : '' },
+    { header: t('common.previous_status'), value: (row) => row.prev_status },
+    { header: t('order_block.reason'), value: (row) => row.motive },
+    { header: t('billing_block.sepa_return_date'), value: (row) => row.rjt_dt ? formatDate(row.rjt_dt) : '' },
+]);
+
+const exportSummary = computed(() => {
+    const returnDate = rejections.value?.find(rejection => rejection.rjt_dt)?.rjt_dt;
+    const totalAmount = (rejections.value || []).reduce((sum, rejection) => sum + (Number(rejection.amount) || 0), 0);
+    return [
+        [t('common.doc_sepa'), sepaFile.value?.name],
+        [t('billing_block.sepa_return_date'), returnDate ? formatDate(returnDate) : ''],
+        [t('invoices'), totalInvoices.value],
+        [t('claim_block.commitments'), totalCommitments.value],
+        [t('billing_block.payments_to_return'), rejections.value?.length || 0],
+        [t('billing_block.total_amount'), Math.round(totalAmount * 100) / 100],
+        [t('common.return_multiple_not_found'), not_found_rejections.value?.length || 0],
+    ];
+});
 
 const showDetail = (region, id) => {
     emit('show-detail', region, id);
@@ -185,21 +269,51 @@ const closeClientIdDropdown = () => {
 }
 
 
-onMounted(() => {
+onMounted(async () => {
+    await loadConfig();
     getData();
 });
 
 watch(() => props.save_response, (newValue) => {
     if (newValue !== save.value && props.returned_data) {
         save.value = newValue;
-        rejections.value = props.returned_data;
-        mapRejections(props.returned_data);
+        // Merge: keep rows not processed (excluded legacy, skip_return, etc.) and
+        // preserve comparison/legacy fields so the user can still see mismatches
+        // or payments that stayed paid after save.
+        const returnedById = new Map(
+            (props.returned_data || [])
+                .filter((row) => row?.payment_id != null)
+                .map((row) => [row.payment_id, row])
+        );
+        const existing = rejections.value || [];
+        const existingIds = new Set(existing.map((row) => row.payment_id));
+        rejections.value = [
+            ...existing.map((row) => {
+                const updated = returnedById.get(row.payment_id);
+                if (!updated) return row;
+                return {
+                    ...row,
+                    ...updated,
+                    file_amount: row.file_amount ?? updated.file_amount,
+                    payment_amount: row.payment_amount ?? updated.payment_amount,
+                    file_holder_name: row.file_holder_name ?? updated.file_holder_name,
+                    file_payment_token: row.file_payment_token ?? updated.file_payment_token,
+                    contract_holder_name: row.contract_holder_name ?? updated.contract_holder_name,
+                    contract_holder_nif: row.contract_holder_nif ?? updated.contract_holder_nif,
+                    is_legacy_exploitation: row.is_legacy_exploitation ?? updated.is_legacy_exploitation,
+                    method_changed: row.method_changed ?? updated.method_changed,
+                };
+            }),
+            ...(props.returned_data || []).filter(
+                (row) => row?.payment_id != null && !existingIds.has(row.payment_id)
+            ),
+        ];
         // Un cop desat, la selecció ja s'ha aplicat: buidar-la (i avisar-ne el
         // pare) perquè tornar a prémer Desar no creï una segona gestió
         // d'impagats amb els mateixos pagaments.
         selectedClaimPayments.value = [];
         selectedReturnPayments.value = [];
-        emit('changed', mapRejections(rejections.value), selectedReturnPayments.value, selectedClaimPayments.value, ogMsgId.value);
+        emitSelectionChanged();
     }
 });
 
@@ -249,7 +363,8 @@ watch(() => props.save_response, (newValue) => {
                 <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
                     <div class="flex items-center gap-2 mb-1">
                         <Icon name="fa6-solid:calendar-xmark" class="text-amber-600 text-sm" />
-                        <span class="text-sm text-amber-700 font-medium">{{ t("billing_block.sepa_return_date") }}</span>
+                        <span class="text-sm text-amber-700 font-medium">{{ t("billing_block.sepa_return_date")
+                            }}</span>
                     </div>
                     <span class="text-lg font-bold text-amber-800">
                         {{ rejections[0]?.rjt_dt ? formatDate(rejections[0].rjt_dt) : "-" }}
@@ -261,15 +376,62 @@ watch(() => props.save_response, (newValue) => {
         <!-- Compact Results -->
         <div v-if="!loading_rejections && !error_rejections" class="space-y-3">
 
+            <div v-if="showLegacyTab"
+                class="flex items-start gap-2 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2">
+                <div class="flex min-w-0 items-start gap-2">
+                    <Icon name="fa6-solid:circle-info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <div class="min-w-0">
+                        <p class="text-xs font-medium text-amber-900/90">
+                            {{ t('informative_block.info_legacy_exploitation_payments') }}
+                        </p>
+                        <p class="mt-0.5 text-[11px] text-amber-800/80">
+                            {{ t('informative_block.info_legacy_exploitation_payments_hint') }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <LegacyExploitationTabs v-if="showLegacyTab" v-model="activeTab" :standard-count="standardRejections.length"
+                :legacy-count="legacyRejections.length" />
+
+            <LegacyExploitationPaymentsPanel v-if="showLegacyTab && activeTab === 'legacy'" :items="legacyRejections"
+                :show-holder-comparison="true" :is-excluded="isExcluded" :amounts-match="amountsMatch"
+                :holders-match="holdersMatch" :tokens-match="tokensMatch" @toggle-exclude="onToggleLegacyExclude"
+                @exclude-all="onExcludeAllLegacy" @include-all="onIncludeAllLegacy" @show-detail="showDetail" />
+
+            <div v-if="showLegacyTab && activeTab === 'standard' && standardRejections.length === 0 && legacyRejections.length > 0"
+                class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-6 text-center">
+                <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                    <Icon name="fa6-solid:triangle-exclamation" class="text-amber-600" />
+                </div>
+                <h3 class="text-sm font-semibold text-amber-900 mb-1">
+                    {{ t('informative_block.info_all_payments_legacy') }}
+                </h3>
+                <button type="button"
+                    class="mt-3 inline-flex items-center gap-2 rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                    @click="activeTab = 'legacy'">
+                    <Icon name="fa6-solid:arrow-right" class="h-3 w-3" />
+                    {{ t('billing_block.legacy_exploitation_tab') }}
+                    <span class="rounded-full bg-amber-100 px-2 py-0.5 tabular-nums text-amber-800">
+                        {{ legacyRejections.length }}
+                    </span>
+                </button>
+            </div>
+
             <!-- Compact Table -->
-            <div v-if="rejections && rejections.length > 0">
+            <div v-if="visibleRejections.length > 0 && (!showLegacyTab || activeTab === 'standard')">
                 <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
                     <div class="px-4 py-2 bg-slate-50 border-b border-slate-200">
                         <div class="flex items-center justify-between">
                             <h3 class="text-sm font-semibold text-slate-700">{{ t("common.return_multiple") }}</h3>
-                            <span class="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded">
-                                {{ rejections.length }}
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <AtomsDownloadXlsxButton :rows="processableRejections" :columns="exportColumns"
+                                    :summary="exportSummary" :label="t('billing_block.download_summary_xlsx')"
+                                    file-name="sepa_return" />
+                                <span class="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded">
+                                    {{ processableRejections.length }}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -284,7 +446,8 @@ watch(() => props.save_response, (newValue) => {
                                         {{ t("billing_block.payment") }}
                                     </th>
                                     <th class="px-3 py-2 text-left text-sm font-medium text-slate-600 uppercase">
-                                        <span v-if="totalInvoices > 0 && totalCommitments > 0">{{ t("invoice") }} / {{ t("claim_block.commitment") }}</span>
+                                        <span v-if="totalInvoices > 0 && totalCommitments > 0">{{ t("invoice") }} / {{
+                                            t("claim_block.commitment") }}</span>
                                         <span v-else-if="totalInvoices > 0">{{ t("invoice") }}</span>
                                         <span v-else>{{ t("claim_block.commitment") }}</span>
                                     </th>
@@ -337,7 +500,7 @@ watch(() => props.save_response, (newValue) => {
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
-                                <tr v-for="(element, index) in rejections" :key="index"
+                                <tr v-for="(element, index) in visibleRejections" :key="index"
                                     class="hover:bg-slate-50 transition-colors">
                                     <td class="px-3 py-2 text-slate-900 font-medium text-sm">
                                         <button v-if="element.contract_id"
@@ -421,7 +584,7 @@ watch(() => props.save_response, (newValue) => {
                         <span class="text-slate-400 font-medium">
                             {{ t("billing_block.payments_to_return") }}:
                         </span>
-                        {{ rejections.length }}
+                        {{ processableRejections.length }}
                     </span>
                     <span class="flex items-center gap-2">
                         <span class="text-slate-400 font-medium">
@@ -456,7 +619,7 @@ watch(() => props.save_response, (newValue) => {
                                     {{ t("common.return_multiple_not_found") }}
                                 </h3>
                                 <p class="font-medium text-sm text-red-100">{{ t("informative_block.info_manual_review")
-                                }}</p>
+                                    }}</p>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">

@@ -1,9 +1,11 @@
 import datetime
 from rest_framework import serializers
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth.models import User
 from auth.serializers import UserMinimalSerializer
 from billing.models import CommitmentDeposit, CommitmentDepositStatus
 from django.utils import timezone
+from django.utils.translation import gettext
 from contract.models import Contract
 from service.models import SupplyPoint
 from django.db.models import Min
@@ -12,7 +14,7 @@ from django.apps import apps
 from .street_types import resolve_street_type
 from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
 from .utils.phone_utils import is_mobile_phone
-
+from coredata.utils.person_list_queryset import person_debt_amounts_by_person_id
 
 
 class IdentificationTypeSerializer(serializers.ModelSerializer):
@@ -591,22 +593,113 @@ class AddressMinimalSerializer(serializers.ModelSerializer):
 
 class CallRegisterSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
+    transfered_to = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+    transfered_from = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = CallRegister
         fields = '__all__'
-    
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['contract_token'] = instance.contract.token if instance.contract else None
-        representation['person_name'] = str(instance.person_contact.person)
-        representation['person_token'] = instance.person_contact.person.token
-        representation['phone'] = instance.person_contact.phone
+
+        person_contact = instance.person_contact
+        person = person_contact.person if person_contact else None
+        representation['person_name'] = str(person) if person else None
+        representation['person_token'] = person.token if person else None
+
+        # Prefer snapshot values stored on the register; fall back for legacy rows
+        if not representation.get('phone') and person_contact:
+            representation['phone'] = person_contact.phone
+        if not representation.get('email') and person_contact:
+            representation['email'] = person_contact.email
+
+        representation['transfered_to'] = (
+            UserMinimalSerializer(instance.transfered_to).data if instance.transfered_to else None
+        )
+        representation['transfered_from'] = (
+            UserMinimalSerializer(instance.transfered_from).data if instance.transfered_from else None
+        )
+        representation['incident_token'] = instance.incident.token if instance.incident else None
+        representation['incident_name'] = instance.incident.name if instance.incident else None
+
+        if instance.call_start and instance.call_end:
+            representation['call_duration_seconds'] = int(
+                (instance.call_end - instance.call_start).total_seconds()
+            )
+        else:
+            representation['call_duration_seconds'] = None
+
         return representation
-    
+
     def create(self, validated_data):
         user = self.context['request'].user
         validated_data['user'] = user
-        return super().create(validated_data)
+        call = super().create(validated_data)
+        # Una trucada sortint contestada i vinculada a una incidència compta com a
+        # primera resposta, si l'usuari pot modificar incidències
+        if (call.incident and call.direction == CallRegister.DIRECTION_OUTBOUND and call.answered
+                and user.has_perm('notification.change_incident')):
+            from notification.utils.incident_utils import record_first_response
+            record_first_response(call.incident, call.time_call)
+        if call.callback_requested:
+            create_callback_task(call, user)
+        return call
+
+    def update(self, instance, validated_data):
+        call = super().update(instance, validated_data)
+        if call.callback_requested and not call.callback_task_id:
+            create_callback_task(call, self.context['request'].user)
+        return call
+
+    def validate(self, attrs):
+        # El formulari indica si ha contactat el client: llavors la trucada és entrant i no compta com a primera resposta
+        if attrs.get('contacted_by_client', getattr(self.instance, 'contacted_by_client', False)):
+            attrs['direction'] = CallRegister.DIRECTION_INBOUND
+        return attrs
+
+    def validate_recording_url(self, value):
+        # Només enllaços web: el valor es mostra com a enllaç a la llista de trucades
+        if value and not value.lower().startswith(('https://', 'http://')):
+            raise serializers.ValidationError(gettext("The recording link must be an http or https address."))
+        return value
+
+
+def create_callback_task(call, user=None):
+    """
+    Tasca per retornar la trucada el mateix dia laborable (o el següent si avui
+    no ho és), assignada a l'agent que l'ha atès. Només es vincula a la
+    incidència si l'usuari pot modificar incidències.
+    """
+    import uuid
+    from django.utils import timezone
+    from coredata.utils.working_days import add_working_days, get_holidays
+    from notification.models import CalendarTask
+    from notification.utils.incident_utils import incident_exploitation
+
+    # Festius propis de l'explotació de la incidència o, si no n'hi ha, del contracte
+    exploitation = incident_exploitation(call.incident or call)
+    today = timezone.localdate()
+    is_working_day = today.weekday() < 5 and today not in get_holidays(today, today, exploitation)
+    contact = call.person_contact
+    task = CalendarTask.objects.create(
+        token=str(uuid.uuid4()),
+        name=f"Retornar trucada: {contact.phone if contact else ''}".strip(),
+        description=call.comment,
+        user=call.user,
+        contract=call.contract,
+        set_date=today if is_working_day else add_working_days(today, 1, exploitation),
+    )
+    if call.incident and (user is None or user.has_perm('notification.change_incident')):
+        call.incident.tasks.add(task)
+    CallRegister.objects.filter(pk=call.pk).update(callback_task=task)
+    call.callback_task = task
+    return task
 
 class PersonAddressSerializer(serializers.ModelSerializer):
     person = serializers.IntegerField(write_only=True)
@@ -1460,12 +1553,26 @@ class PersonMinimalAddressSerializer(serializers.ModelSerializer):
         representation['full_name'] = f"{instance.name} {instance.surname}" if not instance.is_juridic else instance.name
         return representation
     
+class PersonMinimalListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        iterable = data.all() if hasattr(data, "all") else data
+        person_ids = [obj.pk for obj in iterable]
+        self.child.context["debt_by_person"] = person_debt_amounts_by_person_id(person_ids)
+        return super().to_representation(data)
+
 class PersonMinimalSerializer(serializers.ModelSerializer):
     is_debtor = serializers.CharField(read_only=True, source='deliquency.is_debtor')
-    debt_amount = serializers.DecimalField(read_only=True, source='deliquency.debt_amount', max_digits=10, decimal_places=2)
+    debt_amount = serializers.SerializerMethodField()
+
+    def get_debt_amount(self, obj):
+        debt_by_person = self.context.get("debt_by_person")
+        if debt_by_person is not None:
+            return debt_by_person.get(obj.pk, 0)
+        return person_debt_amounts_by_person_id([obj.pk]).get(obj.pk, 0)
     
     class Meta:
         model = Person
+        list_serializer_class = PersonMinimalListSerializer
         fields = ['id', 'token', 'name', 'surname', 'is_juridic', 'is_debtor', 'debt_amount', 'vulnerability_level']
     
     def to_representation(self, instance):

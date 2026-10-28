@@ -1,8 +1,12 @@
 # Passa les proves del backend i construeix el frontend a cada PR cap a main o develop, i a la cua
 # de fusió (merge_group), on es proven les PR juntes amb el develop més nou abans de fusionar-les.
 #
+# La base de test es restaura des d'un abocament SQL ja migrat. La cache es calcula amb el hash
+# dels fitxers de migració: només es tornen a aplicar totes quan aquest hash canvia. El push a
+# develop deixa la cache a l'abast de la resta de branques.
+#
 # Seguretat: el repositori és públic. Aquí no hi ha cap secret ni cap dada real: la base de dades
-# és buida i la crea l'acció mateixa.
+# és buida i la crea l'acció mateixa. L'abocament només conté l'esquema i les dades de les migracions.
 name: Proves
 
 on:
@@ -22,6 +26,9 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     services:
       db:
         image: postgres:16
@@ -54,10 +61,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libpq-dev libcairo2-dev \
-            libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev pkg-config gettext
+            libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev pkg-config gettext \
+            postgresql-client
+          # El servidor de proves és PostgreSQL 16. Si el runner porta un client
+          # més nou i el paquet del 16 existeix, el posem davant al PATH.
+          if ! pg_dump --version | grep -q ' 16\.'; then
+            sudo apt-get install -y --no-install-recommends postgresql-client-16 \
+              && echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH" \
+              && export PATH="/usr/lib/postgresql/16/bin:$PATH" \
+              || echo "Segueix el client ja instal·lat: $(pg_dump --version)"
+          fi
+          pg_dump --version
       - name: Dependències
         run: pip install -r requirements.ubuntu.txt
+      - name: Esquema de test
+        id: esquema
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: backend/.ci/test_schema.sql
+          key: esquema-proves-pg16-${{ hashFiles('backend/**/migrations/*.py', 'backend/customers/test_db/**', 'backend/coredata/management/commands/build_test_schema.py', 'backend/customers/settings.py', 'backend/customers/settings_test.py', 'backend/requirements.in', 'backend/requirements.ubuntu.txt') }}
+      - name: Genera l'esquema de test
+        if: steps.esquema.outputs.cache-hit != 'true'
+        run: python manage.py build_test_schema --output .ci/test_schema.sql
       - name: Proves
+        env:
+          TEST_SCHEMA_FILE: .ci/test_schema.sql
         run: python manage.py test --noinput
 
   frontend:

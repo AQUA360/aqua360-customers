@@ -146,7 +146,7 @@ class OrderGotSerializer(serializers.ModelSerializer):
         from django.db.models import Q
         from notification.models import Incident
         return Incident.objects.filter(
-            Q(order_incident=obj) | Q(orders=obj)
+            Q(order_incident=obj) | Q(orders=obj), is_active=True
         ).distinct().count()
 
     contract_token = serializers.CharField(source='contract.token', read_only=True)

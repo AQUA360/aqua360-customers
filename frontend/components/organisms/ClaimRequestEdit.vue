@@ -12,6 +12,7 @@ import ButtonOutline from '../atoms/ButtonOutline.vue';
 import { useToast } from 'vue-toastification';
 import ContractRegion from './ContractRegion.vue';
 import InvoiceRegion from './InvoiceRegion.vue';
+import ClaimRequestUnlinkedInvoicesRegion from './ClaimRequestUnlinkedInvoicesRegion.vue';
 import AtomsInputDate from '~/components/atoms/InputDate.vue';
 import AddContracts from '../molecules/AddContracts.vue';
 import ContractDetail from '../molecules/ContractDetail.vue';
@@ -67,6 +68,10 @@ const selectedSepaReturn = ref(null)
 const minPendingInvoices = ref(0)
 const maxPendingInvoices = ref(0)
 const totalExpiredInvoices = ref(0)
+// Deute d'una sol·licitud de contracte que no va generar contracte: no entra a la
+// gestió, només s'avisa. No es desa res, es recalcula a cada cerca.
+const unlinkedInvoices = ref([])
+const totalUnlinkedAmount = ref(0)
 
 const showSelectedContractWarning = ref(false)
 
@@ -141,6 +146,9 @@ const maxVisiblePages = ref(5);
 const searchQuery = ref('');
 const debouncedSearchQuery = ref('');
 const showExcluded = ref(true);
+// Contractes amb una baixa demanada i sense acabar: entren a la gestió com
+// qualsevol altre contracte d'alta, però cal poder trobar-los per excloure'ls a mà.
+const onlyOpenTermination = ref(false);
 
 const totalSelectedPayments = computed(() => {
   return contracts.value.reduce((count, contract) => {
@@ -167,7 +175,17 @@ watch(showExcluded, () => {
   currentPage.value = 1;
 });
 
+watch(onlyOpenTermination, () => {
+  currentPage.value = 1;
+});
+
+const totalOpenTermination = computed(() => {
+  return contracts.value.filter(contract => contract.has_open_termination).length;
+});
+
 const filteringTaskId = ref(null);
+// Tasca de filtratge que ha retornat el llistat actual (abast de l'exportació de contractes).
+const claimDataTaskId = ref(null);
 const savingTaskId = ref(null);
 
 const allowSearch = computed(() => {
@@ -437,6 +455,8 @@ const getContractStatuses = async () => {
 
 const getClaimData = async () => {
   loading_contracts.value = true
+  unlinkedInvoices.value = []
+  totalUnlinkedAmount.value = 0
   try {
     let save_data = {
       selectedUseTypesIds: selectedUseTypes.value.map(el => el.code),
@@ -620,10 +640,14 @@ const handleSubRegionEvent = (event) => {
 
 const refreshData = async () => {
   if (filteringTaskId.value) {
-    const response = await $ClaimRequestApiService.getClaimData(null, filteringTaskId.value)
+    const taskId = filteringTaskId.value
+    const response = await $ClaimRequestApiService.getClaimData(null, taskId)
     filteringTaskId.value = response.task_id
+    if (response.contracts) claimDataTaskId.value = taskId
     contracts.value = response.contracts
     totalExpiredInvoices.value = response.total_expired_invoices
+    unlinkedInvoices.value = response.unlinked_invoices || []
+    totalUnlinkedAmount.value = response.total_unlinked_amount || 0
     currentPage.value = 1
     searchQuery.value = ''
     debouncedSearchQuery.value = ''
@@ -656,6 +680,10 @@ const filteredContracts = computed(() => {
 
   if (!showExcluded.value) {
     result = result.filter(contract => !isContractExcluded(contract));
+  }
+
+  if (onlyOpenTermination.value) {
+    result = result.filter(contract => contract.has_open_termination);
   }
 
   if (debouncedSearchQuery.value?.trim()) {
@@ -714,6 +742,10 @@ watch(
     triggerStatsBoxPing();
   },
 );
+
+// Exporta els contractes que es veuen al llistat (amb la cerca i el filtre d'exclosos aplicats).
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
+  filteredContracts.value.map(c => c.id), { filter_task_id: claimDataTaskId.value });
 
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
@@ -840,6 +872,28 @@ watch(() => selectedZones.value, () => {
           </div>
         </div>
       </div> -->
+
+      <!-- Deute que la cerca ha trobat però que no es podrà reclamar -->
+      <div v-if="!loading_contracts && unlinkedInvoices.length > 0"
+        class="bg-orange-50 border-l-4 border-orange-400 px-4 py-2 mb-4 flex items-center justify-between gap-3">
+        <div class="grid grid-cols-[auto,1fr] items-center gap-3">
+          <Icon name="fa6-solid:triangle-exclamation" class="text-lg text-orange-400" />
+          <div>
+            <p class="text-orange-500 font-semibold">
+              {{ $t('claim_block.unlinked_invoices_warning', {
+                count: unlinkedInvoices.length,
+                amount: formatMoney(totalUnlinkedAmount)
+              }) }}
+            </p>
+            <p class="text-sm text-orange-600">{{ $t('claim_block.unlinked_invoices_info') }}</p>
+          </div>
+        </div>
+        <button @click="showDetail('ClaimRequestUnlinkedInvoicesRegion', null)"
+          class="button-secondary flex items-center gap-2 whitespace-nowrap"
+          :title="$t('claim_block.unlinked_invoices')">
+          <Icon name="fa6-solid:magnifying-glass" /> {{ $t('claim_block.unlinked_invoices_review') }}
+        </button>
+      </div>
       <div class="">
         <!-- Pas 1: Configuració -->
         <div v-show="currentStep === 0" class="space-y-4">
@@ -1059,6 +1113,13 @@ watch(() => selectedZones.value, () => {
                   <span class="ml-2 text-sm text-gray-700">{{ $t('common.show') }} {{
                     $t('billing_block.excluded_multiple') }}</span>
                 </label>
+                <label v-if="totalOpenTermination > 0 || onlyOpenTermination" class="inline-flex items-center">
+                  <input type="checkbox" v-model="onlyOpenTermination"
+                    class="form-checkbox h-4 w-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500" />
+                  <span class="ml-2 text-sm text-amber-700" :title="$t('claim_block.open_termination_info')">
+                    {{ $t('claim_block.only_open_termination') }} ({{ totalOpenTermination }})
+                  </span>
+                </label>
               </div>
             </div>
 
@@ -1071,6 +1132,9 @@ watch(() => selectedZones.value, () => {
                   }}</span>)
                 </span>
               </span>
+              <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
+                :disabled="!filteredContracts.length || !claimDataTaskId"
+                :export-name="[$t('common.contracts'), claimName].filter(Boolean).join(' – ')" />
             </div>
 
             <div class="divide-y divide-gray-200 h-[55vh] overflow-auto">
@@ -1103,7 +1167,13 @@ watch(() => selectedZones.value, () => {
                         <span>{{ contract.holder }}</span>
                         <span>{{ formatMoney(contract.total_amount) }} €</span>
                         <ColorBadge :color="contract.status?.color" :value="contract.status?.name" />
-                        <span></span>
+                        <span v-if="contract.has_open_termination"
+                          class="inline-flex items-center gap-1 w-fit text-xs text-amber-700 bg-amber-100 rounded px-2 py-0.5"
+                          :title="$t('claim_block.open_termination_info')">
+                          <Icon name="fa6-solid:triangle-exclamation" />
+                          {{ $t('claim_block.open_termination') }}
+                        </span>
+                        <span v-else></span>
                       </div>
                       <div class="text-sm text-gray-500 mt-1 grid grid-cols-[100px,1fr] gap-2">
                         <span class="mr-2">{{ $t('billing_block.payments') }}: {{ contract.payments_count }}</span>
@@ -1164,6 +1234,11 @@ watch(() => selectedZones.value, () => {
                             :title="`${$t('common.show')} ${$t('common.details')}`">
                             {{ payment.invoice_serie_final || payment.invoice_token }}
                           </button>
+                          <abbr v-if="payment.contract_request_token"
+                            :title="`${$t('claim_block.from_contract_request')}: ${payment.contract_request_token}`"
+                            class="ml-2 no-underline text-xs text-amber-700 bg-amber-100 rounded px-1 py-0.5">
+                            {{ $t('contract_block.short_contract_request') }}
+                          </abbr>
                         </td>
                         <td class="px-3 py-1 whitespace-nowrap">
                           <Date :date="payment.due_date" />
@@ -1344,6 +1419,8 @@ watch(() => selectedZones.value, () => {
           @show-subregion="handleSubRegionEvent" />
         <AddContracts v-if="showRegionDetailComponent === 'AddContracts'" :selected_items="selectedAddedContracts"
           @item-clicked="onContractSelected" :multiple="true" />
+        <ClaimRequestUnlinkedInvoicesRegion v-if="showRegionDetailComponent === 'ClaimRequestUnlinkedInvoicesRegion'"
+          :invoices="unlinkedInvoices" @show-subregion="handleSubRegionEvent" />
       </div>
     </div>
   </div>

@@ -267,6 +267,13 @@
                                     <span> {{ physical_address }} </span>
                                 </td>
                             </tr>
+                            {% if physical_address_extra %}
+                            <tr>
+                                <td colspan="2" style="font-size: 12px;">
+                                    <span> {{ physical_address_extra|truncatechars:50 }} </span>
+                                </td>
+                            </tr>
+                            {% endif %}
                             <tr>
                                 <td colspan="2">
                                     <span> {{ physical_location }} </span>

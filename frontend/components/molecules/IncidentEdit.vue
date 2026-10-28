@@ -11,7 +11,7 @@ import OrderDetail from './OrderDetail.vue';
 import SupplyPointDetail from './SupplyPointDetail.vue';
 import ClusterDetail from './ClusterDetail.vue';
 
-const { $IncidentApiService, $ConfiglistApiService, $SupplyPointApiService, $ClusterApiService } = useNuxtApp();
+const { $IncidentApiService, $ConfiglistApiService, $SupplyPointApiService, $ClusterApiService, $SupplyCutApiService, $UserApiService } = useNuxtApp();
 const { t } = useI18n();
 const toast = useToast()
 const props = defineProps({
@@ -40,8 +40,34 @@ const selectedOrder = ref(null);
 const selectedCommitment = ref(null);
 const selectedSupplyPoint = ref(null);
 const selectedCluster = ref(null);
+const selectedSupplyCut = ref(null);
+const selectedAssigned = ref(null);
+const selectedChannel = ref(null);
+const contactEmail = ref('');
+const dueAt = ref('');
+const firstResponseAt = ref('');
+const resolution = ref('');
+
+// Valors carregats: només s'envien els camps que l'usuari modifica (el camp de data
+// no té segons i, si es reenviés sense canvis, alteraria el venciment i els avisos).
+// També permeten que el backend recalculi el venciment en canviar el tipus.
+const loadedTypeId = ref(null);
+const loadedDueAt = ref('');
+const loadedFirstResponseAt = ref('');
+const loadedResolution = ref('');
 
 const types = ref([]);
+const users = ref([]);
+const channels = ref([]);
+
+// Conversió entre el format de l'API (ISO) i el del camp datetime-local (hora local)
+const toLocalInput = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+const fromLocalInput = (value) => (value ? new Date(value).toISOString() : null);
 
 
 const getData = async () => {
@@ -51,10 +77,21 @@ const getData = async () => {
 
       name.value = detail.name;
       description.value = detail.description;
-      selectedType.value = {
+      selectedType.value = detail.type ? {
         code: detail.type.id,
         label: detail.type.name
-      }
+      } : null;
+      selectedAssigned.value = detail.assigned_to ? userOption(detail.assigned_to) : null;
+      selectedChannel.value = detail.channel ? { code: detail.channel.id, label: detail.channel.name } : null;
+      contactEmail.value = detail.contact_email || '';
+      dueAt.value = toLocalInput(detail.due_at);
+      firstResponseAt.value = toLocalInput(detail.first_response_at);
+      resolution.value = detail.resolution || '';
+      selectedSupplyCut.value = detail.supply_cut;
+      loadedTypeId.value = detail.type?.id || null;
+      loadedDueAt.value = dueAt.value;
+      loadedFirstResponseAt.value = firstResponseAt.value;
+      loadedResolution.value = resolution.value;
 
       selectedContract.value = detail.contract;
       selectedInvoice.value = detail.invoice;
@@ -72,6 +109,13 @@ const getData = async () => {
       selectedCommitment.value = null;
       selectedSupplyPoint.value = null;
       selectedCluster.value = props.cluster_id ? await $ClusterApiService.getDetail(props.cluster_id) : null;
+      selectedSupplyCut.value = null;
+      selectedAssigned.value = null;
+      selectedChannel.value = channels.value.find(channel => channel.is_default) || null;
+      contactEmail.value = '';
+      dueAt.value = '';
+      firstResponseAt.value = '';
+      resolution.value = '';
     }
 
   } catch (err) {
@@ -99,12 +143,45 @@ const getTypes = async () => {
   }
 };
 
+const userOption = (user) => ({
+  label: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.username,
+  code: user.id,
+});
+
+const getChannels = async () => {
+  try {
+    const channelList = await $ConfiglistApiService.getAll('notification/incident-channel');
+    channels.value = channelList.results.map(item => ({ code: item.id, label: item.name, is_default: item.is_default }));
+  } catch (err) {
+    console.error('Error obtenint els canals:', err);
+  }
+};
+
+const getUsers = async () => {
+  try {
+    const response = await $UserApiService.getAll();
+    users.value = response.results.map(userOption);
+  } catch (err) {
+    console.error('Error obtenint els usuaris:', err);
+  }
+};
+
 const updateSelect = async (event, entity) => {
   switch (entity) {
     case 'type':
       selectedType.value = event;
       break;
+    case 'assigned':
+      selectedAssigned.value = event;
+      break;
+    case 'channel':
+      selectedChannel.value = event;
+      break;
   }
+}
+
+const onSupplyCutSelected = async (item) => {
+  selectedSupplyCut.value = item;
 }
 
 const onContractSelected = async (item) => {
@@ -151,6 +228,7 @@ const isValid = () => {
     && selectedCommitment.value == null
     && selectedSupplyPoint.value == null
     && selectedCluster.value == null
+    && selectedSupplyCut.value == null
   ) {
     toast.warning(t('warning_block.warning_select_contract_invoice'))
     return false;
@@ -193,7 +271,32 @@ const save = async () => {
       order_incident: order_id,
       supply_point: supply_point_id,
       cluster: cluster_id,
+      supply_cut: selectedSupplyCut.value ? selectedSupplyCut.value.id : null,
+      assigned_to: selectedAssigned.value ? selectedAssigned.value.code : null,
+      channel: selectedChannel.value ? selectedChannel.value.code : null,
+      contact_email: contactEmail.value || null,
     };
+    if (props.id) {
+      if (resolution.value !== loadedResolution.value) {
+        save_data.resolution = resolution.value;
+      }
+      if (firstResponseAt.value !== loadedFirstResponseAt.value) {
+        save_data.first_response_at = fromLocalInput(firstResponseAt.value);
+      }
+    }
+    // Sense data (o si es canvia el tipus sense tocar-la), el backend la calcula segons el tipus
+    const typeChanged = props.id && selectedType.value.code !== loadedTypeId.value;
+    if (!props.id) {
+      if (dueAt.value) {
+        save_data.due_at = fromLocalInput(dueAt.value);
+      }
+    } else if (dueAt.value !== loadedDueAt.value) {
+      if (dueAt.value) {
+        save_data.due_at = fromLocalInput(dueAt.value);
+      } else if (!typeChanged) {
+        save_data.due_at = null;
+      }
+    }
 
     let response = await $IncidentApiService.save(save_data);
     if (response) {
@@ -208,12 +311,12 @@ const save = async () => {
 
 onMounted(async () => {
   isLoading.value = true;
-  await getTypes();
+  await Promise.all([getTypes(), getUsers(), getChannels()]);
   await getData();
 });
 
 watch(() => props.id, async () => {
-  loading.value = true;
+  isLoading.value = true;
   await getData();
 });
 
@@ -250,11 +353,62 @@ watch(() => props.id, async () => {
             :class="{ 'invalid': attemptedSave && (!selectedType) }" />
         </div>
   
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('incident_block.assigned_to') }}</label>
+          <v-select class="block w-full mr-1" :model-value="selectedAssigned"
+            @update:modelValue="updateSelect($event, 'assigned')" :options="users"
+            :placeholder="t('incident_block.unassigned')" />
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('incident_block.due_date') }}</label>
+          <input type="datetime-local" v-model="dueAt" class="input" />
+          <p class="text-xs text-slate-400 mt-1">{{ t('incident_block.due_date_auto') }}</p>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('incident_block.channel') }}</label>
+          <v-select class="block w-full mr-1" :model-value="selectedChannel"
+            @update:modelValue="updateSelect($event, 'channel')" :options="channels" />
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('incident_block.contact_email') }}</label>
+          <input type="email" v-model="contactEmail" class="input" />
+          <p class="text-xs text-slate-400 mt-1">{{ t('incident_block.contact_email_help') }}</p>
+        </div>
+
+        <div v-if="props.id" class="mb-4">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('incident_block.first_response') }}</label>
+          <input type="datetime-local" v-model="firstResponseAt" class="input" />
+        </div>
+  
         <div class="mb-4 col-span-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.description') }}</label>
           <textarea name="description" id="description" cols="30" rows="5" v-model="description"
             class="w-full border border-slate-300 rounded-md p-2 focus:outline-none focus:border-primary"></textarea>
         </div>
+
+        <div v-if="props.id" class="mb-4 col-span-2">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('incident_block.resolution') }}</label>
+          <textarea name="resolution" id="resolution" cols="30" rows="3" v-model="resolution"
+            class="w-full border border-slate-300 rounded-md p-2 focus:outline-none focus:border-primary"></textarea>
+        </div>
+
+      </div>
+
+      <div class="mb-4">
+        <div v-if="selectedSupplyCut" class="relative group p-2 bg-green-100">
+          <label class="block text-sm font-medium text-slate-500 mb-1">{{ t('incident_block.supply_cut') }}</label>
+          <span class="font-semibold">{{ selectedSupplyCut.token }}</span>
+          <span v-if="selectedSupplyCut.distinct_streets" class="text-sm text-slate-600"> - {{ selectedSupplyCut.distinct_streets }}</span>
+          <button @click="selectedSupplyCut = null"
+            class="absolute cursor-pointer shadow-md border text-sm w-8 h-8 bg-white right-3 top-3 rounded-md text-slate-600 opacity-0 transition-all duration-300 group-hover:opacity-100 hover:bg-slate-50">
+            <Icon name="fa6-solid:xmark" class="m-auto" />
+          </button>
+        </div>
+        <SearchEntityInput v-else :service="$SupplyCutApiService" @select="onSupplyCutSelected" :methodName="'getData'"
+          :title="t('incident_block.search_supply_cut')" :result_value="'distinct_streets'" />
       </div>
   
       <!-- <hr class="mb-2" /> -->

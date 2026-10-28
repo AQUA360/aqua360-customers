@@ -1,4 +1,7 @@
-from rest_framework import viewsets
+from django.utils import timezone
+from django.utils.translation import gettext as _
+from rest_framework import status, viewsets
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -9,7 +12,7 @@ from notification.serializers.value_objects_serializer import IncidentReportList
 from notification.permissions import IncidentPermission
 
 class IncidentReportViewSet(viewsets.ModelViewSet):
-  queryset = IncidentReport.objects.all().order_by('-created_at')
+  queryset = IncidentReport.objects.filter(is_active=True).order_by('-created_at')
   serializer_class = IncidentReportSerializer
   permission_classes = [IsAuthenticated, IncidentPermission]
   filterset_class = IncidentReportFilter
@@ -30,3 +33,15 @@ class IncidentReportViewSet(viewsets.ModelViewSet):
     context['request'] = self.request
     return context
   
+  def destroy(self, request, *args, **kwargs):
+    # Esborrat lògic amb justificant: motiu obligatori, data i usuari
+    reason = (request.data.get('deletion_reason') or '').strip()
+    if not reason:
+      return Response({'deletion_reason': [_("A reason is required to delete the report.")]}, status=status.HTTP_400_BAD_REQUEST)
+    instance = self.get_object()
+    instance.is_active = False
+    instance.deleted_at = timezone.now()
+    instance.deleted_by = request.user
+    instance.deletion_reason = reason
+    instance.save(update_fields=['is_active', 'deleted_at', 'deleted_by', 'deletion_reason', 'updated_at'])
+    return Response(status=status.HTTP_204_NO_CONTENT)

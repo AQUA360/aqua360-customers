@@ -20,6 +20,7 @@ from coredata.serializers import PersonContactSerializer, PersonSerializer, Pers
 from billing.serializers.general_payment_serializer import GeneralPaymentSerializer
 from contract.serializers.contract_data_change_serializer import ContractDataChangeSerializer
 from contract.serializers.variable_serializer import VariableSerializer
+from contract.utils.contract_service import get_contract_housing_units
 from contract.serializers.contract_representative_serializer import ContractRepresentativeSerializer
 from service.serializers.supply_point_serializer import SupplyPointSerializer
 from auth.serializers import UserMinimalSerializer
@@ -120,13 +121,19 @@ class PinnedContractSerializer(serializers.ModelSerializer):
     supply_point_ids = serializers.SerializerMethodField()
     important_observations = serializers.SerializerMethodField()
     incidents = serializers.SerializerMethodField()
+    # Incidència oberta d'un tipus que bloqueja les ofertes comercials (art. 16.2)
+    blocking_incident = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
+    housing_units = serializers.SerializerMethodField()
     
     class Meta:
         model = Contract
         fields = '__all__'
     
+    def get_housing_units(self, obj):
+        return get_contract_housing_units(obj)
+
     def get_general_invoice(self, obj):
         if obj.general_invoice:
             return {
@@ -180,9 +187,14 @@ class PinnedContractSerializer(serializers.ModelSerializer):
         price_rates = list(set(price_rates))
         return PriceRateSerializer(price_rates, many=True, read_only=True).data
     
+    def get_blocking_incident(self, obj):
+        from notification.utils.incident_utils import blocking_incident
+        incident = blocking_incident(obj)
+        return {'id': incident.id, 'token': incident.token, 'name': incident.name} if incident else None
+
     def get_incidents(self, obj):
         from notification.models import Incident
-        contract_incidents = Incident.objects.filter(contract=obj)
+        contract_incidents = Incident.objects.filter(contract=obj, is_active=True)
         return contract_incidents.count()
     
     def get_calendar_tasks(self, obj):

@@ -50,6 +50,8 @@ class PaymentCommitmentSaveSerializer(serializers.ModelSerializer):
     commitment_deposit_id = serializers.IntegerField(required=False, allow_null=True)
     payment_type_id = serializers.IntegerField(required=False, allow_null=True)
     wallet_payment_date = serializers.DateField(required=False, allow_null=True)
+    new_payer_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    new_payer_nif = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = PaymentCommitment
@@ -62,6 +64,8 @@ class PaymentCommitmentSaveSerializer(serializers.ModelSerializer):
         payment_type_id = validated_data.pop('payment_type_id', None)
         is_guide = validated_data.get('is_guide', False)
         is_wallet = validated_data.pop('is_wallet', False)
+        new_payer_name = validated_data.pop('new_payer_name', None)
+        new_payer_nif = validated_data.pop('new_payer_nif', None)
         
         validated_data['token'] = generate_token(PaymentCommitment)
         
@@ -113,7 +117,7 @@ class PaymentCommitmentSaveSerializer(serializers.ModelSerializer):
         if not is_guide:
             request = self.context.get('request')
             user = request.user if request else None
-            add_new_payment_deposit(payment, user, is_wallet, company_bank)
+            add_new_payment_deposit(payment, user, is_wallet, company_bank, new_payer_name, new_payer_nif)
         
         return payment
     

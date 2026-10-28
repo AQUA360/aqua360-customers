@@ -320,7 +320,7 @@ const handleSubRegionEvent = (event) => {
           class="grid grid-cols-[100px,150px,100px,150px,80px,80px,100px,15px] gap-3 text-base border-b items-center bg-white"
           :class="{ 'bg-yellow-50': selectedClaimRequest.includes(item.id) }">
           <span :class="{ 'selected': selectedClaimRequest.includes(item.id) }"
-            class="p-1 text-nowrap transition-all duration-200">
+            class="p-1 text-nowrap truncate transition-all duration-200">
             {{ item.token }}</span>
           <span :class="{ 'selected': selectedClaimRequest.includes(item.id) }"
             class="p-1 text-nowrap transition-all duration-200 truncate">

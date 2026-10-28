@@ -1989,7 +1989,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
 
 
 @shared_task(bind=True)
-def preview_smart_metering_task(self, reading_date):
+def preview_smart_metering_task(self, reading_date, scope=None):
   progress_recorder = ProgressRecorder(self)
 
   def on_progress(current, total, description=""):
@@ -1999,6 +1999,7 @@ def preview_smart_metering_task(self, reading_date):
       reading_date,
       api_timeout=SMART_METERING_PREVIEW_API_TIMEOUT,
       progress_callback=on_progress,
+      scope=scope,
   )
   return _json_safe(result)
 
@@ -4491,3 +4492,131 @@ def manage_deliquency(request_data, user_id):
     return {"invoices": serialized_invoices, "contracts": serialized_contracts}
   except Exception as e:
     return {"ERROR": str(e)}
+
+
+@shared_task(bind=True)
+def generate_billing_document_download(self, download_id):
+  """Ajunta els PDF d'unes facturacions o d'uns processos de comunicació."""
+  from django.core.files.base import ContentFile
+  from django.utils import timezone
+  from django.utils.translation import gettext as _
+
+  from billing.models import BillingDocumentDownload
+  from billing.utils.billing_document_download import (
+    BATCH_NONE, DownloadOptionsError, document_source_size, invoice_source_size,
+    iter_download_parts, open_pdf_zip, ordered_billing_invoices, ordered_process_files,
+    render_billing_download_pdf, render_documents_pdf,
+  )
+  from documentmanager.utils.main_utils import upload_document
+
+  record = BillingDocumentDownload.objects.select_related(
+    'billing', 'communication_process',
+  ).filter(id=download_id).first()
+  if record is None:
+    return {"status": "error", "message": "Download request not found"}
+
+  record.status = BillingDocumentDownload.STATUS_RUNNING
+  record.save(update_fields=['status'])
+  zip_file = None
+  try:
+    filters = dict(
+      payment_type_tokens=record.payment_type_tokens,
+      ordering=record.ordering,
+      descending=record.descending,
+    )
+    process_ids = list(record.communication_processes.values_list('id', flat=True))
+    if not process_ids and record.communication_process_id:
+      process_ids = [record.communication_process_id]
+    if process_ids:
+      files = ordered_process_files(
+        process_ids, delivery=record.delivery, **filters,
+      )
+      record.invoice_count = len(files)
+      if not files:
+        raise DownloadOptionsError('empty')
+      items = files
+      sizes = [document_source_size(comm_file.file) for comm_file in files]
+      render_batch = lambda batch: render_documents_pdf([comm_file.file for comm_file in batch])
+      tokens = list(record.communication_processes.values_list('token', flat=True))
+      if not tokens and record.communication_process_id:
+        tokens = [record.communication_process.token]
+      token = '_'.join(str(value) for value in tokens if value) or process_ids[0]
+      entity = 'COMUNICACIO'
+      entity_id = process_ids[0]
+      prefix = 'proces'
+      empty_message = _("No hi ha cap document per ajuntar.")
+    else:
+      billing_ids = list(record.billings.values_list('id', flat=True))
+      if not billing_ids and record.billing_id:
+        billing_ids = [record.billing_id]
+      invoices = list(ordered_billing_invoices(billing_ids, **filters))
+      record.invoice_count = len(invoices)
+      if not invoices:
+        raise DownloadOptionsError('empty')
+      items = invoices
+      sizes = [invoice_source_size(invoice) for invoice in invoices]
+      render_batch = lambda batch: render_billing_download_pdf(batch)
+      tokens = list(record.billings.values_list('token', flat=True))
+      token = '_'.join(value for value in tokens if value) or (record.billing_id or 'factures')
+      entity = 'BILLING'
+      entity_id = billing_ids[0]
+      prefix = 'factures'
+      empty_message = _("No hi ha cap PDF de factura per ajuntar.")
+    safe = ''.join(ch if ch.isalnum() or ch in '-_' else '_' for ch in str(token))[:80]
+    stamp = timezone.now().strftime('%Y%m%d%H%M%S')
+    parts = iter_download_parts(
+      items, sizes, render_batch, record.batch_mode, record.batch_size,
+    )
+    if record.batch_mode == BATCH_NONE:
+      content = next(parts)
+      record.batch_count = 1
+      filename = f"{prefix}_{safe}_{stamp}.pdf"
+      upload_file = ContentFile(content, name=filename)
+    else:
+      zip_file, record.batch_count = open_pdf_zip(
+        parts, lambda index: f"{prefix}_{safe}_lot_{index:03d}.pdf",
+      )
+      filename = f"{prefix}_{safe}_{stamp}.zip"
+      upload_file = zip_file
+    document = upload_document(
+      file=upload_file,
+      entity=entity,
+      field='DOCUMENT_DOWNLOAD',
+      entity_id=entity_id,
+      entity_token=str(token)[:255],
+      folder='',
+      service=settings.DOCUMENT_MANAGER_SERVICES.get('billing', 'hdd'),
+      document_name=filename,
+      date=timezone.now(),
+    )
+    record.document = document
+    record.status = BillingDocumentDownload.STATUS_COMPLETED
+    record.completed_at = timezone.now()
+    record.error_message = None
+    record.save(update_fields=['document', 'status', 'completed_at', 'invoice_count', 'batch_count', 'error_message'])
+    return {
+      "status": "success",
+      "document_id": document.id,
+      "document_name": document.document_name,
+    }
+  except DownloadOptionsError:
+    message = str(empty_message if 'empty_message' in locals() else _("No hi ha cap document per ajuntar."))
+  except Exception as exc:
+    message = str(exc)
+    import logging
+    logging.getLogger(__name__).exception("Error generant la descàrrega de factures %s", download_id)
+  finally:
+    if zip_file is not None:
+      import os
+      name = zip_file.name
+      zip_file.close()
+      try:
+        os.unlink(name)
+      except OSError:
+        pass
+
+  record.status = BillingDocumentDownload.STATUS_FAILED
+  record.error_message = message[:2000]
+  record.completed_at = timezone.now()
+  record.save(update_fields=['status', 'error_message', 'completed_at', 'invoice_count'])
+  return {"status": "error", "message": message}

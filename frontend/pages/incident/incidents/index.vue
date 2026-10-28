@@ -3,7 +3,7 @@ import { ref, onMounted, nextTick, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import debounce from 'lodash.debounce';
 import { useI18n } from 'vue-i18n';
-import { formatDate } from '~/utils/date';
+import { formatDate, formatDateTime } from '~/utils/date';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
@@ -43,6 +43,9 @@ const filter_type = ref([]);
 const sortBy = ref(null);
 const sortDesc = ref(false);
 const editing = ref(false);
+const onlyAssignedToMe = ref(false);
+const onlyOverdue = ref(false);
+const onlyOutOfTerm = ref(false);
 
 const types = ref([]);
 
@@ -81,7 +84,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
   error.value = null;
 
   try {
-    const data = await $IncidentApiService.getAll(searchQuery, filters, page, sort, desc, null, null, types.value);
+    const data = await $IncidentApiService.getAll(searchQuery, filters, page, sort, desc, null, null, types.value, null, null, onlyAssignedToMe.value, onlyOverdue.value, onlyOutOfTerm.value);
 
     items.value = data.results;
     Object.assign(pagination.value, {
@@ -253,7 +256,10 @@ const startExport = async () => {
     const response = await $IncidentApiService.exportExcel(
       searchInput.value,
       selectedFilters.value,
-      types.value
+      types.value,
+      onlyAssignedToMe.value,
+      onlyOverdue.value,
+      onlyOutOfTerm.value
     );
     if (response && response.task_id) {
       exportTaskId.value = response.task_id;
@@ -340,6 +346,17 @@ watch(() => route.query, () => {
             status.name }}
         </label>
       </span>
+      <span class="flex gap-3">
+        <label class="text-slate-800 text-base flex items-center gap-1">
+          <input type="checkbox" v-model="onlyAssignedToMe" @change="handleFilterChange" /> {{ t('incident_block.assigned_to_me') }}
+        </label>
+        <label class="text-slate-800 text-base flex items-center gap-1">
+          <input type="checkbox" v-model="onlyOverdue" @change="handleFilterChange" /> {{ t('incident_block.only_overdue') }}
+        </label>
+        <label class="text-slate-800 text-base flex items-center gap-1">
+          <input type="checkbox" v-model="onlyOutOfTerm" @change="handleFilterChange" /> {{ t('incident_block.out_of_time') }}
+        </label>
+      </span>
       <span>
         <button id="filterShow" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
           @click="isFilterOpen = !isFilterOpen" title="show">
@@ -374,7 +391,7 @@ watch(() => route.query, () => {
     </div>
 
     <DataTable
-      grid-template="80px,150px,1fr,100px,150px,150px,150px"
+      grid-template="80px,150px,1fr,100px,150px,150px,120px,100px,150px"
       :pending="pending"
       :error="error"
       :is-empty="permissions?.can_view && items.length === 0"
@@ -390,6 +407,10 @@ watch(() => route.query, () => {
           @sort="handleSort" />
         <TableHeader :label="$t('contract')" :sortable="false" />
         <TableHeader :label="$t('common.work_order')" :sortable="false" />
+        <TableHeader :label="$t('incident_block.assigned_to')" sortKey="assigned_to" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          @sort="handleSort" />
+        <TableHeader :label="$t('incident_block.due_date')" sortKey="due_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          @sort="handleSort" />
         <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
       </template>
@@ -414,6 +435,11 @@ watch(() => route.query, () => {
             <span class="p-1">{{ item.type_name }}</span>
             <span class="p-1">{{ item.contract_token || '-' }}</span>
             <span class="p-1 truncate">{{ item.order_token || '-' }}</span>
+            <span class="p-1 truncate">{{ item.assigned_to_username || '-' }}</span>
+            <span class="p-1" :class="{ 'text-red-600 font-semibold': item.is_overdue }"
+              :title="item.is_overdue ? t('incident_block.overdue') : ''">
+              {{ item.due_at ? (item.type_due_unit === 'hours' ? formatDateTime(item.due_at) : formatDate(item.due_at)) : '-' }}
+            </span>
             <span class="p-1">
               <AtomsColorBadge :color="item.status_color" :value="item.status_name" />
             </span>
