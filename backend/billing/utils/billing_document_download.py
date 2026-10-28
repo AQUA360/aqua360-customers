@@ -288,9 +288,14 @@ def _sort_value(comm_file, ordering):
     return ''
 
 
+class _DescendingText(str):
+    def __lt__(self, other):
+        return super().__gt__(other)
+
+
 def _sort_key(comm_file, ordering, descending):
     value = (_sort_value(comm_file, ordering) or '').lower()
-    comparable = tuple(-ord(char) for char in value) if descending else value
+    comparable = _DescendingText(value) if descending else value
     communication_id = comm_file.communication_id or 0
     return (
         value == '',

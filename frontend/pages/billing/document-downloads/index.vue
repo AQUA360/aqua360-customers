@@ -21,6 +21,7 @@ const paymentTypes = ref([]);
 const downloadingId = ref(null);
 
 let pollTimer = null;
+let isUnmounted = false;
 
 const hasActiveDownload = computed(() =>
   history.value.some(item => item.status === 'pending' || item.status === 'running')
@@ -78,7 +79,7 @@ const loadHistory = async () => {
 
 const schedulePoll = () => {
   clearTimeout(pollTimer);
-  if (!hasActiveDownload.value) return;
+  if (isUnmounted || !hasActiveDownload.value) return;
   pollTimer = setTimeout(async () => {
     try {
       await loadHistory();
@@ -150,6 +151,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  isUnmounted = true;
   clearTimeout(pollTimer);
 });
 </script>

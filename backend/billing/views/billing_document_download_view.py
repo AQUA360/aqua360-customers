@@ -21,12 +21,25 @@ logger = logging.getLogger(__name__)
 
 
 class BillingDocumentDownloadPermission(BasePermission):
-    """Facturació o el procés de comunicació, que és l'altre origen del panell."""
+    """Exigeix el permís de l'origen; l'historial admet qualsevol dels dos."""
 
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:
             return False
+        if request.method == 'POST' or isinstance(view, BillingDocumentDownloadPreviewView):
+            data = request.data if request.method == 'POST' else request.query_params
+            try:
+                options = parse_download_request(data)
+            except DownloadOptionsError:
+                # La vista retorna l'error de validació per a peticions invàlides.
+                pass
+            else:
+                permission = (
+                    'communication.view_communicationprocess'
+                    if options['communication_process_ids'] else 'billing.view_billing'
+                )
+                return user.has_perm(permission)
         return (
             user.has_perm('billing.view_billing')
             or user.has_perm('communication.view_communicationprocess')
@@ -140,9 +153,9 @@ def _options_error(exc):
     )
 
 
-def _history():
+def _history(user):
     records = list(
-        BillingDocumentDownload.objects.select_related(
+        BillingDocumentDownload.objects.filter(requested_by=user).select_related(
             'requested_by', 'document', 'billing', 'communication_process',
         ).prefetch_related('billings', 'communication_processes')[:100]
     )
@@ -167,7 +180,7 @@ class BillingDocumentDownloadView(views.APIView):
     permission_classes = [IsAuthenticated, BillingDocumentDownloadPermission]
 
     def get(self, request):
-        return Response(BillingDocumentDownloadSerializer(_history(), many=True).data)
+        return Response(BillingDocumentDownloadSerializer(_history(request.user), many=True).data)
 
     def post(self, request):
         try:

@@ -258,6 +258,18 @@ class ProcessDocumentDownloadSelectionTests(TestCase):
         )
         self.assertEqual([comm_file.file.document_name for comm_file in files], ['A', 'B'])
 
+    def test_descending_order_handles_prefix_values(self):
+        for value in ('F-1', 'F-10', 'F-2'):
+            self.add_file('letter', address=value, serie=value, contract_token=value)
+        self.add_file('letter', address='')
+
+        for ordering in ('invoice_code', 'contract_token', 'contact_address'):
+            with self.subTest(ordering=ordering):
+                self.assertEqual(
+                    self.names(ordering=ordering, descending=True),
+                    ['F-2', 'F-10', 'F-1', ''],
+                )
+
 
 class BillingDocumentDownloadApiTests(TestCase):
     def setUp(self):
@@ -357,6 +369,16 @@ class BillingDocumentDownloadApiTests(TestCase):
         self.assertEqual(BillingDocumentDownload.objects.count(), 0)
 
     def test_process_source_filters_by_channel(self):
+        self.user.user_permissions.set([Permission.objects.get(
+            codename='view_communicationprocess',
+            content_type=ContentType.objects.get_for_model(CommunicationProcess),
+        )])
+        preview = self.client.get(reverse('billing-document-download-preview'), {
+            'communication_process_ids': str(self.process.id),
+            'delivery': 'email',
+        })
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.data['count'], 1)
         response = self.client.post(self.url, {
             'communication_process_id': self.process.id,
             'delivery': 'email',
@@ -384,6 +406,10 @@ class BillingDocumentDownloadApiTests(TestCase):
         self.assertEqual(postal.data['error'], 'no_documents')
 
     def test_several_processes_are_stored_together(self):
+        self.user.user_permissions.set([Permission.objects.get(
+            codename='view_communicationprocess',
+            content_type=ContentType.objects.get_for_model(CommunicationProcess),
+        )])
         other = CommunicationProcess.objects.create(token='PROC-API-2')
         communication = Communication.objects.create(process=other, type_tokens='email', used_address='Altra')
         document = Document.objects.create(entity_id=communication.id, service='hdd', document_name='altre')
@@ -414,6 +440,49 @@ class BillingDocumentDownloadApiTests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertEqual(BillingDocumentDownload.objects.count(), 0)
+
+    def test_billing_permission_does_not_authorize_process_downloads(self):
+        for field, value in (
+            ('communication_process_id', self.process.id),
+            ('communication_process_ids', [self.process.id]),
+        ):
+            with self.subTest(field=field):
+                preview = self.client.get(reverse('billing-document-download-preview'), {
+                    field: str(self.process.id),
+                })
+                self.assertEqual(preview.status_code, 403)
+                response = self.client.post(self.url, {field: value}, format='json')
+                self.assertEqual(response.status_code, 403)
+        self.assertFalse(BillingDocumentDownload.objects.exists())
+
+    def test_process_permission_does_not_authorize_billing_downloads(self):
+        self.user.user_permissions.set([Permission.objects.get(
+            codename='view_communicationprocess',
+            content_type=ContentType.objects.get_for_model(CommunicationProcess),
+        )])
+        preview = self.client.get(reverse('billing-document-download-preview'), {
+            'billing_ids': str(self.billing.id),
+        })
+        self.assertEqual(preview.status_code, 403)
+        response = self.client.post(self.url, {
+            'billing_ids': [self.billing.id],
+        }, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(BillingDocumentDownload.objects.exists())
+
+    def test_history_only_includes_current_users_downloads(self):
+        own = BillingDocumentDownload.objects.create(billing=self.billing, requested_by=self.user)
+        other_user = User.objects.create_user(username='other')
+        BillingDocumentDownload.objects.bulk_create([
+            BillingDocumentDownload(billing=self.billing, requested_by=other_user)
+            for _ in range(100)
+        ])
+        BillingDocumentDownload.objects.create(billing=self.billing, requested_by=None)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([download['id'] for download in response.data], [own.id])
 
     def test_requires_view_permission(self):
         stranger = User.objects.create_user(username='stranger', password='secret')
