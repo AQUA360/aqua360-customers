@@ -134,7 +134,7 @@ class CommitmentDepositSerializer(serializers.ModelSerializer):
         return data
 
     def get_incidents(self, obj):
-        return obj.incidents.all().count()
+        return obj.incidents.filter(is_active=True).count()
     
 class CommitmentDepositSaveSerializer(serializers.ModelSerializer):
     

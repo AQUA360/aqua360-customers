@@ -8,6 +8,7 @@ import VariableTypeEdit from '../../components/organisms/VariableTypeEdit.vue';
 import OrderReasonEdit from '../../components/organisms/OrderReasonEdit.vue';
 import BailTypeEdit from '../../components/organisms/BailTypeEdit.vue';
 import BankConfigList from '~/components/organisms/BankConfigList.vue';
+import IncidentSettings from '~/components/organisms/IncidentSettings.vue';
 import AccountValuesRegion from '~/components/molecules/AccountValuesRegion.vue';
 const { $ConfigProjectApiService } = useNuxtApp();
 import { usePermissions } from '~/middleware/permission';
@@ -112,6 +113,11 @@ const showConfigOrderReasons = () => {
 
 const showConfigBailTypes = () => {
   RegionActive.value = 'BailType';
+  toggleRegion(true);
+}
+
+const showIncidentSettings = () => {
+  RegionActive.value = 'IncidentSettings';
   toggleRegion(true);
 }
 
@@ -545,6 +551,11 @@ getConfigProject();
             @click="showConfigList((t('common.incidents') + ': ' + t('common.statuses')), 'notification/incident-status', true, false, false, true)"
             class="text-sky-500 underline hover:no-underline">{{ t('common.incidents') }}: {{ t('common.statuses')
             }}</button></li>
+        <li class="mb-1"><button
+            @click="showConfigList((t('common.incidents') + ': ' + t('incident_settings.channels')), 'notification/incident-channel', false, false, false)"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.incidents') }}: {{ t('incident_settings.channels') }}</button></li>
+        <li class="mb-1"><button @click="showIncidentSettings()"
+            class="text-sky-500 underline hover:no-underline">{{ t('incident_settings.title') }}</button></li>
       </ul>
 
       <h3 v-if="permissions?.permissions?.view_customer_service" class="text-lg mb-2 font-bold pl-3">{{
@@ -645,6 +656,7 @@ getConfigProject();
         <OrderReasonEdit v-if="RegionActive == 'OrderReason'" />
         <BailTypeEdit v-if="RegionActive == 'BailType'" />
         <BankConfigList v-if="RegionActive == 'Bank'" />
+        <IncidentSettings v-if="RegionActive == 'IncidentSettings'" />
         <AccountValuesRegion v-if="RegionActive == 'AccountValues'" @close="toggleRegion(false)" />
       </div>
     </div>

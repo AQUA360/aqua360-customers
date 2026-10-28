@@ -94,9 +94,12 @@ const handleSave = () => {
           </div>
         </div>
 
-        <div class="overflow-auto flex-grow min-h-0 px-6 py-4">
+        <!-- Sense padding superior: la capçalera sticky queda enganxada a dalt i les
+             files no es veuen per sobre en fer scroll; overscroll-contain evita que
+             l'scroll passi a la pàgina de darrere. -->
+        <div class="overflow-auto overscroll-contain flex-grow min-h-0 px-6 pb-4">
           <div
-            class="grid grid-cols-[1fr,2.1fr,2.2fr,0.8fr,1.2fr,0.8fr,0.9fr] gap-2 px-2 border-b border-gray-400 items-end text-sm sticky top-0 bg-white z-10 pb-2"
+            class="grid grid-cols-[1fr,2.1fr,2.2fr,0.8fr,1.2fr,0.8fr,0.9fr] gap-2 px-2 border-b border-gray-400 items-end text-sm sticky top-0 bg-white z-10 pt-4 pb-2"
           >
             <span class="font-bold">{{ t('contract') }}</span>
             <span class="font-bold">{{ t('common.roles.HOLDER') }}</span>

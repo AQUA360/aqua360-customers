@@ -9,6 +9,9 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = '__all__'
+        # On és el fitxer ho decideix el backend en pujar-lo; si fos editable per API,
+        # es podria apuntar a qualsevol fitxer del servidor i descarregar-lo.
+        read_only_fields = ['file', 'folder', 'location', 'location_url', 'service', 'version', 'parent_document']
         
     def get_versions(self, obj):
         versions = obj.versions.all()

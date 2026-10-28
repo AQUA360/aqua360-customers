@@ -9,6 +9,7 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from django.db.models import Q
 
 from django.db import transaction
+from django.utils import timezone
 from auth.permissions import PermissionManager
 from lecturapp.mixins import LecturappAuthMixin
 from notification.filters.incident_filter import IncidentFilter
@@ -26,13 +27,15 @@ class IncidentPagination(PageNumberPagination):
     page_size_query_param = 'page_size' 
 
 class IncidentViewSet(viewsets.ModelViewSet):
-  queryset = Incident.objects.all().order_by('status__position', '-created_at')
+  queryset = Incident.objects.filter(is_active=True).select_related(
+      'status', 'type', 'channel', 'assigned_to', 'contract', 'invoice', 'order_incident', 'receipt_document',
+  ).order_by('status__position', '-created_at')
   permission_classes = [IsAuthenticated, DjangoModelPermissions]
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   filterset_class = IncidentFilter
   pagination_class = IncidentPagination
   search_fields = ['token','name']
-  ordering_fields = ['token','name']
+  ordering_fields = ['token','name','created_at','due_at','assigned_to']
   
   def get_serializer_class(self):
     if self.action == 'list':
@@ -45,6 +48,13 @@ class IncidentViewSet(viewsets.ModelViewSet):
     context = super().get_serializer_context()
     context['request'] = self.request
     return context
+  
+  def perform_destroy(self, instance):
+      # Esborrat lògic: es desa qui l'ha esborrat i quan
+      instance.is_active = False
+      instance.deleted_at = timezone.now()
+      instance.deleted_by = self.request.user
+      instance.save(update_fields=['is_active', 'deleted_at', 'deleted_by', 'updated_at'])
   
   def perform_update(self, serializer):
       with transaction.atomic():
@@ -105,15 +115,14 @@ class IncidentViewSet(viewsets.ModelViewSet):
           # Obtenir els paràmetres del query string
           query_params = request.query_params.dict()
           
-          # Iniciar la tasca de Celery de manera asíncrona
+          # La cua d'exportacions deixa constància de qui exporta, quan i amb quins filtres
+          from documentmanager.utils.export_jobs import enqueue_export, export_job_response
           from notification.tasks import export_incidents_csv_task
-          task = export_incidents_csv_task.delay(query_params)
-          
-          return Response({
-              "task_id": task.id,
-              "status": "pending",
-              "message": "Generació de l'exportació d'incidències iniciada correctament. Utilitza el task_id per comprovar l'estat."
-          }, status=status.HTTP_202_ACCEPTED)
+          job = enqueue_export(
+              request, export_incidents_csv_task, kind='incidents', name="Incidències",
+              args=[query_params], kwargs={'user_id': request.user.id}, params=query_params,
+          )
+          return Response(export_job_response(job), status=status.HTTP_202_ACCEPTED)
           
       except Exception as e:
           logger.exception("Error inesperat")
@@ -121,6 +130,24 @@ class IncidentViewSet(viewsets.ModelViewSet):
               {"error": "Error en iniciar l'exportació."},
               status=status.HTTP_500_INTERNAL_SERVER_ERROR
           )
+
+  @action(detail=True, methods=['get'], url_path='timeline')
+  def timeline(self, request, pk=None):
+      """Cronologia unificada de la incidència: estats, canvis, trucades, informes i observacions."""
+      from notification.utils.incident_timeline import build_timeline
+      return Response(build_timeline(self.get_object()))
+
+  @action(detail=True, methods=['post'], url_path='send-receipt')
+  def send_receipt(self, request, pk=None):
+      """Genera (i envia, si hi ha correu) el justificant de registre."""
+      from notification.utils.incident_utils import send_receipt
+      incident = self.get_object()
+      try:
+          sent = send_receipt(incident)
+      except Exception:
+          logger.exception("Error generant el justificant de la incidència %s", incident.pk)
+          return Response({"error": "Error generating the receipt."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      return Response({"sent": sent, "document_id": incident.receipt_document_id})
 
   def get_permissions(self):
       if self.action == 'permissions':
@@ -132,6 +159,6 @@ class IncidentAppViewSet(LecturappAuthMixin, viewsets.ModelViewSet):
   """
   API endpoint that allows incident to be viewed or edited.
   """
-  queryset = Incident.objects.all().order_by('id')
+  queryset = Incident.objects.filter(is_active=True).order_by('id')
   serializer_class = IncidentAppSerializer
   permission_classes = [AllowAny]

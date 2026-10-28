@@ -166,6 +166,12 @@ const toISO = (local) => {
     const date = new Date(local)
     return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
+// Dades d'atenció: sentit, retorn de trucada, supervisor, transferència i consentiment de gravació
+const direction = ref('outbound')
+const callback_requested = ref(false)
+const supervisor_requested = ref(false)
+const transferred_to = ref('')
+const recording_consent = ref(false)
 
 const callPerson = () => {
     has_called.value = true
@@ -299,6 +305,7 @@ const save = async () => {
 
         const save_data = {
             contract: contract.value?.id || null,
+            incident: props.data.incident?.id || null,
             person_contact: contact.value?.id || null,
             incident: incidentId,
             answered: byClient ? true : has_answered.value,
@@ -312,7 +319,12 @@ const save = async () => {
                 const value = Number(wait_time.value)
                 if (Number.isNaN(value) || value < 0) return null
                 return Math.min(value, maxWaitMinutes.value)
-            })(),
+                direction: direction.value,
+            callback_requested: callback_requested.value,
+            supervisor_requested: supervisor_requested.value,
+            transferred_to: transferred_to.value || null,
+            recording_consent: recording_consent.value,
+        })(),
             abandoned_call: abandoned_call.value,
             contacted_by_client: byClient,
             channel: callChannel,

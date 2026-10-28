@@ -17,6 +17,16 @@ def _until_date(value):
         return value.strftime("%Y-%m-%d")
     return str(value).split("T")[0]
 
+def contract_holder_data(contract):
+    """Nom i NIF del titular del contracte (o sol·licitud) d'un pagament retornat."""
+    holder = contract.holder if contract else None
+    if not holder:
+        return {"contract_holder_name": None, "contract_holder_nif": None}
+    return {
+        "contract_holder_name": f"{holder.name or ''} {holder.surname or ''}".strip() or None,
+        "contract_holder_nif": holder.token,
+    }
+
 def extract_payments_data(root, namespaces, msgId, client_doc_ids, clients_data, rjt_date):
     payments_data = []
     if root is None:
@@ -147,7 +157,7 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
             else:
                 commitment_deposit = CommitmentDeposit.objects.get(id=payment.commitment_deposit.id)
                 contract = commitment_deposit.contract
-            
+            rejection.update(contract_holder_data(contract))
                     
             if payment.payment_date and rjt_date:
                 try:
@@ -369,7 +379,8 @@ def handle_not_found_payment(client_data, company_data, rjt_date):
     else:
         commitment_deposit = CommitmentDeposit.objects.get(id=payment.commitment_deposit.id)
         contract = commitment_deposit.contract
-        
+    rejection.update(contract_holder_data(contract))
+
     # Si s'ha canviat el mètode d'un cobrament per domiciliació sense retornar-lo, el retorn
     # s'ha de processar igualment: el mètode actual del pagament no diu com es va cobrar
     method_changed = is_paid_by_direct_debit_with_other_method(payment, _until_date(reject_date))

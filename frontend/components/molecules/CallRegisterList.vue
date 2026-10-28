@@ -39,6 +39,9 @@ const emit = defineEmits(['update:count']);
 const { $CallRegisterApiService } = useNuxtApp();
 
 const loading = ref(true);
+
+// Només s'enllacen adreces web (evita enllaços javascript: o similars)
+const isWebUrl = (url) => /^https?:\/\//i.test(url || '');
 const localData = ref([]);
 const new_call = ref(null);
 
@@ -60,6 +63,9 @@ const exportColumns = computed(() => [
     { header: t('common.date'), value: (row) => row.time_call ? formatTime(row.time_call) : '', key: 'time_call' },
     { header: t('contract_block.call_duration'), value: (row) => formatDuration(row.call_duration_seconds), key: 'duration' },
     { header: t('user'), value: (row) => row.user?.username },
+    { header: t('call_block.direction'), value: (row) => row.direction === 'inbound' ? t('call_block.inbound') : t('call_block.outbound'), key: 'direction' },
+    { header: t('incident'), value: (row) => row.incident_token, key: 'incident_token' },
+    { header: t('call_block.callback_requested'), value: (row) => row.callback_requested ? t('common.yes') : t('common.no'), key: 'callback_requested' },
     { header: t('contract_block.has_answered'), value: (row) => row.answered ? t('common.yes') : t('common.no'), key: 'answered' },
     { header: t('contract_block.abandoned_call'), value: (row) => row.abandoned_call ? t('common.yes') : t('common.no'), key: 'abandoned_call' },
     { header: t('contract_block.contacted_by_client'), value: (row) => row.contacted_by_client ? t('common.yes') : t('common.no'), key: 'contacted_by_client' },
@@ -233,6 +239,14 @@ watch(() => props.reload, () => {
                         </div>
                     </div>
 
+                    <div class="flex flex-wrap gap-1 mt-1">
+                        <span v-if="item.direction === 'inbound'" class="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">{{ t('call_block.inbound') }}</span>
+                        <span v-if="item.incident_token && !props.incident_id" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{{ t('incident') }}: {{ item.incident_token }}</span>
+                        <span v-if="item.callback_requested" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{{ t('call_block.callback_requested') }}</span>
+                        <span v-if="item.supervisor_requested" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{{ t('call_block.supervisor_requested') }}</span>
+                        <span v-if="item.transferred_to" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">{{ t('call_block.transferred_to') }}: {{ item.transferred_to }}</span>
+                        <a v-if="isWebUrl(item.recording_url)" :href="item.recording_url" target="_blank" class="text-xs text-sky-500 underline">{{ t('call_block.recording') }}</a>
+                    </div>
                     <div v-if="item.comment" class="mt-2 px-2 py-1 bg-slate-50 rounded-md">
                         <div class="flex items-center gap-2">
                             <Icon name="fa6-solid:comment" class="text-slate-400 text-xs" />

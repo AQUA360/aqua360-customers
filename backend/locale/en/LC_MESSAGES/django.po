@@ -1577,8 +1577,6 @@ msgstr "Audit report of received claims and their closing date."
 msgid "Mètriques agregades de l'activitat diària de l'oficina comercial."
 msgstr "Aggregated metrics of daily commercial office activity."
 
-
-
 msgid "Informe de Recaptació"
 msgstr "Collection Report"
 
@@ -1764,13 +1762,11 @@ msgstr "%(start)s to %(end)s %(year)s"
 msgid "%(start)s de %(start_year)s a %(end)s de %(end_year)s"
 msgstr "%(start)s %(start_year)s to %(end)s %(end_year)s"
 
-
 msgid "Expenses"
 msgstr "Expenses"
 
 msgid "Expired daily documents"
 msgstr "Expired daily documents"
-
 
 msgid "Daily documents declared as expired on %(date)s"
 msgstr "Daily documents declared as expired on %(date)s"
@@ -1877,6 +1873,346 @@ msgstr "Messages"
 #: billing/views/invoice_clavegueram_export_view.py
 msgid "Informe Clavegueram"
 msgstr "Sewerage Report"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "You have been assigned the incident %(incident)s"
+msgstr "You have been assigned the incident %(incident)s"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "(due %(date)s)"
+msgstr "(due %(date)s)"
+
+#: notification/utils/incident_utils.py
+msgid "Incident assigned"
+msgstr "Incident assigned"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "You have a pending incident due: %(incidents)s"
+msgstr "You have a pending incident due: %(incidents)s"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "You have %(count)s pending incidents due: %(incidents)s"
+msgstr "You have %(count)s pending incidents due: %(incidents)s"
+
+#: notification/utils/incident_utils.py
+msgid "Pending incidents"
+msgstr "Pending incidents"
+
+#: notification/views/incident_report_view.py
+msgid "A reason is required to delete the report."
+msgstr "A reason is required to delete the report."
+
+#: notification/utils/incident_csv_export.py
+msgid "Creada per"
+msgstr "Created by"
+
+#: notification/utils/incident_csv_export.py
+msgid "Assignada a"
+msgstr "Assigned to"
+
+#: notification/utils/incident_csv_export.py
+msgid "Data Venciment"
+msgstr "Due Date"
+
+#: notification/utils/incident_csv_export.py
+msgid "Data Tancament"
+msgstr "Closing Date"
+
+#: notification/utils/incident_csv_export.py
+msgid "Resolució"
+msgstr "Resolution"
+
+#: notification/utils/incident_csv_export.py
+msgid "Tall de Subministrament"
+msgstr "Supply Cut"
+
+#: notification/utils/incident_utils.py
+msgid "Incident about to expire"
+msgstr "Incident about to expire"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "The incident %(incident)s is due %(date)s"
+msgstr "The incident %(incident)s is due %(date)s"
+
+#: notification/utils/incident_utils.py
+msgid "Incident escalated"
+msgstr "Incident escalated"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "The incident %(incident)s is overdue since %(date)s"
+msgstr "The incident %(incident)s is overdue since %(date)s"
+
+#: notification/utils/incident_utils.py
+msgid "Incident paused for too long"
+msgstr "Incident paused for too long"
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "The incident %(incident)s has been in %(status)s for %(days)s business days"
+msgstr "The incident %(incident)s has been in %(status)s for %(days)s business days"
+
+#: notification/utils/incident_utils.py
+msgid "Reference"
+msgstr "Reference"
+
+#: notification/utils/incident_utils.py
+msgid "Date and time"
+msgstr "Date and time"
+
+#: notification/utils/incident_utils.py
+msgid "Channel"
+msgstr "Channel"
+
+#: notification/utils/incident_utils.py
+msgid "Type"
+msgstr "Type"
+
+#: notification/utils/incident_utils.py
+msgid "Subject"
+msgstr "Subject"
+
+#: notification/utils/incident_utils.py
+msgid "Content"
+msgstr "Content"
+
+#: notification/utils/incident_utils.py
+msgid "Maximum resolution date"
+msgstr "Maximum resolution date"
+
+#: notification/utils/incident_utils.py
+msgid "Registration receipt"
+msgstr "Registration receipt"
+
+#: notification/utils/incident_utils.py
+msgid "Keep this reference to check the status of your request."
+msgstr "Keep this reference to check the status of your request."
+
+#: notification/utils/incident_utils.py
+#, python-format
+msgid "Receipt of your request %(reference)s"
+msgstr "Receipt of your request %(reference)s"
+
+#: notification/utils/incident_timeline.py
+msgid "Incident registered"
+msgstr "Incident registered"
+
+#: notification/utils/incident_timeline.py
+msgid "Status change"
+msgstr "Status change"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Field modified: %(field)s"
+msgstr "Field modified: %(field)s"
+
+#: notification/utils/incident_timeline.py
+msgid "answered"
+msgstr "answered"
+
+#: notification/utils/incident_timeline.py
+msgid "not answered"
+msgstr "not answered"
+
+#: notification/utils/incident_timeline.py
+msgid "Inbound call"
+msgstr "Inbound call"
+
+#: notification/utils/incident_timeline.py
+msgid "Outbound call"
+msgstr "Outbound call"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Report %(token)s"
+msgstr "Report %(token)s"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Report %(token)s deleted"
+msgstr "Report %(token)s deleted"
+
+#: notification/utils/incident_timeline.py
+msgid "Observation"
+msgstr "Observation"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Task: %(name)s"
+msgstr "Task: %(name)s"
+
+#: notification/utils/incident_timeline.py
+msgid "Receipt sent"
+msgstr "Receipt sent"
+
+#: notification/utils/incident_timeline.py
+msgid "Incident closed"
+msgstr "Incident closed"
+
+#: notification/utils/incident_timeline.py
+msgid "Incident deleted"
+msgstr "Incident deleted"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Sense tipus"
+msgstr "No type"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Sense canal"
+msgstr "No channel"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Tancades"
+msgstr "Closed"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Dins de termini"
+msgstr "On time"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Fora de termini"
+msgstr "Out of time"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "% dins de termini"
+msgstr "% on time"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Pendents vençudes"
+msgstr "Pending overdue"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Reobertes"
+msgstr "Reopened"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Mitjana 1a resposta (dies hàbils)"
+msgstr "Average first response (business days)"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Mitjana resolució (dies hàbils)"
+msgstr "Average resolution (business days)"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Per tipus"
+msgstr "By type"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Per canal"
+msgstr "By channel"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Canal"
+msgstr "Channel"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Fase"
+msgstr "Phase"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Registre"
+msgstr "Registration"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Primera resposta"
+msgstr "First response"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Tancament"
+msgstr "Closing"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Dies hàbils fins a resposta"
+msgstr "Business days to response"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Dies hàbils fins a resolució"
+msgstr "Business days to resolution"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Vençuda"
+msgstr "Overdue"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Reoberta"
+msgstr "Reopened"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Atenció telefònica"
+msgstr "Phone service"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Indicador"
+msgstr "Indicator"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Trucades entrants"
+msgstr "Inbound calls"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Ateses"
+msgstr "Answered"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Abandonades"
+msgstr "Abandoned"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Ateses en menys de 3 minuts"
+msgstr "Answered in under 3 minutes"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "% ateses en menys de 3 minuts"
+msgstr "% answered in under 3 minutes"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Espera mitjana (segons)"
+msgstr "Average wait (seconds)"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Transferides"
+msgstr "Transferred"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Peticions de supervisor"
+msgstr "Supervisor requests"
+
+#: statistics/utils/report_incident_compliance_service.py
+msgid "Peticions de trucada de retorn"
+msgstr "Callback requests"
+
+#: notification/utils/incident_csv_export.py
+msgid "Primera Resposta"
+msgstr "First Response"
+
+#: notification/utils/incident_csv_export.py
+msgid "Dins de Termini"
+msgstr "On Time"
+
+#: notification/utils/incident_csv_export.py
+msgid "Extracció"
+msgstr "Extraction"
+
+#: notification/utils/incident_csv_export.py
+msgid "Data d'extracció"
+msgstr "Extraction date"
+
+#: notification/utils/incident_csv_export.py
+msgid "Registres"
+msgstr "Records"
+
+#: notification/serializers/incident_serializer.py
+msgid "This status change is not allowed."
+msgstr "This status change is not allowed."
+
+#: coredata/serializers.py
+msgid "The recording link must be an http or https address."
+msgstr "The recording link must be an http or https address."
 
 #: billing/views/invoice_clavegueram_export_view.py
 #: claimrequest/views/claim_request_excel_generate_view.py
@@ -3844,3 +4180,98 @@ msgstr "Unusual reading"
 #: billing/tasks.py
 msgid "Consum inusualment baix"
 msgstr "Unusually low consumption"
+
+msgid "Attach invoices in claims"
+msgstr "Attach invoices in claims"
+#: billing/templates/payment_proof_template.html
+msgid "Justificant de pagament"
+msgstr "Payment receipt"
+
+#: billing/templates/payment_proof_template.html
+msgid "JUSTIFICANT DE PAGAMENT"
+msgstr "PAYMENT RECEIPT"
+
+#: billing/templates/payment_proof_template.html
+msgid ""
+"Amb aquest document declarem que hem rebut les quantitats següents, per les "
+"factures i els imports que es detallen a continuació:"
+msgstr ""
+"We hereby acknowledge receipt of the following amounts for the invoices and "
+"amounts detailed below:"
+
+#: billing/templates/payment_proof_template.html
+msgid "ADREÇA SUBMINISTRAMENT"
+msgstr "SUPPLY ADDRESS"
+
+#: billing/templates/payment_proof_template.html
+msgid "PERÍODE"
+msgstr "PERIOD"
+
+#: billing/templates/payment_proof_template.html
+msgid "NÚM. FACTURA/DOC"
+msgstr "INVOICE/DOC NO."
+
+#: billing/templates/payment_proof_template.html
+msgid "IMPORT COBRAT"
+msgstr "AMOUNT RECEIVED"
+
+#: billing/templates/payment_proof_template.html
+msgid "OBSERVACIONS"
+msgstr "OBSERVATIONS"
+
+#: billing/templates/payment_proof_template.html
+msgid "TOTAL COBRAT:"
+msgstr "TOTAL RECEIVED:"
+
+#: billing/templates/payment_proof_template.html
+msgid "Atenció al client"
+msgstr "Customer service"
+
+#: billing/templates/payment_proof_template.html
+msgid "dilluns a divendres de 8 a 15 hores"
+msgstr "Monday to Friday from 8 a.m. to 3 p.m."
+
+#: billing/templates/payment_proof_template.html
+msgid "Avaries"
+msgstr "Breakdowns"
+
+#: billing/templates/payment_proof_template.html
+msgid "24 hores"
+msgstr "24 hours"
+
+#: billing/templates/payment_proof_template.html
+msgid "Efectiu"
+msgstr "Cash"
+
+#: billing/templates/payment_proof_template.html
+msgid "Targeta (TPV Físic)"
+msgstr "Card (physical POS)"
+msgid "Adreça subministrament"
+msgstr "Supply address"
+
+msgid "Factures impagades"
+msgstr "Unpaid invoices"
+
+msgid "Deute total"
+msgstr "Total debt"
+
+msgid "Estat contracte"
+msgstr "Contract status"
+
+msgid "Estat punt de subministrament"
+msgstr "Supply point status"
+
+msgid "Data de tall"
+msgstr "Cut-off date"
+
+msgid "Contractes de la reclamació"
+msgstr "Claim contracts"
+
+msgid "Cal indicar la gestió de reclamació o la tasca de filtratge."
+msgstr "Either the claim request or the filtering task must be provided."
+
+msgid "La tasca de filtratge no existeix o encara no ha acabat."
+msgstr "The filtering task does not exist or has not finished yet."
+
+msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
+msgstr "Some contracts do not belong to this claim request."

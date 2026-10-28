@@ -678,6 +678,10 @@ const setActiveTab = (tab) => {
             </div>
 
             <div class="mb-3">
+                <div v-if="contract?.blocking_incident" class="mb-2 text-xs px-2 py-1 rounded bg-red-100 text-red-700"
+                  :title="contract.blocking_incident.name">
+                  <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
+                </div>
                 <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall" />
             </div>
 

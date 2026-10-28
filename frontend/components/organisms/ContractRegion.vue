@@ -729,6 +729,11 @@ const addWalletBalance = () => {
       <div class="flex justify-between relative">
         <div class="flex items-center mb-3 gap-5">
           <H1Region class="">{{ $t('contract') }}</H1Region>
+          <!-- Reclamació oberta d'un tipus que bloqueja les ofertes comercials -->
+          <span v-if="data?.blocking_incident" class="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700"
+            :title="data.blocking_incident.name">
+            <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ data.blocking_incident.token }})
+          </span>
         </div>
 
         <div>
