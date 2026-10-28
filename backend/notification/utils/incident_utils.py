@@ -419,16 +419,22 @@ def generate_receipt(incident):
         document_name=filename,
         date=timezone.now(),
     )
-    Incident.objects.filter(pk=incident.pk).update(receipt_document=document)
+    # Justificant nou: encara no s'ha enviat
+    Incident.objects.filter(pk=incident.pk).update(receipt_document=document, receipt_sent_at=None)
     incident.receipt_document = document
+    incident.receipt_sent_at = None
     return document, buffer.getvalue()
+
+
+class ReceiptEmailError(Exception):
+    """El justificant s'ha generat però no s'ha pogut enviar per correu."""
 
 
 def send_receipt(incident):
     """
     Genera el justificant i l'envia per correu si hi ha adreça. Retorna True si
     s'ha enviat; el document es genera igualment perquè es pugui lliurar per
-    altres vies.
+    altres vies. Si falla l'enviament, llança ReceiptEmailError.
     """
     from notification.utils.staff_email import send_staff_email
 
@@ -439,8 +445,12 @@ def send_receipt(incident):
     with translation.override(settings.LANGUAGE_CODE):
         subject = _("Receipt of your request %(reference)s") % {'reference': incident.token}
         html = build_receipt_html(incident)
-    send_staff_email(email, subject, html, attachments=[(document.document_name or f"Justificant_registre_incidencia_{incident.token}.pdf", pdf)])
-    Incident.objects.filter(pk=incident.pk).update(receipt_sent_at=timezone.now())
+    try:
+        send_staff_email(email, subject, html, attachments=[(document.document_name or f"Justificant_registre_incidencia_{incident.token}.pdf", pdf)])
+    except Exception as exc:
+        raise ReceiptEmailError(str(exc)) from exc
+    # Només si el justificant vinculat encara és aquest: un enviament simultani en pot haver generat un altre
+    Incident.objects.filter(pk=incident.pk, receipt_document=document).update(receipt_sent_at=timezone.now())
     return True
 
 

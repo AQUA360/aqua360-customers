@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework.decorators import action
 
 from rest_framework import viewsets
@@ -59,9 +60,18 @@ class BailViewSet(viewsets.ModelViewSet):
         bail_ids = request.data.get('bail_ids', [])
         if not bail_ids:
             return Response({'error': 'No bail provided'}, status=status.HTTP_400_BAD_REQUEST)
+        return_date = None
+        raw_return_date = request.data.get('return_date')
+        if raw_return_date:
+            try:
+                return_date = parse_date(str(raw_return_date))
+            except ValueError:
+                return_date = None
+            if not return_date:
+                return Response({'error': 'Invalid return date'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             for bail_id in bail_ids:
-                immediate_return_bail(user, bail_id)
+                immediate_return_bail(user, bail_id, return_date=return_date)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:

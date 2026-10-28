@@ -5,6 +5,20 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def add_incident_if_missing(apps, schema_editor):
+    CallRegister = apps.get_model('coredata', 'CallRegister')
+    table = CallRegister._meta.db_table
+    with schema_editor.connection.cursor() as cursor:
+        columns = [column.name for column in schema_editor.connection.introspection.get_table_description(cursor, table)]
+    if 'incident_id' in columns:
+        return
+    Incident = apps.get_model('notification', 'Incident')
+    field = models.ForeignKey(Incident, blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+')
+    field.set_attributes_from_name('incident')
+    field.model = CallRegister
+    schema_editor.add_field(CallRegister, field)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -49,10 +63,18 @@ class Migration(migrations.Migration):
             name='email',
             field=models.CharField(blank=True, max_length=255, null=True),
         ),
-        migrations.AddField(
-            model_name='callregister',
-            name='incident',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='call_registers', to='notification.incident'),
+        # Les BD que ja han aplicat 0146_holiday_callregister_sac_fields ja tenen la columna: només es crea si no hi és
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.AddField(
+                    model_name='callregister',
+                    name='incident',
+                    field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='call_registers', to='notification.incident'),
+                ),
+            ],
+            database_operations=[
+                migrations.RunPython(add_incident_if_missing, migrations.RunPython.noop),
+            ],
         ),
         migrations.AddField(
             model_name='callregister',
