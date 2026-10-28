@@ -285,7 +285,17 @@ class CommunicationSaveSerializer(serializers.ModelSerializer):
         messages = []
         for msg_type in communication.types.all():
             if msg_type.id in existing_messages:
-                messages.append(existing_messages[msg_type.id])
+                message = existing_messages[msg_type.id]
+                # Si el missatge és compartit amb el procés o altres comunicacions,
+                # se'n fa una còpia perquè editar aquesta comunicació no els afecti.
+                if message.communication_processes.exists() or message.communications.exclude(id=communication.id).exists():
+                    message = Message.objects.create(
+                        token=generate_token(Message),
+                        subject=message.subject,
+                        body=message.body,
+                        type=message.type,
+                    )
+                messages.append(message)
                 continue
             template = instance.process.template if instance.process and instance.process.template else None
             template_type = template.templates.filter(type=msg_type).first() if template else None

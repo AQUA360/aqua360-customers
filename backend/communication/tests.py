@@ -1246,6 +1246,25 @@ class CommunicationUpdateKeepsMessagesTests(TestCase):
         self.assertEqual(message.body, 'Cos editat')
         self.assertEqual(communication.used_email, 'new@example.com')
 
+    def test_message_shared_with_process_is_detached(self):
+        from communication.serializers.message_serializer import MessageSaveSerializer
+        process = self.communication.process
+        process.messages.set([self.edited_message])
+
+        communication = self._update({'used_email': 'new@example.com', 'types': [self.email_type.id]})
+        message = communication.messages.get()
+        self.assertNotEqual(message.id, self.edited_message.id)
+        self.assertEqual(message.body, 'Cos editat')
+
+        # Editar el missatge de la comunicació no ha de canviar el del procés.
+        serializer = MessageSaveSerializer(message, data={'body': 'Cos nou', 'type_id': self.email_type.id}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        from unittest.mock import patch
+        with patch('communication.serializers.message_serializer.create_email_template'):
+            serializer.save()
+        self.assertEqual(communication.messages.get().body, 'Cos nou')
+        self.assertEqual(process.messages.get().body, 'Cos editat')
+
     def test_new_type_takes_template_message(self):
         communication = self._update({'types': [self.email_type.id, self.sms_type.id]})
         self.assertEqual(communication.messages.get(type=self.email_type).body, 'Cos editat')
