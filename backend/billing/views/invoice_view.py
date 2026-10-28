@@ -27,6 +27,7 @@ from billing.utils.invoice_list_queryset import invoice_list_queryset
 from billing.utils.invoice_suppression_service import suppress_invoice
 from coredata.models import ConfigProject, PersonAddress, PersonPiggyBankMovement
 from contract.models import PiggyBankMovement, Contract
+from service.models import CompanyBank
 from coredata.utils.name_utils import generate_token
 from billing.views.epayment_document_generate_view import generate_xml
 from statistics.utils.report_service import delete_file_later
@@ -108,21 +109,37 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         {'error': "No es pot canviar el mètode de pagament d'una factura pagada: primer cal fer-ne el retorn i tornar-la a pagar."},
         status=status.HTTP_400_BAD_REQUEST)
 
+    # A les transferències, el compte on s'ha de pagar és un dels de l'empresa emissora
+    company_bank = None
+    payment_company_bank = request.data.get('payment_company_bank', None)
+    if payment_type.token == 'BANK_TRANSFER' and payment_company_bank:
+      company_bank = CompanyBank.objects.filter(id=payment_company_bank).first()
+      if not company_bank or (invoice.company_id and company_bank.company_id != invoice.company_id):
+        return Response(
+          {'error': "El compte bancari no és de l'empresa de la factura."},
+          status=status.HTTP_400_BAD_REQUEST)
+      payment_bank_final = company_bank.iban
+
     disconnect_payment_signals()
-    
+
     log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
 
     invoice.payment_bank_final = payment_bank_final
     invoice.payment_type_final = payment_type.name
     invoice.payment_type_token_final = payment_type.token
+    payment_fields = {'payment_bank': payment_bank_final}
+    if company_bank:
+      invoice.payment_company_bank = company_bank
+      invoice.payment_swift_final = company_bank.swift
+      payment_fields['payment_swift'] = company_bank.swift
     # invoice.payment_type = payment_type
     invoice.save()
-    
+
     payments = invoice.payments.exclude(status__token=payment_status_paid_token.token).distinct()
     payments.update(
-        payment_type=payment_type.name, 
-        payment_type_token=payment_type.token, 
-        payment_bank=payment_bank_final)
+        payment_type=payment_type.name,
+        payment_type_token=payment_type.token,
+        **payment_fields)
     reconnect_payment_signals()
     return Response({'message': 'Invoice updated successfully'}, status=status.HTTP_200_OK)
    
