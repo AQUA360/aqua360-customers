@@ -851,10 +851,10 @@ def _load_factdeta_baixa_context(config, invoices):
         for contract in (invoice.contract, invoice.contract_termination and invoice.contract_termination.contract)
         if contract
     }
-    fire_contract_ids = set(Contract.objects.filter(
-        Q(use_type__token__in=fire_usage_tokens) | Q(supply_points__connection__use_type__token=fire_connection_token),
-        id__in=contract_ids,
-    ).values_list('id', flat=True))
+    fire_q = Q(use_type__token__in=fire_usage_tokens)
+    if fire_connection_token:
+        fire_q |= Q(supply_points__connection__use_type__token=fire_connection_token)
+    fire_contract_ids = set(Contract.objects.filter(fire_q, id__in=contract_ids).values_list('id', flat=True))
 
     return SimpleNamespace(
         fire_contract_ids=fire_contract_ids,
@@ -941,11 +941,15 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
         Q(used_aca__isnull=True) | Q(used_aca=''), contract__use_aca=ALTA_USE_ACA,
     ).distinct()
 
+    # Un fitxer per municipi: les explotacions amb el mateix codi INE van al mateix fitxer
+    exploitations_by_ine = defaultdict(list)
     for exploitation in exploitations:
-        ine_code = (exploitation.code or '').strip()
-        exploitation_invoices = list(
-            aca_invoices.filter(exploitation=exploitation).select_related(
-                'person', 'status',
+        exploitations_by_ine[(exploitation.code or '').strip()].append(exploitation)
+
+    for ine_code, ine_exploitations in exploitations_by_ine.items():
+        ine_invoices = list(
+            aca_invoices.filter(exploitation__in=ine_exploitations).select_related(
+                'exploitation', 'person', 'status',
                 'contract__holder', 'contract__use_type',
                 'contract__supply_point_default__meter__status',
                 'contract__supply_point_default__connection',
@@ -955,13 +959,14 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
                 'contract_termination__contract',
             ).prefetch_related('readings__previous_reading').order_by('issue_date', 'token')
         )
-        if not exploitation_invoices:
+        if not ine_invoices:
             continue
         if not (ine_code.isdigit() and len(ine_code) == 6):
-            raise FactdetaValidationError(f"El codi INE de l'explotació {exploitation.name} ha de tenir 6 dígits")
+            names = ", ".join(exploitation.name for exploitation in ine_exploitations)
+            raise FactdetaValidationError(f"El codi INE de l'explotació {names} ha de tenir 6 dígits")
 
         invoices_by_year = defaultdict(list)
-        for invoice in exploitation_invoices:
+        for invoice in ine_invoices:
             invoices_by_year[invoice.issue_date.year].append(invoice)
 
         for year, year_invoices in sorted(invoices_by_year.items()):
@@ -986,7 +991,7 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
             ]
             invoices_by_warning = defaultdict(list)
             for invoice in year_invoices:
-                record = _factdeta_detail_data(invoice, lines_by_invoice[invoice.id], exploitation, config, context)
+                record = _factdeta_detail_data(invoice, lines_by_invoice[invoice.id], invoice.exploitation, config, context)
                 try:
                     lines.append(build_factdeta_detail_record(record))
                 except FactdetaValidationError as e:

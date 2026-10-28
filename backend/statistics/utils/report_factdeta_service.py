@@ -3,6 +3,7 @@ import logging
 import zipfile
 from io import BytesIO
 
+from django.db.models import Q
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
@@ -28,16 +29,17 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
         except (TypeError, ValueError):
             return Response({"error": "year must be a number."}, status=status.HTTP_400_BAD_REQUEST), None, None
 
-        exploitation_id = request.data.get('exploitation_id', None)
-        exploitations = Exploitation.objects.filter(is_active=True)
-        if exploitation_id:
-            exploitations = exploitations.filter(id=exploitation_id)
-
         invoices = Invoice.objects.filter(is_active=True, issue_date__year=year)
         # Amb múltiples empreses cada fitxer ACA és d'una sola empresa (veure resolve_aca_company)
         company_id = request.data.get('company_id', None)
         if company_id:
             invoices = invoices.filter(company_id=company_id)
+
+        # També les explotacions desactivades que tenen factures de l'any
+        exploitation_id = request.data.get('exploitation_id', None)
+        exploitations = Exploitation.objects.filter(Q(is_active=True) | Q(id__in=invoices.values('exploitation_id')))
+        if exploitation_id:
+            exploitations = exploitations.filter(id=exploitation_id)
 
         try:
             files = generate_factdeta_document(exploitations, invoices)
