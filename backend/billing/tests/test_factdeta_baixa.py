@@ -128,6 +128,13 @@ class TestFactdetaDomesticRecord(SimpleTestCase):
         canon = compute_factdeta_canon('D', [line(1, 10, 1.2), line(2, 10, 0.5)], PART_FIXA)
         self.assertEqual(canon['trams'][0][1], Decimal('0.5'))
         self.assertEqual(canon['trams'][1][1], Decimal('1.2'))
+        self.assertFalse(canon['unclassified_trams'])
+
+    def test_lines_without_interval_skip_known_trams_and_are_warned(self):
+        canon = compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), line(2, 5, 1.2)], PART_FIXA)
+        self.assertEqual(canon['trams'][0], (Decimal('10'), Decimal('0.5'), Decimal('5.0')))
+        self.assertEqual(canon['trams'][1], (Decimal('5'), Decimal('1.2'), Decimal('6.0')))
+        self.assertIn("línies de cànon sense tram assignat: revisar el tram declarat", factdeta_record_warnings(record('D', canon)))
 
     def test_refund_is_negative_and_needs_cancelled_invoice(self):
         canon = compute_factdeta_canon('D', [line(1, -10, 0.5, interval=1), part_fixa(2, -3.25)], PART_FIXA)

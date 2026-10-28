@@ -525,6 +525,7 @@ def _empty_canon():
         'leak': _empty_concept(),
         'variable_amount': ZERO,
         'fixed_amount': ZERO,
+        'unclassified_trams': False,
     }
 
 
@@ -537,12 +538,19 @@ def _compute_domestic(canon, variable_lines, social_line_ids):
     ]
     tram_lines = [line for line in variable_lines if line not in leak_lines and line not in social_lines]
 
-    # Línies sense interval: el tram surt de l'ordre de preus (el primer tram és el més barat)
+    # Línies sense interval: el tram surt de l'ordre de preus (el primer tram és el més barat),
+    # entre els trams que no ocupen les línies que sí en tenen
+    known_trams = {line.interval for line in tram_lines if line.interval and 1 <= line.interval <= DOMESTIC_TRAMS}
+    free_trams = [tram for tram in range(1, DOMESTIC_TRAMS + 1) if tram not in known_trams] or [DOMESTIC_TRAMS]
     no_interval_prices = sorted({
         _dec(line.price_unit) for line in tram_lines
         if not (line.interval and 1 <= line.interval <= DOMESTIC_TRAMS)
     })
-    fallback_trams = {price: min(index + 1, DOMESTIC_TRAMS) for index, price in enumerate(no_interval_prices)}
+    if no_interval_prices and (known_trams or len(no_interval_prices) > len(free_trams)):
+        canon['unclassified_trams'] = True
+    fallback_trams = {
+        price: free_trams[min(index, len(free_trams) - 1)] for index, price in enumerate(no_interval_prices)
+    }
 
     lines_by_tram = defaultdict(list)
     for line in tram_lines:
@@ -682,6 +690,8 @@ def factdeta_record_warnings(record):
         declared = sum((concept[0] for concept in canon['trams']), ZERO) + canon['social'][0] + canon['leak'][0]
         if declared != canon['billed_volume']:
             warnings.append("la suma de trams, bo social i fuites no coincideix amb el volum facturat")
+        if canon['unclassified_trams']:
+            warnings.append("línies de cànon sense tram assignat: revisar el tram declarat")
     if tariff_type in ('D', 'I', 'A'):
         if record['consumed_volume'] * canon['billed_volume'] < 0:
             warnings.append("el volum consumit i el facturat tenen signes diferents")
@@ -821,11 +831,13 @@ def _aca_lines_q(aca_product_token, field='product__token'):
 def _load_factdeta_baixa_context(config, invoices):
     """Dades que es consulten un sol cop per a totes les factures del fitxer."""
     tram_bonification_type = get_aca_tram_bonification_type()
-    tram_contract_ids = set()
+    # Vigència de cada bonificació: en donar-la de baixa es desactiva i es tanca amb `end_at`
+    tram_periods = defaultdict(list)
     if tram_bonification_type:
-        tram_contract_ids = set(Bonification.objects.filter(
-            bonification_type=tram_bonification_type, is_active=True,
-        ).values_list('contract_id', flat=True))
+        for contract_id, start_at, end_at in Bonification.objects.filter(
+            Q(is_active=True) | Q(end_at__isnull=False), bonification_type=tram_bonification_type,
+        ).values_list('contract_id', 'start_at', 'end_at'):
+            tram_periods[contract_id].append((start_at, end_at))
 
     establishment_codes = {}
     direct_variable_tokens = split_config_tokens(get_config_value(ACA_DIR_VARIABLE_CONFIG_TOKEN))
@@ -858,7 +870,7 @@ def _load_factdeta_baixa_context(config, invoices):
 
     return SimpleNamespace(
         fire_contract_ids=fire_contract_ids,
-        tram_contract_ids=tram_contract_ids,
+        tram_periods=tram_periods,
         tram_min_persons=max(aca_tram_min_persons(), 4),
         establishment_codes=establishment_codes,
         cancelled_by_refund_token=cancelled_by_refund_token,
@@ -889,7 +901,13 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     billing_system = _billing_system(invoice, meter, config)
     period_start, period_end = _consumption_period(invoice)
     persons = invoice.persons_final or (contract.total_persons if contract else 0) or 0
-    has_tram_extension = bool(contract and contract.id in context.tram_contract_ids and persons >= context.tram_min_persons)
+    has_tram_extension = bool(
+        contract and persons >= context.tram_min_persons and any(
+            (not start_at or not period_end or start_at <= period_end)
+            and (not end_at or not period_start or end_at >= period_start)
+            for start_at, end_at in context.tram_periods.get(contract.id, [])
+        )
+    )
     surname1, surname2, name = _split_person_name(invoice, person)
     utm_x, utm_y = _utm_coordinates(meter, supply_point)
 
@@ -932,13 +950,16 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
     files = []
     aca_invoices = invoices.filter(
         _aca_lines_q(config.aca_product_token, 'line_items__product__token'),
+        line_items__is_active=True,
         type_final=config.invoice_type,
     ).exclude(
         status__token=config.invoice_token_pending,
     ).exclude(
         used_aca=ALTA_USE_ACA,
     ).exclude(
-        Q(used_aca__isnull=True) | Q(used_aca=''), contract__use_aca=ALTA_USE_ACA,
+        Q(used_aca__isnull=True) | Q(used_aca=''),
+        Q(contract__use_aca=ALTA_USE_ACA)
+        | Q(contract__isnull=True, contract_termination__contract__use_aca=ALTA_USE_ACA),
     ).distinct()
 
     # Un fitxer per municipi: les explotacions amb el mateix codi INE van al mateix fitxer
