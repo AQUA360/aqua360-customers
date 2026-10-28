@@ -670,6 +670,16 @@ class AddressExtraTests(TestCase):
         self.assertEqual(get_address_complete_without_city(address), 'Carrer Major, 5 Edifici  2-1, Bar')
         self.assertEqual(get_address_complete_with_city(address), 'Carrer Major, 5 Edifici  2-1, Bar, Ciutat')
 
+    def test_adreca_postal_pot_separar_l_ampliacio(self):
+        from coredata.utils.address_utils import get_address_complete_without_city, get_address_extra
+
+        address = self._address(address_extra=' Bar ')
+
+        self.assertEqual(get_address_complete_without_city(address, include_extra=False), 'Carrer Major, 5 Edifici  2-1')
+        self.assertEqual(get_address_extra(address), 'Bar')
+        self.assertIsNone(get_address_extra(self._address(address_extra='  ')))
+        self.assertIsNone(get_address_extra(None))
+
     def test_adreca_postal_sense_ampliacio_no_canvia(self):
         from coredata.utils.address_utils import (
             get_address_complete_with_city, get_address_complete_without_city,
