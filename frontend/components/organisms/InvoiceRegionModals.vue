@@ -231,6 +231,10 @@ const onPersonBankSelected = (bank) => {
 };
 
 const savePaymentMethod = async (refresh = true) => {
+  if (!selected_payment_type.value || !paymentTypeOptionsById.value[selected_payment_type.value]) {
+    toast.warning(t('warning_block.warning_select_payment_method'));
+    return false;
+  }
   if (isBankTransfer.value && companyBanks.value.length > 0 && !selected_company_bank.value) {
     toast.warning(t('billing_block.select_bank_data'));
     return false;
@@ -571,6 +575,7 @@ defineExpose({
         </div>
         <div class="flex justify-end">
           <button class="button-primary" @click="savePaymentMethod" :disabled="!selected_payment_type ||
+            !paymentTypeOptionsById[selected_payment_type] ||
             (paymentTypeOptionsById[selected_payment_type]?.token == 'DIRECT_DEBIT' && !selected_payment_bank) ||
             (isBankTransfer && companyBanks.length > 0 && !selected_company_bank)">
             {{ $t('common.change') }}
