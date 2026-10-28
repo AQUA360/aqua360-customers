@@ -580,6 +580,15 @@ onUnmounted(() => {
             <span v-show="!isCollapsed">({{ sideBarStore.newDailyDocuments }})</span>
           </div>
         </NuxtLink>
+        <NuxtLink to="/billing/document-downloads/"
+          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
+          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/document-downloads') != -1, 'justify-center': isCollapsed }]"
+          :title="isCollapsed ? $t('billing_block.download_history') : undefined">
+          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
+            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:download" class="text-slate-500" /></span>
+            <span v-show="!isCollapsed" class="truncate">{{ $t('billing_block.download_history') }}</span>
+          </div>
+        </NuxtLink>
       </div>
 
       <div v-if="permissions?.permissions?.view_order" id="nav-orders" class="mb-2">
