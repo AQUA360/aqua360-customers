@@ -17,17 +17,15 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['update:redoOption', 'need-leak-value', 'close-region', 'open-person-search']);
+const emit = defineEmits(['update:redoOption', 'close-region', 'open-person-search']);
 
 const { $ReadingApiService } = useNuxtApp();
 
 const redoReason = ref(props.initialReason);
 const redoLeakConsum = ref({});
+const recalculationStrategy = ref('original');
 
-const loadingReadings = ref(false);
-const invoiceReadings = ref([]);
 const currentReadings = ref([]);
-const activeReadings = ref([]);
 
 const goToModifyReading = () => {
   const url = new URL(`/contract/contracts/${props.in_invoice.contract.id}/reading-change`, window.location.origin);
@@ -36,7 +34,6 @@ const goToModifyReading = () => {
 }
 
 const getContractReadings = async () => {
-  loadingReadings.value = true;
   try {
     if (props.in_invoice && props.in_invoice.contract) {
       const response = await $ReadingApiService.getAll(
@@ -48,14 +45,11 @@ const getContractReadings = async () => {
     }
   } catch (error) {
     console.error(error);
-  } finally {
-    loadingReadings.value = false;
   }
 }
 watch(() => props.in_invoice, (val) => {
   if (val && val.readings?.length > 0) {
-    invoiceReadings.value = val.readings;
-    invoiceReadings.value?.forEach((reading) => {
+    val.readings.forEach((reading) => {
       redoLeakConsum.value[reading.id] = reading.calculated_value;
     });
     getContractReadings();
@@ -64,8 +58,7 @@ watch(() => props.in_invoice, (val) => {
 
 watch(redoReason, () => {
   if (props.in_invoice && props.in_invoice.readings?.length > 0) {
-    invoiceReadings.value = props.in_invoice.readings;
-    invoiceReadings.value.forEach(reading => {
+    props.in_invoice.readings.forEach(reading => {
       redoLeakConsum.value[reading.id] = reading.calculated_value;
     });
     getContractReadings();
@@ -75,7 +68,8 @@ watch(redoReason, () => {
 const getRedoOption = () => {
   return {
     reason: redoReason.value,
-    leak_consum: redoLeakConsum.value
+    leak_consum: redoLeakConsum.value,
+    recalculation_strategy: recalculationStrategy.value
   };
 };
 
@@ -83,14 +77,13 @@ const getCurrentReadingForOgId = (ogId) => {
   return currentReadings.value.find(r => r.original_reading?.id == ogId);
 };
 
-watch([redoReason, redoLeakConsum], () => {
+watch([redoReason, redoLeakConsum, recalculationStrategy], () => {
   emit('update:redoOption', getRedoOption());
 });
 
 onMounted(() => {
   if (props.in_invoice && props.in_invoice.readings?.length > 0) {
-    invoiceReadings.value = props.in_invoice.readings;
-    invoiceReadings.value.forEach(reading => {
+    props.in_invoice.readings.forEach(reading => {
       redoLeakConsum.value[reading.id] = reading.calculated_value;
     });
     getContractReadings();
@@ -107,10 +100,6 @@ onMounted(() => {
       <input type="radio" v-model="redoReason" value="leak" />
       {{ t('billing_block.leak') }} / {{ t('billing_block.wrong_reading') }}
     </label>
-    <!-- <label v-if="in_invoice" class="mr-4">
-      <input type="radio" v-model="redoReason" value="reading" />
-      {{ t('billing_block.wrong_reading') }}
-    </label> -->
     <label class="mr-4">
       <input type="radio" v-model="redoReason" value="holder" />
       {{ t('billing_block.holder_change') }}
@@ -119,6 +108,17 @@ onMounted(() => {
       <input type="radio" v-model="redoReason" value="other" />
       {{ t('common.other') }}
     </label>
+    <div class="mt-3 pt-2 border-t border-slate-300">
+      <h2 class="font-medium text-gray-700 px-3">{{ t('billing_block.recalculation_parameters_title') }}</h2>
+      <label class="mr-4">
+        <input type="radio" v-model="recalculationStrategy" value="original" />
+        {{ t('billing_block.recalculation_original') }}
+      </label>
+      <label class="mr-4">
+        <input type="radio" v-model="recalculationStrategy" value="current" />
+        {{ t('billing_block.recalculation_current') }}
+      </label>
+    </div>
     <div v-if="redoReason == 'leak' || redoReason == 'reading'" class="mt-2 max-w-3xl">
       <div v-for="reading in in_invoice.readings" :key="reading.id"
         class="rounded-md border border-slate-200 bg-white p-3 mb-2 last:mb-0">
