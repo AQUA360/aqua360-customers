@@ -1648,6 +1648,8 @@ export default {
     change_of_name_registration_price_rate: 'Change of name rate',
     change_of_name_registration_price_rates: 'Change of name rates',
     no_change_of_name_registration_price_rates: 'No change of name rates',
+    request_kind: 'Request type',
+    new_registration: 'New registration',
     contract_in_termination: 'Contract in termination process',
     contracts_in_termination: 'Contracts in termination process',
     no_contracts: 'No contracts',

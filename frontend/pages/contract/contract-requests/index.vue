@@ -52,6 +52,9 @@ const filter_category = ref([]);
 const filter_use_type = ref([]);
 const filter_has_invoice = ref([]);
 const has_invoice = ref(null);
+const filter_request_kind = ref([]);
+const selected_request_kinds = ref([]);
+const is_change_of_name = ref(null);
 const client_types = ref([]);
 const categories = ref([]);
 const use_types = ref([]);
@@ -75,6 +78,7 @@ const exportColumns = computed(() => [
   { header: t('common.identification'), value: (row) => row.token, key: 'token' },
   { header: t('common.requester'), value: (row) => [row.person_name, row.person_surname].filter(Boolean).join(' ') },
   { header: t('common.usage_type'), value: (row) => row.type_name, key: 'type' },
+  { header: t('contract_block.request_kind'), value: (row) => requestKindName(row), key: 'request_kind' },
   { header: t('common.short_supply'), value: (row) => row.supply_point_default_token, key: 'supply_point_default' },
   { header: t('meter'), value: (row) => row.meters, key: 'meters' },
   { header: t('address_block.address'), value: (row) => row.supply_point, key: 'supply_point' },
@@ -84,8 +88,10 @@ const exportColumns = computed(() => [
 const exportContractRequests = (columns) => $ContractRequestApiService.exportData(
   searchInput.value, selectedFilters.value, sortBy.value, sortDesc.value,
   categories.value, use_types.value, client_types.value, has_invoice.value,
-  searchByAddress.value, columns
+  searchByAddress.value, columns, is_change_of_name.value
 );
+
+const requestKindName = (row) => row.is_change_of_name ? t('contract_block.change_of_name') : t('contract_block.new_registration');
 
 const getPermissions = async () => {
   error.value = null;
@@ -109,7 +115,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
     const data = await $ContractRequestApiService.getAll(
       searchQuery, filters, page, sort, desc,
       categories.value, use_types.value, client_types.value, has_invoice.value,
-      searchByAddressQuery
+      searchByAddressQuery, is_change_of_name.value
     );
 
     items.value = data.results;
@@ -211,6 +217,14 @@ const getFilterUseType = async () => {
   }
 }
 
+// Amb les dues opcions marcades (o cap) no es filtra
+const handleRequestKindChange = (event) => {
+  selected_request_kinds.value = event;
+  is_change_of_name.value = event?.length === 1 ? event[0].id : null;
+  pagination.value.page = 1;
+  handleSearch();
+}
+
 const handleHasInvoiceChange = (event) => {
   if (event && event.length > 0) has_invoice.value = event[0].id;
   else has_invoice.value = null;
@@ -273,6 +287,10 @@ const checkInAdvacedFilters = (newFilters) => {
   } else if (isFilterShown.value.some(filter => filter.id === 'no_invoice') && !newFilters.some(filter => filter.id === 'no_invoice')) {
     has_invoice.value = null;
     getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+  } else if (isFilterShown.value.some(filter => filter.id === 'request_kind') && !newFilters.some(filter => filter.id === 'request_kind')) {
+    is_change_of_name.value = null;
+    selected_request_kinds.value = [];
+    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
   }
 }
 
@@ -303,6 +321,8 @@ const resetFilters = () => {
   client_types.value = [];
   selected_client_types.value = [];
   has_invoice.value = null;
+  is_change_of_name.value = null;
+  selected_request_kinds.value = [];
   isFilterShown.value = [];
   isFilterOpen.value = false;
   showAddressSearch.value = false;
@@ -320,8 +340,10 @@ onMounted(async () => {
         { name: t("contract_block.category"), id: "category" },
         { name: t("common.usage_type"), id: "use_type" },
         { name: t("common.no_invoice"), id: "no_invoice" },
+        { name: t("contract_block.request_kind"), id: "request_kind" },
       );
     filter_has_invoice.value = [{id: true, name: t("common.no_invoice")}, {id: false, name: t("common.has_invoice")}];
+    filter_request_kind.value = [{id: false, name: t("contract_block.new_registration")}, {id: true, name: t("contract_block.change_of_name")}];
     await getFilterStatus();
     await getData('', selectedFilters.value, 1, sortBy.value, sortDesc.value);
     await getFilterClientType();
@@ -450,6 +472,14 @@ watch(() => route.query, () => {
         </template>
       </FilterSelect>
 
+      <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'request_kind')" :options="filter_request_kind"
+        :filters="selected_request_kinds" :multiple="true" :placeholder="t(`contract_block.request_kind`)"
+        @update:modelValue="handleRequestKindChange($event)">
+        <template #icon>
+          <Icon name="fa6-solid:file-signature" class="text-md ml-2 mr-1" size="10px" />
+        </template>
+      </FilterSelect>
+
       <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'category')" :options="filter_category"
         :filters="selected_categories" :multiple="true" :placeholder="t(`contract_block.category`)"
         @update:modelValue="handleCategoryChange($event)">
@@ -475,7 +505,7 @@ watch(() => route.query, () => {
 
     </div>
     <DataTable
-      grid-template="80px,150px,150px,150px,150px,150px,200px,150px"
+      grid-template="80px,150px,150px,150px,120px,150px,150px,200px,150px"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
@@ -487,6 +517,7 @@ watch(() => route.query, () => {
           @sort="handleSort" />
         <TableHeader :label="$t('common.requester')" :sortable="false" />
         <TableHeader :label="$t('common.usage_type')" :sortable="false" />
+        <TableHeader :label="$t('contract_block.request_kind')" :sortable="false" />
         <TableHeader :label="$t('common.short_supply')" :sortable="false" />
         <TableHeader :label="$t('meter')" :sortable="false" />
         <TableHeader :label="$t('address_block.address')" :sortable="false" />
@@ -511,6 +542,7 @@ watch(() => route.query, () => {
           <span class="p-1"><abbr :title=item.person_token>{{ item.person_name }} {{ item.person_surname
               }}</abbr></span>
           <span class="p-1">{{ item.type_name }}</span>
+          <span class="p-1">{{ requestKindName(item) }}</span>
           <span class="p-1">{{ item.supply_point_default_token }}</span>
           <span class="p-1">{{ item.meters }}</span>
           <span class="p-1">{{ item.supply_point }}</span>

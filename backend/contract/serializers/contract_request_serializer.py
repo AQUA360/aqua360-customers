@@ -477,6 +477,7 @@ class ContractRequestListSerializer(serializers.ModelSerializer):
             'supply_point_default_token',
             'type_token',
             'type_name',
+            'is_change_of_name',
             'status_token',
             'status_name',
             'status_color',

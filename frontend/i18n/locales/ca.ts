@@ -1658,6 +1658,8 @@ export default {
     change_of_name_registration_price_rate: 'Tarf. canvi de nom',
     change_of_name_registration_price_rates: 'Tarifes canvi de nom',
     no_change_of_name_registration_price_rates: 'Sense tarifes de canvi de nom',
+    request_kind: 'Tipus de sol·licitud',
+    new_registration: 'Nova alta',
     contract_in_termination: 'Contracte en procés de baixa',
     contracts_in_termination: 'Contractes en procés de baixa',
     no_contracts: 'Sense contractes',

@@ -83,3 +83,19 @@ class ChangeOfNameRegistrationPriceRatesTest(TestCase):
             set(self.type.change_of_name_registration_price_rates.all()),
             {self.registration_rate, self.shared_rate},
         )
+
+
+class ContractRequestKindFilterTest(TestCase):
+    """El llistat de sol·licituds es pot filtrar per canvi de nom o nova alta."""
+
+    def test_filters_by_is_change_of_name(self):
+        from contract.filters.contract_request_filter import ContractRequestFilter
+        from contract.models import ContractRequest
+
+        new_request = ContractRequest.objects.create(token="REQ-ALTA")
+        change_of_name = ContractRequest.objects.create(token="REQ-CANVI", is_change_of_name=True)
+        queryset = ContractRequest.objects.all()
+
+        self.assertEqual(list(ContractRequestFilter({"is_change_of_name": "true"}, queryset=queryset).qs), [change_of_name])
+        self.assertEqual(list(ContractRequestFilter({"is_change_of_name": "false"}, queryset=queryset).qs), [new_request])
+        self.assertEqual(ContractRequestFilter({}, queryset=queryset).qs.count(), 2)
