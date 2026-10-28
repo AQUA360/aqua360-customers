@@ -43,7 +43,8 @@ class WizardAddressCompanySplitTests(TestCase):
             ('message_type_email_token', 'email'),
             ('message_type_letter_token', 'letter'),
         ):
-            ConfigProject.objects.create(token=token, value=value)
+            # Les migracions de dades ja creen alguns d'aquests tokens (p. ex. `use_multiple_companies=false`)
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
         CommunicationStatus.objects.create(token='pending', is_default=True)
         MessageType.objects.create(token='email', name='Email')
         MessageType.objects.create(token='letter', name='Letter')
