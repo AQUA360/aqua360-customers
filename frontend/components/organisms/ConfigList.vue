@@ -202,8 +202,13 @@ function onCheckMandatoryChange(event, item) {
 }
 
 function onCheckChangeOfNameChange(event, item) {
-  $apiService.updateValue(entity.value, 'is_change_of_name', item.id, event.target.checked).then(() => {
+  const value = event.target.checked;
+  $apiService.updateValue(entity.value, 'is_change_of_name', item.id, value).then(() => {
+    item.is_change_of_name = value;
     emit('changed');
+  }).catch(() => {
+    // Si no s'ha pogut desar, la casella torna al valor desat
+    event.target.checked = item.is_change_of_name;
   });
 }
 

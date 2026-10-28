@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 from django_filters import rest_framework as filters
 
@@ -74,6 +75,7 @@ class ContractTerminationRequestTypeSerializer(serializers.ModelSerializer):
         model = ContractTerminationType
         fields = '__all__'
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         was_change_of_name = instance.is_change_of_name
         instance = super().update(instance, validated_data)
