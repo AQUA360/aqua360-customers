@@ -248,6 +248,7 @@ class TestContractMinPersons(TestCase):
     @classmethod
     def setUpTestData(cls):
         create_contract_signal_config()
+        ConfigProject.objects.filter(token='contract_min_persons').delete()
         cls.contract = Contract.objects.create(total_persons=2)
 
     def _variables(self, contract):
@@ -263,6 +264,7 @@ class TestContractMinPersons(TestCase):
         variables = self._variables(Contract.objects.get(pk=self.contract.pk))
         self.assertEqual(variables['persons_min'], 5)
         self.assertEqual(variables['contract.total_persons'], 2)
+        self.assertEqual(variables['contract.persons'], 2)
 
     def test_contract_persons_above_min(self):
         ConfigProject.objects.create(token='contract_min_persons', value='1')
@@ -280,6 +282,33 @@ class TestContractMinPersons(TestCase):
             ConfigProject.objects.update_or_create(token='contract_min_persons', defaults={'value': value})
             variables = self._variables(Contract.objects.get(pk=self.contract.pk))
             self.assertEqual(variables['persons_min'], 3)
+
+    def test_non_positive_contract_persons_use_configured_minimum(self):
+        ConfigProject.objects.create(token='contract_min_persons', value='5')
+        for total_persons in (0, -1):
+            with self.subTest(total_persons=total_persons):
+                self.contract.total_persons = total_persons
+                variables = self._variables(self.contract)
+                self.assertEqual(variables['contract.total_persons'], 5)
+                self.assertEqual(variables['contract.persons'], 5)
+                self.assertEqual(variables['persons_min'], 5)
+
+    def test_config_changes_visible_without_scope(self):
+        config = ConfigProject.objects.create(token='contract_min_persons', value='4')
+        self.assertEqual(self._variables(self.contract)['persons_min'], 4)
+        config.value = '6'
+        config.save(update_fields=['value'])
+        self.assertEqual(self._variables(self.contract)['persons_min'], 6)
+
+    def test_config_changes_visible_in_next_billing_scope(self):
+        config = ConfigProject.objects.create(token='contract_min_persons', value='4')
+        with billing_run_cache_scope():
+            self.assertEqual(self._variables(self.contract)['persons_min'], 4)
+            config.value = '6'
+            config.save(update_fields=['value'])
+            self.assertEqual(self._variables(self.contract)['persons_min'], 4)
+        with billing_run_cache_scope():
+            self.assertEqual(self._variables(self.contract)['persons_min'], 6)
 
     def test_config_queried_once_per_billing_scope(self):
         ConfigProject.objects.create(token='contract_min_persons', value='4')

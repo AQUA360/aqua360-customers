@@ -669,7 +669,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
         prorratejat_quantitat = line_item_type.billing_period.days
         
     if line_item_type.quantity and line_item_type.quantity.token == 'total_persons':
-        quantitat = contract.total_persons if contract else get_contract_min_persons()
+        quantitat = contract.total_persons if contract and contract.total_persons > 0 else get_contract_min_persons()
     # print("passed reading")
     
     # Càlcul del preu
