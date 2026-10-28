@@ -715,7 +715,7 @@ const addWalletBalance = () => {
         :expected-phrase="t('confirmation_phrase_block.delete_contract')" @confirm="deleteContract" />
 
       <div v-if="new_call" class="fixed inset-0 z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 my-auto relative">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-3xl w-full mx-4 my-auto relative">
           <AddNewCall :data="new_call" @exit="handleNewCall" />
         </div>
       </div>
@@ -729,6 +729,11 @@ const addWalletBalance = () => {
       <div class="flex justify-between relative">
         <div class="flex items-center mb-3 gap-5">
           <H1Region class="">{{ $t('contract') }}</H1Region>
+          <!-- Reclamació oberta d'un tipus que bloqueja les ofertes comercials -->
+          <span v-if="data?.blocking_incident" class="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700"
+            :title="data.blocking_incident.name">
+            <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ data.blocking_incident.token }})
+          </span>
         </div>
 
         <div>

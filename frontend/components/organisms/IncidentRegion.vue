@@ -18,6 +18,10 @@ import OrderRegion from './OrderRegion.vue';
 import CommitmentDepositRegion from './CommitmentDepositRegion.vue';
 import SupplyPointRegion from './SupplyPointRegion.vue';
 import ClusterRegion from './ClusterRegion.vue';
+import SupplyCutRegion from './SupplyCutRegion.vue';
+import IncidentCallEdit from '../molecules/IncidentCallEdit.vue';
+import IncidentTimeline from '../molecules/IncidentTimeline.vue';
+import { formatDateTime } from '~/utils/date';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import { useToast } from 'vue-toastification';
 import { usePermissions } from '~/middleware/permission';
@@ -44,6 +48,12 @@ const observationNumber = ref(0)
 const reportNumber = ref(0)
 const logNumber = ref(0)
 const orderNumber = ref(0)
+const callNumber = ref(0)
+const callReload = ref(false)
+const timelineNumber = ref(0)
+const timelineReload = ref(false)
+// Mateix valor per defecte que el backend si la configuració no existeix
+const incidentStatusClosedToken = ref('2')
 
 const SubRegion = ref(props.isSubRegionOpen);
 const showRegionDetailComponent = ref(null);
@@ -63,6 +73,54 @@ const updateLogCount = (num) => {
 
 const updateOrderCount = (num) => {
   orderNumber.value = num;
+}
+
+const updateCallCount = (num) => {
+  callNumber.value = num;
+}
+
+const deleteIncident = async () => {
+  if (!confirm(t('incident_block.confirm_delete'))) return;
+  try {
+    await $IncidentApiService.deleteItem(props.id);
+    toast.success(t('incident_block.deleted'));
+    emit('changed');
+    emit('close-subregion');
+  } catch (err) {
+    console.error('Error esborrant la incidència:', err);
+  }
+}
+
+// Plantilla de resolució del tipus amb les variables substituïdes (la resposta motivada la revisa l'agent)
+const resolutionDefault = computed(() => {
+  const template = data.value?.type?.resolution_template;
+  if (!template) return '';
+  const cut = data.value.supply_cut;
+  const values = {
+    referencia: data.value.token || '',
+    titol: data.value.name || '',
+    data: data.value.created_at ? formatDateTime(data.value.created_at) : '',
+    data_limit: data.value.due_at ? formatDateTime(data.value.due_at) : '',
+    tall_causa: cut?.cause_name || '',
+    tall_previsio: cut?.date_end ? formatDateTime(cut.date_end) : '',
+  };
+  return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`{${key}}`, value), template);
+});
+
+const sendReceipt = async () => {
+  try {
+    const result = await $IncidentApiService.sendReceipt(props.id);
+    toast.success(result.sent ? t('incident_block.receipt_sent') : t('incident_block.receipt_generated'));
+    await refresh(false);
+  } catch (err) {
+    console.error('Error enviant el justificant:', err);
+  }
+}
+
+// La trucada pot omplir la primera resposta i crear una tasca: es recarreguen les dades i la cronologia
+const onCallChanged = async () => {
+  callReload.value = !callReload.value;
+  await refresh();
 }
 
 watch(() => props.isSubRegionOpen, (newValue) => {
@@ -119,6 +177,7 @@ const showDetail = async function (component, id) {
 
 const refresh = async (close = true) => {
   await getData()
+  timelineReload.value = !timelineReload.value
   if (close) closeSubRegion()
   emit('changed')
 }
@@ -136,6 +195,11 @@ watch(() => props.id, () => {
 });
 
 onMounted(async () => {
+  $ConfigProjectApiService.get('incident_status_closed_token').then(token => {
+    incidentStatusClosedToken.value = token || '2';
+  }).catch(() => {
+    incidentStatusClosedToken.value = '2';
+  });
   await getPermissions();
   if (objectPermissions.value?.can_view) {
     getData();
@@ -160,7 +224,8 @@ onMounted(async () => {
       :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': SubRegion }">
       <div class="flex justify-between relative mb-3">
         <H1Region class="mb-3">{{ $t('incident') }}</H1Region>
-        <OptionsDropdown v-if="objectPermissions?.can_change" id="FraudRegionOptions">
+        <OptionsDropdown v-if="objectPermissions?.can_change || objectPermissions?.can_delete" id="FraudRegionOptions">
+          <template v-if="objectPermissions?.can_change">
           <DropdownOption :name="`${t('common.modify')}`" @click="showDetail('IncidentEdit', props.id)">
             <Icon name="fa6-solid:pencil" class="display-inline mr-2" /> {{ t('common.modify') }}
           </DropdownOption>
@@ -175,6 +240,16 @@ onMounted(async () => {
           </DropdownOption>
           <DropdownOption v-if="data.contract || data.order_incident" :name="`${t('common.add')} ${t('common.work_order')}`" @click="showDetail('OrderEdit', props.id)">
             <Icon name="fa6-solid:screwdriver-wrench" class="display-inline mr-2" /> {{ t('common.add') }} {{ t('common.work_order') }}
+          </DropdownOption>
+          <DropdownOption v-if="data.contract" :name="t('incident_block.new_call')" @click="showDetail('IncidentCallEdit', props.id)">
+            <Icon name="fa6-solid:phone" class="display-inline mr-2" /> {{ t('incident_block.new_call') }}
+          </DropdownOption>
+          <DropdownOption :name="t('incident_block.send_receipt')" @click="sendReceipt">
+            <Icon name="fa6-solid:file-pdf" class="display-inline mr-2" /> {{ t('incident_block.send_receipt') }}
+          </DropdownOption>
+          </template>
+          <DropdownOption v-if="objectPermissions?.can_delete" :name="t('incident_block.delete')" @click="deleteIncident">
+            <Icon name="fa6-solid:trash-can" class="display-inline mr-2" /> {{ t('incident_block.delete') }}
           </DropdownOption>
         </OptionsDropdown>
       </div>
@@ -212,11 +287,26 @@ onMounted(async () => {
         </li>
 
         <li class="me-2">
+          <a href="#tab_calls" @click.prevent="setActiveTab('calls')"
+            :class="{ 'text-sky-600 border-sky-600': activeTab === 'calls', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'calls' }">
+            <Icon name="fa6-solid:phone" class="display-inline mr-2" />
+            {{ $t('incident_block.calls') }} ({{ callNumber }})
+          </a>
+        </li>
+
+        <li class="me-2">
           <a href="#tab_observations" @click.prevent="setActiveTab('observations')"
             :class="{ 'text-sky-600 border-sky-600': activeTab === 'observations', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'observations' }"
             aria-current="page">
             <Icon name="fa6-solid:note-sticky" class="display-inline mr-2" /> {{ $t('common.observations') }} ({{
               observationNumber }})
+          </a>
+        </li>
+
+        <li class="me-2">
+          <a href="#tab_timeline" @click.prevent="setActiveTab('timeline')"
+            :class="{ 'text-sky-600 border-sky-600': activeTab === 'timeline', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'timeline' }">
+            <Icon name="fa6-solid:timeline" class="display-inline mr-2" /> {{ $t('incident_block.timeline') }} ({{ timelineNumber }})
           </a>
         </li>
 
@@ -240,12 +330,21 @@ onMounted(async () => {
       </section>
 
       <section v-show="activeTab === 'reports'" role="tabpanel" id="tab_reports" class="bg-white antialiased">
-        <IncidentReportMiniDetail v-if="data" @show-detail="showDetail" :id="props.id" @update:count="updateReportCount" />
+        <IncidentReportMiniDetail v-if="data" @show-detail="showDetail" :id="props.id" :canDelete="!!objectPermissions?.can_delete" @update:count="updateReportCount" />
       </section>
 
       <section v-if="permissions?.permissions?.view_order" v-show="activeTab === 'orders'" role="tabpanel" id="tab_orders" class="bg-white antialiased">
         <OrderMiniDetail v-if="data" @show-detail="showDetail" :incident_id="props.id" 
         @update:count="updateOrderCount" :isSubRegion="isSubRegion" />
+      </section>
+
+      <section v-show="activeTab === 'calls'" role="tabpanel" id="tab_calls" class="bg-white antialiased">
+        <MoleculesCallRegisterList v-if="data" :incident_id="props.id" :reload="callReload"
+          @update:count="updateCallCount" :incident="data" :contract="data.contract" />
+      </section>
+
+      <section v-show="activeTab === 'timeline'" role="tabpanel" id="tab_timeline" class="bg-white antialiased">
+        <IncidentTimeline v-if="data" :id="props.id" :reload="timelineReload" @update:count="(num) => timelineNumber = num" />
       </section>
 
       <section v-show="activeTab === 'log'" role="tabpanel" id="tab_log" class="bg-white antialiased">
@@ -274,7 +373,9 @@ onMounted(async () => {
         <IncidentEdit v-if="showRegionDetailComponent === 'IncidentEdit'" :id="regionDetailId" :isSubRegion="true"
           @change="refresh" />
         <ChangeStatus v-if="showRegionDetailComponent === 'StatusChange'" parent_entity="incident" :id="props.id"
-          :status="data.status?.id" module="notification" @changed="refresh" entity="incident" />
+          :status="data.status?.id" module="notification" @changed="refresh" entity="incident"
+          :reasonToken="incidentStatusClosedToken" reasonLabel="incident_block.resolution" :reasonRequired="true"
+          :reasonDefault="resolutionDefault" :allowedTokens="data.status?.allowed_next_tokens || []" />
         <CalendarTaskEdit v-if="showRegionDetailComponent === 'CalendarTaskEdit'" :id="regionDetailId"
           :object_id="props.id" :object_service="$IncidentApiService" @change="refresh" />
         <IncidentReportEdit v-if="showRegionDetailComponent === 'IncidentReportEdit'" :id="regionDetailId"
@@ -289,6 +390,9 @@ onMounted(async () => {
           :isSubRegion="true" />
         <ClusterRegion v-if="showRegionDetailComponent === 'ClusterRegion'" :id="parseInt(regionDetailId)"
           :isSubRegion="true" />
+        <SupplyCutRegion v-if="showRegionDetailComponent === 'SupplyCutRegion'" :id="parseInt(regionDetailId)" />
+        <IncidentCallEdit v-if="showRegionDetailComponent === 'IncidentCallEdit'" :incident="data"
+          @changed="onCallChanged" />
       </div>
     </div>
   </div>

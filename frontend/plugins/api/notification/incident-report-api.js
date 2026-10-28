@@ -110,11 +110,12 @@ export default defineNuxtPlugin(nuxtApp => {
   }
 
 
-  const deleteItem = async (id) => {
+  // Esborrat lògic: cal el motiu, que queda com a justificant amb la data i l'usuari
+  const deleteItem = async (id, reason) => {
     const apiUrl = `${apiHost}${entity}${id}/`;
 
     try {
-      const response = await $apiManager.fetch(apiUrl, 'DELETE');
+      const response = await $apiManager.fetch(apiUrl, 'DELETE', JSON.stringify({ deletion_reason: reason }), { 'Content-Type': 'application/json' });
       return true;
 
     } catch (error) {

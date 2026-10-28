@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ConfigProject,Address, Street, StreetType, Person, City, Province, PostalCode, PersonBank, PersonAddress, PersonCNAE, Bank, PersonContact, Country, CNAE, StreetNumber, CallRegister, IdentificationType
+from .models import ConfigProject,Address, Street, StreetType, Person, City, Province, PostalCode, PersonBank, PersonAddress, PersonCNAE, Bank, PersonContact, Country, CNAE, StreetNumber, CallRegister, IdentificationType, Holiday
         
 @admin.register(ConfigProject)
 class ConfigProjectAdmin(admin.ModelAdmin):
@@ -74,3 +74,6 @@ class CallRegisterAdmin(admin.ModelAdmin):
 @admin.register(IdentificationType)
 class IdentificationTypeAdmin(admin.ModelAdmin):
     list_display = ('id', 'token', 'name', 'is_default')
+@admin.register(Holiday)
+class HolidayAdmin(admin.ModelAdmin):
+    list_display = ('date', 'name', 'exploitation')

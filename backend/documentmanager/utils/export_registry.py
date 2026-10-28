@@ -748,6 +748,7 @@ def _contract_request_config():
         "supply_point": (_("Punt de subministrament"), lambda cr: cr.supply_point_default.token if cr.supply_point_default else ""),
         "status": (_("Estat"), lambda cr: cr.status.name if cr.status else ""),
         "type": (_("Tipus"), lambda cr: cr.type.name if cr.type else ""),
+        "request_kind": (_("Tipus de sol·licitud"), lambda cr: _("Canvi de nom") if cr.is_change_of_name else _("Nova alta")),
         "use_type": (_("Tipus d'ús"), lambda cr: cr.use_type.name if cr.use_type else ""),
         "requested_at": (_("Data sol·licitud"), lambda cr: cr.requested_at.strftime("%Y-%m-%d") if cr.requested_at else ""),
         "approved_at": (_("Data aprovació"), lambda cr: cr.approved_at.strftime("%Y-%m-%d") if cr.approved_at else ""),
