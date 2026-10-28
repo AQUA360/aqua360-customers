@@ -50,6 +50,7 @@ const orderTypeSelectedItems = ref([]);
 const clauseTemplateSelectedItems = ref([]);
 const priceRateSelectedItems = ref([]);
 const registrationPriceRateSelectedItems = ref([]);
+const changeOfNamePriceRateSelectedItems = ref([]);
 const hasPersons = ref(null);
 
 const priceRateFilter = ref(null)
@@ -96,6 +97,12 @@ const initializeRegistrationPriceRatesSelectedItems = () => {
   }
 }
 
+const initializeChangeOfNamePriceRatesSelectedItems = () => {
+  if (data.value && data.value.change_of_name_registration_price_rates) {
+    changeOfNamePriceRateSelectedItems.value = data.value.change_of_name_registration_price_rates.map(v => v.id);
+  }
+}
+
 
 const getData = async () => {
   pending.value = true;
@@ -109,6 +116,8 @@ const getData = async () => {
     initializeClauseTemplateSelectedItems();
     initializePriceRatesSelectedItems();
     initializeRegistrationPriceRatesSelectedItems();
+    initializeChangeOfNamePriceRatesSelectedItems();
+  initializeChangeOfNamePriceRatesSelectedItems();
   } catch (err) {
     error.value = err;
   } finally {
@@ -132,6 +141,7 @@ watch(() => data.value, () => {
   initializeClauseTemplateSelectedItems();
   initializePriceRatesSelectedItems();
   initializeRegistrationPriceRatesSelectedItems();
+  initializeChangeOfNamePriceRatesSelectedItems();
 }, { immediate: true });
 
 onMounted(async () => {
@@ -194,6 +204,16 @@ const openPriceRateSelectMultiple = async (filter) => {
     showRegionDetailComponent.value = 'PriceRateSelectMultiple';
     activePriceRateList.value = 'normal';
   }
+  showSubRegion();
+}
+
+// Tarifes de contractació que s'apliquen als canvis de nom
+const openChangeOfNamePriceRateSelectMultiple = async () => {
+  closeSubRegion()
+  await nextTick()
+  priceRateFilter.value = [origin_contract_token.value];
+  showRegionDetailComponent.value = 'ChangeOfNamePriceRateSelectMultiple';
+  activePriceRateList.value = 'change_of_name';
   showSubRegion();
 }
 const openClauseTemplateSelectMultiple = () => {
@@ -348,6 +368,32 @@ watch(registrationPriceRateSelectedItems, async (newItems, oldItems) => {
   }
 );
 
+watch(changeOfNamePriceRateSelectedItems, async (newItems, oldItems) => {
+    if (!objectPermissions.value.can_change) return;
+    if (isSaving.value || activePriceRateList.value !== 'change_of_name') return;
+
+    const areDifferent = JSON.stringify(newItems) !== JSON.stringify(oldItems);
+    if (!areDifferent) return;
+
+    isSaving.value = true;
+    const saveObject = {
+      id: props.id,
+      change_of_name_registration_price_rates_ids: newItems,
+    };
+
+    try {
+      await $ContractRequestTypeApiService.save(saveObject);
+      await getData();
+    } catch (err) {
+      console.error('Error al guardar les tarifes de canvi de nom:', err);
+    } finally {
+      isSaving.value = false;
+    }
+
+    emit('changed');
+  }
+);
+
 watch(priceRateSelectedItems, async (newItems, oldItems) => {
     console.log('priceRateSelectedItems', newItems, oldItems);
     if (!objectPermissions.value.can_change) return;
@@ -411,6 +457,9 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
           </DropdownOption>
             <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.registration_price_rates')}`" @click="openPriceRateSelectMultiple(origin_contract_token)">
             <Icon name="fa6-solid:money-check" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('contract_block.registration_price_rates') }}
+          </DropdownOption>
+          <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.change_of_name_registration_price_rates')}`" @click="openChangeOfNamePriceRateSelectMultiple">
+            <Icon name="fa6-solid:money-check" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('contract_block.change_of_name_registration_price_rates') }}
           </DropdownOption>
           <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.clauses')}`" @click="openClauseTemplateSelectMultiple">
             <Icon name="fa6-solid:paragraph" class="text-slate mr-2" /> {{ $t('common.modify') }} {{ $t('contract_block.clauses') }}
@@ -543,6 +592,26 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
           </div>
         </div>
 
+        <div id="change_of_name_price_rate_templates" class="mb-3">
+          <p class="mb-3 font-semibold">{{ $t('contract_block.change_of_name_registration_price_rates') }} ({{ data.change_of_name_registration_price_rates.length }})
+          </p>
+          <div class="pl-3 pr-3">
+            <ul class="mb-2">
+              <li v-for="item in data.change_of_name_registration_price_rates" :key="item.id" class="mb-1">
+                <Icon name="fa6-solid:cube" class="text-slate-500" /> &nbsp;<span class="font-semibold">{{
+                  item.product?.name || $t('pricing_block.no_product') }}</span> - {{ item.name }}
+              </li>
+            </ul>
+            <button v-if="data.change_of_name_registration_price_rates.length === 0 && objectPermissions?.can_change" @click="openChangeOfNamePriceRateSelectMultiple"
+              class="underline text-sky-500 hover:no-underline">
+              {{ $t('common.add') }} {{ $t('common.price_rates') }}
+            </button>
+            <span v-if="data.change_of_name_registration_price_rates.length === 0 && !objectPermissions?.can_change" class="text-slate-500">
+              {{ $t('contract_block.no_change_of_name_registration_price_rates') }}
+            </span>
+          </div>
+        </div>
+
         <div id="price_rate_templates" class="mb-3">
           <p class="mb-3 font-semibold">{{ $t('contract_block.contract_price_rates') }} ({{ data.price_rates.length }})</p>
           <div class="pl-3 pr-3">
@@ -594,6 +663,8 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
 
         <PriceRateSelectMultiple v-if="showRegionDetailComponent === 'RegistrationPriceRateSelectMultiple'"
           v-model="registrationPriceRateSelectedItems" :filter="priceRateFilter" :title="$t('contract_block.registration_price_rates')" />
+        <PriceRateSelectMultiple v-if="showRegionDetailComponent === 'ChangeOfNamePriceRateSelectMultiple'"
+          v-model="changeOfNamePriceRateSelectedItems" :filter="priceRateFilter" :title="$t('contract_block.change_of_name_registration_price_rates')" />
         <PriceRateSelectMultiple v-if="showRegionDetailComponent === 'PriceRateSelectMultiple'"
           v-model="priceRateSelectedItems" :filter="priceRateFilter" :title="$t('contract_block.contract_price_rates')" />
 
