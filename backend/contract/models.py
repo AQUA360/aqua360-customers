@@ -453,7 +453,9 @@ class Contract(models.Model):
         ('D', 'DOMÈSTICS'),
         ('I', 'INDUSTRIALS'),
         ('A', 'MUNICIPAL'),
-        ('E', 'EXEMPTS'),
+        ('E', 'EXEMPTS (PRESTACIÓ GRATUÏTA O REG D\'HORTS PÚBLICS)'),
+        ('G', 'AGRÍCOLES'),
+        ('X', 'EXTINCIÓ D\'INCENDIS'),
         ('M', 'MÈSURES DIRECTES')
     ]
     use_aca = models.CharField(max_length=10, choices=USE_ACA_CHOICES, default=None, null=True, blank=True)

@@ -19,11 +19,16 @@ class DetailedBillingDocumentGenerateView(APIView):
         # FACDETA
         is_alta = request.data.get('is_alta', False)
         exploitations = Exploitation.objects.filter(is_active=True)
-        invoices = Invoice.objects.filter(
-            is_active=True,
-            payments__is_active=True,
-            issue_date__gte=datetime.date(2026,8,17),
-        )
+        if is_alta:
+            invoices = Invoice.objects.filter(
+                is_active=True,
+                payments__is_active=True,
+                issue_date__gte=datetime.date(2026,8,17),
+            )
+        else:
+            # En baixa es declara tot l'any de facturació (per defecte, l'actual)
+            year = int(request.data.get('year') or datetime.date.today().year)
+            invoices = Invoice.objects.filter(is_active=True, issue_date__year=year)
         # Amb múltiples empreses cada fitxer ACA és d'una sola empresa (veure resolve_aca_company)
         company_id = request.data.get('company_id', None)
         if company_id:
@@ -43,6 +48,7 @@ class DetailedBillingDocumentGenerateView(APIView):
                 "year": file_data["year"],
                 "file_url": file_url,
                 "file_name": file_data["file_name"],
+                "warnings": file_data.get("warnings", []),
             })
         
         if file_urls:
