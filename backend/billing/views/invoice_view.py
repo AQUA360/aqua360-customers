@@ -111,13 +111,14 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         status=status.HTTP_400_BAD_REQUEST)
 
     # A les transferències, el compte on s'ha de pagar és un dels de l'empresa emissora: mai un IBAN
-    # arribat a la petició. Si l'empresa té comptes actius, n'és obligatori un.
+    # arribat a la petició. Si l'empresa té comptes actius amb IBAN, n'és obligatori un.
     company_bank = None
     payment_company_bank = request.data.get('payment_company_bank', None)
     if payment_type.token == 'BANK_TRANSFER':
       payment_bank_final = None
       payment_swift_final = None
-      active_banks = CompanyBank.objects.filter(company_id=invoice.company_id, is_active=True) if invoice.company_id else CompanyBank.objects.none()
+      active_banks = CompanyBank.objects.filter(
+        company_id=invoice.company_id, is_active=True, iban__isnull=False).exclude(iban='') if invoice.company_id else CompanyBank.objects.none()
       if payment_company_bank or active_banks.exists():
         company_bank = active_banks.filter(id=payment_company_bank).first() if payment_company_bank else None
         if not company_bank:
@@ -136,7 +137,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     invoice.payment_swift_final = payment_swift_final
     invoice.payment_type_final = payment_type.name
     invoice.payment_type_token_final = payment_type.token
-    if company_bank:
+    if payment_type.token == 'BANK_TRANSFER':
+      # Sense comptes a l'empresa, no es pot quedar el compte d'empresa que tenia abans
       invoice.payment_company_bank = company_bank
     # invoice.payment_type = payment_type
     invoice.save()

@@ -56,7 +56,7 @@ const selected_payment_bank = ref(null);
 const previous_payment_bank = ref(null);
 // Compte de l'empresa on s'ha de fer la transferència
 const selected_company_bank = ref(null);
-const companyBanks = computed(() => (props.data?.company?.company_banks || []).filter((bank) => bank.is_active));
+const companyBanks = computed(() => (props.data?.company?.company_banks || []).filter((bank) => bank.is_active && !!bank.iban));
 const isBankTransfer = computed(() => paymentTypeOptionsById.value[selected_payment_type.value]?.token == 'BANK_TRANSFER');
 watch([selected_payment_type, paymentTypeOptionsById], () => {
   if (!openChangePaymentMethodModal.value) return;
