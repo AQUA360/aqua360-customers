@@ -906,6 +906,21 @@ def get_communication_process_data(request_data):
         else:
             persons = fixed_filter(filter_data, group_same)
 
+    address_type = (filter_data or {}).get('address_type', 'default')
+    if filter_type == 'SUPPLYPOINT':
+        address_type = 'contract'
+    elif filter_type == 'SUPPLYCUT':
+        address_type = (filter_data or {}).get('address_type') or 'contract'
+    elif filter_type == 'FIXED':
+        if entity == 'billing':
+            address_type = 'invoice'
+        elif entity == 'supplycut':
+            address_type = (filter_data or {}).get('address_type') or 'contract'
+        else:
+            address_type = 'contract'
+    for person in persons:
+        person['address_type'] = address_type
+
     time_end = time.time()
     print(f"Time taken: {time_end - time_start} seconds")
     return {"persons": persons, "excluded": excluded}
