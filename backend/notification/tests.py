@@ -642,7 +642,13 @@ class TestIncidentLifecycle(IncidentTestBase):
         self.client.post(INCIDENT_REPORT_URL, {
             'incident': incident_id, 'incident_data': timezone.localdate().isoformat(),
         }, format='json')
-        kinds = [event['kind'] for event in self.client.get(f'{INCIDENT_URL}{incident_id}/timeline/').data]
+        from coredata.models import CallRegister
+        CallRegister.objects.create(incident_id=incident_id, channel='EMAIL', email='abonat@example.com', user=self.user)
+        events = self.client.get(f'{INCIDENT_URL}{incident_id}/timeline/').data
+        kinds = [event['kind'] for event in events]
+        # Un correu no mostra l'estat d'atenció telefònica
+        email = next(event for event in events if event['kind'] == 'call')
+        self.assertEqual(email['detail'], 'abonat@example.com')
         self.assertIn('created', kinds)
         self.assertIn('change', kinds)
         self.assertIn('report', kinds)
@@ -713,10 +719,18 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
     @mock.patch('notification.utils.staff_email.send_staff_email')
     def test_receipt_is_generated_and_sent(self, send_email):
         """Check that a type with receipt generates the PDF and emails it to the contact."""
+        from documentmanager.models import Document
+        from notification.models import Incident
         self.business_type.send_receipt = True
         self.business_type.save()
-        with mock.patch('notification.utils.incident_utils.generate_receipt') as generate:
-            generate.return_value = (mock.Mock(document_name='justificant.pdf'), b'%PDF')
+
+        def fake_generate(incident):
+            # Com generate_receipt: crea el document i el vincula a la incidència
+            document = Document.objects.create(entity_id=incident.id, service='hdd', document_name='justificant.pdf')
+            Incident.objects.filter(pk=incident.pk).update(receipt_document=document, receipt_sent_at=None)
+            return document, b'%PDF'
+
+        with mock.patch('notification.utils.incident_utils.generate_receipt', side_effect=fake_generate):
             with mock.patch('notification.tasks.send_incident_receipt.delay',
                             side_effect=lambda incident_id: __import__('notification.tasks', fromlist=['x']).send_incident_receipt(incident_id)):
                 incident = self.incident(self.create_incident(contact_email='abonat@example.com'))

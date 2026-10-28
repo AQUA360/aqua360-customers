@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('coredata', '0148_add_contract_min_persons_config'),
+        ('coredata', '0150_merge_20261028_1211'),
         ('notification', '0027_incident_sac_data'),
     ]
 

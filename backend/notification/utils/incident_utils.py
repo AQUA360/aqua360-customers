@@ -449,7 +449,8 @@ def send_receipt(incident):
         send_staff_email(email, subject, html, attachments=[(document.document_name or f"Justificant_registre_incidencia_{incident.token}.pdf", pdf)])
     except Exception as exc:
         raise ReceiptEmailError(str(exc)) from exc
-    Incident.objects.filter(pk=incident.pk).update(receipt_sent_at=timezone.now())
+    # Només si el justificant vinculat encara és aquest: un enviament simultani en pot haver generat un altre
+    Incident.objects.filter(pk=incident.pk, receipt_document=document).update(receipt_sent_at=timezone.now())
     return True
 
 
