@@ -15,12 +15,15 @@ def address_extra_filter(address_extra):
         return Q(address_extra__regex=rf'^\s*{re.escape(address_extra)}\s*$')
     return Q(address_extra__isnull=True) | Q(address_extra__regex=r'^\s*$')
 
+def get_address_extra(address):
+    return normalize_address_extra(address.address_extra) if address else None
+
 def get_address_extra_suffix(address):
     # L'ampliació (bar, local...) va al final i separada, sense substituir l'edifici
-    address_extra = (address.address_extra or '').strip()
+    address_extra = get_address_extra(address)
     return f", {address_extra}" if address_extra else ''
 
-def get_address_complete_without_city(address):
+def get_address_complete_without_city(address, include_extra=True):
     number_display = str(address.street_number) if address.street_number else ''
     
     floor_door = []
@@ -29,7 +32,7 @@ def get_address_complete_without_city(address):
     if address.door:
         floor_door.append(address.door)
     
-    return f"{str(address.street)}, {number_display if number_display else ''} {address.building if address.building else ''} {address.stair if address.stair else ''} {'-'.join(floor_door) if floor_door else ''}".strip() + get_address_extra_suffix(address)
+    return f"{str(address.street)}, {number_display if number_display else ''} {address.building if address.building else ''} {address.stair if address.stair else ''} {'-'.join(floor_door) if floor_door else ''}".strip() + (get_address_extra_suffix(address) if include_extra else '')
 
 def get_address_complete_with_city(address):
     number_display = str(address.street_number) if address.street_number else ''
