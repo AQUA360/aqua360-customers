@@ -97,8 +97,9 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     user = request.user if request else None
     payment_type_final = request.data.get('payment_type_final', None)
     payment_bank_final = request.data.get('payment_bank_final', None)
-    
-    payment_type = PaymentType.objects.get(id=payment_type_final)
+    payment_swift_final = request.data.get('payment_swift_final', None)
+
+    payment_type =PaymentType.objects.get(id=payment_type_final)
     invoice_status_paid_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
     payment_status_paid_token = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
 
@@ -113,25 +114,26 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     company_bank = None
     payment_company_bank = request.data.get('payment_company_bank', None)
     if payment_type.token == 'BANK_TRANSFER' and payment_company_bank:
-      company_bank = CompanyBank.objects.filter(id=payment_company_bank).first()
-      if not company_bank or (invoice.company_id and company_bank.company_id != invoice.company_id):
+      company_bank = CompanyBank.objects.filter(
+        id=payment_company_bank, company_id=invoice.company_id, is_active=True).first() if invoice.company_id else None
+      if not company_bank:
         return Response(
-          {'error': "El compte bancari no és de l'empresa de la factura."},
+          {'error': "El compte bancari no és un compte actiu de l'empresa de la factura."},
           status=status.HTTP_400_BAD_REQUEST)
       payment_bank_final = company_bank.iban
+      payment_swift_final = company_bank.swift
 
     disconnect_payment_signals()
 
     log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
 
     invoice.payment_bank_final = payment_bank_final
+    # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor
+    invoice.payment_swift_final = payment_swift_final
     invoice.payment_type_final = payment_type.name
     invoice.payment_type_token_final = payment_type.token
-    payment_fields = {'payment_bank': payment_bank_final}
     if company_bank:
       invoice.payment_company_bank = company_bank
-      invoice.payment_swift_final = company_bank.swift
-      payment_fields['payment_swift'] = company_bank.swift
     # invoice.payment_type = payment_type
     invoice.save()
 
@@ -139,7 +141,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     payments.update(
         payment_type=payment_type.name,
         payment_type_token=payment_type.token,
-        **payment_fields)
+        payment_bank=payment_bank_final,
+        payment_swift=payment_swift_final)
     reconnect_payment_signals()
     return Response({'message': 'Invoice updated successfully'}, status=status.HTTP_200_OK)
    

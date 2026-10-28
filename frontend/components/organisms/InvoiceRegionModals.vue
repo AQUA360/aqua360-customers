@@ -56,7 +56,7 @@ const selected_payment_bank = ref(null);
 const previous_payment_bank = ref(null);
 // Compte de l'empresa on s'ha de fer la transferència
 const selected_company_bank = ref(null);
-const companyBanks = computed(() => props.data?.company?.company_banks || []);
+const companyBanks = computed(() => (props.data?.company?.company_banks || []).filter((bank) => bank.is_active));
 const isBankTransfer = computed(() => paymentTypeOptionsById.value[selected_payment_type.value]?.token == 'BANK_TRANSFER');
 watch([selected_payment_type, paymentTypeOptionsById], () => {
   if (!openChangePaymentMethodModal.value) return;
@@ -237,6 +237,7 @@ const savePaymentMethod = async (refresh = true) => {
       id: props.invoiceId,
       payment_type_final: selected_payment_type.value,
       payment_bank_final: selected_payment_bank.value ? selected_payment_bank.value.iban : null,
+      payment_swift_final: selected_payment_bank.value ? selected_payment_bank.value.swift : null,
       payment_company_bank: isBankTransfer.value && selected_company_bank.value ? selected_company_bank.value.id : null
     };
     let response = await $InvoiceApiService.changePaymentMethod(save_data);
