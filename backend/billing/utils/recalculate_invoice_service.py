@@ -104,6 +104,8 @@ def delete_and_recalculate_invoice(invoice_id):
 
         if not contracts:
             raise ValueError(f"Invoice {invoice_id} has no contracts associated via readings")
+        if len(contracts) > 1:
+            raise ValueError(f"Invoice {invoice_id} has readings associated with multiple contracts")
 
         billing = original_invoice.billing
         contract = original_invoice.contract or contracts[0]

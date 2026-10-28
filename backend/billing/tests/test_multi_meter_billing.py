@@ -379,6 +379,28 @@ class TestMultiMeterBilling(TestCase):
                 self.assertEqual(invoice.persons_final, expected)
                 self.assertEqual(invoice.line_items.get().units, expected)
 
+    def test_recalculation_rejects_multiple_contracts_before_deleting_invoice(self):
+        from billing.models import Invoice
+        from billing.utils.recalculate_invoice_service import delete_and_recalculate_invoice
+
+        invoice, reading = self._create_persons_invoice()
+        other_contract = Contract.objects.create(token='OTHER-CONTRACT')
+        other_reading = Reading.objects.create(contract=other_contract)
+        invoice.readings.add(other_reading)
+        original_line_ids = list(invoice.line_items.values_list('pk', flat=True))
+
+        with patch.object(Invoice, 'delete') as delete_invoice, patch(
+            'billing.utils.recalculate_invoice_service.generate_consumption_invoice_multiple'
+        ) as generate_invoice:
+            with self.assertRaisesMessage(ValueError, 'multiple contracts'):
+                delete_and_recalculate_invoice(invoice.pk)
+
+        delete_invoice.assert_not_called()
+        generate_invoice.assert_not_called()
+        self.assertTrue(Invoice.objects.filter(pk=invoice.pk).exists())
+        self.assertCountEqual(invoice.readings.all(), [reading, other_reading])
+        self.assertEqual(list(invoice.line_items.values_list('pk', flat=True)), original_line_ids)
+
     def test_recalculation_preserves_persons_and_removed_historical_rate(self):
         from billing.models import Invoice
         from billing.utils.recalculate_invoice_service import (
