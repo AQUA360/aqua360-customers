@@ -31,6 +31,7 @@ const configureColor = ref(false);
 const configureMandatory = ref(false);
 const configureDescription = ref(false);
 const configureSerieDigits = ref(false);
+const configureChangeOfName = ref(false);
 
 // Blocks GMAO edits when NUXT_EXTERNAL_GOT=True is set in .env
 const runtimeConfig = useRuntimeConfig();
@@ -41,7 +42,7 @@ const configListTitle = ref(null);
 const configListEntity = ref(null);
 
 const RegionActive = ref(false);
-const showConfigList = (title, entity, hasColor = false, hasMandatoryCheck = false, hasDescription = false, blockEditsParam = false, hasSerieDigits = false) => {
+const showConfigList = (title, entity, hasColor = false, hasMandatoryCheck = false, hasDescription = false, blockEditsParam = false, hasSerieDigits = false, hasChangeOfNameCheck = false) => {
   configListTitle.value = title;
   configListEntity.value = entity;
   configureColor.value = hasColor
@@ -49,6 +50,7 @@ const showConfigList = (title, entity, hasColor = false, hasMandatoryCheck = fal
   configureDescription.value = hasDescription
   blockEdits.value = blockEditsParam
   configureSerieDigits.value = hasSerieDigits
+  configureChangeOfName.value = hasChangeOfNameCheck
 
   console.log('blockEdits', blockEdits.value);
   console.log('blockGmaoEdits', blockGmaoEdits.value);
@@ -328,7 +330,7 @@ getConfigProject();
             }}</button></li>
 
         <li class="mb-1"><button
-            @click="showConfigList((t('contract_termination_request') + ': ' + t('common.type')), 'contract/contract-termination-request-type', false, false, false)"
+            @click="showConfigList((t('contract_termination_request') + ': ' + t('common.type')), 'contract/contract-termination-request-type', false, false, false, false, false, true)"
             class="text-sky-500 underline hover:no-underline">{{ t('contract_termination_request') }}: {{
               t('common.type') }}</button></li>
         <li class="mb-1"><button
@@ -651,7 +653,8 @@ getConfigProject();
       <div class="pl-10 h-full">
         <ConfigList v-if="RegionActive == 'ConfigListEntity' && configListEntity" :title="configListTitle"
           :entity="configListEntity" :hasColor="configureColor" :hasMandatoryCheck="configureMandatory"
-          :hasDescription="configureDescription" :blockEdits="blockEdits" :hasSerieDigits="configureSerieDigits" />
+          :hasDescription="configureDescription" :blockEdits="blockEdits" :hasSerieDigits="configureSerieDigits"
+          :hasChangeOfNameCheck="configureChangeOfName" />
         <VariableTypeEdit v-if="RegionActive == 'VariableType'" />
         <OrderReasonEdit v-if="RegionActive == 'OrderReason'" />
         <BailTypeEdit v-if="RegionActive == 'BailType'" />
