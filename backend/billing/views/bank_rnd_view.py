@@ -233,7 +233,7 @@ class BankRNDDocumentView(APIView):
                 )
                 try:
                     new_payment = Payment.objects.create(
-                        token=generate_payment_id(payment.token[:2], exploitation_token=contract.supply_point_default.connection.exploitation.token),
+                        token=generate_payment_id(payment.token[:2], exploitation_token=contract.supply_point_default.connection.exploitation.token if contract.supply_point_default and contract.supply_point_default.connection and contract.supply_point_default.connection.exploitation else '0'),
                         name=contract.token,
                         status=status_piggy_bank,
                         contract=contract,
