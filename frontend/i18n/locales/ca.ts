@@ -176,6 +176,8 @@ export default {
     send_receipt: 'Generar i enviar justificant',
     receipt_sent: 'Justificant generat i enviat',
     receipt_generated: 'Justificant generat (sense correu per enviar-lo)',
+    receipt_email_error: "Justificant generat, però no s'ha pogut enviar per correu. Revisa la configuració de correu.",
+    receipt_unknown: "No s'ha pogut confirmar si el justificant s'ha generat. Comprova-ho abans de tornar-ho a provar.",
     commercial_block: 'Sense ofertes comercials'
   },
   incident_settings: {

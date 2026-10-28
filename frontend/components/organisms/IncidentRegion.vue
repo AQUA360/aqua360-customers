@@ -110,10 +110,19 @@ const resolutionDefault = computed(() => {
 const sendReceipt = async () => {
   try {
     const result = await $IncidentApiService.sendReceipt(props.id);
-    toast.success(result.sent ? t('incident_block.receipt_sent') : t('incident_block.receipt_generated'));
+    if (result.email_error) {
+      toast.warning(t('incident_block.receipt_email_error'));
+    } else {
+      toast.success(result.sent ? t('incident_block.receipt_sent') : t('incident_block.receipt_generated'));
+    }
     await refresh(false);
   } catch (err) {
     console.error('Error enviant el justificant:', err);
+    // L'error del servidor ja surt com a avís; sense resposta no se sap si s'ha generat i es recarrega
+    if (!err?.response?.status) {
+      toast.warning(t('incident_block.receipt_unknown'));
+      await refresh(false);
+    }
   }
 }
 

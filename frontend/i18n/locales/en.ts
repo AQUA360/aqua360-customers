@@ -176,6 +176,8 @@ export default {
     send_receipt: 'Generate and send receipt',
     receipt_sent: 'Receipt generated and sent',
     receipt_generated: 'Receipt generated (no email to send it)',
+    receipt_email_error: 'Receipt generated, but it could not be sent by email. Check the email settings.',
+    receipt_unknown: 'Could not confirm whether the receipt was generated. Check it before trying again.',
     commercial_block: 'No commercial offers'
   },
   incident_settings: {
