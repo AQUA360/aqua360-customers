@@ -636,14 +636,14 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
     </div><!-- end if pending -->
 
     <div v-if="SubRegion" role="region" id="subregion"
-      class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white fixed top-0 right-0 w-[48vw] z-50"
+      class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white flex flex-col overflow-hidden fixed top-0 right-0 w-[48vw] z-50"
       :class="{ 'translate-x-0': SubRegion, 'translate-x-full': !SubRegion }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="closeSubRegion()" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
         </button>
       </div>
-      <div class="px-10">
+      <div class="px-10 flex-1 overflow-y-auto pb-24">
         <ContractRequestTypeEditRegion v-if="showRegionDetailComponent === 'ContractRequestTypeEditRegion'" :item="data"
           :isSubRegionOpen="true" @saved="onSavedAdd" />
 
