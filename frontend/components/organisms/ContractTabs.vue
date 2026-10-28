@@ -591,7 +591,7 @@ const groupedPriceRates = computed(() => {
     <section v-show="activeTab === 'call_register'" role="tabpanel" id="tab_call_register" class="bg-white antialiased">
       <div class="h-content max-h-[40vh] overflow-y-auto mb-10">
         <MoleculesCallRegisterList v-if="contract" @update:count="updateCallRegisterCount" :contract_id="contract.id"
-          :reload="reload" />
+          :contract="contract" :reload="reload" />
       </div>
     </section>
 

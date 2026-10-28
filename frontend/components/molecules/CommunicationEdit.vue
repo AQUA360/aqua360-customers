@@ -281,8 +281,10 @@ watch(new_email_id, async (newVal) => {
                 <section class="rounded-xl border border-slate-200 bg-white/70 p-4 ">
                     <div class="mb-3 flex items-center justify-between">
                         <div>
-                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            <p class="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
                                 {{ $t('common.email_long') }}
+                                <Icon name="ph:info" class="cursor-help text-sm text-slate-400"
+                                    :title="$t('customer_service_block.multiple_emails_info')" />
                             </p>
                             <p class="text-sm text-slate-500">
                                 {{ $t('common.select') }} {{ $t('common.or') }} {{ $t('common.email_long').toLowerCase()
@@ -292,7 +294,7 @@ watch(new_email_id, async (newVal) => {
                         <Icon name="ph:envelope-duotone" class="text-2xl text-slate-400" />
                     </div>
                     <div class="grid gap-3 text-slate-600 md:grid-cols-[minmax(0,1fr),240px]">
-                        <input type="text" v-model="new_email" class="input h-11 rounded-lg border-slate-300 text-sm"
+                        <input type="text" v-model="new_email" maxlength="255" class="input h-11 rounded-lg border-slate-300 text-sm"
                             :placeholder="$t('customer_service_block.select_email')" aria-label="Email input" />
                         <select v-model="new_email_id" :disabled="loadingPerson"
                             class="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-slate-500 focus:outline-none"

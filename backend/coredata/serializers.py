@@ -1,6 +1,7 @@
 import datetime
 from rest_framework import serializers
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth.models import User
 from auth.serializers import UserMinimalSerializer
 from billing.models import CommitmentDeposit, CommitmentDepositStatus
 from django.utils import timezone
@@ -13,7 +14,7 @@ from django.apps import apps
 from .street_types import resolve_street_type
 from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
 from .utils.phone_utils import is_mobile_phone
-
+from coredata.utils.person_list_queryset import person_debt_amounts_by_person_id
 
 
 class IdentificationTypeSerializer(serializers.ModelSerializer):
@@ -592,20 +593,50 @@ class AddressMinimalSerializer(serializers.ModelSerializer):
 
 class CallRegisterSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
+    transfered_to = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+    transfered_from = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = CallRegister
         fields = '__all__'
-    
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['contract_token'] = instance.contract.token if instance.contract else None
-        contact = instance.person_contact
-        representation['person_name'] = str(contact.person) if contact and contact.person else None
-        representation['person_token'] = contact.person.token if contact and contact.person else None
-        representation['phone'] = contact.phone if contact else None
+
+        person_contact = instance.person_contact
+        person = person_contact.person if person_contact else None
+        representation['person_name'] = str(person) if person else None
+        representation['person_token'] = person.token if person else None
+
+        # Prefer snapshot values stored on the register; fall back for legacy rows
+        if not representation.get('phone') and person_contact:
+            representation['phone'] = person_contact.phone
+        if not representation.get('email') and person_contact:
+            representation['email'] = person_contact.email
+
+        representation['transfered_to'] = (
+            UserMinimalSerializer(instance.transfered_to).data if instance.transfered_to else None
+        )
+        representation['transfered_from'] = (
+            UserMinimalSerializer(instance.transfered_from).data if instance.transfered_from else None
+        )
         representation['incident_token'] = instance.incident.token if instance.incident else None
+        representation['incident_name'] = instance.incident.name if instance.incident else None
+
+        if instance.call_start and instance.call_end:
+            representation['call_duration_seconds'] = int(
+                (instance.call_end - instance.call_start).total_seconds()
+            )
+        else:
+            representation['call_duration_seconds'] = None
+
         return representation
-    
+
     def create(self, validated_data):
         user = self.context['request'].user
         validated_data['user'] = user
@@ -1516,12 +1547,26 @@ class PersonMinimalAddressSerializer(serializers.ModelSerializer):
         representation['full_name'] = f"{instance.name} {instance.surname}" if not instance.is_juridic else instance.name
         return representation
     
+class PersonMinimalListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        iterable = data.all() if hasattr(data, "all") else data
+        person_ids = [obj.pk for obj in iterable]
+        self.child.context["debt_by_person"] = person_debt_amounts_by_person_id(person_ids)
+        return super().to_representation(data)
+
 class PersonMinimalSerializer(serializers.ModelSerializer):
     is_debtor = serializers.CharField(read_only=True, source='deliquency.is_debtor')
-    debt_amount = serializers.DecimalField(read_only=True, source='deliquency.debt_amount', max_digits=10, decimal_places=2)
+    debt_amount = serializers.SerializerMethodField()
+
+    def get_debt_amount(self, obj):
+        debt_by_person = self.context.get("debt_by_person")
+        if debt_by_person is not None:
+            return debt_by_person.get(obj.pk, 0)
+        return person_debt_amounts_by_person_id([obj.pk]).get(obj.pk, 0)
     
     class Meta:
         model = Person
+        list_serializer_class = PersonMinimalListSerializer
         fields = ['id', 'token', 'name', 'surname', 'is_juridic', 'is_debtor', 'debt_amount', 'vulnerability_level']
     
     def to_representation(self, instance):
