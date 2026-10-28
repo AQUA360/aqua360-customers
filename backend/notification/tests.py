@@ -2,7 +2,7 @@ import datetime
 from unittest import mock
 
 from django.contrib.auth.models import Permission, User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -648,6 +648,8 @@ class TestIncidentLifecycle(IncidentTestBase):
         self.assertIn('report', kinds)
 
 
+# Els noms de les notificacions es comparen en anglès, independentment dels .mo compilats
+@override_settings(LANGUAGE_CODE='en')
 class TestIncidentDeadlines(IncidentTestBase):
     """Avisos de venciment, escalats i pauses."""
 
@@ -771,6 +773,57 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         self.assertIsNotNone(unanswered.callback_task)
         self.assertEqual(incident.tasks.count(), 2)
 
+    def test_call_from_client_is_inbound_and_not_first_response(self):
+        """Check that a call where the client contacted us is inbound and does not answer the incident."""
+        from coredata.models import CallRegister
+        from coredata.serializers import CallRegisterSerializer
+        from notification.models import Incident
+        incident = self.incident(self.create_incident())
+        serializer = CallRegisterSerializer(data={
+            'incident': incident.id, 'comment': 'Truca el client', 'time_call': timezone.now().isoformat(),
+            'answered': True, 'contacted_by_client': True, 'direction': 'outbound',
+        }, context={'request': mock.Mock(user=self.user)})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        call = serializer.save()
+        self.assertEqual(call.direction, CallRegister.DIRECTION_INBOUND)
+        self.assertIsNone(Incident.objects.get(pk=incident.pk).first_response_at)
+
+    def test_purged_incident_keeps_calls(self):
+        """Check that purging an incident keeps its calls in the call history."""
+        from coredata.models import CallRegister
+        incident = self.incident(self.create_incident())
+        from notification.models import Incident
+        call = CallRegister.objects.create(incident=incident, comment='Truca', user=self.user)
+        # Només es poden purgar les incidències fora del període de retenció
+        Incident.objects.filter(pk=incident.pk).update(created_at=timezone.now() - datetime.timedelta(days=365 * 30))
+        Incident.objects.get(pk=incident.pk).delete()
+        call.refresh_from_db()
+        self.assertIsNone(call.incident_id)
+
+    def test_compliance_report_counts_form_calls(self):
+        """Check that the compliance report counts calls registered with the call form fields."""
+        from coredata.models import CallRegister
+        from statistics.utils.report_incident_compliance_service import generate_incident_compliance_report
+        now = timezone.now()
+        base = {'user': self.user, 'contacted_by_client': True, 'direction': CallRegister.DIRECTION_INBOUND}
+        CallRegister.objects.create(call_start=now, answered=True, wait_time=2, **base)
+        CallRegister.objects.create(call_start=now, answered=True, wait_time=5, transfered_to_name='Oficina', **base)
+        CallRegister.objects.create(call_start=now, abandoned_call=True, **base)
+        CallRegister.objects.create(call_start=now, channel='EMAIL', answered=True, **base)
+        CallRegister.objects.create(call_start=now, answered=True, user=self.user)  # sortint
+        saved = {}
+        with mock.patch('statistics.utils.report_incident_compliance_service.save_report',
+                        side_effect=lambda content, **kwargs: saved.setdefault('wb', content) and 1):
+            today = timezone.localdate().isoformat()
+            generate_incident_compliance_report(mock.Mock(data={'date_range': [today, today]}), None, None)
+        sheet = saved['wb'].worksheets[-1]
+        values = [row[1] for row in sheet.iter_rows(min_row=2, values_only=True)]
+        # Entrants, ateses, abandonades, ateses en menys de 3 minuts, %, espera mitjana, transferides
+        self.assertEqual(values[:3], [3, 2, 1])
+        self.assertEqual(values[3], 1)
+        self.assertEqual(values[5], 210)
+        self.assertEqual(values[6], 1)
+
     def test_call_without_incident_permission_does_not_touch_incident(self):
         """Check that a user without change_incident cannot add tasks or first response to the incident."""
         from coredata.serializers import CallRegisterSerializer
@@ -794,6 +847,19 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         for url, valid in (('javascript:alert(1)', False), ('https://example.com/a.mp3', True)):
             serializer = CallRegisterSerializer(data={'comment': 'Truca', 'recording_url': url}, context={'request': request})
             self.assertEqual(serializer.is_valid(), valid, url)
+
+    @mock.patch('notification.utils.staff_email.send_staff_email', side_effect=Exception('SMTP'))
+    def test_receipt_email_error_keeps_document(self, send_email):
+        """Check that a failed email returns a warning and keeps the generated receipt."""
+        from notification.utils.incident_utils import ReceiptEmailError, send_receipt
+        incident = self.incident(self.create_incident(contact_email='abonat@example.com'))
+        with mock.patch('notification.utils.incident_utils.generate_receipt') as generate:
+            generate.return_value = (mock.Mock(document_name='justificant.pdf'), b'%PDF')
+            with self.assertRaises(ReceiptEmailError):
+                send_receipt(incident)
+        generate.assert_called_once()
+        incident.refresh_from_db()
+        self.assertIsNone(incident.receipt_sent_at)
 
     def test_legacy_working_days_keep_input_type(self):
         """Check that claim requests and daily documents still get a datetime when they pass one."""

@@ -9,6 +9,7 @@ import traceback
 
 import openpyxl
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
@@ -61,9 +62,12 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
             'contract__supply_point_default__connection__exploitation',
             'supply_point__connection__exploitation', 'cluster__connection__exploitation',
         )
-        calls = CallRegister.objects.filter(
-            direction=CallRegister.DIRECTION_INBOUND, incoming_at__gte=start_date, incoming_at__lt=end_limit,
-        )
+        # Trucades entrants de la centraleta (incoming_at) o registrades al formulari (call_start / time_call)
+        calls = CallRegister.objects.annotate(
+            received_at=Coalesce('incoming_at', 'call_start', 'time_call'),
+        ).filter(
+            direction=CallRegister.DIRECTION_INBOUND, received_at__gte=start_date, received_at__lt=end_limit,
+        ).exclude(channel='EMAIL')
         if exploitation_id and exploitation_id != 'all':
             # Mateixes rutes que incident_exploitation: contracte, punt de subministrament o agrupació
             incidents = incidents.filter(
@@ -124,7 +128,7 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
             ])
 
         wb = openpyxl.Workbook()
-        headers = [_("Total"), _("Tancades"), _("Dins de termini"), _("Fora de termini"), _("% dins de termini"),
+        headers = [_("Total"), _("Tancades"), _("Dins de termini"), _("Fora de termini"), _("Dins de termini (%)"),
                    _("Pendents vençudes"), _("Reobertes"), _("Mitjana 1a resposta (dies hàbils)"),
                    _("Mitjana resolució (dies hàbils)")]
         for index, (key, title, first_header) in enumerate((
@@ -154,23 +158,29 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
             row = add_row(detail, row, values)
         adjust_column_widths(detail)
 
-        # Atenció telefònica: només les trucades entrants amb marques de temps (centraleta)
-        waits = [
-            (call.answered_at - call.incoming_at).total_seconds()
-            for call in calls.filter(answered_at__isnull=False).only('incoming_at', 'answered_at')
-        ]
+        # Atenció telefònica: l'espera surt de les marques de la centraleta o del temps d'espera del formulari
+        answered = calls.filter(Q(answered_at__isnull=False) | Q(answered=True)).exclude(abandoned=True).exclude(abandoned_call=True)
+        waits = []
+        for call in answered.only('incoming_at', 'answered_at', 'wait_time'):
+            if call.incoming_at and call.answered_at:
+                waits.append((call.answered_at - call.incoming_at).total_seconds())
+            elif call.wait_time is not None:
+                waits.append(call.wait_time * 60)
         total_calls = calls.count()
         within = len([wait for wait in waits if wait <= PHONE_WAIT_SECONDS])
         phone = wb.create_sheet(title=_("Atenció telefònica"))
         row = add_row(phone, 0, [_("Indicador"), _("Valor")], fill=black_fill, font=white_bold_font)
         for label, value in (
             (_("Trucades entrants"), total_calls),
-            (_("Ateses"), len(waits)),
-            (_("Abandonades"), calls.filter(abandoned=True).count()),
+            (_("Ateses"), answered.count()),
+            (_("Abandonades"), calls.filter(Q(abandoned=True) | Q(abandoned_call=True)).count()),
             (_("Ateses en menys de 3 minuts"), within),
             (_("% ateses en menys de 3 minuts"), _pct(within, len(waits))),
             (_("Espera mitjana (segons)"), _avg(waits)),
-            (_("Transferides"), calls.exclude(transferred_to__isnull=True).exclude(transferred_to='').count()),
+            (_("Transferides"), calls.filter(
+                Q(transfered_to__isnull=False) | (Q(transfered_to_name__isnull=False) & ~Q(transfered_to_name=''))
+                | (Q(transferred_to__isnull=False) & ~Q(transferred_to=''))
+            ).count()),
             (_("Peticions de supervisor"), calls.filter(supervisor_requested=True).count()),
             (_("Peticions de trucada de retorn"), calls.filter(callback_requested=True).count()),
         ):

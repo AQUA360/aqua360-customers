@@ -657,6 +657,12 @@ class CallRegisterSerializer(serializers.ModelSerializer):
             create_callback_task(call, self.context['request'].user)
         return call
 
+    def validate(self, attrs):
+        # El formulari indica si ha contactat el client: llavors la trucada és entrant i no compta com a primera resposta
+        if attrs.get('contacted_by_client'):
+            attrs['direction'] = CallRegister.DIRECTION_INBOUND
+        return attrs
+
     def validate_recording_url(self, value):
         # Només enllaços web: el valor es mostra com a enllaç a la llista de trucades
         if value and not value.lower().startswith(('https://', 'http://')):

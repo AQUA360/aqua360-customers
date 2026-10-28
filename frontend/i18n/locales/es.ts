@@ -176,6 +176,8 @@ export default {
     send_receipt: 'Generar y enviar justificante',
     receipt_sent: 'Justificante generado y enviado',
     receipt_generated: 'Justificante generado (sin correo para enviarlo)',
+    receipt_email_error: 'Justificante generado, pero no se ha podido enviar por correo. Revisa la configuración de correo.',
+    receipt_error: 'No se ha podido generar el justificante',
     commercial_block: 'Sin ofertas comerciales'
   },
   incident_settings: {
