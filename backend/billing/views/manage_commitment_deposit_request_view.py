@@ -246,7 +246,7 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                     contract_instance = Contract.objects.get(id=contract['id'])
                 
                 commitment_deposit_data = {
-                    "token": generate_commitment_id(exploitation_token=contract_instance.supply_point_default.connection.exploitation.token),
+                    "token": generate_commitment_id(exploitation_token=contract_instance.supply_point_default.connection.exploitation.token if contract_instance.supply_point_default and contract_instance.supply_point_default.connection and contract_instance.supply_point_default.connection.exploitation else '0'),
                     "total": sum(float(p.get('amount')) for p in payments),
                     "remaining": sum(float(p.get('amount')) for p in payments),
                     "status": defaul_commitment_deposit_status,
