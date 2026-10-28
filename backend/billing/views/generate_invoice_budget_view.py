@@ -236,6 +236,7 @@ class GenerateInvoiceBudgetView(APIView):
             title = 'Facturació'
             refactor_invoice_token = None
             new_holder_id = None
+            recalc_strategy = "current"
             
             if redo_option: # or top_invoice_token:
                 # If redo_option is missing but we have a token, we initialize it

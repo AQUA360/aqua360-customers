@@ -1,9 +1,85 @@
 from django.test import TestCase
+from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
 class RecalculationStrategyPersonsTest(TestCase):
     """ACUSTOMERS-334: verify persons resolution and tariff selection on rebilling."""
+
+    def test_persons_use_configured_fallback_only_for_non_positive_values(self):
+        from billing.utils.invoice_service import _resolve_recalculation_persons
+        from coredata.models import ConfigProject
+
+        ConfigProject.objects.update_or_create(
+            token='contract_min_persons', defaults={'value': '5'},
+        )
+        for persons, expected in ((None, 5), (0, 5), (-1, 5), (2, 2), (7, 7)):
+            with self.subTest(persons=persons):
+                contract = SimpleNamespace(total_persons=persons)
+                self.assertEqual(
+                    _resolve_recalculation_persons(contract, None, 'current'), expected,
+                )
+        self.assertEqual(_resolve_recalculation_persons(None, None, 'current'), 5)
+
+    def test_invalid_historical_persons_use_legacy_line_or_configured_fallback(self):
+        from billing.utils.invoice_service import _resolve_recalculation_persons
+        from coredata.models import ConfigProject
+
+        ConfigProject.objects.update_or_create(
+            token='contract_min_persons', defaults={'value': '5'},
+        )
+        contract = SimpleNamespace(total_persons=0)
+        for persons in (None, 0, -1):
+            for units, expected in ((None, 5), (0, 5), (-2, 5), (4, 4)):
+                with self.subTest(persons=persons, units=units):
+                    original = MagicMock(persons_final=persons)
+                    original.line_items.filter.return_value.first.return_value = SimpleNamespace(units=units)
+                    self.assertEqual(
+                        _resolve_recalculation_persons(
+                            contract, None, 'original', original_invoice=original,
+                        ), expected,
+                    )
+
+    def test_other_invoice_flows_use_line_item_defaults(self):
+        from billing.utils import invoice_service
+
+        contract = MagicMock()
+        rate = MagicMock()
+        contract.registration_price_rates.filter.return_value.order_by.return_value = [rate]
+        rate.billing_range_active.line_item_types.all.return_value = [MagicMock()]
+        invoice = MagicMock(contract=contract)
+        invoice.origin.token = 'aigua'
+        calls = (
+            lambda: invoice_service.invoice_contract_generate(None, 1, 'Title', None, None),
+            lambda: invoice_service.invoice_generate_return_bail(
+                None, 1, 'Title', None, None, bails=[MagicMock(price_rate=rate)],
+            ),
+            lambda: invoice_service.invoice_return_charge(invoice, 'Title'),
+            lambda: invoice_service.invoice_claim_paid_generate(1, 'Title'),
+            lambda: invoice_service.generate_empty_invoice(
+                None, None, None, 'Title', None, None, price_rates=[rate],
+            ),
+        )
+        for call in calls:
+            with self.subTest(call=call), ExitStack() as stack:
+                for model, result in (
+                    ('Contract', contract), ('ContractRequest', contract),
+                    ('Invoice', invoice), ('PriceRate', rate),
+                    ('ConfigProject', SimpleNamespace(value='aigua')),
+                ):
+                    stack.enter_context(patch.object(
+                        getattr(invoice_service, model).objects, 'get', return_value=result,
+                    ))
+                stack.enter_context(patch.object(invoice_service, 'tax_by_percent'))
+                create = stack.enter_context(patch.object(
+                    invoice_service, 'create_from_lineitemtype', side_effect=RuntimeError('Reached line items'),
+                ))
+                with self.assertRaises(Exception):
+                    call()
+                create.assert_called_once()
+                self.assertNotIn('recalculation_strategy', create.call_args.kwargs)
+                self.assertNotIn('effective_persons', create.call_args.kwargs)
 
     def test_generate_variables_uses_effective_persons_for_original(self):
         from billing.utils.adjustment_service import generate_variables
