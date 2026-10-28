@@ -1092,6 +1092,7 @@ export default {
     select_address: 'Selecciona l\'adreça a utilitzar',
     select_phone: 'Selecciona el telèfon a utilitzar',
     select_email: 'Selecciona el correu electrònic a utilitzar',
+    multiple_emails_info: 'Pots indicar diversos correus electrònics separats per punt i coma (;)',
     selected_addresses: 'Adreces seleccionades',
     select_recipients_channels: 'Selecciona destinataris amb almenys un dels següents canals',
     error_search_recipients: 'No s\'han pogut carregar els destinataris. Torna-ho a provar.',

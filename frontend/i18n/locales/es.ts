@@ -1092,6 +1092,7 @@ export default {
     select_address: 'Selecciona la dirección a utilizar',
     select_phone: 'Selecciona el teléfono a utilizar',
     select_email: 'Selecciona el correo electrónico a utilizar',
+    multiple_emails_info: 'Puedes indicar varios correos electrónicos separados por punto y coma (;)',
     selected_addresses: 'Direcciones seleccionadas',
     select_recipients_channels: 'Selecciona destinatarios con al menos uno de los siguientes canales',
     error_search_recipients: 'No se han podido cargar los destinatarios. Inténtalo de nuevo.',
