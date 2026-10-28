@@ -70,10 +70,7 @@ def contract_request_pre_save(sender, instance, **kwargs):
                         contract_price_rates.append(contract_price_rate)
                 instance.price_rates.set(contract_price_rates)
                 instance.registration_price_rates.set(instance.type.get_registration_price_rates(instance.is_change_of_name))
-                instance.order_types.set(instance.type.order_types.all())
-            elif instance.type and old_instance.is_change_of_name != instance.is_change_of_name:
-                # Passa d'alta a canvi de nom (o al revés) amb el mateix tipus
-                instance.registration_price_rates.set(instance.type.get_registration_price_rates(instance.is_change_of_name))
+                instance.order_types.set(instance.type.get_order_types(instance.is_change_of_name))
         except ContractRequest.DoesNotExist:
             pass
     return instance
