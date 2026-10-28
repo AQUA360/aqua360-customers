@@ -176,7 +176,7 @@ class ContractTerminationType(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     position = models.IntegerField(null=True, blank=True)
     is_default = models.BooleanField(default=False)
-    # Les sol·licituds vinculades a una baixa d'aquest tipus són canvis de nom
+    # Per marcar com a canvi de nom les sol·licituds antigues vinculades a baixes d'aquest tipus
     is_change_of_name = models.BooleanField(default=False, verbose_name="Is Change Of Name")
     
     def __str__(self):

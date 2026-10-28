@@ -50,7 +50,7 @@ class ChangeOfNameOrderTypesTest(TestCase):
 
 
 class ChangeOfNameTerminationTypeTest(TestCase):
-    """Les sol·licituds vinculades a una baixa per canvi de nom es marquen com a canvi de nom."""
+    """Marcatge de les sol·licituds antigues vinculades a una baixa per canvi de nom."""
 
     def setUp(self):
         self.change_of_name_type = ContractTerminationType.objects.create(token="canvi-titular", name="Canvi de titular")
@@ -63,43 +63,21 @@ class ChangeOfNameTerminationTypeTest(TestCase):
         serializer.is_valid(raise_exception=True)
         return serializer.save()
 
-    def test_linking_change_of_name_termination_marks_request(self):
-        self.change_of_name_type.is_change_of_name = True
-        self.change_of_name_type.save()
-        termination = ContractTerminationRequest.objects.create(type=self.change_of_name_type)
-
-        request = self._link(ContractRequest.objects.create(token="REQ-1"), termination)
-
-        self.assertTrue(request.is_change_of_name)
-
-    def test_linking_change_of_name_termination_keeps_chosen_rates_and_orders(self):
-        # La baixa es vincula després de triar tarifes i ordres: no s'han de substituir
+    def test_linking_change_of_name_termination_keeps_new_request(self):
+        # Una nova alta continua sent nova alta encara que doni de baixa el contracte anterior
         from pricing.models import PriceRate
 
         chosen_rate = PriceRate.objects.create(token="TRIADA")
-        chosen_order_type = OrderType.objects.create(token="TRIADA", name="Triada")
-        request_type = ContractRequestType.objects.create(token="domestic", name="Domèstic")
-        request_type.change_of_name_registration_price_rates.set([PriceRate.objects.create(token="CANVI-NOM")])
-        request_type.change_of_name_order_types.set([OrderType.objects.create(token="CANVI-NOM", name="Canvi de nom")])
-        request = ContractRequest.objects.create(token="REQ-1", type=request_type)
+        request = ContractRequest.objects.create(token="REQ-1")
         request.registration_price_rates.set([chosen_rate])
-        request.order_types.set([chosen_order_type])
         self.change_of_name_type.is_change_of_name = True
         self.change_of_name_type.save()
 
         request = self._link(request, ContractTerminationRequest.objects.create(type=self.change_of_name_type))
 
         request.refresh_from_db()
-        self.assertTrue(request.is_change_of_name)
-        self.assertEqual(list(request.registration_price_rates.all()), [chosen_rate])
-        self.assertEqual(list(request.order_types.all()), [chosen_order_type])
-
-    def test_linking_other_termination_keeps_new_request(self):
-        termination = ContractTerminationRequest.objects.create(type=self.other_type)
-
-        request = self._link(ContractRequest.objects.create(token="REQ-1"), termination)
-
         self.assertFalse(request.is_change_of_name)
+        self.assertEqual(list(request.registration_price_rates.all()), [chosen_rate])
 
     def test_marking_termination_type_marks_linked_requests(self):
         linked = ContractRequest.objects.create(token="REQ-1")

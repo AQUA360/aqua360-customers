@@ -280,11 +280,6 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
         if instance.person_id is None and instance.holder_id:
             instance.person = instance.holder
         instance.save()
-        # Vinculada a una baixa per canvi de nom: la sol·licitud és un canvi de nom. Només es desa
-        # la marca: les tarifes i ordres ja triades (la baixa es vincula després) no es toquen
-        if not instance.is_change_of_name and instance.contract_termination_requests.filter(type__is_change_of_name=True).exists():
-            ContractRequest.objects.filter(pk=instance.pk).update(is_change_of_name=True)
-            instance.is_change_of_name = True
         
         # Assignar els contacts si estan presents
         if contacts_data is not None:
