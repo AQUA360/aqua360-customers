@@ -236,6 +236,7 @@ class GenerateInvoiceBudgetView(APIView):
             title = 'Facturació'
             refactor_invoice_token = None
             new_holder_id = None
+            recalc_strategy = "current"
             
             if redo_option: # or top_invoice_token:
                 # If redo_option is missing but we have a token, we initialize it
@@ -250,6 +251,12 @@ class GenerateInvoiceBudgetView(APIView):
                 new_holder_id = redo_option.get("new_holder", None)
                 title = redo_option.get("title", 'Refacturació')
                 refactor_invoice_token = redo_option.get("invoice_token")
+                requested_strategy = redo_option.get("recalculation_strategy")
+                recalc_strategy = (
+                    requested_strategy
+                    if requested_strategy in {"original", "current"}
+                    else "original"
+                )
                 
                 print(f"[GenerateInvoiceBudgetView] Refactor detected. Reason: {reason}")
                 leak_consumption = redo_option.get("leak_consum")
@@ -346,7 +353,7 @@ class GenerateInvoiceBudgetView(APIView):
                 
                 print(f"[GenerateInvoiceBudgetView] Period months: {period_months}")
                 
-                invoice = generate_consumption_invoice_multiple(contract, readings, title, refactor_invoice=refactor_invoice_token, is_budget=True, extra_payment_data=payment_data, billing=billing, billing_batch=billing_batch, period_months=period_months, new_holder=new_holder_id)
+                invoice = generate_consumption_invoice_multiple(contract, readings, title, refactor_invoice=refactor_invoice_token, is_budget=True, extra_payment_data=payment_data, billing=billing, billing_batch=billing_batch, period_months=period_months, new_holder=new_holder_id, recalculation_strategy=recalc_strategy)
         
         elif entity == "custom":
             entity_custom = selected_custom.get("entity")
