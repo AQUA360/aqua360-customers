@@ -7,8 +7,9 @@ from rest_framework.response import Response
 from rest_framework import status
 import xml.etree.ElementTree as ET
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from service.models import Exploitation
 from billing.models import BankRNDDocument, CommitmentDeposit, Invoice, InvoiceStatus, JoinedPayment, JoinedPaymentStatus, Payment, PaymentMovement, PaymentStatus
-from billing.utils.invoice_service import generate_payment_id
+from billing.utils.invoice_service import generate_payment_id, get_use_exploitation_token_for_payment
 from billing.utils.joined_payment_service import mark_payments_as_paid, register_joined_payment_log
 from contract.models import Contract, PaymentType, PiggyBankMovement
 from coredata.models import ConfigProject
@@ -16,6 +17,20 @@ from coredata.utils.name_utils import generate_token
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _valid_rnd_exploitation_prefixes():
+    """Legacy '0' plus single-digit exploitation tokens that exist in the DB."""
+    prefixes = {'0'}
+    if get_use_exploitation_token_for_payment().lower() != 'true':
+        return prefixes
+    for token in Exploitation.objects.values_list('token', flat=True):
+        try:
+            if token is not None and 0 < int(token) < 10:
+                prefixes.add(str(token))
+        except (TypeError, ValueError):
+            continue
+    return prefixes
 
 
 class BankRNDDocumentView(APIView):
@@ -218,7 +233,7 @@ class BankRNDDocumentView(APIView):
                 )
                 try:
                     new_payment = Payment.objects.create(
-                        token=generate_payment_id(payment.token[:2]),
+                        token=generate_payment_id(payment.token[:2], exploitation_token=contract.supply_point_default.connection.exploitation.token if contract.supply_point_default and contract.supply_point_default.connection and contract.supply_point_default.connection.exploitation else '0'),
                         name=contract.token,
                         status=status_piggy_bank,
                         contract=contract,
@@ -315,6 +330,7 @@ class BankRNDDocumentView(APIView):
             invoices_to_update = []
             payment_previous_status = None
             data = []
+            valid_exploitation_prefixes = _valid_rnd_exploitation_prefixes()
             for line in body:
                 amount = line[36:46]
                 decimals = line[46:48]
@@ -331,206 +347,207 @@ class BankRNDDocumentView(APIView):
                 try:
                     """ print("\n\nLINESTRAT")
                     print(line[76:78]) """
-                    if line[76:78] == '01' or line[76:78] == '02':
-                        invoice = Invoice.objects.get(token=line[76:87], type_final=type_final)
-                        
-                        payment = invoice.payments.order_by('-created_at').first()
-                        
-                        payment_previous_status = payment.status
-                        """ if is_saving and payment_origin:
-                            if payment_previous_status == status_paid:
-                                if not PaymentMovement.objects.filter(payment=payment, payment_origin__isnull=False).exists():
-                                    last_movement = PaymentMovement.objects.filter(payment=payment).order_by('-timestamp').first()
-                                    if last_movement:
-                                        last_movement.payment_origin = payment_origin
-                                        last_movement.save()
-                                    else:
-                                        PaymentMovement.objects.create(
-                                            user=request.user,
-                                            payment=payment,
-                                            movement_date=payment.payment_date or datetime.datetime.now().date(),
-                                            current_status=payment.status,
-                                            is_positive=True,
-                                            payment_origin=payment_origin
-                                        ) """
-                        payment.status = status_paid
-                        payment.paid_at = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
-                        payment.payment_date = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
-                        if is_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
-                            invoice.payment_type_final = payment_type.name
-                            invoice.payment_type_token_final = payment_type.token
-                            invoices_to_update.append(invoice)
-                            payment_previous_status = payment.status
-                            payment.payment_type = payment_type.name
-                            payment.payment_type_token = payment_type.token
-                            payment.payment_origin_choice = payment_origin
-                            payment.save()
-                            if payment_origin:
-                                last_movement = PaymentMovement.objects.filter(payment=payment, is_positive=True, payment_type__token=payment_type.token).order_by('-timestamp').first()
-                                if last_movement:
-                                    last_movement.payment_origin = payment_origin
-                                    last_movement.save()
-                        if invoice.contract:
-                            contract = {
-                                'id': invoice.contract.id,
-                                'token': invoice.contract.token,
-                                'holder': invoice.contract.holder.token,
-                            }
-                        elif invoice.contract_request:
-                            contract_request = {
-                                'id': invoice.contract_request.id,
-                                'token': invoice.contract_request.token,
-                                'holder': invoice.contract_request.holder.token,
-                            }
-                        invoice_data = {
-                            'id': invoice.id,
-                            'token': invoice.token,
-                        }
-                    elif line[76:78] == '03':
-                        print("line: ", line[76:87])
-                        payment = Payment.objects.filter(token=line[76:87], status__in=[status_pending, status_expired, status_paid], commitment_deposit__isnull=False).first()
-                        if not payment:
-                            payment = Payment.objects.filter(
-                                commitment_deposit__token=line[76:87], status__in=[status_pending, status_expired, status_paid], amount=total
-                                ).first()
-                        if not payment:
-                            payment = Payment.objects.filter(
-                                token__startswith=line[76:87], status__in=[status_pending, status_expired, status_paid], amount=total
-                                ).first()
-                        commitment_deposit = payment.commitment_deposit
-                        
-                        payment_previous_status = payment.status
-                        """ if is_saving and payment_origin:
-                            if payment_previous_status == status_paid:
-                                if not PaymentMovement.objects.filter(payment=payment, payment_origin__isnull=False).exists():
-                                    last_movement = PaymentMovement.objects.filter(payment=payment).order_by('-timestamp').first()
-                                    if last_movement:
-                                        last_movement.payment_origin = payment_origin
-                                        last_movement.save()
-                                    else:
-                                        PaymentMovement.objects.create(
-                                            user=request.user,
-                                            payment=payment,
-                                            movement_date=payment.payment_date or datetime.datetime.now().date(),
-                                            current_status=payment.status,
-                                            is_positive=True,
-                                            payment_origin=payment_origin
-                                        ) """
-                        payment.status = status_paid
-                        payment.paid_at = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
-                        payment.payment_date = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
-                        if is_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
-                            payment_previous_status = payment.status
-                            payment.payment_type = payment_type.name
-                            payment.payment_type_token = payment_type.token
-                            payment.payment_origin_choice = payment_origin
-                            payment.save()
-                            if payment_origin:
-                                last_movement = PaymentMovement.objects.filter(payment=payment, is_positive=True, payment_type__token=payment_type.token).order_by('-timestamp').first()
-                                if last_movement:
-                                    last_movement.payment_origin = payment_origin
-                                    last_movement.save()
-                        commitment_deposit_data = {
-                            'id': commitment_deposit.id,
-                            'token': commitment_deposit.token,
-                        }
-                        contract = {
-                            'id': commitment_deposit.contract.id,
-                            'token': commitment_deposit.contract.token,
-                            'holder': commitment_deposit.contract.holder.token,
-                        }
-                    elif line[76:78] == '05':
-                        try:
-                            joined_payment = JoinedPayment.objects.get(token=line[76:87])
-                            payments = joined_payment.payments.all()
-                            if joined_payment.contract:
-                                contract = {
-                                    'id': joined_payment.contract.id,
-                                    'token': joined_payment.contract.token,
-                                    'holder': joined_payment.contract.holder.token,
-                                }
-                            data.append(self._build_register_data(
-                                line=line, amount=total, contract=contract,
-                                status_name=joined_payment.status.name if not is_saving else joined_payment_status_paid.name,
-                                status_color=joined_payment.status.color if not is_saving else joined_payment_status_paid.color,
-                                is_paid=False, payment_id=None,
-                                joined_payment_id=joined_payment.id,
-                                is_joined=True,
-                            ))
-                            for payment in payments:
-                                invoice = payment.invoice
-                                commitment_deposit = payment.commitment_deposit
-                                invoice_data = None
-                                commitment_deposit_data = None
-                                if invoice:
-                                    invoice_data = {
-                                        'id': invoice.id,
-                                        'token': invoice.token,
-                                    }
-                                if commitment_deposit:
-                                    commitment_deposit_data = {
-                                        'id': commitment_deposit.id,
-                                        'token': commitment_deposit.token,
-                                    }
-                                
-                                try:
-                                    already_in_balance = PiggyBankMovement.objects.filter(payment=payment).exists()
-                                except:
-                                    already_in_balance = False
-                                
-                                if already_in_balance or is_saving:
-                                    is_paid = False
-                                else:
-                                    is_paid = payment.status == status_paid if payment else None
-                                
-                                register_data = self._build_register_data(
-                                    line=line, amount=payment.amount, contract=contract,
-                                    status_name=payment.status.name if not is_saving else status_paid.name,
-                                    status_color=payment.status.color if not is_saving else status_paid.color,
-                                    is_paid=is_paid,
-                                    payment_id=payment.id if payment else None,
-                                    joined_payment_id=joined_payment.id,
-                                    is_joined=False,
-                                    invoice=invoice_data,
-                                    commitment_deposit=commitment_deposit_data,
-                                )
-                                data.append(register_data)
+                    if line[76:77] in valid_exploitation_prefixes:
+                        if line[77:78] == '1' or line[77:78] == '2':
+                            invoice = Invoice.objects.get(token=line[76:87], type_final=type_final)
                             
-                            if is_saving and joined_payment.status != joined_payment_status_paid:
-                                register_joined_payment_log(joined_payment, joined_payment.status, joined_payment_status_paid, None, user)
-                                mark_payments_as_paid(joined_payment, user, payment_origin)
-                                joined_payment.status = joined_payment_status_paid
-                                joined_payment.save()
-                            continue    
-                        except Exception as e:
-                            print("error 05: ", e)
-                            continue
-                    else:
-                        try:
-                            invoice = Invoice.objects.get(token=line[76:87])
-                        except Exception:
-                            invoice = None
-                        if not invoice:
+                            payment = invoice.payments.order_by('-created_at').first()
+                            
+                            payment_previous_status = payment.status
+                            """ if is_saving and payment_origin:
+                                if payment_previous_status == status_paid:
+                                    if not PaymentMovement.objects.filter(payment=payment, payment_origin__isnull=False).exists():
+                                        last_movement = PaymentMovement.objects.filter(payment=payment).order_by('-timestamp').first()
+                                        if last_movement:
+                                            last_movement.payment_origin = payment_origin
+                                            last_movement.save()
+                                        else:
+                                            PaymentMovement.objects.create(
+                                                user=request.user,
+                                                payment=payment,
+                                                movement_date=payment.payment_date or datetime.datetime.now().date(),
+                                                current_status=payment.status,
+                                                is_positive=True,
+                                                payment_origin=payment_origin
+                                            ) """
+                            payment.status = status_paid
+                            payment.paid_at = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
+                            payment.payment_date = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
+                            if is_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
+                                invoice.payment_type_final = payment_type.name
+                                invoice.payment_type_token_final = payment_type.token
+                                invoices_to_update.append(invoice)
+                                payment_previous_status = payment.status
+                                payment.payment_type = payment_type.name
+                                payment.payment_type_token = payment_type.token
+                                payment.payment_origin_choice = payment_origin
+                                payment.save()
+                                if payment_origin:
+                                    last_movement = PaymentMovement.objects.filter(payment=payment, is_positive=True, payment_type__token=payment_type.token).order_by('-timestamp').first()
+                                    if last_movement:
+                                        last_movement.payment_origin = payment_origin
+                                        last_movement.save()
+                            if invoice.contract:
+                                contract = {
+                                    'id': invoice.contract.id,
+                                    'token': invoice.contract.token,
+                                    'holder': invoice.contract.holder.token,
+                                }
+                            elif invoice.contract_request:
+                                contract_request = {
+                                    'id': invoice.contract_request.id,
+                                    'token': invoice.contract_request.token,
+                                    'holder': invoice.contract_request.holder.token,
+                                }
+                            invoice_data = {
+                                'id': invoice.id,
+                                'token': invoice.token,
+                            }
+                        elif line[77:78] == '3':
+                            print("line: ", line[76:87])
+                            payment = Payment.objects.filter(token=line[76:87], status__in=[status_pending, status_expired, status_paid], commitment_deposit__isnull=False).first()
+                            if not payment:
+                                payment = Payment.objects.filter(
+                                    commitment_deposit__token=line[76:87], status__in=[status_pending, status_expired, status_paid], amount=total
+                                    ).first()
+                            if not payment:
+                                payment = Payment.objects.filter(
+                                    token__startswith=line[76:87], status__in=[status_pending, status_expired, status_paid], amount=total
+                                    ).first()
+                            commitment_deposit = payment.commitment_deposit
+                            
+                            payment_previous_status = payment.status
+                            """ if is_saving and payment_origin:
+                                if payment_previous_status == status_paid:
+                                    if not PaymentMovement.objects.filter(payment=payment, payment_origin__isnull=False).exists():
+                                        last_movement = PaymentMovement.objects.filter(payment=payment).order_by('-timestamp').first()
+                                        if last_movement:
+                                            last_movement.payment_origin = payment_origin
+                                            last_movement.save()
+                                        else:
+                                            PaymentMovement.objects.create(
+                                                user=request.user,
+                                                payment=payment,
+                                                movement_date=payment.payment_date or datetime.datetime.now().date(),
+                                                current_status=payment.status,
+                                                is_positive=True,
+                                                payment_origin=payment_origin
+                                            ) """
+                            payment.status = status_paid
+                            payment.paid_at = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
+                            payment.payment_date = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
+                            if is_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
+                                payment_previous_status = payment.status
+                                payment.payment_type = payment_type.name
+                                payment.payment_type_token = payment_type.token
+                                payment.payment_origin_choice = payment_origin
+                                payment.save()
+                                if payment_origin:
+                                    last_movement = PaymentMovement.objects.filter(payment=payment, is_positive=True, payment_type__token=payment_type.token).order_by('-timestamp').first()
+                                    if last_movement:
+                                        last_movement.payment_origin = payment_origin
+                                        last_movement.save()
+                            commitment_deposit_data = {
+                                'id': commitment_deposit.id,
+                                'token': commitment_deposit.token,
+                            }
+                            contract = {
+                                'id': commitment_deposit.contract.id,
+                                'token': commitment_deposit.contract.token,
+                                'holder': commitment_deposit.contract.holder.token,
+                            }
+                        elif line[77:78] == '5':
                             try:
-                                invoice = Invoice.objects.get(token=line[76:85])
+                                joined_payment = JoinedPayment.objects.get(token=line[76:87])
+                                payments = joined_payment.payments.all()
+                                if joined_payment.contract:
+                                    contract = {
+                                        'id': joined_payment.contract.id,
+                                        'token': joined_payment.contract.token,
+                                        'holder': joined_payment.contract.holder.token,
+                                    }
+                                data.append(self._build_register_data(
+                                    line=line, amount=total, contract=contract,
+                                    status_name=joined_payment.status.name if not is_saving else joined_payment_status_paid.name,
+                                    status_color=joined_payment.status.color if not is_saving else joined_payment_status_paid.color,
+                                    is_paid=False, payment_id=None,
+                                    joined_payment_id=joined_payment.id,
+                                    is_joined=True,
+                                ))
+                                for payment in payments:
+                                    invoice = payment.invoice
+                                    commitment_deposit = payment.commitment_deposit
+                                    invoice_data = None
+                                    commitment_deposit_data = None
+                                    if invoice:
+                                        invoice_data = {
+                                            'id': invoice.id,
+                                            'token': invoice.token,
+                                        }
+                                    if commitment_deposit:
+                                        commitment_deposit_data = {
+                                            'id': commitment_deposit.id,
+                                            'token': commitment_deposit.token,
+                                        }
+                                    
+                                    try:
+                                        already_in_balance = PiggyBankMovement.objects.filter(payment=payment).exists()
+                                    except:
+                                        already_in_balance = False
+                                    
+                                    if already_in_balance or is_saving:
+                                        is_paid = False
+                                    else:
+                                        is_paid = payment.status == status_paid if payment else None
+                                    
+                                    register_data = self._build_register_data(
+                                        line=line, amount=payment.amount, contract=contract,
+                                        status_name=payment.status.name if not is_saving else status_paid.name,
+                                        status_color=payment.status.color if not is_saving else status_paid.color,
+                                        is_paid=is_paid,
+                                        payment_id=payment.id if payment else None,
+                                        joined_payment_id=joined_payment.id,
+                                        is_joined=False,
+                                        invoice=invoice_data,
+                                        commitment_deposit=commitment_deposit_data,
+                                    )
+                                    data.append(register_data)
+                                
+                                if is_saving and joined_payment.status != joined_payment_status_paid:
+                                    register_joined_payment_log(joined_payment, joined_payment.status, joined_payment_status_paid, None, user)
+                                    mark_payments_as_paid(joined_payment, user, payment_origin)
+                                    joined_payment.status = joined_payment_status_paid
+                                    joined_payment.save()
+                                continue    
+                            except Exception as e:
+                                print("error 05: ", e)
+                                continue
+                        else:
+                            try:
+                                invoice = Invoice.objects.get(token=line[76:87])
                             except Exception:
                                 invoice = None
-                        if invoice:
-                            payment = invoice.payments.order_by('-created_at').first()
-                            if payment:
-                                payment_previous_status, contract, contract_request, invoice_data = self._apply_rnd_paid_state(
-                                    line=line,
-                                    payment=payment,
-                                    invoice=invoice,
-                                    is_saving=is_saving,
-                                    payment_origin=payment_origin,
-                                    payment_type=payment_type,
-                                    status_paid=status_paid,
-                                    status_cancelled=status_cancelled,
-                                    invoices_to_update=invoices_to_update,
-                                    request=request,
-                                )
-                    Invoice.objects.bulk_update(invoices_to_update, ['payment_type_final', 'payment_type_token_final'])
+                            if not invoice:
+                                try:
+                                    invoice = Invoice.objects.get(token=line[76:85])
+                                except Exception:
+                                    invoice = None
+                            if invoice:
+                                payment = invoice.payments.order_by('-created_at').first()
+                                if payment:
+                                    payment_previous_status, contract, contract_request, invoice_data = self._apply_rnd_paid_state(
+                                        line=line,
+                                        payment=payment,
+                                        invoice=invoice,
+                                        is_saving=is_saving,
+                                        payment_origin=payment_origin,
+                                        payment_type=payment_type,
+                                        status_paid=status_paid,
+                                        status_cancelled=status_cancelled,
+                                        invoices_to_update=invoices_to_update,
+                                        request=request,
+                                    )
+                        Invoice.objects.bulk_update(invoices_to_update, ['payment_type_final', 'payment_type_token_final'])
                 except Exception as e:
                     print("error: ", e)
                     print("problem finding invoice and updating payment")
