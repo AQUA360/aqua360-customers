@@ -40,6 +40,24 @@ def _get_period_months(invoice):
     return period_days / 30
 
 
+def _get_historical_recalculation_data(invoice):
+    historical_persons = invoice.persons_final if invoice.persons_final and invoice.persons_final > 0 else None
+    line_items = invoice.line_items.filter(is_active=True)
+    if historical_persons is None:
+        occupant_line = line_items.filter(
+            line_item_type__quantity__token="total_persons"
+        ).first()
+        if occupant_line and occupant_line.units and occupant_line.units > 0:
+            historical_persons = int(occupant_line.units)
+
+    historical_price_rate_ids = list(
+        line_items.filter(price_rate__isnull=False)
+        .values_list("price_rate_id", flat=True)
+        .distinct()
+    )
+    return historical_persons, historical_price_rate_ids
+
+
 def _get_invoice_warning(invoice, contracts):
     warning = None
 
@@ -100,20 +118,27 @@ def delete_and_recalculate_invoice(invoice_id):
 
         if not contracts:
             raise ValueError(f"Invoice {invoice_id} has no contracts associated via readings")
+        if len(contracts) > 1:
+            raise ValueError(f"Invoice {invoice_id} is associated with multiple contracts")
 
         billing = original_invoice.billing
         title = billing.name if billing else original_invoice.title
         period_months = _get_period_months(original_invoice)
+        historical_persons, historical_price_rate_ids = _get_historical_recalculation_data(
+            original_invoice
+        )
 
         original_invoice.delete()
 
         new_invoice = generate_consumption_invoice_multiple(
-            contracts,
+            contracts[0],
             readings,
             title,
             billing=billing,
             period_months=period_months,
             recalculation_strategy="original",
+            historical_persons=historical_persons,
+            historical_price_rate_ids=historical_price_rate_ids,
         )
 
         if not new_invoice:
@@ -168,6 +193,9 @@ def recalculate_invoice_smart(invoice_id):
 
         title = billing.name if billing else original_invoice.title_final
         period_months = _get_period_months(original_invoice)
+        historical_persons, historical_price_rate_ids = _get_historical_recalculation_data(
+            original_invoice
+        )
 
         original_invoice.delete()
 
@@ -178,6 +206,8 @@ def recalculate_invoice_smart(invoice_id):
             billing=billing,
             period_months=period_months,
             recalculation_strategy="original",
+            historical_persons=historical_persons,
+            historical_price_rate_ids=historical_price_rate_ids,
         )
 
         if not new_invoice:

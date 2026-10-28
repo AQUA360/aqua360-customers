@@ -365,15 +365,25 @@ def pre_check_readings(readings):
     else:
         return readings.exclude(id__in=reading_to_remove)
 
-def _resolve_recalculation_persons(contract, refactor_invoice, recalculation_strategy):
+def _resolve_recalculation_persons(
+    contract, refactor_invoice, recalculation_strategy, historical_persons=None
+):
     """Resolve occupants from the original invoice or the current contract.
 
     Original rebilling looks up the source invoice by token first, then falls
     back to an integer primary key. Legacy invoices without ``persons_final``
     use the active total-persons line item before using contract occupants.
     """
-    effective_persons = contract.total_persons if contract and contract.total_persons else 3
-    if recalculation_strategy != "original" or not refactor_invoice:
+    effective_persons = (
+        contract.total_persons
+        if contract and contract.total_persons and contract.total_persons > 0
+        else get_contract_min_persons()
+    )
+    if recalculation_strategy != "original":
+        return effective_persons
+    if historical_persons is not None:
+        return historical_persons if historical_persons > 0 else effective_persons
+    if not refactor_invoice:
         return effective_persons
 
     try:
@@ -385,20 +395,22 @@ def _resolve_recalculation_persons(contract, refactor_invoice, recalculation_str
                 original_invoice = None
         if not original_invoice:
             return effective_persons
-        if original_invoice.persons_final is not None:
+        if original_invoice.persons_final and original_invoice.persons_final > 0:
             return original_invoice.persons_final
 
         occupant_line = original_invoice.line_items.filter(
             line_item_type__quantity__token='total_persons', is_active=True
         ).first()
-        if occupant_line and occupant_line.units:
+        if occupant_line and occupant_line.units and occupant_line.units > 0:
             return int(occupant_line.units)
     except Exception:
         logger.exception("Unable to resolve occupants for invoice reference %r", refactor_invoice)
     return effective_persons
 
 
-def _group_recalculation_price_rates(contract, refactor_invoice, recalculation_strategy):
+def _group_recalculation_price_rates(
+    contract, refactor_invoice, recalculation_strategy, historical_price_rate_ids=None
+):
     """Group current or historical price rates by supply point.
 
     Original rebilling looks up the source invoice by token first, then falls
@@ -408,23 +420,30 @@ def _group_recalculation_price_rates(contract, refactor_invoice, recalculation_s
     """
     group_by_supply_point = {}
 
-    if recalculation_strategy == "original" and refactor_invoice:
+    if recalculation_strategy == "original" and (
+        refactor_invoice or historical_price_rate_ids is not None
+    ):
         try:
-            original_invoice = Invoice.objects.filter(token=str(refactor_invoice)).first()
-            if not original_invoice:
-                try:
-                    original_invoice = Invoice.objects.filter(id=int(refactor_invoice)).first()
-                except (TypeError, ValueError):
-                    original_invoice = None
-            if original_invoice and original_invoice.line_items.filter(price_rate__isnull=False).exists():
+            original_invoice = None
+            if historical_price_rate_ids is None:
+                original_invoice = Invoice.objects.filter(token=str(refactor_invoice)).first()
+                if not original_invoice:
+                    try:
+                        original_invoice = Invoice.objects.filter(id=int(refactor_invoice)).first()
+                    except (TypeError, ValueError):
+                        original_invoice = None
+            if historical_price_rate_ids is None and original_invoice:
+                historical_price_rate_ids = list(
+                    original_invoice.line_items.filter(
+                        is_active=True, price_rate__isnull=False
+                    ).values_list('price_rate_id', flat=True).distinct()
+                )
+            if historical_price_rate_ids:
                 price_rate_ids = list(
-                    original_invoice.line_items.filter(price_rate__isnull=False)
-                    .values_list('price_rate_id', flat=True)
-                    .distinct()
+                    historical_price_rate_ids
                 )
                 contract_pricerates = contract.price_rates.filter(
                     price_rate__in=price_rate_ids,
-                    price_rate__is_active=True,
                 ).order_by('price_rate__product__position')
                 current_price_rate_ids = set(contract_pricerates.values_list('price_rate_id', flat=True))
                 for contract_price_rate in contract_pricerates:
@@ -468,6 +487,8 @@ def generate_consumption_invoice_multiple(
     period_months=None,
     new_holder=None,
     recalculation_strategy="current",
+    historical_persons=None,
+    historical_price_rate_ids=None,
 ):
     from billing.models import Invoice
     """Genera i confirma una factura de consum a partir de les lectures del contracte.
@@ -481,7 +502,7 @@ def generate_consumption_invoice_multiple(
         return None
 
     effective_persons = _resolve_recalculation_persons(
-        contract, refactor_invoice, recalculation_strategy
+        contract, refactor_invoice, recalculation_strategy, historical_persons
     )
 
     # Resoldre lectures de control a la seva versió modificada activa no-control (p. ex. modificacions a la UI)
@@ -670,7 +691,10 @@ def generate_consumption_invoice_multiple(
         use_single_price_rate = contract.use_general_price_rates or contract.supply_points.count() == 1
 
         group_by_supply_point = _group_recalculation_price_rates(
-            contract, refactor_invoice, recalculation_strategy
+            contract,
+            refactor_invoice,
+            recalculation_strategy,
+            historical_price_rate_ids,
         )
 
         for reading in readings:
@@ -993,7 +1017,6 @@ def generate_consumption_invoice_multiple(
             'type_final': invoice_type.token if invoice_type else None,
             "status": status,
             'responsible_consumption': consumption_responsible,
-            'persons_final': effective_persons if effective_persons > 0 else 3,
             'persons_final': effective_persons if effective_persons > 0 else get_contract_min_persons(),
             'serie': serie,
             'serie_final': serie_final_provisional,
@@ -1141,7 +1164,7 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
                     consumption_days = reading.consumption_days
                 
                 for lit in line_item_types:
-                    line_items = create_from_lineitemtype(contract, lit, reading, consumption_total, consumption_days, invoice_line_items_data, recalculation_strategy=recalculation_strategy, effective_persons=effective_persons)
+                    line_items = create_from_lineitemtype(contract, lit, reading, consumption_total, consumption_days, invoice_line_items_data)
                     if line_items:
                         for line_item in line_items:
                             invoice_line_items_data.append(line_item)
@@ -1346,7 +1369,7 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
                     raise Exception("No billing range found")
                 line_item_types = billing_range.line_item_types.all()
                 for lit in line_item_types:
-                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data, recalculation_strategy=recalculation_strategy, effective_persons=effective_persons)
+                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data)
                     if line_items:
                         for line_item in line_items:
                             invoice_line_items_data.append(line_item)
@@ -1534,7 +1557,7 @@ def invoice_return_charge(invoice, title, return_reason=None):
                 
                 for lit in line_item_types:
                     # print(f"Line item type: {lit}")
-                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data, None, invoice, recalculation_strategy=recalculation_strategy, effective_persons=effective_persons)
+                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data, None, invoice)
                     # print("\n\ncreated line items")
                     # print(line_items)
                     if line_items:
@@ -2200,7 +2223,7 @@ def invoice_claim_paid_generate(invoice_id, title):
                 line_item_types = billing_range.line_item_types.all()
                 
                 for lit in line_item_types:
-                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data, recalculation_strategy=recalculation_strategy, effective_persons=effective_persons)
+                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data)
                     if line_items:
                         for line_item in line_items:
                             pass  # log removed
@@ -3115,7 +3138,7 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
                 if not line_item_types:
                     continue
                 for lit in line_item_types:
-                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data, recalculation_strategy=recalculation_strategy, effective_persons=effective_persons)
+                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data)
                     if line_items:
                         for line_item in line_items:
                             if line_item:
