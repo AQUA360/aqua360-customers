@@ -300,11 +300,18 @@ class ContractRequestType(models.Model):
     clause_templates = models.ManyToManyField('ClauseTemplate', blank=True, verbose_name="Clause Template")
     price_rates = models.ManyToManyField('pricing.PriceRate', blank=True, related_name="contract_request_type_price_rates", verbose_name="Price Rate")
     registration_price_rates = models.ManyToManyField('pricing.PriceRate', blank=True, related_name="contract_request_type_registration_price_rates", verbose_name="Registration Price Rate")
+    change_of_name_registration_price_rates = models.ManyToManyField('pricing.PriceRate', blank=True, related_name="contract_request_type_change_of_name_registration_price_rates", verbose_name="Change Of Name Registration Price Rate")
     has_persons = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_default = models.BooleanField(default=False)
     def __str__(self):
         return self.name if self.name else "ContractRequestType ID {}".format(self.token)
+
+    def get_registration_price_rates(self, is_change_of_name=False):
+        # Els canvis de nom tenen la seva pròpia llista de tarifes de contractació
+        if is_change_of_name:
+            return self.change_of_name_registration_price_rates.all()
+        return self.registration_price_rates.all()
 
 class Bail(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)

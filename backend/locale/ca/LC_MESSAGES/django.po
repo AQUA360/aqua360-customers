@@ -6259,3 +6259,15 @@ msgstr "Efectiu"
 #: billing/templates/payment_proof_template.html
 msgid "Targeta (TPV Físic)"
 msgstr "Targeta (TPV Físic)"
+
+#: documentmanager/utils/export_registry.py
+msgid "Tipus de sol·licitud"
+msgstr "Tipus de sol·licitud"
+
+#: documentmanager/utils/export_registry.py
+msgid "Canvi de nom"
+msgstr "Canvi de nom"
+
+#: documentmanager/utils/export_registry.py
+msgid "Nova alta"
+msgstr "Nova alta"

@@ -4275,3 +4275,15 @@ msgstr "The filtering task does not exist or has not finished yet."
 
 msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
 msgstr "Some contracts do not belong to this claim request."
+
+#: documentmanager/utils/export_registry.py
+msgid "Tipus de sol·licitud"
+msgstr "Request type"
+
+#: documentmanager/utils/export_registry.py
+msgid "Canvi de nom"
+msgstr "Change of name"
+
+#: documentmanager/utils/export_registry.py
+msgid "Nova alta"
+msgstr "New registration"

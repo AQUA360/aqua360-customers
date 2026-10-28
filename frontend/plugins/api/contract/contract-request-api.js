@@ -11,7 +11,7 @@ export default defineNuxtPlugin(nuxtApp => {
   const getAll = async (
     searchQuery = '', filters = [], page = 1, sort = null, desc = false,
     category_ids = [], use_type_ids = [], client_type_ids = [], has_invoice = null,
-    search_by_address = ''
+    search_by_address = '', is_change_of_name = null
   ) => {
     let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
 
@@ -46,6 +46,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
     if (search_by_address) {
       apiUrl += `&search_by_address=${encodeURIComponent(search_by_address)}`;
+    }
+
+    if (is_change_of_name != null) {
+      apiUrl += `&is_change_of_name=${is_change_of_name}`;
     }
 
     let exploitation_id = localStorage.getItem('exploitation');
@@ -84,7 +88,7 @@ export default defineNuxtPlugin(nuxtApp => {
   const exportData = async (
     searchQuery = '', filters = [], sort = null, desc = false,
     category_ids = [], use_type_ids = [], client_type_ids = [], has_invoice = null,
-    search_by_address = '', columns = []
+    search_by_address = '', columns = [], is_change_of_name = null
   ) => {
     return $apiManager.exportTable(entity, {
       searchQuery, filters, sort, desc, columns,
@@ -94,6 +98,7 @@ export default defineNuxtPlugin(nuxtApp => {
         client_type: client_type_ids,
         no_invoice: has_invoice,
         search_by_address,
+        is_change_of_name,
       }
     });
   }
