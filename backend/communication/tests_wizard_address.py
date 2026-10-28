@@ -132,3 +132,16 @@ class WizardAddressCompanySplitTests(TestCase):
         communications = self.create_communications('default')
         self.assertEqual(len(communications), 2)
         self.assertTrue(all(c.used_address is None for c in communications))
+
+    def test_single_group_infers_contract_from_invoices_without_contracts(self):
+        communications = self.create_communications('invoice', contracts=[], invoices=[self.invoices[0].id])
+        self.assertEqual(len(communications), 1)
+        self.assertEqual(list(communications[0].contracts.values_list('id', flat=True)), [self.first_contract.id])
+        self.assertEqual(communications[0].used_address, 'Invoice snapshot address')
+
+    def test_single_group_keeps_payload_contracts(self):
+        communications = self.create_communications(
+            'invoice', contracts=[self.first_contract.id], invoices=[self.invoices[0].id],
+        )
+        self.assertEqual(len(communications), 1)
+        self.assertEqual(list(communications[0].contracts.values_list('id', flat=True)), [self.first_contract.id])

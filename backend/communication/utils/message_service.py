@@ -145,6 +145,10 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                 }
 
                 if len(communication_types) <= 1:
+                    # Sense contractes al payload, els de les factures (com fa la separació de sota)
+                    if not group['contracts']:
+                        for invoice_id in group['invoices']:
+                            _append_unique(group['contracts'], invoice_contract_map.get(invoice_id))
                     split_person_groups.append(group)
                     continue
 

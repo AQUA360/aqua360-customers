@@ -114,6 +114,15 @@ def get_communication_logo(communication, company):
             return logo
     return build_logo_path(company.get('logo'))
 
+def get_communication_company(communication, company):
+    """Dades d'empresa de la comunicació. Amb `use_multiple_companies` són les de l'empresa del
+    contracte (si en té); si no, les de l'empresa de la configuració."""
+    if communication and use_multiple_companies():
+        contract_company = get_contract_company(communication.contracts.select_related('company').first())
+        if contract_company:
+            return CompanySerializer(contract_company).data
+    return company
+
 def validate_letter_contract_companies(communication):
     if use_multiple_companies():
         company_ids = set(communication.contracts.values_list('company_id', flat=True))
@@ -240,14 +249,16 @@ def create_email_template(communication):
       companies = config_company.company_configs.all()
       company_ins = companies.first() if len(companies) > 0 else None
       company = CompanySerializer(company_ins).data if company_ins else None
-      
+      letter_company = get_communication_company(communication, company)
+
+      # Si l'empresa del contracte no té logo, es fa servir el de la configuració
       logo = get_communication_logo(communication, company)
 
-      
+
       person = PersonSerializer(communication.person).data if communication.person else None
       now_date = datetime.now().date()
-      
-      com_values = get_com_values(person, communication, company)
+
+      com_values = get_com_values(person, communication, letter_company)
       
       subject = refactor_text(subject, com_values)
       body = refactor_text(body, com_values)
@@ -256,7 +267,7 @@ def create_email_template(communication):
       html_content = render_to_string(
           'basic_email.html',
           {
-              'company': company,
+              'company': letter_company,
               'person': communication.person,
               'address': communication.used_address,
               'subject': subject,
@@ -988,19 +999,22 @@ def get_email_image_preview(message, comm_id=None):
       existing_html = comm.email_html_content
     person = comm.person
     person = PersonSerializer(person).data if person else None
-    company = comm.company_config.company_configs.first()
-    company = CompanySerializer(company).data if company else None
+    config_company = comm.company_config.company_configs.first()
+    config_company = CompanySerializer(config_company).data if config_company else None
+    company = get_communication_company(comm, config_company)
     body = refactor_text(body, get_com_values(person, comm, company))
     subject = refactor_text(subject, get_com_values(person, comm, company))
-  
+
   else:
     person = Person.objects.get(id=person_id)
     person = PersonSerializer(person).data if person else None
     company_config = CompanyConfig.objects.get(id=company_config_id)
-    company = company_config.company_configs.first()
-    company = CompanySerializer(company).data if company else None
-  
-  logo = get_communication_logo(comm if comm_id else None, company)
+    config_company = company_config.company_configs.first()
+    config_company = CompanySerializer(config_company).data if config_company else None
+    company = config_company
+
+  # Si l'empresa del contracte no té logo, es fa servir el de la configuració
+  logo = get_communication_logo(comm if comm_id else None, config_company)
   
   body = mark_safe(body.replace('\n', '<br>'))
   subject = mark_safe(subject.replace('\n', '<br>'))

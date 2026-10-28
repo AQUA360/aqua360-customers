@@ -278,3 +278,61 @@ class CommunicationLetterRegenerationTests(TestCase):
                     task_group.assert_not_called()
                     self.assertEqual(result['status'], 'error')
                     self.assertIn('contracts from different companies', result['message'])
+
+
+@override_settings(DOMAIN_MEDIA='https://media.example')
+class CommunicationEmailCompanyTests(SimpleTestCase):
+    """El correu i la seva previsualització mostren les dades de la mateixa empresa que els placeholders."""
+
+    config_data = {'name': 'Configured company', 'logo': 'uploads/logo/config.png'}
+    contract_data = {'name': 'Contract company', 'logo': 'uploads/logo/contract.png'}
+
+    def run_email(self, multiple, has_logo, preview):
+        from communication.utils import communication_service as service
+
+        with ExitStack() as stack:
+            config_company = MagicMock()
+            contract_company = MagicMock()
+            contract_company.logo = MagicMock() if has_logo else None
+            if has_logo:
+                contract_company.logo.name = self.contract_data['logo']
+            contract = MagicMock(company=contract_company)
+            communication = MagicMock(person=None, email_html_content=None)
+            communication.company_config.company_configs.all.return_value = MagicMock(
+                **{'__len__.return_value': 1, 'first.return_value': config_company})
+            communication.company_config.company_configs.first.return_value = config_company
+            communication.contracts.select_related.return_value.first.return_value = contract
+            message = communication.messages.filter.return_value.first.return_value
+            message.subject = '%company.name'
+            message.body = '%company.name'
+
+            def mock(name, **kwargs):
+                return stack.enter_context(patch.object(service, name, **kwargs))
+
+            stack.enter_context(patch('service.utils.contract_company.use_multiple_companies', return_value=multiple))
+            mock('use_multiple_companies', return_value=multiple)
+            mock('ConfigProject')
+            mock('CompanySerializer', side_effect=lambda company: MagicMock(
+                data=self.contract_data if company is contract_company else self.config_data))
+            values = mock('get_com_values', side_effect=lambda person, comm, company: {'company.name': company['name']})
+            render = mock('render_to_string', return_value='<html></html>')
+
+            if preview:
+                mock('Communication').objects.get.return_value = communication
+                mock('html_to_png_base64', return_value='')
+                service.get_email_image_preview({'subject': '%company.name', 'body': '%company.name'}, comm_id=1)
+            else:
+                service.create_email_template(communication)
+            return render.call_args.args[1], values.call_args.args[2]
+
+    def test_email_and_preview_use_contract_company_with_config_logo_fallback(self):
+        for preview in (False, True):
+            for multiple, has_logo in ((True, True), (True, False), (False, True)):
+                with self.subTest(preview=preview, multiple=multiple, has_logo=has_logo):
+                    context, values_company = self.run_email(multiple, has_logo, preview)
+                    expected = self.contract_data if multiple else self.config_data
+                    self.assertEqual(context['company'], expected)
+                    self.assertEqual(values_company, expected)
+                    self.assertEqual(context['subject'], expected['name'])
+                    logo = self.contract_data['logo'] if multiple and has_logo else self.config_data['logo']
+                    self.assertEqual(context['logo'], f'https://media.example/media/{logo}')
