@@ -3,7 +3,7 @@ from unittest import mock
 
 from django.contrib.auth.models import Permission, User
 from django.test import TestCase, override_settings
-from django.utils import timezone
+from django.utils import timezone, translation
 from rest_framework.test import APIClient
 
 from coredata.models import ConfigProject
@@ -644,10 +644,14 @@ class TestIncidentLifecycle(IncidentTestBase):
         }, format='json')
         from coredata.models import CallRegister
         CallRegister.objects.create(incident_id=incident_id, channel='EMAIL', email='abonat@example.com', user=self.user)
-        events = self.client.get(f'{INCIDENT_URL}{incident_id}/timeline/').data
+        # Registre antic del client desat amb el sentit per defecte (sortint)
+        CallRegister.objects.create(incident_id=incident_id, contacted_by_client=True, phone='600000000', user=self.user)
+        with translation.override('en'), override_settings(LANGUAGE_CODE='en'):
+            events = self.client.get(f'{INCIDENT_URL}{incident_id}/timeline/').data
+        self.assertIn('Inbound call', [event['title'] for event in events if event['kind'] == 'call'])
         kinds = [event['kind'] for event in events]
         # Un correu no mostra l'estat d'atenció telefònica
-        email = next(event for event in events if event['kind'] == 'call')
+        email = next(event for event in events if event['kind'] == 'call' and event['detail'] == 'abonat@example.com')
         self.assertEqual(email['detail'], 'abonat@example.com')
         self.assertIn('created', kinds)
         self.assertIn('change', kinds)
@@ -831,6 +835,8 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         CallRegister.objects.create(call_start=now, answered=True, user=self.user)  # sortint
         # Registre antic marcat com a contacte del client però desat com a sortint, atès i sense espera coneguda
         CallRegister.objects.create(call_start=now, answered=True, user=self.user, contacted_by_client=True)
+        # Entrant sense cap data informada: es fa servir la de creació
+        CallRegister.objects.create(user=self.user, direction=CallRegister.DIRECTION_INBOUND)
         saved = {}
         with mock.patch('statistics.utils.report_incident_compliance_service.save_report',
                         side_effect=lambda content, **kwargs: saved.setdefault('wb', content) and 1):
@@ -839,7 +845,7 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         sheet = saved['wb'].worksheets[-1]
         values = [row[1] for row in sheet.iter_rows(min_row=2, values_only=True)]
         # Entrants, ateses, abandonades, ateses en menys de 3 minuts, %, espera mitjana, transferides
-        self.assertEqual(values[:3], [4, 3, 1])
+        self.assertEqual(values[:3], [5, 3, 1])
         self.assertEqual(values[3], 1)
         self.assertEqual(values[4], 33.33)
         self.assertEqual(values[5], 210)
