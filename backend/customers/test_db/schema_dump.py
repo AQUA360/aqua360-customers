@@ -134,6 +134,7 @@ def load_sql_file(settings_dict, dbname, sql_path):
         "psql",
         "--set",
         "ON_ERROR_STOP=1",
+        "--single-transaction",
         "--quiet",
         "--no-psqlrc",
         "--file",

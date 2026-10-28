@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: backend/.ci/test_schema.sql
-          key: esquema-proves-pg16-${{ hashFiles('backend/**/migrations/*.py', 'backend/customers/test_db/**', 'backend/coredata/management/commands/build_test_schema.py') }}
+          key: esquema-proves-pg16-${{ hashFiles('backend/**/migrations/*.py', 'backend/customers/test_db/**', 'backend/coredata/management/commands/build_test_schema.py', 'backend/customers/settings.py', 'backend/customers/settings_test.py', 'backend/requirements.in', 'backend/requirements.ubuntu.txt') }}
       - name: Genera l'esquema de test
         if: steps.esquema.outputs.cache-hit != 'true'
         run: python manage.py build_test_schema --output .ci/test_schema.sql

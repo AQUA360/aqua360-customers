@@ -42,9 +42,6 @@ class TestSchemaDatabaseCreation(DatabaseCreation):
         settings.DATABASES[self.connection.alias]["NAME"] = test_database_name
         self.connection.settings_dict["NAME"] = test_database_name
 
-        # Les proves usen TestCase, que desfà els canvis amb una transacció.
-        # Saltem la serialització posterior: rellegiria totes les taules i el
-        # graf de migracions.
         if not self._has_migrations_table():
             if verbosity >= 1:
                 self.log(
@@ -68,6 +65,9 @@ class TestSchemaDatabaseCreation(DatabaseCreation):
                 )
         elif verbosity >= 1:
             self.log("La base de test ja té esquema; no es torna a carregar.")
+
+        if serialize:
+            self.connection._test_serialized_contents = self.serialize_db_to_string()
 
         call_command("createcachetable", database=self.connection.alias)
         self.connection.ensure_connection()
