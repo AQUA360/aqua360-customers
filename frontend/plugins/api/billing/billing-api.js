@@ -259,6 +259,58 @@ export default defineNuxtPlugin(nuxtApp => {
     } catch (error) { throw error; }
   }
 
+  const documentDownloadQuery = (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.billing_ids?.length) query.set('billing_ids', params.billing_ids.join(','));
+    if (params.communication_process_ids?.length) {
+      query.set('communication_process_ids', params.communication_process_ids.join(','));
+    }
+    if (params.payment_type_tokens?.length) {
+      query.set('payment_type_tokens', params.payment_type_tokens.join(','));
+    }
+    if (params.delivery) query.set('delivery', params.delivery);
+    if (params.ordering) query.set('ordering', params.ordering);
+    query.set('descending', params.descending ? '1' : '0');
+    if (params.batch_mode && params.batch_mode !== 'none') {
+      query.set('batch_mode', params.batch_mode);
+      if (params.batch_size) query.set('batch_size', params.batch_size);
+    }
+    return query.toString();
+  }
+
+  const previewDocumentDownload = async (params = {}) => {
+    const apiUrl = `${apiHost}/billing/document-downloads/preview/?${documentDownloadQuery(params)}`;
+    try {
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (response) return response;
+      throw new Error('Error no trobat');
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  const getDocumentDownloads = async () => {
+    const apiUrl = `${apiHost}/billing/document-downloads/`;
+    try {
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (response) return response;
+      throw new Error('Error no trobat');
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  const requestDocumentDownload = async (data) => {
+    const apiUrl = `${apiHost}/billing/document-downloads/`;
+    try {
+      const response = await $apiManager.fetch(apiUrl, 'POST', data, { 'Content-Type': 'application/json' });
+      if (response) return response;
+      throw new Error('Error no trobat');
+    } catch (error) {
+      throw error;
+    }
+  }
+
   const getBatchPdf = async (id) => {
     let apiUrl = apiHost + '/billing/batch/' + id + '/pdf';
     try {
@@ -467,6 +519,9 @@ export default defineNuxtPlugin(nuxtApp => {
     getBillingQueue,
     sendBillingQueueAction,
     getBatchPdf,
+    previewDocumentDownload,
+    getDocumentDownloads,
+    requestDocumentDownload,
     start,
     checkMissingContracts,
     getReadings,
