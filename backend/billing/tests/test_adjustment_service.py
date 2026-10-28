@@ -242,6 +242,57 @@ def create_contract_signal_config():
     ConfigProject.objects.get_or_create(token='contract_terminated_status', defaults={'value': 'terminated'})
 
 
+class TestContractMinPersons(TestCase):
+    """El mínim de persones (persons_min) es configura amb el ConfigProject contract_min_persons."""
+
+    @classmethod
+    def setUpTestData(cls):
+        create_contract_signal_config()
+        cls.contract = Contract.objects.create(total_persons=2)
+
+    def _variables(self, contract):
+        variables, _ = generate_variables(contract, 10, 30)
+        return variables
+
+    def test_default_min_persons_without_config(self):
+        variables = self._variables(Contract.objects.get(pk=self.contract.pk))
+        self.assertEqual(variables['persons_min'], 3)
+
+    def test_configured_min_persons(self):
+        ConfigProject.objects.create(token='contract_min_persons', value='5')
+        variables = self._variables(Contract.objects.get(pk=self.contract.pk))
+        self.assertEqual(variables['persons_min'], 5)
+        self.assertEqual(variables['contract.total_persons'], 2)
+
+    def test_contract_persons_above_min(self):
+        ConfigProject.objects.create(token='contract_min_persons', value='1')
+        variables = self._variables(Contract.objects.get(pk=self.contract.pk))
+        self.assertEqual(variables['persons_min'], 2)
+
+    def test_min_persons_without_contract(self):
+        ConfigProject.objects.create(token='contract_min_persons', value='4')
+        variables = self._variables(None)
+        self.assertEqual(variables['persons_min'], 4)
+        self.assertEqual(variables['contract.total_persons'], 4)
+
+    def test_invalid_config_uses_default(self):
+        for value in ('', 'abc', '0'):
+            ConfigProject.objects.update_or_create(token='contract_min_persons', defaults={'value': value})
+            variables = self._variables(Contract.objects.get(pk=self.contract.pk))
+            self.assertEqual(variables['persons_min'], 3)
+
+    def test_config_queried_once_per_billing_scope(self):
+        ConfigProject.objects.create(token='contract_min_persons', value='4')
+        with CaptureQueriesContext(connection) as ctx:
+            with billing_run_cache_scope():
+                for _ in range(2):
+                    contract = Contract.objects.get(pk=self.contract.pk)
+                    for _ in range(3):
+                        self.assertEqual(self._variables(contract)['persons_min'], 4)
+        count = sum(1 for q in ctx.captured_queries if 'FROM "coredata_configproject"' in q['sql'])
+        self.assertEqual(count, 1)
+
+
 class TestVariableQueryCaching(TestCase):
     """Les variables es consulten un cop per contracte i els tipus un cop per facturació."""
 
