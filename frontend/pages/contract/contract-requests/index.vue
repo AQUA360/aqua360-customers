@@ -275,22 +275,22 @@ const checkInAdvacedFilters = (newFilters) => {
   if (isFilterShown.value.some(filter => filter.id === 'client_type') && !newFilters.some(filter => filter.id === 'client_type')) {
     client_types.value = [];
     selected_client_types.value = [];
-    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, true, searchByAddress.value);
   } else if (isFilterShown.value.some(filter => filter.id === 'category') && !newFilters.some(filter => filter.id === 'category')) {
     categories.value = [];
     selected_categories.value = [];
-    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, true, searchByAddress.value);
   } else if (isFilterShown.value.some(filter => filter.id === 'use_type') && !newFilters.some(filter => filter.id === 'use_type')) {
     use_types.value = [];
     selected_use_types.value = [];
-    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, true, searchByAddress.value);
   } else if (isFilterShown.value.some(filter => filter.id === 'no_invoice') && !newFilters.some(filter => filter.id === 'no_invoice')) {
     has_invoice.value = null;
-    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, true, searchByAddress.value);
   } else if (isFilterShown.value.some(filter => filter.id === 'request_kind') && !newFilters.some(filter => filter.id === 'request_kind')) {
     is_change_of_name.value = null;
     selected_request_kinds.value = [];
-    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+    getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, true, searchByAddress.value);
   }
 }
 
