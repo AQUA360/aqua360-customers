@@ -176,6 +176,8 @@ export default {
     send_receipt: 'Generate and send receipt',
     receipt_sent: 'Receipt generated and sent',
     receipt_generated: 'Receipt generated (no email to send it)',
+    receipt_email_error: 'Receipt generated, but it could not be sent by email. Check the email settings.',
+    receipt_unknown: 'Could not confirm whether the receipt was generated. Check it before trying again.',
     commercial_block: 'No commercial offers'
   },
   incident_settings: {
@@ -2087,6 +2089,7 @@ export default {
     appropriated_payment: 'Appropriated payment',
     appropiate_bail: 'Deposit appropriation',
     return_bail: 'Return deposit',
+    bail_return_date: 'Deposit return date',
     selected_payments: 'Selected payments',
     excluded_payments: 'Excluded payments',
     single_pay: 'Pay individually',
@@ -3523,6 +3526,7 @@ export default {
     confirm_create_vulnerability_request: 'Are you sure you want to create a vulnerability request?',
     confirm_liquidate_bail: 'Are you sure you want to appropriate the deposit?\nThe total amount will accumulate in the contract\'s wallet',
     confirm_return_bail: 'Are you sure you want to return the deposit?\nA pre-invoice will be generated and the amount will be added to the contract balance',
+    confirm_return_bail_without_invoice: 'Are you sure you want to return the deposit?\nNo invoice will be generated and the amount will not be added to the contract balance',
     confirm_activate_biller: 'Are you sure you want to activate this biller?',
     confirm_deactivate_biller: 'Are you sure you want to deactivate this biller?',
     confirm_generate_batch: 'Are you sure you want to generate this billing batch?',

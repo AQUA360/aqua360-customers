@@ -176,6 +176,8 @@ export default {
     send_receipt: 'Generar i enviar justificant',
     receipt_sent: 'Justificant generat i enviat',
     receipt_generated: 'Justificant generat (sense correu per enviar-lo)',
+    receipt_email_error: "Justificant generat, però no s'ha pogut enviar per correu. Revisa la configuració de correu.",
+    receipt_unknown: "No s'ha pogut confirmar si el justificant s'ha generat. Comprova-ho abans de tornar-ho a provar.",
     commercial_block: 'Sense ofertes comercials'
   },
   incident_settings: {
@@ -2148,6 +2150,7 @@ export default {
     appropriated_payment: 'Pagament apropiat',
     appropiate_bail: 'Apropiació de fiança',
     return_bail: 'Retornar fiança',
+    bail_return_date: 'Data de retorn de la fiança',
     selected_payments: 'Pagaments seleccionats',
     excluded_payments: 'Pagaments exclosos',
     single_pay: 'Pagar individualment',
@@ -3659,6 +3662,7 @@ export default {
     confirm_create_vulnerability_request: 'Segur que vols crear una sol·licitud de vulnerabilitat?',
     confirm_liquidate_bail: 'Segur que vols apropiar la fiança?\nL\'import total s\'acumularà a la cartera del contracte',
     confirm_return_bail: 'Segur que vols retornar la fiança?\nEs generarà la factura prèvia i l\'import s\'acumularà a la cartera del contracte',
+    confirm_return_bail_without_invoice: 'Segur que vols retornar la fiança?\nNo es generarà cap factura ni s\'abonarà l\'import a la cartera del contracte',
     confirm_activate_biller: 'Segur que vols activar aquest facturador?',
     confirm_deactivate_biller: 'Segur que vols desactivar aquest facturador?',
     confirm_generate_batch: 'Segur que vols generar aquest lot de facturació?',

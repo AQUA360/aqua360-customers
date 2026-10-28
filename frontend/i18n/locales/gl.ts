@@ -176,6 +176,8 @@ export default {
     send_receipt: 'Xerar e enviar xustificante',
     receipt_sent: 'Xustificante xerado e enviado',
     receipt_generated: 'Xustificante xerado (sen correo para envialo)',
+    receipt_email_error: 'Xustificante xerado, pero non se puido enviar por correo. Revisa a configuración de correo.',
+    receipt_unknown: 'Non se puido confirmar se o xustificante se xerou. Compróbao antes de tentalo de novo.',
     commercial_block: 'Sen ofertas comerciais'
   },
   incident_settings: {
@@ -2087,6 +2089,7 @@ export default {
     appropriated_payment: 'Pago apropiado',
     appropiate_bail: 'Apropiación de fianza',
     return_bail: 'Devolver fianza',
+    bail_return_date: 'Data de devolución da fianza',
     selected_payments: 'Pagos seleccionados',
     excluded_payments: 'Pagos excluídos',
     single_pay: 'Pagar individualmente',
@@ -3523,6 +3526,7 @@ export default {
     confirm_create_vulnerability_request: 'Seguro que queres crear unha solicitude de vulnerabilidade?',
     confirm_liquidate_bail: 'Seguro que queres apropiar a fianza?\nO importe total acumularase na carteira do contrato',
     confirm_return_bail: 'Seguro que queres devolver a fianza?\nXerarase a factura previa e o importe acumularase na carteira do contrato',
+    confirm_return_bail_without_invoice: 'Seguro que queres devolver a fianza?\nNon se xerará ningunha factura nin se aboará o importe na carteira do contrato',
     confirm_activate_biller: 'Estás seguro de que queres activar este facturador?',
     confirm_deactivate_biller: 'Estás seguro de que queres desactivar este facturador?',
     confirm_generate_batch: 'Seguro que queres xerar este lote de facturación?',

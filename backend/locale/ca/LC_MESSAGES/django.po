@@ -3329,6 +3329,14 @@ msgid "Outbound call"
 msgstr "Trucada sortint"
 
 #: notification/utils/incident_timeline.py
+msgid "Inbound email"
+msgstr "Correu rebut"
+
+#: notification/utils/incident_timeline.py
+msgid "Outbound email"
+msgstr "Correu enviat"
+
+#: notification/utils/incident_timeline.py
 #, python-format
 msgid "Report %(token)s"
 msgstr "Informe %(token)s"
@@ -3380,8 +3388,8 @@ msgid "Fora de termini"
 msgstr "Fora de termini"
 
 #: statistics/utils/report_incident_compliance_service.py
-msgid "% dins de termini"
-msgstr "% dins de termini"
+msgid "Dins de termini (%)"
+msgstr "Dins de termini (%)"
 
 #: statistics/utils/report_incident_compliance_service.py
 msgid "Pendents vençudes"

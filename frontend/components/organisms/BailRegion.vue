@@ -70,11 +70,26 @@ const getData = async (load = true) => {
   }
 }
 
+const todayString = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+const showReturnModal = ref(false);
+const returnDate = ref(todayString());
+
+const openReturnModal = () => {
+  returnDate.value = todayString();
+  showReturnModal.value = true;
+}
+
 const returnBail = async () => {
-  if (!confirm(t("confirmation_text_block.confirm_return_bail"))) return
+  if (!returnDate.value) return
+  showReturnModal.value = false;
   try {
     let save_data = {
-      bail_ids: [props.id]
+      bail_ids: [props.id],
+      return_date: returnDate.value
     }
     await $BailApiService.returnImmediately(save_data);
     await getData(false);
@@ -201,7 +216,7 @@ const setActiveTab = (tab) => {
         <div class="relative">
           <OptionsDropdown v-if="objectPermissions?.can_change">
             <DropdownOption v-if="data.status?.token == status_unreturned_token"
-              :name="t('billing_block.return_bail')" @click="returnBail()"/>
+              :name="t('billing_block.return_bail')" @click="openReturnModal()"/>
             <DropdownOption :disabled="data.status.token != status_pending_token"
               :name="t('billing_block.appropiate_bail')" @click="liquidateBail()"/>
             <DropdownOption :disabled="data.status.token != status_pending_token"
@@ -259,5 +274,37 @@ const setActiveTab = (tab) => {
           :id="props.id" :status="data.status?.id" module="contract" @changed="handleStatusChanged" />
       </div>
     </div>
+
+    <Teleport to="body">
+      <div v-if="showReturnModal">
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-[60]" @click="showReturnModal = false" />
+        <div class="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4" role="dialog"
+          aria-modal="true" @click="showReturnModal = false">
+          <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full relative" @click.stop>
+            <button type="button" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+              :aria-label="t('common.cancel')" @click="showReturnModal = false">
+              <Icon name="fa6-solid:xmark" class="text-xl" />
+            </button>
+            <p class="leading-relaxed text-slate-600 font-medium whitespace-pre-line pr-6">
+              {{ data?.return_invoice_disabled
+                ? t('confirmation_text_block.confirm_return_bail_without_invoice')
+                : t('confirmation_text_block.confirm_return_bail') }}
+            </p>
+            <hr class="my-2">
+            <AtomsInputDate v-model="returnDate" :label="t('billing_block.bail_return_date')" :required="true"
+              :invalid="!returnDate" />
+            <div class="flex justify-end gap-2 mt-6">
+              <button type="button" class="button-default disabled:cursor-not-allowed" :disabled="!returnDate"
+                @click="returnBail()">
+                {{ t('common.confirm') }}
+              </button>
+              <button type="button" class="button-primary" @click="showReturnModal = false">
+                {{ t('common.cancel') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div><!-- end region__content -->
 </template>

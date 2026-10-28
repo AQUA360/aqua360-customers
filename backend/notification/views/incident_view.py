@@ -140,10 +140,14 @@ class IncidentViewSet(viewsets.ModelViewSet):
   @action(detail=True, methods=['post'], url_path='send-receipt')
   def send_receipt(self, request, pk=None):
       """Genera (i envia, si hi ha correu) el justificant de registre."""
-      from notification.utils.incident_utils import send_receipt
+      from notification.utils.incident_utils import ReceiptEmailError, send_receipt
       incident = self.get_object()
       try:
           sent = send_receipt(incident)
+      except ReceiptEmailError:
+          # El justificant ja està generat i es pot descarregar: s'avisa que no s'ha enviat
+          logger.exception("Error enviant el justificant de la incidència %s", incident.pk)
+          return Response({"sent": False, "email_error": True, "document_id": incident.receipt_document_id})
       except Exception:
           logger.exception("Error generant el justificant de la incidència %s", incident.pk)
           return Response({"error": "Error generating the receipt."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

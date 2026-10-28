@@ -480,7 +480,8 @@ class CallRegister(models.Model):
     
     person_contact = models.ForeignKey(PersonContact, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
     contract = models.ForeignKey('contract.Contract', on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
-    incident = models.ForeignKey('notification.Incident', on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
+    # Si es purga la incidència, les trucades es conserven a l'historial de trucades
+    incident = models.ForeignKey('notification.Incident', on_delete=models.SET_NULL, null=True, blank=True, related_name='call_registers')
     phone = models.CharField(max_length=255, null=True, blank=True)
     email = models.CharField(max_length=255, null=True, blank=True)
     
