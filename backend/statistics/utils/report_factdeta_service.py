@@ -43,12 +43,8 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
 
         try:
             files = generate_factdeta_document(exploitations, invoices)
-        except (ACACompanyError, FactdetaValidationError):
-            logger.exception("Error de validació en la generació de FACTDETA")
-            return Response(
-                {"error": "No s'ha pogut generar el report amb les dades proporcionades."},
-                status=status.HTTP_400_BAD_REQUEST
-            ), None, None
+        except (ACACompanyError, FactdetaValidationError) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
         if not files:
             return None, None, None
 
