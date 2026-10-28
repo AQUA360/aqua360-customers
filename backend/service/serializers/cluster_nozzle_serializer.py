@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django_filters import rest_framework as filters
 
 from coredata.models import Address, City, Province, Street, StreetNumber, StreetType, StreetNumberType, Country
+from coredata.utils.address_utils import address_extra_filter, normalize_address_extra
 from coredata.utils.name_utils import generate_token
 from service.serializers.supply_point_serializer import SupplyPointSaveNozzleSerializer, SupplyPointSerializer
 from ..models import ( ClusterNozzle, Cluster, SupplyPoint, SupplyPointPlacement, SupplyPointStatus )
@@ -266,8 +267,10 @@ class ClusterNozzleSaveSerializer(serializers.ModelSerializer):
                 )
 
         # Create Address
-        
-        if Address.objects.filter(street=street,
+        address_extra = normalize_address_extra(address_data.get('address_extra'))
+
+        if Address.objects.filter(address_extra_filter(address_extra),
+            street=street,
             street_number=street_number,
             city=city,
             province=province,
@@ -276,10 +279,10 @@ class ClusterNozzleSaveSerializer(serializers.ModelSerializer):
             building=address_data.get('building', ''),
             floor=address_data.get('floor', ''),
             door=address_data.get('door', ''),
-            stair=address_data.get('stair', ''),
-            address_extra=address_data.get('address_extra') or None).exists():
+            stair=address_data.get('stair', '')).exists():
             
-            address = Address.objects.filter(street=street,
+            address = Address.objects.filter(address_extra_filter(address_extra),
+                street=street,
                 street_number=street_number,
                 city=city,
                 province=province,
@@ -288,8 +291,7 @@ class ClusterNozzleSaveSerializer(serializers.ModelSerializer):
                 building=address_data.get('building', ''),
                 floor=address_data.get('floor', ''),
                 door=address_data.get('door', ''),
-                stair=address_data.get('stair', ''),
-                address_extra=address_data.get('address_extra') or None).first()
+                stair=address_data.get('stair', '')).first()
         else:
             address = Address.objects.create(
                 street=street,
@@ -302,7 +304,7 @@ class ClusterNozzleSaveSerializer(serializers.ModelSerializer):
                 floor=address_data.get('floor', ''),
                 door=address_data.get('door', ''),
                 stair=address_data.get('stair', ''),
-                address_extra=address_data.get('address_extra') or None
+                address_extra=address_extra
             )
         
         return address

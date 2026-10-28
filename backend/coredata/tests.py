@@ -704,3 +704,22 @@ class AddressExtraTests(TestCase):
         untouched.refresh_from_db()
         self.assertEqual(address.address_search, 'Carrer Major, 5 Edifici 2-1, Bar, Ciutat')
         self.assertEqual(untouched.address_search, 'antiga')
+
+    def test_cerca_sense_ampliacio_coincideix_amb_null_i_buida(self):
+        from coredata.models import Address
+        from coredata.utils.address_utils import address_extra_filter, normalize_address_extra
+
+        empty = self._address(address_extra='')
+        null = self._address()
+        with_extra = self._address(address_extra='Bar')
+
+        self.assertIsNone(normalize_address_extra('  '))
+        self.assertEqual(normalize_address_extra(' Bar '), 'Bar')
+        self.assertEqual(
+            set(Address.objects.filter(address_extra_filter(normalize_address_extra(''))).values_list('id', flat=True)),
+            {empty.id, null.id},
+        )
+        self.assertEqual(
+            list(Address.objects.filter(address_extra_filter('Bar')).values_list('id', flat=True)),
+            [with_extra.id],
+        )
