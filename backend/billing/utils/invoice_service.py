@@ -45,6 +45,9 @@ invoice_class = None
 default_serie = None
 simplified_serie = None
 _active_supply_point_status = None
+use_exploitation_token_for_payment = None
+use_exploitation_token_for_payment_updated_at = None
+USE_EXPLOITATION_TOKEN_FOR_PAYMENT_CONFIG = 'use_exploitation_token_for_payment'
 
 def resolve_selected_company(exploitation, default_company, company_id):
     """Resol l'empresa a assignar a una factura quan l'usuari en tria explícitament
@@ -65,6 +68,35 @@ def resolve_selected_category(category_id):
     if not category_id:
         return None
     return InvoiceCategory.objects.filter(id=category_id).first()
+
+
+def clear_use_exploitation_token_for_payment_cache():
+    """Invalidate the in-process cache (e.g. after ConfigProject is saved)."""
+    global use_exploitation_token_for_payment, use_exploitation_token_for_payment_updated_at
+    use_exploitation_token_for_payment = None
+    use_exploitation_token_for_payment_updated_at = None
+
+
+def get_use_exploitation_token_for_payment():
+    """Return config value, refreshing the cache when ConfigProject.updated_at changes."""
+    global use_exploitation_token_for_payment, use_exploitation_token_for_payment_updated_at
+    current_updated_at = (
+        ConfigProject.objects
+        .filter(token=USE_EXPLOITATION_TOKEN_FOR_PAYMENT_CONFIG)
+        .values_list('updated_at', flat=True)
+        .first()
+    )
+    if (
+        use_exploitation_token_for_payment is not None
+        and use_exploitation_token_for_payment_updated_at == current_updated_at
+    ):
+        return use_exploitation_token_for_payment
+
+    use_exploitation_token_for_payment = ConfigProject.objects.get(
+        token=USE_EXPLOITATION_TOKEN_FOR_PAYMENT_CONFIG
+    ).value
+    use_exploitation_token_for_payment_updated_at = current_updated_at
+    return use_exploitation_token_for_payment
 
 
 def get_simplified_serie():
@@ -365,17 +397,137 @@ def pre_check_readings(readings):
     else:
         return readings.exclude(id__in=reading_to_remove)
 
-def generate_consumption_invoice_multiple(contract, readings, title, refactor_invoice=None, is_budget=False, extra_payment_data=None, billing=None, billing_batch=None, period_months=None, new_holder=None):
+def _resolve_recalculation_persons(contract, refactor_invoice, recalculation_strategy, original_invoice=None):
+    """Resolve occupants from the original invoice or the current contract.
+
+    Original rebilling looks up the source invoice by token first, then falls
+    back to an integer primary key. Legacy invoices without ``persons_final``
+    use the active total-persons line item before using contract occupants.
+    A supplied invoice is read directly before deletion during recalculation.
+    """
+    effective_persons = (
+        contract.total_persons
+        if contract and contract.total_persons and contract.total_persons > 0
+        else get_contract_min_persons()
+    )
+    if recalculation_strategy != "original" or (not refactor_invoice and original_invoice is None):
+        return effective_persons
+
+    try:
+        if original_invoice is None:
+            original_invoice = Invoice.objects.filter(token=str(refactor_invoice)).first()
+        if not original_invoice and refactor_invoice:
+            try:
+                original_invoice = Invoice.objects.filter(id=int(refactor_invoice)).first()
+            except (TypeError, ValueError):
+                original_invoice = None
+        if not original_invoice:
+            return effective_persons
+        if original_invoice.persons_final is not None and original_invoice.persons_final > 0:
+            return original_invoice.persons_final
+
+        occupant_line = original_invoice.line_items.filter(
+            line_item_type__quantity__token='total_persons', is_active=True
+        ).first()
+        if occupant_line and occupant_line.units and int(occupant_line.units) > 0:
+            return int(occupant_line.units)
+    except Exception:
+        logger.exception("Unable to resolve occupants for invoice reference %r", refactor_invoice)
+    return effective_persons
+
+
+def _group_recalculation_price_rates(contract, refactor_invoice, recalculation_strategy, original_invoice=None):
+    """Group current or historical price rates by supply point.
+
+    Original rebilling looks up the source invoice by token first, then falls
+    back to an integer primary key. Rates still linked to the contract are
+    grouped by their supply point; missing historical rates use the contract's
+    supply-point context. Other strategies use active contract rates.
+    A supplied invoice is read directly before deletion during recalculation.
+    """
+    group_by_supply_point = {}
+
+    if recalculation_strategy == "original" and (refactor_invoice or original_invoice is not None):
+        try:
+            if original_invoice is None:
+                original_invoice = Invoice.objects.filter(token=str(refactor_invoice)).first()
+            if not original_invoice and refactor_invoice:
+                try:
+                    original_invoice = Invoice.objects.filter(id=int(refactor_invoice)).first()
+                except (TypeError, ValueError):
+                    original_invoice = None
+            if original_invoice and original_invoice.line_items.filter(price_rate__isnull=False).exists():
+                price_rate_ids = list(
+                    original_invoice.line_items.filter(price_rate__isnull=False)
+                    .values_list('price_rate_id', flat=True)
+                    .distinct()
+                )
+                contract_pricerates = contract.price_rates.filter(
+                    price_rate__in=price_rate_ids,
+                    price_rate__is_active=True,
+                ).order_by('price_rate__product__position')
+                current_price_rate_ids = set(contract_pricerates.values_list('price_rate_id', flat=True))
+                for contract_price_rate in contract_pricerates:
+                    group_by_supply_point.setdefault(
+                        contract_price_rate.supply_point, []
+                    ).append(contract_price_rate.price_rate)
+
+                missing_ids = [rate_id for rate_id in price_rate_ids if rate_id not in current_price_rate_ids]
+                target_supply_point = (
+                    contract.supply_points.first()
+                    if contract.supply_points.exists()
+                    else None
+                )
+                for missing_rate in PriceRate.objects.filter(id__in=missing_ids):
+                    group_by_supply_point.setdefault(target_supply_point, []).append(missing_rate)
+                return group_by_supply_point
+        except Exception:
+            logger.exception(
+                "Unable to resolve historical rates for invoice reference %r",
+                refactor_invoice,
+            )
+
+    contract_pricerates = contract.price_rates.filter(
+        price_rate__is_active=True
+    ).order_by('price_rate__product__position')
+    for contract_price_rate in contract_pricerates:
+        group_by_supply_point.setdefault(
+            contract_price_rate.supply_point, []
+        ).append(contract_price_rate.price_rate)
+    return group_by_supply_point
+
+def generate_consumption_invoice_multiple(
+    contract,
+    readings,
+    title,
+    refactor_invoice=None,
+    is_budget=False,
+    extra_payment_data=None,
+    billing=None,
+    billing_batch=None,
+    period_months=None,
+    new_holder=None,
+    recalculation_strategy="current",
+    effective_persons=None,
+    price_rates_by_supply_point=None,
+):
+    from billing.models import Invoice
     """Genera i confirma una factura de consum a partir de les lectures del contracte.
 
     Aplica les tarifes dels períodes corresponents, respectant els canvis de
     comptador ja facturats. Retorna la factura creada o None si no hi ha cap
     comptador, les lectures són anteriors a l'alta sense excepció aplicable o no
     es generen línies de factura.
+
+    Accepta persones i tarifes ja resoltes quan la factura original s'ha eliminat.
     """
     if not any(reading.meter for reading in readings):
-        print("[generate_consumption_invoice_multiple] FAILED: No meter found in readings or readings list is empty.")
         return None
+
+    if effective_persons is None:
+        effective_persons = _resolve_recalculation_persons(
+            contract, refactor_invoice, recalculation_strategy
+        )
 
     # Resoldre lectures de control a la seva versió modificada activa no-control (p. ex. modificacions a la UI)
     def resolve_reading(r):
@@ -436,8 +588,6 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
         min_days = None
     min_days_reading = next((r for r in readings if r.consumption_days == min_days), None)
 
-    print(f"Contract: {contract.token}")
-    print(f"Consumption og: {consumption_og}")
     for reading in readings:
         # print(f"Reading is close: {reading.is_close}")
         # print(f"Reading previous reading: {reading.previous_reading.is_close}")
@@ -563,14 +713,12 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             return None
         
         use_single_price_rate = contract.use_general_price_rates or contract.supply_points.count() == 1
-        
-        contract_pricerates = contract.price_rates.filter(price_rate__is_active=True).order_by('price_rate__product__position')
 
-        group_by_supply_point = {}
-        for price_rate in contract_pricerates:
-            if price_rate.supply_point not in group_by_supply_point:
-                group_by_supply_point[price_rate.supply_point] = []
-            group_by_supply_point[price_rate.supply_point].append(price_rate.price_rate)
+        group_by_supply_point = price_rates_by_supply_point
+        if group_by_supply_point is None:
+            group_by_supply_point = _group_recalculation_price_rates(
+                contract, refactor_invoice, recalculation_strategy
+            )
 
         for reading in readings:
             # El consum de cada lectura és el del seu comptador: amb un contracte de diversos punts de
@@ -731,7 +879,7 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
 
                 sorted_lit = sorted(line_item_types, key=lambda l: (l.billing_range.start if l.billing_range else date.min, l.name))
                 for lit in sorted_lit:
-                    line_items = create_from_lineitemtype(contract, lit, reading, consumption_total, consumption_days, invoice_line_items_data, change_date=change_date, leak_reading=leak_reading, billing_correction=period_days, prev_date=prev_reading_date, period_months=period_months)
+                    line_items = create_from_lineitemtype(contract, lit, reading, consumption_total, consumption_days, invoice_line_items_data, change_date=change_date, leak_reading=leak_reading, billing_correction=period_days, prev_date=prev_reading_date, period_months=period_months, recalculation_strategy=recalculation_strategy, effective_persons=effective_persons)
                     if line_items:
                         for line_item in line_items:
                             # print(f"Line item: {line_item}")
@@ -756,7 +904,7 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
         print(f"Error creating line items: {e}")
         raise Exception("Error creating line items")
     
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     # print(f"Creating invoice {number}")
     try:
         payment_type_instance = None
@@ -892,7 +1040,7 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
             'type_final': invoice_type.token if invoice_type else None,
             "status": status,
             'responsible_consumption': consumption_responsible,
-            'persons_final': contract_base.total_persons if contract_base.total_persons > 0 else get_contract_min_persons(),
+            'persons_final': effective_persons if effective_persons > 0 else get_contract_min_persons(),
             'serie': serie,
             'serie_final': serie_final_provisional,
             'serie_token_final': serie.token,
@@ -1051,7 +1199,7 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
             raise Exception("Error creating line items")
             
         
-        number = generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         # print(f"Creating invoice {number}")
 
         invoice = None
@@ -1279,7 +1427,7 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
             
         if not exploitation:
             exploitation = contract.supply_point_default.connection.exploitation
-        number = generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         # print(f"Creating invoice {number}")
 
         invoice = None
@@ -1432,7 +1580,7 @@ def invoice_return_charge(invoice, title, return_reason=None):
                 
                 for lit in line_item_types:
                     # print(f"Line item type: {lit}")
-                    line_items = create_from_lineitemtype(contract, lit, None,None,None,invoice_line_items_data, None, invoice)
+                    line_items = create_from_lineitemtype(contract, lit, None, None, None, invoice_line_items_data, None, invoice)
                     # print("\n\ncreated line items")
                     # print(line_items)
                     if line_items:
@@ -1446,7 +1594,7 @@ def invoice_return_charge(invoice, title, return_reason=None):
             raise Exception("Error creating line items")
         
         
-        number = '02' + generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         # print(f"Creating invoice surcharge {number}")
         
         # year = datetime.datetime.now().year
@@ -1475,7 +1623,7 @@ def invoice_return_charge(invoice, title, return_reason=None):
                 child_found = True
         
         data = {
-            'token': '02' + invoice.token[-9:],
+            'token': number,
             'number': number,
             'issue_date': issue_date,
             'billing_period_month': invoice.billing_period_month,
@@ -1608,7 +1756,7 @@ def invoice_connection_generate(user, connection_request_id, title, payment_type
         raise Exception("Error creating line items")
     
     
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     try:
         # year = datetime.datetime.now().year
         
@@ -1744,7 +1892,7 @@ def return_invoice(invoice, payment_type_id):
     today = datetime.datetime.now().date()
     
     data = {
-            'token': generate_invoice_id(),
+            'token': generate_invoice_id(exploitation_token=invoice.exploitation.token if invoice.exploitation else '0'),
             'number': invoice.number,
             'contract': invoice.contract,
             'used_aca': invoice.used_aca,
@@ -2111,7 +2259,7 @@ def invoice_claim_paid_generate(invoice_id, title):
             raise Exception("Error creating line items")
             
         
-        number = generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         pass  # log removed
         
         invoice = None
@@ -2454,7 +2602,7 @@ def invoice_contract_termination_generate(
         pass  # log removed
         raise Exception("Error creating line items")
     
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     # print(f"Creating invoice {number}")
     try:
         if billing_entity and not bill_termination_requester:
@@ -2658,7 +2806,7 @@ def pass_budget_to_invoice(invoice):
         new_issue_date = invoice.batch.issue_date if invoice.batch and invoice.batch.issue_date else datetime.datetime.now().date()
         pass  # log removed
         pass  # log removed
-        token = check_existing_token(invoice.token)
+        token = check_existing_token(invoice.token, exploitation_token=invoice.exploitation.token if invoice.exploitation else '0')
         data = {
                 'token': token,
                 'number': invoice.number,
@@ -2788,7 +2936,7 @@ def check_piggy_bank(invoice, total, generate_payment=False):
     if generate_payment:
         payment_type = PaymentType.objects.get(token="BALANCE")
         new_payment = Payment.objects.create(
-            token=generate_payment_id('01'),
+            token=generate_payment_id('01', exploitation_token=invoice.exploitation.token if invoice.exploitation else '0'),
             name=f"{invoice.title_final}",
             status=paid_status,
             contract=contract,
@@ -2940,7 +3088,7 @@ def check_person_piggy_bank(invoice, total, generate_payment=False):
             pending_status = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_pending_token').value)
             payment_type = PaymentType.objects.get(token="BALANCE")
             new_payment = Payment.objects.create(
-                token=generate_payment_id('01'),
+                token=generate_payment_id('01', exploitation_token=invoice.exploitation.token if invoice.exploitation else '0'),
                 name=f"{invoice.title_final}",
                 status=paid_status,
                 person=selected_person,
@@ -3031,7 +3179,7 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             )
         )
 
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     # print(f"Creating invoice {number}")
     try:
         payment_type_instance = None
@@ -3248,7 +3396,7 @@ def get_invoice_status(status_token):
     except InvoiceStatus.DoesNotExist:
         raise Exception(f"Invoice status with token {status_token} not found")
 
-def generate_invoice_id(used_token = '01'):
+def generate_invoice_id(used_token = '01', exploitation_token = '0'):
     """Generate a unique incremental invoice token using an atomic sequence row.
     - used_token: the prefix (serie) to use for the token.
     """
@@ -3257,6 +3405,17 @@ def generate_invoice_id(used_token = '01'):
 
     with transaction.atomic():
         # Lock or create the sequence row for this prefix
+        
+        use_exploitation_token_for_payment = get_use_exploitation_token_for_payment()
+        if use_exploitation_token_for_payment.lower() == 'true':
+            try:
+                if int(exploitation_token) > 0 and int(used_token) < 10:
+                    used_token = exploitation_token + used_token[1:]
+                else:
+                    used_token = used_token
+            except Exception:
+                used_token = used_token
+        
         seq = InvoiceSequence.objects.select_for_update().filter(prefix=used_token).first()
         if seq is None:
             # Initialize from existing max token for the prefix, if any
@@ -3359,8 +3518,18 @@ except ImportError:
 # 03 - Commitment Deposit
 # 04 - Balance
 
-def generate_payment_id(used_token):
+def generate_payment_id(used_token, exploitation_token='0'):
     from django.db.models import Max
+    
+    use_exploitation_token_for_payment = get_use_exploitation_token_for_payment()
+    if use_exploitation_token_for_payment.lower() == 'true':
+        try:
+            if int(exploitation_token) > 0 and int(used_token) < 10:
+                used_token = exploitation_token + used_token[1:]
+            else:
+                used_token = used_token
+        except Exception:
+            used_token = used_token
     
     max_token = Payment.objects.filter(
         token__startswith=used_token
@@ -3393,11 +3562,11 @@ def generate_payment_id(used_token):
     
     return new_token
 
-def check_existing_token(token):
+def check_existing_token(token, exploitation_token='0'):
     try:
         invoice_type = InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_invoice_token').value)
         if Invoice.objects.filter(token=token, type=invoice_type).exists():
-            return generate_invoice_id()
+            return generate_invoice_id(exploitation_token=exploitation_token)
         else:
             return token
     except Exception as e:

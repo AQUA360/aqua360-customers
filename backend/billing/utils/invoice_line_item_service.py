@@ -11,7 +11,6 @@ from coredata.utils.other_utils import round_ceil
 from service.models import ConnectionDiameter, MeterCaliber
 
 from contract.models import Contract, VariableType
-from service.models import ConnectionDiameter
 from ..models import AppliedAdjustment, Invoice, InvoiceLineItem, Reading
 from coredata.models import ConfigProject
 from coredata.utils.invoice_tram_config import should_show_all_consumption_trams
@@ -456,7 +455,23 @@ def return_billing_months_for_lineitemtype(billing_period_token):
 
 
 # Create Contract from ContractRequest
-def create_from_lineitemtype(contract, line_item_type, reading, consumption, consumption_days, existing_line_items=None, change_date=None, prev_invoice = None, leak_reading=None, is_termination=False, billing_correction=None, prev_date = None, period_months=None):
+def create_from_lineitemtype(
+    contract,
+    line_item_type,
+    reading,
+    consumption,
+    consumption_days,
+    existing_line_items=None,
+    change_date=None,
+    prev_invoice=None,
+    leak_reading=None,
+    is_termination=False,
+    billing_correction=None,
+    prev_date=None,
+    period_months=None,
+    recalculation_strategy="current",
+    effective_persons=None,
+):
     """Builds the invoice line items for a contract's line item type based on the given reading and consumption."""
     # log removed
     # print(f"Contract: {contract}")
@@ -607,7 +622,12 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
             else:
                 return None
         consumption_responsible = calc_consumption_responsible(contract, consum) if contract else None
-        variables, variable_types = generate_variables(contract, consum, dies_consum, diferencia_fuita, consumption_responsible, prev_invoice)
+        variables, variable_types = generate_variables(
+            contract, consum, dies_consum, diferencia_fuita,
+            consumption_responsible, prev_invoice,
+            recalculation_strategy=recalculation_strategy,
+            effective_persons=effective_persons
+        )
 
         # Correctors de variables de càlcul
         if line_item_type.active_choice or line_item_type.inactive_choice or line_item_type.is_prorated:
@@ -654,7 +674,12 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
         es_prorratejat = False
         prorratejat_quantitat = None
         consumption_responsible = calc_consumption_responsible(contract, consum) if contract else None
-        variables, variable_types = generate_variables(contract, consum, dies_consum, diferencia_fuita, consumption_responsible, prev_invoice)
+        variables, variable_types = generate_variables(
+            contract, consum, dies_consum, diferencia_fuita,
+            consumption_responsible, prev_invoice,
+            recalculation_strategy=recalculation_strategy,
+            effective_persons=effective_persons
+        )
         units_multiplier = None
         units_adjusted = None
     # print("got initial data\n")
@@ -669,7 +694,10 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
         prorratejat_quantitat = line_item_type.billing_period.days
         
     if line_item_type.quantity and line_item_type.quantity.token == 'total_persons':
-        quantitat = contract.total_persons if contract and contract.total_persons > 0 else get_contract_min_persons()
+        if effective_persons is not None:
+            quantitat = effective_persons
+        else:
+            quantitat = contract.total_persons if contract and contract.total_persons > 0 else get_contract_min_persons()
     # print("passed reading")
     
     # Càlcul del preu
@@ -1301,4 +1329,3 @@ def create_from_lineitemtype_connection(connection, line_item_type, existing_lin
     
     
     return linies
-
