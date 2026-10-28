@@ -710,16 +710,18 @@ class AddressExtraTests(TestCase):
         from coredata.utils.address_utils import address_extra_filter, normalize_address_extra
 
         empty = self._address(address_extra='')
+        blank = self._address(address_extra=' \t')
         null = self._address()
-        with_extra = self._address(address_extra='Bar')
+        with_extra = self._address(address_extra=' Bar.\n')
+        self._address(address_extra='Bar2')
 
         self.assertIsNone(normalize_address_extra('  '))
         self.assertEqual(normalize_address_extra(' Bar '), 'Bar')
         self.assertEqual(
             set(Address.objects.filter(address_extra_filter(normalize_address_extra(''))).values_list('id', flat=True)),
-            {empty.id, null.id},
+            {empty.id, blank.id, null.id},
         )
         self.assertEqual(
-            list(Address.objects.filter(address_extra_filter('Bar')).values_list('id', flat=True)),
+            list(Address.objects.filter(address_extra_filter('Bar.')).values_list('id', flat=True)),
             [with_extra.id],
         )

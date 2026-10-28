@@ -1,6 +1,8 @@
 #
 #
 #
+import re
+
 from django.db.models import Q
 
 
@@ -8,10 +10,10 @@ def normalize_address_extra(value):
     return (value or '').strip() or None
 
 def address_extra_filter(address_extra):
-    # Les adreces sense ampliació la poden tenir a NULL o buida
+    # Les adreces existents poden tenir l'ampliació a NULL, buida o amb espais als extrems
     if address_extra:
-        return Q(address_extra=address_extra)
-    return Q(address_extra__isnull=True) | Q(address_extra='')
+        return Q(address_extra__regex=rf'^\s*{re.escape(address_extra)}\s*$')
+    return Q(address_extra__isnull=True) | Q(address_extra__regex=r'^\s*$')
 
 def get_address_extra_suffix(address):
     # L'ampliació (bar, local...) va al final i separada, sense substituir l'edifici
