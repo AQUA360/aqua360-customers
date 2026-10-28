@@ -66,7 +66,8 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
         calls = CallRegister.objects.annotate(
             received_at=Coalesce('incoming_at', 'call_start', 'time_call'),
         ).filter(
-            direction=CallRegister.DIRECTION_INBOUND, received_at__gte=start_date, received_at__lt=end_limit,
+            Q(direction=CallRegister.DIRECTION_INBOUND) | Q(contacted_by_client=True),
+            received_at__gte=start_date, received_at__lt=end_limit,
         ).exclude(channel='EMAIL')
         if exploitation_id and exploitation_id != 'all':
             # Mateixes rutes que incident_exploitation: contracte, punt de subministrament o agrupació
@@ -175,7 +176,8 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
             (_("Ateses"), answered.count()),
             (_("Abandonades"), calls.filter(Q(abandoned=True) | Q(abandoned_call=True)).count()),
             (_("Ateses en menys de 3 minuts"), within),
-            (_("% ateses en menys de 3 minuts"), _pct(within, len(waits))),
+            # Les ateses sense espera coneguda no es poden comptar com a ateses a temps
+            (_("% ateses en menys de 3 minuts"), _pct(within, answered.count())),
             (_("Espera mitjana (segons)"), _avg(waits)),
             (_("Transferides"), calls.filter(
                 Q(transfered_to__isnull=False) | (Q(transfered_to_name__isnull=False) & ~Q(transfered_to_name=''))

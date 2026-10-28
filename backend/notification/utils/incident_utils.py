@@ -419,8 +419,10 @@ def generate_receipt(incident):
         document_name=filename,
         date=timezone.now(),
     )
-    Incident.objects.filter(pk=incident.pk).update(receipt_document=document)
+    # Justificant nou: encara no s'ha enviat
+    Incident.objects.filter(pk=incident.pk).update(receipt_document=document, receipt_sent_at=None)
     incident.receipt_document = document
+    incident.receipt_sent_at = None
     return document, buffer.getvalue()
 
 

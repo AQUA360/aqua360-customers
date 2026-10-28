@@ -659,7 +659,7 @@ class CallRegisterSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         # El formulari indica si ha contactat el client: llavors la trucada és entrant i no compta com a primera resposta
-        if attrs.get('contacted_by_client'):
+        if attrs.get('contacted_by_client', getattr(self.instance, 'contacted_by_client', False)):
             attrs['direction'] = CallRegister.DIRECTION_INBOUND
         return attrs
 

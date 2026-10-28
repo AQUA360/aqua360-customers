@@ -787,6 +787,10 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         call = serializer.save()
         self.assertEqual(call.direction, CallRegister.DIRECTION_INBOUND)
         self.assertIsNone(Incident.objects.get(pk=incident.pk).first_response_at)
+        # Una actualització parcial que no torna a enviar el contacte del client la manté entrant
+        update = CallRegisterSerializer(call, data={'direction': 'outbound'}, partial=True, context={'request': mock.Mock(user=self.user)})
+        self.assertTrue(update.is_valid(), update.errors)
+        self.assertEqual(update.save().direction, CallRegister.DIRECTION_INBOUND)
 
     def test_purged_incident_keeps_calls(self):
         """Check that purging an incident keeps its calls in the call history."""
@@ -811,6 +815,8 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         CallRegister.objects.create(call_start=now, abandoned_call=True, **base)
         CallRegister.objects.create(call_start=now, channel='EMAIL', answered=True, **base)
         CallRegister.objects.create(call_start=now, answered=True, user=self.user)  # sortint
+        # Registre antic marcat com a contacte del client però desat com a sortint, atès i sense espera coneguda
+        CallRegister.objects.create(call_start=now, answered=True, user=self.user, contacted_by_client=True)
         saved = {}
         with mock.patch('statistics.utils.report_incident_compliance_service.save_report',
                         side_effect=lambda content, **kwargs: saved.setdefault('wb', content) and 1):
@@ -819,8 +825,9 @@ class TestIncidentCustomerCommunications(IncidentTestBase):
         sheet = saved['wb'].worksheets[-1]
         values = [row[1] for row in sheet.iter_rows(min_row=2, values_only=True)]
         # Entrants, ateses, abandonades, ateses en menys de 3 minuts, %, espera mitjana, transferides
-        self.assertEqual(values[:3], [3, 2, 1])
+        self.assertEqual(values[:3], [4, 3, 1])
         self.assertEqual(values[3], 1)
+        self.assertEqual(values[4], 33.33)
         self.assertEqual(values[5], 210)
         self.assertEqual(values[6], 1)
 

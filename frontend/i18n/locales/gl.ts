@@ -177,7 +177,7 @@ export default {
     receipt_sent: 'Xustificante xerado e enviado',
     receipt_generated: 'Xustificante xerado (sen correo para envialo)',
     receipt_email_error: 'Xustificante xerado, pero non se puido enviar por correo. Revisa a configuración de correo.',
-    receipt_error: 'Non se puido xerar o xustificante',
+    receipt_unknown: 'Non se puido confirmar se o xustificante se xerou. Compróbao antes de tentalo de novo.',
     commercial_block: 'Sen ofertas comerciais'
   },
   incident_settings: {

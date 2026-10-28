@@ -118,7 +118,11 @@ const sendReceipt = async () => {
     await refresh(false);
   } catch (err) {
     console.error('Error enviant el justificant:', err);
-    toast.error(t('incident_block.receipt_error'));
+    // L'error del servidor ja surt com a avís; sense resposta no se sap si s'ha generat i es recarrega
+    if (!err?.response?.status) {
+      toast.warning(t('incident_block.receipt_unknown'));
+      await refresh(false);
+    }
   }
 }
 

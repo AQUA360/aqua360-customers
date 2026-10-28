@@ -38,14 +38,18 @@ def build_timeline(incident):
                 f"{log.old_value or '-'} → {log.new_value or '-'}", log.user)
 
         for call in CallRegister.objects.filter(incident=incident).select_related('user', 'person_contact'):
-            contact = call.email if call.channel == 'EMAIL' else call.phone
-            detail = [contact or (call.person_contact.phone if call.person_contact else None),
+            person_contact = call.person_contact
+            if call.channel == 'EMAIL':
+                contact = call.email or (person_contact.email if person_contact else None)
+            else:
+                contact = call.phone or (person_contact.phone if person_contact else None)
+            detail = [contact,
                       _("answered") if call.answered else _("not answered"), call.comment]
             if call.channel == 'EMAIL':
                 title = _("Inbound email") if call.direction == CallRegister.DIRECTION_INBOUND else _("Outbound email")
             else:
                 title = _("Inbound call") if call.direction == CallRegister.DIRECTION_INBOUND else _("Outbound call")
-            add(call.call_start or call.time_call or call.created_at, 'call', title,
+            add(call.call_start or call.incoming_at or call.time_call or call.created_at, 'call', title,
                 ' · '.join(str(item) for item in detail if item), call.user)
 
         for report in incident.reports.select_related('user', 'deleted_by'):
