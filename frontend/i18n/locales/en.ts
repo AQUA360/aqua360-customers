@@ -2278,6 +2278,7 @@ export default {
     smart_metering_loading_preview: 'Fetching Smart Metering readings...',
     fetch_cut_reading_smart_metering: 'Get cut-off reading (Smart Metering)',
     fetch_initial_reading_smart_metering: 'Get initial reading (Smart Metering)',
+    fetch_reading_smart_metering: 'Get reading (Smart Metering)',
     smart_metering_reading_found: 'Reading found: {value} ({date})',
     smart_metering_reading_not_saved: 'The found reading has not been saved yet. Save it with the "Save manual reading" button.',
     smart_metering_reading_not_found: 'No reading was found for this meter and date',
