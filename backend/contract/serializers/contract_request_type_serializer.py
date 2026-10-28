@@ -13,6 +13,7 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
     variable_types = VariableTypeSerializer(many=True, read_only=True, required=False, allow_null=True)
     documentation_types = ContractRequestDocumentationTypeSerializer(many=True, read_only=True, required=False, allow_null=True)
     order_types = OrderTypeSerializer(many=True, read_only=True, required=False, allow_null=True)
+    change_of_name_order_types = OrderTypeSerializer(many=True, read_only=True, required=False, allow_null=True)
     clause_templates = serializers.SerializerMethodField()
     
     registration_price_rates = serializers.SerializerMethodField()
@@ -21,6 +22,7 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
     #write only
     variable_types_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
     order_types_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
+    change_of_name_order_types_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
     clause_templates_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
     price_rates_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
     registration_price_rates_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False, allow_null=True)
@@ -50,6 +52,7 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
     RELATION_IDS_FIELDS = {
         'variable_types_ids': 'variable_types',
         'order_types_ids': 'order_types',
+        'change_of_name_order_types_ids': 'change_of_name_order_types',
         'clause_templates_ids': 'clause_templates',
         'price_rates_ids': 'price_rates',
         'registration_price_rates_ids': 'registration_price_rates',
