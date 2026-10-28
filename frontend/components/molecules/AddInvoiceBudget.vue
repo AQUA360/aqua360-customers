@@ -465,6 +465,19 @@ const showCompanySelector = computed(() => useMultipleCompanies.value && compani
 
 const isSelectableCompanyBank = (bank) => bank.is_active && !!bank.iban;
 
+// L'API pagina els comptes: es recorren totes les pàgines abans de filtrar-los
+const fetchAllCompanyBanks = async (compId) => {
+  const banks = [];
+  let page = 1;
+  while (true) {
+    const banksResp = await $ExploitationApiService.getCompanyBanks(compId, { page });
+    if (Array.isArray(banksResp)) return banksResp;
+    banks.push(...(banksResp?.results || []));
+    if (!banksResp?.next) return banks;
+    page += 1;
+  }
+};
+
 // Cada càrrega es numera: si l'usuari canvia de contracte abans que acabi, la resposta antiga es descarta
 let companyBanksLoadId = 0;
 
@@ -504,6 +517,8 @@ const loadCompanyBanks = async () => {
     }
   }
 
+  // Només es revisa el compte triat quan s'ha pogut comprovar quins comptes té l'empresa
+  let banksVerified = false;
   if (compId) {
     try {
       if (!props.company) {
@@ -517,22 +532,23 @@ const loadCompanyBanks = async () => {
           console.error(err);
         }
       }
-      const banksResp = await $ExploitationApiService.getCompanyBanks(compId);
+      const banks = await fetchAllCompanyBanks(compId);
       if (isStale()) return;
-      const banks = banksResp?.results || (Array.isArray(banksResp) ? banksResp : []);
       companyBanks.value = banks.filter(isSelectableCompanyBank);
+      banksVerified = true;
     } catch(e) {
       console.error(e);
     }
   } else if (props.company?.company_banks) {
     companyBanks.value = props.company.company_banks.filter(isSelectableCompanyBank);
+    banksVerified = true;
   } else {
     companyBanks.value = [];
   }
-  // El compte triat ha de ser de l'empresa actual (també si no en té cap d'actiu). Si no s'ha pogut
-  // saber l'empresa, es manté el que ve de la forma de pagament del contracte.
-  const companyResolved = !!compId || !!props.company;
-  if (selectedCompanyBankDebit.value && companyResolved && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
+  // A les transferències, el compte triat ha de ser de l'empresa actual (també si no en té cap).
+  // A la domiciliació el compte ve de la forma de pagament del contracte i no es toca.
+  const isBankTransfer = paymentTypeOptionsById?.value[selectedPaymentType?.value]?.token == 'BANK_TRANSFER';
+  if (isBankTransfer && banksVerified && selectedCompanyBankDebit.value && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
     selectedCompanyBankDebit.value = null;
   }
   if (companyBanks.value?.length === 1 && paymentTypeOptionsById?.value[selectedPaymentType?.value]?.token == 'BANK_TRANSFER' && !selectedCompanyBankDebit.value) {
