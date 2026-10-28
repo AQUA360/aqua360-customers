@@ -228,7 +228,12 @@ class Address(models.Model):
             parts.append(floor_door_display)
             
         address_line = " ".join(parts).replace(", ", ", ")
-        
+
+        # L'ampliació (bar, local...) va al final i separada, sense substituir l'edifici
+        address_extra = (self.address_extra or "").strip()
+        if address_extra:
+            address_line = f"{address_line}, {address_extra}" if address_line else address_extra
+
         if (self.country and self.country.iso_code == 'ES'):
             return f"{address_line}, {city_display}".strip(", ")
         else:
@@ -253,7 +258,8 @@ class Address(models.Model):
 
     def save(self, *args, **kwargs):
         try:
-            self.address_search = str(self).strip()
+            # Truncat: amb l'ampliació l'adreça pot superar la mida del camp
+            self.address_search = str(self).strip()[:self._meta.get_field('address_search').max_length]
         except Exception:
             pass
         super().save(*args, **kwargs)
