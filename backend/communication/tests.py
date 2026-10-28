@@ -1,6 +1,6 @@
 """Tests for the supply cut <-> communication process link and its guard policy."""
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.serializers import ValidationError
 
 from communication import process_policy
@@ -1192,3 +1192,19 @@ class ClaimDocumentsAttachMigrationTests(TestCase):
         self.run_migration()  # sense config
         self.assertTrue(MessageTemplate.objects.get().attach_claim_documents)
         self.assertFalse(ConfigProject.objects.filter(token='ATTACH_CLAIM_DOCUMENTS_ENABLED').exists())
+
+
+class ValidateEmailListTests(SimpleTestCase):
+    """Validació del camp used_email: un o diversos emails separats per ';'."""
+
+    def test_accepts_single_and_multiple_emails(self):
+        from communication.models import validate_email_list
+        for value in (None, '', 'a@example.com', 'a@example.com;b@example.com', ' a@example.com ; b@example.com ;'):
+            validate_email_list(value)
+
+    def test_rejects_invalid_email(self):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from communication.models import validate_email_list
+        for value in ('no-es-email', 'a@example.com;no-es-email', 'a@example.com,b@example.com'):
+            with self.assertRaises(DjangoValidationError):
+                validate_email_list(value)
