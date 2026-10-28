@@ -38,10 +38,20 @@ def build_timeline(incident):
                 f"{log.old_value or '-'} → {log.new_value or '-'}", log.user)
 
         for call in CallRegister.objects.filter(incident=incident).select_related('user', 'person_contact'):
-            detail = [call.person_contact.phone if call.person_contact else None,
-                      _("answered") if call.answered else _("not answered"), call.comment]
-            add(call.time_call or call.created_at, 'call',
-                _("Inbound call") if call.direction == CallRegister.DIRECTION_INBOUND else _("Outbound call"),
+            person_contact = call.person_contact
+            if call.channel == 'EMAIL':
+                contact = call.email or (person_contact.email if person_contact else None)
+            else:
+                contact = call.phone or (person_contact.phone if person_contact else None)
+            # L'estat d'atenció només té sentit en les trucades, no en els correus
+            status = None if call.channel == 'EMAIL' else (_("answered") if call.answered else _("not answered"))
+            detail = [contact, status, call.comment]
+            is_inbound = call.direction == CallRegister.DIRECTION_INBOUND or call.contacted_by_client
+            if call.channel == 'EMAIL':
+                title = _("Inbound email") if is_inbound else _("Outbound email")
+            else:
+                title = _("Inbound call") if is_inbound else _("Outbound call")
+            add(call.call_start or call.incoming_at or call.time_call or call.created_at, 'call', title,
                 ' · '.join(str(item) for item in detail if item), call.user)
 
         for report in incident.reports.select_related('user', 'deleted_by'):

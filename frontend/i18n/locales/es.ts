@@ -176,6 +176,8 @@ export default {
     send_receipt: 'Generar y enviar justificante',
     receipt_sent: 'Justificante generado y enviado',
     receipt_generated: 'Justificante generado (sin correo para enviarlo)',
+    receipt_email_error: 'Justificante generado, pero no se ha podido enviar por correo. Revisa la configuración de correo.',
+    receipt_unknown: 'No se ha podido confirmar si el justificante se ha generado. Compruébalo antes de volver a intentarlo.',
     commercial_block: 'Sin ofertas comerciales'
   },
   incident_settings: {
@@ -2146,6 +2148,7 @@ export default {
     appropriated_payment: 'Pago apropiado',
     appropiate_bail: 'Apropiación de fianza',
     return_bail: 'Devolver fianza',
+    bail_return_date: 'Fecha de devolución de la fianza',
     selected_payments: 'Pagos seleccionados',
     excluded_payments: 'Pagos excluidos',
     single_pay: 'Pagar individualmente',
@@ -3646,6 +3649,7 @@ supply_cut_actions:   {
     confirm_create_vulnerability_request: '¿Seguro que quieres crear una solicitud de vulnerabilidad?',
     confirm_liquidate_bail: '¿Seguro que quieres apropiar la fianza?\nEl importe total se acumulará en la cartera del contrato',
     confirm_return_bail: '¿Seguro que quieres devolver la fianza?\nSe generará la factura previa y el importe se acumulará en la cartera del contrato',
+    confirm_return_bail_without_invoice: '¿Seguro que quieres devolver la fianza?\nNo se generará ninguna factura ni se abonará el importe en la cartera del contrato',
     confirm_activate_biller: '¿Estás seguro de que quieres activar este facturador?',
     confirm_deactivate_biller: '¿Estás seguro de que quieres desactivar este facturador?',
     confirm_generate_batch: '¿Seguro que quieres generar este lote de facturación?',
