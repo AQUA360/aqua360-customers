@@ -172,7 +172,7 @@ const handleSavedAdd = (item) => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,1fr,1fr,1fr,1fr,1fr,1fr,1fr,1fr"
+      grid-template="150px,1fr,1fr,1fr,1fr,1fr,1fr,1fr,1fr,1fr"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
@@ -185,6 +185,7 @@ const handleSavedAdd = (item) => {
         <TableHeader :label="$t('common.docs')" :sortable="false" />
         <TableHeader :label="$t('variables')" :sortable="false" />
         <TableHeader :label="$t('common.orders')" :sortable="false" />
+        <TableHeader :label="$t('contract_block.change_of_name_orders')" :sortable="false" />
         <!-- <TableHeader :label="$t('Fiances')" :sortable="false" /> -->
         <TableHeader :label="$t('contract_block.clauses')" :sortable="false" />
         <TableHeader :label="$t('contract_block.contract_price_rate')" :sortable="false" />
@@ -209,6 +210,7 @@ const handleSavedAdd = (item) => {
           <span class="p-0">{{ item.documentation_types?.length }}</span>
           <span class="p-0">{{ item.variable_types?.length }}</span>
           <span class="p-0">{{ item.order_types?.length }}</span>
+          <span class="p-0">{{ item.change_of_name_order_types?.length }}</span>
           <!-- <span class="p-0">{{ item.bail_types?.length }}</span> -->
           <span class="p-0">{{ item.clause_templates?.length }}</span>
           <span class="p-0">{{ item.price_rates?.length }}</span>

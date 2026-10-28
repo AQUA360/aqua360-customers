@@ -170,7 +170,7 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
                     contract_price_rates.append(contract_price_rate)
             obj.price_rates.set(contract_price_rates)
             obj.registration_price_rates.set(obj.type.get_registration_price_rates(obj.is_change_of_name))
-            obj.order_types.set(obj.type.order_types.all())
+            obj.order_types.set(obj.type.get_order_types(obj.is_change_of_name))
         
         # Registrar canvis d'estat
         self.log_status_change(None, obj, observation)
