@@ -208,10 +208,10 @@ def get_sepa_payments_and_batches(request):
         filters &= (Q(invoice__id__in=invoices) | Q(commitment_deposit__invoices__id__in=invoices))
         
     if send_date_start:
-        filters &= (Q(invoice__send_at__gte=send_date_start) | Q(due_date__gte=send_date_start) | Q(issue_date__gte=send_date_start))
+        filters &= (Q(invoice__send_at__gte=send_date_start) | Q(due_date__gte=send_date_start) | Q(invoice__issue_date__gte=send_date_start)) | Q(payment_date__gte=send_date_start)
         
     if send_date_end:
-        filters &= (Q(invoice__send_at__lte=send_date_end) | Q(due_date__lte=send_date_end) | Q(issue_date__lte=send_date_end))
+        filters &= (Q(invoice__send_at__lte=send_date_end) | Q(due_date__lte=send_date_end) | Q(invoice__issue_date__lte=send_date_end)) | Q(payment_date__lte=send_date_end)
         
     if issue_date_start:
         filters &= (Q(invoice__issue_date__gte=issue_date_start) | Q(commitment_deposit__invoices__issue_date__gte=issue_date_start))
