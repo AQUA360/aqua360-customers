@@ -63,6 +63,7 @@ class IncidentSerializer(OverdueMixin, serializers.ModelSerializer):
     type = IncidentTypeSerializer(read_only=True, required=False, allow_null=True)
     channel = IncidentChannelSerializer(read_only=True, required=False, allow_null=True)
     tasks = CalendarTaskSerializer(many=True, read_only=True, required=False, allow_null=True)
+    call_register_count = serializers.SerializerMethodField()
     created_by = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
     assigned_to = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
     deleted_by = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
@@ -73,6 +74,9 @@ class IncidentSerializer(OverdueMixin, serializers.ModelSerializer):
     class Meta:
         model = Incident
         fields = '__all__'
+
+    def get_call_register_count(self, obj):
+        return obj.call_registers.count()
 
     def get_reports(self, obj):
         # Els informes esborrats (lògicament) no es mostren

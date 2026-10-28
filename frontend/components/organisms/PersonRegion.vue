@@ -303,7 +303,7 @@ const newCommunication = () => {
       </div>
 
       <div v-if="new_call" class="fixed inset-0 z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 my-auto relative">
+        <div class="bg-white rounded-lg shadow-xl p-6 max-w-3xl w-full mx-4 my-auto relative">
           <AddNewCall :data="new_call" @exit="handleNewCall" />
         </div>
       </div>

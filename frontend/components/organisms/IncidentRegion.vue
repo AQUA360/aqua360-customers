@@ -340,7 +340,7 @@ onMounted(async () => {
 
       <section v-show="activeTab === 'calls'" role="tabpanel" id="tab_calls" class="bg-white antialiased">
         <MoleculesCallRegisterList v-if="data" :incident_id="props.id" :reload="callReload"
-          @update:count="updateCallCount" />
+          @update:count="updateCallCount" :incident="data" :contract="data.contract" />
       </section>
 
       <section v-show="activeTab === 'timeline'" role="tabpanel" id="tab_timeline" class="bg-white antialiased">

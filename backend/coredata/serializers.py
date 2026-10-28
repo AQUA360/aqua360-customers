@@ -1,6 +1,7 @@
 import datetime
 from rest_framework import serializers
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth.models import User
 from auth.serializers import UserMinimalSerializer
 from billing.models import CommitmentDeposit, CommitmentDepositStatus
 from django.utils import timezone
@@ -592,20 +593,50 @@ class AddressMinimalSerializer(serializers.ModelSerializer):
 
 class CallRegisterSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
+    transfered_to = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+    transfered_from = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = CallRegister
         fields = '__all__'
-    
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['contract_token'] = instance.contract.token if instance.contract else None
-        contact = instance.person_contact
-        representation['person_name'] = str(contact.person) if contact and contact.person else None
-        representation['person_token'] = contact.person.token if contact and contact.person else None
-        representation['phone'] = contact.phone if contact else None
+
+        person_contact = instance.person_contact
+        person = person_contact.person if person_contact else None
+        representation['person_name'] = str(person) if person else None
+        representation['person_token'] = person.token if person else None
+
+        # Prefer snapshot values stored on the register; fall back for legacy rows
+        if not representation.get('phone') and person_contact:
+            representation['phone'] = person_contact.phone
+        if not representation.get('email') and person_contact:
+            representation['email'] = person_contact.email
+
+        representation['transfered_to'] = (
+            UserMinimalSerializer(instance.transfered_to).data if instance.transfered_to else None
+        )
+        representation['transfered_from'] = (
+            UserMinimalSerializer(instance.transfered_from).data if instance.transfered_from else None
+        )
         representation['incident_token'] = instance.incident.token if instance.incident else None
+        representation['incident_name'] = instance.incident.name if instance.incident else None
+
+        if instance.call_start and instance.call_end:
+            representation['call_duration_seconds'] = int(
+                (instance.call_end - instance.call_start).total_seconds()
+            )
+        else:
+            representation['call_duration_seconds'] = None
+
         return representation
-    
+
     def create(self, validated_data):
         user = self.context['request'].user
         validated_data['user'] = user
