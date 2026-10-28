@@ -44,6 +44,7 @@ const observationNumber = ref(0)
 const reportNumber = ref(0)
 const logNumber = ref(0)
 const orderNumber = ref(0)
+const callRegisterNumber = ref(0)
 
 const SubRegion = ref(props.isSubRegionOpen);
 const showRegionDetailComponent = ref(null);
@@ -63,6 +64,10 @@ const updateLogCount = (num) => {
 
 const updateOrderCount = (num) => {
   orderNumber.value = num;
+}
+
+const updateCallRegisterCount = (num) => {
+  callRegisterNumber.value = num;
 }
 
 watch(() => props.isSubRegionOpen, (newValue) => {
@@ -221,6 +226,14 @@ onMounted(async () => {
         </li>
 
         <li class="me-2">
+          <a href="#tab_call_register" @click.prevent="setActiveTab('call_register')"
+            :class="{ 'text-sky-600 border-sky-600': activeTab === 'call_register', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'call_register' }">
+            <Icon name="fa6-solid:phone" class="display-inline mr-2" /> {{ $t('contract_block.call_register') }} ({{
+              callRegisterNumber || data?.call_register_count || 0 }})
+          </a>
+        </li>
+
+        <li class="me-2">
           <a href="#tab_log" @click.prevent="setActiveTab('log')"
             :class="{ 'text-sky-600 border-sky-600': activeTab === 'log', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'log' }">
             <Icon name="fa6-solid:list" class="display-inline mr-2" /> {{ $t('common.history') }} ({{ logNumber }})
@@ -246,6 +259,11 @@ onMounted(async () => {
       <section v-if="permissions?.permissions?.view_order" v-show="activeTab === 'orders'" role="tabpanel" id="tab_orders" class="bg-white antialiased">
         <OrderMiniDetail v-if="data" @show-detail="showDetail" :incident_id="props.id" 
         @update:count="updateOrderCount" :isSubRegion="isSubRegion" />
+      </section>
+
+      <section v-show="activeTab === 'call_register'" role="tabpanel" id="tab_call_register" class="bg-white antialiased">
+        <MoleculesCallRegisterList v-if="data" @update:count="updateCallRegisterCount" :incident_id="props.id"
+          :incident="data" :contract="data.contract" />
       </section>
 
       <section v-show="activeTab === 'log'" role="tabpanel" id="tab_log" class="bg-white antialiased">

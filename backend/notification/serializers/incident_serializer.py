@@ -33,10 +33,14 @@ class IncidentSerializer(serializers.ModelSerializer):
     status = IncidentStatusSerializer(read_only=True, required=False, allow_null=True)
     type = IncidentTypeSerializer(read_only=True, required=False, allow_null=True)
     tasks = CalendarTaskSerializer(many=True, read_only=True, required=False, allow_null=True)
+    call_register_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Incident
         fields = '__all__'
+
+    def get_call_register_count(self, obj):
+        return obj.call_registers.count()
 
 
 class IncidentListSerializer(serializers.ModelSerializer):

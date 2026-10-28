@@ -471,12 +471,31 @@ class CallRegister(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     token = models.CharField(max_length=255, null=True, blank=True)
+    
     person_contact = models.ForeignKey(PersonContact, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
     contract = models.ForeignKey('contract.Contract', on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
+    incident = models.ForeignKey('notification.Incident', on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
+    phone = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=255, null=True, blank=True)
+    
     time_call = models.DateTimeField(null=True, blank=True)
+    call_start = models.DateTimeField(null=True, blank=True)
+    call_end = models.DateTimeField(null=True, blank=True)
+    wait_time = models.IntegerField(null=True, blank=True) # in minutes
+    
+    consent_given = models.BooleanField(default=False)
     answered = models.BooleanField(default=False)
+    contacted_by_client = models.BooleanField(default=False)
+    abandoned_call = models.BooleanField(default=False)
+    channel = models.CharField(max_length=255, null=True, blank=True, default='PHONE') # 'PHONE' OR 'EMAIL'
+    
+    transfered_to = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers_transfered_to') #transfered to
+    transfered_to_name = models.CharField(max_length=255, null=True, blank=True) # in case user is not registered or is an outsider
+    transfered_from = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers_transfered_from') #transfered from
+    transfered_from_name = models.CharField(max_length=255, null=True, blank=True) # in case user is not registered or is an outsider
+    
     comment = models.TextField(null=True, blank=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='call_registers') #called by
     
     def __str__(self):
         return f"{self.person_contact.person.name if self.person_contact.person else 'Person'} - {self.contract.token if self.contract else 'No Contract'} - {self.time_call if self.time_call else 'Time call'}"
