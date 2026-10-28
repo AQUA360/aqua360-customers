@@ -95,3 +95,21 @@ class ChangeOfNameTerminationTypeTest(TestCase):
         other.refresh_from_db()
         self.assertTrue(linked.is_change_of_name)
         self.assertFalse(other.is_change_of_name)
+
+    def test_opscript_marks_configured_holder_change_type(self):
+        from coredata.models import ConfigProject
+
+        ConfigProject.objects.update_or_create(token='termination_type_holder_change', defaults={'value': 'canvi-titular'})
+        linked = ContractRequest.objects.create(token="REQ-1")
+        linked.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.change_of_name_type))
+        other = ContractRequest.objects.create(token="REQ-2")
+        other.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.other_type))
+
+        importlib.import_module("contract.opscripts.0005_mark_change_of_name_requests").run()
+
+        self.change_of_name_type.refresh_from_db()
+        linked.refresh_from_db()
+        other.refresh_from_db()
+        self.assertTrue(self.change_of_name_type.is_change_of_name)
+        self.assertTrue(linked.is_change_of_name)
+        self.assertFalse(other.is_change_of_name)

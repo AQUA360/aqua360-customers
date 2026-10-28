@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django_filters import rest_framework as filters
 
 from documentmanager.serializers import DocumentSerializer
-from ..models import ( ContractStatus, ContractSurrogationDocumentType, ContractTenantChangeDocumentType, ContractUseType, ContractClientType, ContractCategory, ContractRequest, ContractRequestStatus, ContractRequestType, ContractRequestDocumentation, BonificationTypeDocumentationType, ContractRepresentativeType, VariableType, ContractRequestDocumentationType, PaymentType, ContractTerminationStatus, ContractTerminationType, ContractSurrogationType, BailType, BailStatus, ContractDebtManagement, ContractDocumentationType)
+from ..models import ( ContractStatus, ContractSurrogationDocumentType, ContractTenantChangeDocumentType, ContractUseType, ContractClientType, ContractCategory, ContractRequestStatus, ContractRequestType, ContractRequestDocumentation, BonificationTypeDocumentationType, ContractRepresentativeType, VariableType, ContractRequestDocumentationType, PaymentType, ContractTerminationStatus, ContractTerminationType, ContractSurrogationType, BailType, BailStatus, ContractDebtManagement, ContractDocumentationType)
 
 class ContractStatusSerializer(serializers.ModelSerializer):
     class Meta:
@@ -77,12 +77,8 @@ class ContractTerminationRequestTypeSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         was_change_of_name = instance.is_change_of_name
         instance = super().update(instance, validated_data)
-        # En marcar el tipus, les sol·licituds ja vinculades a baixes d'aquest tipus passen a ser
-        # canvis de nom. Es fa amb update() per no tornar a assignar-los tarifes ni ordres.
         if instance.is_change_of_name and not was_change_of_name:
-            ContractRequest.objects.filter(
-                contract_termination_requests__type=instance, is_change_of_name=False,
-            ).update(is_change_of_name=True)
+            instance.mark_linked_requests_as_change_of_name()
         return instance
 
 class ContractSurrogationTypeSerializer(serializers.ModelSerializer):
