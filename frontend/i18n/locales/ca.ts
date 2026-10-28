@@ -2391,6 +2391,7 @@ export default {
     smart_metering_loading_preview: 'Obtenint lectures Smart Metering...',
     fetch_cut_reading_smart_metering: 'Obtenir lectura de tall (Smart Metering)',
     fetch_initial_reading_smart_metering: 'Obtenir lectura inicial (Smart Metering)',
+    fetch_reading_smart_metering: 'Obtenir lectura (Smart Metering)',
     smart_metering_reading_found: 'Lectura trobada: {value} ({date})',
     smart_metering_reading_not_saved: 'La lectura trobada encara no està guardada. Desa-la amb el botó "Guardar lectura manual".',
     smart_metering_reading_not_found: 'No s\'ha trobat cap lectura per aquest comptador i data',
