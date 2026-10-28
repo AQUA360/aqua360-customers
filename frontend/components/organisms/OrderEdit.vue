@@ -105,16 +105,8 @@ const suppressLocationWatch = ref(false);
 
 watch(locationTypeRadio, (newVal, oldVal) => {
   if (suppressLocationWatch.value || newVal === oldVal) return;
-  // No esborrem les seleccions dels altres tipus en canviar de radiobutton, es mantenen
-  // per si l'usuari torna a seleccionar-los. Només s'omplen valors si falten.
-  if (newVal === 'CON' && !selectedContract.value && linkedContract.value) {
-    selectedContract.value = linkedContract.value;
-    if (!selectedSupplyPoint.value) {
-      selectedSupplyPoint.value = linkedContract.value.supply_point_default ?? null;
-    }
-  } else if (newVal === 'SP' && !selectedSupplyPoint.value && linkedContract.value) {
-    selectedSupplyPoint.value = linkedContract.value.supply_point_default ?? null;
-  }
+  // No auto-seleccionem cap entitat: si l'usuari no entra res, no es guarda res.
+  // Les seleccions dels altres tipus es mantenen per si torna a seleccionar-los.
 }, { flush: 'sync' });
 
 const loadFromDetail = async (data) => {
@@ -198,7 +190,7 @@ const getData = async () => {
     } else if (item.value.latitude && item.value.longitude) {
       locationTypeRadio.value = 'G';
     } else {
-      locationTypeRadio.value = 'SP';
+      locationTypeRadio.value = 'N';
     }
     suppressLocationWatch.value = false;
 
@@ -436,6 +428,15 @@ const save = async () => {
       selectedOptions.connection = null;
       selectedOptions.address = null;
       selectedOptions.contract = null;
+    }
+    else if (locationTypeRadio.value == 'N') {
+      // Sense adreça: no es guarda cap localització
+      selectedOptions.supply_point = null;
+      selectedOptions.connection = null;
+      selectedOptions.address = null;
+      selectedOptions.contract = null;
+      selectedOptions.latitude = null;
+      selectedOptions.longitude = null;
     }
     try {
       item.value = await $OrderApiService.save(selectedOptions);
@@ -757,17 +758,6 @@ const onIdLostFocus = async () => {
         </div>
       </div>
 
-      <!-- Observations field (només en edició: en crear l'ordre es fa servir la descripció) -->
-      <div v-if="props.id" class="mb-4">
-        <label class="block text-sm font-medium text-slate-500 mb-2">
-          {{ t('common.observations') }}
-        </label>
-        <MoleculesObservationList 
-          parent_entity="order" 
-          :id="props.id" 
-          module="order" />
-      </div>
-
       <!-- Location section -->
       <div v-if="selectedType" class="row">
         <label class="block text-sm font-medium text-slate-500 mb-2">
@@ -791,6 +781,9 @@ const onIdLostFocus = async () => {
           </label>
           <label class="flex items-center gap-2">
             <input type="radio" v-model="locationTypeRadio" value="G" /> {{ t('order_block.only_coordinates') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="radio" v-model="locationTypeRadio" value="N" /> {{ t('address_block.no_address') }}
           </label>
         </div>
       </div>
