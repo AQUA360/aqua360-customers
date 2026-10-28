@@ -27,6 +27,7 @@ from billing.utils.invoice_list_queryset import invoice_list_queryset
 from billing.utils.invoice_suppression_service import suppress_invoice
 from coredata.models import ConfigProject, PersonAddress, PersonPiggyBankMovement
 from contract.models import PiggyBankMovement, Contract
+from service.models import CompanyBank
 from coredata.utils.name_utils import generate_token
 from billing.views.epayment_document_generate_view import generate_xml
 from statistics.utils.report_service import delete_file_later
@@ -96,8 +97,9 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     user = request.user if request else None
     payment_type_final = request.data.get('payment_type_final', None)
     payment_bank_final = request.data.get('payment_bank_final', None)
-    
-    payment_type = PaymentType.objects.get(id=payment_type_final)
+    payment_swift_final = request.data.get('payment_swift_final', None)
+
+    payment_type =PaymentType.objects.get(id=payment_type_final)
     invoice_status_paid_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
     payment_status_paid_token = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
 
@@ -108,21 +110,45 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         {'error': "No es pot canviar el mètode de pagament d'una factura pagada: primer cal fer-ne el retorn i tornar-la a pagar."},
         status=status.HTTP_400_BAD_REQUEST)
 
+    # A les transferències, el compte on s'ha de pagar és un dels de l'empresa emissora: mai un IBAN
+    # arribat a la petició. Si l'empresa té comptes actius amb IBAN, n'és obligatori un.
+    company_bank = None
+    payment_company_bank = request.data.get('payment_company_bank', None)
+    if payment_type.token == 'BANK_TRANSFER':
+      payment_bank_final = None
+      payment_swift_final = None
+      active_banks = CompanyBank.objects.filter(
+        company_id=invoice.company_id, is_active=True, iban__isnull=False).exclude(iban='') if invoice.company_id else CompanyBank.objects.none()
+      if payment_company_bank or active_banks.exists():
+        company_bank = active_banks.filter(id=payment_company_bank).first() if payment_company_bank else None
+        if not company_bank:
+          return Response(
+            {'error': "Cal triar un compte actiu de l'empresa de la factura."},
+            status=status.HTTP_400_BAD_REQUEST)
+        payment_bank_final = company_bank.iban
+        payment_swift_final = company_bank.swift
+
     disconnect_payment_signals()
-    
+
     log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
 
     invoice.payment_bank_final = payment_bank_final
+    # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor
+    invoice.payment_swift_final = payment_swift_final
     invoice.payment_type_final = payment_type.name
     invoice.payment_type_token_final = payment_type.token
+    if payment_type.token == 'BANK_TRANSFER':
+      # Sense comptes a l'empresa, no es pot quedar el compte d'empresa que tenia abans
+      invoice.payment_company_bank = company_bank
     # invoice.payment_type = payment_type
     invoice.save()
-    
+
     payments = invoice.payments.exclude(status__token=payment_status_paid_token.token).distinct()
     payments.update(
-        payment_type=payment_type.name, 
-        payment_type_token=payment_type.token, 
-        payment_bank=payment_bank_final)
+        payment_type=payment_type.name,
+        payment_type_token=payment_type.token,
+        payment_bank=payment_bank_final,
+        payment_swift=payment_swift_final)
     reconnect_payment_signals()
     return Response({'message': 'Invoice updated successfully'}, status=status.HTTP_200_OK)
    
