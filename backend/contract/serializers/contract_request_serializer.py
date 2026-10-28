@@ -170,7 +170,7 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
                     contract_price_rates.append(contract_price_rate)
             obj.price_rates.set(contract_price_rates)
             obj.registration_price_rates.set(obj.type.get_registration_price_rates(obj.is_change_of_name))
-            obj.order_types.set(obj.type.order_types.all())
+            obj.order_types.set(obj.type.get_order_types(obj.is_change_of_name))
         
         # Registrar canvis d'estat
         self.log_status_change(None, obj, observation)
@@ -279,6 +279,9 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
         # Sense sol·licitant, el titular fa de sol·licitant
         if instance.person_id is None and instance.holder_id:
             instance.person = instance.holder
+        # Vinculada a una baixa per canvi de nom: la sol·licitud és un canvi de nom
+        if not instance.is_change_of_name and instance.contract_termination_requests.filter(type__is_change_of_name=True).exists():
+            instance.is_change_of_name = True
         instance.save()
         
         # Assignar els contacts si estan presents

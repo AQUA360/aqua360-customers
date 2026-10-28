@@ -47,6 +47,7 @@ const error = ref(null);
 const data = ref(null);
 const variableTypeSelectedItems = ref([]);
 const orderTypeSelectedItems = ref([]);
+const changeOfNameOrderTypeSelectedItems = ref([]);
 const clauseTemplateSelectedItems = ref([]);
 const priceRateSelectedItems = ref([]);
 const registrationPriceRateSelectedItems = ref([]);
@@ -71,6 +72,12 @@ const initializeVariableTypeSelectedItems = () => {
 const initializeOrderTypeSelectedItems = () => {
   if (data.value && data.value.order_types) {
     orderTypeSelectedItems.value = data.value.order_types.map(v => v.id);
+  }
+}
+
+const initializeChangeOfNameOrderTypeSelectedItems = () => {
+  if (data.value && data.value.change_of_name_order_types) {
+    changeOfNameOrderTypeSelectedItems.value = data.value.change_of_name_order_types.map(v => v.id);
   }
 }
 
@@ -113,6 +120,7 @@ const getData = async () => {
     hasPersons.value = data.value.has_persons;
     initializeVariableTypeSelectedItems();
     initializeOrderTypeSelectedItems();
+    initializeChangeOfNameOrderTypeSelectedItems();
     initializeClauseTemplateSelectedItems();
     initializePriceRatesSelectedItems();
     initializeRegistrationPriceRatesSelectedItems();
@@ -138,6 +146,7 @@ watch(() => props.isSubRegionOpen, (newValue) => {
 watch(() => data.value, () => {
   initializeVariableTypeSelectedItems();
   initializeOrderTypeSelectedItems();
+  initializeChangeOfNameOrderTypeSelectedItems();
   initializeClauseTemplateSelectedItems();
   initializePriceRatesSelectedItems();
   initializeRegistrationPriceRatesSelectedItems();
@@ -190,6 +199,12 @@ const openVariableTypeSelectMultiple = () => {
 
 const openOrderTypeSelectMultiple = () => {
   showRegionDetailComponent.value = 'OrderTypeSelectMultiple';
+  showSubRegion();
+}
+
+// Tipus d'ordre que es generen en els canvis de nom
+const openChangeOfNameOrderTypeSelectMultiple = () => {
+  showRegionDetailComponent.value = 'ChangeOfNameOrderTypeSelectMultiple';
   showSubRegion();
 }
 
@@ -306,6 +321,31 @@ watch(orderTypeSelectedItems, async (newItems, oldItems) => {
   } catch (err) {
     console.error('Error al guardar els tipus d\'ordres:', err);
     // Opcional: Mostrar un missatge d'error a l'usuari
+  } finally {
+    isSaving.value = false;
+  }
+
+  emit('changed');
+});
+
+watch(changeOfNameOrderTypeSelectedItems, async (newItems, oldItems) => {
+  if (!objectPermissions.value.can_change) return;
+  if (isSaving.value) return; // Evitar reaccions durant el guardat
+
+  const areDifferent = JSON.stringify(newItems) !== JSON.stringify(oldItems);
+  if (!areDifferent) return;
+
+  isSaving.value = true;
+  const saveObject = {
+    id: props.id,
+    change_of_name_order_types_ids: newItems
+  };
+
+  try {
+    await $ContractRequestTypeApiService.save(saveObject);
+    await getData();
+  } catch (err) {
+    console.error('Error al guardar els tipus d\'ordres de canvi de nom:', err);
   } finally {
     isSaving.value = false;
   }
@@ -455,6 +495,9 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
           <DropdownOption :name="`${$t('common.modify')} ${$t('order_block.order_types')}`" @click="openOrderTypeSelectMultiple">
             <Icon name="fa6-solid:screwdriver-wrench" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('order_block.order_types') }}
           </DropdownOption>
+          <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.change_of_name_order_types')}`" @click="openChangeOfNameOrderTypeSelectMultiple">
+            <Icon name="fa6-solid:screwdriver-wrench" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('contract_block.change_of_name_order_types') }}
+          </DropdownOption>
             <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.registration_price_rates')}`" @click="openPriceRateSelectMultiple(origin_contract_token)">
             <Icon name="fa6-solid:money-check" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('contract_block.registration_price_rates') }}
           </DropdownOption>
@@ -549,6 +592,27 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
             </button>
             <span v-if="data.order_types.length === 0 && !objectPermissions?.can_change" class="text-slate-500">
               {{ $t('order_block.no_order_types_long') }}
+            </span>
+          </div>
+        </div>
+
+        <div id="change_of_name_orders" class="mb-3">
+          <p class="mb-3 font-semibold">{{ $t('contract_block.change_of_name_order_types') }} ({{ data.change_of_name_order_types.length }})</p>
+          <div class="pl-3 pr-3">
+            <ul class="mb-2">
+              <li v-for="orderType in data.change_of_name_order_types" :key="orderType.id" class="mb-1">
+                <span class="text-slate-900 p-1">
+                  <Icon name="fa6-solid:screwdriver-wrench" class="text-slate-500" /> &nbsp;
+                  {{ orderType.name }}
+                </span>
+              </li>
+            </ul>
+            <button v-if="data.change_of_name_order_types.length === 0 && objectPermissions?.can_change" @click="openChangeOfNameOrderTypeSelectMultiple"
+              class="underline text-sky-500 hover:no-underline">
+              {{ $t('common.add') }} {{ $t('contract_block.change_of_name_order_types') }}
+            </button>
+            <span v-if="data.change_of_name_order_types.length === 0 && !objectPermissions?.can_change" class="text-slate-500">
+              {{ $t('contract_block.no_change_of_name_order_types') }}
             </span>
           </div>
         </div>
@@ -656,6 +720,9 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
 
         <OrderTypeSelectMultiple v-if="showRegionDetailComponent === 'OrderTypeSelectMultiple'"
           v-model="orderTypeSelectedItems" />
+
+        <OrderTypeSelectMultiple v-if="showRegionDetailComponent === 'ChangeOfNameOrderTypeSelectMultiple'"
+          v-model="changeOfNameOrderTypeSelectedItems" />
 
 
         <ClauseTemplateSelectMultiple v-if="showRegionDetailComponent === 'ClauseTemplateSelectMultiple'"
