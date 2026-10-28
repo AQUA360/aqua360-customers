@@ -9,7 +9,7 @@ from rest_framework.response import Response
 
 from billing.models import Invoice
 from billing.utils.aca_company_service import ACACompanyError
-from billing.utils.generate_factdeta_service import generate_factdeta_document
+from billing.utils.generate_factdeta_service import FactdetaValidationError, generate_factdeta_document
 from service.models import Exploitation
 from statistics.views.reports_views import save_report
 
@@ -23,7 +23,10 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
         year = request.data.get('year') or request.data.get('model_347_year')
         if not year:
             return Response({"error": "year is required."}, status=status.HTTP_400_BAD_REQUEST), None, None
-        year = int(year)
+        try:
+            year = int(year)
+        except (TypeError, ValueError):
+            return Response({"error": "year must be a number."}, status=status.HTTP_400_BAD_REQUEST), None, None
 
         exploitation_id = request.data.get('exploitation_id', None)
         exploitations = Exploitation.objects.filter(is_active=True)
@@ -38,7 +41,7 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
 
         try:
             files = generate_factdeta_document(exploitations, invoices)
-        except ACACompanyError as e:
+        except (ACACompanyError, FactdetaValidationError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
         if not files:
             return None, None, None

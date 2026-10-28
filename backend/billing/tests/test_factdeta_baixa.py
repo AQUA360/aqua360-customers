@@ -6,6 +6,7 @@ from django.test import SimpleTestCase
 
 from billing.utils.generate_factdeta_service import (
     FACTDETA_LINE_LENGTH,
+    FactdetaValidationError,
     _num,
     build_factdeta_detail_record,
     compute_factdeta_canon,
@@ -71,7 +72,7 @@ class TestFactdetaNumericFields(SimpleTestCase):
         self.assertEqual(_num(9325, 6, 4), '0093250000')
 
     def test_value_too_long_raises(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(FactdetaValidationError):
             _num(1000, 3)
 
 

@@ -14,10 +14,14 @@ from billing.utils.aca_company_service import resolve_aca_company
 from contract.models import Bonification, Contract, Variable
 from contract.utils.aca_tram_service import get_aca_tram_bonification_type
 from coredata.models import ConfigProject
-from coredata.utils.fire_usage_utils import get_fire_usage_tokens
+from contract.utils.contract_list_queryset import _fire_config_tokens
 from pricing.models import ArticleCode
 from service.models import Company, SupplyPoint
 from watchdog.aca_config import ACA_DIR_VARIABLE_CONFIG_TOKEN, aca_tram_min_persons, get_config_value, split_config_tokens
+
+
+class FactdetaValidationError(ValueError):
+    """Dada que impedeix generar el FACTDETA i que l'usuari ha de corregir. Es mostra tal qual."""
 
 
 def _load_factdeta_config():
@@ -428,7 +432,7 @@ def _num(value, int_digits, dec_digits=0):
     scaled = int((_dec(value) * (10 ** dec_digits)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     text = '-' + str(-scaled).zfill(length - 1) if scaled < 0 else str(scaled).zfill(length)
     if len(text) > length:
-        raise ValueError(f"El valor {value} no cap en un camp numèric de {length} posicions")
+        raise FactdetaValidationError(f"El valor {value} no cap en un camp numèric de {length} posicions")
     return text
 
 
@@ -840,8 +844,20 @@ def _load_factdeta_baixa_context(config, invoices):
         ).only('token', 'issue_date', 'return_token', 'serie_final')
     }
 
+    # Com Contract.is_fire: ús del contracte o algun punt de subministrament amb connexió d'incendis
+    fire_usage_tokens, fire_connection_token = _fire_config_tokens()
+    contract_ids = {
+        contract.id for invoice in invoices
+        for contract in (invoice.contract, invoice.contract_termination and invoice.contract_termination.contract)
+        if contract
+    }
+    fire_contract_ids = set(Contract.objects.filter(
+        Q(use_type__token__in=fire_usage_tokens) | Q(supply_points__connection__use_type__token=fire_connection_token),
+        id__in=contract_ids,
+    ).values_list('id', flat=True))
+
     return SimpleNamespace(
-        fire_usage_tokens=set(get_fire_usage_tokens()),
+        fire_contract_ids=fire_contract_ids,
         tram_contract_ids=tram_contract_ids,
         tram_min_persons=max(aca_tram_min_persons(), 4),
         establishment_codes=establishment_codes,
@@ -857,7 +873,7 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     meter = supply_point.meter if supply_point else None
     person = invoice.person or (contract.holder if contract else None)
 
-    is_fire = bool(contract and contract.use_type and contract.use_type.token in context.fire_usage_tokens)
+    is_fire = bool(contract and contract.id in context.fire_contract_ids)
     variable_lines = [line for line in aca_lines if not _is_part_fixa(line, config.part_fixa_token)]
     tariff_type = get_factdeta_tariff_type(
         invoice.used_aca or (contract.use_aca if contract else None), variable_lines, is_fire,
@@ -942,7 +958,7 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
         if not exploitation_invoices:
             continue
         if not (ine_code.isdigit() and len(ine_code) == 6):
-            raise Exception(f"El codi INE de l'explotació {exploitation.name} ha de tenir 6 dígits")
+            raise FactdetaValidationError(f"El codi INE de l'explotació {exploitation.name} ha de tenir 6 dígits")
 
         invoices_by_year = defaultdict(list)
         for invoice in exploitation_invoices:
@@ -971,7 +987,10 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
             invoices_by_warning = defaultdict(list)
             for invoice in year_invoices:
                 record = _factdeta_detail_data(invoice, lines_by_invoice[invoice.id], exploitation, config, context)
-                lines.append(build_factdeta_detail_record(record))
+                try:
+                    lines.append(build_factdeta_detail_record(record))
+                except FactdetaValidationError as e:
+                    raise FactdetaValidationError(f"Factura {record['invoice_number']}: {e}") from e
                 for warning in factdeta_record_warnings(record):
                     invoices_by_warning[warning].append(record['invoice_number'])
 

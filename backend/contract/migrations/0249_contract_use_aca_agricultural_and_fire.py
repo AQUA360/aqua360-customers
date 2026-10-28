@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('contract', '0246_contract_request_type_change_of_name_registration_price_rates'),
+        ('contract', '0248_change_of_name_order_types_and_termination_type'),
     ]
 
     operations = [

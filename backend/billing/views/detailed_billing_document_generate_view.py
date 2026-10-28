@@ -35,7 +35,7 @@ class DetailedBillingDocumentGenerateView(APIView):
             invoices = invoices.filter(company_id=company_id)
         try:
             files = generate_factdeta_document(exploitations, invoices, is_alta)
-        except ACACompanyError as e:
+        except (ACACompanyError, FactdetaValidationError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
         file_urls = []
