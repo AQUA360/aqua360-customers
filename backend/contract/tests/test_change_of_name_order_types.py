@@ -34,11 +34,12 @@ class ChangeOfNameOrderTypesTest(TestCase):
         request = self._create(is_change_of_name=True)
         self.assertEqual(set(request.order_types.all()), {self.change_of_name_order_type, self.shared_order_type})
 
-    def test_marking_as_change_of_name_switches_order_types(self):
+    def test_changing_the_flag_keeps_chosen_order_types(self):
+        # El canvi de nom es decideix en crear la sol·licitud: després no es substitueixen les ordres triades
         request = self._create()
         request.is_change_of_name = True
         request.save()
-        self.assertEqual(set(request.order_types.all()), {self.change_of_name_order_type, self.shared_order_type})
+        self.assertEqual(set(request.order_types.all()), {self.new_order_type, self.shared_order_type})
 
     def test_migration_copies_order_types(self):
         self.type.change_of_name_order_types.clear()
