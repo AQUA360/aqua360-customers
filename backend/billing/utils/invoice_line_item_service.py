@@ -17,7 +17,7 @@ from coredata.utils.invoice_tram_config import should_show_all_consumption_trams
 from pricing.models import LineItemType, Product
 from pricing.utils.formula_evaluator import replace_percentage
 from contract.utils.contract_service import get_meter_caliber, get_variables_actives, get_connection_diameter
-from billing.utils.adjustment_service import adjustment_eval_conditions, convert_value, evaluate_formula, calc_consumption_responsible, generate_variables, get_contract_variable, get_line_item_type_adjustments, get_tram_adjustments, adjustment_has_interval_stretches
+from billing.utils.adjustment_service import adjustment_eval_conditions, convert_value, evaluate_formula, calc_consumption_responsible, generate_variables, get_contract_min_persons, get_contract_variable, get_line_item_type_adjustments, get_tram_adjustments, adjustment_has_interval_stretches
 
 _invoice_percentage_correction_cached = None
 _default_connection_diameter_cached = None
@@ -696,10 +696,8 @@ def create_from_lineitemtype(
     if line_item_type.quantity and line_item_type.quantity.token == 'total_persons':
         if effective_persons is not None:
             quantitat = effective_persons
-        elif recalculation_strategy == "original" and prev_invoice and prev_invoice.persons_final is not None:
-            quantitat = prev_invoice.persons_final
         else:
-            quantitat = contract.total_persons if contract else 3
+            quantitat = contract.total_persons if contract and contract.total_persons > 0 else get_contract_min_persons()
     # print("passed reading")
     
     # Càlcul del preu

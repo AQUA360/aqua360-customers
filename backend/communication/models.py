@@ -1,3 +1,5 @@
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -5,6 +7,20 @@ from contract.models import Contract
 from coredata.models import Person, PersonAddress
 from documentmanager.models import Document
 from service.models import CompanyConfig, CompanyConfigEmail
+
+
+def validate_email_list(value):
+    """Valida una o diverses adreces d'email separades per ';'."""
+    if not value:
+        return
+    for email in value.split(';'):
+        email = email.strip()
+        if not email:
+            continue
+        try:
+            validate_email(email)
+        except ValidationError:
+            raise ValidationError("Adreça d'email no vàlida: %(email)s", params={'email': email})
 
 class MessageType(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
@@ -207,7 +223,7 @@ class Communication(models.Model):
     company_config_email = models.ForeignKey(CompanyConfigEmail, on_delete=models.SET_NULL, null=True, blank=True, related_name='communications_config_email')
     
     used_phones = models.CharField(max_length=255, null=True, blank=True) 
-    used_email = models.EmailField(null=True, blank=True)
+    used_email = models.CharField(max_length=255, null=True, blank=True, validators=[validate_email_list])  # un o més emails separats per ';'
     address = models.ForeignKey(PersonAddress, on_delete=models.SET_NULL, null=True, blank=True)
     used_address = models.CharField(max_length=255, null=True, blank=True) 
     preferred_communication_type = models.CharField(max_length=255, null=True, blank=True)  #WHEN SAVING WITH DEFAULT TYPE, SAVE THIS CONTRACT VALUE IF IT EXISTS

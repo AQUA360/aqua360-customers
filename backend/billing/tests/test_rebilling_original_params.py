@@ -1,9 +1,9 @@
-from django.test import SimpleTestCase
+from django.test import TestCase
 from unittest.mock import MagicMock, patch
 
 
-class RecalculationStrategyPersonsTest(SimpleTestCase):
-    """ACUSTOMERS-334: verify persons resolution on rebilling (pure unit, zero DB)."""
+class RecalculationStrategyPersonsTest(TestCase):
+    """ACUSTOMERS-334: verify persons resolution and tariff selection on rebilling."""
 
     def test_generate_variables_uses_effective_persons_for_original(self):
         from billing.utils.adjustment_service import generate_variables

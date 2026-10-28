@@ -30,7 +30,7 @@ from django.db.models import Q
 
 from coredata.utils.address_utils import get_address_complete_without_city, get_address_complete_with_city
 
-from billing.utils.adjustment_service import calc_consumption_responsible
+from billing.utils.adjustment_service import calc_consumption_responsible, get_contract_min_persons
 from .invoice_line_item_service import create_from_lineitemtype, create_from_lineitemtype_connection, constrain_total_value, get_last_reading
 from faker import Faker
 fake = Faker()
@@ -994,6 +994,7 @@ def generate_consumption_invoice_multiple(
             "status": status,
             'responsible_consumption': consumption_responsible,
             'persons_final': effective_persons if effective_persons > 0 else 3,
+            'persons_final': effective_persons if effective_persons > 0 else get_contract_min_persons(),
             'serie': serie,
             'serie_final': serie_final_provisional,
             'serie_token_final': serie.token,
@@ -3251,7 +3252,7 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             "type": invoice_type,
             'type_final': invoice_type.token if invoice_type else None,
             "status": status,
-            'persons_final': contract.total_persons if contract and contract.total_persons and contract.total_persons > 0 else 3,
+            'persons_final': contract.total_persons if contract and contract.total_persons > 0 else get_contract_min_persons(),
             'serie': serie,
             'serie_final': serie_final_provisional,
             'serie_token_final': serie.token,
