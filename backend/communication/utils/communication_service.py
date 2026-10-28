@@ -1,7 +1,6 @@
 import base64
 import logging
 import json
-import os
 import re
 from django.conf import settings
 from django.db import transaction
@@ -38,6 +37,8 @@ from logger.models import LogCommunicationStatusChange
 from service.models import CompanyConfig, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
+from billing.utils.aca_company_service import use_multiple_companies
+from service.utils.contract_company import build_logo_path, company_colors, contract_company_logo, get_contract_company
 
 logger = logging.getLogger(__name__)
 
@@ -104,22 +105,51 @@ def upload_communication_document(uploaded_file, communication, is_letter=False)
     
     return comm_file
 
+def get_communication_logo(communication, company):
+    """Logo de la comunicació. Amb `use_multiple_companies` és el de l'empresa del contracte
+    (si en té logo); si no, el de l'empresa de la configuració."""
+    if communication and use_multiple_companies():
+        logo = contract_company_logo(communication.contracts.select_related('company').first())
+        if logo:
+            return logo
+    return build_logo_path(company.get('logo'))
+
+def get_communication_company(communication, company):
+    """Dades d'empresa de la comunicació. Amb `use_multiple_companies` són les de l'empresa del
+    contracte (si en té); si no, les de l'empresa de la configuració."""
+    if communication and use_multiple_companies():
+        contract_company = get_contract_company(communication.contracts.select_related('company').first())
+        if contract_company:
+            return CompanySerializer(contract_company).data
+    return company
+
+def validate_letter_contract_companies(communication):
+    if use_multiple_companies():
+        company_ids = set(communication.contracts.values_list('company_id', flat=True))
+        if len(company_ids) > 1:
+            raise ValueError(_('Cannot generate a letter for contracts from different companies.'))
+
 def get_communication_file(id):
     letter_token = ConfigProject.objects.get(token='message_type_letter_token').value
     communication_file = CommunicationFile.objects.get(id=id)
     communication = communication_file.communication
+
+    validate_letter_contract_companies(communication)
     
     config_company = communication.company_config
     companies = config_company.company_configs.all()
     company_ins = companies.first() if len(companies) > 0 else None
     company = CompanySerializer(company_ins).data if company_ins else None
+    contract = communication.contracts.first()
+    contract_company = get_contract_company(contract)
+    letter_company = CompanySerializer(contract_company).data if contract_company else company
     # try:
     #   person = PersonSerializer(communication.person, context=None).data if communication.person else None
     # except:
     person = PersonContractMinimalSerializer(communication.person, context=None).data if communication.person else None
     
     now_date = datetime.now().date()
-    com_values = get_com_values(person, communication, company)
+    com_values = get_com_values(person, communication, letter_company)
     letter_msg = None
     try:
       letter_msg = communication.messages.get(type__token=letter_token)
@@ -141,21 +171,8 @@ def get_communication_file(id):
     
     body = format_letter_body(body)
     
-    logo_db = company.get('logo')
-    logo = None
-    domain_media = settings.DOMAIN_MEDIA if hasattr(settings, 'DOMAIN_MEDIA') else ''
-
-    if logo_db:
-        # netejem logo_db assegurant-nos que sempre arriba el mateix format, potser que arribi una url o un path que comenci per /media/
-        logo_db = f'uploads/{logo_db.split("uploads/")[1]}'
-        
-        if domain_media:
-            logo = os.path.join(domain_media, f'media/{logo_db}')
-        else:
-            # Fallback a MEDIA_ROOT si DOMAIN_MEDIA no està definit
-            logo = os.path.join(settings.MEDIA_ROOT, logo_db)
+    logo = get_communication_logo(communication, company)
     full_name_upper = person.get('full_name', '').upper() if person else ''
-    contract = communication.contracts.first()
     contract_address = None
     exploitation_image = None
     
@@ -166,6 +183,9 @@ def get_communication_file(id):
         secondary_color = company_ins.invoice_secondary_color if company_ins.invoice_secondary_color else ConfigProject.objects.get(token='invoice_secondary_color').value
     except:
         pass
+    # Amb `use_multiple_companies` les dades, els colors i la signatura són els de l'empresa del contracte
+    if contract_company:
+        main_color, secondary_color = company_colors(contract_company, company_ins)
     
     if contract:
       contract_address = str(contract.supply_point_default.address)
@@ -178,7 +198,7 @@ def get_communication_file(id):
     html_content = render_to_string(
       'basic_letter.html', 
       {
-        'company': company,
+        'company': letter_company,
         'exploitation_image': exploitation_image,
         'main_color': main_color,
         'secondary_color': secondary_color,
@@ -201,7 +221,7 @@ def get_communication_file(id):
         return JsonResponse({"error": "PDF generation failed"}, status=500)
 
     #SIGNATURE
-    signed_pdf_buffer = sign_pdf(pdf_buffer, company, subject, 'COMMUNICATION')
+    signed_pdf_buffer = sign_pdf(pdf_buffer, letter_company, subject, 'COMMUNICATION')
 
     # Save PDF to `contract_file` field in ContractRequest instance
     pdf_filename = f"{communication_file.token}.pdf"
@@ -229,26 +249,16 @@ def create_email_template(communication):
       companies = config_company.company_configs.all()
       company_ins = companies.first() if len(companies) > 0 else None
       company = CompanySerializer(company_ins).data if company_ins else None
-      
-      logo_db = company.get('logo')
-      logo = None
-      domain_media = settings.DOMAIN_MEDIA if hasattr(settings, 'DOMAIN_MEDIA') else ''
+      letter_company = get_communication_company(communication, company)
 
-      if logo_db:
-          # netejem logo_db assegurant-nos que sempre arriba el mateix format, potser que arribi una url o un path que comenci per /media/
-          logo_db = f'uploads/{logo_db.split("uploads/")[1]}'
-          
-          if domain_media:
-              logo = os.path.join(domain_media, f'media/{logo_db}')
-          else:
-              # Fallback a MEDIA_ROOT si DOMAIN_MEDIA no està definit
-              logo = os.path.join(settings.MEDIA_ROOT, logo_db)
+      # Si l'empresa del contracte no té logo, es fa servir el de la configuració
+      logo = get_communication_logo(communication, company)
 
-      
+
       person = PersonSerializer(communication.person).data if communication.person else None
       now_date = datetime.now().date()
-      
-      com_values = get_com_values(person, communication, company)
+
+      com_values = get_com_values(person, communication, letter_company)
       
       subject = refactor_text(subject, com_values)
       body = refactor_text(body, com_values)
@@ -257,7 +267,7 @@ def create_email_template(communication):
       html_content = render_to_string(
           'basic_email.html',
           {
-              'company': company,
+              'company': letter_company,
               'person': communication.person,
               'address': communication.used_address,
               'subject': subject,
@@ -452,6 +462,10 @@ def _supply_cut_values(person, communication):
 
 
 def get_com_values(person, communication, company):
+    # Amb `use_multiple_companies` les dades d'empresa són les del contracte, com el logo i la signatura
+    contract_company = get_contract_company(communication.contracts.select_related('company').first())
+    if contract_company:
+        company = CompanySerializer(contract_company).data
     return {
         'person.token': person.get('token') if person else '',
         'person.name': person.get('full_name') if person else '',
@@ -985,27 +999,22 @@ def get_email_image_preview(message, comm_id=None):
       existing_html = comm.email_html_content
     person = comm.person
     person = PersonSerializer(person).data if person else None
-    company = comm.company_config.company_configs.first()
-    company = CompanySerializer(company).data if company else None
+    config_company = comm.company_config.company_configs.first()
+    config_company = CompanySerializer(config_company).data if config_company else None
+    company = get_communication_company(comm, config_company)
     body = refactor_text(body, get_com_values(person, comm, company))
     subject = refactor_text(subject, get_com_values(person, comm, company))
-  
+
   else:
     person = Person.objects.get(id=person_id)
     person = PersonSerializer(person).data if person else None
     company_config = CompanyConfig.objects.get(id=company_config_id)
-    company = company_config.company_configs.first()
-    company = CompanySerializer(company).data if company else None
-  
-  logo_db = company.get('logo')
-  logo = None
-  domain_media = settings.DOMAIN_MEDIA if hasattr(settings, 'DOMAIN_MEDIA') else ''
-  if logo_db:
-    logo_db = f'uploads/{logo_db.split("uploads/")[1]}'
-    if domain_media:
-      logo = os.path.join(domain_media, f'media/{logo_db}')
-    else:
-      logo = os.path.join(settings.MEDIA_ROOT, logo_db)
+    config_company = company_config.company_configs.first()
+    config_company = CompanySerializer(config_company).data if config_company else None
+    company = config_company
+
+  # Si l'empresa del contracte no té logo, es fa servir el de la configuració
+  logo = get_communication_logo(comm if comm_id else None, config_company)
   
   body = mark_safe(body.replace('\n', '<br>'))
   subject = mark_safe(subject.replace('\n', '<br>'))
