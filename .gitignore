@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 docker-data/
+# Abocament SQL de l'esquema de test, generat a la CI.
+backend/.ci/
 node_modules/
 .venv/
 venv/

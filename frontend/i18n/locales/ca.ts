@@ -1838,7 +1838,10 @@ export default {
     contract_registration: 'Alta de Contracte',
     initial_reading_new_contract: 'Lectura inicial del nou contracte'
   },
-  billing_block:   {
+  billing_block: {
+    recalculation_original: 'Utilitzar paràmetres de la factura original (habitants i tarifes històriques)',
+    recalculation_current: 'Aplicar paràmetres actuals del contracte',
+    recalculation_parameters_title: 'Estratègia de recàlcul',
     new_payer_name: 'Nom del nou pagador',
     new_payer_nif: 'NIF del nous pagador',
     endowment_date: 'Data de morositat',

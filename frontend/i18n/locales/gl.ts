@@ -1828,7 +1828,10 @@ export default {
     contract_registration: 'Alta de Contrato',
     initial_reading_new_contract: 'Lectura inicial do novo contrato'
   },
-  billing_block:   {
+  billing_block: {
+    recalculation_original: 'Usar parámetros da factura orixinal (habitantes e tarifas históricas)',
+    recalculation_current: 'Aplicar parámetros actuais do contrato',
+    recalculation_parameters_title: 'Estratexia de recálculo',
     email_body: 'Contido do correo electrónico',
     email_body_included_info: 'Ademais deste texto, o correo incluirá automaticamente:',
     invoice_email_default_body: 'Adxuntamos a factura correspondente ao seu contrato. Se ten calquera dúbida, non dubide en poñerse en contacto connosco.',

@@ -1838,7 +1838,10 @@ export default {
     contract_registration: 'Alta de Contrato',
     initial_reading_new_contract: 'Lectura inicial del nuevo contrato'
   },
-  billing_block:   {
+  billing_block: {
+    recalculation_original: 'Usar parámetros de la factura original (habitantes y tarifas históricas)',
+    recalculation_current: 'Aplicar parámetros actuales del contrato',
+    recalculation_parameters_title: 'Estrategia de recálculo',
     new_payer_name: 'Nombre del nuevo pagador',
     new_payer_nif: 'NIF del nuevo pagador',
     endowment_date: 'Fecha morosidad',
