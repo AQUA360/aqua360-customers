@@ -68,7 +68,7 @@ class PiggyBankViewSet(viewsets.ModelViewSet):
             payer_token_final = contract.holder.token
         
         new_payment = Payment.objects.create(
-            token=generate_payment_id('04'),
+            token=generate_payment_id('04', exploitation_token=contract.supply_point_default.connection.exploitation.token),
             name=f"{_('RETURN BALANCE')} {contract.token}",
             status=PaymentStatus.objects.get(is_default=True),
             contract=contract,

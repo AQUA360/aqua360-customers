@@ -10,6 +10,7 @@ from billing.models import CommitmentDeposit, CommitmentDepositStatus, Invoice, 
 from billing.serializers.commitment_deposit_serializer import CommitmentDepositListSerializer
 from billing.serializers.invoice_serializer import InvoiceFullSerializer
 from billing.utils.barcode_service import repeat_to_at_least_length
+from billing.utils.invoice_service import get_use_exploitation_token_for_payment
 from contract.models import Contract, ContractRequest, PaymentType
 from coredata.models import ConfigProject, Person
 from logger.models import LogCommitmentDepositMovement
@@ -222,7 +223,7 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                 
                 for payment in payments:
                     payment_data = {
-                        "token": generate_commitment_id(),
+                        "token": generate_commitment_id(exploitation_token=deposit.contract.supply_point_default.connection.exploitation.token),
                         "status": default_payment_commitment_status,
                         "commitment_deposit": deposit,
                         "currently_paid": 0.00,
@@ -245,7 +246,7 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                     contract_instance = Contract.objects.get(id=contract['id'])
                 
                 commitment_deposit_data = {
-                    "token": generate_commitment_id(),
+                    "token": generate_commitment_id(exploitation_token=contract_instance.supply_point_default.connection.exploitation.token),
                     "total": sum(float(p.get('amount')) for p in payments),
                     "remaining": sum(float(p.get('amount')) for p in payments),
                     "status": defaul_commitment_deposit_status,
@@ -295,8 +296,19 @@ class ManageCommitmentDepositRequestViewSet(APIView):
         
         return Response({"error": "Something went wrong"}, status=status.HTTP_400_BAD_REQUEST)
 
-def generate_commitment_id():
-    max_serie = CommitmentDeposit.objects.all().aggregate(max_serie=Max('token'))['max_serie']
+def generate_commitment_id(exploitation_token='0'):
+    used_token = '03'
+    if get_use_exploitation_token_for_payment().lower() == 'true':
+        try:
+            if int(exploitation_token) > 0 and int(used_token) < 10:
+                used_token = exploitation_token + used_token[1:]
+            else:
+                used_token = used_token
+        except Exception:
+            used_token = used_token
+    max_serie = CommitmentDeposit.objects.filter(
+        token__startswith=used_token
+    ).aggregate(max_serie=Max('token'))['max_serie']
     next_num = 1
     if max_serie:
         try:
@@ -305,4 +317,4 @@ def generate_commitment_id():
             next_num = current_num + 1
         except (ValueError, IndexError):
             pass
-    return '03' + str(next_num).zfill(7)
+    return used_token + str(next_num).zfill(7)

@@ -45,6 +45,9 @@ invoice_class = None
 default_serie = None
 simplified_serie = None
 _active_supply_point_status = None
+use_exploitation_token_for_payment = None
+use_exploitation_token_for_payment_updated_at = None
+USE_EXPLOITATION_TOKEN_FOR_PAYMENT_CONFIG = 'use_exploitation_token_for_payment'
 
 def resolve_selected_company(exploitation, default_company, company_id):
     """Resol l'empresa a assignar a una factura quan l'usuari en tria explícitament
@@ -65,6 +68,35 @@ def resolve_selected_category(category_id):
     if not category_id:
         return None
     return InvoiceCategory.objects.filter(id=category_id).first()
+
+
+def clear_use_exploitation_token_for_payment_cache():
+    """Invalidate the in-process cache (e.g. after ConfigProject is saved)."""
+    global use_exploitation_token_for_payment, use_exploitation_token_for_payment_updated_at
+    use_exploitation_token_for_payment = None
+    use_exploitation_token_for_payment_updated_at = None
+
+
+def get_use_exploitation_token_for_payment():
+    """Return config value, refreshing the cache when ConfigProject.updated_at changes."""
+    global use_exploitation_token_for_payment, use_exploitation_token_for_payment_updated_at
+    current_updated_at = (
+        ConfigProject.objects
+        .filter(token=USE_EXPLOITATION_TOKEN_FOR_PAYMENT_CONFIG)
+        .values_list('updated_at', flat=True)
+        .first()
+    )
+    if (
+        use_exploitation_token_for_payment is not None
+        and use_exploitation_token_for_payment_updated_at == current_updated_at
+    ):
+        return use_exploitation_token_for_payment
+
+    use_exploitation_token_for_payment = ConfigProject.objects.get(
+        token=USE_EXPLOITATION_TOKEN_FOR_PAYMENT_CONFIG
+    ).value
+    use_exploitation_token_for_payment_updated_at = current_updated_at
+    return use_exploitation_token_for_payment
 
 
 def get_simplified_serie():
@@ -756,7 +788,7 @@ def generate_consumption_invoice_multiple(contract, readings, title, refactor_in
         print(f"Error creating line items: {e}")
         raise Exception("Error creating line items")
     
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     # print(f"Creating invoice {number}")
     try:
         payment_type_instance = None
@@ -1051,7 +1083,7 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
             raise Exception("Error creating line items")
             
         
-        number = generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         # print(f"Creating invoice {number}")
 
         invoice = None
@@ -1279,7 +1311,7 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
             
         if not exploitation:
             exploitation = contract.supply_point_default.connection.exploitation
-        number = generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         # print(f"Creating invoice {number}")
 
         invoice = None
@@ -1446,7 +1478,7 @@ def invoice_return_charge(invoice, title, return_reason=None):
             raise Exception("Error creating line items")
         
         
-        number = '02' + generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         # print(f"Creating invoice surcharge {number}")
         
         # year = datetime.datetime.now().year
@@ -1475,7 +1507,7 @@ def invoice_return_charge(invoice, title, return_reason=None):
                 child_found = True
         
         data = {
-            'token': '02' + invoice.token[-9:],
+            'token': number,
             'number': number,
             'issue_date': issue_date,
             'billing_period_month': invoice.billing_period_month,
@@ -1608,7 +1640,7 @@ def invoice_connection_generate(user, connection_request_id, title, payment_type
         raise Exception("Error creating line items")
     
     
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     try:
         # year = datetime.datetime.now().year
         
@@ -1744,7 +1776,7 @@ def return_invoice(invoice, payment_type_id):
     today = datetime.datetime.now().date()
     
     data = {
-            'token': generate_invoice_id(),
+            'token': generate_invoice_id(exploitation_token=invoice.exploitation.token if invoice.exploitation else '0'),
             'number': invoice.number,
             'contract': invoice.contract,
             'used_aca': invoice.used_aca,
@@ -2111,7 +2143,7 @@ def invoice_claim_paid_generate(invoice_id, title):
             raise Exception("Error creating line items")
             
         
-        number = generate_invoice_id()
+        number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
         pass  # log removed
         
         invoice = None
@@ -2454,7 +2486,7 @@ def invoice_contract_termination_generate(
         pass  # log removed
         raise Exception("Error creating line items")
     
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     # print(f"Creating invoice {number}")
     try:
         if billing_entity and not bill_termination_requester:
@@ -2658,7 +2690,7 @@ def pass_budget_to_invoice(invoice):
         new_issue_date = invoice.batch.issue_date if invoice.batch and invoice.batch.issue_date else datetime.datetime.now().date()
         pass  # log removed
         pass  # log removed
-        token = check_existing_token(invoice.token)
+        token = check_existing_token(invoice.token, exploitation_token=invoice.exploitation.token if invoice.exploitation else '0')
         data = {
                 'token': token,
                 'number': invoice.number,
@@ -2788,7 +2820,7 @@ def check_piggy_bank(invoice, total, generate_payment=False):
     if generate_payment:
         payment_type = PaymentType.objects.get(token="BALANCE")
         new_payment = Payment.objects.create(
-            token=generate_payment_id('01'),
+            token=generate_payment_id('01', exploitation_token=invoice.exploitation.token if invoice.exploitation else '0'),
             name=f"{invoice.title_final}",
             status=paid_status,
             contract=contract,
@@ -2940,7 +2972,7 @@ def check_person_piggy_bank(invoice, total, generate_payment=False):
             pending_status = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_pending_token').value)
             payment_type = PaymentType.objects.get(token="BALANCE")
             new_payment = Payment.objects.create(
-                token=generate_payment_id('01'),
+                token=generate_payment_id('01', exploitation_token=invoice.exploitation.token if invoice.exploitation else '0'),
                 name=f"{invoice.title_final}",
                 status=paid_status,
                 person=selected_person,
@@ -3031,7 +3063,7 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             )
         )
 
-    number = generate_invoice_id()
+    number = generate_invoice_id(exploitation_token=exploitation.token if exploitation else '0')
     # print(f"Creating invoice {number}")
     try:
         payment_type_instance = None
@@ -3248,7 +3280,7 @@ def get_invoice_status(status_token):
     except InvoiceStatus.DoesNotExist:
         raise Exception(f"Invoice status with token {status_token} not found")
 
-def generate_invoice_id(used_token = '01'):
+def generate_invoice_id(used_token = '01', exploitation_token = '0'):
     """Generate a unique incremental invoice token using an atomic sequence row.
     - used_token: the prefix (serie) to use for the token.
     """
@@ -3257,6 +3289,17 @@ def generate_invoice_id(used_token = '01'):
 
     with transaction.atomic():
         # Lock or create the sequence row for this prefix
+        
+        use_exploitation_token_for_payment = get_use_exploitation_token_for_payment()
+        if use_exploitation_token_for_payment.lower() == 'true':
+            try:
+                if int(exploitation_token) > 0 and int(used_token) < 10:
+                    used_token = exploitation_token + used_token[1:]
+                else:
+                    used_token = used_token
+            except Exception:
+                used_token = used_token
+        
         seq = InvoiceSequence.objects.select_for_update().filter(prefix=used_token).first()
         if seq is None:
             # Initialize from existing max token for the prefix, if any
@@ -3359,8 +3402,18 @@ except ImportError:
 # 03 - Commitment Deposit
 # 04 - Balance
 
-def generate_payment_id(used_token):
+def generate_payment_id(used_token, exploitation_token='0'):
     from django.db.models import Max
+    
+    use_exploitation_token_for_payment = get_use_exploitation_token_for_payment()
+    if use_exploitation_token_for_payment.lower() == 'true':
+        try:
+            if int(exploitation_token) > 0 and int(used_token) < 10:
+                used_token = exploitation_token + used_token[1:]
+            else:
+                used_token = used_token
+        except Exception:
+            used_token = used_token
     
     max_token = Payment.objects.filter(
         token__startswith=used_token
@@ -3393,11 +3446,11 @@ def generate_payment_id(used_token):
     
     return new_token
 
-def check_existing_token(token):
+def check_existing_token(token, exploitation_token='0'):
     try:
         invoice_type = InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_invoice_token').value)
         if Invoice.objects.filter(token=token, type=invoice_type).exists():
-            return generate_invoice_id()
+            return generate_invoice_id(exploitation_token=exploitation_token)
         else:
             return token
     except Exception as e:

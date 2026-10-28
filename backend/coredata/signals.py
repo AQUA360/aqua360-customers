@@ -83,4 +83,16 @@ def person_pre_save(sender, instance, **kwargs):
                         user=current_user
                     )
         except Person.DoesNotExist:
-            pass            
+            pass
+
+
+@receiver(post_save, sender=ConfigProject)
+def invalidate_use_exploitation_token_for_payment_cache(sender, instance, **kwargs):
+    if instance.token != 'use_exploitation_token_for_payment':
+        return
+    try:
+        from billing.utils.invoice_service import clear_use_exploitation_token_for_payment_cache
+        clear_use_exploitation_token_for_payment_cache()
+    except Exception:
+        pass
+ 

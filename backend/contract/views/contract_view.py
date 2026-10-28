@@ -523,7 +523,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         date_now = timezone.now()
         
         new_payment = Payment.objects.create(
-            token=generate_payment_id('04'),
+            token=generate_payment_id('04', exploitation_token=instance.supply_point_default.connection.exploitation.token),
             name=str(_("Manually added Balance")),
             contract=instance,
             customer_final=instance.holder.name + " " + instance.holder.surname,
