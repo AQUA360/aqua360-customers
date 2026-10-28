@@ -46,10 +46,11 @@ def build_timeline(incident):
             # L'estat d'atenció només té sentit en les trucades, no en els correus
             status = None if call.channel == 'EMAIL' else (_("answered") if call.answered else _("not answered"))
             detail = [contact, status, call.comment]
+            is_inbound = call.direction == CallRegister.DIRECTION_INBOUND or call.contacted_by_client
             if call.channel == 'EMAIL':
-                title = _("Inbound email") if call.direction == CallRegister.DIRECTION_INBOUND else _("Outbound email")
+                title = _("Inbound email") if is_inbound else _("Outbound email")
             else:
-                title = _("Inbound call") if call.direction == CallRegister.DIRECTION_INBOUND else _("Outbound call")
+                title = _("Inbound call") if is_inbound else _("Outbound call")
             add(call.call_start or call.incoming_at or call.time_call or call.created_at, 'call', title,
                 ' · '.join(str(item) for item in detail if item), call.user)
 
