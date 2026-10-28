@@ -26,7 +26,7 @@ def is_bail_return_invoice_disabled():
     return config.value.lower() == 'true'
 
 
-def liquidate_bail(user, bails, balance_contract=None):
+def liquidate_bail(user, bails, balance_contract=None, return_date=None):
     bail_status_returned_token = ConfigProject.objects.get(token='bail_status_returned_token').value
     returned_status = BailStatus.objects.get(token=bail_status_returned_token)
     status_invoice_confirmed = InvoiceStatus.objects.get(
@@ -41,7 +41,7 @@ def liquidate_bail(user, bails, balance_contract=None):
     for bail in bails:
         prev_status = bail.status
         bail.status = returned_status
-        bail.return_date = timezone.now()
+        bail.return_date = return_date or timezone.localdate()
         bail.payment_date = timezone.now()
         bail.save()
 
@@ -132,13 +132,14 @@ def pending_bail_contract_termination(user, instance):
     
     
 
-def immediate_return_bail(user, bail_id):
+def immediate_return_bail(user, bail_id, return_date=None):
     """Return one unreturned bail the same way a contract termination does.
 
     The contract is the one that includes this bail in Contract.bails, not Bail.contract.
     Unreturned becomes pending with a pre-invoice, then returned, and the bail amount
     is added to that contract's balance. With BAIL_RETURN_INVOICE_DISABLED enabled,
     no invoice is generated and no balance is credited.
+    `return_date` sets the bail's return date (defaults to today).
     """
     with transaction.atomic():
         bail = Bail.objects.select_for_update().get(id=bail_id)
@@ -197,7 +198,7 @@ def immediate_return_bail(user, bail_id):
             observation=None,
         )
 
-        liquidate_bail(user, [bail], balance_contract=contract)
+        liquidate_bail(user, [bail], balance_contract=contract, return_date=return_date)
         bail.refresh_from_db()
         return bail
 
