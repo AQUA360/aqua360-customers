@@ -65,7 +65,7 @@ class PersonPiggyBankViewSet(viewsets.ModelViewSet):
         name_translated = _("RETURN BALANCE")
         
         new_payment = Payment.objects.create(
-            token=generate_payment_id('04', exploitation_token=person.exploitation.token),
+            token=generate_payment_id('04'),
             name=name_translated,
             status=PaymentStatus.objects.get(is_default=True),
             person=person,
