@@ -14,7 +14,7 @@ from django.apps import apps
 from .street_types import resolve_street_type
 from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
 from .utils.phone_utils import is_mobile_phone
-
+from coredata.utils.person_list_queryset import person_debt_amounts_by_person_id
 
 
 class IdentificationTypeSerializer(serializers.ModelSerializer):
@@ -1547,12 +1547,26 @@ class PersonMinimalAddressSerializer(serializers.ModelSerializer):
         representation['full_name'] = f"{instance.name} {instance.surname}" if not instance.is_juridic else instance.name
         return representation
     
+class PersonMinimalListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        iterable = data.all() if hasattr(data, "all") else data
+        person_ids = [obj.pk for obj in iterable]
+        self.child.context["debt_by_person"] = person_debt_amounts_by_person_id(person_ids)
+        return super().to_representation(data)
+
 class PersonMinimalSerializer(serializers.ModelSerializer):
     is_debtor = serializers.CharField(read_only=True, source='deliquency.is_debtor')
-    debt_amount = serializers.DecimalField(read_only=True, source='deliquency.debt_amount', max_digits=10, decimal_places=2)
+    debt_amount = serializers.SerializerMethodField()
+
+    def get_debt_amount(self, obj):
+        debt_by_person = self.context.get("debt_by_person")
+        if debt_by_person is not None:
+            return debt_by_person.get(obj.pk, 0)
+        return person_debt_amounts_by_person_id([obj.pk]).get(obj.pk, 0)
     
     class Meta:
         model = Person
+        list_serializer_class = PersonMinimalListSerializer
         fields = ['id', 'token', 'name', 'surname', 'is_juridic', 'is_debtor', 'debt_amount', 'vulnerability_level']
     
     def to_representation(self, instance):
