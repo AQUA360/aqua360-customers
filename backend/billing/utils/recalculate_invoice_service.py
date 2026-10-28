@@ -113,6 +113,7 @@ def delete_and_recalculate_invoice(invoice_id):
             title,
             billing=billing,
             period_months=period_months,
+            recalculation_strategy="original",
         )
 
         if not new_invoice:
@@ -176,6 +177,7 @@ def recalculate_invoice_smart(invoice_id):
             title,
             billing=billing,
             period_months=period_months,
+            recalculation_strategy="original",
         )
 
         if not new_invoice:

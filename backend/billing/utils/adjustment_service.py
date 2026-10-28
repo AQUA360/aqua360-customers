@@ -213,9 +213,15 @@ def get_contract_variable(contract, variable_type):
     return get_contract_variables_cache(contract)['variables_by_type'].get(variable_type.id)
 
 
-def generate_variables(contract, consumption, consumption_days, consumption_leakage = None, consumption_responsible = None, invoice = None):
+def generate_variables(contract, consumption, consumption_days, consumption_leakage = None, consumption_responsible = None, invoice = None, recalculation_strategy="current", effective_persons=None):
     # consumption_responsible = calc_consumption_responsible(contract, consumption)
-    persons_min = contract.total_persons if contract and contract.total_persons > 3 else 3
+    if effective_persons is not None:
+        persons_for_vars = effective_persons
+    elif recalculation_strategy == "original" and invoice and invoice.persons_final is not None:
+        persons_for_vars = invoice.persons_final
+    else:
+        persons_for_vars = contract.total_persons if contract else 3
+    persons_min = persons_for_vars if persons_for_vars > 3 else 3
     
     cache = get_contract_variables_cache(contract) if contract else None
 
@@ -241,8 +247,8 @@ def generate_variables(contract, consumption, consumption_days, consumption_leak
     # print(f"\n\n\nTotal\n final: {total_final}")
 
     variables = {
-        'contract.total_persons': contract.total_persons if contract else 3,
-        'contract.persons': contract.total_persons if contract else 3,
+        'contract.total_persons': persons_for_vars,
+        'contract.persons': persons_for_vars,
         'contract.communication_type': contract.communication_type if contract and contract.communication_type else 'PAPER',
         'persons_min': persons_min,
         'consumption': consumption,
