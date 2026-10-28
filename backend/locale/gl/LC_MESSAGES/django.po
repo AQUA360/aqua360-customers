@@ -4851,3 +4851,15 @@ msgstr "A tarefa de filtrado non existe ou aínda non rematou."
 
 msgid "Hi ha contractes que no pertanyen a aquesta gestió de reclamació."
 msgstr "Hai contratos que non pertencen a esta xestión de reclamación."
+
+#: documentmanager/utils/export_registry.py
+msgid "Tipus de sol·licitud"
+msgstr "Tipo de solicitude"
+
+#: documentmanager/utils/export_registry.py
+msgid "Canvi de nom"
+msgstr "Cambio de nome"
+
+#: documentmanager/utils/export_registry.py
+msgid "Nova alta"
+msgstr "Nova alta"
