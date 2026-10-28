@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
 from billing.models import Invoice, Reading
+from billing.utils.aca_company_service import use_multiple_companies
 from billing.tasks import generate_and_upload_xml
 from claimrequest.tasks import generate_claim_document_pdf
 from communication.utils.communication_service import create_email_template, get_communication_file
@@ -68,6 +69,7 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
             for item in persons:
                 person_groups.append({
                     'id': item['id'],
+                    'address_type': item.get('address_type', 'contract'),
                     'contracts': _as_id_list(item.get('contracts')),
                     'invoices': _as_id_list(item.get('invoices')),
                     'readings': _as_id_list(item.get('readings')),
@@ -91,14 +93,41 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                 )
                 all_contract_ids.update(cid for cid in reading_contract_lookup.values() if cid)
 
+            # Clau d'agrupació per contracte: el tipus de comunicació i, amb `use_multiple_companies`,
+            # també l'empresa, perquè cada comunicació porti el logo, els colors, la signatura i les
+            # dades d'una sola empresa.
             contract_type_map = {}
             if all_contract_ids:
-                contract_type_map = dict(
-                    Contract.objects.filter(id__in=all_contract_ids).values_list('id', 'communication_type')
-                )
+                if use_multiple_companies():
+                    contract_type_map = {
+                        contract_id: (comm_type, company_id)
+                        for contract_id, comm_type, company_id in Contract.objects.filter(
+                            id__in=all_contract_ids
+                        ).values_list('id', 'communication_type', 'company_id')
+                    }
+                else:
+                    contract_type_map = dict(
+                        Contract.objects.filter(id__in=all_contract_ids).values_list('id', 'communication_type')
+                    )
 
+            persons_map = {
+                str(p.id): p for p in Person.objects.filter(id__in=[group['id'] for group in person_groups])
+            }
             split_person_groups = []
             for group in person_groups:
+                # Resolve the wizard's address before splitting by channel/company.
+                # A company's contracts may have no address of their own.
+                person_in = persons_map.get(str(group['id']))
+                if not person_in:
+                    continue
+                if group['address_type'] == 'invoice':
+                    group['address'] = Invoice.objects.filter(id__in=group['invoices']).values_list(
+                        'address_final', flat=True
+                    ).first()
+                else:
+                    person_in.contract_ids = [] if group['address_type'] == 'default' else group['contracts']
+                    group['address'] = PersonCommunicationSerializer().get_address(person_in)
+
                 related_contract_ids = set(group['contracts'])
                 for invoice_id in group['invoices']:
                     contract_id = invoice_contract_map.get(invoice_id)
@@ -116,6 +145,10 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                 }
 
                 if len(communication_types) <= 1:
+                    # Sense contractes al payload, els de les factures (com fa la separació de sota)
+                    if not group['contracts']:
+                        for invoice_id in group['invoices']:
+                            _append_unique(group['contracts'], invoice_contract_map.get(invoice_id))
                     split_person_groups.append(group)
                     continue
 
@@ -138,15 +171,11 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                     if typed_group['contracts'] or typed_group['invoices'] or typed_group['readings']:
                         split_person_groups.append({
                             'id': group['id'],
+                            'address': group['address'],
                             'contracts': typed_group['contracts'],
                             'invoices': typed_group['invoices'],
                             'readings': typed_group['readings'],
                         })
-
-            person_ids = [group['id'] for group in split_person_groups]
-            persons_map = {
-                str(p.id): p for p in Person.objects.filter(id__in=person_ids)
-            }
 
             serialized_persons = []
             for group in split_person_groups:
@@ -156,7 +185,9 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                 person_in.contract_ids = group['contracts']
                 person_in.invoice_ids = group['invoices']
                 person_in.reading_ids = group['readings']
-                serialized_persons.append(PersonCommunicationSerializer(person_in).data)
+                person_data = PersonCommunicationSerializer(person_in).data
+                person_data['address'] = group['address']
+                serialized_persons.append(person_data)
 
             default_status = CommunicationStatus.objects.get(is_default=True)
             total_persons = len(serialized_persons)

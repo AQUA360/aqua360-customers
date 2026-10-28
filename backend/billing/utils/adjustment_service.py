@@ -5,6 +5,7 @@ import logging
 
 from billing.models import Invoice
 from contract.models import VariableType
+from coredata.models import ConfigProject
 from pricing.models import AdjustmentCondition, AdjustmentIntervalStretch
 from pricing.utils.formula_evaluator import FormulaError, evaluate
 
@@ -91,6 +92,32 @@ def _load_variable_types():
         'variable_types': all_variable_types,
         'vulnerable_tokens': {vt.token for vt in all_variable_types if vt.is_vulnerable},
     }
+
+
+CONTRACT_MIN_PERSONS_CONFIG_TOKEN = 'contract_min_persons'
+DEFAULT_CONTRACT_MIN_PERSONS = 3
+
+
+def _load_contract_min_persons():
+    value = ConfigProject.objects.filter(token=CONTRACT_MIN_PERSONS_CONFIG_TOKEN).values_list('value', flat=True).first()
+    try:
+        min_persons = int(str(value).strip())
+    except (TypeError, ValueError):
+        return DEFAULT_CONTRACT_MIN_PERSONS
+    return min_persons if min_persons > 0 else DEFAULT_CONTRACT_MIN_PERSONS
+
+
+def get_contract_min_persons():
+    """
+    Mínim de persones d'un contracte (ConfigProject `contract_min_persons`, per defecte 3).
+    Dins d'un billing_run_cache_scope es consulta una sola vegada per facturació.
+    """
+    cache = _run_cache('contract_min_persons')
+    if cache is None:
+        return _load_contract_min_persons()
+    if 'value' not in cache:
+        cache['value'] = _load_contract_min_persons()
+    return cache['value']
 
 
 def get_variable_types_data():
@@ -215,9 +242,10 @@ def get_contract_variable(contract, variable_type):
 
 def generate_variables(contract, consumption, consumption_days, consumption_leakage = None, consumption_responsible = None, invoice = None):
     # consumption_responsible = calc_consumption_responsible(contract, consumption)
-    persons_min = contract.total_persons if contract and contract.total_persons > 3 else 3
-    
     cache = get_contract_variables_cache(contract) if contract else None
+    min_persons = get_contract_min_persons()
+    total_persons = contract.total_persons if contract and contract.total_persons > 0 else min_persons
+    persons_min = max(total_persons, min_persons)
 
     total_final = None
     if invoice:
@@ -241,8 +269,8 @@ def generate_variables(contract, consumption, consumption_days, consumption_leak
     # print(f"\n\n\nTotal\n final: {total_final}")
 
     variables = {
-        'contract.total_persons': contract.total_persons if contract else 3,
-        'contract.persons': contract.total_persons if contract else 3,
+        'contract.total_persons': total_persons,
+        'contract.persons': total_persons,
         'contract.communication_type': contract.communication_type if contract and contract.communication_type else 'PAPER',
         'persons_min': persons_min,
         'consumption': consumption,

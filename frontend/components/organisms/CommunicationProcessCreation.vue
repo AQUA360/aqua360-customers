@@ -442,6 +442,7 @@ const save = async () => {
       .map(p => {
         const rawPerson = toRaw(p);
         const person = { id: rawPerson.id };
+        if (rawPerson.address_type) person.address_type = rawPerson.address_type;
         if (rawPerson.contracts && rawPerson.contracts.length > 0) {
           person.contracts = JSON.parse(JSON.stringify(toRaw(rawPerson.contracts.map(c => c.id))));
         }
