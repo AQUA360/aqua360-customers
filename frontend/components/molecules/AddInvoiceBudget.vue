@@ -165,12 +165,13 @@ const onCategoriesLoaded = ({ options }) => {
 
 const localCompany = ref(null)
 
+// El selector de comptes rep sempre la llista ja filtrada (comptes actius amb IBAN)
 const resolvedCompany = computed(() => {
-  if (props.company) return props.company;
+  if (props.company) return { ...props.company, company_banks: companyBanks.value };
   if (localCompany.value) {
     return {
       ...localCompany.value,
-      company_banks: companyBanks.value?.length ? companyBanks.value : localCompany.value.company_banks
+      company_banks: companyBanks.value
     }
   }
   const d = data.value?.results ? data.value.results[0] : data.value;
@@ -179,7 +180,7 @@ const resolvedCompany = computed(() => {
   if (c && typeof c === 'object') {
     return {
       ...c,
-      company_banks: companyBanks.value?.length ? companyBanks.value : c.company_banks
+      company_banks: companyBanks.value
     }
   }
   if (companyBanks.value?.length) {
@@ -462,7 +463,14 @@ const loadCompanies = async () => {
 
 const showCompanySelector = computed(() => useMultipleCompanies.value && companies.value?.length > 1);
 
+const isSelectableCompanyBank = (bank) => bank.is_active && !!bank.iban;
+
+// Cada càrrega es numera: si l'usuari canvia de contracte abans que acabi, la resposta antiga es descarta
+let companyBanksLoadId = 0;
+
 const loadCompanyBanks = async () => {
+  const loadId = ++companyBanksLoadId;
+  const isStale = () => loadId !== companyBanksLoadId;
   const d = data.value?.results ? data.value.results[0] : data.value;
   const c = d?.company || d?.contract?.company || d?.exploitation?.company || d?.contract?.exploitation?.company ||
             selectedCustom.value?.company || selectedCustom.value?.contract?.company || selectedCustom.value?.exploitation?.company || selectedCustom.value?.contract?.exploitation?.company;
@@ -471,13 +479,15 @@ const loadCompanyBanks = async () => {
 
   // Com al backend, l'empresa emissora és la del contracte o, si no en té, la de la seva explotació.
   // El contracte triat al formulari només porta l'id, i el detall no inclou l'empresa de l'explotació.
-  if (!compId && !explId && selectedCustom.value?.entity === 'contract' && selectedCustom.value?.id) {
+  // Va abans de l'explotació triada: pot ser d'una persona seleccionada abans.
+  if (!compId && selectedCustom.value?.entity === 'contract' && selectedCustom.value?.id) {
     try {
       const contractResp = await $ContractApiService.getDetail(selectedCustom.value.id);
+      if (isStale()) return;
       const cc = contractResp?.company;
       compId = cc && typeof cc === 'object' ? cc.id : cc;
       const ce = contractResp?.exploitation;
-      explId = ce && typeof ce === 'object' ? ce.id : ce;
+      explId = (ce && typeof ce === 'object' ? ce.id : ce) || explId;
     } catch(err) {
       console.error(err);
     }
@@ -486,6 +496,7 @@ const loadCompanyBanks = async () => {
   if (!compId && explId) {
     try {
       const explResp = await $ExploitationApiService.getDetail(explId);
+      if (isStale()) return;
       const ec = explResp?.company;
       compId = ec && typeof ec === 'object' ? ec.id : ec;
     } catch(err) {
@@ -498,6 +509,7 @@ const loadCompanyBanks = async () => {
       if (!props.company) {
         try {
           const compResp = await $ExploitationApiService.getCompany(compId);
+          if (isStale()) return;
           if (compResp) {
             localCompany.value = compResp;
           }
@@ -506,18 +518,21 @@ const loadCompanyBanks = async () => {
         }
       }
       const banksResp = await $ExploitationApiService.getCompanyBanks(compId);
+      if (isStale()) return;
       const banks = banksResp?.results || (Array.isArray(banksResp) ? banksResp : []);
-      companyBanks.value = banks.filter((bank) => bank.is_active);
+      companyBanks.value = banks.filter(isSelectableCompanyBank);
     } catch(e) {
       console.error(e);
     }
   } else if (props.company?.company_banks) {
-    companyBanks.value = props.company.company_banks.filter((bank) => bank.is_active);
+    companyBanks.value = props.company.company_banks.filter(isSelectableCompanyBank);
   } else {
     companyBanks.value = [];
   }
-  // El compte triat ha de ser de l'empresa actual: si s'ha canviat de contracte, es torna a triar
-  if (selectedCompanyBankDebit.value && companyBanks.value.length && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
+  // El compte triat ha de ser de l'empresa actual (també si no en té cap d'actiu). Si no s'ha pogut
+  // saber l'empresa, es manté el que ve de la forma de pagament del contracte.
+  const companyResolved = !!compId || !!props.company;
+  if (selectedCompanyBankDebit.value && companyResolved && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
     selectedCompanyBankDebit.value = null;
   }
   if (companyBanks.value?.length === 1 && paymentTypeOptionsById?.value[selectedPaymentType?.value]?.token == 'BANK_TRANSFER' && !selectedCompanyBankDebit.value) {
