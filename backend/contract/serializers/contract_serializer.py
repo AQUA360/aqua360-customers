@@ -36,7 +36,7 @@ from .contract_payment_serializer import ContractPaymentSerializer
 from django.db.models import Q, Sum
 from billing.models import CommitmentDepositStatus, GeneralPaymentMandateLog, Invoice, InvoiceStatus, Payment, PaymentStatus
 from logger.models import LogContractTotalMembers
-from contract.utils.contract_service import log_contract_phones_change
+from contract.utils.contract_service import get_contract_housing_units, log_contract_phones_change
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
 
 class ContractObservationSerializer(serializers.ModelSerializer):
@@ -158,6 +158,8 @@ class ContractSerializer(serializers.ModelSerializer):
     
     request_invoices = serializers.SerializerMethodField()
     incidents = serializers.SerializerMethodField()
+    # Incidència oberta d'un tipus que bloqueja les ofertes comercials (art. 16.2)
+    blocking_incident = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
     total_in_commitment_deposits = serializers.SerializerMethodField()
@@ -173,6 +175,7 @@ class ContractSerializer(serializers.ModelSerializer):
     members_change_count = serializers.SerializerMethodField()
     orders_count = serializers.SerializerMethodField()
     pending_billing = serializers.SerializerMethodField()
+    housing_units = serializers.SerializerMethodField()
     
     mandate_id = serializers.CharField(required=False, allow_null=True)
     mandate_id_overwrite = serializers.BooleanField(required=False, allow_null=True)
@@ -286,6 +289,9 @@ class ContractSerializer(serializers.ModelSerializer):
         owner_observations = PersonObservation.objects.filter(is_important=True, is_active=True, person=obj.owner)
         return PersonObservationSerializer(holder_observations | tenant_observations | owner_observations, many=True, context=self.context).data
     
+    def get_housing_units(self, obj):
+        return get_contract_housing_units(obj)
+
     def get_supply_point_ids(self, obj):
         supply_points = obj.supply_points.all()
         return [supply_point.id for supply_point in supply_points]
@@ -349,8 +355,13 @@ class ContractSerializer(serializers.ModelSerializer):
         vulnerability_requests = obj.vulnerability_requests.filter(status__token=vulnerability_pending_token)
         return vulnerability_requests.count() > 0
     
+    def get_blocking_incident(self, obj):
+        from notification.utils.incident_utils import blocking_incident
+        incident = blocking_incident(obj)
+        return {'id': incident.id, 'token': incident.token, 'name': incident.name} if incident else None
+
     def get_incidents(self, obj):
-            return obj.incidents.all().count()
+            return obj.incidents.filter(is_active=True).count()
         
     def get_active_commitment_deposits(self, obj):
         deposit_paid_token = ConfigProject.objects.get(token='commitment_deposit_status_paid_token').value
@@ -1248,12 +1259,23 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         if filters:
             payments = payments.filter(filters)
 
+        # Deute que no penja del contracte: factures emeses durant la sol·licitud
+        # d'alta. Arriben ja filtrades des d'`obtain_claim_request_data`, per això
+        # s'afegeixen per id i no es tornen a filtrar.
+        extra_payment_ids = (self.context.get('extra_payments_by_contract') or {}).get(instance.id)
+        if extra_payment_ids:
+            payments = Payment.objects.filter(
+                Q(id__in=payments.values('id')) | Q(id__in=extra_payment_ids)
+            )
+
         # Excloure pagaments especificats
         payments_ignored = self.context.get('payments_ignored', None)
         if payments_ignored:
             payments = payments.exclude(id__in=payments_ignored)
         
-        representation['payments'] = ContractPaymentSerializer(payments, many=True).data
+        representation['payments'] = ContractPaymentSerializer(
+            payments.select_related('invoice', 'invoice__contract_request'), many=True
+        ).data
         representation['payments_count'] = payments.count()
         representation['total_amount'] = payments.aggregate(total=Sum('amount'))['total'] or 0
         
@@ -1272,14 +1294,34 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         elif instance.tenant and instance.holder.is_juridic:
             representation['vulnerability_level'] = instance.tenant.vulnerability_level
 
+        # Baixa demanada però no finalitzada: el contracte segueix d'alta i es pot
+        # reclamar, però la pantalla ha d'avisar-ne. Els ids arriben calculats de
+        # cop per no fer una consulta per fila.
+        representation['has_open_termination'] = instance.id in (
+            self.context.get('open_termination_contract_ids') or set()
+        )
+
         return representation
     
     def get_expired_invoices(self, obj):
-        invoices = Invoice.objects.filter(contract=obj, status=InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_expired_token').value))
+        expired_status = InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_expired_token').value)
+        invoice_filters = Q(contract=obj)
+
+        extra_invoice_ids = (self.context.get('extra_invoices_by_contract') or {}).get(obj.id)
+        if extra_invoice_ids:
+            invoice_filters |= Q(id__in=extra_invoice_ids)
+
+        invoices = Invoice.objects.filter(invoice_filters, status=expired_status)
 
         return_fee_invoice_ids = self.context.get('exclude_return_fee_invoice_ids')
         if return_fee_invoice_ids:
             invoices = invoices.exclude(id__in=return_fee_invoice_ids)
 
+        closed_tokens = self.context.get('closed_termination_tokens') or []
+        if len(closed_tokens) >= 2:
+            invoices = invoices.exclude(
+                contract_termination__status__isnull=False,
+                contract_termination__status__token__in=closed_tokens,
+            )
+
         return invoices.count()
-    

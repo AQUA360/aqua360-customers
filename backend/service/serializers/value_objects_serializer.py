@@ -122,6 +122,11 @@ class MeterModelSerializer(serializers.ModelSerializer):
         model = MeterModel
         fields = '__all__'
 
+class MeterCommTechnologySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeterCommTechnology
+        fields = '__all__'
+
 class CompanyTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = CompanyType

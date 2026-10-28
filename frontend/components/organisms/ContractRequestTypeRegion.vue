@@ -47,9 +47,11 @@ const error = ref(null);
 const data = ref(null);
 const variableTypeSelectedItems = ref([]);
 const orderTypeSelectedItems = ref([]);
+const changeOfNameOrderTypeSelectedItems = ref([]);
 const clauseTemplateSelectedItems = ref([]);
 const priceRateSelectedItems = ref([]);
 const registrationPriceRateSelectedItems = ref([]);
+const changeOfNamePriceRateSelectedItems = ref([]);
 const hasPersons = ref(null);
 
 const priceRateFilter = ref(null)
@@ -70,6 +72,12 @@ const initializeVariableTypeSelectedItems = () => {
 const initializeOrderTypeSelectedItems = () => {
   if (data.value && data.value.order_types) {
     orderTypeSelectedItems.value = data.value.order_types.map(v => v.id);
+  }
+}
+
+const initializeChangeOfNameOrderTypeSelectedItems = () => {
+  if (data.value && data.value.change_of_name_order_types) {
+    changeOfNameOrderTypeSelectedItems.value = data.value.change_of_name_order_types.map(v => v.id);
   }
 }
 
@@ -96,6 +104,12 @@ const initializeRegistrationPriceRatesSelectedItems = () => {
   }
 }
 
+const initializeChangeOfNamePriceRatesSelectedItems = () => {
+  if (data.value && data.value.change_of_name_registration_price_rates) {
+    changeOfNamePriceRateSelectedItems.value = data.value.change_of_name_registration_price_rates.map(v => v.id);
+  }
+}
+
 
 const getData = async () => {
   pending.value = true;
@@ -106,9 +120,12 @@ const getData = async () => {
     hasPersons.value = data.value.has_persons;
     initializeVariableTypeSelectedItems();
     initializeOrderTypeSelectedItems();
+    initializeChangeOfNameOrderTypeSelectedItems();
     initializeClauseTemplateSelectedItems();
     initializePriceRatesSelectedItems();
     initializeRegistrationPriceRatesSelectedItems();
+    initializeChangeOfNamePriceRatesSelectedItems();
+  initializeChangeOfNamePriceRatesSelectedItems();
   } catch (err) {
     error.value = err;
   } finally {
@@ -129,9 +146,11 @@ watch(() => props.isSubRegionOpen, (newValue) => {
 watch(() => data.value, () => {
   initializeVariableTypeSelectedItems();
   initializeOrderTypeSelectedItems();
+  initializeChangeOfNameOrderTypeSelectedItems();
   initializeClauseTemplateSelectedItems();
   initializePriceRatesSelectedItems();
   initializeRegistrationPriceRatesSelectedItems();
+  initializeChangeOfNamePriceRatesSelectedItems();
 }, { immediate: true });
 
 onMounted(async () => {
@@ -183,6 +202,12 @@ const openOrderTypeSelectMultiple = () => {
   showSubRegion();
 }
 
+// Tipus d'ordre que es generen en els canvis de nom
+const openChangeOfNameOrderTypeSelectMultiple = () => {
+  showRegionDetailComponent.value = 'ChangeOfNameOrderTypeSelectMultiple';
+  showSubRegion();
+}
+
 const openPriceRateSelectMultiple = async (filter) => {
   closeSubRegion()
   await nextTick()
@@ -194,6 +219,16 @@ const openPriceRateSelectMultiple = async (filter) => {
     showRegionDetailComponent.value = 'PriceRateSelectMultiple';
     activePriceRateList.value = 'normal';
   }
+  showSubRegion();
+}
+
+// Tarifes de contractació que s'apliquen als canvis de nom
+const openChangeOfNamePriceRateSelectMultiple = async () => {
+  closeSubRegion()
+  await nextTick()
+  priceRateFilter.value = [origin_contract_token.value];
+  showRegionDetailComponent.value = 'ChangeOfNamePriceRateSelectMultiple';
+  activePriceRateList.value = 'change_of_name';
   showSubRegion();
 }
 const openClauseTemplateSelectMultiple = () => {
@@ -293,6 +328,31 @@ watch(orderTypeSelectedItems, async (newItems, oldItems) => {
   emit('changed');
 });
 
+watch(changeOfNameOrderTypeSelectedItems, async (newItems, oldItems) => {
+  if (!objectPermissions.value.can_change) return;
+  if (isSaving.value) return; // Evitar reaccions durant el guardat
+
+  const areDifferent = JSON.stringify(newItems) !== JSON.stringify(oldItems);
+  if (!areDifferent) return;
+
+  isSaving.value = true;
+  const saveObject = {
+    id: props.id,
+    change_of_name_order_types_ids: newItems
+  };
+
+  try {
+    await $ContractRequestTypeApiService.save(saveObject);
+    await getData();
+  } catch (err) {
+    console.error('Error al guardar els tipus d\'ordres de canvi de nom:', err);
+  } finally {
+    isSaving.value = false;
+  }
+
+  emit('changed');
+});
+
 watch(clauseTemplateSelectedItems, async (newItems, oldItems) => {
   if (!objectPermissions.value.can_change) return;
   if (isSaving.value) return; // Evitar reaccions durant el guardat
@@ -340,6 +400,32 @@ watch(registrationPriceRateSelectedItems, async (newItems, oldItems) => {
       await getData();
     } catch (err) {
       console.error('Error al guardar les tarifes de registre:', err);
+    } finally {
+      isSaving.value = false;
+    }
+
+    emit('changed');
+  }
+);
+
+watch(changeOfNamePriceRateSelectedItems, async (newItems, oldItems) => {
+    if (!objectPermissions.value.can_change) return;
+    if (isSaving.value || activePriceRateList.value !== 'change_of_name') return;
+
+    const areDifferent = JSON.stringify(newItems) !== JSON.stringify(oldItems);
+    if (!areDifferent) return;
+
+    isSaving.value = true;
+    const saveObject = {
+      id: props.id,
+      change_of_name_registration_price_rates_ids: newItems,
+    };
+
+    try {
+      await $ContractRequestTypeApiService.save(saveObject);
+      await getData();
+    } catch (err) {
+      console.error('Error al guardar les tarifes de canvi de nom:', err);
     } finally {
       isSaving.value = false;
     }
@@ -409,8 +495,14 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
           <DropdownOption :name="`${$t('common.modify')} ${$t('order_block.order_types')}`" @click="openOrderTypeSelectMultiple">
             <Icon name="fa6-solid:screwdriver-wrench" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('order_block.order_types') }}
           </DropdownOption>
+          <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.change_of_name_order_types')}`" @click="openChangeOfNameOrderTypeSelectMultiple">
+            <Icon name="fa6-solid:screwdriver-wrench" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('contract_block.change_of_name_order_types') }}
+          </DropdownOption>
             <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.registration_price_rates')}`" @click="openPriceRateSelectMultiple(origin_contract_token)">
             <Icon name="fa6-solid:money-check" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('contract_block.registration_price_rates') }}
+          </DropdownOption>
+          <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.change_of_name_registration_price_rates')}`" @click="openChangeOfNamePriceRateSelectMultiple">
+            <Icon name="fa6-solid:money-check" class="text-slate mr-1" /> {{ $t('common.modify') }} {{ $t('contract_block.change_of_name_registration_price_rates') }}
           </DropdownOption>
           <DropdownOption :name="`${$t('common.modify')} ${$t('contract_block.clauses')}`" @click="openClauseTemplateSelectMultiple">
             <Icon name="fa6-solid:paragraph" class="text-slate mr-2" /> {{ $t('common.modify') }} {{ $t('contract_block.clauses') }}
@@ -504,6 +596,27 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
           </div>
         </div>
 
+        <div id="change_of_name_orders" class="mb-3">
+          <p class="mb-3 font-semibold">{{ $t('contract_block.change_of_name_order_types') }} ({{ data.change_of_name_order_types.length }})</p>
+          <div class="pl-3 pr-3">
+            <ul class="mb-2">
+              <li v-for="orderType in data.change_of_name_order_types" :key="orderType.id" class="mb-1">
+                <span class="text-slate-900 p-1">
+                  <Icon name="fa6-solid:screwdriver-wrench" class="text-slate-500" /> &nbsp;
+                  {{ orderType.name }}
+                </span>
+              </li>
+            </ul>
+            <button v-if="data.change_of_name_order_types.length === 0 && objectPermissions?.can_change" @click="openChangeOfNameOrderTypeSelectMultiple"
+              class="underline text-sky-500 hover:no-underline">
+              {{ $t('common.add') }} {{ $t('contract_block.change_of_name_order_types') }}
+            </button>
+            <span v-if="data.change_of_name_order_types.length === 0 && !objectPermissions?.can_change" class="text-slate-500">
+              {{ $t('contract_block.no_change_of_name_order_types') }}
+            </span>
+          </div>
+        </div>
+
 
         <div id="clause_templates" class="mb-3">
           <p class="mb-3 font-semibold">{{ $t('contract_block.clauses') }} ({{ data.clause_templates.length }})</p>
@@ -543,6 +656,26 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
           </div>
         </div>
 
+        <div id="change_of_name_price_rate_templates" class="mb-3">
+          <p class="mb-3 font-semibold">{{ $t('contract_block.change_of_name_registration_price_rates') }} ({{ data.change_of_name_registration_price_rates.length }})
+          </p>
+          <div class="pl-3 pr-3">
+            <ul class="mb-2">
+              <li v-for="item in data.change_of_name_registration_price_rates" :key="item.id" class="mb-1">
+                <Icon name="fa6-solid:cube" class="text-slate-500" /> &nbsp;<span class="font-semibold">{{
+                  item.product?.name || $t('pricing_block.no_product') }}</span> - {{ item.name }}
+              </li>
+            </ul>
+            <button v-if="data.change_of_name_registration_price_rates.length === 0 && objectPermissions?.can_change" @click="openChangeOfNamePriceRateSelectMultiple"
+              class="underline text-sky-500 hover:no-underline">
+              {{ $t('common.add') }} {{ $t('common.price_rates') }}
+            </button>
+            <span v-if="data.change_of_name_registration_price_rates.length === 0 && !objectPermissions?.can_change" class="text-slate-500">
+              {{ $t('contract_block.no_change_of_name_registration_price_rates') }}
+            </span>
+          </div>
+        </div>
+
         <div id="price_rate_templates" class="mb-3">
           <p class="mb-3 font-semibold">{{ $t('contract_block.contract_price_rates') }} ({{ data.price_rates.length }})</p>
           <div class="pl-3 pr-3">
@@ -567,14 +700,14 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
     </div><!-- end if pending -->
 
     <div v-if="SubRegion" role="region" id="subregion"
-      class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white fixed top-0 right-0 w-[48vw] z-50"
+      class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white flex flex-col overflow-hidden fixed top-0 right-0 w-[48vw] z-50"
       :class="{ 'translate-x-0': SubRegion, 'translate-x-full': !SubRegion }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="closeSubRegion()" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
         </button>
       </div>
-      <div class="px-10">
+      <div class="px-10 flex-1 overflow-y-auto pb-24">
         <ContractRequestTypeEditRegion v-if="showRegionDetailComponent === 'ContractRequestTypeEditRegion'" :item="data"
           :isSubRegionOpen="true" @saved="onSavedAdd" />
 
@@ -588,12 +721,17 @@ watch(priceRateSelectedItems, async (newItems, oldItems) => {
         <OrderTypeSelectMultiple v-if="showRegionDetailComponent === 'OrderTypeSelectMultiple'"
           v-model="orderTypeSelectedItems" />
 
+        <OrderTypeSelectMultiple v-if="showRegionDetailComponent === 'ChangeOfNameOrderTypeSelectMultiple'"
+          v-model="changeOfNameOrderTypeSelectedItems" />
+
 
         <ClauseTemplateSelectMultiple v-if="showRegionDetailComponent === 'ClauseTemplateSelectMultiple'"
           v-model="clauseTemplateSelectedItems" />
 
         <PriceRateSelectMultiple v-if="showRegionDetailComponent === 'RegistrationPriceRateSelectMultiple'"
           v-model="registrationPriceRateSelectedItems" :filter="priceRateFilter" :title="$t('contract_block.registration_price_rates')" />
+        <PriceRateSelectMultiple v-if="showRegionDetailComponent === 'ChangeOfNamePriceRateSelectMultiple'"
+          v-model="changeOfNamePriceRateSelectedItems" :filter="priceRateFilter" :title="$t('contract_block.change_of_name_registration_price_rates')" />
         <PriceRateSelectMultiple v-if="showRegionDetailComponent === 'PriceRateSelectMultiple'"
           v-model="priceRateSelectedItems" :filter="priceRateFilter" :title="$t('contract_block.contract_price_rates')" />
 

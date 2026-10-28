@@ -1,15 +1,31 @@
 from django.http import FileResponse
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Prefetch, Q, Value
+from django.db.models.functions import Replace, Upper
+from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
+from django.utils.translation import gettext as _
+import base64
 import csv
+import re
 import zipfile
 import logging
 from io import BytesIO, StringIO
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
-from coredata.models import ConfigProject
+from coredata.models import (
+    ConfigProject,
+    Person,
+    PersonAddress,
+    PersonBank,
+    PersonContact,
+)
+from coredata.utils.name_utils import generate_token, check_token_exists
+from coredata.utils import name_utils as name_utils_module
+from contract.utils.contract_token_service import generate_contract_request_token
+from logger.models import LogIncidentStatusChange, LogContractRequestStatus
+from notification.models import Incident, IncidentStatus, IncidentType
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
@@ -17,8 +33,29 @@ from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from contract.models import Contract, ContractLog, ContractObservation, PaymentType
-from billing.models import Invoice, InvoiceStatus, Reading
+from contract.models import (
+    Contract,
+    ContractLog,
+    ContractObservation,
+    ContractPriceRate,
+    ContractRequest,
+    ContractRequestStatus,
+    ContractRequestType,
+    ContractStatus,
+    PaymentType,
+)
+from billing.models import (
+    GeneralPayment,
+    GeneralPaymentSepaDocument,
+    Invoice,
+    InvoiceStatus,
+    Payment,
+    PaymentStatus,
+    Reading,
+)
+from documentmanager.utils.main_utils import download_document, upload_document
+from pricing.models import PriceRate
+from service.models import Property, SupplyPoint
 from ov.serializers import (
     BillingDataOVSerializer,
     BillingContractInvoicesOVSerializer,
@@ -39,9 +76,29 @@ from ov.serializers import (
     CancelDirectDebitSerializer,
     ContactDataOVSerializer,
     BatchInvoiceDownloadSerializer,
+    ContractStatusDictionarySerializer,
+    PaymentTypeDictionarySerializer,
+    InvoiceStatusDictionarySerializer,
+    ProcedureTariffDictionarySerializer,
+    PropertyItemSerializer,
+    PersonDataSerializer,
+    QuickPayRequestSerializer,
+    QuickPayResponseSerializer,
+    ReturnRequestSerializer,
+    ReturnRequestResponseSerializer,
+    ContractProcedureRequestSerializer,
+    ContractProcedureResponseSerializer,
+    mask_iban,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
-from ov.throttles import DniEnumerationThrottle
+from ov.throttles import (
+    ContractProcedureThrottle,
+    DniEnumerationThrottle,
+    PaymentReceiptThrottle,
+    PersonDataThrottle,
+    QuickPayThrottle,
+    ReturnRequestThrottle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -216,9 +273,17 @@ class BillingContractInvoicesOVView(APIView):
             )
 
         contract = self.queryset.filter(token=contract_token).first()
-        invoices = Invoice.objects.filter(contract=contract).exclude(
-            status__token="1"
-        )  # excluïm les factures de pre-factura
+        if not contract:
+            return Response(
+                {"error": "Contract not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        invoices = (
+            Invoice.objects.filter(contract=contract)
+            .exclude(status__token="1")  # excluïm les factures de pre-factura
+            .select_related("status", "contract", "payment_type")
+        )
 
         serializer = BillingContractInvoicesOVSerializer(invoices, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -255,6 +320,38 @@ class UnpayedInvoicesOVView(APIView):
     permission_classes = [IsAuthenticated]
     queryset = Invoice.objects.all()
 
+    @staticmethod
+    def _automated_unpaid_status_tokens():
+        unpaid_config_tokens = (
+            "invoice_status_confirmed_token",
+            "invoice_status_sent_token",
+            "invoice_status_expired_token",
+            "invoice_status_endowment_token",
+            "invoice_status_default_token",
+            "invoice_status_commitment_token",
+        )
+        terminal_config_tokens = (
+            "invoice_status_paid_token",
+            "invoice_status_cancelled_token",
+            "invoice_status_pending_token",
+        )
+        configured_values = dict(
+            ConfigProject.objects.filter(
+                token__in=unpaid_config_tokens + terminal_config_tokens
+            ).values_list("token", "value")
+        )
+        unpaid_tokens = {
+            configured_values[token]
+            for token in unpaid_config_tokens
+            if configured_values.get(token)
+        }
+        terminal_tokens = {
+            configured_values[token]
+            for token in terminal_config_tokens
+            if configured_values.get(token)
+        }
+        return unpaid_tokens - terminal_tokens
+
     def get(self, request):
         contract_token = request.query_params.get("contract_token", None)
 
@@ -270,16 +367,21 @@ class UnpayedInvoicesOVView(APIView):
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        # Validate statuses parameter (required)
         qp_statuses = request.query_params.get("statuses", None)
-        if not qp_statuses:
+        automated_unpaid = (
+            (request.query_params.get("unpaid") or "").strip().lower() == "true"
+        )
+        if not qp_statuses and not automated_unpaid:
             return Response(
                 {"error": "Statuses are required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        status_tokens = [
-            token.strip() for token in qp_statuses.split(",") if token.strip()
-        ]
+        if qp_statuses:
+            status_tokens = [
+                token.strip() for token in qp_statuses.split(",") if token.strip()
+            ]
+        else:
+            status_tokens = list(self._automated_unpaid_status_tokens())
         if not status_tokens:
             return Response(
                 {"error": "At least one valid status token is required"},
@@ -298,7 +400,9 @@ class UnpayedInvoicesOVView(APIView):
         # optional payment type exclusion
         invoices_queryset = Invoice.objects.filter(
             contract=contract, status__in=statuses
-        )
+        ).exclude(
+            status__token="1"
+        )  # mateix filtre base que /ov/invoices/: sense pre-factures
 
         qp_exc_payment_type = request.query_params.get("exc_payment_type_token", None)
         if qp_exc_payment_type:
@@ -389,11 +493,14 @@ class InvoicePDFView(APIView):
 
         from coredata.models import ConfigProject
 
-        file_type_value = (
-            ConfigProject.objects.filter(token="invoice_type_invoice_token")
-            .first()
-            .value
-        )
+        invoice_type_config = ConfigProject.objects.filter(
+            token="invoice_type_invoice_token"
+        ).first()
+        if not invoice_type_config or not invoice_type_config.value:
+            return Response(
+                {"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        file_type_value = invoice_type_config.value
         invoice: Invoice = self.queryset.filter(
             token=invoice_token,
             contract__token=contract_token,
@@ -412,38 +519,37 @@ class InvoicePDFView(APIView):
                 {"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        """ if not invoice.invoice_file:
-            return Response(
-                {"error": "Invoice PDF file not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            ) """
-
         from documentmanager.utils.main_utils import download_document
 
         try:
-
-            """http_response = download_document(invoice.invoice_file)
-
-            pdf_bytes = http_response.content
-
-            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")"""
-
-            _, _, pdf_buffer = generate_report_invoice_pdf(
-                invoice, request, context={"request": request}
-            )
-            pdf_base64 = base64.b64encode(pdf_buffer.getvalue()).decode("utf-8")
-
             filename = (
                 f"invoice_{invoice.serie_final}_{invoice.id}.pdf"
                 if invoice.serie_final
                 else f"invoice_{invoice.token}_{invoice.id}.pdf"
             )
+            pdf_bytes = None
+            document_name = filename
+            if invoice.invoice_file:
+                try:
+                    pdf_bytes = download_document(invoice.invoice_file).content
+                    document_name = invoice.invoice_file.document_name or filename
+                except Exception:
+                    logger.warning(
+                        "Could not retrieve stored PDF for invoice %s", invoice.id
+                    )
+            if pdf_bytes is None:
+                _, _, pdf_buffer = generate_report_invoice_pdf(
+                    invoice, request, context={"request": request}, save_pdf=False
+                )
+                pdf_bytes = pdf_buffer.getvalue()
+                document_name = filename
+            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
             return Response(
                 {
                     "pdf": pdf_base64,  # Base64-encoded PDF content
                     "filename": filename,  # Suggested filename for download
-                    "document_name": invoice.invoice_file.document_name,  # Original document name
+                    "document_name": document_name,  # Original document name
                 },
                 status=status.HTTP_200_OK,
             )
@@ -753,6 +859,9 @@ class ConsumptionHistoryOVView(APIView):
         else:
             queryset = Reading.objects.none()
 
+        # Només consums facturats: lectures vinculades a almenys una factura
+        queryset = queryset.filter(invoices__isnull=False).distinct()
+
         queryset = (
             queryset.select_related("previous_reading")
             .prefetch_related("invoices")
@@ -862,7 +971,9 @@ class ConsumptionDownloadOVView(APIView):
         reading = None
         if meter:
             reading = (
-                Reading.objects.filter(pk=id, meter=meter)
+                Reading.objects.filter(
+                    pk=id, meter=meter, invoices__isnull=False
+                )
                 .select_related("previous_reading")
                 .prefetch_related("invoices")
                 .first()
@@ -948,9 +1059,14 @@ class ConsumptionsDownloadOVView(APIView):
             if data.get("date_to"):
                 queryset = queryset.filter(reading_date__lte=data["date_to"])
 
-        queryset = queryset.select_related("previous_reading").prefetch_related(
-            "invoices"
-        ).order_by("-reading_date", "-id")
+        # Només consums facturats: les lectures no facturades s'ometen del fitxer
+        queryset = (
+            queryset.filter(invoices__isnull=False)
+            .distinct()
+            .select_related("previous_reading")
+            .prefetch_related("invoices")
+            .order_by("-reading_date", "-id")
+        )
 
         if export_format == "csv":
             payload = _consumptions_csv(queryset)
@@ -1008,11 +1124,12 @@ class BillingPeriodsOVView(APIView):
 class SepaDocumentUploadView(APIView):
     """POST /ov/procedures/{contract_token}/upload-sepa-signed/
 
-    Sube y archiva el mandato SEPA firmado de un contrato. Mock ligero:
-    valida que el contrato exista (404 si no) y que el `iban` enviado
-    coincida con el IBAN activo de la cuenta de domiciliación (400 si no
-    coincide); archiva el documento de forma placeholder y devuelve 201
-    con {"contract_token", "success": true}.
+    Sube y archiva el mandato SEPA firmado de un contrato. Valida que el
+    contrato exista (404 si no) y que el `iban` enviado coincida con el IBAN
+    activo de la cuenta de domiciliación (400 si no coincide); archiva el
+    documento en el gestor documental y lo vincula a la forma de pago del
+    contrato (`GeneralPaymentSepaDocument`), devolviendo 201 con
+    {"contract_token", "success": true}.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1036,25 +1153,111 @@ class SepaDocumentUploadView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         uploaded_iban = serializer.validated_data["iban"]
-        active_iban = None
-        if contract.payment and contract.payment.IBAN:
-            active_iban = contract.payment.IBAN.iban
-        if self._normalize_iban(uploaded_iban) != self._normalize_iban(active_iban):
-            return Response(
-                {
-                    "error": "The IBAN does not match the contract's current active account."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+        uploaded_file = serializer.validated_data["sepa"]
+        service = settings.DOCUMENT_MANAGER_SERVICES.get("contract")
+
+        with transaction.atomic():
+            general_payment = None
+            if contract.payment_id:
+                general_payment = GeneralPayment.objects.select_for_update().get(
+                    pk=contract.payment_id
+                )
+            active_iban = None
+            if general_payment and general_payment.IBAN:
+                active_iban = general_payment.IBAN.iban
+            if self._normalize_iban(uploaded_iban) != self._normalize_iban(active_iban):
+                return Response(
+                    {
+                        "error": "The IBAN does not match the contract's current active account."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            person_bank = general_payment.IBAN or general_payment.company_iban
+            folder_name = "SEPA"
+            if person_bank:
+                if hasattr(person_bank, "name") and person_bank.name:
+                    folder_name = person_bank.name
+                elif hasattr(person_bank, "person") and person_bank.person:
+                    folder_name = (
+                        f"{person_bank.person.name} {person_bank.person.surname or ''}"
+                    ).strip()
+                elif hasattr(person_bank, "company") and person_bank.company:
+                    folder_name = person_bank.company.name
+                elif hasattr(person_bank, "iban") and person_bank.iban:
+                    folder_name = person_bank.iban
+            folder_name = folder_name.replace(" ", "_").upper()
+
+            document = upload_document(
+                uploaded_file,
+                "SEPA",
+                "CONTRACT",
+                general_payment.id,
+                general_payment.token or "",
+                folder_name,
+                service,
+                uploaded_file.name,
+                hdd_subfolder=str(general_payment.id),
+            )
+            GeneralPaymentSepaDocument.objects.filter(
+                general_payment=general_payment
+            ).delete()
+            GeneralPaymentSepaDocument.objects.create(
+                general_payment=general_payment, file=document, checked=True
             )
 
-        _ = serializer.validated_data["sepa"]
-
-        logger.info(f"Mock archived signed SEPA mandate for contract {contract_token}")
+        logger.info(
+            "Archived signed SEPA mandate for contract %s (document %s)",
+            contract_token,
+            document.id,
+        )
 
         return Response(
             {"contract_token": contract_token, "success": True},
             status=status.HTTP_201_CREATED,
         )
+
+
+class SepaDocumentDownloadView(APIView):
+    """GET /ov/procedures/{contract_token}/sepa-signed/
+
+    Devuelve el mandato SEPA firmado archivado para la forma de pago del
+    contrato. Responde 404 si el contrato no existe o si no hay mandato
+    archivado.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, contract_token):
+        contract = Contract.objects.filter(token=contract_token).first()
+        if not contract:
+            return Response(
+                {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        sepa_document = None
+        if contract.payment:
+            sepa_document = (
+                GeneralPaymentSepaDocument.objects.filter(
+                    general_payment=contract.payment, file__isnull=False
+                )
+                .select_related("file")
+                .first()
+            )
+
+        if not sepa_document or not sepa_document.file:
+            return Response(
+                {"error": "SEPA document not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        response = download_document(sepa_document.file)
+        if response is None:
+            return Response(
+                {"error": "SEPA document not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return response
 
 
 class CancelDirectDebitView(APIView):
@@ -1201,10 +1404,11 @@ class BatchInvoiceDownloadView(APIView):
     """POST /ov/invoices/download/?contract_token=<token>
 
     Descarga en lote: cos JSON `{"invoice_tokens": [...]}` → ZIP amb un PDF
-    per factura. Reutilitza `generate_report_invoice_pdf` (el mateix servei
-    que `/ov/invoice-pdf/`) amb `save_pdf=False`: bytes idèntics sense
-    registrar documents ni tocar `invoice_file`. Seguretat IDOR: totes les
-    fitxes han de pertanyer al contracte indicat i han de ser definitives
+    per factura. Reutilitza el PDF arxivat i, si no està disponible,
+    `generate_report_invoice_pdf` (el mateix servei que `/ov/invoice-pdf/`)
+    amb `save_pdf=False`, sense registrar documents ni tocar `invoice_file`.
+    Seguretat IDOR: totes les fitxes han de pertanyer al contracte indicat
+    i han de ser definitives
     (`type_final`), mateix filtre que la descàrrega individual.
     """
 
@@ -1261,12 +1465,24 @@ class BatchInvoiceDownloadView(APIView):
             with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 used_names = set()
                 for invoice in ordered:
-                    _, _, pdf_buffer = generate_report_invoice_pdf(
-                        invoice,
-                        request,
-                        context={"request": request},
-                        save_pdf=False,
-                    )
+                    pdf_bytes = None
+                    if invoice.invoice_file:
+                        try:
+                            response = download_document(invoice.invoice_file)
+                            if response is not None:
+                                pdf_bytes = response.content
+                        except Exception:
+                            logger.warning(
+                                "Could not retrieve stored PDF for invoice %s", invoice.id
+                            )
+                    if pdf_bytes is None:
+                        _, _, pdf_buffer = generate_report_invoice_pdf(
+                            invoice,
+                            request,
+                            context={"request": request},
+                            save_pdf=False,
+                        )
+                        pdf_bytes = pdf_buffer.getvalue()
                     raw_name = str(
                         invoice.serie_final or invoice.token or invoice.id
                     )
@@ -1281,7 +1497,7 @@ class BatchInvoiceDownloadView(APIView):
                     if name in used_names:
                         name = f"factura_{safe_name}_{invoice.id}.pdf"
                     used_names.add(name)
-                    zip_file.writestr(name, pdf_buffer.getvalue())
+                    zip_file.writestr(name, pdf_bytes)
         except Exception as e:
             logger.exception("Error inesperat")
             return Response(
@@ -1290,3 +1506,1049 @@ class BatchInvoiceDownloadView(APIView):
             )
 
         return _download_response(buffer.getvalue(), "application/zip", "facturas.zip")
+
+
+class ContractStatusDictionaryOVView(APIView):
+    """GET /ov/dictionary/contract-statuses/
+
+    Diccionari d'estats de contracte perquè el frontal extern reompli
+    selectors i tradueixi tokens sense hardcodejar-los. Retorna `token` i
+    `name` de cada estat, ordenats per `position` (ordre de presentació del
+    PA).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        statuses = ContractStatus.objects.all().order_by("position")
+        return Response(
+            ContractStatusDictionarySerializer(statuses, many=True).data
+        )
+
+
+class PaymentTypeDictionaryOVView(APIView):
+    """GET /ov/dictionary/payment-types/
+
+    Diccionari de formes de pagament (`token`, `name`), ordenat per
+    `position`.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        payment_types = PaymentType.objects.all().order_by("position")
+        return Response(
+            PaymentTypeDictionarySerializer(payment_types, many=True).data
+        )
+
+
+class InvoiceStatusDictionaryOVView(APIView):
+    """GET /ov/dictionary/invoice-statuses/
+
+    Diccionari d'estats de factura (`token`, `name`), ordenat per
+    `position`. Els tokens són els mateixos que accepta el filtre `statuses`
+    de `/ov/unpayed-invoices/`.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        statuses = InvoiceStatus.objects.all().order_by("position")
+        return Response(
+            InvoiceStatusDictionarySerializer(statuses, many=True).data
+        )
+
+
+class ProcedureTariffDictionaryOVView(APIView):
+    """GET /ov/dictionary/procedure-tariffs/
+
+    Catàleg de tarifes actives (`is_active=True`) amb el seu cost per calcular
+    els tràmits: `type_price` (`fixed`/`variable`), `price` (suma dels
+    components fixos), `price_table` (taula de trams per calibre o consum) i
+    `components` amb el desglossament complet. Ordenat per `name`.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        tariffs = (
+            PriceRate.objects.filter(is_active=True)
+            .select_related("billing_range_active")
+            .prefetch_related(
+                "billing_range_active__line_item_types__price_interval"
+                "__price_interval_stretches",
+                "billing_range_active__line_item_types__price_variable"
+                "__price_variable_interval_stretches",
+            )
+            .order_by("name")
+        )
+        return Response(
+            ProcedureTariffDictionarySerializer(tariffs, many=True).data
+        )
+
+
+_PROPERTY_SEARCH_SPLIT = re.compile(r"[\s,.;/]+")
+
+
+def _property_search_tokens(search):
+    return [token for token in _PROPERTY_SEARCH_SPLIT.split(search) if token]
+
+
+class PropertiesOVView(APIView):
+    """GET /ov/properties/?search=<text>[&page=<n>&limit=<n>]
+
+    Autocompletat d'adreces de propietats existents perquè l'abonat pugui
+    iniciar tràmits. `search` és obligatori i ha de tenir com a mínim 3
+    caràcters (400 si no) per evitar escanejos complets a cada tecla. La
+    puntuació (espais, `, . ; /`) es tracta com a separador: cada paraula
+    ha de coincidir amb algun camp (carrer, número, ciutat, codi postal,
+    nom o cadastral). Així `CR.` troba les propietats del tipus de carrer
+    `CR` i `CR. Major 33` combina tots els termes amb AND. Els resultats
+    es retornen paginats amb l'embolcall habitual de l'OV.
+    """
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = OVLimitPagination
+    min_search_length = 3
+
+    def get(self, request):
+        search = (request.query_params.get("search") or "").strip()
+        if not search:
+            return Response(
+                {"error": "Search is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(search) < self.min_search_length:
+            return Response(
+                {"error": "Search must be at least 3 characters"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        tokens = _property_search_tokens(search)
+        if not tokens:
+            return Response(
+                {"error": "Search must contain at least one valid term"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        filters = Q()
+        for token in tokens:
+            token_filters = (
+                Q(address_street__name__icontains=token)
+                | Q(address_street__name_2__icontains=token)
+                | Q(address_street__type__abbreviation__icontains=token)
+                | Q(address_city__name__icontains=token)
+                | Q(address_postal_code__code__icontains=token)
+                | Q(name__icontains=token)
+                | Q(cadastral__icontains=token)
+            )
+            try:
+                token_filters |= Q(address_street_number__number=int(token))
+            except ValueError:
+                pass
+            filters &= token_filters
+
+        properties = (
+            Property.objects.filter(is_active=True)
+            .filter(filters)
+            .select_related(
+                "address_street",
+                "address_street_number",
+                "address_postal_code",
+                "address_city",
+            )
+            .order_by("address_street__name", "address_street_number__number")
+        )
+
+        paginator = self.pagination_class()
+        try:
+            page = paginator.paginate_queryset(properties, request, view=self)
+        except NotFound:
+            return Response(
+                {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = PropertyItemSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+_PERSON_DNI_SEPARATORS = re.compile(r"[\s.\-]+")
+
+
+def _normalize_person_dni(value):
+    """Normalitza un DNI/NIF per comparar-lo amb les dades heretades de la BD:
+    ignora espais, guions i punts i el passa a majúscules."""
+    return _PERSON_DNI_SEPARATORS.sub("", value or "").upper()
+
+
+def _normalized_dni_expression(field):
+    """Expressió SQL equivalent a `_normalize_person_dni` per al camp indicat:
+    `UPPER(REPLACE(REPLACE(REPLACE(field, '-', ''), '.', ''), ' ', ''))`."""
+    expression = Replace(field, Value("-"), Value(""))
+    expression = Replace(expression, Value("."), Value(""))
+    expression = Replace(expression, Value(" "), Value(""))
+    return Upper(expression)
+
+
+class PersonDataOVView(APIView):
+    """GET /ov/person-data/?dni=<DNI>
+
+    Dades de contacte de la persona identificada pel DNI: telèfons, correus
+    i adreces, incloent-hi les files inactives (amb `is_active` a cada
+    element). No depèn de cap contracte perquè el frontal OV el fa servir
+    globalment (preomplert de formularis, verificació per SMS OTP, etc.).
+
+    L'aplicació OV autentica un únic compte de servei, així que la persona
+    s'identifica amb el paràmetre `dni` (igual que `/ov/contracts/`). El DNI
+    es normalitza ignorant espais, guions i punts (i passant-lo a
+    majúscules), perquè a la BD hi ha tokens heretats en minúscules o amb
+    guions.
+
+    La resolució és: primer `Person.token`; si no hi ha cap coincidència, el
+    DNI de la compte bancària (`PersonBank.dni`), que és com s'identifiquen
+    els pagadors. El token de la persona també ha de coincidir amb el DNI.
+    Quan diverses persones comparteixen token, es prefereix la que té més
+    contactes (útil per a l'OTP) i, a igualtat, la de menor `id`.
+    Retorna `400` si falta el DNI i `404` si no es troba cap persona.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [PersonDataThrottle]
+
+    def get(self, request):
+        dni = _normalize_person_dni(request.query_params.get("dni"))
+        if not dni:
+            return Response(
+                {"error": "DNI is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        person_id = (
+            Person.objects.annotate(
+                normalized_token=_normalized_dni_expression("token"),
+                contact_count=Count("contacts"),
+            )
+            .filter(normalized_token=dni)
+            .order_by("-contact_count", "id")
+            .values_list("id", flat=True)
+            .first()
+        )
+
+        if person_id is None:
+            person_id = (
+                PersonBank.objects.annotate(
+                    normalized_dni=_normalized_dni_expression("dni"),
+                    normalized_token=_normalized_dni_expression("person__token"),
+                    contact_count=Count("person__contacts"),
+                )
+                .filter(normalized_dni=dni, normalized_token=dni, person__isnull=False)
+                .order_by("-contact_count", "id")
+                .values_list("person_id", flat=True)
+                .first()
+            )
+
+        if person_id is None:
+            return Response(
+                {"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        person = (
+            Person.objects.filter(pk=person_id)
+            .prefetch_related(
+                Prefetch(
+                    "contacts",
+                    queryset=PersonContact.objects.order_by("-is_default", "id"),
+                ),
+                Prefetch(
+                    "addresses",
+                    queryset=PersonAddress.objects.select_related(
+                        "address__street",
+                        "address__street_number",
+                        "address__city",
+                    ).order_by("-is_billing", "-is_active", "id"),
+                ),
+            )
+            .first()
+        )
+
+        serializer = PersonDataSerializer(person)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS = [
+    "invoice_status_paid_token",
+    "invoice_status_pending_token",
+    "invoice_status_cancelled_token",
+    "invoice_status_dropped_token",
+    "invoice_status_payoff_token",
+    "invoice_status_irrecoverable_token",
+    "invoice_status_part_irrecoverable_token",
+]
+
+
+def _quick_pay_non_payable_status_tokens(paid_payment_status_token):
+    configured_values = dict(
+        ConfigProject.objects.filter(
+            token__in=QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS
+        )
+        .values_list("token", "value")
+    )
+    if (
+        not configured_values.get("invoice_status_paid_token")
+        or not paid_payment_status_token
+        or not PaymentStatus.objects.filter(token=paid_payment_status_token).exists()
+    ):
+        return None
+    return {value for value in configured_values.values() if value}
+
+
+class QuickPayOVView(APIView):
+    """Resolve an invoice from the three printed data points without writes.
+
+    The external OV collects the contract number, the invoice number
+    (`Invoice.serie_final`) and the exact printed total (`Invoice.total_final`),
+    charges the card with its own TPV and then confirms the payment through the
+    existing `POST /ov/invoice/paid/` endpoint. This view only looks the invoice
+    up: it never creates or updates `Payment` rows.
+
+    A mismatch on any of the three fields (or a non-definitive document type)
+    returns the same 404 so the endpoint cannot be used as a partial-match
+    oracle. Once all three fields match, a non-payable status returns 409 with
+    the current status so the frontend can explain the situation.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [QuickPayThrottle]
+
+    def post(self, request):
+        serializer = QuickPayRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        invoice_type_token = (
+            ConfigProject.objects.filter(token="invoice_type_invoice_token")
+            .values_list("value", flat=True)
+            .first()
+        )
+
+        invoice = (
+            Invoice.objects.select_related("contract", "status")
+            .filter(
+                contract__token=data["contract_number"],
+                serie_final=data["invoice_number"],
+                type_final=invoice_type_token,
+                total_final=data["amount"],
+            )
+            .first()
+        )
+
+        if invoice is None:
+            return Response(
+                {"error": "Invoice not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        status_payload = (
+            {"token": invoice.status.token, "name": invoice.status.name}
+            if invoice.status is not None
+            else None
+        )
+
+        paid_payment_status_token = (
+            ConfigProject.objects.filter(token="payment_status_paid_token")
+            .values_list("value", flat=True)
+            .first()
+        )
+        non_payable_status_tokens = _quick_pay_non_payable_status_tokens(
+            paid_payment_status_token
+        )
+        payable = (
+            non_payable_status_tokens is not None
+            and invoice.status is not None
+            and invoice.status.token not in non_payable_status_tokens
+            and (invoice.left_to_pay or 0) > 0
+            and invoice.payments.exclude(status__token=paid_payment_status_token).exists()
+        )
+
+        if not payable:
+            return Response(
+                {
+                    "error": "Invoice is not payable",
+                    "status": status_payload,
+                    "left_to_pay": invoice.left_to_pay,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        payload = {
+            "contract_token": invoice.contract.token,
+            "invoice_token": invoice.token,
+            "invoice_number": invoice.serie_final,
+            "issue_date": invoice.issue_date,
+            "due_date": invoice.due_date,
+            "invoice_amount": invoice.total_final,
+            "left_to_pay": invoice.left_to_pay,
+            "status": status_payload,
+            "payable": True,
+        }
+
+        return Response(
+            QuickPayResponseSerializer(payload).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+def _resolve_payment_receipt_language(request):
+    """Language for the OV payment receipt: `?lang=` wins over the request's
+    `Accept-Language`, and both fall back to Catalan. Values may carry a region
+    or a different case (`ES`, `es-ES`, `es_ES` → `es`). Admin/ERP callers of
+    `render_payment_proof_pdf` do not go through here and keep the template's
+    Catalan default.
+    """
+    supported = {code.lower() for code, _name in settings.LANGUAGES}
+    requested = (request.query_params.get("lang") or "").strip().lower()
+    for candidate in (
+        requested,
+        translation.get_language_from_request(request),
+    ):
+        if not candidate:
+            continue
+        normalized = candidate.replace("_", "-").split("-")[0]
+        if normalized in supported:
+            return normalized
+    return "ca"
+
+
+class PaymentReceiptOVView(APIView):
+    """GET /ov/payment-receipt/?contract_token=&payment_token=&dni=
+
+    Returns the in-memory PDF proof of payment ("Justificant de pagament") for
+    a cash or physical-POS payment made at the office, base64-encoded inside a
+    JSON payload (`pdf_base64`). Online payments
+    (`TPV_ONLINE`) are excluded because the OV issues its own receipts, and
+    direct debit/bank payments have no receipt at all.
+
+    Only invoice-backed payments with a definitive invoice (`type_final`) are
+    accepted. The payment must belong to the given contract and the supplied
+    DNI must match the payer, the customer, the contract holder or the
+    direct-debit account holder. Every mismatch returns the same 404 so the
+    endpoint cannot be used to probe which payment tokens exist.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [PaymentReceiptThrottle]
+
+    @staticmethod
+    def _payment_dni_candidates(payment):
+        candidates = {
+            payment.payer_token_final,
+            payment.customer_token_final,
+        }
+        invoice = payment.invoice
+        contract = invoice.contract if invoice else None
+        if contract:
+            if contract.holder:
+                candidates.add(contract.holder.token)
+            general_payment = contract.payment
+            if general_payment and general_payment.IBAN:
+                iban = general_payment.IBAN
+                candidates.add(iban.dni)
+                if iban.person:
+                    candidates.add(iban.person.token)
+        return {
+            _normalize_person_dni(candidate)
+            for candidate in candidates
+            if candidate
+        }
+
+    def get(self, request):
+        contract_token = (request.query_params.get("contract_token") or "").strip()
+        payment_token = (request.query_params.get("payment_token") or "").strip()
+        dni = _normalize_person_dni(request.query_params.get("dni"))
+
+        if not contract_token or not payment_token:
+            return Response(
+                {"error": "Contract token and payment token are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not dni:
+            return Response(
+                {"error": "DNI is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        paid_status_token = (
+            ConfigProject.objects.filter(token="payment_status_paid_token")
+            .values_list("value", flat=True)
+            .first()
+        )
+        invoice_type_token = (
+            ConfigProject.objects.filter(token="invoice_type_invoice_token")
+            .values_list("value", flat=True)
+            .first()
+        )
+
+        if not paid_status_token or not invoice_type_token:
+            return Response(
+                {"error": "Payment receipt not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        payment = (
+            Payment.objects.select_related(
+                "status",
+                "invoice",
+                "invoice__contract",
+                "invoice__contract__holder",
+                "invoice__contract__payment__IBAN__person",
+                "invoice__exploitation",
+                "invoice__exploitation__company",
+            )
+            .filter(
+                token=payment_token,
+                payment_type_token__in=("CASH", "CARD"),
+                status__token=paid_status_token,
+                is_active=True,
+                is_excluded=False,
+                is_duplicate=False,
+                payment_date__isnull=False,
+                invoice__isnull=False,
+                invoice__contract__token=contract_token,
+                invoice__type_final=invoice_type_token,
+            )
+            .first()
+        )
+
+        if payment is None or dni not in self._payment_dni_candidates(payment):
+            return Response(
+                {"error": "Payment receipt not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        payment_type_name = (
+            PaymentType.objects.filter(token=payment.payment_type_token)
+            .values_list("name", flat=True)
+            .first()
+        )
+
+        from billing.utils.payment_proof_service import render_payment_proof_pdf
+
+        language = _resolve_payment_receipt_language(request)
+
+        try:
+            with translation.override(language):
+                method_name = {
+                    "CASH": _("Efectiu"),
+                    "CARD": _("Targeta (TPV Físic)"),
+                }.get(payment.payment_type_token)
+                if not method_name:
+                    method_name = (
+                        payment_type_name or payment.payment_type_token or ""
+                    )
+                observation = f"{_('Forma de pagament')}: {method_name}"
+                pdf_buffer, _filename = render_payment_proof_pdf(
+                    [payment],
+                    request,
+                    payment_date=payment.payment_date.strftime("%Y-%m-%d"),
+                    observation=observation,
+                    language=language,
+                )
+        except ValueError:
+            return Response(
+                {"error": "Payment receipt not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception:
+            logger.exception("Error generating payment receipt PDF")
+            return Response(
+                {"error": "PDF generation failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        pdf_buffer.seek(0)
+        pdf_base64 = base64.b64encode(pdf_buffer.read()).decode("ascii")
+        response = Response({"pdf_base64": pdf_base64})
+        response["Cache-Control"] = "no-store"
+        response["Content-Language"] = language
+        return response
+
+
+RETURN_REQUEST_INCIDENT_NAME = "Sol·licitud de devolució"
+
+
+class InvoiceReturnRequestOVView(APIView):
+    """POST /ov/invoice/return-request/
+
+    Opens an automatic incident ("incidencia") so customer service can track a
+    return requested by the customer. It deliberately does **not** change the
+    invoice status, `left_to_pay` or any payment: the invoice only goes back to
+    confirmed/expired days later when the bank processes the return file, which
+    is handled by the existing `manage_rejection_payments` flow.
+
+    The request is accepted only for a definitive invoice that belongs to the
+    supplied contract and whose status is paid. The paid status token is the
+    single source of truth: `left_to_pay` is not used to decide, because the
+    payment signal updates the status when the invoice is settled but
+    deliberately leaves `left_to_pay` untouched, so it can be stale (or NULL)
+    on genuinely paid invoices. The same `404` is returned for a
+    missing invoice, a proforma and a wrong contract, so the endpoint cannot be
+    used as a partial-match oracle.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ReturnRequestThrottle]
+
+    def post(self, request):
+        serializer = ReturnRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = serializer.validated_data
+        invoice_token = data["invoice_token"]
+        contract_token = data["contract_token"]
+        reason = data["reason"]
+
+        config = dict(
+            ConfigProject.objects.filter(
+                token__in=(
+                    "invoice_status_paid_token",
+                    "invoice_type_invoice_token",
+                    "payment_status_returned_token",
+                )
+            ).values_list("token", "value")
+        )
+        paid_status_token = config.get("invoice_status_paid_token")
+        invoice_type_token = config.get("invoice_type_invoice_token")
+        returned_status_token = config.get("payment_status_returned_token")
+
+        if not paid_status_token or not invoice_type_token:
+            return Response(
+                {"error": "Invoice not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        invoice = (
+            Invoice.objects.select_related("contract", "status")
+            .filter(
+                token=invoice_token,
+                contract__token=contract_token,
+                type_final=invoice_type_token,
+            )
+            .exclude(status__token="1")
+            .first()
+        )
+
+        if invoice is None:
+            return Response(
+                {"error": "Invoice not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        status_payload = (
+            {"token": invoice.status.token, "name": invoice.status.name}
+            if invoice.status is not None
+            else None
+        )
+
+        if returned_status_token and invoice.payments.filter(
+            status__token=returned_status_token,
+            is_active=True,
+        ).exists():
+            return Response(
+                {
+                    "error": "Invoice already returned",
+                    "status": status_payload,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if (
+            invoice.status is None
+            or invoice.status.token != paid_status_token
+        ):
+            return Response(
+                {
+                    "error": "Invoice is not paid",
+                    "status": status_payload,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        open_incident = (
+            Incident.objects.filter(
+                invoice=invoice,
+                type__token="reclamacio",
+                name=RETURN_REQUEST_INCIDENT_NAME,
+                is_active=True,
+            )
+            .exclude(status__token="2")
+            .first()
+        )
+        if open_incident is not None:
+            return Response(
+                {
+                    "error": "Return request already exists",
+                    "incident_token": open_incident.token,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        default_status = IncidentStatus.objects.filter(
+            is_default=True
+        ).first()
+        incident_type = IncidentType.objects.filter(token="reclamacio").first()
+        if default_status is None or incident_type is None:
+            logger.error(
+                "Return request cannot be created: incident dictionaries missing"
+            )
+            return Response(
+                {"error": "Return request could not be created"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        with transaction.atomic():
+            incident = Incident.objects.create(
+                token=check_token_exists(generate_token(Incident), Incident),
+                name=RETURN_REQUEST_INCIDENT_NAME,
+                description=reason,
+                contract=invoice.contract,
+                invoice=invoice,
+                status=default_status,
+                type=incident_type,
+                is_active=True,
+            )
+            LogIncidentStatusChange.objects.create(
+                object=incident,
+                current_status=default_status,
+                observation=reason,
+                user=request.user,
+            )
+
+        payload = {
+            "incident_token": incident.token,
+            "invoice_token": invoice.token,
+            "contract_token": invoice.contract.token,
+            "status": {
+                "token": default_status.token,
+                "name": default_status.name,
+            },
+            "type": {
+                "token": incident_type.token,
+                "name": incident_type.name,
+            },
+            "created_at": incident.created_at,
+        }
+        return Response(
+            ReturnRequestResponseSerializer(payload).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+CONTRACT_PROCEDURE_CLOSED_STATUS_TOKENS = ("-1", "3")
+CONTRACT_PROCEDURE_REQUIRED_PAYMENT_FIELDS = (
+    "iban",
+    "iban_holder_name",
+    "iban_holder_dni",
+    "iban_holder_swift",
+)
+
+
+def _resolve_contract_procedure_person(dni):
+    """Resol una persona a partir del DNI normalitzat.
+
+    Replica la resolució de `PersonDataOVView`: primer `Person.token` i, si no
+    hi ha coincidència, el DNI de la compte bancària (`PersonBank.dni`), que és
+    com s'identifiquen els pagadors. El token de la persona també ha de coincidir
+    amb el DNI. Així l'OV rep el mateix resultat que en el preomplert de
+    `GET /ov/person-data/`.
+    """
+    person_id = (
+        Person.objects.annotate(
+            normalized_token=_normalized_dni_expression("token"),
+            contact_count=Count("contacts"),
+        )
+        .filter(normalized_token=dni)
+        .order_by("-contact_count", "id")
+        .values_list("id", flat=True)
+        .first()
+    )
+
+    if person_id is None:
+        person_id = (
+            PersonBank.objects.annotate(
+                normalized_dni=_normalized_dni_expression("dni"),
+                normalized_token=_normalized_dni_expression("person__token"),
+                contact_count=Count("person__contacts"),
+            )
+            .filter(normalized_dni=dni, normalized_token=dni, person__isnull=False)
+            .order_by("-contact_count", "id")
+            .values_list("person_id", flat=True)
+            .first()
+        )
+
+    if person_id is None:
+        return None
+    return Person.objects.filter(pk=person_id).first()
+
+
+def _generate_contract_request_token():
+    """Genera el token d'una ContractRequest com ho fa el PA.
+
+    Es replica la lògica de `ContractRequestViewSet.create` perquè les
+    sol·licituds creades des de l'OV tinguin el mateix format que les creades
+    manualment, també en desplegaments amb `name_utils_personalized`.
+    """
+    using_personalized = getattr(
+        name_utils_module.generate_token, "__module__", ""
+    ).endswith("name_utils_personalized")
+    if using_personalized:
+        return check_token_exists(
+            generate_token(
+                ContractRequest,
+                use_type_id=None,
+                client_type_id=None,
+                company_id=None,
+                is_change_of_name=False,
+            ),
+            ContractRequest,
+        )
+    return generate_contract_request_token()
+
+
+class ContractProcedureOVView(APIView):
+    """POST /ov/procedures/contract/
+
+    Creates a **contract request** (`ContractRequest`) for a new supply
+    contract, to be finalized by customer service. It deliberately does not
+    create a `Contract`, approve anything, or generate orders: the request is
+    left in the default (draft) status so CS completes the remaining data
+    (meter, registration date, billing address, ...) and finalizes it through
+    the existing flow.
+
+    The tariff (`tariff_token`) is the one the Virtual Office showed and
+    charged to the customer, so it is authoritative for the request. We do not
+    let the procedure type derive it: `ContractRequestType.price_rates` is an
+    M2M that may hold zero, one or many tariffs and is unrelated to the active
+    tariff catalogue the OV exposes, so deriving it would risk billing
+    mismatches. `registration_price_rates` and `order_types` remain
+    type-driven, which is the correct behaviour for them.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ContractProcedureThrottle]
+
+    def post(self, request):
+        serializer = ContractProcedureRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = serializer.validated_data
+        holder_dni = _normalize_person_dni(data["holder_dni"])
+        if not holder_dni:
+            return Response(
+                {"error": "DNI is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        holder = _resolve_contract_procedure_person(holder_dni)
+        if holder is None:
+            return Response(
+                {"error": "Person not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        prop = Property.objects.filter(
+            token=data["property_token"], is_active=True
+        ).first()
+        if prop is None:
+            return Response(
+                {"error": "Property not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        supply_points = SupplyPoint.objects.filter(
+            property=prop, is_active=True
+        )
+        supply_point_token = data.get("supply_point_token")
+        if supply_point_token:
+            supply_points = supply_points.filter(token=supply_point_token)
+        supply_points = list(supply_points[:2])
+        if not supply_points:
+            return Response(
+                {"error": "Supply point not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if len(supply_points) > 1:
+            return Response(
+                {"error": "supply_point_token is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        supply_point = supply_points[0]
+
+        procedure_type = ContractRequestType.objects.filter(
+            token=data["procedure_type_token"], is_active=True
+        ).first()
+        if procedure_type is None:
+            return Response(
+                {"error": "Procedure type not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        tariff = PriceRate.objects.filter(
+            token=data["tariff_token"], is_active=True
+        ).first()
+        if tariff is None:
+            return Response(
+                {"error": "Tariff not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        payment_type = PaymentType.objects.filter(
+            token=data["payment_type_token"]
+        ).first()
+        if payment_type is None:
+            return Response(
+                {"error": "Payment type not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if payment_type.token == "DIRECT_DEBIT":
+            missing = {
+                field: "This field is required for direct debit."
+                for field in CONTRACT_PROCEDURE_REQUIRED_PAYMENT_FIELDS
+                if not data.get(field)
+            }
+            if missing:
+                return Response(
+                    {"error": missing}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+        existing_request = (
+            ContractRequest.objects.filter(
+                person=holder,
+                supply_point_default=supply_point,
+                is_active=True,
+            )
+            .exclude(status__token__in=CONTRACT_PROCEDURE_CLOSED_STATUS_TOKENS)
+            .order_by("-created_at")
+            .first()
+        )
+        if existing_request is not None:
+            return Response(
+                {
+                    "error": "Contract request already exists",
+                    "contract_request_token": existing_request.token,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        default_status = ContractRequestStatus.objects.filter(
+            is_default=True
+        ).first()
+        if default_status is None:
+            logger.error(
+                "Contract procedure cannot be created: default "
+                "ContractRequestStatus missing"
+            )
+            return Response(
+                {"error": "Contract procedure could not be created"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        bank_fields = {
+            field: data.get(field)
+            for field in CONTRACT_PROCEDURE_REQUIRED_PAYMENT_FIELDS
+        }
+        has_bank_data = any(bank_fields.values())
+
+        with transaction.atomic():
+            person_bank = None
+            if has_bank_data:
+                person_bank = PersonBank.objects.create(
+                    token=check_token_exists(
+                        generate_token(PersonBank), PersonBank
+                    ),
+                    person=holder,
+                    iban=bank_fields["iban"] or None,
+                    swift=bank_fields["iban_holder_swift"] or None,
+                    name=bank_fields["iban_holder_name"] or None,
+                    dni=bank_fields["iban_holder_dni"] or None,
+                    is_default=True,
+                    is_active=True,
+                )
+
+            general_payment = GeneralPayment.objects.create(
+                token=check_token_exists(
+                    generate_token(GeneralPayment), GeneralPayment
+                ),
+                type=payment_type,
+                IBAN=person_bank,
+                is_active=True,
+            )
+
+            contract_request = ContractRequest.objects.create(
+                token=_generate_contract_request_token(),
+                language=data.get("language") or settings.LANGUAGE,
+                supply_point_default=supply_point,
+                person=holder,
+                holder=holder,
+                type=procedure_type,
+                payment=general_payment,
+                status=default_status,
+                requested_at=timezone.now(),
+                is_active=True,
+            )
+            contract_request.supply_points.set([supply_point])
+
+            contract_price_rate = ContractPriceRate.objects.filter(
+                supply_point=supply_point, price_rate=tariff, is_active=True
+            ).first()
+            if contract_price_rate is None:
+                contract_price_rate = ContractPriceRate.objects.create(
+                    supply_point=supply_point, price_rate=tariff, is_active=True
+                )
+            contract_request.price_rates.set([contract_price_rate])
+            contract_request.registration_price_rates.set(
+                procedure_type.registration_price_rates.all()
+            )
+            contract_request.order_types.set(
+                procedure_type.order_types.all()
+            )
+
+            LogContractRequestStatus.objects.create(
+                object=contract_request,
+                previous_status=None,
+                current_status=default_status,
+                observation=data.get("observation") or None,
+                user=request.user,
+            )
+
+        payload = {
+            "contract_request_token": contract_request.token,
+            "status": {
+                "token": default_status.token,
+                "name": default_status.name,
+            },
+            "type": {
+                "token": procedure_type.token,
+                "name": procedure_type.name,
+            },
+            "person": {
+                "token": holder.token,
+                "name": holder.name,
+            },
+            "supply_point": {"token": supply_point.token},
+            "payment": {
+                "iban": mask_iban(person_bank.iban) if person_bank else "",
+            },
+            "created_at": contract_request.created_at,
+        }
+        return Response(
+            ContractProcedureResponseSerializer(payload).data,
+            status=status.HTTP_201_CREATED,
+        )

@@ -23,6 +23,10 @@ class ReportWarning(Exception):
     pass
 
 
+class ReportNoData(Exception):
+    pass
+
+
 def _median(values):
     """
     Compute the median without importing stdlib `statistics` (this project has an app named `statistics`).
@@ -362,6 +366,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
   )
   from statistics.utils.report_accounting_service import generate_general_accounting_report
   from statistics.utils.report_billing_by_zone_service import generate_billing_by_zone_report
+  from statistics.utils.report_incident_compliance_service import generate_incident_compliance_report
 
   generator_funcs = {
     'accounting_values_report': generate_accounting_values_report,
@@ -410,6 +415,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
     'social_tariff_evolution_report': generate_social_tariff_evolution_report,
     'claim_response_time_report': generate_claim_response_time_report,
     'management_volume_report': generate_management_volume_report,
+    'incident_compliance_report': generate_incident_compliance_report,
     'recaptacio_conceptes_report': generate_recaptacio_conceptes_excel,
     'clavegueram_invoices_report': generate_clavegueram_invoices_excel,
     'wincen_export_report': generate_wincen_export_report,
@@ -455,6 +461,8 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
   _raise_if_generator_error(response)
 
   if not document_id:
+    if response is None and filename is None:
+      raise ReportNoData("No data found for this period")
     raise Exception("Generator did not produce a document")
 
   if not filename:
@@ -801,25 +809,27 @@ def regenerate_daily_document(daily_document_id):
     current_time = daily_document.document_date
     if not daily_document.template:
       raise ValueError("Daily document has no template")
-    now = timezone.now().date()
     document = None
     error_message = None
+    no_data_found = False
     try:
       document = execute_available_report(daily_document.template.available_report, {
         'start_date': current_time.strftime('%Y-%m-%d'),
         'end_date': current_time.strftime('%Y-%m-%d'),
         'name': f"{daily_document.template.name} {current_time.strftime('%Y/%m/%d')}",
       })
+    except ReportNoData:
+      no_data_found = True
     except Exception as e:
       error_message = str(e)
-      
-    if error_message:
-      daily_document.creation_error = error_message
+
+    daily_document.creation_error = error_message
+    daily_document.no_data_found = no_data_found
     if document:
       daily_document.document = document
-      
+
     daily_document.save()
-    
+
   except Exception as e:
     print(f"Error while generating daily documents: {e}")
   

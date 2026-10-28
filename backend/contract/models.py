@@ -176,9 +176,21 @@ class ContractTerminationType(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     position = models.IntegerField(null=True, blank=True)
     is_default = models.BooleanField(default=False)
+    # Per marcar com a canvi de nom les sol·licituds antigues vinculades a baixes d'aquest tipus
+    is_change_of_name = models.BooleanField(default=False, verbose_name="Is Change Of Name")
     
     def __str__(self):
         return self.name if self.name else "ContractTerminationType ID {}".format(self.token)
+
+    def mark_linked_requests_as_change_of_name(self):
+        """Marca com a canvi de nom les sol·licituds ja finalitzades vinculades a baixes d'aquest tipus.
+
+        Les pendents no es toquen: en finalitzar-les com a canvi de nom podrien reaprofitar el codi
+        del contracte anterior. Es fa amb update() per no tornar-los a assignar tarifes ni ordres.
+        """
+        return ContractRequest.objects.filter(
+            contract_termination_requests__type=self, contract__isnull=False, is_change_of_name=False,
+        ).update(is_change_of_name=True)
 
 class ContractTerminationStatus(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
@@ -268,7 +280,7 @@ class Variable(models.Model):
     # relacions
     contract = models.ForeignKey('Contract', on_delete=models.SET_NULL, null=True, blank=True, related_name='variables')
     contract_request = models.ForeignKey('ContractRequest', on_delete=models.SET_NULL, null=True, blank=True, related_name='variables')
-    bonification = models.ForeignKey('Bonification', on_delete=models.SET_NULL, null=True, blank=True, related_name='variables')
+    bonification = models.ForeignKey('Bonification', on_delete=models.CASCADE, null=True, blank=True, related_name='variables')
     
     is_active = models.BooleanField(default=True)
 
@@ -297,14 +309,28 @@ class ContractRequestType(models.Model):
     exploitation = models.ForeignKey(Exploitation, on_delete=models.SET_NULL, null=True, blank=True)
     variable_types = models.ManyToManyField(VariableType, related_name="bonification_types", blank=True)
     order_types = models.ManyToManyField(OrderType,  blank=True, verbose_name="Contract Request Order Type")
+    change_of_name_order_types = models.ManyToManyField(OrderType, blank=True, related_name="contract_request_type_change_of_name_order_types", verbose_name="Change Of Name Order Type")
     clause_templates = models.ManyToManyField('ClauseTemplate', blank=True, verbose_name="Clause Template")
     price_rates = models.ManyToManyField('pricing.PriceRate', blank=True, related_name="contract_request_type_price_rates", verbose_name="Price Rate")
     registration_price_rates = models.ManyToManyField('pricing.PriceRate', blank=True, related_name="contract_request_type_registration_price_rates", verbose_name="Registration Price Rate")
+    change_of_name_registration_price_rates = models.ManyToManyField('pricing.PriceRate', blank=True, related_name="contract_request_type_change_of_name_registration_price_rates", verbose_name="Change Of Name Registration Price Rate")
     has_persons = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_default = models.BooleanField(default=False)
     def __str__(self):
         return self.name if self.name else "ContractRequestType ID {}".format(self.token)
+
+    def get_registration_price_rates(self, is_change_of_name=False):
+        # Els canvis de nom tenen la seva pròpia llista de tarifes de contractació
+        if is_change_of_name:
+            return self.change_of_name_registration_price_rates.all()
+        return self.registration_price_rates.all()
+
+    def get_order_types(self, is_change_of_name=False):
+        # Els canvis de nom tenen la seva pròpia llista de tipus d'ordre
+        if is_change_of_name:
+            return self.change_of_name_order_types.all()
+        return self.order_types.all()
 
 class Bail(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
