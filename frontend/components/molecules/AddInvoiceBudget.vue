@@ -467,10 +467,25 @@ const loadCompanyBanks = async () => {
   const c = d?.company || d?.contract?.company || d?.exploitation?.company || d?.contract?.exploitation?.company ||
             selectedCustom.value?.company || selectedCustom.value?.contract?.company || selectedCustom.value?.exploitation?.company || selectedCustom.value?.contract?.exploitation?.company;
   let compId = selectedCompanyId.value || props.company?.id || (c && typeof c === 'object' ? c.id : c);
+  let explId = selectedExploitation.value || d?.exploitation?.id || d?.contract?.exploitation?.id;
 
-  if (!compId && selectedExploitation.value) {
+  // Com al backend, l'empresa emissora és la del contracte o, si no en té, la de la seva explotació.
+  // El contracte triat al formulari només porta l'id, i el detall no inclou l'empresa de l'explotació.
+  if (!compId && !explId && selectedCustom.value?.entity === 'contract' && selectedCustom.value?.id) {
     try {
-      const explResp = await $ExploitationApiService.getDetail(selectedExploitation.value);
+      const contractResp = await $ContractApiService.getDetail(selectedCustom.value.id);
+      const cc = contractResp?.company;
+      compId = cc && typeof cc === 'object' ? cc.id : cc;
+      const ce = contractResp?.exploitation;
+      explId = ce && typeof ce === 'object' ? ce.id : ce;
+    } catch(err) {
+      console.error(err);
+    }
+  }
+
+  if (!compId && explId) {
+    try {
+      const explResp = await $ExploitationApiService.getDetail(explId);
       const ec = explResp?.company;
       compId = ec && typeof ec === 'object' ? ec.id : ec;
     } catch(err) {
@@ -491,16 +506,19 @@ const loadCompanyBanks = async () => {
         }
       }
       const banksResp = await $ExploitationApiService.getCompanyBanks(compId);
-      if (banksResp?.results) {
-        companyBanks.value = banksResp.results;
-      } else if (Array.isArray(banksResp)) {
-        companyBanks.value = banksResp;
-      }
+      const banks = banksResp?.results || (Array.isArray(banksResp) ? banksResp : []);
+      companyBanks.value = banks.filter((bank) => bank.is_active);
     } catch(e) {
       console.error(e);
     }
   } else if (props.company?.company_banks) {
-    companyBanks.value = props.company.company_banks;
+    companyBanks.value = props.company.company_banks.filter((bank) => bank.is_active);
+  } else {
+    companyBanks.value = [];
+  }
+  // El compte triat ha de ser de l'empresa actual: si s'ha canviat de contracte, es torna a triar
+  if (selectedCompanyBankDebit.value && companyBanks.value.length && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
+    selectedCompanyBankDebit.value = null;
   }
   if (companyBanks.value?.length === 1 && paymentTypeOptionsById?.value[selectedPaymentType?.value]?.token == 'BANK_TRANSFER' && !selectedCompanyBankDebit.value) {
     selectedCompanyBankDebit.value = companyBanks.value[0];
