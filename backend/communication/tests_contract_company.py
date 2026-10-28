@@ -2,7 +2,7 @@ from contextlib import ExitStack
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from communication.utils.communication_service import get_communication_logo
 from service.utils.contract_company import company_colors, contract_company_logo
@@ -232,3 +232,49 @@ class CommunicationLetterCompanyTests(SimpleTestCase):
                 logo = contract_data['logo'] if uses_contract and has_logo else config_data['logo']
                 self.assertEqual(context['logo'], f'https://media.example/media/{logo}')
                 self.assertEqual(sign.call_args.args[1], expected)
+
+
+class CommunicationLetterRegenerationTests(TestCase):
+    @patch('communication.tasks.group')
+    @patch('communication.utils.communication_service.use_multiple_companies', return_value=True)
+    def test_invalid_companies_preserve_existing_letters(self, _, task_group):
+        from communication.models import Communication, CommunicationFile
+        from communication.tasks import generate_files_task
+        from contract.models import Contract
+        from documentmanager.models import Document
+        from service.models import Company
+
+        companies = Company.objects.bulk_create([Company(), Company()])
+        contracts = Contract.objects.bulk_create([
+            Contract(company=companies[0]), Contract(company=companies[1]), Contract(),
+        ])
+        for second_contract in contracts[1:]:
+            for include_valid in (False, True):
+                with self.subTest(company_id=second_contract.company_id, include_valid=include_valid):
+                    valid = Communication.objects.create()
+                    valid.contracts.add(contracts[0])
+                    invalid = Communication.objects.create()
+                    invalid.contracts.add(contracts[0], second_contract)
+                    selected = [valid, invalid] if include_valid else [invalid]
+                    letters = []
+                    for communication in selected:
+                        document = Document.objects.create(
+                            entity_id=communication.id, service='hdd', file='existing-letter.pdf',
+                        )
+                        letters.append(CommunicationFile.objects.create(
+                            communication=communication, file=document, is_letter=True,
+                        ))
+                    file_count = CommunicationFile.objects.count()
+
+                    result = generate_files_task([communication.id for communication in selected])
+
+                    self.assertEqual(CommunicationFile.objects.count(), file_count)
+                    for letter in letters:
+                        document_id = letter.file_id
+                        letter.refresh_from_db()
+                        self.assertTrue(letter.is_active)
+                        self.assertEqual(letter.file_id, document_id)
+                        self.assertEqual(letter.file.file.name, 'existing-letter.pdf')
+                    task_group.assert_not_called()
+                    self.assertEqual(result['status'], 'error')
+                    self.assertIn('contracts from different companies', result['message'])

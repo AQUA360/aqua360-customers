@@ -10,7 +10,7 @@ from billing.models import Invoice, PaymentRemittance
 from billing.utils.payment_pdf_service import generate_report_payment_pdf
 from claimrequest.models import ClaimRequest
 from communication.models import Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
-from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file
+from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file, validate_letter_contract_companies
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
 from claimrequest.tasks import generate_claim_document_pdf
@@ -201,6 +201,9 @@ def generate_files_task(communication_ids):
     try:
         communications = Communication.objects.filter(id__in=communication_ids)
         print(f"[generate_files_task] Communications found: {communications.count()}")
+
+        for communication in communications:
+            validate_letter_contract_companies(communication)
         
         # CHECK IF COMMS ALREADY HAD LETTER FILES
         # Nomes les cartes de les comunicacions que s'estan regenerant: sense el filtre

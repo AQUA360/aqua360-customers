@@ -114,15 +114,18 @@ def get_communication_logo(communication, company):
             return logo
     return build_logo_path(company.get('logo'))
 
+def validate_letter_contract_companies(communication):
+    if use_multiple_companies():
+        company_ids = set(communication.contracts.values_list('company_id', flat=True))
+        if len(company_ids) > 1:
+            raise ValueError(_('Cannot generate a letter for contracts from different companies.'))
+
 def get_communication_file(id):
     letter_token = ConfigProject.objects.get(token='message_type_letter_token').value
     communication_file = CommunicationFile.objects.get(id=id)
     communication = communication_file.communication
 
-    if use_multiple_companies():
-        company_ids = set(communication.contracts.values_list('company_id', flat=True))
-        if len(company_ids) > 1:
-            raise ValueError(_('Cannot generate a letter for contracts from different companies.'))
+    validate_letter_contract_companies(communication)
     
     config_company = communication.company_config
     companies = config_company.company_configs.all()
