@@ -45,36 +45,35 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
         return ClauseTemplateSerializer(obj.clause_templates.filter(is_active=True), many=True).data
 
     
+    # Camps d'escriptura amb els ids de cada relació M2M del tipus
+    RELATION_IDS_FIELDS = {
+        'variable_types_ids': 'variable_types',
+        'order_types_ids': 'order_types',
+        'clause_templates_ids': 'clause_templates',
+        'price_rates_ids': 'price_rates',
+        'registration_price_rates_ids': 'registration_price_rates',
+        'change_of_name_registration_price_rates_ids': 'change_of_name_registration_price_rates',
+    }
+
+    def _pop_relation_ids(self, validated_data):
+        return {relation: validated_data.pop(field, None) for field, relation in self.RELATION_IDS_FIELDS.items()}
+
+    def _set_relations(self, instance, relation_ids):
+        for relation, ids in relation_ids.items():
+            if ids is not None:
+                getattr(instance, relation).set(ids)
+
+    def create(self, validated_data):
+        relation_ids = self._pop_relation_ids(validated_data)
+        instance = super().create(validated_data)
+        self._set_relations(instance, relation_ids)
+        return instance
+
     def update(self, instance, validated_data):
-        variable_types_ids = validated_data.pop('variable_types_ids', None)
-        order_types_ids = validated_data.pop('order_types_ids', None)
-        clause_templates_ids = validated_data.pop('clause_templates_ids', None)
-        price_rates_ids = validated_data.pop('price_rates_ids', None)
-        registration_price_rates_ids = validated_data.pop('registration_price_rates_ids', None)
-        change_of_name_registration_price_rates_ids = validated_data.pop('change_of_name_registration_price_rates_ids', None)
-        
+        relation_ids = self._pop_relation_ids(validated_data)
         instance = super().update(instance, validated_data)
-        
-        if variable_types_ids is not None:
-            instance.variable_types.set(variable_types_ids)
-        
-        if order_types_ids is not None:
-            instance.order_types.set(order_types_ids)
-        
-        if clause_templates_ids is not None:
-            instance.clause_templates.set(clause_templates_ids)
-        
-        if price_rates_ids is not None:
-            instance.price_rates.set(price_rates_ids)
-        
-        if registration_price_rates_ids is not None:
-            instance.registration_price_rates.set(registration_price_rates_ids)
-        
-        if change_of_name_registration_price_rates_ids is not None:
-            instance.change_of_name_registration_price_rates.set(change_of_name_registration_price_rates_ids)
-        
+        self._set_relations(instance, relation_ids)
         instance.save()
-        
         return instance
 
 

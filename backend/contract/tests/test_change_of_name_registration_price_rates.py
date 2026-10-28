@@ -5,6 +5,7 @@ from django.test import TestCase
 
 from contract.models import ContractRequestType
 from contract.serializers.contract_request_serializer import ContractRequestSaveSerializer
+from contract.serializers.contract_request_type_serializer import ContractRequestTypeSerializer
 from pricing.models import PriceRate
 
 
@@ -50,6 +51,25 @@ class ChangeOfNameRegistrationPriceRatesTest(TestCase):
         request.type = self.other_type
         request.save()
         self.assertEqual(set(request.registration_price_rates.all()), {self.other_rate})
+
+    def test_marking_as_change_of_name_with_same_type_switches_list(self):
+        request = self._create()
+        request.is_change_of_name = True
+        request.save()
+        self.assertEqual(set(request.registration_price_rates.all()), {self.change_of_name_rate, self.shared_rate})
+
+    def test_type_creation_accepts_price_rate_ids(self):
+        serializer = ContractRequestTypeSerializer(data={
+            "token": "nou",
+            "name": "Nou",
+            "registration_price_rates_ids": [self.registration_rate.id],
+            "change_of_name_registration_price_rates_ids": [self.change_of_name_rate.id],
+        })
+        serializer.is_valid(raise_exception=True)
+        request_type = serializer.save()
+
+        self.assertEqual(list(request_type.registration_price_rates.all()), [self.registration_rate])
+        self.assertEqual(list(request_type.change_of_name_registration_price_rates.all()), [self.change_of_name_rate])
 
     def test_migration_copies_registration_price_rates(self):
         self.type.change_of_name_registration_price_rates.clear()
