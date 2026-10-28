@@ -52,11 +52,12 @@ class ChangeOfNameRegistrationPriceRatesTest(TestCase):
         request.save()
         self.assertEqual(set(request.registration_price_rates.all()), {self.other_rate})
 
-    def test_marking_as_change_of_name_with_same_type_switches_list(self):
+    def test_changing_the_flag_keeps_chosen_price_rates(self):
+        # El canvi de nom es decideix en crear la sol·licitud: després no es substitueixen les tarifes triades
         request = self._create()
         request.is_change_of_name = True
         request.save()
-        self.assertEqual(set(request.registration_price_rates.all()), {self.change_of_name_rate, self.shared_rate})
+        self.assertEqual(set(request.registration_price_rates.all()), {self.registration_rate, self.shared_rate})
 
     def test_type_creation_accepts_price_rate_ids(self):
         serializer = ContractRequestTypeSerializer(data={

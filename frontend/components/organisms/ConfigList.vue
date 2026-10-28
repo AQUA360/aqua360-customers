@@ -32,6 +32,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   }, // L'entitat té els camps de dígit de sèrie per empresa (serie_digit_av/serie_digit_mv)
+  hasChangeOfNameCheck: {
+    type: Boolean,
+    default: false
+  }, // L'entitat té camp de "is_change_of_name"
 });
 
 const router = useRouter();
@@ -48,6 +52,7 @@ const gridStyle = computed(() => {
   if (props.hasCustomText) cols += ' 2fr';
   if (props.hasColor) cols += ' 50px';
   if (props.hasMandatoryCheck) cols += ' 80px';
+  if (props.hasChangeOfNameCheck) cols += ' 110px';
   if (props.hasSerieDigits) cols += ' 90px 90px';
   cols += ' 70px 50px';
   return { 
@@ -196,6 +201,17 @@ function onCheckMandatoryChange(event, item) {
   });
 }
 
+function onCheckChangeOfNameChange(event, item) {
+  const value = event.target.checked;
+  $apiService.updateValue(entity.value, 'is_change_of_name', item.id, value).then(() => {
+    item.is_change_of_name = value;
+    emit('changed');
+  }).catch(() => {
+    // Si no s'ha pogut desar, la casella torna al valor desat
+    event.target.checked = item.is_change_of_name;
+  });
+}
+
 function onDelete(item_id) {
   if (confirm(t('confirmation_text_block.confirm_delete'))) {
     $apiManager.fetch(apiUrl.value + item_id + '/', 'DELETE').then(() => {
@@ -257,6 +273,7 @@ onMounted(() => {
           <span v-if="hasCustomText" class="text-slate-400 p-2 border-r border-slate-100">{{ $t('common.custom_text') }} </span>
           <span v-if="hasColor" class="text-slate-400 p-2 border-r border-slate-100">{{ $t('common.color') }} </span>
           <span v-if="hasMandatoryCheck" class="text-slate-400 p-2 border-r border-slate-100">{{ $t('common.mandatory') }} </span>
+          <span v-if="hasChangeOfNameCheck" class="text-slate-400 p-2 border-r border-slate-100">{{ $t('contract_block.change_of_name') }} </span>
           <span v-if="hasSerieDigits" class="text-slate-400 p-2 border-r border-slate-100">{{ $t('billing_block.serie_digit_av') }} </span>
           <span v-if="hasSerieDigits" class="text-slate-400 p-2 border-r border-slate-100">{{ $t('billing_block.serie_digit_mv') }} </span>
           <span class="text-slate-400 p-2 border-r border-slate-100">{{ $t('default') }}</span>
@@ -297,6 +314,10 @@ onMounted(() => {
                 <span v-if="hasMandatoryCheck" class="text-slate-900 p-1 border-r border-slate-100 h-full flex items-center justify-center">
                   <input class="ml-1 mt-1" type="checkBox" name="mandatory" :value="item.id" :checked="item.is_mandatory"
                     @change="(event) => onCheckMandatoryChange(event, item)" />
+                </span>
+                <span v-if="hasChangeOfNameCheck" class="text-slate-900 p-1 border-r border-slate-100 h-full flex items-center justify-center">
+                  <input class="ml-1 mt-1" type="checkBox" name="change_of_name" :value="item.id" :checked="item.is_change_of_name"
+                    @change="(event) => onCheckChangeOfNameChange(event, item)" />
                 </span>
                 <span v-if="hasSerieDigits" class="text-slate-900 p-1 border-r border-slate-100 h-full flex items-center justify-center">
                   <EditFieldDialog class="w-full text-center" :entity=entity property="serie_digit_av" :id=item.id :value=item.serie_digit_av :maxlength="1" @changed="handleChanged">
@@ -350,6 +371,9 @@ onMounted(() => {
             &nbsp;
           </span>
           <span v-if="hasMandatoryCheck" class="text-slate-900 p-1 border-r border-slate-100 font-semibold h-full flex items-center">
+            &nbsp;
+          </span>
+          <span v-if="hasChangeOfNameCheck" class="text-slate-900 p-1 border-r border-slate-100 font-semibold h-full flex items-center">
             &nbsp;
           </span>
           <span v-if="hasSerieDigits" class="text-slate-900 p-1 border-r border-slate-100 font-semibold h-full flex items-center">
