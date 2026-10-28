@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 from django_filters import rest_framework as filters
 
@@ -63,12 +64,14 @@ class ContractRequestTypeSerializer(serializers.ModelSerializer):
             if ids is not None:
                 getattr(instance, relation).set(ids)
 
+    @transaction.atomic
     def create(self, validated_data):
         relation_ids = self._pop_relation_ids(validated_data)
         instance = super().create(validated_data)
         self._set_relations(instance, relation_ids)
         return instance
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         relation_ids = self._pop_relation_ids(validated_data)
         instance = super().update(instance, validated_data)
