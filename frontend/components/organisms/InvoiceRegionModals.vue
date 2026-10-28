@@ -59,7 +59,7 @@ const selected_company_bank = ref(null);
 const companyBanks = computed(() => (props.data?.company?.company_banks || []).filter((bank) => bank.is_active && !!bank.iban));
 const isBankTransfer = computed(() => paymentTypeOptionsById.value[selected_payment_type.value]?.token == 'BANK_TRANSFER');
 watch([selected_payment_type, paymentTypeOptionsById], () => {
-  if (!openChangePaymentMethodModal.value) return;
+  if (!openChangePaymentMethodModal.value && !openDateModal.value) return;
   if (!isBankTransfer.value) {
     selected_company_bank.value = null;
   } else if (!selected_company_bank.value) {
@@ -231,6 +231,10 @@ const onPersonBankSelected = (bank) => {
 };
 
 const savePaymentMethod = async (refresh = true) => {
+  if (isBankTransfer.value && companyBanks.value.length > 0 && !selected_company_bank.value) {
+    toast.warning(t('billing_block.select_bank_data'));
+    return false;
+  }
   if (!confirm(t("confirmation_text_block.confirm_modify"))) return false;
   try {
     let save_data = {
@@ -263,6 +267,8 @@ const closeChangePaymentMethodModal = () => {
 };
 
 const openDateModalForPayment = async (dueDate) => {
+  selected_payment_type.value = null;
+  selected_company_bank.value = null;
   selected_doc_payment_date.value = dueDate;
   openDateModal.value = true;
 };
@@ -589,14 +595,24 @@ defineExpose({
         </div>
         <div v-if="data.payment_type_token_final == 'DIRECT_DEBIT'">
           <SelectPaymentType v-model="selected_payment_type" :exclude-tokens="['DIRECT_DEBIT']" :model-as-number="true"
-            select-class="w-full text-base border border-gray-300 rounded p-2" select-wrapper-class="max-w-xl my-2" />
+            select-class="w-full text-base border border-gray-300 rounded p-2" select-wrapper-class="max-w-xl my-2"
+            @loaded="onPaymentTypesLoaded" />
           <p class="block font-medium text-slate-500 text-xs italic">
             {{ $t('informative_block.info_direct_debit_payment_method') }}
           </p>
+          <div class="select_bank my-3 max-w-xl" v-if="isBankTransfer && companyBanks.length > 0">
+            <label class="block font-medium text-slate-500 mb-2">{{ $t('common.select') }} {{ $t('common.account_bank') }}</label>
+            <button v-for="bank in companyBanks" :key="bank.id" type="button" @click="selected_company_bank = bank"
+              class="border w-full p-4 block text-left mb-2 rounded"
+              :class="selected_company_bank?.id == bank.id ? 'bg-green-100 border-green-300' : 'bg-gray-100 hover:bg-yellow-100 border-gray-200'">
+              <BankDetail :item="bank" :company="data.company" />
+            </button>
+          </div>
         </div>
         <div class="flex justify-end">
           <button class="button-primary" @click="generatePaymentDoc"
-            :disabled="!selected_doc_payment_date || selected_doc_payment_date == ''">
+            :disabled="!selected_doc_payment_date || selected_doc_payment_date == '' ||
+              (data.payment_type_token_final == 'DIRECT_DEBIT' && isBankTransfer && companyBanks.length > 0 && !selected_company_bank)">
             {{ $t('common.generate') }}
           </button>
         </div>

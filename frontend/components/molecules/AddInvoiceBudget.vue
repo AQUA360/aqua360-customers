@@ -199,6 +199,7 @@ const paymentTypeOptionsById = ref([]);
 
 const onPaymentTypesLoaded = ({ byId }) => {
   paymentTypeOptionsById.value = byId;
+  validateCompanyBank();
 };
 
 const paymentData = ref({})
@@ -480,10 +481,22 @@ const fetchAllCompanyBanks = async (compId) => {
 
 // Cada càrrega es numera: si l'usuari canvia de contracte abans que acabi, la resposta antiga es descarta
 let companyBanksLoadId = 0;
+let companyBanksVerified = false;
+
+const validateCompanyBank = () => {
+  if (paymentTypeOptionsById.value[selectedPaymentType.value]?.token !== 'BANK_TRANSFER') return;
+  if (companyBanksVerified && selectedCompanyBankDebit.value && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
+    selectedCompanyBankDebit.value = null;
+  }
+  if (companyBanks.value.length === 1 && !selectedCompanyBankDebit.value) {
+    selectedCompanyBankDebit.value = companyBanks.value[0];
+  }
+};
 
 const loadCompanyBanks = async () => {
   const loadId = ++companyBanksLoadId;
   const isStale = () => loadId !== companyBanksLoadId;
+  companyBanksVerified = false;
   const d = data.value?.results ? data.value.results[0] : data.value;
   const c = d?.company || d?.contract?.company || d?.exploitation?.company || d?.contract?.exploitation?.company ||
             selectedCustom.value?.company || selectedCustom.value?.contract?.company || selectedCustom.value?.exploitation?.company || selectedCustom.value?.contract?.exploitation?.company;
@@ -518,7 +531,6 @@ const loadCompanyBanks = async () => {
   }
 
   // Només es revisa el compte triat quan s'ha pogut comprovar quins comptes té l'empresa
-  let banksVerified = false;
   if (compId) {
     try {
       if (!props.company) {
@@ -535,25 +547,21 @@ const loadCompanyBanks = async () => {
       const banks = await fetchAllCompanyBanks(compId);
       if (isStale()) return;
       companyBanks.value = banks.filter(isSelectableCompanyBank);
-      banksVerified = true;
+      companyBanksVerified = true;
     } catch(e) {
+      if (isStale()) return;
       console.error(e);
+      companyBanks.value = [];
     }
   } else if (props.company?.company_banks) {
     companyBanks.value = props.company.company_banks.filter(isSelectableCompanyBank);
-    banksVerified = true;
+    companyBanksVerified = true;
   } else {
     companyBanks.value = [];
   }
   // A les transferències, el compte triat ha de ser de l'empresa actual (també si no en té cap).
   // A la domiciliació el compte ve de la forma de pagament del contracte i no es toca.
-  const isBankTransfer = paymentTypeOptionsById?.value[selectedPaymentType?.value]?.token == 'BANK_TRANSFER';
-  if (isBankTransfer && banksVerified && selectedCompanyBankDebit.value && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
-    selectedCompanyBankDebit.value = null;
-  }
-  if (companyBanks.value?.length === 1 && paymentTypeOptionsById?.value[selectedPaymentType?.value]?.token == 'BANK_TRANSFER' && !selectedCompanyBankDebit.value) {
-    selectedCompanyBankDebit.value = companyBanks.value[0];
-  }
+  validateCompanyBank();
 };
 
 watch([selectedExploitation, () => selectedCustom.value?.id, () => selectedCustom.value?.company, selectedCompanyId], () => {
@@ -1042,13 +1050,7 @@ watch([selectedPaymentType, selectedBankDebit, selectedCompanyBankDebit, electro
   showWarning.value = true
 }, { deep: true, immediate: true })
 
-watch(selectedPaymentType, (newVal) => {
-  if (paymentTypeOptionsById?.value[newVal]?.token == 'BANK_TRANSFER') {
-    if (companyBanks.value?.length === 1 && !selectedCompanyBankDebit.value) {
-      selectedCompanyBankDebit.value = companyBanks.value[0];
-    }
-  }
-})
+watch(selectedPaymentType, validateCompanyBank)
 
 watch(selectedCustom, () => {
   if (selectedCustom.value?.type == 'custom') {
