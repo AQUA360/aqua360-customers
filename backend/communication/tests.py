@@ -1208,3 +1208,64 @@ class ValidateEmailListTests(SimpleTestCase):
         for value in ('no-es-email', 'a@example.com;no-es-email', 'a@example.com,b@example.com'):
             with self.assertRaises(DjangoValidationError):
                 validate_email_list(value)
+
+
+class CommunicationUpdateKeepsMessagesTests(TestCase):
+    """Modificar les dades d'enviament d'una comunicació no ha de perdre els missatges editats."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from communication.models import Communication, Message, MessageTemplate, MessageType, MessageTypeTemplate
+        cls.email_type = MessageType.objects.create(token='email', name='Correu')
+        cls.sms_type = MessageType.objects.create(token='sms', name='SMS')
+        template = MessageTemplate.objects.create(name='Plantilla')
+        template.templates.add(
+            MessageTypeTemplate.objects.create(type=cls.email_type, subject='Assumpte plantilla', body='Cos plantilla'),
+            MessageTypeTemplate.objects.create(type=cls.sms_type, subject='', body='SMS plantilla'),
+        )
+        process = CommunicationProcess.objects.create(token='PROC-UPD', template=template)
+        cls.communication = Communication.objects.create(
+            process=process, used_email='old@example.com', type_tokens='email',
+        )
+        cls.communication.types.set([cls.email_type])
+        cls.edited_message = Message.objects.create(type=cls.email_type, subject='Assumpte editat', body='Cos editat')
+        cls.communication.messages.set([cls.edited_message])
+
+    def _update(self, data):
+        from unittest.mock import patch
+        from communication.serializers.communication_serializer import CommunicationSaveSerializer
+        serializer = CommunicationSaveSerializer(self.communication, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        with patch('communication.serializers.communication_serializer.create_email_template'):
+            return serializer.save()
+
+    def test_changing_email_keeps_edited_message(self):
+        communication = self._update({'used_email': 'new@example.com', 'types': [self.email_type.id]})
+        message = communication.messages.get()
+        self.assertEqual(message.id, self.edited_message.id)
+        self.assertEqual(message.body, 'Cos editat')
+        self.assertEqual(communication.used_email, 'new@example.com')
+
+    def test_message_shared_with_process_is_detached(self):
+        from communication.serializers.message_serializer import MessageSaveSerializer
+        process = self.communication.process
+        process.messages.set([self.edited_message])
+
+        communication = self._update({'used_email': 'new@example.com', 'types': [self.email_type.id]})
+        message = communication.messages.get()
+        self.assertNotEqual(message.id, self.edited_message.id)
+        self.assertEqual(message.body, 'Cos editat')
+
+        # Editar el missatge de la comunicació no ha de canviar el del procés.
+        serializer = MessageSaveSerializer(message, data={'body': 'Cos nou', 'type_id': self.email_type.id}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        from unittest.mock import patch
+        with patch('communication.serializers.message_serializer.create_email_template'):
+            serializer.save()
+        self.assertEqual(communication.messages.get().body, 'Cos nou')
+        self.assertEqual(process.messages.get().body, 'Cos editat')
+
+    def test_new_type_takes_template_message(self):
+        communication = self._update({'types': [self.email_type.id, self.sms_type.id]})
+        self.assertEqual(communication.messages.get(type=self.email_type).body, 'Cos editat')
+        self.assertEqual(communication.messages.get(type=self.sms_type).body, 'SMS plantilla')
