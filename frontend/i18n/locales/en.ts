@@ -1826,7 +1826,10 @@ export default {
     contract_registration: 'Contract Registration',
     initial_reading_new_contract: 'Initial reading of the new contract'
   },
-  billing_block:   {
+  billing_block: {
+    recalculation_original: 'Use original invoice parameters (historical occupants and rates)',
+    recalculation_current: 'Apply current contract parameters',
+    recalculation_parameters_title: 'Recalculation strategy',
     email_body: 'Email content',
     email_body_included_info: 'In addition to this text, the email will automatically include:',
     invoice_email_default_body: 'We attach the invoice corresponding to your contract. If you have any questions, please do not hesitate to contact us.',

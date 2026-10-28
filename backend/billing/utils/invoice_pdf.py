@@ -24,7 +24,7 @@ from django.db.models.signals import post_save
 from django.conf import settings
 from coredata.models import ConfigProject
 from coredata.serializers import AddressSerializer
-from coredata.utils.address_utils import get_address_complete_without_city
+from coredata.utils.address_utils import get_address_complete_without_city, get_address_extra
 from coredata.utils.pdf_utils import add_watermark_to_pdf
 from coredata.utils.template_utils import resolve_template_path
 from documentmanager.utils.sign_certificate_service import sign_pdf
@@ -398,6 +398,7 @@ def generate(context, invoice, exploitation, temporary=False):
         html_template = None
 
         physical_address = None
+        physical_address_extra = None
         physical_location = None
         physical_person = None
 
@@ -409,7 +410,8 @@ def generate(context, invoice, exploitation, temporary=False):
         if contract:
             if not is_connection_request and contract.address_contact:
                 att_to = contract.address_contact.attention_to
-                physical_address = get_address_complete_without_city(contract.address_contact.address) if contract.address_contact and contract.address_contact.address else None
+                physical_address = get_address_complete_without_city(contract.address_contact.address, include_extra=False) if contract.address_contact and contract.address_contact.address else None
+                physical_address_extra = get_address_extra(contract.address_contact.address)
                 physical_location = contract.address_contact.address.postal_code + ' ' + contract.address_contact.address.city.name if contract.address_contact and contract.address_contact.address else None
                 physical_person = str(contract.address_contact.person) if contract.address_contact and contract.address_contact.person else None
             if not is_connection_request:
@@ -430,7 +432,8 @@ def generate(context, invoice, exploitation, temporary=False):
             physical_address = invoice.address_final
             physical_location = invoice.location_final
         if not is_connection_request and not physical_address and contract.supply_point_default and contract.supply_point_default.address:
-            physical_address = get_address_complete_without_city(contract.supply_point_default.address)
+            physical_address = get_address_complete_without_city(contract.supply_point_default.address, include_extra=False)
+            physical_address_extra = get_address_extra(contract.supply_point_default.address)
             physical_location = contract.supply_point_default.address.postal_code + ' ' + contract.supply_point_default.address.city.name if contract.supply_point_default and contract.supply_point_default.address else None
         
         if not physical_person:
@@ -602,6 +605,7 @@ def generate(context, invoice, exploitation, temporary=False):
             'meter_change_readings': meter_change_readings,
             'ov_image': ov_image,
             'physical_address': physical_address,
+            'physical_address_extra': physical_address_extra,
             'physical_location': physical_location,
             'physical_person': physical_person,
             'contract_variables': get_contract_variables(contract),
