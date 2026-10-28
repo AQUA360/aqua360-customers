@@ -3,7 +3,7 @@ import importlib
 from django.apps import apps
 from django.test import TestCase
 
-from contract.models import ContractRequest, ContractRequestType, ContractTerminationRequest, ContractTerminationType
+from contract.models import Contract, ContractRequest, ContractRequestType, ContractTerminationRequest, ContractTerminationType
 from contract.serializers.contract_request_serializer import ContractRequestSaveSerializer
 from contract.serializers.value_objects_serializer import ContractTerminationRequestTypeSerializer
 from order.models import OrderType
@@ -54,8 +54,18 @@ class ChangeOfNameTerminationTypeTest(TestCase):
     """Marcatge de les sol·licituds antigues vinculades a una baixa per canvi de nom."""
 
     def setUp(self):
+        from coredata.models import ConfigProject
+
+        # Els senyals de Contract la consulten en desar
+        ConfigProject.objects.update_or_create(token='contract_terminated_status', defaults={'value': 'baixa'})
         self.change_of_name_type = ContractTerminationType.objects.create(token="canvi-titular", name="Canvi de titular")
         self.other_type = ContractTerminationType.objects.create(token="peticio", name="Petició del client")
+
+    def _finished_request(self, token, termination_type):
+        request = ContractRequest.objects.create(token=token)
+        request.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=termination_type))
+        Contract.objects.create(token=token, contract_request=request)
+        return request
 
     def _link(self, request, termination):
         serializer = ContractRequestSaveSerializer(
@@ -81,10 +91,10 @@ class ChangeOfNameTerminationTypeTest(TestCase):
         self.assertEqual(list(request.registration_price_rates.all()), [chosen_rate])
 
     def test_marking_termination_type_marks_linked_requests(self):
-        linked = ContractRequest.objects.create(token="REQ-1")
-        linked.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.change_of_name_type))
-        other = ContractRequest.objects.create(token="REQ-2")
-        other.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.other_type))
+        linked = self._finished_request("REQ-1", self.change_of_name_type)
+        other = self._finished_request("REQ-2", self.other_type)
+        pending = ContractRequest.objects.create(token="REQ-3")
+        pending.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.change_of_name_type))
 
         serializer = ContractTerminationRequestTypeSerializer(
             self.change_of_name_type, data={"is_change_of_name": True}, partial=True,
@@ -94,17 +104,19 @@ class ChangeOfNameTerminationTypeTest(TestCase):
 
         linked.refresh_from_db()
         other.refresh_from_db()
+        pending.refresh_from_db()
         self.assertTrue(linked.is_change_of_name)
         self.assertFalse(other.is_change_of_name)
+        self.assertFalse(pending.is_change_of_name)
 
     def test_opscript_marks_configured_holder_change_type(self):
         from coredata.models import ConfigProject
 
         ConfigProject.objects.update_or_create(token='termination_type_holder_change', defaults={'value': 'canvi-titular'})
-        linked = ContractRequest.objects.create(token="REQ-1")
-        linked.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.change_of_name_type))
-        other = ContractRequest.objects.create(token="REQ-2")
-        other.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.other_type))
+        linked = self._finished_request("REQ-1", self.change_of_name_type)
+        other = self._finished_request("REQ-2", self.other_type)
+        pending = ContractRequest.objects.create(token="REQ-3")
+        pending.contract_termination_requests.add(ContractTerminationRequest.objects.create(type=self.change_of_name_type))
 
         importlib.import_module("contract.opscripts.0005_mark_change_of_name_requests").run()
 
@@ -112,5 +124,7 @@ class ChangeOfNameTerminationTypeTest(TestCase):
         linked.refresh_from_db()
         other.refresh_from_db()
         self.assertTrue(self.change_of_name_type.is_change_of_name)
+        pending.refresh_from_db()
         self.assertTrue(linked.is_change_of_name)
         self.assertFalse(other.is_change_of_name)
+        self.assertFalse(pending.is_change_of_name)

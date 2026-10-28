@@ -183,12 +183,13 @@ class ContractTerminationType(models.Model):
         return self.name if self.name else "ContractTerminationType ID {}".format(self.token)
 
     def mark_linked_requests_as_change_of_name(self):
-        """Marca com a canvi de nom les sol·licituds ja vinculades a baixes d'aquest tipus.
+        """Marca com a canvi de nom les sol·licituds ja finalitzades vinculades a baixes d'aquest tipus.
 
-        Es fa amb update() per no tornar-los a assignar tarifes ni ordres.
+        Les pendents no es toquen: en finalitzar-les com a canvi de nom podrien reaprofitar el codi
+        del contracte anterior. Es fa amb update() per no tornar-los a assignar tarifes ni ordres.
         """
         return ContractRequest.objects.filter(
-            contract_termination_requests__type=self, is_change_of_name=False,
+            contract_termination_requests__type=self, contract__isnull=False, is_change_of_name=False,
         ).update(is_change_of_name=True)
 
 class ContractTerminationStatus(models.Model):
