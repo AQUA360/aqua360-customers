@@ -71,6 +71,28 @@ class TestChangePaymentMethodCompanyBank(ReturnAfterPaymentMethodChangeBase):
         self.invoice.refresh_from_db()
         self.assertEqual(self.invoice.payment_type_token_final, 'DIRECT_DEBIT')
 
+    def test_bank_transfer_requires_a_company_bank(self):
+        response = self.change_method(self.bank_transfer, payment_bank='ES5500000000000000000005', payment_swift='IIIIESJJ')
+
+        self.assertEqual(response.status_code, 400)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.payment_type_token_final, 'DIRECT_DEBIT')
+
+    def test_bank_transfer_ignores_request_iban_when_company_has_no_banks(self):
+        self.invoice.company = Company.objects.create(name='Empresa sense comptes')
+        self.invoice.save()
+
+        response = self.change_method(self.bank_transfer, payment_bank='ES5500000000000000000005', payment_swift='IIIIESJJ')
+
+        self.assertEqual(response.status_code, 200)
+        self.invoice.refresh_from_db()
+        self.pending.refresh_from_db()
+        self.assertEqual(self.invoice.payment_type_token_final, 'BANK_TRANSFER')
+        self.assertIsNone(self.invoice.payment_bank_final)
+        self.assertIsNone(self.invoice.payment_swift_final)
+        self.assertIsNone(self.pending.payment_bank)
+        self.assertIsNone(self.pending.payment_swift)
+
     def test_bank_is_rejected_when_invoice_has_no_company(self):
         self.invoice.company = None
         self.invoice.save()

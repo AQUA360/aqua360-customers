@@ -110,18 +110,22 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         {'error': "No es pot canviar el mètode de pagament d'una factura pagada: primer cal fer-ne el retorn i tornar-la a pagar."},
         status=status.HTTP_400_BAD_REQUEST)
 
-    # A les transferències, el compte on s'ha de pagar és un dels de l'empresa emissora
+    # A les transferències, el compte on s'ha de pagar és un dels de l'empresa emissora: mai un IBAN
+    # arribat a la petició. Si l'empresa té comptes actius, n'és obligatori un.
     company_bank = None
     payment_company_bank = request.data.get('payment_company_bank', None)
-    if payment_type.token == 'BANK_TRANSFER' and payment_company_bank:
-      company_bank = CompanyBank.objects.filter(
-        id=payment_company_bank, company_id=invoice.company_id, is_active=True).first() if invoice.company_id else None
-      if not company_bank:
-        return Response(
-          {'error': "El compte bancari no és un compte actiu de l'empresa de la factura."},
-          status=status.HTTP_400_BAD_REQUEST)
-      payment_bank_final = company_bank.iban
-      payment_swift_final = company_bank.swift
+    if payment_type.token == 'BANK_TRANSFER':
+      payment_bank_final = None
+      payment_swift_final = None
+      active_banks = CompanyBank.objects.filter(company_id=invoice.company_id, is_active=True) if invoice.company_id else CompanyBank.objects.none()
+      if payment_company_bank or active_banks.exists():
+        company_bank = active_banks.filter(id=payment_company_bank).first() if payment_company_bank else None
+        if not company_bank:
+          return Response(
+            {'error': "Cal triar un compte actiu de l'empresa de la factura."},
+            status=status.HTTP_400_BAD_REQUEST)
+        payment_bank_final = company_bank.iban
+        payment_swift_final = company_bank.swift
 
     disconnect_payment_signals()
 
