@@ -319,12 +319,12 @@ const save = async () => {
                 const value = Number(wait_time.value)
                 if (Number.isNaN(value) || value < 0) return null
                 return Math.min(value, maxWaitMinutes.value)
-                direction: direction.value,
+            })(),
+            direction: direction.value,
             callback_requested: callback_requested.value,
             supervisor_requested: supervisor_requested.value,
             transferred_to: transferred_to.value || null,
             recording_consent: recording_consent.value,
-        })(),
             abandoned_call: abandoned_call.value,
             contacted_by_client: byClient,
             channel: callChannel,
