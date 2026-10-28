@@ -1083,6 +1083,7 @@ export default {
     select_address: 'Select the address to use',
     select_phone: 'Select the phone number to use',
     select_email: 'Select the email to use',
+    multiple_emails_info: 'You can enter several email addresses separated by semicolons (;)',
     selected_addresses: 'Selected addresses',
     select_recipients_channels: 'Select recipients with at least one of the following channels',
     error_search_recipients: 'The recipients could not be loaded. Please try again.',
