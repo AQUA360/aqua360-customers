@@ -401,6 +401,7 @@ export default {
     active: 'Actiu',
     activate: 'Activar',
     admin: 'Administrador',
+    automatic_process: 'Procés automàtic',
     accept: 'Acceptar',
     accepted: 'Acceptat',
     accepted_request: 'Sol·licitud acceptada',

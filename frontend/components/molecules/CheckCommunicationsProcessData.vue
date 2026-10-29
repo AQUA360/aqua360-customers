@@ -138,7 +138,7 @@ watch(
                 <AtomsColorBadge :color="communication.status_color" :value="communication.status_name" />
               </div>
               <div class="flex flex-wrap gap-x-3 text-[11px] text-slate-500 h-full mt-0">
-                <FieldDetail :label="$t('user')" :value="communication.user_username || t('common.admin')" />
+                <FieldDetail :label="$t('user')" :value="communication.user_username || t('common.automatic_process')" />
                 <FieldDetail :label="$t('common.creation_date')" :value="formatDate(communication.created_at)" />
                 <FieldDetail :label="$t('common.send_date')" :value="formatDate(communication.due_date)" />
               </div>

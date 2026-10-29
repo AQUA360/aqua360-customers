@@ -199,7 +199,6 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Ha d'anar abans dels middlewares d'usuari actual: resol l'usuari del token DRF
     "ov.middleware.RestrictOVUserMiddleware",
-    "order.middleware.CurrentUserMiddleware",
     "contract.middleware.UserMiddleware",
     "logger.middleware.PostRequestLoggingMiddleware",  # Custom middleware for logging POST requests
     "coredata.middleware.SetPostgresUserMiddleware",

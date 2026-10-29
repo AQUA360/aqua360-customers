@@ -258,6 +258,13 @@ def get_status_map():
         for token in tokens
     }
 
+def get_acting_user(user=None):
+    # Sense usuari explícit, el de la petició o el de qui ha encuat la tasca de Celery
+    if user:
+        return user
+    from contract.middleware import get_current_user
+    return get_current_user()
+
 def log_payment_status(payment, payment_status, user, payment_date=None, payment_type_token=None):
     paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
     piggy_token = ConfigProject.objects.get(token='payment_status_piggy_token').value
@@ -266,7 +273,7 @@ def log_payment_status(payment, payment_status, user, payment_date=None, payment
         previous_status=payment.status,
         current_status=payment_status,
         used_payment_token=payment_type_token if payment_type_token else payment.payment_type_token,
-        user=user,
+        user=get_acting_user(user),
         timestamp= payment_date if payment_status.token in [paid_token, piggy_token] and payment_date else timezone.now()
     )
 
@@ -298,7 +305,7 @@ def generate_payment_movement(payment, payment_status, payment_date, payment_typ
     
     new_movement = PaymentMovement.objects.create(
         token = generate_token(PaymentMovement),
-        user = user,
+        user = get_acting_user(user),
         payment = payment,
         movement_date = payment_date,
         payment_type = payment_type,
@@ -415,10 +422,7 @@ def add_negative_payment_to_balance(payment, payment_date):
 
 
 def log_invoice_status(invoice, invoice_status, current_user=None):
-    if not current_user:
-        from order.middleware import get_current_user
-        current_user = get_current_user()
-    change_status_logger(current_user, invoice, invoice_status)
+    change_status_logger(get_acting_user(current_user), invoice, invoice_status)
 
 def disconnect_payment_signals():
     from billing.signals import check_cancel_invoice, check_paid_invoice, create_payment_invoice, payment_status_changed, update_payment, update_contract_debt

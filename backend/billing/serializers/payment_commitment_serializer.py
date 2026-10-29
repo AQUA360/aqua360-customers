@@ -115,8 +115,9 @@ class PaymentCommitmentSaveSerializer(serializers.ModelSerializer):
         payment = super().create(validated_data)
         
         if not is_guide:
+            # Des dels signals no hi ha petició: arriba l'usuari resolt directament
             request = self.context.get('request')
-            user = request.user if request else None
+            user = self.context.get('user') or (request.user if request else None)
             add_new_payment_deposit(payment, user, is_wallet, company_bank, new_payer_name, new_payer_nif)
         
         return payment

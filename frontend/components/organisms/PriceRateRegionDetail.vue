@@ -233,7 +233,7 @@ const toggleRegion = (force) => {
                   <Icon name="fa6-solid:circle" class="text-slate-400" />
                 </span>
                 <footer class="flex justify-between items-center pt-1">
-                  <p class="text-sm text-gray-700">{{ entry.user?.username || t('common.admin') }}</p>
+                  <p class="text-sm text-gray-700">{{ entry.user?.username || t('common.automatic_process') }}</p>
                   <p class="inline-flex items-center justify-end text-sm text-gray-900 font-semibold">
                     <TimeRelative :datetime="entry.timestamp" />
                   </p>
