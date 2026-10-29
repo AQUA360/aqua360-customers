@@ -556,6 +556,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             # l'import s'afegeix al saldo del client. Es decideix pel signe del
             # pagament, no per l'import rebut, i amb el pagament bloquejat perquè
             # una petició repetida no l'aboni dues vegades.
+            if not payment_date:
+                return Response({"error": "Payment date is required."}, status=status.HTTP_400_BAD_REQUEST)
             payment = Payment.objects.select_for_update().get(id=payment.id)
             if payment.status and payment.status.token in (paid_status_token, status_cancelled_token):
                 return Response({"error": "Payment already settled."}, status=status.HTTP_400_BAD_REQUEST)

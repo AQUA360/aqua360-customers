@@ -188,9 +188,9 @@ class TestManualPaymentNegativeToBalance(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user)
 
-    def pay(self, amount):
+    def pay(self, amount, payment_date='2026-10-29'):
         return self.client.post(reverse('payment-manual-payment'), {
-            'id': self.payment.id, 'payment_date': '2026-10-29',
+            'id': self.payment.id, 'payment_date': payment_date,
             'payment_method': self.balance.id, 'amount': amount,
         }, format='json')
 
@@ -208,3 +208,9 @@ class TestManualPaymentNegativeToBalance(TestCase):
 
         self.piggy_bank.refresh_from_db()
         self.assertEqual(self.piggy_bank.amount, Decimal('17.00'))
+
+    def test_sense_data_no_abona(self):
+        self.assertEqual(self.pay('-12.00', payment_date='').status_code, 400)
+
+        self.piggy_bank.refresh_from_db()
+        self.assertEqual(self.piggy_bank.amount, Decimal('5.00'))
