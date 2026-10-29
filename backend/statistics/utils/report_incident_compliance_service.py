@@ -62,9 +62,10 @@ def generate_incident_compliance_report(request, black_fill, white_bold_font, ta
             'contract__supply_point_default__connection__exploitation',
             'supply_point__connection__exploitation', 'cluster__connection__exploitation',
         )
-        # Trucades entrants de la centraleta (incoming_at) o registrades al formulari (call_start / time_call)
+        # Trucades entrants de la centraleta (incoming_at) o registrades al formulari (call_start / time_call),
+        # amb la data de creació com a darrera alternativa, igual que a la cronologia
         calls = CallRegister.objects.annotate(
-            received_at=Coalesce('incoming_at', 'call_start', 'time_call'),
+            received_at=Coalesce('incoming_at', 'call_start', 'time_call', 'created_at'),
         ).filter(
             Q(direction=CallRegister.DIRECTION_INBOUND) | Q(contacted_by_client=True),
             received_at__gte=start_date, received_at__lt=end_limit,

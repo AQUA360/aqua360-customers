@@ -42,10 +42,25 @@ class BankRNDDocumentView(APIView):
         line, amount, contract, status_name, status_color,
         is_paid, payment_id, joined_payment_id, is_joined,
         contract_request=None, invoice=None, commitment_deposit=None,
+        payment=None, payment_token=None, payment_amount=None,
     ):
+        resolved_token = payment_token
+        resolved_amount = payment_amount
+        if payment is not None:
+            resolved_token = resolved_token or payment.token
+            resolved_amount = resolved_amount if resolved_amount is not None else payment.amount
+        if resolved_token is None and invoice and invoice.get('token'):
+            resolved_token = invoice.get('token')
+        if resolved_token is None and commitment_deposit and commitment_deposit.get('token'):
+            resolved_token = commitment_deposit.get('token')
+        token_for_legacy = resolved_token or (line[76:90] if line else None)
         return {
             'payment_date': line[30:36],
             'amount': amount,
+            'file_amount': amount,
+            'payment_amount': resolved_amount,
+            'payment_token': resolved_token,
+            'is_legacy_exploitation': bool(token_for_legacy and str(token_for_legacy).startswith('0')),
             'identifier': line[48:54],
             'reference': line[76:90],
             'contract': contract,
@@ -60,6 +75,37 @@ class BankRNDDocumentView(APIView):
             'invoice': invoice,
             'commitment_deposit': commitment_deposit,
         }
+
+    @staticmethod
+    def _parse_excluded_ids(raw_value):
+        if raw_value is None or raw_value == '':
+            return set()
+        if isinstance(raw_value, (list, tuple, set)):
+            values = raw_value
+        else:
+            import json
+            try:
+                values = json.loads(raw_value)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                values = [raw_value]
+        excluded = set()
+        for value in values or []:
+            try:
+                excluded.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        return excluded
+
+    @classmethod
+    def _is_line_excluded(cls, *, payment=None, payment_ids=None, joined_payment_id=None, excluded_ids=None):
+        excluded_ids = excluded_ids or set()
+        if payment and payment.id in excluded_ids:
+            return True
+        if payment_ids and any(pid in excluded_ids for pid in payment_ids):
+            return True
+        if joined_payment_id and joined_payment_id in excluded_ids:
+            return True
+        return False
 
     @staticmethod
     def _barcode_reference_from_line(line):
@@ -273,6 +319,7 @@ class BankRNDDocumentView(APIView):
         file = request.data.get("file")
         is_saving = request.data.get("is_saving", False)
         payment_origin = request.data.get("payment_origin")
+        excluded_payment_ids = self._parse_excluded_ids(request.data.get("excluded_payment_ids"))
         user = request.user
         if not isinstance(is_saving, bool):
             is_saving = is_saving.lower() == 'true'
@@ -343,6 +390,7 @@ class BankRNDDocumentView(APIView):
                 commitment_deposit_data = None
                 contract = None
                 contract_request = None
+                line_saving = is_saving
                 
                 try:
                     """ print("\n\nLINESTRAT")
@@ -352,9 +400,11 @@ class BankRNDDocumentView(APIView):
                             invoice = Invoice.objects.get(token=line[76:87], type_final=type_final)
                             
                             payment = invoice.payments.order_by('-created_at').first()
+                            if self._is_line_excluded(payment=payment, excluded_ids=excluded_payment_ids):
+                                line_saving = False
                             
                             payment_previous_status = payment.status
-                            """ if is_saving and payment_origin:
+                            """ if line_saving and payment_origin:
                                 if payment_previous_status == status_paid:
                                     if not PaymentMovement.objects.filter(payment=payment, payment_origin__isnull=False).exists():
                                         last_movement = PaymentMovement.objects.filter(payment=payment).order_by('-timestamp').first()
@@ -373,7 +423,7 @@ class BankRNDDocumentView(APIView):
                             payment.status = status_paid
                             payment.paid_at = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
                             payment.payment_date = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
-                            if is_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
+                            if line_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
                                 invoice.payment_type_final = payment_type.name
                                 invoice.payment_type_token_final = payment_type.token
                                 invoices_to_update.append(invoice)
@@ -414,10 +464,12 @@ class BankRNDDocumentView(APIView):
                                 payment = Payment.objects.filter(
                                     token__startswith=line[76:87], status__in=[status_pending, status_expired, status_paid], amount=total
                                     ).first()
+                            if self._is_line_excluded(payment=payment, excluded_ids=excluded_payment_ids):
+                                line_saving = False
                             commitment_deposit = payment.commitment_deposit
                             
                             payment_previous_status = payment.status
-                            """ if is_saving and payment_origin:
+                            """ if line_saving and payment_origin:
                                 if payment_previous_status == status_paid:
                                     if not PaymentMovement.objects.filter(payment=payment, payment_origin__isnull=False).exists():
                                         last_movement = PaymentMovement.objects.filter(payment=payment).order_by('-timestamp').first()
@@ -436,7 +488,7 @@ class BankRNDDocumentView(APIView):
                             payment.status = status_paid
                             payment.paid_at = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
                             payment.payment_date = datetime.datetime.strptime(line[30:36], "%d%m%y").date()
-                            if is_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
+                            if line_saving and payment_previous_status != status_paid and payment_previous_status != status_cancelled:
                                 payment_previous_status = payment.status
                                 payment.payment_type = payment_type.name
                                 payment.payment_type_token = payment_type.token
@@ -460,6 +512,13 @@ class BankRNDDocumentView(APIView):
                             try:
                                 joined_payment = JoinedPayment.objects.get(token=line[76:87])
                                 payments = joined_payment.payments.all()
+                                child_payment_ids = list(payments.values_list('id', flat=True))
+                                if self._is_line_excluded(
+                                    joined_payment_id=joined_payment.id,
+                                    payment_ids=child_payment_ids,
+                                    excluded_ids=excluded_payment_ids,
+                                ):
+                                    line_saving = False
                                 if joined_payment.contract:
                                     contract = {
                                         'id': joined_payment.contract.id,
@@ -468,11 +527,13 @@ class BankRNDDocumentView(APIView):
                                     }
                                 data.append(self._build_register_data(
                                     line=line, amount=total, contract=contract,
-                                    status_name=joined_payment.status.name if not is_saving else joined_payment_status_paid.name,
-                                    status_color=joined_payment.status.color if not is_saving else joined_payment_status_paid.color,
+                                    status_name=joined_payment.status.name if not line_saving else joined_payment_status_paid.name,
+                                    status_color=joined_payment.status.color if not line_saving else joined_payment_status_paid.color,
                                     is_paid=False, payment_id=None,
                                     joined_payment_id=joined_payment.id,
                                     is_joined=True,
+                                    payment_token=joined_payment.token,
+                                    payment_amount=total,
                                 ))
                                 for payment in payments:
                                     invoice = payment.invoice
@@ -495,25 +556,26 @@ class BankRNDDocumentView(APIView):
                                     except:
                                         already_in_balance = False
                                     
-                                    if already_in_balance or is_saving:
+                                    if already_in_balance or line_saving:
                                         is_paid = False
                                     else:
                                         is_paid = payment.status == status_paid if payment else None
                                     
                                     register_data = self._build_register_data(
                                         line=line, amount=payment.amount, contract=contract,
-                                        status_name=payment.status.name if not is_saving else status_paid.name,
-                                        status_color=payment.status.color if not is_saving else status_paid.color,
+                                        status_name=payment.status.name if not line_saving else status_paid.name,
+                                        status_color=payment.status.color if not line_saving else status_paid.color,
                                         is_paid=is_paid,
                                         payment_id=payment.id if payment else None,
                                         joined_payment_id=joined_payment.id,
                                         is_joined=False,
                                         invoice=invoice_data,
                                         commitment_deposit=commitment_deposit_data,
+                                        payment=payment,
                                     )
                                     data.append(register_data)
                                 
-                                if is_saving and joined_payment.status != joined_payment_status_paid:
+                                if line_saving and joined_payment.status != joined_payment_status_paid:
                                     register_joined_payment_log(joined_payment, joined_payment.status, joined_payment_status_paid, None, user)
                                     mark_payments_as_paid(joined_payment, user, payment_origin)
                                     joined_payment.status = joined_payment_status_paid
@@ -535,11 +597,13 @@ class BankRNDDocumentView(APIView):
                             if invoice:
                                 payment = invoice.payments.order_by('-created_at').first()
                                 if payment:
+                                    if self._is_line_excluded(payment=payment, excluded_ids=excluded_payment_ids):
+                                        line_saving = False
                                     payment_previous_status, contract, contract_request, invoice_data = self._apply_rnd_paid_state(
                                         line=line,
                                         payment=payment,
                                         invoice=invoice,
-                                        is_saving=is_saving,
+                                        is_saving=line_saving,
                                         payment_origin=payment_origin,
                                         payment_type=payment_type,
                                         status_paid=status_paid,
@@ -558,11 +622,13 @@ class BankRNDDocumentView(APIView):
                         line, total, type_final, barcode_contract_matchable_statuses
                     )
                     if payment and invoice:
+                        if self._is_line_excluded(payment=payment, excluded_ids=excluded_payment_ids):
+                            line_saving = False
                         payment_previous_status, contract, contract_request, invoice_data = self._apply_rnd_paid_state(
                             line=line,
                             payment=payment,
                             invoice=invoice,
-                            is_saving=is_saving,
+                            is_saving=line_saving,
                             payment_origin=payment_origin,
                             payment_type=payment_type,
                             status_paid=status_paid,
@@ -592,6 +658,7 @@ class BankRNDDocumentView(APIView):
                     contract_request=contract_request,
                     invoice=invoice_data,
                     commitment_deposit=commitment_deposit_data,
+                    payment=payment,
                 )
                 
                 data.append(register_data)
