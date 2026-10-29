@@ -67,7 +67,7 @@ def generate_factdeta_alta_document(exploitations, invoices, config, company):
             exploitation=exploitation,
             origin__token=config.origin_reading_token,
         ).filter(
-            Q(used_aca="L") | Q(contract__use_aca="L", used_aca__isnull=True)
+            Q(used_aca="L") | Q(Q(used_aca__isnull=True) | Q(used_aca=''), contract__use_aca="L")
             ).exclude(
             status__token=config.invoice_token_pending
         ).distinct()
@@ -966,6 +966,14 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
         Q(contract__use_aca=ALTA_USE_ACA)
         | Q(contract__isnull=True, contract_termination__contract__use_aca=ALTA_USE_ACA),
     ).distinct()
+
+    # Sense explotació no se sap de quin municipi és la factura: no es pot ometre del fitxer
+    without_exploitation = sorted({_invoice_number(invoice) for invoice in aca_invoices.filter(exploitation__isnull=True)})
+    if without_exploitation:
+        raise FactdetaValidationError(
+            f"Hi ha {len(without_exploitation)} factures amb cànon sense explotació: "
+            + ", ".join(without_exploitation[:10]) + ("..." if len(without_exploitation) > 10 else "")
+        )
 
     # Un fitxer per municipi: les explotacions amb el mateix codi INE van al mateix fitxer
     exploitations_by_ine = defaultdict(list)
