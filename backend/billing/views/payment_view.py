@@ -611,7 +611,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             try:
                 add_negative_payment_to_balance(payment, payment_date)
             except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                logger.warning("Failed to add negative payment to balance for payment %s: %s", payment.id, str(e))
+                return Response({"error": "Unable to process this payment request."}, status=status.HTTP_400_BAD_REQUEST)
         
         og_status = payment.status
         payment.status = PaymentStatus.objects.get(token=used_token)
