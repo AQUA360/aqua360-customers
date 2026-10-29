@@ -18,7 +18,8 @@ class DetailedBillingDocumentGenerateView(APIView):
     def put(self, request, *args, **kwargs):
         print("In Detailed Billing Document Generate View")
         # FACDETA
-        is_alta = request.data.get('is_alta', False)
+        # Pot arribar com a booleà o com a text ("false" en un formulari)
+        is_alta = str(request.data.get('is_alta', False)).strip().lower() in ('true', '1')
         exploitations = Exploitation.objects.filter(is_active=True)
         if is_alta:
             invoices = Invoice.objects.filter(

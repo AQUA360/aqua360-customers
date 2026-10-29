@@ -138,6 +138,11 @@ class TestFactdetaDomesticRecord(SimpleTestCase):
         self.assertEqual(detail[TOTAL_AMOUNT], '00000000001575')
         self.assertEqual(factdeta_record_warnings(data), [])
 
+    def test_line_with_amount_is_not_social(self):
+        canon = compute_factdeta_canon('D', [line(1, 10, 0.0005, interval=1)], PART_FIXA)
+        self.assertEqual(canon['social'][0], 0)
+        self.assertEqual(canon['trams'][0][0], 10)
+
     def test_lines_without_interval_are_ordered_by_price(self):
         canon = compute_factdeta_canon('D', [line(1, 10, 1.2), line(2, 10, 0.5)], PART_FIXA)
         self.assertEqual(canon['trams'][0][1], Decimal('0.5'))

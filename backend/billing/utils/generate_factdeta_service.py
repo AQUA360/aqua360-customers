@@ -538,9 +538,10 @@ def _compute_domestic(canon, variable_lines):
     leak_lines = [line for line in variable_lines if _is_leak_line(line)]
     # Tarifa social amb tarifa 0 (consum per sota del límit del primer tram): en ús domèstic
     # només el bo social deixa el cànon a 0, encara que la línia no porti l'ajust de tarifa social
+    # (mateix llindar de preu que la declaració ACA, i sense import perquè el registre quadri)
     social_lines = [
         line for line in variable_lines
-        if not _is_leak_line(line) and abs(_dec(line.price_unit)) < Decimal('0.01')
+        if not _is_leak_line(line) and abs(_dec(line.price_unit)) < Decimal('0.001') and not _dec(line.price)
     ]
     tram_lines = [line for line in variable_lines if line not in leak_lines and line not in social_lines]
 
@@ -832,12 +833,19 @@ def _aca_lines_q(aca_product_token, field='product__token'):
 
 def _load_factdeta_baixa_context(config, invoices):
     """Dades que es consulten un sol cop per a totes les factures del fitxer."""
+    contract_ids = {
+        contract.id for invoice in invoices
+        for contract in (invoice.contract, invoice.contract_termination and invoice.contract_termination.contract)
+        if contract
+    }
+
     tram_bonification_type = get_aca_tram_bonification_type()
     # Vigència de cada bonificació: en donar-la de baixa es desactiva i es tanca amb `end_at`
     tram_periods = defaultdict(list)
     if tram_bonification_type:
         for contract_id, start_at, end_at in Bonification.objects.filter(
             Q(is_active=True) | Q(end_at__isnull=False), bonification_type=tram_bonification_type,
+            contract_id__in=contract_ids,
         ).values_list('contract_id', 'start_at', 'end_at'):
             tram_periods[contract_id].append((start_at, end_at))
 
@@ -845,7 +853,7 @@ def _load_factdeta_baixa_context(config, invoices):
     direct_variable_tokens = split_config_tokens(get_config_value(ACA_DIR_VARIABLE_CONFIG_TOKEN))
     if direct_variable_tokens:
         for contract_id, value in Variable.objects.filter(
-            type__token__in=direct_variable_tokens, is_active=True, contract__isnull=False,
+            type__token__in=direct_variable_tokens, is_active=True, contract_id__in=contract_ids,
         ).values_list('contract_id', 'value'):
             if value and str(value).strip().isdigit():
                 establishment_codes[contract_id] = str(value).strip()
@@ -860,11 +868,6 @@ def _load_factdeta_baixa_context(config, invoices):
 
     # Com Contract.is_fire: ús del contracte o algun punt de subministrament amb connexió d'incendis
     fire_usage_tokens, fire_connection_token = _fire_config_tokens()
-    contract_ids = {
-        contract.id for invoice in invoices
-        for contract in (invoice.contract, invoice.contract_termination and invoice.contract_termination.contract)
-        if contract
-    }
     fire_q = Q(use_type__token__in=fire_usage_tokens)
     if fire_connection_token:
         fire_q |= Q(supply_points__connection__use_type__token=fire_connection_token)
