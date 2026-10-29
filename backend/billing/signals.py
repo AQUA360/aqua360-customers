@@ -287,7 +287,7 @@ def update_payment(sender, instance, created, **kwargs):
         if not instance.invoice or instance.invoice == None:
             if not instance.commitment_deposit or instance.commitment_deposit == None or instance.status != status:
                 return
-            wallet_payment_deposit_update(instance, user, request)
+            wallet_payment_deposit_update(instance, user)
             return
 
         #

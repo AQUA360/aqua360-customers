@@ -3,7 +3,8 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
-from billing.signals import payment_status_changed
+from billing.models import Payment
+from billing.signals import payment_status_changed, update_payment
 from billing.utils.payment_service import get_acting_user
 from contract.middleware import set_current_user
 from customers.celery import CURRENT_USER_HEADER, attach_current_user, clear_current_user, restore_current_user
@@ -43,6 +44,24 @@ class ActingUserTests(SimpleTestCase):
             payment_status_changed(sender, instance)
         self.assertIs(log_status.call_args.args[2], self.user)
         self.assertIs(movement.call_args.args[5], self.user)
+
+    def test_commitment_deposit_payment_uses_current_user(self):
+        set_current_user(self.user)
+        status_map = {key: key for key in (
+            'payment_status_paid_token', 'payment_status_expired_token',
+            'payment_status_endowment_token', 'payment_status_irrecoverable_token',
+            'payment_status_returned_token', 'payment_status_cancelled_token',
+            'payment_status_commitment_token', 'payment_status_piggy_token',
+        )}
+        payment = SimpleNamespace(
+            id=1, status='payment_status_paid_token', invoice=None, commitment_deposit=object(),
+            payment_type_token='TRANSFER', payment_date='2026-10-29',
+        )
+        with patch('billing.signals.ConfigProject.objects.get'), \
+                patch('billing.signals.get_status_map', return_value=status_map), \
+                patch('billing.signals.wallet_payment_deposit_update') as wallet_update:
+            update_payment(Payment, payment, created=False)
+        wallet_update.assert_called_once_with(payment, self.user)
 
 
 class CeleryCurrentUserTests(SimpleTestCase):
