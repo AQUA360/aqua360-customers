@@ -40,6 +40,8 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
         exploitations = Exploitation.objects.filter(Q(is_active=True) | Q(id__in=invoices.values('exploitation_id')))
         if exploitation_id:
             exploitations = exploitations.filter(id=exploitation_id)
+            # Que les factures d'altres explotacions (o sense) no bloquegin el fitxer del municipi demanat
+            invoices = invoices.filter(exploitation_id=exploitation_id)
 
         try:
             files = generate_factdeta_document(exploitations, invoices)

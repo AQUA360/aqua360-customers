@@ -1,6 +1,7 @@
 import datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest import mock
 
 from django.test import SimpleTestCase, TestCase
 
@@ -18,6 +19,7 @@ from billing.utils.generate_factdeta_service import (
 )
 from coredata.models import ConfigProject
 from statistics.models import AvailableReport
+from statistics.utils.report_factdeta_service import generate_factdeta_report
 
 PART_FIXA = 'part_fixa'
 # Posicions (0-based) dels imports finals del registre 20 segons el document 03 de l'ACA
@@ -252,3 +254,19 @@ class TestFactdetaReportActivation(TestCase):
         config.save()
         report.refresh_from_db()
         self.assertFalse(report.is_active)
+
+
+class TestFactdetaReportFilters(SimpleTestCase):
+    """Amb una explotació demanada, el generador només rep les factures d'aquella explotació."""
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_exploitation_filters_invoices(self, generate):
+        generate_factdeta_report(SimpleNamespace(data={'year': 2026, 'exploitation_id': 7}))
+        exploitations, invoices = generate.call_args.args
+        self.assertIn('"exploitation_id" = 7', str(invoices.query).split(' WHERE ')[1])
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_without_exploitation_keeps_all_invoices(self, generate):
+        generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
+        exploitations, invoices = generate.call_args.args
+        self.assertNotIn('exploitation_id', str(invoices.query).split(' WHERE ')[1])
