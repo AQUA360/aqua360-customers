@@ -53,7 +53,7 @@ watch(() => props.id, () => {
       <footer class="flex justify-between items-center pt-1">
         <div class="flex items-center mb-1">
           <p v-if="item.user" class="text-sm text-gray-700 mr-3">{{ item.user?.username }}</p>
-          <p v-else class="text-sm text-gray-700 mr-3">{{ t('common.admin') }}</p>
+          <p v-else class="text-sm text-gray-700 mr-3">{{ t('common.automatic_process') }}</p>
           <p class="inline-flex items-center text-sm text-gray-900 font-semibold">
             <TimeRelative :datetime=item.timestamp></TimeRelative>
           </p>

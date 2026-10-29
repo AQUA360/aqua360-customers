@@ -2,7 +2,7 @@ from __future__ import absolute_import, unicode_literals
 import os
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import worker_ready
+from celery.signals import before_task_publish, task_postrun, task_prerun, worker_ready
 from django.conf import settings
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'customers.settings')
@@ -10,6 +10,39 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'customers.settings')
 app = Celery('customers')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
+
+# Les tasques porten l'usuari que les ha encuat: així els historials dels processos
+# automàtics que llança algú queden a nom seu. Les del beat no en tenen.
+CURRENT_USER_HEADER = 'current_user_id'
+
+
+@before_task_publish.connect
+def attach_current_user(headers=None, **kwargs):
+    if headers is None or CURRENT_USER_HEADER in headers:
+        return
+    from contract.middleware import get_current_user
+    user = get_current_user()
+    headers[CURRENT_USER_HEADER] = user.pk if user else None
+
+
+@task_prerun.connect
+def restore_current_user(task=None, **kwargs):
+    # En mode eager la tasca corre dins la petició, que ja té l'usuari
+    if task is None or task.request.is_eager:
+        return
+    from django.contrib.auth import get_user_model
+    from contract.middleware import set_current_user
+    user_id = getattr(task.request, CURRENT_USER_HEADER, None)
+    user = get_user_model().objects.filter(pk=user_id).first() if user_id else None
+    set_current_user(user)
+
+
+@task_postrun.connect
+def clear_current_user(task=None, **kwargs):
+    if task is None or task.request.is_eager:
+        return
+    from contract.middleware import set_current_user
+    set_current_user(None)
 
 # Les tasques periòdiques van amb `crontab`, no amb `timedelta`: un interval es
 # compta des de l'arrencada del beat, i com que cada desplegament recrea el

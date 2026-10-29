@@ -45,7 +45,7 @@ const loadObservations = async (data) => {
   for (const element of results) {
     let userName = '';
     if (element.user) {
-      userName = element.user.first_name + ' ' + element.user.last_name;
+      userName = [element.user.first_name, element.user.last_name].filter(Boolean).join(' ') || element.user.username;
     } else if (element.operator) {
       const operatorId = element.operator;
       if (!operatorCache.value[operatorId]) {
@@ -59,7 +59,7 @@ const loadObservations = async (data) => {
       }
       userName = operatorCache.value[operatorId];
     } else {
-      userName = t('common.admin');
+      userName = t('common.automatic_process');
     }
 
     let observation = {
@@ -127,7 +127,7 @@ const addObservation = async (observation) => {
 
     let userName = '';
     if (res.user) {
-      userName = res.user.first_name + ' ' + res.user.last_name;
+      userName = [res.user.first_name, res.user.last_name].filter(Boolean).join(' ') || res.user.username;
     } else if (res.operator) {
       const operatorId = res.operator;
       if (!operatorCache.value[operatorId]) {
@@ -140,7 +140,7 @@ const addObservation = async (observation) => {
       }
       userName = operatorCache.value[operatorId];
     } else {
-      userName = t('common.admin');
+      userName = t('common.automatic_process');
     }
 
     let new_observation = {

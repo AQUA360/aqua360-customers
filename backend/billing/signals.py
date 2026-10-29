@@ -10,7 +10,6 @@ from dateutil.relativedelta import relativedelta
 import datetime
 import calendar
 from faker import Faker
-from requests import Request
 from billing.models import CommitmentDeposit, EstimatedBag, EstimatedBagMovement, Invoice, InvoiceLog, InvoiceSerie, InvoiceStatus, InvoiceType, Payment, PaymentCommitment, PaymentCommitmentStatus, PaymentStatus, Reading
 from billing.utils.commitment_deposit_service import update_deposit, wallet_payment_deposit_update
 from billing.utils.payment_service import *
@@ -263,14 +262,7 @@ def update_payment(sender, instance, created, **kwargs):
 
     disconnected = pre_save.disconnect(payment_status_changed, Payment)
     try:
-        request = None
-        if hasattr(sender, 'request') and isinstance(sender.request, Request):
-            request = sender.request
-        elif hasattr(instance, '_request') and isinstance(instance._request, Request):
-                request = instance._request
-        user = None
-        if request and request.user and request.user.is_authenticated:
-            user = request.user
+        user = get_current_user()
         direct_debit_token = ConfigProject.objects.get(token='direct_debit_token').value
         print(f"Payment {instance.id} is updated")
         payment_status_map = get_status_map()
@@ -295,7 +287,7 @@ def update_payment(sender, instance, created, **kwargs):
         if not instance.invoice or instance.invoice == None:
             if not instance.commitment_deposit or instance.commitment_deposit == None or instance.status != status:
                 return
-            wallet_payment_deposit_update(instance, user, request)
+            wallet_payment_deposit_update(instance, user)
             return
 
         #
@@ -441,7 +433,6 @@ def check_paid_invoice(sender, instance, **kwargs):
         return
     
     if instance.status and instance.status.token == ConfigProject.objects.get(token='invoice_status_paid_token').value:
-        from order.middleware import get_current_user
         user = get_current_user()
         # Obtenim els ClaimRequestPayment associats a la factura
         bail_paid_token = ConfigProject.objects.get(token='bail_status_returned_token').value
@@ -609,14 +600,7 @@ def payment_status_changed(sender, instance, **kwargs):
                     ) """
             
             if original_instance.status != instance.status:
-                request = None
-                if hasattr(sender, 'request') and isinstance(sender.request, Request):
-                    request = sender.request
-                elif hasattr(instance, '_request') and isinstance(instance._request, Request):
-                        request = instance._request
-                user = None
-                if request and request.user:
-                    user = request.user
+                user = get_current_user()
                 
                 print(
                     f"Payment status changed from {original_instance.status} "

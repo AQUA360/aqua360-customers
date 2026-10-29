@@ -1111,20 +1111,27 @@ def obtain_claim_request_data(payload=None):
     }
 
 @shared_task
-def export_claim_contracts_task(contract_ids):
+def export_claim_contracts_task(contract_ids, contract_payments=None):
     """
-    Exporta a Excel els contractes d'un llistat de gestió de reclamació.
-    `contract_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    Exporta a Excel els contractes d'un llistat de gestió de reclamació i, en un
+    segon full, les factures reclamades (`contract_payments`: llista de
+    [contract_id, payment_id, is_excluded]). `contract_ids` ve ordenat com el
+    llistat, i l'Excel conserva aquest ordre.
     """
-    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
-    from claimrequest.utils.claim_contract_export_service import claim_contracts_export_columns, claim_contracts_export_queryset
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_sheets, iter_objects_by_ids
+    from claimrequest.utils.claim_contract_export_service import (
+        claim_contracts_export_columns, claim_contracts_export_queryset,
+        claim_invoices_export_columns, claim_invoices_export_rows,
+    )
 
     try:
         contract_ids = contract_ids or []
-        file_bytes = build_export_xlsx_bytes_from_objects(
-            iter_objects_by_ids(claim_contracts_export_queryset(), contract_ids),
-            claim_contracts_export_columns(contract_ids),
-        )
+        file_bytes = build_export_xlsx_bytes_from_sheets([
+            (_("Contractes"), iter_objects_by_ids(claim_contracts_export_queryset(), contract_ids),
+             claim_contracts_export_columns(contract_ids)),
+            (_("Factures"), claim_invoices_export_rows(contract_payments or []),
+             claim_invoices_export_columns()),
+        ])
         filename = f"claim_contracts_{timezone.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}.xlsx"
         document = upload_document(
             file=ContentFile(file_bytes, name=filename),
