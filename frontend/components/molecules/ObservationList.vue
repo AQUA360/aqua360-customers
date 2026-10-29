@@ -59,7 +59,7 @@ const loadObservations = async (data) => {
       }
       userName = operatorCache.value[operatorId];
     } else {
-      userName = t('common.admin');
+      userName = t('common.automatic_process');
     }
 
     let observation = {
@@ -140,7 +140,7 @@ const addObservation = async (observation) => {
       }
       userName = operatorCache.value[operatorId];
     } else {
-      userName = t('common.admin');
+      userName = t('common.automatic_process');
     }
 
     let new_observation = {

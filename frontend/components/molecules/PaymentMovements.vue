@@ -80,7 +80,7 @@ const showDetail = (component, id) => {
                 <TimeRelative :datetime="movement.timestamp" />
               </p>
               <span class="text-slate-400">·</span>
-              <span class="text-sm text-gray-700 mr-3">{{ movement.user?.username ?? t('common.admin') }}</span>
+              <span class="text-sm text-gray-700 mr-3">{{ movement.user?.username ?? t('common.automatic_process') }}</span>
             </div>
           </div>
           <div>

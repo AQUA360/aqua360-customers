@@ -399,6 +399,7 @@ export default {
     active: 'Activo',
     activate: 'Activar',
     admin: 'Administrador',
+    automatic_process: 'Proceso automático',
     accept: 'Aceptar',
     accepted: 'Aceptado',
     accepted_request: 'Solicitude aceptada',
