@@ -7,6 +7,7 @@ from django.test import SimpleTestCase
 from billing.utils.generate_factdeta_service import (
     FACTDETA_LINE_LENGTH,
     FactdetaValidationError,
+    _customer_id,
     _num,
     build_factdeta_detail_record,
     compute_factdeta_canon,
@@ -76,6 +77,16 @@ class TestFactdetaNumericFields(SimpleTestCase):
             _num(1000, 3)
 
 
+class TestFactdetaCustomerId(SimpleTestCase):
+
+    def test_separators_are_removed(self):
+        self.assertEqual(_customer_id('00000000-t'), '00000000T')
+        self.assertEqual(_customer_id(' X 0000000 T '), 'X0000000T')
+
+    def test_dni_is_zero_padded(self):
+        self.assertEqual(_customer_id('0000000T'), '00000000T')
+
+
 class TestFactdetaTariffType(SimpleTestCase):
 
     def test_fire_use_is_fire_extinction(self):
@@ -87,6 +98,9 @@ class TestFactdetaTariffType(SimpleTestCase):
     def test_domestic_contract_with_industrial_lines_is_industrial(self):
         lines = [line(1, 10, 0.5, name="PART VARIABLE ÚS INDUSTRIAL GENERAL")]
         self.assertEqual(get_factdeta_tariff_type('D', lines), 'I')
+
+    def test_industrial_contract_with_domestic_trams_is_domestic(self):
+        self.assertEqual(get_factdeta_tariff_type('I', [line(1, 10, 0.5, interval=1)]), 'D')
 
     def test_new_tariff_types_are_kept(self):
         self.assertEqual(get_factdeta_tariff_type('G', [line(1, 10, 0)]), 'G')
@@ -102,11 +116,11 @@ class TestFactdetaDomesticRecord(SimpleTestCase):
         lines = [
             line(1, 10, 0.5, interval=1),
             line(2, 5, 1.2, interval=2),
-            line(3, 4, 0, interval=1),                                   # tarifa social a 0
+            line(3, 4, 0, interval=1),                                   # bo social: tarifa 0
             line(4, 3, 0.5, name='CONSUM FUITA', quantity='diferencia_fuita'),
             part_fixa(5, 3.25),
         ]
-        canon = compute_factdeta_canon('D', lines, PART_FIXA, social_line_ids={3})
+        canon = compute_factdeta_canon('D', lines, PART_FIXA)
 
         self.assertEqual(canon['billed_volume'], 22)
         self.assertEqual(canon['trams'][0], (Decimal('10'), Decimal('0.5'), Decimal('5.0')))
@@ -157,17 +171,21 @@ class TestFactdetaIndustrialRecord(SimpleTestCase):
         lines = [
             line(1, 12, 0.5, name="PART VARIABLE ÚS INDUSTRIAL GENERAL", quantity='diferencia_fuita_consum'),
             line(2, 10, 0.25, name="PART VARIABLE ÚS INDUSTRIAL ESPECÍFIC"),
-            part_fixa(3, 10),
+            line(3, 2, 0.125, name="CONSUM FUITA", quantity='diferencia_fuita'),
+            part_fixa(4, 10),
         ]
         canon = compute_factdeta_canon('I', lines, PART_FIXA)
 
         general_volume, general_rate, general_amount = canon['general']
         specific_volume, _specific_rate, specific_amount = canon['specific']
         leak_volume, leak_rate, leak_amount = canon['leak']
+        # Validacions del document 08: el general és el volum facturat total i l'específic més
+        # la fuita també hi han de sumar
         self.assertEqual(canon['billed_volume'], 12)
-        self.assertEqual(general_volume, 12)
+        self.assertEqual(general_volume, canon['billed_volume'])
         self.assertEqual(specific_volume + leak_volume, canon['billed_volume'])
-        self.assertEqual(leak_rate, general_rate)
+        self.assertEqual(general_amount, general_volume * general_rate)
+        self.assertEqual(leak_rate, Decimal('0.125'))
         self.assertEqual(general_amount + specific_amount + leak_amount, canon['variable_amount'])
         self.assertEqual(len(build_factdeta_detail_record(record('I', canon))), FACTDETA_LINE_LENGTH)
 

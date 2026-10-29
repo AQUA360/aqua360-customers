@@ -1,5 +1,6 @@
 import datetime
 import math
+import re
 import unicodedata
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
@@ -510,6 +511,10 @@ def get_factdeta_tariff_type(use_aca, variable_lines, is_fire=False):
     # Contractes domèstics facturats amb tarifa industrial
     if use_aca == 'D' and variable_lines and all('INDUSTRIAL' in _line_type_name(line) for line in variable_lines):
         return 'I'
+    # Contractes industrials facturats amb els trams domèstics
+    if use_aca == 'I' and variable_lines and not any('INDUSTRIAL' in _line_type_name(line) for line in variable_lines) \
+            and any(line.interval for line in variable_lines):
+        return 'D'
     if use_aca in TARIFF_TYPES:
         return use_aca
     return 'D' if any(line.interval for line in variable_lines) else 'I'
@@ -529,12 +534,13 @@ def _empty_canon():
     }
 
 
-def _compute_domestic(canon, variable_lines, social_line_ids):
+def _compute_domestic(canon, variable_lines):
     leak_lines = [line for line in variable_lines if _is_leak_line(line)]
-    # Tarifa social amb tarifa 0 (consum per sota del límit del primer tram)
+    # Tarifa social amb tarifa 0 (consum per sota del límit del primer tram): en ús domèstic
+    # només el bo social deixa el cànon a 0, encara que la línia no porti l'ajust de tarifa social
     social_lines = [
         line for line in variable_lines
-        if line.id in social_line_ids and not _is_leak_line(line) and abs(_dec(line.price_unit)) < Decimal('0.01')
+        if not _is_leak_line(line) and abs(_dec(line.price_unit)) < Decimal('0.01')
     ]
     tram_lines = [line for line in variable_lines if line not in leak_lines and line not in social_lines]
 
@@ -573,25 +579,15 @@ def _compute_industrial(canon, variable_lines, is_municipal):
         specific_lines = [line for line in other_lines if 'ESPECIFIC' in _line_type_name(line)]
         general_lines = [line for line in other_lines if line not in specific_lines]
 
-    general_volume, general_rate, general_amount = _concept(general_lines)
-    specific = _concept(specific_lines)
-    leak_volume, _leak_rate, leak_amount = _concept(leak_lines)
-
-    # El gravamen general es factura sobre el consum més la fuita i l'específic només sobre el
-    # consum: la diferència és el volum de fuita, que es declara a part a la tarifa general.
-    extra_leak_volume = leak_volume
-    derived_leak = general_volume - specific[0] if specific_lines and abs(general_volume) > abs(specific[0]) else ZERO
-    derived_leak_amount = (derived_leak * general_rate).quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
-    leak_volume += derived_leak
-    leak_amount += derived_leak_amount
-
-    canon['general'] = (general_volume, general_rate, general_amount - derived_leak_amount)
-    canon['specific'] = specific
-    canon['leak'] = (leak_volume, abs(leak_amount / leak_volume) if leak_volume else ZERO, leak_amount)
-    canon['billed_volume'] = general_volume + extra_leak_volume if general_lines else specific[0] + leak_volume
+    # El gravamen general es factura sobre el consum més la fuita (és el volum facturat total),
+    # l'específic només sobre el consum i la fuita té la seva pròpia tarifa
+    canon['general'] = _concept(general_lines)
+    canon['specific'] = _concept(specific_lines)
+    canon['leak'] = _concept(leak_lines)
+    canon['billed_volume'] = canon['general'][0] if general_lines else canon['specific'][0] + canon['leak'][0]
 
 
-def compute_factdeta_canon(tariff_type, aca_lines, part_fixa_token, social_line_ids=()):
+def compute_factdeta_canon(tariff_type, aca_lines, part_fixa_token):
     """Volums, tarifes i imports del cànon d'una factura segons el tipus de tarifa."""
     canon = _empty_canon()
     if tariff_type in CONSUMPTION_ONLY_TARIFF_TYPES:
@@ -603,7 +599,7 @@ def compute_factdeta_canon(tariff_type, aca_lines, part_fixa_token, social_line_
     canon['variable_amount'] = _sum(variable_lines, 'price')
 
     if tariff_type == 'D':
-        _compute_domestic(canon, variable_lines, set(social_line_ids))
+        _compute_domestic(canon, variable_lines)
     elif tariff_type in ('I', 'A'):
         _compute_industrial(canon, variable_lines, is_municipal=tariff_type == 'A')
     # Quota ramadera (Q): sense volum facturat; els imports de quota no es facturen
@@ -816,6 +812,12 @@ def _consumption_period(invoice):
     return min(start_dates), max(end_dates)
 
 
+def _customer_id(value):
+    """NIF sense separacions (document 03) i, si és un DNI sense els zeros de l'esquerra, completat."""
+    value = re.sub(r'[^0-9A-Z]', '', str(value or '').upper())
+    return value.zfill(9) if re.fullmatch(r'\d{6,7}[A-Z]', value) else value
+
+
 def _invoice_number(invoice):
     # Com a l'ALTA: el token sense el primer zero (el camp és de 10 posicions)
     return (invoice.token or invoice.serie_final or '').replace('/', '')[-10:]
@@ -891,11 +893,11 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
         invoice.used_aca or (contract.use_aca if contract else None), variable_lines, is_fire,
     )
     social_line_ids = {line.id for line in variable_lines if _has_social_adjustment(line, config.tarifa_social_token)}
-    canon = compute_factdeta_canon(tariff_type, aca_lines, config.part_fixa_token, social_line_ids)
+    canon = compute_factdeta_canon(tariff_type, aca_lines, config.part_fixa_token)
 
     cancelled = context.cancelled_by_refund_token.get(invoice.token)
     consumed_volume = _dec(invoice.real_consumption if invoice.real_consumption is not None else invoice.consumption)
-    if cancelled and consumed_volume > 0:
+    if (cancelled or canon['billed_volume'] < 0) and consumed_volume > 0:
         consumed_volume = -consumed_volume
 
     billing_system = _billing_system(invoice, meter, config)
@@ -915,7 +917,7 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
         'ine_code': exploitation.code,
         'invoice_number': _invoice_number(invoice),
         'issue_date': invoice.issue_date,
-        'customer_id': invoice.customer_token_final or (person.token if person else ''),
+        'customer_id': _customer_id(invoice.customer_token_final or (person.token if person else '')),
         'tariff_type': tariff_type,
         'surname1': surname1,
         'surname2': surname2,
@@ -934,7 +936,7 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
         'alternative_network': 'R' if tariff_type == 'D' and supply_point and not supply_point.is_potable else '',
         'tram_extension': ('S' if has_tram_extension else 'N') if tariff_type == 'D' else '',
         'inhabitants': min(persons, 99) if tariff_type == 'D' and has_tram_extension else 0,
-        'social_tariff': ('S' if social_line_ids else 'N') if tariff_type == 'D' else '',
+        'social_tariff': ('S' if social_line_ids or canon['social'][0] else 'N') if tariff_type == 'D' else '',
         'vulnerable': 'S' if person and person.vulnerability_level >= VULNERABLE_LEVEL else 'N',
         'establishment_code': context.establishment_codes.get(contract.id, '') if contract and tariff_type in ('M', 'Q') else '',
         'homes': min(_homes_count(invoice, contract, meter), 999) if billing_system == 'G' and tariff_type in ('D', 'A') else 0,
