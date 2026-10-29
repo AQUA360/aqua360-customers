@@ -2094,6 +2094,8 @@ export default {
     selected_payments: 'Pagos seleccionados',
     excluded_payments: 'Pagos excluídos',
     single_pay: 'Pagar individualmente',
+    add_to_balance: 'Engadir ao saldo',
+    add_to_balance_info: 'O importe da factura negativa engadirase ao saldo do cliente en lugar de devolvelo por transferencia.',
     remittance_payments: 'Pagos de Remesa',
     remittance_data: 'Datos de remesa',
     total_available: 'Total dispoñible',

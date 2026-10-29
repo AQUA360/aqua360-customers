@@ -3678,7 +3678,11 @@ def regenerate_sepa_file(self, payment_remittance_id, payment_ids, send_date):
 
     payments_qs.update(document=document_file)
 
-    anomalies = [p.id for p in payments_qs if p.amount <= 0]
+    # A les transferències de retorn els imports negatius (abonaments) són vàlids.
+    if payment_remittance.is_return:
+      anomalies = [p.id for p in payments_qs if p.amount == 0]
+    else:
+      anomalies = [p.id for p in payments_qs if p.amount <= 0]
 
     return {
       "status": "ok",

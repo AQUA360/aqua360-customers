@@ -2094,6 +2094,8 @@ export default {
     selected_payments: 'Selected payments',
     excluded_payments: 'Excluded payments',
     single_pay: 'Pay individually',
+    add_to_balance: 'Add to balance',
+    add_to_balance_info: 'The negative invoice amount will be added to the customer\'s balance instead of being returned by transfer.',
     remittance_payments: 'Remittance payments',
     remittance_data: 'Remittance data',
     total_available: 'Total available',
