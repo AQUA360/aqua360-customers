@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -30,6 +32,11 @@ SMART_METERING_AUTH_CONFIG_TOKEN = "smart_metering_authentication_token"
 SMART_METERING_EXPLOITATION_CONFIG_TOKEN = "smart_metering_explotation_id"
 # Preview runs in Celery; allow a longer wait for the massive external API.
 SMART_METERING_PREVIEW_API_TIMEOUT = 120
+# Settings-page probe: a short reachability check, and a capped sample of a day's readings.
+SMART_METERING_CONNECTIVITY_TIMEOUT = 10
+SMART_METERING_PROBE_SAMPLE_LIMIT = 20
+SMART_METERING_PROBE_DETAIL_LIMIT = 500
+SMART_METERING_INBOUND_CONTRACTS_PATH = "/smartmetering/v1/contracts/"
 
 
 class SmartMeteringApiError(Exception):
@@ -1277,6 +1284,309 @@ def fetch_smart_metering_meter_reading(meter_code=None, reading_date_str=None, m
         "timestamp": api_row.get("timestamp") if api_row else None,
         "origin": ORIGIN_SMART_METERING,
     }
+
+
+def smart_metering_config_token_value():
+    """ConfigProject value for the Smart Metering token, stripped. Empty if missing."""
+    try:
+        config = ConfigProject.objects.get(token=SMART_METERING_AUTH_CONFIG_TOKEN)
+    except ConfigProject.DoesNotExist:
+        return ""
+    return (config.value or "").strip()
+
+
+def smart_metering_is_enabled():
+    """True only when the Smart Metering ConfigProject token has a written value."""
+    return bool(smart_metering_config_token_value())
+
+
+def _inbound_contracts_path():
+    """Path Smart Metering calls to read contracts. Includes /api when that prefix is on."""
+    from decouple import config as env_config
+
+    raw = env_config("API_URL_PREFIX", default="False")
+    prefix = "/api" if str(raw) == "True" else ""
+    return f"{prefix}{SMART_METERING_INBOUND_CONTRACTS_PATH}"
+
+
+def _truncate_probe_detail(value):
+    text = str(value or "").strip()
+    if len(text) <= SMART_METERING_PROBE_DETAIL_LIMIT:
+        return text
+    return text[:SMART_METERING_PROBE_DETAIL_LIMIT] + "…"
+
+
+def get_smart_metering_settings():
+    """
+    Connection data for the settings screen.
+
+    The token is the ConfigProject value (not the env fallback). The URL comes
+    from SMART_METERING_API_URL.
+    """
+    token = smart_metering_config_token_value()
+    api_url = (getattr(settings, "SMART_METERING_API_URL", "") or "").rstrip("/")
+    return {
+        "enabled": bool(token),
+        "api_url": api_url,
+        "authentication_token": token,
+        "auth_param": getattr(settings, "SMART_METERING_API_AUTH_PARAM", "Authorization"),
+        "timeout": getattr(settings, "SMART_METERING_API_TIMEOUT", 30),
+        "margin": getattr(settings, "SMART_METERING_API_MARGIN", 5),
+        "inbound_endpoint": _inbound_contracts_path(),
+        "massive_readings_endpoint": SmartMeteringClient.MASSIVE_READINGS_ENDPOINT,
+        "single_readings_endpoint": SmartMeteringClient.SINGLE_READINGS_ENDPOINT,
+    }
+
+
+_OPENAPI_SPEC_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "integrations"
+    / "smartmetering"
+    / "openapi.yaml"
+)
+_OPENAPI_SERVERS_BLOCK = """servers:
+  - url: https://customers.example.com
+    description: Entorn de producció (substituir pel domini real)
+  - url: http://localhost:8000
+    description: Entorn local de desenvolupament
+"""
+
+
+def build_smart_metering_openapi(server_url):
+    """Public inbound OpenAPI, with this deployment as the server URL."""
+    server_url = str(server_url or "").strip().rstrip("/")
+    if not server_url or any(char in server_url for char in "\n\r"):
+        raise ValueError("server_url_invalid")
+    text = _OPENAPI_SPEC_PATH.read_text(encoding="utf-8")
+    if _OPENAPI_SERVERS_BLOCK not in text:
+        raise ValueError("openapi_template_invalid")
+    servers = (
+        "servers:\n"
+        f"  - url: {server_url}\n"
+        "    description: Aquest desplegament\n"
+    )
+    return text.replace(_OPENAPI_SERVERS_BLOCK, servers, 1)
+
+
+def build_smart_metering_server_curl(reading_date_str=None, meter_code=None):
+    """
+    Shell script that calls Smart Metering for one day.
+
+    The token is inside the script so it can be run on the server. Callers must
+    not print the result.
+    """
+    import shlex
+    from urllib.parse import urlencode
+
+    if not smart_metering_is_enabled():
+        raise ValueError("not_configured")
+    connection = get_smart_metering_settings()
+    if not connection["api_url"]:
+        raise ValueError("url_missing")
+    reading_date = _parse_probe_date(reading_date_str) if reading_date_str else timezone.localdate()
+    meter = str(meter_code).strip() if meter_code not in (None, "") else ""
+    meter = meter or None
+    endpoint = (
+        SmartMeteringClient.SINGLE_READINGS_ENDPOINT
+        if meter
+        else SmartMeteringClient.MASSIVE_READINGS_ENDPOINT
+    )
+    params = {"date": reading_date.isoformat(), "margin": connection["margin"]}
+    if meter:
+        params["meter"] = meter
+    url = f"{connection['api_url']}{endpoint}?{urlencode(params)}"
+    header_accept = shlex.quote("Accept: application/json")
+    header_auth = shlex.quote(f"{connection['auth_param']}: {connection['authentication_token']}")
+    quoted_url = shlex.quote(url)
+    timeout = int(SMART_METERING_PREVIEW_API_TIMEOUT)
+    return (
+        "#!/bin/sh\n"
+        "# Prova de lectures Smart Metering. Executar-la al servidor.\n"
+        "# No desa lectures al programa.\n"
+        "set -eu\n"
+        "curl --fail-with-body --silent --show-error "
+        f"--max-time {timeout} \\\n"
+        f"  --header {header_accept} \\\n"
+        f"  --header {header_auth} \\\n"
+        f"  {quoted_url}\n"
+    )
+
+
+def _parse_probe_date(reading_date_str):
+    if reading_date_str is None or str(reading_date_str).strip() == "":
+        raise ValueError("reading_date_required")
+    try:
+        return datetime.strptime(str(reading_date_str).strip(), "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("reading_date_invalid") from exc
+
+
+def probe_smart_metering_connectivity():
+    """
+    Ask the Smart Metering host whether it answers.
+
+    Any HTTP status means the host is reachable. 401/403 means the token was rejected.
+    This does not load readings.
+    """
+    client = SmartMeteringClient(timeout=SMART_METERING_CONNECTIVITY_TIMEOUT)
+    url = client.base_url
+    endpoint = client.SINGLE_READINGS_ENDPOINT
+    if not smart_metering_is_enabled():
+        return {
+            "reachable": False,
+            "authenticated": None,
+            "status_code": None,
+            "elapsed_ms": 0,
+            "url": url,
+            "code": "not_configured",
+            "detail": "",
+        }
+    if not url:
+        return {
+            "reachable": False,
+            "authenticated": None,
+            "status_code": None,
+            "elapsed_ms": 0,
+            "url": "",
+            "code": "url_missing",
+            "detail": "SMART_METERING_API_URL is not configured",
+        }
+
+    # A fake meter on the single-reading endpoint: the host and the token are
+    # checked without downloading the day's massive payload.
+    probe_meter = "__connectivity_probe__"
+    params = client._request_params(timezone.localdate(), meter_code=probe_meter)
+    started = time.perf_counter()
+    try:
+        response = requests.get(
+            f"{url}{endpoint}",
+            params=params,
+            headers=client._headers(),
+            timeout=SMART_METERING_CONNECTIVITY_TIMEOUT,
+            verify=True,
+            stream=True,
+        )
+    except requests.RequestException as exc:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        detail = _truncate_probe_detail(f"Error connecting to smart metering API: {exc}")
+        client._log(
+            method="GET",
+            endpoint=endpoint,
+            request_payload={"probe": "connectivity", "params": params},
+            success=False,
+            error_message=detail,
+        )
+        return {
+            "reachable": False,
+            "authenticated": None,
+            "status_code": None,
+            "elapsed_ms": elapsed_ms,
+            "url": url,
+            "code": "unreachable",
+            "detail": detail,
+        }
+
+    try:
+        status_code = response.status_code
+    finally:
+        response.close()
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    authenticated = status_code not in (401, 403)
+    accepted = authenticated and status_code < 500
+    client._log(
+        method="GET",
+        endpoint=endpoint,
+        request_payload={"probe": "connectivity", "params": params},
+        status_code=status_code,
+        success=accepted,
+        error_message="" if accepted else f"HTTP {status_code}",
+    )
+    code = "ok"
+    if not authenticated:
+        code = "unauthorized"
+    elif status_code >= 500:
+        code = "server_error"
+    return {
+        "reachable": True,
+        "authenticated": authenticated,
+        "status_code": status_code,
+        "elapsed_ms": elapsed_ms,
+        "url": url,
+        "code": code,
+        "detail": "",
+    }
+
+
+def _probe_sample(payload):
+    sample = []
+    rows = _extract_api_rows(payload)
+    for row in rows[:SMART_METERING_PROBE_SAMPLE_LIMIT]:
+        if not isinstance(row, dict):
+            continue
+        reading = row.get("reading") if row.get("reading") is not None else row.get("reading_value")
+        sample.append({
+            "meter": _meter_code_from_api_row(row),
+            "reading": reading,
+            "timestamp": row.get("timestamp") or row.get("reading_date") or row.get("date"),
+        })
+    return rows, sample
+
+
+def probe_smart_metering_readings(reading_date_str, meter_code=None):
+    """
+    Fetch readings for one day from Smart Metering and return a short sample.
+
+    Does not create a reading document. With a meter code, calls the single-meter
+    endpoint; otherwise the massive readings endpoint (same source as the load).
+    """
+    reading_date = _parse_probe_date(reading_date_str)
+    meter = str(meter_code).strip() if meter_code not in (None, "") else ""
+    meter = meter or None
+    endpoint = (
+        SmartMeteringClient.SINGLE_READINGS_ENDPOINT
+        if meter
+        else SmartMeteringClient.MASSIVE_READINGS_ENDPOINT
+    )
+    base = {
+        "ok": False,
+        "reading_date": reading_date.isoformat(),
+        "meter": meter,
+        "count": 0,
+        "sample": [],
+        "sample_limit": SMART_METERING_PROBE_SAMPLE_LIMIT,
+        "elapsed_ms": 0,
+        "endpoint": endpoint,
+        "detail": "",
+        "code": "",
+    }
+    if not smart_metering_is_enabled():
+        base["code"] = "not_configured"
+        return base
+
+    client = SmartMeteringClient(timeout=SMART_METERING_PREVIEW_API_TIMEOUT)
+    started = time.perf_counter()
+    try:
+        if meter:
+            payload = client.fetch_meter_reading(reading_date, meter)
+        else:
+            payload = client.fetch_readings(reading_date)
+    except SmartMeteringApiError as exc:
+        base["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        base["code"] = "provider_error"
+        base["detail"] = _truncate_probe_detail(exc)
+        return base
+
+    rows, sample = _probe_sample(payload)
+    base.update({
+        "ok": True,
+        "count": len(rows),
+        "sample": sample,
+        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+        "code": "ok" if rows else "empty",
+    })
+    return base
 
 
 def _row_reading_date(row, fallback_date):
