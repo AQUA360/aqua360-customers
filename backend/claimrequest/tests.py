@@ -373,3 +373,99 @@ class ClaimContractsExportTests(TestCase):
         self.assertEqual(client.post(url, {'contract_ids': [self.contract.id, other_contract.id], **scope}, format='json').status_code, 403)
         self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], **scope}, format='json').status_code, 202)
         self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], 'filter_task_id': 'unknown'}, format='json').status_code, 400)
+
+    # Full de factures: abast calculat al servidor i contingut.
+
+    def expired_payments(self):
+        from billing.models import Payment
+
+        return list(Payment.objects.filter(invoice__contract=self.contract, status__token='-1').order_by('id'))
+
+    def test_task_writes_invoice_sheet_ordered_by_invoice_date(self):
+        import datetime
+        from io import BytesIO
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from openpyxl import load_workbook
+
+        from claimrequest.tasks import export_claim_contracts_task
+        from documentmanager.models import Document
+
+        self.contract.holder = Person.objects.create(token='00000000T', name='Titular', surname='Prova')
+        self.contract.save()
+        # El primer i el tercer pagament vençuts són de factures diferents (10 i 20).
+        payments = self.expired_payments()
+        first, second = payments[0], payments[2]
+        first.invoice.issue_date = datetime.date(2026, 3, 1)
+        first.invoice.serie_final = 'F-2'
+        first.invoice.save()
+        second.invoice.issue_date = datetime.date(2026, 1, 1)
+        second.invoice.serie_final = 'F-1'
+        second.invoice.save()
+
+        with TemporaryDirectory() as storage_path, self.settings(
+            DOCUMENT_STORAGE_PATH=storage_path, DOCUMENT_MANAGER_SERVICES={'claimrequest': 'hdd'},
+        ):
+            result = export_claim_contracts_task(
+                [self.contract.id], [[self.contract.id, first.id, False], [self.contract.id, second.id, True]],
+            )
+            self.assertEqual(result['status'], 'success', result)
+            workbook = load_workbook(BytesIO(Path(Document.objects.get(pk=result['document_id']).location).read_bytes()))
+
+        contract_rows = list(workbook.worksheets[0].values)
+        self.assertEqual(contract_rows[1][:3], ('C-TEST', 'Titular Prova', '00000000T'))
+
+        invoice_rows = list(workbook.worksheets[1].values)
+        header = invoice_rows[0]
+        self.assertEqual(len(invoice_rows), 3)
+        self.assertEqual([row[header.index('Factura')] for row in invoice_rows[1:]], ['F-1', 'F-2'])
+        self.assertEqual(invoice_rows[1][header.index('NIF')], '00000000T')
+        self.assertEqual(invoice_rows[1][header.index('Data factura')], '01/01/2026')
+        self.assertEqual(invoice_rows[1][header.index('Import pendent')], 20)
+        self.assertEqual([row[header.index('Exclosa')] for row in invoice_rows[1:]], ['Sí', 'No'])
+
+    def post_export(self, data):
+        from unittest.mock import patch
+
+        client = APIClient()
+        client.force_authenticate(User.objects.create_superuser('admin-invoices', 'admin-invoices@test.local', 'x'))
+        with patch('claimrequest.views.claim_contracts_export_view.enqueue_export') as enqueue:
+            enqueue.return_value = SimpleNamespace(task_id='t', id=1, name='export')
+            response = client.post('/claimrequest/claim-request-manage/contracts-export/', data, format='json')
+        self.assertEqual(response.status_code, 202, response.data)
+        return enqueue.call_args.kwargs['args']
+
+    def test_claim_scope_marks_excluded_payments(self):
+        from claimrequest.models import ClaimRequest, ClaimRequestPayment
+
+        claim_request = ClaimRequest.objects.create(token='CR-INVOICES')
+        included, excluded = self.expired_payments()[:2]
+        ClaimRequestPayment.objects.create(claim_request=claim_request, contract=self.contract, payment=included)
+        ClaimRequestPayment.objects.create(
+            claim_request=claim_request, contract=self.contract, payment=excluded, is_excluded=True,
+        )
+
+        args = self.post_export({'contract_ids': [self.contract.id], 'claim_request_id': claim_request.id})
+        self.assertEqual(args, [[self.contract.id], [
+            [self.contract.id, included.id, False], [self.contract.id, excluded.id, True],
+        ]])
+
+    def test_filter_scope_uses_task_payments_and_marks_removed_ones(self):
+        import json
+        from django_celery_results.models import TaskResult
+
+        kept, removed = self.expired_payments()[:2]
+        TaskResult.objects.create(
+            task_id='filter-task-invoices', status='SUCCESS', content_type='application/json',
+            content_encoding='utf-8',
+            result=json.dumps({'contracts': [{'id': self.contract.id, 'payments': [{'id': kept.id}, {'id': removed.id}]}]}),
+        )
+
+        args = self.post_export({
+            'contract_ids': [self.contract.id], 'filter_task_id': 'filter-task-invoices',
+            'exclude_payment_ids': [removed.id],
+        })
+        self.assertEqual(args, [[self.contract.id], [
+            [self.contract.id, kept.id, False], [self.contract.id, removed.id, True],
+        ]])

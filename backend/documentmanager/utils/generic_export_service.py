@@ -82,11 +82,17 @@ def build_export_xlsx_bytes(queryset, columns):
 
 def build_export_xlsx_bytes_from_objects(objects, columns):
     """Com build_export_xlsx_bytes, però a partir de qualsevol iterable d'objectes."""
+    return build_export_xlsx_bytes_from_sheets([("Export", objects, columns)])
+
+
+def build_export_xlsx_bytes_from_sheets(sheets):
+    """XLSX amb un full per cada (títol, objectes, columnes) de `sheets`."""
     workbook = Workbook(write_only=True)
-    worksheet = workbook.create_sheet(title="Export")
-    worksheet.append([str(header) for _, header, _ in columns])
-    for obj in objects:
-        _append_export_row(worksheet, [getter(obj) for _, _, getter in columns])
+    for title, objects, columns in sheets:
+        worksheet = workbook.create_sheet(title=str(title))
+        worksheet.append([str(header) for _, header, _ in columns])
+        for obj in objects:
+            _append_export_row(worksheet, [getter(obj) for _, _, getter in columns])
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
