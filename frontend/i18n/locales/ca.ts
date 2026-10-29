@@ -2154,6 +2154,8 @@ export default {
     selected_payments: 'Pagaments seleccionats',
     excluded_payments: 'Pagaments exclosos',
     single_pay: 'Pagar individualment',
+    add_to_balance: 'Afegir al saldo',
+    add_to_balance_info: 'L\'import de la factura negativa s\'afegirà al saldo del client en comptes de retornar-lo per transferència.',
     remittance_payments: 'Pagaments de Remesa',
     remittance_data: 'Dades de remesa',
     total_available: 'Total disponible',
