@@ -3933,7 +3933,7 @@ export default {
     line_item_types: 'Conceptos',
     adjustments: 'Correctores',
     daily_activity_summary: 'Resumo de actividade diaria',
-    document_downloads: 'Descargas pedidas'
+    document_downloads: 'Descargas de facturas'
   },
   ov_logs_block:   {
     apps:     {
