@@ -834,6 +834,14 @@ def _aca_lines_q(aca_product_token, field='product__token'):
     return q if q else Q(pk__in=[])
 
 
+def _is_valid_in_period(start_at, end_at, period_start, period_end):
+    """La vigència [start_at, end_at] (sense límit si falta) toca el període de consum de la factura."""
+    return (
+        (not start_at or not period_end or start_at <= period_end)
+        and (not end_at or not period_start or end_at >= period_start)
+    )
+
+
 def _load_factdeta_baixa_context(config, invoices):
     """Dades que es consulten un sol cop per a totes les factures del fitxer."""
     contract_ids = {
@@ -852,14 +860,16 @@ def _load_factdeta_baixa_context(config, invoices):
         ).values_list('contract_id', 'start_at', 'end_at'):
             tram_periods[contract_id].append((start_at, end_at))
 
-    establishment_codes = {}
+    # Codi d'establiment amb la vigència de la variable, com l'ampliació de trams
+    establishment_codes = defaultdict(list)
     direct_variable_tokens = split_config_tokens(get_config_value(ACA_DIR_VARIABLE_CONFIG_TOKEN))
     if direct_variable_tokens:
-        for contract_id, value in Variable.objects.filter(
-            type__token__in=direct_variable_tokens, is_active=True, contract_id__in=contract_ids,
-        ).values_list('contract_id', 'value'):
+        for contract_id, value, start_at, end_at in Variable.objects.filter(
+            Q(is_active=True) | Q(end_at__isnull=False),
+            type__token__in=direct_variable_tokens, contract_id__in=contract_ids,
+        ).order_by('start_at').values_list('contract_id', 'value', 'start_at', 'end_at'):
             if value and str(value).strip().isdigit():
-                establishment_codes[contract_id] = str(value).strip()
+                establishment_codes[contract_id].append((start_at, end_at, str(value).strip()))
 
     # Factures anul·lades: l'original guarda a `return_token` el token del seu abonament
     cancelled_by_refund_token = {
@@ -911,11 +921,14 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     persons = invoice.persons_final or (contract.total_persons if contract else 0) or 0
     has_tram_extension = bool(
         contract and persons >= context.tram_min_persons and any(
-            (not start_at or not period_end or start_at <= period_end)
-            and (not end_at or not period_start or end_at >= period_start)
+            _is_valid_in_period(start_at, end_at, period_start, period_end)
             for start_at, end_at in context.tram_periods.get(contract.id, [])
         )
     )
+    establishment_code = next((
+        value for start_at, end_at, value in reversed(context.establishment_codes.get(contract.id, []) if contract else [])
+        if _is_valid_in_period(start_at, end_at, period_start, period_end)
+    ), '')
     surname1, surname2, name = _split_person_name(invoice, person)
     utm_x, utm_y = _utm_coordinates(meter, supply_point)
 
@@ -944,7 +957,7 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
         'inhabitants': min(persons, 99) if tariff_type == 'D' and has_tram_extension else 0,
         'social_tariff': ('S' if social_line_ids or canon['social'][0] else 'N') if tariff_type == 'D' else '',
         'vulnerable': 'S' if person and person.vulnerability_level >= VULNERABLE_LEVEL else 'N',
-        'establishment_code': context.establishment_codes.get(contract.id, '') if contract and tariff_type in ('M', 'Q') else '',
+        'establishment_code': establishment_code if tariff_type in ('M', 'Q') else '',
         'homes': min(_homes_count(invoice, contract, meter), 999) if billing_system == 'G' and tariff_type in ('D', 'A') else 0,
         'places': 0,
         'utm_x': utm_x,

@@ -8,6 +8,7 @@ from billing.utils.generate_factdeta_service import (
     FACTDETA_LINE_LENGTH,
     FactdetaValidationError,
     _customer_id,
+    _is_valid_in_period,
     _num,
     build_factdeta_detail_record,
     compute_factdeta_canon,
@@ -87,6 +88,20 @@ class TestFactdetaCustomerId(SimpleTestCase):
 
     def test_dni_is_zero_padded(self):
         self.assertEqual(_customer_id('0000000T'), '00000000T')
+
+
+class TestFactdetaValidityPeriod(SimpleTestCase):
+    """Bonificacions i variables es declaren segons la vigència al període de consum."""
+
+    def test_overlapping_period_is_valid(self):
+        d = datetime.date
+        self.assertTrue(_is_valid_in_period(d(2026, 2, 1), None, d(2026, 1, 1), d(2026, 2, 28)))
+        self.assertTrue(_is_valid_in_period(None, d(2026, 1, 15), d(2026, 1, 1), d(2026, 2, 28)))
+
+    def test_future_or_finished_is_not_valid(self):
+        d = datetime.date
+        self.assertFalse(_is_valid_in_period(d(2026, 3, 1), None, d(2026, 1, 1), d(2026, 2, 28)))
+        self.assertFalse(_is_valid_in_period(None, d(2025, 12, 31), d(2026, 1, 1), d(2026, 2, 28)))
 
 
 class TestFactdetaTariffType(SimpleTestCase):
