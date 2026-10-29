@@ -145,9 +145,17 @@ def claim_invoices_export_rows(contract_payments):
 
 
 def claim_invoices_export_columns():
+    # La vista vw_contract_debt també exclou els pagaments cobrats en saldo ('5').
+    non_debt_status_tokens = {*CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS, '5'}
+
     def invoice_number(payment):
         invoice = payment.invoice
         return invoice.serie_final or invoice.token or '' if invoice else ''
+
+    def pending_amount(payment):
+        if not payment.status or payment.status.token in non_debt_status_tokens:
+            return Decimal('0')
+        return payment.amount
 
     return [
         ('contract', _('Contracte'), lambda row: row[0].token or ''),
@@ -158,7 +166,7 @@ def claim_invoices_export_columns():
         ('invoice_date', _('Data factura'), lambda row: _format_date(row[1].invoice.issue_date) if row[1].invoice else ''),
         ('due_date', _('Data venciment'), lambda row: _format_date(row[1].due_date)),
         ('invoice_total', _('Import factura'), lambda row: row[1].invoice.total_final if row[1].invoice else None),
-        ('pending_amount', _('Import pendent'), lambda row: row[1].amount),
+        ('pending_amount', _('Import pendent'), lambda row: pending_amount(row[1])),
         ('payment_status', _('Estat pagament'), lambda row: row[1].status.name or '' if row[1].status else ''),
         ('excluded', _('Exclosa'), lambda row: _('Sí') if row[2] else _('No')),
     ]

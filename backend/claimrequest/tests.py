@@ -381,6 +381,28 @@ class ClaimContractsExportTests(TestCase):
 
         return list(Payment.objects.filter(invoice__contract=self.contract, status__token='-1').order_by('id'))
 
+    def test_invoice_pending_amount_uses_current_payment_status(self):
+        from decimal import Decimal
+
+        from billing.models import Payment, PaymentStatus
+        from claimrequest.utils.claim_contract_export_service import (
+            claim_invoices_export_columns, claim_invoices_export_rows,
+        )
+
+        payment = self.expired_payments()[0]
+        selected_payments = [[self.contract.id, payment.id, False]]
+        columns = {key: value for key, _, value in claim_invoices_export_columns()}
+        for token in ('0', '5', '-4', '-6', '-7', '-99', None, '1', '2', '-1', '-2', '-3', '-5'):
+            with self.subTest(status=token):
+                status = PaymentStatus.objects.get_or_create(token=token, defaults={'name': token})[0] if token else None
+                # L'estat pot canviar després de seleccionar el pagament per reclamar-lo.
+                Payment.objects.filter(pk=payment.pk).update(status=status)
+                row, = claim_invoices_export_rows(selected_payments)
+                expected = Decimal('0') if token in ('0', '5', '-4', '-6', '-7', '-99', None) else payment.amount
+                self.assertEqual(columns['pending_amount'](row), expected)
+                self.assertEqual(row[1].amount, payment.amount)
+                self.assertEqual(row[2], False)
+
     def test_task_writes_invoice_sheet_ordered_by_invoice_date(self):
         import datetime
         from io import BytesIO
