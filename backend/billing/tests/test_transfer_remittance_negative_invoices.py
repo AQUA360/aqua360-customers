@@ -1,9 +1,12 @@
 from datetime import date
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient
 
-from billing.models import Invoice, Payment, PaymentRemittance
+from billing.models import Invoice, Payment, PaymentRemittance, PaymentStatus
 from billing.serializers.payment_remittance_serializer import get_remittance_total_amount
 from billing.utils.confirm_invoice_service import switch_negative_direct_debit_to_transfer
 from billing.utils.payment_service import (
@@ -153,3 +156,55 @@ class TestAddNegativePaymentToBalance(TestCase):
 
         with self.assertRaises(ValueError):
             add_negative_payment_to_balance(self.payment, date(2026, 10, 29))
+
+
+class TestManualPaymentNegativeToBalance(TestCase):
+    """El pagament manual amb saldo d'un pagament negatiu es decideix pel signe
+    del pagament i no pot abonar-se dues vegades."""
+
+    def setUp(self):
+        disconnect_payment_signals()
+        self.addCleanup(reconnect_payment_signals)
+
+        for config_token, value in {
+            'contract_terminated_status': '0',
+            'payment_status_paid_token': 'PAID',
+            'payment_status_cancelled_token': 'CANCELLED',
+            'payment_status_piggy_token': 'PIGGY',
+            'payment_status_payoff_token': 'PAYOFF',
+        }.items():
+            ConfigProject.objects.update_or_create(token=config_token, defaults={'value': value})
+        self.pending = PaymentStatus.objects.create(token='PENDING', name='Pendent')
+        PaymentStatus.objects.create(token='PAID', name='Pagat')
+        PaymentStatus.objects.create(token='CANCELLED', name='Abonat')
+        self.balance = PaymentType.objects.create(token='BALANCE', name='Saldo')
+
+        self.piggy_bank = PiggyBank.objects.create(token='M-2', amount=Decimal('5.00'))
+        contract = Contract.objects.create(token='C-MANUAL', piggy_bank=self.piggy_bank)
+        self.payment = Payment.objects.create(
+            token='P-MANUAL', amount=Decimal('-12.00'), contract=contract, status=self.pending)
+
+        user = get_user_model().objects.create_superuser(username='admin-saldo', password='x')
+        self.client = APIClient()
+        self.client.force_authenticate(user)
+
+    def pay(self, amount):
+        return self.client.post(reverse('payment-manual-payment'), {
+            'id': self.payment.id, 'payment_date': '2026-10-29',
+            'payment_method': self.balance.id, 'amount': amount,
+        }, format='json')
+
+    def test_import_positiu_obsolet_tambe_abona(self):
+        # Un import d'un altre pagament (positiu) no ha de restar del moneder.
+        response = self.pay('30.00')
+
+        self.assertEqual(response.status_code, 200)
+        self.piggy_bank.refresh_from_db()
+        self.assertEqual(self.piggy_bank.amount, Decimal('17.00'))
+
+    def test_no_abona_dues_vegades(self):
+        self.assertEqual(self.pay('-12.00').status_code, 200)
+        self.assertEqual(self.pay('-12.00').status_code, 400)
+
+        self.piggy_bank.refresh_from_db()
+        self.assertEqual(self.piggy_bank.amount, Decimal('17.00'))

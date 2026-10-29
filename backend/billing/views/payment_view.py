@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.db.models import OuterRef, Subquery
 from django.utils import timezone
 from rest_framework.decorators import action
@@ -526,6 +527,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return Response({"rejections": payments_data}, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['post'], url_path='manual-payment')
+    @transaction.atomic
     def manual_payment(self, request):
         user = request.user
         data = request.data
@@ -549,7 +551,20 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if amount == None:
             amount = payment.amount
         
-        if amount and float(amount) > 0:
+        if payment.amount is not None and payment.amount < 0 and pay_method.token == 'BALANCE':
+            # Factura negativa: en comptes de retornar-la per transferència,
+            # l'import s'afegeix al saldo del client. Es decideix pel signe del
+            # pagament, no per l'import rebut, i amb el pagament bloquejat perquè
+            # una petició repetida no l'aboni dues vegades.
+            payment = Payment.objects.select_for_update().get(id=payment.id)
+            if payment.status and payment.status.token in (paid_status_token, status_cancelled_token):
+                return Response({"error": "Payment already settled."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                add_negative_payment_to_balance(payment, payment_date)
+            except ValueError as e:
+                logger.warning("Failed to add negative payment to balance for payment %s: %s", payment.id, str(e))
+                return Response({"error": "Unable to process this payment request."}, status=status.HTTP_400_BAD_REQUEST)
+        elif amount and float(amount) > 0:
             if payment.invoice or payment.commitment_deposit:
                 contract = None
                 if payment.invoice:
@@ -605,14 +620,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             print(e)
             else:
                 raise Exception("Piggy bank not found for manual payment")
-        elif payment.amount < 0 and pay_method.token == 'BALANCE':
-            # Factura negativa: en comptes de retornar-la per transferència,
-            # l'import s'afegeix al saldo del client.
-            try:
-                add_negative_payment_to_balance(payment, payment_date)
-            except ValueError as e:
-                logger.warning("Failed to add negative payment to balance for payment %s: %s", payment.id, str(e))
-                return Response({"error": "Unable to process this payment request."}, status=status.HTTP_400_BAD_REQUEST)
         
         og_status = payment.status
         payment.status = PaymentStatus.objects.get(token=used_token)

@@ -246,6 +246,9 @@ const updateSubRegion = function () {
 }
 
 const openLiquidateMethod = () => {
+  // L'import es pren del pagament obert: si la regió canvia de pagament, el de
+  // l'anterior no pot arribar al backend.
+  selectedPaymentAmount.value = data.value.amount;
   openLiquidateModal.value = true;
   selectedPaymentDate.value = format(new Date(), 'yyyy-MM-dd');
 }

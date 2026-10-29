@@ -10,7 +10,7 @@ from coredata.utils.name_utils import generate_token
 from logger.models import LogPaymentStatusChange
 from pricing.models import ProductOrigin
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.models.signals import post_save, pre_save
 
 logger = logging.getLogger(__name__)
@@ -385,8 +385,9 @@ def add_negative_payment_to_balance(payment, payment_date):
 
     if contract and contract.piggy_bank:
         piggy_bank = contract.piggy_bank
-        piggy_bank.amount += amount
-        piggy_bank.save()
+        # Actualització atòmica: dos abonaments simultanis al mateix moneder no
+        # es poden trepitjar.
+        PiggyBank.objects.filter(id=piggy_bank.id).update(amount=F('amount') + amount)
         return PiggyBankMovement.objects.create(
             token=generate_token(PiggyBankMovement),
             piggy_bank=piggy_bank,
@@ -400,8 +401,7 @@ def add_negative_payment_to_balance(payment, payment_date):
     person = request.person if request else None
     if not contract and person and person.piggy_bank:
         piggy_bank = person.piggy_bank
-        piggy_bank.amount += amount
-        piggy_bank.save()
+        type(piggy_bank).objects.filter(id=piggy_bank.id).update(amount=F('amount') + amount)
         return PersonPiggyBankMovement.objects.create(
             token=generate_token(PersonPiggyBankMovement),
             person_piggy_bank=piggy_bank,
