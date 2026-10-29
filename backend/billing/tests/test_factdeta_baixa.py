@@ -2,7 +2,7 @@ import datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from billing.utils.generate_factdeta_service import (
     FACTDETA_LINE_LENGTH,
@@ -15,6 +15,8 @@ from billing.utils.generate_factdeta_service import (
     get_factdeta_tariff_type,
     latlon_to_utm31,
 )
+from coredata.models import ConfigProject
+from statistics.models import AvailableReport
 
 PART_FIXA = 'part_fixa'
 # Posicions (0-based) dels imports finals del registre 20 segons el document 03 de l'ACA
@@ -220,3 +222,18 @@ class TestLatLonToUtm31(SimpleTestCase):
         east_x, east_y = latlon_to_utm31(41.5, 4)
         self.assertAlmostEqual(west_x + east_x, 1000000, delta=0.02)
         self.assertAlmostEqual(west_y, east_y, delta=0.02)
+
+
+class TestFactdetaReportActivation(TestCase):
+    """L'informe només està actiu als clients ACA, encara que `uses_aca` es carregui després de migrar."""
+
+    def test_follows_uses_aca(self):
+        report, _ = AvailableReport.objects.get_or_create(function_name='factdeta_report', defaults={'name': 'FACTDETA'})
+        config = ConfigProject.objects.create(token='uses_aca', value='True')
+        report.refresh_from_db()
+        self.assertTrue(report.is_active)
+
+        config.value = 'False'
+        config.save()
+        report.refresh_from_db()
+        self.assertFalse(report.is_active)

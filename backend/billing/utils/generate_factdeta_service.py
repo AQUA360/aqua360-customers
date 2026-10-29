@@ -67,7 +67,10 @@ def generate_factdeta_alta_document(exploitations, invoices, config, company):
             exploitation=exploitation,
             origin__token=config.origin_reading_token,
         ).filter(
-            Q(used_aca="L") | Q(Q(used_aca__isnull=True) | Q(used_aca=''), contract__use_aca="L")
+            Q(used_aca="L") | Q(
+                Q(used_aca__isnull=True) | Q(used_aca=''),
+                Q(contract__use_aca="L") | Q(contract__isnull=True, contract_termination__contract__use_aca="L"),
+            )
             ).exclude(
             status__token=config.invoice_token_pending
         ).distinct()
