@@ -4081,7 +4081,7 @@ supply_cut_actions:   {
     line_item_types: 'Conceptos',
     adjustments: 'Correctores',
     daily_activity_summary: 'Resumen de actividad diaria',
-    document_downloads: 'Descargas pedidas'
+    document_downloads: 'Descargas de facturas'
   },
   logs: {
     order_priority: 'Prioridad de orden',
