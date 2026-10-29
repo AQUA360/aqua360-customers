@@ -1572,10 +1572,11 @@ def probe_smart_metering_readings(reading_date_str, meter_code=None):
             payload = client.fetch_meter_reading(reading_date, meter)
         else:
             payload = client.fetch_readings(reading_date)
-    except SmartMeteringApiError as exc:
+    except SmartMeteringApiError:
+        logger.exception("Smart metering provider error during readings probe")
         base["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         base["code"] = "provider_error"
-        base["detail"] = _truncate_probe_detail(exc)
+        base["detail"] = "Provider error"
         return base
 
     rows, sample = _probe_sample(payload)
