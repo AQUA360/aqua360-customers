@@ -12,6 +12,7 @@ import io
 import zipfile
 from urllib.parse import urljoin
 from celery import shared_task, chord, group
+from customers.celery import CURRENT_USER_HEADER
 from billing.utils.barcode_service import generate_barcode
 from statistics.utils.report_service import delete_file_later
 from django.core.files.storage import default_storage
@@ -4184,7 +4185,11 @@ def process_next_queue_item():
       args = [next_item.billing_id]
     if task:
       Billing.objects.filter(id=next_item.billing_id).update(task_id=task_id)
-      task.apply_async(args=args, kwargs={'queue_item_id': next_item.id}, task_id=task_id)
+      # Es passa l'usuari de l'item: si no, heretaria el de la tasca que acaba d'acabar
+      task.apply_async(
+        args=args, kwargs={'queue_item_id': next_item.id}, task_id=task_id,
+        headers={CURRENT_USER_HEADER: next_item.created_by_id},
+      )
   except Exception as e:
     next_item.status = 'failed'
     next_item.completed_at = timezone.now()

@@ -64,6 +64,7 @@ class BillingBatchRegenerateView(views.APIView):
 
             queue_item = BillingQueue.objects.create(
                 billing=billing,
+                created_by=request.user,
                 task_type='PRE_INVOICE',
                 status='pending'
             )
