@@ -366,6 +366,54 @@ def generate_method_change_rejection_movements(payment, returned_status, rejecti
         finally:
             payment.status = paid_status
 
+def add_negative_payment_to_balance(payment, payment_date):
+    """
+    Liquida un pagament negatiu (factura negativa o abonament) afegint-ne l'import
+    al saldo del client en comptes de retornar-l'hi per transferència.
+    Fa servir el moneder del contracte de la factura o, si la factura és d'una
+    sol·licitud sense contracte, el de la persona.
+    """
+    from coredata.models import PersonPiggyBankMovement
+
+    amount = abs(payment.amount)
+    invoice = payment.invoice
+    contract = payment.contract
+    if invoice and invoice.contract:
+        contract = invoice.contract
+    elif invoice and invoice.contract_termination:
+        contract = invoice.contract_termination.contract
+
+    if contract and contract.piggy_bank:
+        piggy_bank = contract.piggy_bank
+        piggy_bank.amount += amount
+        piggy_bank.save()
+        return PiggyBankMovement.objects.create(
+            token=generate_token(PiggyBankMovement),
+            piggy_bank=piggy_bank,
+            amount=amount,
+            is_positive=True,
+            movement_date=payment_date,
+            payment=payment,
+        )
+
+    request = invoice and (invoice.connection_request or invoice.contract_request)
+    person = request.person if request else None
+    if not contract and person and person.piggy_bank:
+        piggy_bank = person.piggy_bank
+        piggy_bank.amount += amount
+        piggy_bank.save()
+        return PersonPiggyBankMovement.objects.create(
+            token=generate_token(PersonPiggyBankMovement),
+            person_piggy_bank=piggy_bank,
+            amount=amount,
+            is_positive=True,
+            movement_date=payment_date,
+            payment=payment,
+        )
+
+    raise ValueError("Piggy bank not found to add the payment to the balance")
+
+
 def log_invoice_status(invoice, invoice_status, current_user=None):
     if not current_user:
         from order.middleware import get_current_user

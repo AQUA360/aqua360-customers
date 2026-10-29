@@ -394,7 +394,7 @@ watch(selectedPaymentDate, () => {
                 v-if="selectedPaymentMethod && payment_types.find(payment_type => payment_type.id == selectedPaymentMethod).token == 'BALANCE'"
                 class="flex items-center justify-between gap-2 mt-2">
                 <div>
-                  <label class="block font-medium text-slate-500 mb-2">{{ t('common.liquidate') }}</label>
+                  <label class="block font-medium text-slate-500 mb-2">{{ data.amount < 0 ? t('billing_block.add_to_balance') : t('common.liquidate') }}</label>
                   <input type="number" :disabled="true" v-model="selectedPaymentAmount" class="input">
                 </div>
                 <div class="flex self-end">
@@ -409,6 +409,11 @@ watch(selectedPaymentDate, () => {
                   </div>
                 </div>
               </div>
+              <p
+                v-if="data.amount < 0 && selectedPaymentMethod && payment_types.find(payment_type => payment_type.id == selectedPaymentMethod).token == 'BALANCE'"
+                class="text-sm text-slate-500 mt-2">
+                {{ t('billing_block.add_to_balance_info') }}
+              </p>
             </div>
           </div>
           <div class="flex justify-end">

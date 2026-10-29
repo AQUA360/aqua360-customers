@@ -19,7 +19,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
-from billing.utils.payment_service import disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
+from billing.utils.payment_service import add_negative_payment_to_balance, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
 from coredata.utils.name_utils import generate_token
 from documentmanager.utils.main_utils import upload_document
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, ClaimRequestTemplate
@@ -605,6 +605,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             print(e)
             else:
                 raise Exception("Piggy bank not found for manual payment")
+        elif payment.amount < 0 and pay_method.token == 'BALANCE':
+            # Factura negativa: en comptes de retornar-la per transferència,
+            # l'import s'afegeix al saldo del client.
+            try:
+                add_negative_payment_to_balance(payment, payment_date)
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
         og_status = payment.status
         payment.status = PaymentStatus.objects.get(token=used_token)
