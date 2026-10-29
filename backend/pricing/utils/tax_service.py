@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db.models import F, Q
 from django.utils import timezone
 
@@ -8,7 +9,7 @@ def same_tax_percent(tax, percent):
     if tax is None or getattr(tax, 'percent', None) is None or percent is None:
         return False
     try:
-        return abs(float(tax.percent) - float(percent)) < 0.001
+        return abs(Decimal(str(tax.percent)) - Decimal(str(percent))) < 0.001
     except (TypeError, ValueError):
         return False
 
@@ -23,7 +24,7 @@ def tax_by_percent(percent):
     if percent is None:
         return None
     try:
-        percent_value = float(percent)
+        percent_value = Decimal(str(percent))
     except (TypeError, ValueError):
         return None
 

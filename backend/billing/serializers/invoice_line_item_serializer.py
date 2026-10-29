@@ -1,3 +1,4 @@
+from decimal import Decimal
 from rest_framework import serializers
 
 from billing.models import InvoiceLineItem
@@ -38,17 +39,22 @@ class InvoiceLineItemSaveSerializer(serializers.ModelSerializer):
         
     def create(self, validated_data):
         invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
-        total = validated_data.get('total', 0.00)
+        total = round_ceil(Decimal(str(validated_data.get('total', 0.00))))
         price = validated_data.get('price', 0.00)
         tax_price = validated_data.get('tax_price', 0.00)
-        validated_data['price'] = round_ceil(price) if price else 0.00
-        validated_data['tax_price'] = round_ceil(tax_price) if tax_price else 0.00
-        validated_data['total'] = round_ceil(total) if total else 0.00
+        validated_data['price'] = price if price else 0.00
+        validated_data['tax_price'] = round_ceil(Decimal(str(tax_price))) if tax_price else 0.00
+        validated_data['total'] = round_ceil(Decimal(str(total))) if total else 0.00
         if validated_data.get('tax_percent', None) is not None:
             validated_data['tax'] = resolve_tax_for_line_item(validated_data)
+            tax_price = Decimal(str(price)) * Decimal(str(validated_data.get('tax_percent', 0.00) / 100))
+            try:
+                validated_data['tax_price'] = round_ceil(tax_price) 
+            except:
+                pass
         if not total:
             if price != None and tax_price != None:
-                total = float(price) + float(tax_price)
+                total = Decimal(str(price)) + Decimal(str(tax_price))
         # Constrain total to database field limits (max_digits=10, decimal_places=4)
         if total is not None:
             total = constrain_total_value(total)
@@ -67,13 +73,13 @@ class InvoiceLineItemSaveSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
         
-        price = validated_data.pop('price', 0.00)
+        price = round_ceil(Decimal(str(validated_data.pop('price', 0.00))))
         tax_price = validated_data.pop('tax_price', 0.00)
         total = validated_data.pop('total', 0.00)
         
-        validated_data['price'] = round_ceil(price) if price else 0.00
-        validated_data['tax_price'] = round_ceil(tax_price) if tax_price else 0.00
-        validated_data['total'] = round_ceil(total) if total else 0.00
+        validated_data['price'] = price if price else 0.00
+        validated_data['tax_price'] = round_ceil(Decimal(str(tax_price))) if tax_price else 0.00
+        validated_data['total'] = round_ceil(Decimal(str(total))) if total else 0.00
         
         if instance.invoice.type.token != invoice_type_token:
             validated_data.pop('manually_modified', None)
@@ -81,10 +87,15 @@ class InvoiceLineItemSaveSerializer(serializers.ModelSerializer):
         
         if validated_data.get('tax_percent', None) is not None:
             validated_data['tax'] = resolve_tax_for_line_item(validated_data)
+            tax_price = Decimal(str(price)) * Decimal(str(validated_data.get('tax_percent', 0.00) / 100))
+            try:
+                validated_data['tax_price'] = round_ceil(tax_price) 
+            except:
+                pass
         total = validated_data.get('total', None)
         if not total:
             if price and tax_price:
-                total = round_ceil(float(price) + float(tax_price))
+                total = round_ceil(Decimal(str(price)) + Decimal(str(tax_price)))
         # Constrain total to database field limits (max_digits=10, decimal_places=4)
         if total is not None:
             total = constrain_total_value(total)
