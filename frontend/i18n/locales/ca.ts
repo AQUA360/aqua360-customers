@@ -4084,7 +4084,7 @@ export default {
     line_item_types: 'Conceptes',
     adjustments: 'Correctors',
     daily_activity_summary: 'Resum d\'activitat diària',
-    document_downloads: 'Descàrregues demanades'
+    document_downloads: 'Descàrregues de factures'
   },
   logs: {
     order_priority: 'Prioritat d\'ordre',
