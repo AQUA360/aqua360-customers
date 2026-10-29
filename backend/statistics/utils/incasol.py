@@ -21,3 +21,23 @@ def resolve_incasol_num(exploitation_id=None, default=""):
 
     config = ConfigProject.objects.filter(token='incasol_num').first()
     return config.value if config and config.value else default
+
+
+def resolve_municipi(supply_point):
+    """Municipi del punt de subministrament per als informes INCASOL.
+
+    Es fa servir la població de l'adreça (o la del carrer). El nom de l'explotació només
+    és l'últim recurs: no és una població i l'INCASOL espera el municipi.
+    """
+    address = supply_point.address if supply_point else None
+    if address:
+        if address.city and address.city.name:
+            return address.city.name.upper()
+        if address.city_name:
+            return address.city_name.upper()
+        if address.street and address.street.city and address.street.city.name:
+            return address.street.city.name.upper()
+
+    connection = supply_point.connection if supply_point else None
+    exploitation = connection.exploitation if connection else None
+    return exploitation.name.upper() if exploitation and exploitation.name else ""
