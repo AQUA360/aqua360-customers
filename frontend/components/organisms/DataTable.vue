@@ -315,7 +315,7 @@ defineExpose({ resetColumns });
 </script>
 
 <template>
-  <div ref="container" class="data-table flex flex-col overflow-hidden relative" :style="containerStyle">
+  <div ref="container" class="data-table flex flex-col overflow-hidden relative isolate" :style="containerStyle">
     <div v-if="isColumnMode" ref="picker" class="absolute top-1 right-2 z-20" @click.stop>
       <button type="button" class="px-2 py-1 hover:bg-slate-200 rounded text-slate-500"
         :title="t('common.configure_columns')" @click="isPickerOpen = !isPickerOpen">

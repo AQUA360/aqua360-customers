@@ -37,6 +37,9 @@ def extract_payments_data(root, namespaces, msgId, client_doc_ids, clients_data,
             client_data["IBAN"] = data["IBAN"]
             client_data["RJT"] = data["reject_token"]
             client_data["RJT_DATE"] = rjt_date if rjt_date else data["reject_date"]
+            client_data["name"] = data.get("name")
+            client_data["amount"] = data.get("amount")
+            client_data["file_payment_token"] = data.get("document_end_id")
             payments_data.append(client_data)
             
         return payments_data
@@ -70,9 +73,13 @@ def extract_payments_data(root, namespaces, msgId, client_doc_ids, clients_data,
                             client_account_othr = acct.find(".//pain:Id/pain:Othr/pain:Id", namespace)
                             if client_account_othr is not None:
                                 client_data["IBAN"] = client_account_othr.text
-                        client_data["RJT"] = clients_data[
-                            client_doc_ids.index(sepa_id_text)
-                        ]["reject_token"]
+                        matched_client = clients_data[client_doc_ids.index(sepa_id_text)]
+                        client_data["RJT"] = matched_client["reject_token"]
+                        client_data["name"] = matched_client.get("name")
+                        client_data["amount"] = matched_client.get("amount")
+                        client_data["file_payment_token"] = (
+                            matched_client.get("document_end_id") or sepa_id_text
+                        )
                         
                         client_sts_dt = sepa_id.find(".//pain:StsUpdtDtTm", namespace)
                         if client_sts_dt is not None and client_sts_dt.text:
@@ -97,15 +104,17 @@ def identify_returned_payments(payments, payments_data):
     for payment in payments:
         
         if payment.token in payment_tokens:
+            file_data = payments_data[payment_tokens.index(payment.token)]
             return_data = {}
             return_data["payment"] = payment
-            return_data["RJT"] = payments_data[
-                payment_tokens.index(payment.token)
-            ]["RJT"]
-            if "RJT_DATE" in payments_data[payment_tokens.index(payment.token)]:
-                return_data["RJT_DATE"] = payments_data[
-                    payment_tokens.index(payment.token)
-                ]["RJT_DATE"]
+            return_data["RJT"] = file_data["RJT"]
+            if "RJT_DATE" in file_data:
+                return_data["RJT_DATE"] = file_data["RJT_DATE"]
+            return_data["file_amount"] = file_data.get("amount")
+            return_data["file_holder_name"] = file_data.get("name")
+            return_data["file_payment_token"] = (
+                file_data.get("file_payment_token") or file_data.get("end_to_end_id")
+            )
             returned_payments.append(return_data)
         else:
             paid_payments.append(payment)
@@ -113,6 +122,18 @@ def identify_returned_payments(payments, payments_data):
     
     
     return returned_payments, paid_payments, client_data_not_found
+
+
+def _rejection_file_comparison_fields(payment_data, payment=None):
+    """Fields to compare file vs program for legacy exploitation tokens."""
+    payment_token = payment.token if payment else None
+    return {
+        "file_amount": payment_data.get("file_amount") or payment_data.get("amount"),
+        "payment_amount": payment.amount if payment else None,
+        "file_holder_name": payment_data.get("file_holder_name") or payment_data.get("name"),
+        "file_payment_token": payment_data.get("file_payment_token") or payment_data.get("end_to_end_id"),
+        "is_legacy_exploitation": bool(payment_token and str(payment_token).startswith("0")),
+    }
 
 
 def prepare_rejection_info(returned_payments, company_data, paid_payments, client_data_not_found, rjt_date):
@@ -199,6 +220,7 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
                 rejection["motive"] = f'Invoice paid through another payment method: {payment.payment_type}'
                 final_rjt_str = item_rjt_date.strftime("%Y-%m-%d") if hasattr(item_rjt_date, "strftime") else str(item_rjt_date).split("T")[0] if item_rjt_date else None
                 rejection["rjt_dt"] = final_rjt_str # Ensure rjt_dt is always added
+                rejection.update(_rejection_file_comparison_fields(payment_data, payment))
                 rejections.append(rejection)
                 continue
             
@@ -230,6 +252,7 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
                     rejection["prev_status_color"] = payment.status.color
                     rejection["motive_id"] = None
                     rejection["motive"] = f'Payment date is after reject date: {payment.payment_date} > {item_rjt_date}'
+                    rejection.update(_rejection_file_comparison_fields(payment_data, payment))
                     rejections.append(rejection)
                     continue
             else:
@@ -255,6 +278,7 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
             rejection["motive_id"] = motive.id if motive else None
             rejection["motive"] = motive.name if motive else None
             rejection["rjt_dt"] = item_rjt_date.strftime("%Y-%m-%d") if hasattr(item_rjt_date, "strftime") else str(item_rjt_date).split("T")[0] if item_rjt_date else None
+            rejection.update(_rejection_file_comparison_fields(payment_data, payment))
             rejections.append(rejection)
         
         for client_data in client_data_not_found:
@@ -595,6 +619,65 @@ def extract_report_data(report, namespace):
     return report_data, rjt_date.strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def _get_main_company():
+    """Company pointed by ConfigProject `main_company_token` (Company.vat), if any."""
+    from service.models import Company
+    try:
+        main_vat = ConfigProject.objects.get(token='main_company_token').value
+    except ConfigProject.DoesNotExist:
+        return None
+    if not main_vat:
+        return None
+    return Company.objects.filter(vat=main_vat).first()
+
+
+def _resolve_company_name(name_list):
+    """Pick a single creditor name; prefer the main company when several appear."""
+    if not name_list:
+        return None
+    if all(x == name_list[0] for x in name_list):
+        return name_list[0]
+
+    main_company = _get_main_company()
+    if main_company:
+        candidates = {
+            (main_company.name or '').strip().lower(),
+            (main_company.alias or '').strip().lower(),
+        }
+        candidates.discard('')
+        for name in name_list:
+            if name and name.strip().lower() in candidates:
+                return name
+
+    raise Exception("Multiple companies found")
+
+
+def _resolve_company_iban(iban_list, company_name=None):
+    """Pick a single creditor IBAN; prefer banks of the main company when several appear."""
+    if not iban_list:
+        return None
+    if all(x == iban_list[0] for x in iban_list):
+        return iban_list[0]
+
+    from service.models import CompanyBank
+
+    main_company = _get_main_company()
+    if main_company:
+        company_ibans = {
+            (iban or '').replace(' ', '').upper()
+            for iban in CompanyBank.objects.filter(
+                company=main_company, is_active=True
+            ).values_list('iban', flat=True)
+            if iban
+        }
+        for iban in iban_list:
+            normalized = (iban or '').replace(' ', '').upper()
+            if normalized in company_ibans:
+                return iban
+
+    raise Exception("Multiple bank data for the same company found")
+
+
 def extract_company_data(report, namespace):
     company_data = {}
     name_list = []
@@ -621,13 +704,8 @@ def extract_company_data(report, namespace):
             if company_account_othr is not None:
                 iban_list.append(company_account_othr.text)
 
-    if not all(x == name_list[0] for x in name_list):
-        raise Exception("Multiple companies found")
-    company_data["name"] = name_list[0]
-
-    if not all(x == iban_list[0] for x in iban_list):
-        raise Exception("Multiple bank data for the same company found")
-    company_data["IBAN"] = iban_list[0]
+    company_data["name"] = _resolve_company_name(name_list)
+    company_data["IBAN"] = _resolve_company_iban(iban_list, company_data["name"])
 
     return company_data
 
