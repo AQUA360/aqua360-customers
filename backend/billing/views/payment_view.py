@@ -561,6 +561,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             payment = Payment.objects.select_for_update().get(id=payment.id)
             if payment.status and payment.status.token in (paid_status_token, status_cancelled_token):
                 return Response({"error": "Payment already settled."}, status=status.HTTP_400_BAD_REQUEST)
+            if payment.remittances.filter(sent_at__isnull=True).exists():
+                return Response({"error": "Payment belongs to a pending remittance."}, status=status.HTTP_400_BAD_REQUEST)
             try:
                 add_negative_payment_to_balance(payment, payment_date)
             except ValueError as e:

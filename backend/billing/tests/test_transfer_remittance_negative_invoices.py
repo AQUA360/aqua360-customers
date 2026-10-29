@@ -214,3 +214,31 @@ class TestManualPaymentNegativeToBalance(TestCase):
 
         self.piggy_bank.refresh_from_db()
         self.assertEqual(self.piggy_bank.amount, Decimal('5.00'))
+
+    def test_remesa_pendent_no_abona(self):
+        sent = PaymentRemittance.objects.create(token='TRF-SENT', sent_at=date(2026, 10, 28), is_return=True)
+        pending = PaymentRemittance.objects.create(token='TRF-PENDING', is_return=True)
+        self.payment.remittances.add(sent, pending)
+
+        response = self.pay('-12.00')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error'], 'Payment belongs to a pending remittance.')
+        self.piggy_bank.refresh_from_db()
+        self.payment.refresh_from_db()
+        self.assertEqual(self.piggy_bank.amount, Decimal('5.00'))
+        self.assertFalse(self.piggy_bank.movements.exists())
+        self.assertEqual(self.payment.status, self.pending)
+        self.assertIsNone(self.payment.payment_date)
+        self.assertIsNone(self.payment.paid_at)
+        self.assertFalse(self.payment.movements.exists())
+        self.assertTrue(pending.payments.filter(id=self.payment.id).exists())
+
+    def test_remesa_enviada_permet_abonar(self):
+        sent = PaymentRemittance.objects.create(token='TRF-SENT', sent_at=date(2026, 10, 28), is_return=True)
+        self.payment.remittances.add(sent)
+
+        self.assertEqual(self.pay('-12.00').status_code, 200)
+
+        self.piggy_bank.refresh_from_db()
+        self.assertEqual(self.piggy_bank.amount, Decimal('17.00'))
