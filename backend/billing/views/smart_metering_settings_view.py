@@ -64,9 +64,16 @@ class SmartMeteringSettingsView(APIView):
                 )
                 return _attachment(content, "smartmetering-curl.sh", "text/x-shellscript; charset=utf-8")
         except ValueError as exc:
-            code = str(exc)
-            if code not in {"not_configured", "url_missing", "reading_date_required", "reading_date_invalid", "server_url_invalid", "openapi_template_invalid"}:
-                code = "reading_date_invalid"
+            allowed_codes = {
+                "not_configured",
+                "url_missing",
+                "reading_date_required",
+                "reading_date_invalid",
+                "server_url_invalid",
+                "openapi_template_invalid",
+            }
+            raw_code = exc.args[0] if exc.args else None
+            code = raw_code if raw_code in allowed_codes else "reading_date_invalid"
             return Response({"code": code}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
             logger.exception("Error inesperat en descarregar la prova de Smart Metering")
