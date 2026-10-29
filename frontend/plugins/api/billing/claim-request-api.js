@@ -383,9 +383,11 @@ export default defineNuxtPlugin(nuxtApp => {
   }
 
   /**
-   * Exporta a Excel els contractes d'un llistat de reclamació (va a la cua de descàrregues)
+   * Exporta a Excel els contractes d'un llistat de reclamació i el detall de les seves
+   * factures (va a la cua de descàrregues)
    * @param {Array<number>} contract_ids - IDs dels contractes, en l'ordre del llistat
-   * @param {Object} scope - Abast del llistat: `{ claim_request_id }` o, en crear la gestió, `{ filter_task_id }`
+   * @param {Object} scope - Abast del llistat: `{ claim_request_id }` o, en crear la gestió,
+   *   `{ filter_task_id, exclude_payment_ids }`
    * @returns {Promise<Object>} - `{ task_id, export_job_id }`
    */
   const exportContracts = async (contract_ids, scope) => {

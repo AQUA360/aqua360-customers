@@ -4272,6 +4272,12 @@ msgstr "Supply point status"
 msgid "Data de tall"
 msgstr "Cut-off date"
 
+msgid "Import pendent"
+msgstr "Pending amount"
+
+msgid "Estat pagament"
+msgstr "Payment status"
+
 msgid "Contractes de la reclamació"
 msgstr "Claim contracts"
 

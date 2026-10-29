@@ -743,9 +743,16 @@ watch(
   },
 );
 
-// Exporta els contractes que es veuen al llistat (amb la cerca i el filtre d'exclosos aplicats).
+// Exporta els contractes que es veuen al llistat (amb la cerca i el filtre d'exclosos aplicats)
+// i les seves factures; les excloses (soltes o de contractes exclosos) surten marcades.
 const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
-  filteredContracts.value.map(c => c.id), { filter_task_id: claimDataTaskId.value });
+  filteredContracts.value.map(c => c.id), {
+    filter_task_id: claimDataTaskId.value,
+    exclude_payment_ids: [
+      ...paymentsToIgnore.value.map(p => p.id),
+      ...contractsToIgnore.value.flatMap(c => (c.payments || []).map(p => p.id)),
+    ],
+  });
 
 const paginatedContracts = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
