@@ -59,7 +59,8 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
             if warnings:
                 zip_file.writestr(f"VALIDACIONS_FACTDETA_{year}.txt", "\n".join(warnings) + "\n")
 
-        file_name = f"FACTDETA_{year}.zip"
+        # Amb data i hora perquè dues execucions del mateix any no comparteixin el nom del fitxer desat
+        file_name = f"FACTDETA_{year}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
         response = HttpResponse(buffer.getvalue(), content_type="application/zip")
         response["Content-Disposition"] = f'attachment; filename="{file_name}"'
         document_id = save_report(
