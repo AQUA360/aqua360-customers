@@ -18,9 +18,14 @@ class BarcodeResponse(list):
     def getvalue(self):
         return self[0].getvalue()
 
-def get_reference_suffix():
-    config = ConfigProject.objects.filter(token='reference_suffix_barcode_token').first()
-    suffix = str(config.value).strip() if config and config.value else '501'
+def get_reference_suffix(bank_account=None):
+    """
+    Sufix del compte bancari; si no en té, el global de la configuració (o '501').
+    """
+    suffix = str(bank_account.barcode_suffix).strip() if bank_account and bank_account.barcode_suffix else ''
+    if not suffix:
+        config = ConfigProject.objects.filter(token='reference_suffix_barcode_token').first()
+        suffix = str(config.value).strip() if config and config.value else '501'
     if not suffix.isdigit():
         suffix = '501'
     return suffix
@@ -67,7 +72,7 @@ def get_barcode_values(barcode_data):
     total_str = repeat_to_at_least_length('0', 8 - len(str(total_whole))) + str(total_whole) + str(total_decimals) + repeat_to_at_least_length('0', 2 - len(str(total_decimals))) 
     
     final_digit = '0'                   # to check
-    reference_suffix = get_reference_suffix()
+    reference_suffix = get_reference_suffix(bank_account)
     
     # Cálculo del dígito de control para la referencia
     sum_all = int(transmitter) + int(reference_suffix) + int(reference) + int(ident) + int(str(total_final).replace('.',''))

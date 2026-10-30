@@ -1,8 +1,9 @@
 from rest_framework import serializers
 
-from coredata.models import Bank, Country, ConfigProject
+from coredata.models import Bank, Country
 from coredata.serializers import BankSerializer, CountrySerializer
 from ..models import Company, CompanyBank
+from billing.utils.barcode_service import get_reference_suffix
 
 class CompanyBankSerializer(serializers.ModelSerializer):
     
@@ -13,8 +14,6 @@ class CompanyBankSerializer(serializers.ModelSerializer):
     country_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     bank_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     company_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    
-    barcode_suffix = serializers.CharField(required=False, allow_null=True)
     
     # Nom de l'empresa titular del compte: el selector de bancs de la remesa SEPA
     # pot llistar comptes de mes d'una empresa (una explotacio en pot servir
@@ -51,14 +50,6 @@ class CompanyBankSerializer(serializers.ModelSerializer):
             print(company_instance)
             validated_data['company'] = company_instance
         
-        barcode_suffix = validated_data.pop('barcode_suffix', None)
-        
-        if barcode_suffix:
-            ConfigProject.objects.update_or_create(
-                token='reference_suffix_barcode_token', 
-                defaults={'value': barcode_suffix}
-            )
-
         return super(CompanyBankSerializer, self).create(validated_data)
     
     def update(self, instance, validated_data):
@@ -77,20 +68,11 @@ class CompanyBankSerializer(serializers.ModelSerializer):
         if bank_id:
             bank_instance = Bank.objects.get(id=bank_id)
             instance.bank = bank_instance
-       
-        barcode_suffix = validated_data.pop('barcode_suffix', None)
-        
-        if barcode_suffix:
-            ConfigProject.objects.update_or_create(
-                token='reference_suffix_barcode_token', 
-                defaults={'value': barcode_suffix}
-            )
 
         instance.save()
         return instance
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        config = ConfigProject.objects.filter(token='reference_suffix_barcode_token').first()
-        representation['barcode_suffix'] = str(config.value).strip() if config and config.value else '501'
+        representation['barcode_suffix'] = get_reference_suffix(instance)
         return representation
