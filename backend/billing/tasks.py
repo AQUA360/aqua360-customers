@@ -3729,7 +3729,6 @@ def export_readings_by_batch_csv_task(batch_id):
             batch_id=batch_id, 
             is_active=True,
             is_control=False,
-            is_active=True,
         ).select_related(
             'contract',
             'contract__holder',
@@ -3781,7 +3780,6 @@ def export_readings_by_batch_csv_task(batch_id):
                     reading_date__lt=reading.reading_date,
                     is_active=True,
                     is_control=False,
-                    is_active=True,
                 ).order_by('-reading_date')[:4]
                 for pr in prev_readings:
                     prev_consumptions.append(pr.calculated_value if pr.calculated_value is not None else '')
