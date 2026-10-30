@@ -390,6 +390,8 @@ class CompanyBank(models.Model):
     is_sepa = models.BooleanField(default=False)
     sepa_cred_identifier = models.CharField(max_length=255, null=True, blank=True)
     barcode_cif = models.CharField(max_length=255, null=True, blank=True)
+    # Sufix de la referència del codi de barres (quadern 60), propi de cada compte
+    barcode_suffix = models.CharField(max_length=255, null=True, blank=True)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
