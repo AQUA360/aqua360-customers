@@ -105,6 +105,7 @@ from .views.contract_estimation_view import ContractEstimationView
 from .views.invoice_clavegueram_export_view import InvoiceClavegueramExcelExportView
 from .views.exclude_invoice_view import ExcludeInvoiceView
 from .views.smart_metering_meter_reading_view import SmartMeteringMeterReadingView
+from .views.smart_metering_settings_view import SmartMeteringSettingsView
 
 router = routers.DefaultRouter()
 
@@ -253,6 +254,7 @@ urlpatterns = [
     
     path('contract-estimation/', ContractEstimationView.as_view(), name='contract-estimation'),
     path('smart-metering/meter-reading/', SmartMeteringMeterReadingView.as_view(), name='smart-metering-meter-reading'),
+    path('smart-metering/settings/', SmartMeteringSettingsView.as_view(), name='smart-metering-settings'),
     # Nova URL per exportació CSV de lectures per batch
     path('reading/by-batch/csv-export/', ReadingByBatchCSVExportView.as_view(), name='reading-by-batch-csv-export'),
     # Exportació CSV de SupplyPoints de les Routes d'un ReadingBatch (+ lectura + contractes)
