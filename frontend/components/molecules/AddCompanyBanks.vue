@@ -16,7 +16,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['show-subregion', 'new-bank']);
-const { $ExploitationApiService, $AddressApiService } = useNuxtApp();
+const { $ExploitationApiService, $AddressApiService, $ConfigProjectApiService } = useNuxtApp();
 
 const company = ref(null);
 const company_vat = ref(null);
@@ -29,7 +29,9 @@ const bank_data = ref({});
 const is_sepa = ref(false);
 const sepa_cred_identifier = ref('CCZZXXXAAAAAAAAA');
 const barcode_cif = ref(null);
-const barcode_suffix = ref('501');
+const barcode_suffix = ref(null);
+// Sufix que fa servir el compte si el camp es deixa buit (el general de la configuració)
+const effective_barcode_suffix = ref('501');
 const selectedCountry = ref(null);
 const selectedBank = ref(null);
 
@@ -123,7 +125,15 @@ const getData = async () => {
 
   is_sepa.value = props.bank?.is_sepa ?? false;
   barcode_cif.value = props.bank?.barcode_cif ?? null;
-  barcode_suffix.value = props.bank?.barcode_suffix ?? '501';
+  barcode_suffix.value = props.bank?.barcode_suffix ?? null;
+  try {
+    const configs = await $ConfigProjectApiService.getAll('reference_suffix_barcode_token');
+    const suffix = String(configs.find(config => config.token === 'reference_suffix_barcode_token')?.value ?? '');
+    effective_barcode_suffix.value = suffix.length === 3 && /^[0-9]{3}$/.test(suffix) ? suffix : '501';
+  } catch (er) {
+    effective_barcode_suffix.value = '501';
+    console.error(er);
+  }
   sepa_cred_identifier.value = props.bank?.sepa_cred_identifier ?? null;
   if (bank_data.value.swift) {
     isSwiftAutomatic.value = true;
@@ -257,11 +267,15 @@ const updateSelected = (e) => {
   }
 };
 
+// Quadern 60: el sufix és de 3 dígits; buit fa servir el general
+const isBarcodeSuffixValid = () => !barcode_suffix.value || /^\d{3}$/.test(String(barcode_suffix.value).trim());
+
 const isValid = () => {
   const hasIban = !!bank_data.value?.iban && bank_data.value.iban !== '';
   const hasSwift = !!bank_data.value?.swift && bank_data.value.swift !== '';
   if (!selectedCountry.value?.code) return false;
   if (!hasIban && !hasSwift) return false;
+  if (!isBarcodeSuffixValid()) return false;
   return true;
 };
 
@@ -378,6 +392,10 @@ watch(() => props.company_id, () => {
               type="text"
               id="barcode_suffix"
               v-model="barcode_suffix"
+              maxlength="3"
+              inputmode="numeric"
+              :placeholder="effective_barcode_suffix"
+              :class="{ 'invalid': attemptedSave && !isBarcodeSuffixValid() }"
               class="p-2 mx-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-slate-100 disabled:text-slate-400"
             />
           </div>

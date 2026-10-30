@@ -4,7 +4,7 @@ import re
 import barcode
 from barcode.writer import SVGWriter, ImageWriter
 from coredata.models import ConfigProject
-from service.utils.company_bank_service import get_company_bank
+from service.utils.company_bank_service import get_company_bank, get_payment_company_bank
 
 class BarcodeResponse(list):
     """
@@ -18,12 +18,26 @@ class BarcodeResponse(list):
     def getvalue(self):
         return self[0].getvalue()
 
-def get_reference_suffix():
-    config = ConfigProject.objects.filter(token='reference_suffix_barcode_token').first()
-    suffix = str(config.value).strip() if config and config.value else '501'
-    if not suffix.isdigit():
+def get_reference_suffix(bank_account=None):
+    """
+    Sufix del compte bancari; si no en té, el global de la configuració (o '501').
+    """
+    suffix = str(bank_account.barcode_suffix).strip() if bank_account and bank_account.barcode_suffix else ''
+    if not suffix:
+        config = ConfigProject.objects.filter(token='reference_suffix_barcode_token').first()
+        suffix = str(config.value) if config and config.value else '501'
+    if not (len(suffix) == 3 and suffix.isascii() and suffix.isdigit()):
         suffix = '501'
     return suffix
+
+def get_payments_company_bank(payments, company):
+    """
+    Compte de cobrament comú als pagaments d'un grup, resolt per a cada pagament
+    amb el mateix criteri que el document individual (get_payment_company_bank).
+    Si el grup barreja comptes, o és buit, es fa servir el compte per defecte de l'empresa.
+    """
+    banks = {get_payment_company_bank(company, payment) for payment in payments}
+    return banks.pop() if len(banks) == 1 else get_company_bank(company)
 
 def get_barcode_values(barcode_data):
     """
@@ -39,7 +53,8 @@ def get_barcode_values(barcode_data):
     
     vat = company.vat
 
-    bank_account = barcode_data.get('company_bank') or get_company_bank(company, barcode_data.get('invoice'))
+    bank_account = (barcode_data['company_bank'] if 'company_bank' in barcode_data
+                    else get_company_bank(company, barcode_data.get('invoice')))
     if bank_account and bank_account.barcode_cif:
         vat = bank_account.barcode_cif
     
@@ -67,7 +82,7 @@ def get_barcode_values(barcode_data):
     total_str = repeat_to_at_least_length('0', 8 - len(str(total_whole))) + str(total_whole) + str(total_decimals) + repeat_to_at_least_length('0', 2 - len(str(total_decimals))) 
     
     final_digit = '0'                   # to check
-    reference_suffix = get_reference_suffix()
+    reference_suffix = get_reference_suffix(bank_account)
     
     # Cálculo del dígito de control para la referencia
     sum_all = int(transmitter) + int(reference_suffix) + int(reference) + int(ident) + int(str(total_final).replace('.',''))

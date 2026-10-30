@@ -7,7 +7,7 @@ export default defineNuxtPlugin(nuxtApp => {
     const config = useRuntimeConfig();
     const apiHost = config.public.apiHost;
   
-    const getAll = async (searchQuery = '',filters = [] , page = 1, sort = null, desc = false, contracts = [], supply_point = null, meter=null, is_control = null) => {
+    const getAll = async (searchQuery = '',filters = [] , page = 1, sort = null, desc = false, contracts = [], supply_point = null, meter=null, is_control = null, is_active = null) => {
       let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
   
       let filtersValues = [];
@@ -39,6 +39,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
       if (is_control != null) {
         apiUrl += `&is_control=${is_control}`;
+      }
+
+      if (is_active != null) {
+        apiUrl += `&is_active=${is_active}`;
       }
   
       let exploitation_id = localStorage.getItem('exploitation');

@@ -173,6 +173,7 @@ export default defineNuxtPlugin(nuxtApp => {
 
   const apiService = {
     getData,
+    exportData,
     getFilterStatus,
     getDetail,
     get,

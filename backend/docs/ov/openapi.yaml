@@ -36,6 +36,7 @@ info:
     | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (punto de suministro) |
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
     | `/ov/procedures/contract/` | POST | Solicitar el alta de un contrato (crea una solicitud; no crea contrato) |
+    | `/ov/procedures/contract/{contract_request_token}/` | GET | Consultar el estado de una solicitud de alta de contrato |
     | `/ov/procedures/{contract_token}/upload-sepa-signed/` | POST | Subir y archivar el mandato SEPA firmado del contrato |
     | `/ov/procedures/{contract_token}/sepa-signed/` | GET | Descargar el mandato SEPA firmado archivado |
     | `/ov/procedures/{contract_token}/cancel-direct-debit/` | POST | Cancelar la domiciliación (revocación del mandato SEPA) y cambiar el tipo de pago |
@@ -1985,6 +1986,60 @@ paths:
               example:
                 error: Contract procedure could not be created
 
+  /ov/procedures/contract/{contract_request_token}/:
+    get:
+      tags:
+        - Trámites
+      summary: Consultar el estado de una solicitud de alta de contrato
+      description: |
+        Devuelve el progreso de una solicitud de alta creada desde la OV
+        (`POST /ov/procedures/contract/`).
+
+        - `status` y `type`: objetos `{token, name}` con el estado actual y el
+          tipo de trámite de la solicitud.
+        - `contract_token`: `null` mientras la solicitud siga pendiente; si
+          atención al cliente la ha aprobado y ya existe el contrato enlazado
+          (`Contract.contract_request_id`), devuelve el `token` del contrato.
+        - Devuelve `404` si la solicitud no existe o está inactiva.
+      operationId: getContractRequestStatus
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: contract_request_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Token de la solicitud de contrato
+      responses:
+        "200":
+          description: Estado de la solicitud de contrato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractRequestStatusResponse"
+              example:
+                contract_request_token: "20261026001"
+                status:
+                  token: "2"
+                  name: Pendent
+                type:
+                  token: domestic
+                  name: Domèstic
+                contract_token: null
+                created_at: "2026-10-26T09:30:00Z"
+                supply_point:
+                  token: "1234/1234"
+                person:
+                  token: "12345678A"
+                  name: Anna
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
   /ov/procedures/{contract_token}/upload-sepa-signed/:
     post:
       tags:
@@ -2318,8 +2373,12 @@ paths:
         - Diccionarios
       summary: Tarifas activas aplicables a trámites
       description: |
-        Devuelve el catálogo de tarifas activas (`PriceRate.is_active`) con su
-        coste, ordenado por `name`. Para cada tarifa se resuelve su periodo de
+        Devuelve el catálogo de tarifas activas (`PriceRate.is_active`) de
+        productos de trámite/altas (orígenes de producto 2, 4 y 5: derechos
+        de acometida, contador, póliza, depósito, reconexión...), excluyendo
+        los servicios periódicos recurrentes (origen 1: agua, basuras, canon,
+        saneamiento...) y las tarifas sin producto asociado. Ordenado por
+        `name`. Para cada tarifa se resuelve su periodo de
         facturación activo (`billing_range_active`) y sus conceptos:
 
         - `type_price`: `fixed` si todos los conceptos son importes fijos;
@@ -2332,6 +2391,8 @@ paths:
           `dm_met` (calibre del contador) o `dm_con` (diámetro de conexión).
         - `components`: desglose completo de cada concepto con la misma forma
           (`token`, `name`, `type_price`, `price`, `price_table`).
+        - `name`: nombre de la tarifa; si es genérico (`GENERAL`) o vacío, se
+          resuelve con el nombre del producto asociado.
 
         El frontal externo lo usa para calcular el coste total de un trámite
         antes de cobrar al abonado.
@@ -2760,7 +2821,7 @@ components:
         meter_serial_number:
           type: string
           nullable: true
-          description: Token del contador
+          description: Número de serie del contador (campo code del contador)
         meter_caliber:
           type: string
           nullable: true
@@ -3413,6 +3474,56 @@ components:
           type: string
           format: date-time
 
+    ContractRequestStatusResponse:
+      type: object
+      required:
+        - contract_request_token
+        - status
+        - type
+        - contract_token
+        - created_at
+        - supply_point
+        - person
+      properties:
+        contract_request_token:
+          type: string
+          description: Token de la solicitud de contrato (`ContractRequest.token`)
+        status:
+          allOf:
+            - $ref: "#/components/schemas/DictionaryItem"
+          nullable: true
+          description: Estado actual de la solicitud; `null` si no tiene estado asignado
+        type:
+          allOf:
+            - $ref: "#/components/schemas/DictionaryItem"
+          nullable: true
+          description: Tipo de trámite; `null` si no tiene tipo asignado
+        contract_token:
+          type: string
+          nullable: true
+          description: |
+            Token del contrato creado; `null` mientras la solicitud siga
+            pendiente o sin contrato enlazado (`Contract.contract_request_id`).
+        created_at:
+          type: string
+          format: date-time
+        supply_point:
+          type: object
+          nullable: true
+          properties:
+            token:
+              type: string
+        person:
+          type: object
+          nullable: true
+          description: Persona solicitante
+          properties:
+            token:
+              type: string
+            name:
+              type: string
+              nullable: true
+
     ContractProcedureConflictResponse:
       type: object
       required:
@@ -3443,7 +3554,7 @@ components:
       properties:
         meter:
           type: string
-          description: Token del contador
+          description: Número de serie del contador (campo code del contador)
         reading:
           oneOf:
             - type: number
@@ -3492,7 +3603,7 @@ components:
           description: Token del contrato
         meter:
           type: string
-          description: Token del contador
+          description: Número de serie del contador (campo code del contador)
         reading:
           type: number
           format: double
@@ -3709,7 +3820,7 @@ components:
         meter_serial_number:
           type: string
           nullable: true
-          description: Token del contador
+          description: Número de serie del contador (campo code del contador)
         meter_caliber:
           type: string
           nullable: true
@@ -4006,7 +4117,7 @@ components:
         meter_serial_number:
           type: string
           nullable: true
-          description: Número de serie del contador (token del contador)
+          description: Número de serie del contador (campo code del contador)
         meter_caliber:
           type: string
           nullable: true
@@ -4250,6 +4361,31 @@ components:
             Dirección completa ya formateada
             (`calle, número, código postal ciudad`).
           example: C/ Major, 123, 08001 Barcelona
+        street_type:
+          type: string
+          nullable: true
+          description: Abreviatura del tipo de vía (`address_street.type.abbreviation`)
+          example: C
+        street_name:
+          type: string
+          nullable: true
+          description: Nombre de la vía (`address_street.name`)
+          example: Major
+        street_number:
+          type: integer
+          nullable: true
+          description: Número de la vía (`address_street_number.number`)
+          example: 123
+        postal_code:
+          type: string
+          nullable: true
+          description: Código postal (`address_postal_code.code`)
+          example: "08001"
+        city:
+          type: string
+          nullable: true
+          description: Municipio (`address_city.name`)
+          example: Barcelona
 
     PropertyListResponse:
       type: object
@@ -4295,7 +4431,10 @@ components:
         name:
           type: string
           nullable: true
-          description: Nombre de la tarifa
+          description: |
+            Nombre de la tarifa (`PriceRate.name`); si es genérico (`GENERAL`)
+            o vacío, se resuelve con el nombre del producto asociado
+            (`Product.name`).
           example: Tarifa 2.0TD
         type_price:
           type: string

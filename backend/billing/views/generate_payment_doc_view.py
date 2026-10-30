@@ -20,6 +20,7 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 from billing.utils.barcode_service import generate_barcode
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
+from service.utils.company_bank_service import get_payment_company_bank
 
 from documentmanager.utils.main_utils import upload_document
 
@@ -58,10 +59,12 @@ class GeneratePaymentDocDownloadViewSet(APIView):
             tomorrow += timedelta(days=1)
     #ident = payment.due_date.strftime("%d%m%y") if payment.due_date else "000000"
     ident = tomorrow.strftime("%d%m%y")
+    company_bank = get_payment_company_bank(exploitation.company, payment)
     barcode_data = {
         'reference': invoice.token if invoice else payment.token if len(payment.token) == 11 else payment.token[:-2],
         'total_final': payment.amount,
         'company': exploitation.company,
+        'company_bank': company_bank,
         'ident': ident,
     }
     from billing.utils.barcode_service import generate_barcode, get_barcode_values
@@ -81,10 +84,6 @@ class GeneratePaymentDocDownloadViewSet(APIView):
     
     clean_sender = str(int(re.sub(r'[^0-9]', '', company['vat'] or ''))).zfill(8)
     payment_type_token = payment.payment_type_token
-    
-    company_bank = exploitation.company.company_banks.filter(is_default=True, is_active=True).first()
-    if not company_bank:
-        company_bank = exploitation.company.company_banks.filter(is_active=True).first()
     
     company_iban = company_bank.iban if company_bank else None
     company_swift = company_bank.swift if company_bank else None
