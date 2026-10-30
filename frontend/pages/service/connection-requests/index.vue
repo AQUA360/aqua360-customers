@@ -129,12 +129,22 @@ const handleSort = (key) => {
   getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
 }
 
+const singleLine = (value) => String(value || '').replace(/[\r\n]+/g, ' ').replace(/[ \t]+/g, ' ').trim();
+
 const exportColumns = computed(() => [
   { header: t('common.identification'), value: (row) => row.token, key: 'token' },
   { header: t('common.status'), value: (row) => row.status_name, key: 'status' },
-  { header: t('common.requester'), value: (row) => row.person ? [row.person?.name, row.person?.surname].filter(Boolean).join(' ') : (row.company?.name || '') },
+  { header: t('common.requester'), value: (row) => row.person ? [row.person?.name, row.person?.surname].filter(Boolean).join(' ') : (row.company?.name || ''), key: 'requester' },
   { header: t('connection'), value: (row) => row.connection_token || t('service_block.connection_not_installed'), key: 'connection' },
-  { header: t('address_block.location'), value: (row) => `${row.street || ''}${row.street_number && row.street_number != 'None' ? ', ' + row.street_number : ''}` },
+  { header: t('address_block.location'), value: (row) => `${row.street || ''}${row.street_number && row.street_number != 'None' ? ', ' + row.street_number : ''}`, key: 'address' },
+  {
+    header: t('common.observations'),
+    key: 'observations',
+    value: (row) => (Array.isArray(row.observations) ? row.observations : [])
+      .map((obs) => singleLine(obs?.observation ?? obs))
+      .filter(Boolean)
+      .join(' | '),
+  },
 ]);
 
 const exportConnectionRequests = (columns) => $ConnectionRequestApiService.exportData(searchInput.value, selectedFilters.value, sortBy.value, sortDesc.value, searchByAddress.value, columns);
