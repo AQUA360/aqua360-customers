@@ -66,11 +66,73 @@ export default defineNuxtPlugin((nuxtApp) => {
     }
   };
 
+  /** URL from the backend env and the ConfigProject authentication token. */
+  const getSettings = async () => {
+    const apiUrl = `${apiHost}/billing/smart-metering/settings/`;
+    return await $apiManager.fetch(apiUrl, 'GET', null, null, true);
+  };
+
+  /**
+   * Settings probes. `action` is `connectivity` or `readings`
+   * (`reading_date`, optional `meter`). Readings are not saved.
+   */
+  const probe = async (payload) => {
+    const apiUrl = `${apiHost}/billing/smart-metering/settings/`;
+    return await $apiManager.fetch(
+      apiUrl,
+      'POST',
+      payload,
+      { 'Content-Type': 'application/json' },
+      true,
+    );
+  };
+
+  /**
+   * Downloads openapi.yaml or smartmetering-curl.sh.
+   * The curl file contains the token; callers must not display the body.
+   */
+  const downloadFile = async (download, { reading_date = null, meter = null } = {}) => {
+    const params = new URLSearchParams({ download });
+    if (reading_date) params.set('reading_date', reading_date);
+    if (meter) params.set('meter', meter);
+    const apiUrl = `${apiHost}/billing/smart-metering/settings/?${params.toString()}`;
+    const authToken = localStorage.getItem('auth_token') || '';
+    const response = await fetch(apiUrl, {
+      headers: { Authorization: `Token ${authToken}` },
+    });
+    if (!response.ok) {
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (error) {
+        data = {};
+      }
+      const failure = new Error(data.code || 'download_failed');
+      failure.data = data;
+      throw failure;
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match?.[1] || (download === 'openapi' ? 'openapi.yaml' : 'smartmetering-curl.sh');
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  };
+
   const apiService = {
     getMeterReading,
     getScopeOptions,
     previewReadings,
     importReadings,
+    getSettings,
+    probe,
+    downloadFile,
   };
 
   nuxtApp.provide(provideName, apiService);
