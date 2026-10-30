@@ -42,7 +42,6 @@ const getContractReadings = async () => {
         null, null, false, true
       );
       currentReadings.value = response.results.filter(r => r.invoice == null);
-      console.log(currentReadings.value);
     }
   } catch (error) {
     console.error(error);
