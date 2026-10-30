@@ -26,6 +26,7 @@ from .views import (
     SepaDocumentDownloadView,
     CancelDirectDebitView,
     ContractProcedureOVView,
+    ContractRequestStatusOVView,
     ContactDataOVView,
     PersonDataOVView,
     BatchInvoiceDownloadView,
@@ -149,6 +150,14 @@ urlpatterns = [
         "procedures/contract/",
         ContractProcedureOVView.as_view(),
         name="contract-procedure-ov",
+    ),
+    # /ov/procedures/contract/<contract_request_token>/
+    # Tres segments: no confon amb procedures/contract/ (dos segments) ni amb
+    # procedures/<contract_token>/<accio>/ (quatre segments).
+    path(
+        "procedures/contract/<str:contract_request_token>/",
+        ContractRequestStatusOVView.as_view(),
+        name="contract-request-status-ov",
     ),
     # /ov/procedures/<contract_token>/upload-sepa-signed/
     path(

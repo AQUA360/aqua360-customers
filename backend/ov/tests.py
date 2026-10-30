@@ -66,6 +66,8 @@ from pricing.models import (
     PriceRate,
     PriceVariableInterval,
     PriceVariableIntervalStretch,
+    Product,
+    ProductOrigin,
 )
 from service.models import Company, Exploitation, Meter, Property, SupplyPoint
 from ov.throttles import (
@@ -175,6 +177,133 @@ class ContractOVViewTests(TestCase):
         self.assertIsNone(response.get("Location"))
         self.assertIn("is_account_holder", response.data)
         self.assertFalse(response.data["is_account_holder"])
+
+
+class MeterSerialNumberSerializationTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-meter-serial-test", password="test-password"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+
+        cls.status = ContractStatus.objects.create(token="1", name="Active")
+        cls.holder = Person.objects.create(
+            token="METER-SERIAL-HOLDER", name="Test", surname="Holder"
+        )
+        cls.meter = Meter.objects.create(code="METER-CODE")
+        cls.supply_point = SupplyPoint.objects.create(
+            token="METER-SERIAL-NIC", meter=cls.meter
+        )
+        cls.contract = Contract.objects.create(
+            token="METER-SERIAL-CONTRACT",
+            status=cls.status,
+            holder=cls.holder,
+            supply_point_default=cls.supply_point,
+        )
+        cls.null_code_meter = Meter.objects.create(code=None)
+        cls.null_code_supply_point = SupplyPoint.objects.create(
+            token="NULL-CODE-NIC", meter=cls.null_code_meter
+        )
+        cls.null_code_contract = Contract.objects.create(
+            token="NULL-CODE-CONTRACT",
+            status=cls.status,
+            holder=cls.holder,
+            supply_point_default=cls.null_code_supply_point,
+        )
+        cls.no_meter_supply_point = SupplyPoint.objects.create(
+            token="NO-METER-NIC", meter=None
+        )
+        cls.no_meter_contract = Contract.objects.create(
+            token="NO-METER-CONTRACT",
+            status=cls.status,
+            holder=cls.holder,
+            supply_point_default=cls.no_meter_supply_point,
+        )
+
+        cls.invoice = Invoice.objects.create(
+            token="METER-SERIAL-INVOICE",
+            contract=cls.contract,
+            issue_date=date(2026, 1, 15),
+            billing_period_year=2026,
+            billing_period_month=1,
+        )
+        cls.reading = Reading.objects.create(
+            meter=cls.meter,
+            contract=cls.contract,
+            reading_date=date(2026, 1, 10),
+            reading_value=1250.5,
+            real_consumption=12.0,
+        )
+        cls.invoice.readings.add(cls.reading)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_contract_serializer_endpoint_uses_meter_code(self):
+        response = self.client.get(
+            reverse(
+                "contract-ov",
+                kwargs={"contract_token": self.contract.token},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["meter_serial_number"], "METER-CODE")
+
+    def test_contract_detail_endpoint_uses_meter_code(self):
+        response = self.client.get(
+            reverse(
+                "contract-detail-by-token-ov",
+                kwargs={"token": self.contract.token},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["meter_serial_number"], "METER-CODE")
+
+    def test_meter_detail_returns_code_and_null_for_missing_values(self):
+        response = self.client.get(
+            reverse(
+                "meter-detail-by-token-ov",
+                kwargs={"token": self.contract.token},
+            )
+        )
+        null_code_response = self.client.get(
+            reverse(
+                "meter-detail-by-token-ov",
+                kwargs={"token": self.null_code_contract.token},
+            )
+        )
+        no_meter_response = self.client.get(
+            reverse(
+                "meter-detail-by-token-ov",
+                kwargs={"token": self.no_meter_contract.token},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["meter_serial_number"], "METER-CODE")
+        self.assertEqual(null_code_response.status_code, 200)
+        self.assertIsNone(null_code_response.data["meter_serial_number"])
+        self.assertEqual(no_meter_response.status_code, 200)
+        self.assertIsNone(no_meter_response.data["meter_serial_number"])
+
+    def test_billed_consumption_uses_meter_code(self):
+        response = self.client.get(
+            reverse("billed-consumptions-ov"),
+            {"contract_token": self.contract.token},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["consumptions"][0]["meter"], "METER-CODE")
 
 
 class ContractDetailRoleFlagsTests(TestCase):
@@ -1224,11 +1353,44 @@ class DictionaryEndpointsTests(TestCase):
         cls.invoice_status_first = InvoiceStatus.objects.create(
             token="0", name="Pagada", position=1
         )
+        cls.origin_recurring = ProductOrigin.objects.create(
+            id=1, token="aigua", name="Subministrament periòdic"
+        )
+        cls.origin_connection = ProductOrigin.objects.create(
+            id=2, token="escomesa", name="Acometida"
+        )
+        cls.origin_meter = ProductOrigin.objects.create(
+            id=4, token="contracte", name="Contractació"
+        )
+        cls.origin_admin = ProductOrigin.objects.create(
+            id=5, token="altres", name="Altres tràmits"
+        )
+        cls.product_procedure = Product.objects.create(
+            token="TASA-ACOMETIDA",
+            name="DCHOS.ACOMETIDA",
+            origin=cls.origin_connection,
+        )
+        cls.product_meter = Product.objects.create(
+            token="TASA-CONTADOR",
+            name="CONTADOR - ALTA PUNTO SUMINISTRO",
+            origin=cls.origin_meter,
+        )
+        cls.product_admin = Product.objects.create(
+            token="TASA-POLIZA",
+            name="FORM.POLIZA ENGANCHE: EN 1ª CONTRATACION",
+            origin=cls.origin_admin,
+        )
+        cls.product_recurring = Product.objects.create(
+            token="AIGUA-POTABLE", name="Aigua potable", origin=cls.origin_recurring
+        )
         cls.tariff_inactive = PriceRate.objects.create(
-            token="TR-OFF", name="Tarifa Z", is_active=False
+            token="TR-OFF", name="Tarifa Z", is_active=False,
+            product=cls.product_procedure,
         )
 
-        cls.tariff_variable = cls._tariff_with_range("TR-VAR", "Tarifa A")
+        cls.tariff_variable = cls._tariff_with_range(
+            "TR-VAR", "Tarifa A", product=cls.product_procedure
+        )
         caliber_interval = PriceInterval.objects.create(
             token="PI-DM-MET", units="dm_met"
         )
@@ -1253,7 +1415,9 @@ class DictionaryEndpointsTests(TestCase):
             price=78.5,
         )
 
-        cls.tariff_fixed = cls._tariff_with_range("TR-FIXED", "Tarifa B")
+        cls.tariff_fixed = cls._tariff_with_range(
+            "TR-FIXED", "Tarifa B", product=cls.product_procedure
+        )
         LineItemType.objects.create(
             billing_range=cls.tariff_fixed.billing_range_active,
             token="LIT-FIX",
@@ -1261,7 +1425,9 @@ class DictionaryEndpointsTests(TestCase):
             price=100.0,
         )
 
-        cls.tariff_mixed = cls._tariff_with_range("TR-MIXED", "Tarifa C")
+        cls.tariff_mixed = cls._tariff_with_range(
+            "TR-MIXED", "Tarifa C", product=cls.product_admin
+        )
         mixed_range = cls.tariff_mixed.billing_range_active
         LineItemType.objects.create(
             billing_range=mixed_range,
@@ -1286,9 +1452,27 @@ class DictionaryEndpointsTests(TestCase):
             price=0.5,
         )
 
+        cls.tariff_general_name = cls._tariff_with_range(
+            "TR-GENERAL", "GENERAL", product=cls.product_procedure
+        )
+        cls.tariff_blank_name = cls._tariff_with_range(
+            "TR-EMPTY", "", product=cls.product_meter
+        )
+        cls.tariff_recurring = PriceRate.objects.create(
+            token="TR-REC",
+            name="Tarifa periòdica aigua",
+            is_active=True,
+            product=cls.product_recurring,
+        )
+        cls.tariff_no_product = PriceRate.objects.create(
+            token="TR-NOPROD", name="Tarifa sense producte", is_active=True
+        )
+
     @classmethod
-    def _tariff_with_range(cls, token, name):
-        tariff = PriceRate.objects.create(token=token, name=name, is_active=True)
+    def _tariff_with_range(cls, token, name, product=None):
+        tariff = PriceRate.objects.create(
+            token=token, name=name, is_active=True, product=product
+        )
         billing_range = BillingRange.objects.create(
             price_rate=tariff, start=date(2026, 1, 1), is_active=True
         )
@@ -1357,7 +1541,7 @@ class DictionaryEndpointsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             [item["token"] for item in response.data],
-            ["TR-VAR", "TR-FIXED", "TR-MIXED"],
+            ["TR-EMPTY", "TR-GENERAL", "TR-VAR", "TR-FIXED", "TR-MIXED"],
         )
         self.assertEqual(
             set(response.data[0]),
@@ -1428,6 +1612,32 @@ class DictionaryEndpointsTests(TestCase):
 
     def test_inactive_tariff_excluded(self):
         self.assertNotIn("TR-OFF", self._tariffs_by_token())
+
+    def test_recurring_billing_product_excluded(self):
+        tariffs = self._tariffs_by_token()
+
+        self.assertIn("TR-FIXED", tariffs)
+        self.assertNotIn("TR-REC", tariffs)
+
+    def test_tariff_without_product_excluded(self):
+        self.assertNotIn("TR-NOPROD", self._tariffs_by_token())
+
+    def test_generic_name_falls_back_to_product_name(self):
+        tariffs = self._tariffs_by_token()
+
+        self.assertEqual(tariffs["TR-GENERAL"]["name"], "DCHOS.ACOMETIDA")
+
+    def test_blank_name_falls_back_to_product_name(self):
+        tariffs = self._tariffs_by_token()
+
+        self.assertEqual(
+            tariffs["TR-EMPTY"]["name"], "CONTADOR - ALTA PUNTO SUMINISTRO"
+        )
+
+    def test_non_generic_name_is_kept(self):
+        tariffs = self._tariffs_by_token()
+
+        self.assertEqual(tariffs["TR-FIXED"]["name"], "Tarifa B")
 
     def test_dictionary_endpoints_require_authentication(self):
         anonymous = APIClient()
@@ -1523,6 +1733,11 @@ class PropertiesOVTests(TestCase):
                 {
                     "token": "PR-001",
                     "address": "C. Major, 123, 08001 Barcelona",
+                    "street_type": "C",
+                    "street_name": "Major",
+                    "street_number": 123,
+                    "postal_code": "08001",
+                    "city": "Barcelona",
                 }
             ],
         )
@@ -1554,8 +1769,39 @@ class PropertiesOVTests(TestCase):
                 {
                     "token": "PR-CR",
                     "address": "CR. Sant Miquel, 33, 08001 Barcelona",
+                    "street_type": "CR",
+                    "street_name": "Sant Miquel",
+                    "street_number": 33,
+                    "postal_code": "08001",
+                    "city": "Barcelona",
                 }
             ],
+        )
+
+    def test_structured_address_fields_are_returned_with_legacy_address(self):
+        response = self._search("Major")
+
+        self.assertEqual(response.status_code, 200)
+        item = response.data["results"][0]
+        self.assertEqual(item["address"], "C. Major, 123, 08001 Barcelona")
+        self.assertEqual(
+            {
+                key: item[key]
+                for key in (
+                    "street_type",
+                    "street_name",
+                    "street_number",
+                    "postal_code",
+                    "city",
+                )
+            },
+            {
+                "street_type": "C",
+                "street_name": "Major",
+                "street_number": 123,
+                "postal_code": "08001",
+                "city": "Barcelona",
+            },
         )
 
     def test_multi_term_search_matches_across_columns(self):
@@ -3835,3 +4081,95 @@ class ContractProcedureOVTests(TestCase):
             reverse("upload-sepa-signed-ov", args=["CONTRACT-1"])
         )
         self.assertNotEqual(sepa_match.url_name, "contract-procedure-ov")
+
+
+class ContractRequestStatusOVTests(TestCase):
+    """`GET /ov/procedures/contract/<contract_request_token>/` — seguiment de
+    l'estat d'una sol·licitud d'alta: `contract_token` `null` mentre estigui
+    pendent i el token del contracte un cop aprovada i enllaçada."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-request-status-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+        cls.status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.type, _ = ContractRequestType.objects.update_or_create(
+            token="domestic", defaults={"name": "Domèstic", "is_active": True}
+        )
+        cls.person = Person.objects.create(
+            token="12345678A", name="Anna", surname="Prova"
+        )
+        cls.supply_point = SupplyPoint.objects.create(
+            token="SP-STATUS", is_active=True
+        )
+        cls.pending_request = ContractRequest.objects.create(
+            token="CR-PENDING",
+            status=cls.status,
+            type=cls.type,
+            person=cls.person,
+            supply_point_default=cls.supply_point,
+        )
+        cls.approved_request = ContractRequest.objects.create(
+            token="CR-APPROVED",
+            status=cls.status,
+            type=cls.type,
+            person=cls.person,
+            supply_point_default=cls.supply_point,
+        )
+        cls.contract = Contract.objects.create(
+            token="CT-STATUS-1", contract_request=cls.approved_request
+        )
+        cls.inactive_request = ContractRequest.objects.create(
+            token="CR-OFF",
+            status=cls.status,
+            type=cls.type,
+            person=cls.person,
+            supply_point_default=cls.supply_point,
+            is_active=False,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, token):
+        return self.client.get(
+            reverse("contract-request-status-ov", args=[token])
+        )
+
+    def test_pending_request_returns_null_contract_token(self):
+        response = self._get("CR-PENDING")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data["contract_token"])
+        self.assertEqual(
+            response.data["status"], {"token": "1", "name": "Esborrany"}
+        )
+        self.assertEqual(
+            response.data["type"], {"token": "domestic", "name": "Domèstic"}
+        )
+        self.assertEqual(response.data["supply_point"], {"token": "SP-STATUS"})
+        self.assertEqual(
+            response.data["person"], {"token": "12345678A", "name": "Anna"}
+        )
+
+    def test_approved_request_returns_linked_contract_token(self):
+        response = self._get("CR-APPROVED")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "CT-STATUS-1")
+
+    def test_unknown_request_returns_404(self):
+        self.assertEqual(self._get("CR-NOPE").status_code, 404)
+
+    def test_inactive_request_returns_404(self):
+        self.assertEqual(self._get("CR-OFF").status_code, 404)
