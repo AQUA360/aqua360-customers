@@ -15,6 +15,7 @@ from django.core.files.base import ContentFile
 from xhtml2pdf import pisa
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
+from service.utils.company_bank_service import get_company_bank
 
 def generate_report_payment_pdf(payment, request = None, limit_date = None):
     from service.models import Exploitation
@@ -59,8 +60,10 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
         company = exploitation.company
         
         payment_type_token = payment.payment_type_token
+        bank_payment_token = ConfigProject.objects.filter(token='bank_payment_token').values_list('value', flat=True).first()
         selected_company_bank = None
-        if payment_type_token == 'BANK_TRANSFER' and payment.payment_bank:
+        # Transferència o pagament bancari: payment_bank és el compte de l'empresa triat
+        if payment_type_token in ('BANK_TRANSFER', bank_payment_token) and payment.payment_bank:
             selected_company_bank = exploitation.company.company_banks.filter(iban=payment.payment_bank, is_active=True).first()
 
         if not selected_company_bank:
@@ -73,11 +76,8 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
                 elif commitment_deposit.contract and getattr(commitment_deposit.contract, 'payment', None) and getattr(commitment_deposit.contract.payment, 'company_iban', None):
                     selected_company_bank = commitment_deposit.contract.payment.company_iban
 
-        company_bank = selected_company_bank
-        if not company_bank:
-            company_bank = exploitation.company.company_banks.filter(is_default=True, is_active=True).first()
-        if not company_bank:
-            company_bank = exploitation.company.company_banks.filter(is_active=True).first()
+        # Sense compte triat: el per defecte, el primer actiu o, en últim cas, el primer de l'empresa
+        company_bank = selected_company_bank or get_company_bank(exploitation.company)
 
         ident = payment.due_date.strftime("%d%m%y")
         if limit_date:

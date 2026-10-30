@@ -22,6 +22,8 @@ class PaymentDocumentBankTests(SimpleTestCase):
         self.exploitation.company.logo = None
         self.exploitation.company.vat = 'B12345678'
         self.exploitation.company.company_banks.filter.return_value.first.return_value = self.default_bank
+        self.default_bank.configure_mock(id=1, is_default=True, is_active=True)
+        self.exploitation.company.company_banks.all.return_value = [self.default_bank]
         self.payment = MagicMock()
         self.payment.token = '12345678901'
         self.payment.amount = 10
@@ -39,13 +41,14 @@ class PaymentDocumentBankTests(SimpleTestCase):
             raise StopRender()
         with patch('service.models.Exploitation') as model, \
              patch('billing.utils.payment_pdf_service.CompanySerializer') as serializer, \
-             patch('billing.utils.payment_pdf_service.ConfigProject'), \
+             patch('billing.utils.payment_pdf_service.ConfigProject') as config, \
              patch('billing.utils.payment_pdf_service.generate_barcode', return_value=None) as generate, \
              patch('billing.utils.barcode_service.get_barcode_values', return_value={}), \
              patch('billing.utils.payment_pdf_service.exploitation_logo_source', return_value=None), \
              patch('service.serializers.company_bank_serializer.CompanyBankSerializer') as bank_serializer, \
              patch('billing.utils.payment_pdf_service.render_to_string', side_effect=render):
             model.objects.filter.return_value.first.return_value = self.exploitation
+            config.objects.filter.return_value.values_list.return_value.first.return_value = 'BANK_PAYMENT'
             serializer.return_value.data = {'logo': None, 'vat': 'B12345678'}
             bank_serializer.return_value.data = {'iban': self.bank.iban}
             with self.assertRaisesMessage(Exception, 'Error generating report'):
@@ -59,17 +62,18 @@ class PaymentDocumentBankTests(SimpleTestCase):
         commitment = MagicMock()
         commitment.invoices.exists.return_value = True
         commitment.invoices.first.return_value = invoice
-        for scenario in ('invoice', 'commitment', 'commitment_contract', 'transfer'):
+        for scenario in ('invoice', 'commitment', 'commitment_contract', 'transfer', 'bank_payment'):
             with self.subTest(scenario=scenario):
-                invoice.payment_company_bank = self.default_bank if scenario == 'transfer' else self.bank
+                selected = scenario in ('transfer', 'bank_payment')
+                invoice.payment_company_bank = self.default_bank if selected else self.bank
                 commitment.invoices.first.return_value = (SimpleNamespace(payment_company_bank=None, exploitation=self.exploitation)
                                                           if scenario == 'commitment_contract' else invoice)
                 commitment.contract.payment.company_iban = self.bank
                 self.payment.invoice = invoice if not scenario.startswith('commitment') else None
                 self.payment.commitment_deposit = commitment if scenario.startswith('commitment') else None
-                self.payment.payment_type_token = 'BANK_TRANSFER' if scenario == 'transfer' else 'DIRECT_DEBIT'
-                self.payment.payment_bank = self.bank.iban if scenario == 'transfer' else None
-                self.exploitation.company.company_banks.filter.return_value.first.return_value = self.bank if scenario == 'transfer' else self.default_bank
+                self.payment.payment_type_token = {'transfer': 'BANK_TRANSFER', 'bank_payment': 'BANK_PAYMENT'}.get(scenario, 'DIRECT_DEBIT')
+                self.payment.payment_bank = self.bank.iban if selected else None
+                self.exploitation.company.company_banks.filter.return_value.first.return_value = self.bank if selected else self.default_bank
                 data, context = self._payment_pdf_context()
                 self.assertIs(data['company_bank'], self.bank)
                 self.assertEqual(context['company_iban'], self.bank.iban)
@@ -128,7 +132,7 @@ class PaymentDocumentBankTests(SimpleTestCase):
         self.assertEqual(captured['company_iban'], self.bank.iban)
         self.assertEqual(captured['company_swift'], self.bank.swift)
 
-    def test_grouped_document_rejects_mixed_banks_before_generating_barcode(self):
+    def test_grouped_document_with_mixed_banks_uses_default_bank(self):
         payments = MagicMock()
         payments.__iter__.return_value = iter([
             SimpleNamespace(invoice=SimpleNamespace(payment_company_bank=self.bank)),
@@ -138,9 +142,10 @@ class PaymentDocumentBankTests(SimpleTestCase):
         joined.contract.supply_point_default.connection.exploitation = self.exploitation
         joined.payments.all.return_value.order_by.return_value = payments
         with patch('billing.utils.joined_payment_service.generate_barcode') as generate:
-            with self.assertRaisesMessage(Exception, 'comptes de cobrament diferents'):
+            generate.side_effect = StopRender()
+            with self.assertRaisesMessage(Exception, 'Error generating report'):
                 generate_report_joined_payment_pdf(joined, None)
-        generate.assert_not_called()
+        self.assertIs(generate.call_args.args[0]['company_bank'], self.default_bank)
 
     def test_claim_document_uses_common_bank_for_barcode_and_template(self):
         from claimrequest.tasks import generate_claim_document_pdf

@@ -103,9 +103,14 @@ class TestBarcodeSuffixPerBank(TestCase):
         self.assertEqual(get_payments_company_bank([], self.company), self.bank_1)
 
         other = SimpleNamespace(invoice=SimpleNamespace(payment_company_bank=self.bank_2))
-        with self.assertRaisesMessage(ValueError, 'comptes de cobrament diferents'):
-            get_payments_company_bank([other, implicit], self.company)
+        # Grup mixt: el compte per defecte de l'empresa
+        self.assertEqual(get_payments_company_bank([other, implicit], self.company), self.bank_1)
         self.assertEqual(get_payments_company_bank([other, other], self.company), self.bank_2)
+
+        # Pagament d'un compromís sense factura: el compte de la factura del compromís
+        commitment = SimpleNamespace(invoice=None, commitment_deposit=SimpleNamespace(
+            invoices=SimpleNamespace(first=lambda: other.invoice)))
+        self.assertEqual(get_payments_company_bank([other, commitment], self.company), self.bank_2)
 
     def test_explicit_missing_bank_does_not_resolve_default_again(self):
         with patch('billing.utils.barcode_service.get_company_bank', side_effect=AssertionError('unexpected fallback')):

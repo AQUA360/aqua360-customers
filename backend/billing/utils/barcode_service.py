@@ -31,14 +31,19 @@ def get_reference_suffix(bank_account=None):
     return suffix
 
 def get_payments_company_bank(payments, company):
-    """Resolve the collection bank for every payment in a group.
-
-    A single barcode cannot represent payments with different collection banks.
     """
-    banks = {get_company_bank(company, payment.invoice) for payment in payments}
-    if len(banks) > 1:
-        raise ValueError("Els pagaments agrupats tenen comptes de cobrament diferents.")
-    return banks.pop() if banks else get_company_bank(company)
+    Compte de cobrament comú als pagaments d'un grup, resolt per a cada pagament
+    (factura o primera factura del compromís de pagament).
+    Si el grup barreja comptes, o és buit, es fa servir el compte per defecte de l'empresa.
+    """
+    banks = {get_company_bank(company, _payment_invoice(payment)) for payment in payments}
+    return banks.pop() if len(banks) == 1 else get_company_bank(company)
+
+def _payment_invoice(payment):
+    if payment.invoice:
+        return payment.invoice
+    commitment_deposit = getattr(payment, 'commitment_deposit', None)
+    return commitment_deposit.invoices.first() if commitment_deposit else None
 
 def get_barcode_values(barcode_data):
     """
