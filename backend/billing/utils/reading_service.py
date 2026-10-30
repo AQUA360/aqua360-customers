@@ -657,6 +657,116 @@ def get_reading_document_target_contract(supply_point, active_contract_status_to
   )
 
 
+def get_contract_valid_at_date_q(reading_date):
+  """
+  Contracts whose validity window covers a date: registration_date <= date
+  (or open) and termination_date >= date (or open).
+  """
+  return (
+    Q(registration_date__isnull=True) | Q(registration_date__lte=reading_date)
+  ) & (
+    Q(termination_date__isnull=True) | Q(termination_date__gte=reading_date)
+  )
+
+
+def resolve_reading_document_target_contract(supply_point, reading_date, active_contract_status_token=None):
+  """
+  Contract valid at the row's reading date for importing a reading document.
+
+  Candidates: contracts linked to the supply point (via supply_point_default
+  or the contracts M2M) with an active or terminated status and a validity
+  window (registration_date / termination_date) covering the reading date.
+  A terminated contract that still covers the date (recent change of
+  ownership) is selected instead of an unrelated newer active contract, so
+  the reading lands on the contract that was really in force.
+
+  Preference: supply_point_default match, active status, latest
+  registration_date, latest id. Returns None when no contract covers the
+  reading date -- the row is then reported as no_contracts instead of being
+  attached to the wrong contract.
+  """
+  if supply_point is None or reading_date is None:
+    return None
+
+  if active_contract_status_token is None:
+    try:
+      active_contract_status_token = ConfigProject.objects.get(token='contract_active_token').value
+    except ConfigProject.DoesNotExist:
+      return None
+  try:
+    terminated_contract_token = ConfigProject.objects.get(token='contract_terminated_status').value
+  except ConfigProject.DoesNotExist:
+    terminated_contract_token = None
+
+  status_q = Q(status__token=active_contract_status_token)
+  if terminated_contract_token:
+    status_q = status_q | Q(status__token=terminated_contract_token)
+
+  candidates = (
+    Contract.objects.filter(get_contract_valid_at_date_q(reading_date))
+    .filter(Q(supply_point_default=supply_point) | Q(supply_points=supply_point))
+    .filter(status_q, is_active=True)
+    .select_related('status')
+    .distinct()
+  )
+
+  def _candidate_rank(contract):
+    return (
+      contract.supply_point_default_id != supply_point.id,
+      contract.status is None or contract.status.token != active_contract_status_token,
+      contract.registration_date is None,
+      contract.registration_date or reading_date,
+      -contract.id,
+    )
+
+  return min(candidates, key=_candidate_rank, default=None)
+
+
+def resolve_reading_document_previous_reading(supply_point, meter, contract, reading_date, exclude_reading=None):
+  """
+  Previous reading for a reading document row, in two progressive tiers:
+
+  1. Same supply point, meter and contract: the previous cycle of the
+     contract receiving the row.
+  2. Same supply point and meter, any contract: when the row is attached to
+     a new contract (change of ownership), the only previous reading
+     usually belongs to the contract that preceded it.
+
+  Control and soft-deleted readings never chain. Returns
+  (previous_reading, tier) with tier in (1, 2, None).
+  """
+  def _first(queryset):
+    if exclude_reading is not None:
+      queryset = queryset.exclude(id=exclude_reading.id)
+    return queryset.order_by('-reading_date', '-reading_value').first()
+
+  if contract is not None:
+    tier_one = Reading.objects.filter(
+      supply_point=supply_point,
+      meter=meter,
+      contract=contract,
+      reading_date__lt=reading_date,
+      is_control=False,
+      is_active=True,
+    )
+    previous = _first(tier_one)
+    if previous is not None:
+      return previous, 1
+
+  tier_two = Reading.objects.filter(
+    supply_point=supply_point,
+    meter=meter,
+    reading_date__lt=reading_date,
+    is_control=False,
+    is_active=True,
+  )
+  previous = _first(tier_two)
+  if previous is not None:
+    return previous, 2
+
+  return None, None
+
+
 def _get_billable_contract_for_supply_point(supply_point, contract_active_token):
   """
   Active billable contract for a supply point (block_billing=False).

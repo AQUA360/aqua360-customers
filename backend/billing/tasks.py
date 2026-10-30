@@ -41,8 +41,9 @@ from billing.utils.reading_service import (
     READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR,
     READING_ESTIMATE_STATISTIC_CHOICES,
     READING_ESTIMATE_STATISTIC_MEAN,
-    get_reading_document_target_contract,
     get_reading_minimal_object,
+    resolve_reading_document_previous_reading,
+    resolve_reading_document_target_contract,
 )
 from billing.serializers.reading_serializer import ReadingMinimalSerializer
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
@@ -1185,6 +1186,7 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
         "skipped_existing": 0,
         "created": 0,
         "updated": 0,
+        "previous_from_other_contract": 0,
     }
 
     print(
@@ -1326,12 +1328,18 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             print(f"[reading-doc] row {row_index}: meter {meter.code} has no supply_points")
             continue
 
-        # One reading per CSV row: only the active contract (ConfigProject contract_active_token).
-        # Prefer SP where the meter contract has supply_point_default; never attach to terminated.
+        # One reading per CSV row: the contract valid at the reading date.
+        # Prefer SP where the contract has supply_point_default. The resolved
+        # contract must cover the reading date (registration_date /
+        # termination_date), so rows from a previous contract period (changes
+        # of ownership) land on the right contract instead of the newest
+        # active one. Terminated-but-still-valid contracts are preferred over
+        # unrelated newer active contracts. No date-valid contract -> the row
+        # is reported as no_contracts and skipped.
         target = None
-        for supply_point in supply_points:
-            contract = get_reading_document_target_contract(
-                supply_point, active_contract_status_token
+        for supply_point in sorted(supply_points, key=lambda sp: sp.id):
+            contract = resolve_reading_document_target_contract(
+                supply_point, reading_date.date(), active_contract_status_token
             )
             if contract:
                 target = (supply_point, contract)
@@ -1342,7 +1350,7 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             stats["no_contracts"] += 1
             print(
                 f"[reading-doc] row {row_index}: meter {meter.code} "
-                f"no active contract (token={active_contract_status_token!r})"
+                f"no contract valid at {reading_date.date()} (token={active_contract_status_token!r})"
             )
             continue
 
@@ -1355,18 +1363,14 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
                 tele_obs = None
 
         base_date = reading_date.date()
-        previous_reading = (
-            Reading.objects.filter(
-                supply_point=supply_point,
-                reading_date__lt=base_date,
-                meter=meter,
-                contract=contract,
-                is_control=False,
-                is_active=True,
-            )
-            .order_by("-reading_date", "-reading_value")
-            .first()
+        previous_reading, previous_tier = resolve_reading_document_previous_reading(
+            supply_point=supply_point,
+            meter=meter,
+            contract=contract,
+            reading_date=base_date,
         )
+        if previous_reading is not None and previous_tier == 2 and not is_control:
+            stats["previous_from_other_contract"] += 1
 
         existing_reading = Reading.objects.filter(
                 supply_point=supply_point,
@@ -1411,7 +1415,9 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             stats["created"] += 1
             print(
                 f"[reading-doc] row {row_index}: CREATE reading "
-                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value}"
+                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value} "
+                f"previous_reading={previous_reading.id if previous_reading else '-'} "
+                f"previous_tier={previous_tier if previous_reading else '-'}"
             )
             new_reading = Reading.objects.create(
                 token=f"{meter.code}/DOC{reading_date.strftime('%y%m%d')}",
@@ -1440,18 +1446,45 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             stats["updated"] += 1
             print(
                 f"[reading-doc] row {row_index}: UPDATE reading "
-                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value}"
+                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value} "
+                f"overwriting={previous_reading.id}"
             )
             new_reading = previous_reading
             new_reading.reading_value = reading_value
             new_reading.reading_date = base_date
             new_reading.contract = contract
-            new_reading.calculated_value = new_reading.calculated_value + calculated_value if not is_control else 0
-            new_reading.real_consumption = new_reading.calculated_value + calculated_value if not is_control else 0
-            new_reading.consumption_days = new_reading.consumption_days + consumption_days if new_reading.consumption_days else consumption_days if not is_control else 0
             new_reading.leak_value = leak_value
             new_reading.remote_alert = tele_obs
             new_reading.document = document
+            # Overwrite keeps the row identity, so its own previous reading
+            # must be re-resolved against the new date/contract (excluding the
+            # row itself) and consumption recomputed from that reading, the
+            # same rule the create branch applies. The old link could point to
+            # a reading of another contract or to the overwritten row itself.
+            overwritten_previous, overwritten_previous_tier = resolve_reading_document_previous_reading(
+                supply_point=supply_point,
+                meter=meter,
+                contract=contract,
+                reading_date=base_date,
+                exclude_reading=new_reading,
+            )
+            if is_control:
+                new_reading.calculated_value = 0
+                new_reading.real_consumption = 0
+                new_reading.consumption_days = 0
+            else:
+                new_reading.previous_reading = overwritten_previous
+                if overwritten_previous and overwritten_previous.reading_value is not None:
+                    new_reading.calculated_value = reading_value - overwritten_previous.reading_value
+                    new_reading.real_consumption = new_reading.calculated_value
+                    new_reading.consumption_days = (base_date - overwritten_previous.reading_date).days
+                    if overwritten_previous_tier == 2:
+                        stats["previous_from_other_contract"] += 1
+                else:
+                    new_reading.previous_reading = None
+                    new_reading.calculated_value = 0
+                    new_reading.real_consumption = 0
+                    new_reading.consumption_days = 0
             new_reading.save()
             if is_negative_reading:
                 new_reading.alert = reading_alert_negative
