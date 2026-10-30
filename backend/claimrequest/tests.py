@@ -545,6 +545,37 @@ class ClaimLetterAddressTests(TestCase):
 
         self.contract.address_contact = None
         self.contract.address_billing = None
-        self.supply_person_address.is_active = False
-        self.supply_person_address.save()
+        self.assertTrue(self.supply_person_address.is_active)
         self.assertEqual(claim_letter_address(self.contract), self.billing_address.address)
+
+    def test_holder_fallback_skips_supply_address_without_billing_addresses(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        self.billing_address.is_active = False
+        self.billing_address.save()
+        self.supply_person_address.is_billing = False
+        self.supply_person_address.save()
+        self.assertEqual(claim_letter_address(self.contract), self.contact_address.address)
+
+    def test_holder_fallback_returns_none_when_only_supply_address_remains(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        self.contact_address.is_active = False
+        self.contact_address.save()
+        self.billing_address.is_active = False
+        self.billing_address.save()
+        self.assertIsNone(claim_letter_address(self.contract))
+
+    def test_holder_fallback_without_supply_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        for supply_point in (None, SupplyPoint.objects.create(token='SP-NO-ADDRESS')):
+            with self.subTest(supply_point=supply_point):
+                self.contract.supply_point_default = supply_point
+                self.assertEqual(claim_letter_address(self.contract), self.supply_person_address.address)

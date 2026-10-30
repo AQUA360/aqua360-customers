@@ -32,6 +32,8 @@ def claim_letter_address(contract):
             return person_address.address
     if contract.holder:
         holder_addresses = contract.holder.addresses.filter(is_active=True, address__isnull=False)
+        if contract.supply_point_default and contract.supply_point_default.address_id:
+            holder_addresses = holder_addresses.exclude(address_id=contract.supply_point_default.address_id)
         person_address = holder_addresses.filter(is_billing=True).order_by('id').first() or holder_addresses.order_by('id').first()
         if person_address:
             return person_address.address
