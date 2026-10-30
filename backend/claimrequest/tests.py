@@ -491,3 +491,60 @@ class ClaimContractsExportTests(TestCase):
         self.assertEqual(args, [[self.contract.id], [
             [self.contract.id, kept.id, False], [self.contract.id, removed.id, True],
         ]])
+
+
+class ClaimLetterAddressTests(TestCase):
+    """Adreça postal de les cartes de reclamació: mai la de subministrament."""
+
+    def setUp(self):
+        from coredata.models import Address, PersonAddress
+
+        # El signal de contracte el llegeix en desar.
+        ConfigProject.objects.get_or_create(token='contract_terminated_status', defaults={'value': '99'})
+        self.holder = Person.objects.create(name='Titular')
+        supply_address = Address.objects.create(city_name='Subministrament')
+        self.supply_point = SupplyPoint.objects.create(token='SP-LETTER', address=supply_address)
+        # L'adreça més antiga del titular és la de subministrament, com passa amb
+        # les dades importades: abans era la que sortia a la carta.
+        self.supply_person_address = PersonAddress.objects.create(person=self.holder, address=supply_address)
+        self.contact_address = PersonAddress.objects.create(
+            person=self.holder, address=Address.objects.create(city_name='Postal'), is_billing=False
+        )
+        self.billing_address = PersonAddress.objects.create(
+            person=self.holder, address=Address.objects.create(city_name='Facturacio')
+        )
+        self.contract = Contract.objects.create(
+            token='C-LETTER',
+            holder=self.holder,
+            supply_point_default=self.supply_point,
+            address_contact=self.contact_address,
+            address_billing=self.billing_address,
+        )
+
+    def test_uses_contract_contact_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.assertEqual(claim_letter_address(self.contract), self.contact_address.address)
+
+    def test_falls_back_to_contract_billing_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.assertEqual(claim_letter_address(self.contract), self.billing_address.address)
+
+    def test_inactive_contact_address_is_skipped(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contact_address.is_active = False
+        self.contact_address.save()
+        self.contract.refresh_from_db()
+        self.assertEqual(claim_letter_address(self.contract), self.billing_address.address)
+
+    def test_falls_back_to_active_holder_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        self.supply_person_address.is_active = False
+        self.supply_person_address.save()
+        self.assertEqual(claim_letter_address(self.contract), self.billing_address.address)
