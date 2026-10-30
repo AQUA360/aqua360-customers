@@ -1469,7 +1469,8 @@ def probe_smart_metering_connectivity():
         )
     except requests.RequestException as exc:
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        detail = _truncate_probe_detail(f"Error connecting to smart metering API: {exc}")
+        logger.warning("Error connecting to smart metering API", exc_info=exc)
+        detail = _truncate_probe_detail("Error connecting to smart metering API")
         client._log(
             method="GET",
             endpoint=endpoint,
