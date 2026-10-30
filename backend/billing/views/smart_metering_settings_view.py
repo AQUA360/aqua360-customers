@@ -94,8 +94,10 @@ class SmartMeteringSettingsView(APIView):
                         meter_code=payload.get("meter"),
                     )
                 )
-        except ValueError:
-            return Response({"code": "reading_date_invalid"}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            raw_code = exc.args[0] if exc.args else None
+            code = raw_code if raw_code in _DATE_ERROR_CODES else "reading_date_invalid"
+            return Response({"code": code}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
             logger.exception("Error inesperat en la prova de Smart Metering")
             return Response({"code": "unexpected_error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
