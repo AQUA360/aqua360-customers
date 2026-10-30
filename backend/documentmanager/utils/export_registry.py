@@ -1082,25 +1082,67 @@ def _connection_config():
     )
 
 
+def _single_line(value):
+    """Treu salts de línia i espais sobrers perquè la cel·la quedi en una sola línia."""
+    return " ".join((value or "").split())
+
+
+def _connection_request_requester(cr):
+    if cr.person_id:
+        return _single_line(" ".join(part for part in [cr.person.name, cr.person.surname] if part))
+    if cr.company_id:
+        return _single_line(cr.company.name or cr.company.alias or "")
+    return ""
+
+
+def _connection_request_address(cr):
+    street = str(cr.address_street) if cr.address_street_id else ""
+    number = str(cr.address_street_number) if cr.address_street_number_id else ""
+    if number and number != "None":
+        return f"{street}, {number}" if street else number
+    return street
+
+
+def _connection_request_observations(cr):
+    parts = [_single_line(obs.observation) for obs in cr.observations.all()]
+    return " | ".join(part for part in parts if part)
+
+
 def _connection_request_config():
+    from django.db.models import Prefetch
     from rest_framework.permissions import IsAuthenticated
-    from service.models import ConnectionRequest
+    from service.models import ConnectionRequest, ConnectionRequestObservation
     from service.filters.connection_request_filter import ConnectionRequestFilter
     from documentmanager.utils.export_permissions import export_permission_class
 
     available_columns = {
         "token": (_("Token"), lambda cr: cr.token or ""),
         "person": (_("Persona"), lambda cr: str(cr.person) if cr.person else ""),
+        "requester": (_("Sol·licitant"), _connection_request_requester),
         "exploitation": (_("Explotació"), lambda cr: cr.exploitation.name if cr.exploitation else ""),
         "status": (_("Estat"), lambda cr: cr.status.name if cr.status else ""),
         "type": (_("Tipus"), lambda cr: cr.type.name if cr.type else ""),
+        "connection": (
+            _("Escomesa"),
+            lambda cr: cr.connection.token if cr.connection_id and cr.connection.token else _("Escomesa no instal·lada"),
+        ),
+        "address": (_("Localització"), _connection_request_address),
         "requested_at": (_("Data sol·licitud"), lambda cr: cr.requested_at.strftime("%Y-%m-%d") if cr.requested_at else ""),
         "address_city": (_("Municipi"), lambda cr: cr.address_city.name if cr.address_city else ""),
+        "observations": (_("Observacions"), _connection_request_observations),
     }
 
     return ExportConfig(
         queryset=lambda: ConnectionRequest.objects.filter(is_active=True).select_related(
-            "person", "exploitation", "status", "type", "address_city",
+            "person", "company", "exploitation", "status", "type", "address_city",
+            "connection",
+            "address_street", "address_street__type",
+            "address_street_number", "address_street_number__number_type",
+        ).prefetch_related(
+            Prefetch(
+                "observations",
+                queryset=ConnectionRequestObservation.objects.filter(is_active=True).order_by("created_at", "id"),
+            )
         ),
         filterset_class=ConnectionRequestFilter,
         permission_classes=[IsAuthenticated, export_permission_class('service', 'connectionrequest')],
