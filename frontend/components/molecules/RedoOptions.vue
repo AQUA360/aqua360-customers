@@ -39,7 +39,7 @@ const getContractReadings = async () => {
       const response = await $ReadingApiService.getAll(
         '', [], 1, null, false,
         [props.in_invoice.contract.id],
-        null, null, false
+        null, null, false, true
       );
       currentReadings.value = response.results.filter(r => r.invoice == null);
     }
