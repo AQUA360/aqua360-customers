@@ -160,7 +160,7 @@ async function fetchReadings() {
       return;
     }
     if (result && result.ok === false) {
-      readingsError.value = result.detail || t('settings_block.smart_metering_probe_error');
+      readingsError.value = t('settings_block.smart_metering_probe_error');
       return;
     }
     readingsResult.value = result;
