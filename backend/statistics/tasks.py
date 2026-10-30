@@ -367,6 +367,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
   from statistics.utils.report_accounting_service import generate_general_accounting_report
   from statistics.utils.report_billing_by_zone_service import generate_billing_by_zone_report
   from statistics.utils.report_incident_compliance_service import generate_incident_compliance_report
+  from statistics.utils.report_factdeta_service import generate_factdeta_report
 
   generator_funcs = {
     'accounting_values_report': generate_accounting_values_report,
@@ -423,6 +424,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
     'general_accounting_report': generate_general_accounting_report,
     'daily_activity_summary_report': generate_daily_activity_summary_report,
     'billing_by_zone_report': generate_billing_by_zone_report,
+    'factdeta_report': generate_factdeta_report,
   }
 
   if generator_func_name not in generator_funcs:

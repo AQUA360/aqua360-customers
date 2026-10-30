@@ -92,3 +92,14 @@ def invalidate_use_exploitation_token_for_payment_cache(sender, instance, **kwar
     except Exception:
         pass
  
+
+
+@receiver(post_save, sender=ConfigProject)
+def sync_factdeta_report_with_uses_aca(sender, instance, **kwargs):
+    """L'informe FACTDETA només és per als clients ACA. També s'executa amb `loaddata`, que
+    carrega `uses_aca` després de les migracions en una instal·lació nova."""
+    if instance.token != 'uses_aca':
+        return
+    from statistics.models import AvailableReport
+    is_aca_client = str(instance.value or '').strip().lower() in ('true', '1', 'yes', 't')
+    AvailableReport.objects.filter(function_name='factdeta_report').update(is_active=is_aca_client)
