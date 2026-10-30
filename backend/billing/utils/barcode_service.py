@@ -4,7 +4,7 @@ import re
 import barcode
 from barcode.writer import SVGWriter, ImageWriter
 from coredata.models import ConfigProject
-from service.utils.company_bank_service import get_company_bank
+from service.utils.company_bank_service import get_company_bank, get_payment_company_bank
 
 class BarcodeResponse(list):
     """
@@ -33,17 +33,11 @@ def get_reference_suffix(bank_account=None):
 def get_payments_company_bank(payments, company):
     """
     Compte de cobrament comú als pagaments d'un grup, resolt per a cada pagament
-    (factura o primera factura del compromís de pagament).
+    amb el mateix criteri que el document individual (get_payment_company_bank).
     Si el grup barreja comptes, o és buit, es fa servir el compte per defecte de l'empresa.
     """
-    banks = {get_company_bank(company, _payment_invoice(payment)) for payment in payments}
+    banks = {get_payment_company_bank(company, payment) for payment in payments}
     return banks.pop() if len(banks) == 1 else get_company_bank(company)
-
-def _payment_invoice(payment):
-    if payment.invoice:
-        return payment.invoice
-    commitment_deposit = getattr(payment, 'commitment_deposit', None)
-    return commitment_deposit.invoices.first() if commitment_deposit else None
 
 def get_barcode_values(barcode_data):
     """

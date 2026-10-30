@@ -20,7 +20,7 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 from billing.utils.barcode_service import generate_barcode
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
-from service.utils.company_bank_service import get_company_bank
+from service.utils.company_bank_service import get_payment_company_bank
 
 from documentmanager.utils.main_utils import upload_document
 
@@ -59,7 +59,7 @@ class GeneratePaymentDocDownloadViewSet(APIView):
             tomorrow += timedelta(days=1)
     #ident = payment.due_date.strftime("%d%m%y") if payment.due_date else "000000"
     ident = tomorrow.strftime("%d%m%y")
-    company_bank = get_company_bank(exploitation.company, invoice)
+    company_bank = get_payment_company_bank(exploitation.company, payment)
     barcode_data = {
         'reference': invoice.token if invoice else payment.token if len(payment.token) == 11 else payment.token[:-2],
         'total_final': payment.amount,

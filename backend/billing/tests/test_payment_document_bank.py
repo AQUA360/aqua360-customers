@@ -41,7 +41,8 @@ class PaymentDocumentBankTests(SimpleTestCase):
             raise StopRender()
         with patch('service.models.Exploitation') as model, \
              patch('billing.utils.payment_pdf_service.CompanySerializer') as serializer, \
-             patch('billing.utils.payment_pdf_service.ConfigProject') as config, \
+             patch('billing.utils.payment_pdf_service.ConfigProject'), \
+             patch('service.utils.company_bank_service.ConfigProject') as config, \
              patch('billing.utils.payment_pdf_service.generate_barcode', return_value=None) as generate, \
              patch('billing.utils.barcode_service.get_barcode_values', return_value={}), \
              patch('billing.utils.payment_pdf_service.exploitation_logo_source', return_value=None), \

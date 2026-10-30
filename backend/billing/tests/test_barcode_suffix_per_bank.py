@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from billing.utils.barcode_service import get_barcode_values, get_payments_company_bank, get_reference_suffix
+from service.utils.company_bank_service import get_payment_company_bank
 from coredata.models import ConfigProject
 from service.models import Company, CompanyBank
 from service.serializers.company_bank_serializer import CompanyBankSerializer
@@ -111,6 +112,26 @@ class TestBarcodeSuffixPerBank(TestCase):
         commitment = SimpleNamespace(invoice=None, commitment_deposit=SimpleNamespace(
             invoices=SimpleNamespace(first=lambda: other.invoice)))
         self.assertEqual(get_payments_company_bank([other, commitment], self.company), self.bank_2)
+
+    def test_payment_bank_uses_same_criteria_as_individual_document(self):
+        self.bank_1.is_default = True
+        self.bank_1.save()
+        transfer = SimpleNamespace(invoice=None, commitment_deposit=None,
+                                   payment_type_token='BANK_TRANSFER', payment_bank=self.bank_2.iban)
+        self.assertEqual(get_payment_company_bank(self.company, transfer), self.bank_2)
+        # Domiciliació: payment_bank és l'IBAN del client, no es fa servir
+        direct_debit = SimpleNamespace(invoice=None, commitment_deposit=None,
+                                       payment_type_token='DIRECT_DEBIT', payment_bank=self.bank_2.iban)
+        self.assertEqual(get_payment_company_bank(self.company, direct_debit), self.bank_1)
+        # Compromís sense compte a la factura: el compte del pagament del contracte
+        commitment = SimpleNamespace(invoice=None, payment_bank=None, payment_type_token='DIRECT_DEBIT',
+                                     commitment_deposit=SimpleNamespace(
+                                         invoices=SimpleNamespace(first=lambda: None),
+                                         contract=SimpleNamespace(payment=SimpleNamespace(company_iban=self.bank_2))))
+        self.assertEqual(get_payment_company_bank(self.company, commitment), self.bank_2)
+        # Grup amb una transferència al compte B i una factura cobrada a B
+        invoice_b = SimpleNamespace(invoice=SimpleNamespace(payment_company_bank=self.bank_2))
+        self.assertEqual(get_payments_company_bank([transfer, invoice_b], self.company), self.bank_2)
 
     def test_explicit_missing_bank_does_not_resolve_default_again(self):
         with patch('billing.utils.barcode_service.get_company_bank', side_effect=AssertionError('unexpected fallback')):
