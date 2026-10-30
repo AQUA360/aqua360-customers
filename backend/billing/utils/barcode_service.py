@@ -30,6 +30,18 @@ def get_reference_suffix(bank_account=None):
         suffix = '501'
     return suffix
 
+def get_payments_company_bank(payments):
+    """
+    Compte de cobrament comú a les factures d'un grup de pagaments.
+    Si n'hi ha més d'un, o cap, retorna None i es fa servir el compte per defecte de l'empresa.
+    """
+    banks = {
+        payment.invoice.payment_company_bank
+        for payment in payments
+        if payment.invoice and payment.invoice.payment_company_bank
+    }
+    return banks.pop() if len(banks) == 1 else None
+
 def get_barcode_values(barcode_data):
     """
     Calcula y retorna los valores individuales que componen el código de barras.

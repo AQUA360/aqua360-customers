@@ -15,6 +15,9 @@ class CompanyBankSerializer(serializers.ModelSerializer):
     bank_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     company_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
+    # Sufix que fan servir els codis de barres: el del compte o, si no en té, el global
+    effective_barcode_suffix = serializers.SerializerMethodField(read_only=True)
+    
     # Nom de l'empresa titular del compte: el selector de bancs de la remesa SEPA
     # pot llistar comptes de mes d'una empresa (una explotacio en pot servir
     # diverses) i cal poder distingir-los.
@@ -24,6 +27,18 @@ class CompanyBankSerializer(serializers.ModelSerializer):
         if not obj.company:
             return None
         return obj.company.alias or obj.company.name
+    
+    def get_effective_barcode_suffix(self, obj):
+        return get_reference_suffix(obj)
+    
+    def validate_barcode_suffix(self, value):
+        # Quadern 60 (format 507): el sufix de la referència és de 3 dígits
+        value = (value or '').strip()
+        if not value:
+            return None
+        if not (len(value) == 3 and value.isascii() and value.isdigit()):
+            raise serializers.ValidationError('El sufix del codi de barres ha de tenir 3 dígits.')
+        return value
     
     class Meta:
         model = CompanyBank
@@ -71,8 +86,3 @@ class CompanyBankSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
-
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        representation['barcode_suffix'] = get_reference_suffix(instance)
-        return representation

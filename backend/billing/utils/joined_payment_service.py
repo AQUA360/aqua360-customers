@@ -17,7 +17,7 @@ from coredata.utils.pdf_utils import add_watermark_to_pdf
 from xhtml2pdf import pisa
 from billing.models import JoinedPayment, Payment, PaymentRemittance, PaymentStatus
 from billing.serializers.payment_serializer import PaymentListSerializer
-from billing.utils.barcode_service import generate_barcode
+from billing.utils.barcode_service import generate_barcode, get_payments_company_bank
 from billing.utils.invoice_service import get_use_exploitation_token_for_payment
 from billing.utils.payment_service import disconnect_payment_signals, generate_payment_movement, log_payment_status, reconnect_payment_signals
 from contract.models import Contract, PaymentType
@@ -345,6 +345,7 @@ def generate_report_joined_payment_pdf(joined_payment, user, request = None):
             'reference': joined_payment.token if joined_payment else "00000000000",
             'total_final': total if joined_payment else 0,
             'company': company,
+            'company_bank': get_payments_company_bank(payments),
             'ident': ident,
         }
         barcode = generate_barcode(barcode_data)

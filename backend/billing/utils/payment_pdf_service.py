@@ -65,6 +65,7 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
             'reference': payment.token if len(payment.token) == 11 else payment.token[:-2],
             'total_final': payment.amount,
             'company': company,
+            'invoice': payment.invoice,
             'ident': ident,
         }
         barcode = generate_barcode(barcode_data)

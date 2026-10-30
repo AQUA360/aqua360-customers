@@ -62,6 +62,7 @@ class GeneratePaymentDocDownloadViewSet(APIView):
         'reference': invoice.token if invoice else payment.token if len(payment.token) == 11 else payment.token[:-2],
         'total_final': payment.amount,
         'company': exploitation.company,
+        'invoice': invoice,
         'ident': ident,
     }
     from billing.utils.barcode_service import generate_barcode, get_barcode_values
