@@ -6,10 +6,9 @@ def copy_global_suffix(apps, schema_editor):
     ConfigProject = apps.get_model('coredata', 'ConfigProject')
     CompanyBank = apps.get_model('service', 'CompanyBank')
     config = ConfigProject.objects.filter(token='reference_suffix_barcode_token').first()
-    suffix = str(config.value).strip() if config and config.value else ''
-    # Un valor no vàlid ja es substituïa per '501' en generar el codi: els comptes queden
-    # sense sufix i continuen fent servir el mateix valor per defecte
-    if len(suffix) == 3 and suffix.isdigit():
+    suffix = str(config.value) if config and config.value else ''
+    # Els valors no vàlids no es copien; la generació del codi farà servir '501'.
+    if len(suffix) == 3 and suffix.isascii() and suffix.isdigit():
         CompanyBank.objects.filter(barcode_suffix__isnull=True).update(barcode_suffix=suffix)
 
 

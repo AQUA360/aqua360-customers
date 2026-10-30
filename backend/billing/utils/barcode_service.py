@@ -25,22 +25,20 @@ def get_reference_suffix(bank_account=None):
     suffix = str(bank_account.barcode_suffix).strip() if bank_account and bank_account.barcode_suffix else ''
     if not suffix:
         config = ConfigProject.objects.filter(token='reference_suffix_barcode_token').first()
-        suffix = str(config.value).strip() if config and config.value else '501'
-    if not suffix.isdigit():
+        suffix = str(config.value) if config and config.value else '501'
+    if not (len(suffix) == 3 and suffix.isascii() and suffix.isdigit()):
         suffix = '501'
     return suffix
 
-def get_payments_company_bank(payments):
+def get_payments_company_bank(payments, company):
+    """Resolve the collection bank for every payment in a group.
+
+    A single barcode cannot represent payments with different collection banks.
     """
-    Compte de cobrament comú a les factures d'un grup de pagaments.
-    Si n'hi ha més d'un, o cap, retorna None i es fa servir el compte per defecte de l'empresa.
-    """
-    banks = {
-        payment.invoice.payment_company_bank
-        for payment in payments
-        if payment.invoice and payment.invoice.payment_company_bank
-    }
-    return banks.pop() if len(banks) == 1 else None
+    banks = {get_company_bank(company, payment.invoice) for payment in payments}
+    if len(banks) > 1:
+        raise ValueError("Els pagaments agrupats tenen comptes de cobrament diferents.")
+    return banks.pop() if banks else get_company_bank(company)
 
 def get_barcode_values(barcode_data):
     """
@@ -56,7 +54,8 @@ def get_barcode_values(barcode_data):
     
     vat = company.vat
 
-    bank_account = barcode_data.get('company_bank') or get_company_bank(company, barcode_data.get('invoice'))
+    bank_account = (barcode_data['company_bank'] if 'company_bank' in barcode_data
+                    else get_company_bank(company, barcode_data.get('invoice')))
     if bank_account and bank_account.barcode_cif:
         vat = bank_account.barcode_cif
     

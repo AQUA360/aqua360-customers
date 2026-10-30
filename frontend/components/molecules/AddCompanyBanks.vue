@@ -16,7 +16,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['show-subregion', 'new-bank']);
-const { $ExploitationApiService, $AddressApiService } = useNuxtApp();
+const { $ExploitationApiService, $AddressApiService, $ConfigProjectApiService } = useNuxtApp();
 
 const company = ref(null);
 const company_vat = ref(null);
@@ -126,7 +126,14 @@ const getData = async () => {
   is_sepa.value = props.bank?.is_sepa ?? false;
   barcode_cif.value = props.bank?.barcode_cif ?? null;
   barcode_suffix.value = props.bank?.barcode_suffix ?? null;
-  effective_barcode_suffix.value = props.bank?.effective_barcode_suffix ?? '501';
+  try {
+    const configs = await $ConfigProjectApiService.getAll('reference_suffix_barcode_token');
+    const suffix = String(configs.find(config => config.token === 'reference_suffix_barcode_token')?.value ?? '');
+    effective_barcode_suffix.value = suffix.length === 3 && /^[0-9]{3}$/.test(suffix) ? suffix : '501';
+  } catch (er) {
+    effective_barcode_suffix.value = '501';
+    console.error(er);
+  }
   sepa_cred_identifier.value = props.bank?.sepa_cred_identifier ?? null;
   if (bank_data.value.swift) {
     isSwiftAutomatic.value = true;

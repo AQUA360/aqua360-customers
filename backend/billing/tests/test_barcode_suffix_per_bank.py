@@ -1,4 +1,6 @@
+from importlib import import_module
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.test import TestCase
 
@@ -64,11 +66,47 @@ class TestBarcodeSuffixPerBank(TestCase):
         self.bank_1.refresh_from_db()
         self.assertIsNone(self.bank_1.barcode_suffix)
 
-    def test_grouped_payments_use_common_collection_bank(self):
-        invoice_1 = SimpleNamespace(payment_company_bank=self.bank_2)
-        invoice_2 = SimpleNamespace(payment_company_bank=self.bank_2)
-        payments = [SimpleNamespace(invoice=invoice_1), SimpleNamespace(invoice=invoice_2), SimpleNamespace(invoice=None)]
-        self.assertEqual(get_payments_company_bank(payments), self.bank_2)
+    def test_invalid_global_suffix_falls_back_to_501(self):
+        config = ConfigProject.objects.create(token='reference_suffix_barcode_token', value='504')
+        for value in ['12', '1234', '５０２', '١٢٣', ' 504 ']:
+            with self.subTest(value=value):
+                config.value = value
+                config.save()
+                self.assertEqual(get_reference_suffix(self.bank_empty), '501')
+        config.value = '504'
+        config.save()
+        self.assertEqual(get_reference_suffix(self.bank_empty), '504')
 
-        payments.append(SimpleNamespace(invoice=SimpleNamespace(payment_company_bank=self.bank_1)))
-        self.assertIsNone(get_payments_company_bank(payments))
+    def test_migration_copies_only_three_ascii_digits(self):
+        migration = import_module('service.migrations.0139_companybank_barcode_suffix')
+        from django.apps import apps
+
+        config = ConfigProject.objects.create(token='reference_suffix_barcode_token', value='504')
+        for value, expected in [('12', None), ('1234', None), ('５０２', None), ('٥٠٢', None), (' 504 ', None), ('504', '504')]:
+            with self.subTest(value=value):
+                config.value = value
+                config.save()
+                self.bank_empty.barcode_suffix = None
+                self.bank_empty.save()
+                migration.copy_global_suffix(apps, None)
+                self.bank_empty.refresh_from_db()
+                self.assertEqual(self.bank_empty.barcode_suffix, expected)
+
+    def test_grouped_payments_resolve_every_effective_bank(self):
+        self.bank_1.is_default = True
+        self.bank_1.is_active = True
+        self.bank_1.save()
+        explicit = SimpleNamespace(invoice=SimpleNamespace(payment_company_bank=self.bank_1))
+        implicit = SimpleNamespace(invoice=SimpleNamespace(payment_company_bank=None))
+        no_invoice = SimpleNamespace(invoice=None)
+        self.assertEqual(get_payments_company_bank([explicit, implicit, no_invoice], self.company), self.bank_1)
+        self.assertEqual(get_payments_company_bank([], self.company), self.bank_1)
+
+        other = SimpleNamespace(invoice=SimpleNamespace(payment_company_bank=self.bank_2))
+        with self.assertRaisesMessage(ValueError, 'comptes de cobrament diferents'):
+            get_payments_company_bank([other, implicit], self.company)
+        self.assertEqual(get_payments_company_bank([other, other], self.company), self.bank_2)
+
+    def test_explicit_missing_bank_does_not_resolve_default_again(self):
+        with patch('billing.utils.barcode_service.get_company_bank', side_effect=AssertionError('unexpected fallback')):
+            self.assertEqual(get_barcode_values(self.barcode_data(None))['suffix'], '501')

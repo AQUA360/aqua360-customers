@@ -58,6 +58,27 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
         
         company = exploitation.company
         
+        payment_type_token = payment.payment_type_token
+        selected_company_bank = None
+        if payment_type_token == 'BANK_TRANSFER' and payment.payment_bank:
+            selected_company_bank = exploitation.company.company_banks.filter(iban=payment.payment_bank, is_active=True).first()
+
+        if not selected_company_bank:
+            if invoice and getattr(invoice, 'payment_company_bank', None):
+                selected_company_bank = invoice.payment_company_bank
+            elif commitment_deposit:
+                first_inv = commitment_deposit.invoices.first() if commitment_deposit.invoices.exists() else None
+                if first_inv and getattr(first_inv, 'payment_company_bank', None):
+                    selected_company_bank = first_inv.payment_company_bank
+                elif commitment_deposit.contract and getattr(commitment_deposit.contract, 'payment', None) and getattr(commitment_deposit.contract.payment, 'company_iban', None):
+                    selected_company_bank = commitment_deposit.contract.payment.company_iban
+
+        company_bank = selected_company_bank
+        if not company_bank:
+            company_bank = exploitation.company.company_banks.filter(is_default=True, is_active=True).first()
+        if not company_bank:
+            company_bank = exploitation.company.company_banks.filter(is_active=True).first()
+
         ident = payment.due_date.strftime("%d%m%y")
         if limit_date:
             ident = limit_date.strftime("%d%m%y")
@@ -65,7 +86,7 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
             'reference': payment.token if len(payment.token) == 11 else payment.token[:-2],
             'total_final': payment.amount,
             'company': company,
-            'invoice': payment.invoice,
+            'company_bank': company_bank,
             'ident': ident,
         }
         barcode = generate_barcode(barcode_data)
@@ -119,28 +140,6 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
         exploitation_image = exploitation_logo_source(exploitation)
         
         clean_sender = str(int(re.sub(r'[^0-9]', '', company_data['vat'] or ''))).zfill(8)
-        
-        payment_type_token = payment.payment_type_token
-        
-        selected_company_bank = None
-        if payment_type_token == 'BANK_TRANSFER' and payment.payment_bank:
-            selected_company_bank = exploitation.company.company_banks.filter(iban=payment.payment_bank, is_active=True).first()
-
-        if not selected_company_bank:
-            if invoice and getattr(invoice, 'payment_company_bank', None):
-                selected_company_bank = invoice.payment_company_bank
-            elif commitment_deposit:
-                first_inv = commitment_deposit.invoices.first() if commitment_deposit.invoices.exists() else None
-                if first_inv and getattr(first_inv, 'payment_company_bank', None):
-                    selected_company_bank = first_inv.payment_company_bank
-                elif commitment_deposit.contract and getattr(commitment_deposit.contract, 'payment', None) and getattr(commitment_deposit.contract.payment, 'company_iban', None):
-                    selected_company_bank = commitment_deposit.contract.payment.company_iban
-
-        company_bank = selected_company_bank
-        if not company_bank:
-            company_bank = exploitation.company.company_banks.filter(is_default=True, is_active=True).first()
-        if not company_bank:
-            company_bank = exploitation.company.company_banks.filter(is_active=True).first()
         
         company_iban = company_bank.iban if company_bank else None
         company_swift = company_bank.swift if company_bank else None
