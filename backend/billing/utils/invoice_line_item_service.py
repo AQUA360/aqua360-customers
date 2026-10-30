@@ -762,7 +762,7 @@ def create_from_lineitemtype(
                             units = units * (correction_ptg)
 
             units = round_ceil(units or 0)
-            price = float(price_unit or 0) * float(units or 0)
+            price = round_ceil(Decimal(str(price_unit or 0)) * Decimal(str(units or 0)))
             _, _, _, corrected_price, var_adjustments, extra_description, _ = calc_correctors_variables_calcul(variables, variable_types, line_item_type, consum, dies_consum, diferencia_fuita, days_correction, contract, units_adjusted=units_adjusted, reading_batch_id=reading_batch_id)
             if extra_description and extra_description.replace(" ", "") != "":
                 description = extra_description
@@ -892,7 +892,7 @@ def create_from_lineitemtype(
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         name = f"{line_item_type_name} - {tram.name_stretch} "
                         
                         if adjustment_name:
@@ -916,10 +916,11 @@ def create_from_lineitemtype(
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         if corrected_price_tram:
                             price = corrected_price_tram
                         # print("name: ", name)
+                        
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
                 else: # vol dir que el tram és 30 i tenim quantitat de 5, hem de facturar 5 unitats.
                     name = f"{line_item_type_name} - {tram.name_stretch} ({quantitat} {line_item_type.price_interval.units})" # informem de la quantitat
@@ -939,7 +940,7 @@ def create_from_lineitemtype(
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         if corrected_price_tram:
                             price = corrected_price_tram
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
@@ -954,7 +955,7 @@ def create_from_lineitemtype(
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         if corrected_price_tram:
                             price = corrected_price_tram
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
@@ -1020,7 +1021,7 @@ def create_from_lineitemtype(
                 name = f"{line_item_type_name} - {tram.name_stretch}"
                 if adjustment_name:
                     name += f" - {adjustment_name}"
-
+                
                 if price_original:
                     price_unit = tram.price
                     units = 1 # 1 unitat perquè és preu fix
@@ -1040,6 +1041,7 @@ def create_from_lineitemtype(
                     if es_prorratejat:
                         units = dies_consum
                         price_unit = price_unit / prorratejat_quantitat
+                    
                     name += f" ({ quantitat } {line_item_type.price_variable.units})" # informem de la quantitat
                     
                     linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, "", True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))

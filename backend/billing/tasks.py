@@ -12,6 +12,7 @@ import io
 import zipfile
 from urllib.parse import urljoin
 from celery import shared_task, chord, group
+from customers.celery import CURRENT_USER_HEADER
 from billing.utils.barcode_service import generate_barcode
 from statistics.utils.report_service import delete_file_later
 from django.core.files.storage import default_storage
@@ -1361,6 +1362,7 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
                 meter=meter,
                 contract=contract,
                 is_control=False,
+                is_active=True,
             )
             .order_by("-reading_date", "-reading_value")
             .first()
@@ -1373,6 +1375,7 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
                 contract=contract,
                 is_control=is_control,
                 is_initial=False,
+                is_active=True,
             ).first()
 
         allow_by_period = check_billing_period(base_date, supply_point, meter, contract, previous_reading)
@@ -1744,6 +1747,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
           is_control=False,
           is_initial=False,
           is_close=False,
+          is_active=True,
           reading_date__gte=minimum_date,
       ).filter(
           Q(previous_reading__is_close=False) |
@@ -1804,6 +1808,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                       is_control=False,
                       is_initial=False,
                       is_close=False,
+                      is_active=True,
                   ).filter(
                       Q(previous_reading__is_close=False) |
                       Q(previous_reading__isnull=True)
@@ -1820,6 +1825,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                       invoices__type_final='F',
                       is_initial=False,
                       is_close=False,
+                      is_active=True,
                   ).filter(
                       Q(previous_reading__is_close=False) |
                       Q(previous_reading__isnull=True)
@@ -1836,7 +1842,8 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                       is_control=False,
                       is_initial=False,
                       is_close=False,
-                      reading_date__gte=minimum_date
+                      reading_date__gte=minimum_date,
+                      is_active=True,
                   ).filter(
                       Q(previous_reading__is_close=False) |
                       Q(previous_reading__isnull=True)
@@ -1890,7 +1897,8 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                   is_control=False,
                   is_initial=False,
                   is_close=False,
-                  contract=contract
+                  contract=contract,
+                  is_active=True,
               ).filter(
                   Q(previous_reading__is_close=False) |
                   Q(previous_reading__isnull=True)
@@ -1907,6 +1915,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                   invoices__type_final='F',
                   is_close=False,
                   is_initial=False,
+                  is_active=True,
               ).filter(
                     Q(previous_reading__is_close=False) |
                     Q(previous_reading__isnull=True)
@@ -1923,7 +1932,8 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                   is_control=False,
                   is_initial=False,
                   is_close=False,
-                  reading_date__gte=minimum_date
+                  reading_date__gte=minimum_date,
+                  is_active=True,
               ).filter(
                   Q(previous_reading__is_close=False) |
                   Q(previous_reading__isnull=True)
@@ -2174,7 +2184,7 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
         ).distinct()
         for contract in contracts:
           try:
-            if not Reading.objects.filter(supply_point=supply_point, contract=contract, batch=reading_batch, is_estimated=True).exists():
+            if not Reading.objects.filter(supply_point=supply_point, contract=contract, batch=reading_batch, is_estimated=True, is_active=True).exists():
               
               # Lògica de càlcul de data específica per punt de subministrament
               sp_target_date = target_date
@@ -2190,7 +2200,8 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
                   last_reading = Reading.objects.filter(
                       supply_point=supply_point,
                       contract=contract,
-                      reading_value__isnull=False
+                      reading_value__isnull=False,
+                      is_active=True,
                   ).order_by('-reading_date').first()
 
                   if last_reading:
@@ -2204,7 +2215,8 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
                   last_reading = get_period_start_reading(Reading.objects.filter(
                       supply_point=supply_point,
                       contract=contract,
-                      reading_value__isnull=False
+                      reading_value__isnull=False,
+                      is_active=True,
                   ).order_by('-reading_date', 'is_close').first())
                   if last_reading:
                       sp_target_date = last_reading.reading_date + timedelta(days=sp_biller_days)
@@ -2730,7 +2742,8 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
   problematic_readings = Reading.objects.filter(
     billing__id=billing_id,
     invoices__billing__isnull=True,
-    invoices__type_final=invoice_type_invoice_token
+    invoices__type_final=invoice_type_invoice_token,
+    is_active=True,
   )
   
   pre_invoices_to_delete = Invoice.objects.filter(
@@ -3360,7 +3373,7 @@ def fix_readings_batch(reading_ids):
         estimated_bag.save()
     readings.update(is_control=True, batch=None, is_estimated=False)
     for reading in readings:
-      same_meter_readings = Reading.objects.filter(meter=reading.meter, reading_date=reading.reading_date, contract=reading.contract, is_control=False)
+      same_meter_readings = Reading.objects.filter(meter=reading.meter, reading_date=reading.reading_date, contract=reading.contract, is_control=False, is_active=True)
       if same_meter_readings.count() > 0:
         print(f"Same meter readings found for reading meter {reading.meter.code}: {same_meter_readings.count()}")
         fix_readings_batch.delay(list(same_meter_readings.values_list('id', flat=True)))
@@ -3677,7 +3690,11 @@ def regenerate_sepa_file(self, payment_remittance_id, payment_ids, send_date):
 
     payments_qs.update(document=document_file)
 
-    anomalies = [p.id for p in payments_qs if p.amount <= 0]
+    # A les transferències de retorn els imports negatius (abonaments) són vàlids.
+    if payment_remittance.is_return:
+      anomalies = [p.id for p in payments_qs if p.amount == 0]
+    else:
+      anomalies = [p.id for p in payments_qs if p.amount <= 0]
 
     return {
       "status": "ok",
@@ -3711,7 +3728,7 @@ def export_readings_by_batch_csv_task(batch_id):
         readings = Reading.objects.filter(
             batch_id=batch_id, 
             is_active=True,
-            is_control=False
+            is_control=False,
         ).select_related(
             'contract',
             'contract__holder',
@@ -3762,7 +3779,7 @@ def export_readings_by_batch_csv_task(batch_id):
                     contract_id=reading.contract_id,
                     reading_date__lt=reading.reading_date,
                     is_active=True,
-                    is_control=False
+                    is_control=False,
                 ).order_by('-reading_date')[:4]
                 for pr in prev_readings:
                     prev_consumptions.append(pr.calculated_value if pr.calculated_value is not None else '')
@@ -4180,7 +4197,11 @@ def process_next_queue_item():
       args = [next_item.billing_id]
     if task:
       Billing.objects.filter(id=next_item.billing_id).update(task_id=task_id)
-      task.apply_async(args=args, kwargs={'queue_item_id': next_item.id}, task_id=task_id)
+      # Es passa l'usuari de l'item: si no, heretaria el de la tasca que acaba d'acabar
+      task.apply_async(
+        args=args, kwargs={'queue_item_id': next_item.id}, task_id=task_id,
+        headers={CURRENT_USER_HEADER: next_item.created_by_id},
+      )
   except Exception as e:
     next_item.status = 'failed'
     next_item.completed_at = timezone.now()

@@ -7,13 +7,13 @@ from celery import shared_task
 from celery_progress.backend import ProgressRecorder
 from django.conf import settings
 from django.core.files.base import ContentFile
-from billing.utils.barcode_service import generate_barcode, get_barcode_values
+from billing.utils.barcode_service import generate_barcode, get_barcode_values, get_payments_company_bank
 from billing.utils.confirm_invoice_service import confirm_invoice
 from billing.utils.invoice_service import generate_empty_invoice
 from contract.models import Contract, ContractTerminationRequest, PaymentType
 from coredata.models import ConfigProject
 from django.utils import timezone, translation
-from coredata.serializers import AddressSerializer, PersonSerializer
+from coredata.serializers import AddressSerializer, AddressSerializerReduced, PersonSerializer
 from coredata.utils.template_utils import build_template_candidates
 from documentmanager.utils.main_utils import upload_document
 from documentmanager.utils.sign_certificate_service import sign_pdf
@@ -23,6 +23,7 @@ from billing.models import Invoice, InvoiceStatus, JoinedPayment, JoinedPaymentS
 from pricing.models import PriceRate
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, VulnerabilityRequest, VulnerabilityRequestStatus
 from claimrequest.utils.claim_request_service import (
+    claim_letter_address,
     closed_termination_tokens,
     contract_from_finished_request,
     is_claimable_contract,
@@ -108,10 +109,8 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
                 company_bank = company_obj.company_banks.filter(is_active=True).first()
 
         holder = PersonSerializer(contract.holder).data
-        holder_address = next(
-            (address for address in holder.get("addresses", []) if address.get("is_billing")),
-            None,
-        )
+        letter_address = claim_letter_address(contract)
+        holder_address = AddressSerializerReduced(letter_address).data if letter_address else None
         
         claim_payments = ClaimRequestPayment.objects.filter(
             claim_request=claim_request, is_excluded=False
@@ -169,10 +168,12 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             if limit_date:
                 ident = limit_date.strftime("%d%m%y")
             token = joined_payment.token or ""
+            company_bank = get_payments_company_bank(original_payments, company_obj)
             barcode_data = {
                 'reference': token if len(token) == 11 else token[:-2],
                 'total_final': joined_payment.total_final,
                 'company': company_obj,
+                'company_bank': company_bank,
                 'ident': ident,
             }
             barcode = generate_barcode(barcode_data)
@@ -205,7 +206,7 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
                     "company": company,
                     "sp_address": sp_address,
                     "holder": holder,
-                    "holder_address": holder_address.get("address") if holder_address else None,
+                    "holder_address": holder_address,
                     "contract": contract,
                     "invoices": contract_invoices,
                     "invoice_total": invoice_total,
@@ -1111,20 +1112,27 @@ def obtain_claim_request_data(payload=None):
     }
 
 @shared_task
-def export_claim_contracts_task(contract_ids):
+def export_claim_contracts_task(contract_ids, contract_payments=None):
     """
-    Exporta a Excel els contractes d'un llistat de gestió de reclamació.
-    `contract_ids` ve ordenat com el llistat, i l'Excel conserva aquest ordre.
+    Exporta a Excel els contractes d'un llistat de gestió de reclamació i, en un
+    segon full, les factures reclamades (`contract_payments`: llista de
+    [contract_id, payment_id, is_excluded]). `contract_ids` ve ordenat com el
+    llistat, i l'Excel conserva aquest ordre.
     """
-    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_objects, iter_objects_by_ids
-    from claimrequest.utils.claim_contract_export_service import claim_contracts_export_columns, claim_contracts_export_queryset
+    from documentmanager.utils.generic_export_service import build_export_xlsx_bytes_from_sheets, iter_objects_by_ids
+    from claimrequest.utils.claim_contract_export_service import (
+        claim_contracts_export_columns, claim_contracts_export_queryset,
+        claim_invoices_export_columns, claim_invoices_export_rows,
+    )
 
     try:
         contract_ids = contract_ids or []
-        file_bytes = build_export_xlsx_bytes_from_objects(
-            iter_objects_by_ids(claim_contracts_export_queryset(), contract_ids),
-            claim_contracts_export_columns(contract_ids),
-        )
+        file_bytes = build_export_xlsx_bytes_from_sheets([
+            (_("Contractes"), iter_objects_by_ids(claim_contracts_export_queryset(), contract_ids),
+             claim_contracts_export_columns(contract_ids)),
+            (_("Factures"), claim_invoices_export_rows(contract_payments or []),
+             claim_invoices_export_columns()),
+        ])
         filename = f"claim_contracts_{timezone.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}.xlsx"
         document = upload_document(
             file=ContentFile(file_bytes, name=filename),

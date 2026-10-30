@@ -23,6 +23,23 @@ def closed_termination_tokens():
     )
 
 
+def claim_letter_address(contract):
+    """Adreça postal de les cartes de reclamació: la de contacte del contracte,
+    després la de facturació i, si no n'hi ha cap, una adreça activa del titular.
+    Mai l'adreça de subministrament, que no ha de ser on es rep el correu."""
+    for person_address in (contract.address_contact, contract.address_billing):
+        if person_address and person_address.is_active and person_address.address:
+            return person_address.address
+    if contract.holder:
+        holder_addresses = contract.holder.addresses.filter(is_active=True, address__isnull=False)
+        if contract.supply_point_default and contract.supply_point_default.address_id:
+            holder_addresses = holder_addresses.exclude(address_id=contract.supply_point_default.address_id)
+        person_address = holder_addresses.filter(is_billing=True).order_by('id').first() or holder_addresses.order_by('id').first()
+        if person_address:
+            return person_address.address
+    return None
+
+
 def is_open_termination(termination):
     """Una baixa demanada però ni acabada ni cancel·lada: el contracte encara hi
     és i, per tant, encara hi ha a qui reclamar."""
