@@ -734,9 +734,11 @@ class TestSupplyCutCatalogResolution(TestCase):
             defaults={'name': 'motiu', 'value': json.dumps({})},
         )
 
+        # Una correcció manual feta a Customers protegeix els camps tocats.
         manual = SupplyCut.objects.create(
             token='777', cause=self.cause_accidental, status=self.status_open,
             cause_raw='Accidental', state_raw='1', requires_review=False,
+            customers_locked_fields=['status', 'cause'],
         )
         payload = [
             {'id': '777', 'anl_cause': 'Accidental', 'state': '1'},

@@ -258,10 +258,15 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 )
         supply_cut.status = target_status
         supply_cut.requires_review = False
+        locked = ['status']
+        if 'cause' in request.data:
+            locked.append('cause')
         for field in ('date_start', 'date_end', 'exec_start', 'exec_end'):
             if field in request.data:
                 setattr(supply_cut, field, request.data[field])
+                locked.append(field)
         supply_cut.save()
+        supply_cut_service.lock_fields(supply_cut, *locked)
 
         supply_cut_service.sync_supply_points_status(
             supply_cut,
@@ -310,6 +315,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         restored = supply_cut_service.remove_supply_points_from_cut(
             supply_cut, supply_point_ids, user=request.user, observation=observation
         )
+        supply_cut_service.lock_fields(supply_cut, 'supply_points')
 
         # A cut with no points no longer affects anyone: it is closed so that it
         # does not stay open forever nor get reactivated by the scheduled tasks.
@@ -318,6 +324,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             closed_status = SupplyCutStatus.objects.get(token=supply_cut_service.closed_status_token())
             supply_cut.status = closed_status
             supply_cut.save(update_fields=['status', 'updated_at'])
+            supply_cut_service.lock_fields(supply_cut, 'status')
             supply_cut_service.close_supply_cut(supply_cut, user=request.user, observation=observation)
             LogSupplyCutStatus.objects.create(
                 object=supply_cut,
@@ -368,6 +375,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        supply_cut_service.lock_fields(started, 'status', 'exec_start')
         LogSupplyCutStatus.objects.create(
             object=started,
             previous_status=previous_status,
@@ -400,6 +408,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        supply_cut_service.lock_fields(finished, 'status', 'exec_end')
         LogSupplyCutStatus.objects.create(
             object=finished,
             previous_status=previous_status,

@@ -1058,6 +1058,17 @@ class SupplyCut(models.Model):
         max_length=255, null=True, blank=True,
         help_text="Token del catàleg de motiu del PA assignat al sincronitzar.",
     )
+    # Customers té prioritat sobre Giswater: els camps que un usuari ha
+    # modificat aquí ja no els sobreescriu la sincronització.
+    customers_locked_fields = models.JSONField(
+        default=list, blank=True,
+        help_text="Camps modificats a Customers que la sincronització amb Giswater no sobreescriu "
+                  "(status, cause, date_start, date_end, exec_start, exec_end, supply_points).",
+    )
+    giswater_connec_ids = models.JSONField(
+        default=list, blank=True,
+        help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització.",
+    )
     
     class Meta:
         verbose_name = "Supply Cut"
