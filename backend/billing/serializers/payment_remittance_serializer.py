@@ -1,8 +1,17 @@
 from django.db.models import Sum
+from django.db.models.functions import Abs
 from rest_framework import serializers
 from billing.models import PaymentRemittance, PaymentStatus
 from billing.serializers.payment_serializer import PaymentSerializer
 from coredata.models import ConfigProject
+
+
+def get_remittance_total_amount(remittance):
+    # Les transferències de retorn transfereixen en absolut els pagaments
+    # negatius (abonaments i factures negatives).
+    amount = Abs('amount') if remittance.is_return else 'amount'
+    return remittance.payments.aggregate(total_amount=Sum(amount))['total_amount'] or 0
+
 
 class PaymentRemittanceSerializer(serializers.ModelSerializer):
     # payments = PaymentSerializer(many=True, read_only=True)
@@ -62,7 +71,7 @@ class PaymentRemittanceSerializer(serializers.ModelSerializer):
         return None
     
     def get_total_amount(self, obj):
-        return obj.payments.aggregate(total_amount=Sum('amount'))['total_amount'] or 0
+        return get_remittance_total_amount(obj)
     
 
 class PaymentRemittanceListSerializer(serializers.ModelSerializer):
@@ -85,7 +94,7 @@ class PaymentRemittanceListSerializer(serializers.ModelSerializer):
         ]
     
     def get_total_amount(self, obj):
-        return obj.payments.aggregate(total_amount=Sum('amount'))['total_amount'] or 0
+        return get_remittance_total_amount(obj)
     
     def get_total_payments(self, obj):
         return obj.payments.count()

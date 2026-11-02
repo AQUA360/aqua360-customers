@@ -61,6 +61,7 @@ class PaymentDocDownloadViewSet(APIView):
         'reference': invoice.token,
         'total_final': invoice.left_to_pay,
         'company': exploitation.company,
+        'invoice': invoice,
         'ident': ident,
     }
     barcode = generate_barcode(barcode_data, True)

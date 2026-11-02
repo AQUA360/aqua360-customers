@@ -89,6 +89,29 @@ def _get_remittance_date(instance):
     return None
 
 
+def switch_negative_direct_debit_to_transfer(instance, direct_debit_token):
+    """
+    Una factura negativa no es pot cobrar per domiciliació: l'import s'ha de
+    retornar al client. Si té SEPA com a mètode de pagament, passa a
+    transferència bancària perquè el seu pagament surti a les remeses de
+    transferència de retorn. Es manté l'IBAN del client, que és el de destí.
+    """
+    from billing.utils.invoice_service import log_invoice_data_change
+
+    if not instance.total_final or instance.total_final >= 0:
+        return
+    if instance.payment_type_token_final != direct_debit_token:
+        return
+    bank_transfer = PaymentType.objects.filter(token="BANK_TRANSFER").first()
+    if not bank_transfer:
+        return
+
+    log_invoice_data_change(None, instance, None, bank_transfer.name)
+    instance.payment_type = bank_transfer
+    instance.payment_type_final = bank_transfer.name
+    instance.payment_type_token_final = bank_transfer.token
+
+
 def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, config_cache = None):
     from billing.utils.invoice_service import check_piggy_bank, generate_serie_final
     from billing.views.invoice_pdf_view import generate_report_invoice_pdf
@@ -147,6 +170,8 @@ def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, 
 
         # Delete existing payment if any
         Payment.objects.filter(invoice=instance).delete()
+
+        switch_negative_direct_debit_to_transfer(instance, direct_debit_token)
         
         # Calculate dates
         remittance_date = _get_remittance_date(instance)

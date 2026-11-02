@@ -6290,6 +6290,12 @@ msgstr "Estado punto de suministro"
 msgid "Data de tall"
 msgstr "Fecha de corte"
 
+msgid "Import pendent"
+msgstr "Importe pendiente"
+
+msgid "Estat pagament"
+msgstr "Estado del pago"
+
 msgid "Contractes de la reclamació"
 msgstr "Contratos de la reclamación"
 

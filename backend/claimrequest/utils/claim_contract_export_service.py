@@ -1,7 +1,9 @@
 """
 Exportació a Excel dels llistats de contractes d'una gestió de reclamació
-(tant en crear-la com en qualsevol dels seus passos).
+(tant en crear-la com en qualsevol dels seus passos): un full amb els contractes
+i un altre amb el detall de les factures reclamades.
 """
+from datetime import date
 from decimal import Decimal
 
 from django.db.models import Count, Prefetch
@@ -90,6 +92,7 @@ def claim_contracts_export_columns(contract_ids):
     return [
         ('token', _('Contracte'), lambda c: c.token or ''),
         ('holder', _('Titular'), lambda c: _person_label(c.holder)),
+        ('holder_nif', _('NIF'), lambda c: c.holder.token or '' if c.holder else ''),
         ('supply_address', _('Adreça subministrament'), lambda c: _supply_point_address(c.supply_point_default)),
         ('unpaid_invoices', _('Factures impagades'), lambda c: unpaid_by_contract.get(c.id, 0)),
         ('debt', _('Deute total'), lambda c: debt_by_contract.get(c.id, Decimal('0'))),
@@ -97,4 +100,73 @@ def claim_contracts_export_columns(contract_ids):
         ('status', _('Estat contracte'), lambda c: c.status.name if c.status else ''),
         ('supply_point_status', _('Estat punt de subministrament'), supply_point_status),
         ('supply_cut_date', _('Data de tall'), _supply_cut_date),
+    ]
+
+
+def _format_date(value):
+    return value.strftime('%d/%m/%Y') if value else ''
+
+
+def claim_invoices_export_rows(contract_payments):
+    """
+    Files (contracte, pagament, exclòs) per al full de factures. `contract_payments`
+    és una llista de [contract_id, payment_id, is_excluded] amb els contractes en
+    l'ordre del llistat; dins de cada contracte s'ordena per data de factura. El
+    contracte ve de la gestió (no de la factura): el deute de sol·licituds d'alta no en té.
+    """
+    contract_ids = list(dict.fromkeys(contract_id for contract_id, _, _ in contract_payments))
+    payment_ids = [payment_id for _, payment_id, _ in contract_payments]
+    contracts = Contract.objects.select_related(
+        'holder',
+        'supply_point_default__address__street__type',
+        'supply_point_default__address__street_number__number_type',
+        'supply_point_default__address__city',
+        'supply_point_default__address__country',
+    ).in_bulk(contract_ids)
+    payments = {}
+    payment_queryset = Payment.objects.select_related('status', 'invoice')
+    for start in range(0, len(payment_ids), 500):
+        payments.update(payment_queryset.in_bulk(payment_ids[start:start + 500]))
+
+    payments_by_contract = {contract_id: [] for contract_id in contract_ids}
+    for contract_id, payment_id, is_excluded in contract_payments:
+        payment = payments.get(payment_id)
+        if payment and contract_id in contracts:
+            payments_by_contract[contract_id].append((payment, is_excluded))
+
+    for contract_id, contract_payments in payments_by_contract.items():
+        contract_payments.sort(key=lambda item: (
+            item[0].invoice.issue_date if item[0].invoice and item[0].invoice.issue_date else date.max,
+            item[0].due_date or date.max,
+            item[0].id,
+        ))
+        for payment, is_excluded in contract_payments:
+            yield contracts[contract_id], payment, is_excluded
+
+
+def claim_invoices_export_columns():
+    # La vista vw_contract_debt també exclou els pagaments cobrats en saldo ('5').
+    non_debt_status_tokens = {*CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS, '5'}
+
+    def invoice_number(payment):
+        invoice = payment.invoice
+        return invoice.serie_final or invoice.token or '' if invoice else ''
+
+    def pending_amount(payment):
+        if not payment.status or payment.status.token in non_debt_status_tokens:
+            return Decimal('0')
+        return payment.amount
+
+    return [
+        ('contract', _('Contracte'), lambda row: row[0].token or ''),
+        ('holder', _('Titular'), lambda row: _person_label(row[0].holder)),
+        ('holder_nif', _('NIF'), lambda row: row[0].holder.token or '' if row[0].holder else ''),
+        ('supply_address', _('Adreça subministrament'), lambda row: _supply_point_address(row[0].supply_point_default)),
+        ('invoice', _('Factura'), lambda row: invoice_number(row[1])),
+        ('invoice_date', _('Data factura'), lambda row: _format_date(row[1].invoice.issue_date) if row[1].invoice else ''),
+        ('due_date', _('Data venciment'), lambda row: _format_date(row[1].due_date)),
+        ('invoice_total', _('Import factura'), lambda row: row[1].invoice.total_final if row[1].invoice else None),
+        ('pending_amount', _('Import pendent'), lambda row: pending_amount(row[1])),
+        ('payment_status', _('Estat pagament'), lambda row: row[1].status.name or '' if row[1].status else ''),
+        ('excluded', _('Exclosa'), lambda row: _('Sí') if row[2] else _('No')),
     ]

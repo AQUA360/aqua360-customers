@@ -8,7 +8,7 @@ class ContractSerializer(serializers.ModelSerializer):
     last_invoice_date = serializers.SerializerMethodField()
     iban = serializers.CharField(source='payment.IBAN.iban', read_only=True)
     supply_point_address = serializers.SerializerMethodField()
-    meter_serial_number = serializers.CharField(source='supply_point_default.meter.token', read_only=True)
+    meter_serial_number = serializers.CharField(source='supply_point_default.meter.code', read_only=True)
     meter_caliber = serializers.CharField(source='supply_point_default.meter.caliber.name', read_only=True)
     smart_metering = serializers.SerializerMethodField()
     

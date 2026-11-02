@@ -4848,6 +4848,12 @@ msgstr "Estado punto de subministración"
 msgid "Data de tall"
 msgstr "Data de corte"
 
+msgid "Import pendent"
+msgstr "Importe pendente"
+
+msgid "Estat pagament"
+msgstr "Estado do pagamento"
+
 msgid "Contractes de la reclamació"
 msgstr "Contratos da reclamación"
 

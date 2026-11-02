@@ -26,6 +26,7 @@ from .views import (
     SepaDocumentDownloadView,
     CancelDirectDebitView,
     ContractProcedureOVView,
+    ContractRequestStatusOVView,
     ContactDataOVView,
     PersonDataOVView,
     BatchInvoiceDownloadView,
@@ -102,7 +103,7 @@ urlpatterns = [
     ),
     # /ov/invoice-pdf/?contract_token=<token>&invoice_token=<token>
     path("invoice-pdf/", InvoicePDFView.as_view(), name="invoice-pdf-ov"),
-    # /ov/create-reading/ POST body: {"reading_at": "YYYY-mm-dd", "contract": "<token>", "meter": "<token>", "reading": <value>}
+    # /ov/create-reading/ POST body: {"reading_at": "YYYY-mm-dd", "contract": "<token>", "meter": "<code>", "reading": <value>}
     path("create-reading/", CreateReadingOVView.as_view(), name="create-reading-ov"),
     # /ov/consumptions/?contract_token=<token>[&date_from=&date_to=&page=&page_size=]
     path("consumptions/", ConsumptionHistoryOVView.as_view(), name="consumptions-ov"),
@@ -149,6 +150,14 @@ urlpatterns = [
         "procedures/contract/",
         ContractProcedureOVView.as_view(),
         name="contract-procedure-ov",
+    ),
+    # /ov/procedures/contract/<contract_request_token>/
+    # Tres segments: no confon amb procedures/contract/ (dos segments) ni amb
+    # procedures/<contract_token>/<accio>/ (quatre segments).
+    path(
+        "procedures/contract/<str:contract_request_token>/",
+        ContractRequestStatusOVView.as_view(),
+        name="contract-request-status-ov",
     ),
     # /ov/procedures/<contract_token>/upload-sepa-signed/
     path(

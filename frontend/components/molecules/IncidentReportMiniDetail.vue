@@ -112,7 +112,7 @@ watch(() => props.item, (newVal) => {
         </div>
   
         <div class="footering text-slate-500 p-2 w-full">
-          <p>{{ item.user_username? item.user_username : t('common.admin') }}</p>
+          <p>{{ item.user_username? item.user_username : t('common.automatic_process') }}</p>
         </div>
 
         <div v-if="!props.isSubRegion" class="p-1 flex items-center justify-center">

@@ -373,3 +373,209 @@ class ClaimContractsExportTests(TestCase):
         self.assertEqual(client.post(url, {'contract_ids': [self.contract.id, other_contract.id], **scope}, format='json').status_code, 403)
         self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], **scope}, format='json').status_code, 202)
         self.assertEqual(client.post(url, {'contract_ids': [self.contract.id], 'filter_task_id': 'unknown'}, format='json').status_code, 400)
+
+    # Full de factures: abast calculat al servidor i contingut.
+
+    def expired_payments(self):
+        from billing.models import Payment
+
+        return list(Payment.objects.filter(invoice__contract=self.contract, status__token='-1').order_by('id'))
+
+    def test_invoice_pending_amount_uses_current_payment_status(self):
+        from decimal import Decimal
+
+        from billing.models import Payment, PaymentStatus
+        from claimrequest.utils.claim_contract_export_service import (
+            claim_invoices_export_columns, claim_invoices_export_rows,
+        )
+
+        payment = self.expired_payments()[0]
+        selected_payments = [[self.contract.id, payment.id, False]]
+        columns = {key: value for key, _, value in claim_invoices_export_columns()}
+        for token in ('0', '5', '-4', '-6', '-7', '-99', None, '1', '2', '-1', '-2', '-3', '-5'):
+            with self.subTest(status=token):
+                status = PaymentStatus.objects.get_or_create(token=token, defaults={'name': token})[0] if token else None
+                # L'estat pot canviar després de seleccionar el pagament per reclamar-lo.
+                Payment.objects.filter(pk=payment.pk).update(status=status)
+                row, = claim_invoices_export_rows(selected_payments)
+                expected = Decimal('0') if token in ('0', '5', '-4', '-6', '-7', '-99', None) else payment.amount
+                self.assertEqual(columns['pending_amount'](row), expected)
+                self.assertEqual(row[1].amount, payment.amount)
+                self.assertEqual(row[2], False)
+
+    def test_task_writes_invoice_sheet_ordered_by_invoice_date(self):
+        import datetime
+        from io import BytesIO
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from openpyxl import load_workbook
+
+        from claimrequest.tasks import export_claim_contracts_task
+        from documentmanager.models import Document
+
+        self.contract.holder = Person.objects.create(token='00000000T', name='Titular', surname='Prova')
+        self.contract.save()
+        # El primer i el tercer pagament vençuts són de factures diferents (10 i 20).
+        payments = self.expired_payments()
+        first, second = payments[0], payments[2]
+        first.invoice.issue_date = datetime.date(2026, 3, 1)
+        first.invoice.serie_final = 'F-2'
+        first.invoice.save()
+        second.invoice.issue_date = datetime.date(2026, 1, 1)
+        second.invoice.serie_final = 'F-1'
+        second.invoice.save()
+
+        with TemporaryDirectory() as storage_path, self.settings(
+            DOCUMENT_STORAGE_PATH=storage_path, DOCUMENT_MANAGER_SERVICES={'claimrequest': 'hdd'},
+        ):
+            result = export_claim_contracts_task(
+                [self.contract.id], [[self.contract.id, first.id, False], [self.contract.id, second.id, True]],
+            )
+            self.assertEqual(result['status'], 'success', result)
+            workbook = load_workbook(BytesIO(Path(Document.objects.get(pk=result['document_id']).location).read_bytes()))
+
+        contract_rows = list(workbook.worksheets[0].values)
+        self.assertEqual(contract_rows[1][:3], ('C-TEST', 'Titular Prova', '00000000T'))
+
+        invoice_rows = list(workbook.worksheets[1].values)
+        header = invoice_rows[0]
+        self.assertEqual(len(invoice_rows), 3)
+        self.assertEqual([row[header.index('Factura')] for row in invoice_rows[1:]], ['F-1', 'F-2'])
+        self.assertEqual(invoice_rows[1][header.index('NIF')], '00000000T')
+        self.assertEqual(invoice_rows[1][header.index('Data factura')], '01/01/2026')
+        self.assertEqual(invoice_rows[1][header.index('Import pendent')], 20)
+        self.assertEqual([row[header.index('Exclosa')] for row in invoice_rows[1:]], ['Sí', 'No'])
+
+    def post_export(self, data):
+        from unittest.mock import patch
+
+        client = APIClient()
+        client.force_authenticate(User.objects.create_superuser('admin-invoices', 'admin-invoices@test.local', 'x'))
+        with patch('claimrequest.views.claim_contracts_export_view.enqueue_export') as enqueue:
+            enqueue.return_value = SimpleNamespace(task_id='t', id=1, name='export')
+            response = client.post('/claimrequest/claim-request-manage/contracts-export/', data, format='json')
+        self.assertEqual(response.status_code, 202, response.data)
+        return enqueue.call_args.kwargs['args']
+
+    def test_claim_scope_marks_excluded_payments(self):
+        from claimrequest.models import ClaimRequest, ClaimRequestPayment
+
+        claim_request = ClaimRequest.objects.create(token='CR-INVOICES')
+        included, excluded = self.expired_payments()[:2]
+        ClaimRequestPayment.objects.create(claim_request=claim_request, contract=self.contract, payment=included)
+        ClaimRequestPayment.objects.create(
+            claim_request=claim_request, contract=self.contract, payment=excluded, is_excluded=True,
+        )
+
+        args = self.post_export({'contract_ids': [self.contract.id], 'claim_request_id': claim_request.id})
+        self.assertEqual(args, [[self.contract.id], [
+            [self.contract.id, included.id, False], [self.contract.id, excluded.id, True],
+        ]])
+
+    def test_filter_scope_uses_task_payments_and_marks_removed_ones(self):
+        import json
+        from django_celery_results.models import TaskResult
+
+        kept, removed = self.expired_payments()[:2]
+        TaskResult.objects.create(
+            task_id='filter-task-invoices', status='SUCCESS', content_type='application/json',
+            content_encoding='utf-8',
+            result=json.dumps({'contracts': [{'id': self.contract.id, 'payments': [{'id': kept.id}, {'id': removed.id}]}]}),
+        )
+
+        args = self.post_export({
+            'contract_ids': [self.contract.id], 'filter_task_id': 'filter-task-invoices',
+            'exclude_payment_ids': [removed.id],
+        })
+        self.assertEqual(args, [[self.contract.id], [
+            [self.contract.id, kept.id, False], [self.contract.id, removed.id, True],
+        ]])
+
+
+class ClaimLetterAddressTests(TestCase):
+    """Adreça postal de les cartes de reclamació: mai la de subministrament."""
+
+    def setUp(self):
+        from coredata.models import Address, PersonAddress
+
+        # El signal de contracte el llegeix en desar.
+        ConfigProject.objects.get_or_create(token='contract_terminated_status', defaults={'value': '99'})
+        self.holder = Person.objects.create(name='Titular')
+        supply_address = Address.objects.create(city_name='Subministrament')
+        self.supply_point = SupplyPoint.objects.create(token='SP-LETTER', address=supply_address)
+        # L'adreça més antiga del titular és la de subministrament, com passa amb
+        # les dades importades: abans era la que sortia a la carta.
+        self.supply_person_address = PersonAddress.objects.create(person=self.holder, address=supply_address)
+        self.contact_address = PersonAddress.objects.create(
+            person=self.holder, address=Address.objects.create(city_name='Postal'), is_billing=False
+        )
+        self.billing_address = PersonAddress.objects.create(
+            person=self.holder, address=Address.objects.create(city_name='Facturacio')
+        )
+        self.contract = Contract.objects.create(
+            token='C-LETTER',
+            holder=self.holder,
+            supply_point_default=self.supply_point,
+            address_contact=self.contact_address,
+            address_billing=self.billing_address,
+        )
+
+    def test_uses_contract_contact_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.assertEqual(claim_letter_address(self.contract), self.contact_address.address)
+
+    def test_falls_back_to_contract_billing_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.assertEqual(claim_letter_address(self.contract), self.billing_address.address)
+
+    def test_inactive_contact_address_is_skipped(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contact_address.is_active = False
+        self.contact_address.save()
+        self.contract.refresh_from_db()
+        self.assertEqual(claim_letter_address(self.contract), self.billing_address.address)
+
+    def test_falls_back_to_active_holder_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        self.assertTrue(self.supply_person_address.is_active)
+        self.assertEqual(claim_letter_address(self.contract), self.billing_address.address)
+
+    def test_holder_fallback_skips_supply_address_without_billing_addresses(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        self.billing_address.is_active = False
+        self.billing_address.save()
+        self.supply_person_address.is_billing = False
+        self.supply_person_address.save()
+        self.assertEqual(claim_letter_address(self.contract), self.contact_address.address)
+
+    def test_holder_fallback_returns_none_when_only_supply_address_remains(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        self.contact_address.is_active = False
+        self.contact_address.save()
+        self.billing_address.is_active = False
+        self.billing_address.save()
+        self.assertIsNone(claim_letter_address(self.contract))
+
+    def test_holder_fallback_without_supply_address(self):
+        from claimrequest.utils.claim_request_service import claim_letter_address
+
+        self.contract.address_contact = None
+        self.contract.address_billing = None
+        for supply_point in (None, SupplyPoint.objects.create(token='SP-NO-ADDRESS')):
+            with self.subTest(supply_point=supply_point):
+                self.contract.supply_point_default = supply_point
+                self.assertEqual(claim_letter_address(self.contract), self.supply_person_address.address)

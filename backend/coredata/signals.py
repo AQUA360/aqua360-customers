@@ -54,12 +54,8 @@ def person_pre_save(sender, instance, **kwargs):
     if instance.pk:  # This is an update
         try:
             old_instance = Person.objects.get(pk=instance.pk)
+            # Sense usuari (procés automàtic) el canvi queda sense usuari, no a nom del primer de la BD
             current_user = get_current_user()
-
-            if not current_user or getattr(current_user, "is_anonymous", False):
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                current_user = User.objects.order_by("id").first()
 
             operation_token = str(uuid.uuid4())
 
@@ -96,3 +92,14 @@ def invalidate_use_exploitation_token_for_payment_cache(sender, instance, **kwar
     except Exception:
         pass
  
+
+
+@receiver(post_save, sender=ConfigProject)
+def sync_factdeta_report_with_uses_aca(sender, instance, **kwargs):
+    """L'informe FACTDETA només és per als clients ACA. També s'executa amb `loaddata`, que
+    carrega `uses_aca` després de les migracions en una instal·lació nova."""
+    if instance.token != 'uses_aca':
+        return
+    from statistics.models import AvailableReport
+    is_aca_client = str(instance.value or '').strip().lower() in ('true', '1', 'yes', 't')
+    AvailableReport.objects.filter(function_name='factdeta_report').update(is_active=is_aca_client)

@@ -532,7 +532,7 @@ def generate_consumption_invoice_multiple(
     # Resoldre lectures de control a la seva versió modificada activa no-control (p. ex. modificacions a la UI)
     def resolve_reading(r):
         if r and r.is_control:
-            active_r = r.modified_readings.filter(is_control=False).first()
+            active_r = r.modified_readings.filter(is_control=False, is_active=True).first()
             if active_r:
                 return resolve_reading(active_r)
         return r
@@ -556,7 +556,7 @@ def generate_consumption_invoice_multiple(
         prev = reading.previous_reading
         if prev:
             if prev.is_control:
-                active_prev = prev.modified_readings.filter(is_control=False).first()
+                active_prev = prev.modified_readings.filter(is_control=False, is_active=True).first()
                 if active_prev:
                     prev = active_prev
             reading.previous_reading = prev
@@ -783,14 +783,16 @@ def generate_consumption_invoice_multiple(
                     meter=reading.meter,
                     reading_date__lt=reading.reading_date,
                     contract=reading.contract,
-                    is_control=False
+                    is_control=False,
+                    is_active=True
                 ).exclude(id=reading.id).order_by('-reading_date').first()
                 if prev_reading is None:
                     prev_reading = Reading.objects.filter(
                         supply_point=reading_supply_point,
                         meter=reading.meter,
                         reading_date__lt=reading.reading_date,
-                        is_control=False
+                        is_control=False,
+                        is_active=True
                     ).exclude(id=reading.id).order_by('-reading_date').first()
 
                 prev_reading_date = prev_reading.reading_date if prev_reading else None
@@ -2076,6 +2078,7 @@ def recalc_consumption_gen_meter(reading, consumption_og, supply_point_instance,
             meter_id__in=meter_ids,
             is_control=False,
             is_initial=False,
+            is_active=True,
         ).select_related('previous_reading__previous_reading').only(
             'calculated_value', 'supply_point_id', 'meter_id', 'is_revised',
             'previous_reading__previous_reading__is_close',
@@ -2121,6 +2124,7 @@ def recalc_consumption_gen_meter(reading, consumption_og, supply_point_instance,
                 supply_point=sp,
                 meter=sp.meter,
                 is_control=False,
+                is_active=True,
                 is_initial=False,
             ).select_related('previous_reading__previous_reading').first()
             if child_reading:
@@ -2541,9 +2545,9 @@ def invoice_contract_termination_generate(
                         # Forat entre l'end d'un rang i el start del seguent: agafem el proper rang futur.
                         billing_range = price_rate_billing_ranges.filter(start__gt=reading.reading_date).order_by('start').first()
 
-                    prev_readings = Reading.objects.filter(supply_point=reading_supply_point, meter=reading.meter, reading_date__lt=reading.reading_date, contract=reading.contract, is_control=False).exclude(id=reading.id).order_by('-reading_date')
+                    prev_readings = Reading.objects.filter(supply_point=reading_supply_point, meter=reading.meter, reading_date__lt=reading.reading_date, contract=reading.contract, is_control=False, is_active=True).exclude(id=reading.id).order_by('-reading_date')
                     if prev_readings.count() == 0:
-                        prev_readings = Reading.objects.filter(supply_point=reading_supply_point, meter=reading.meter, reading_date__lt=reading.reading_date, is_control=False).exclude(id=reading.id).order_by('-reading_date')
+                        prev_readings = Reading.objects.filter(supply_point=reading_supply_point, meter=reading.meter, reading_date__lt=reading.reading_date, is_control=False, is_active=True).exclude(id=reading.id).order_by('-reading_date')
                     prev_reading = None
                     if prev_readings.count() > 0:
                         prev_reading = prev_readings.first()

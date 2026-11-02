@@ -355,7 +355,13 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
         total_transactions = len(payments)
         ET.SubElement(grpHdr, "NbOfTxs").text = str(total_transactions)
 
-        total_amount = sum(payment.amount for payment in payments)
+        # A les transferències de retorn els pagaments de factures negatives
+        # porten l'import en negatiu: al client se li transfereix l'absolut.
+        def get_amount(payment):
+            amount = Decimal(str(payment.amount))
+            return abs(amount) if is_return else amount
+
+        total_amount = sum(get_amount(payment) for payment in payments)
         ET.SubElement(grpHdr, "CtrlSum").text = f"{total_amount:.2f}"
 
         #InitgPty
@@ -516,6 +522,8 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
                     title = build_sepa_concept(title, [payment.invoice.serie_final], invoice_label)
             if is_return:
                 title = f"{_('Return xml msg')} {payment.contract.token if payment.contract else payment.person.token if payment.person else payment.token}"
+                if payment.invoice:
+                    title = build_sepa_concept(title, [payment.invoice.serie_final], invoice_label)
             
             if not bank_swift or len(bank_swift) == 0:
                 inv_com = payment.invoice if payment.invoice else payment.commitment_deposit if payment.commitment_deposit else None
@@ -576,7 +584,7 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
                 ET.SubElement(pmtId, "InstrId").text = end_to_end_id
             ET.SubElement(pmtId, "EndToEndId").text = end_to_end_id
 
-            amount = Decimal(str(payment.amount))
+            amount = get_amount(payment)
             
             if not is_return:
                 instAmt_parent = drct_dbt_tx_inf

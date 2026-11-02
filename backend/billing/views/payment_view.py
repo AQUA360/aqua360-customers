@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.db.models import OuterRef, Subquery
 from django.utils import timezone
 from rest_framework.decorators import action
@@ -19,7 +20,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
-from billing.utils.payment_service import disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
+from billing.utils.payment_service import add_negative_payment_to_balance, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
 from coredata.utils.name_utils import generate_token
 from documentmanager.utils.main_utils import upload_document
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, ClaimRequestTemplate
@@ -526,6 +527,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return Response({"rejections": payments_data}, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['post'], url_path='manual-payment')
+    @transaction.atomic
     def manual_payment(self, request):
         user = request.user
         data = request.data
@@ -549,7 +551,24 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if amount == None:
             amount = payment.amount
         
-        if amount and float(amount) > 0:
+        if payment.amount is not None and payment.amount < 0 and pay_method.token == 'BALANCE':
+            # Factura negativa: en comptes de retornar-la per transferència,
+            # l'import s'afegeix al saldo del client. Es decideix pel signe del
+            # pagament, no per l'import rebut, i amb el pagament bloquejat perquè
+            # una petició repetida no l'aboni dues vegades.
+            if not payment_date:
+                return Response({"error": "Payment date is required."}, status=status.HTTP_400_BAD_REQUEST)
+            payment = Payment.objects.select_for_update().get(id=payment.id)
+            if payment.status and payment.status.token in (paid_status_token, status_cancelled_token):
+                return Response({"error": "Payment already settled."}, status=status.HTTP_400_BAD_REQUEST)
+            if payment.remittances.filter(sent_at__isnull=True).exists():
+                return Response({"error": "Payment belongs to a pending remittance."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                add_negative_payment_to_balance(payment, payment_date)
+            except ValueError as e:
+                logger.warning("Failed to add negative payment to balance for payment %s: %s", payment.id, str(e))
+                return Response({"error": "Unable to process this payment request."}, status=status.HTTP_400_BAD_REQUEST)
+        elif amount and float(amount) > 0:
             if payment.invoice or payment.commitment_deposit:
                 contract = None
                 if payment.invoice:

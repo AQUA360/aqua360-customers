@@ -42,7 +42,7 @@ class ContractSerializer(serializers.ModelSerializer):
     iban = serializers.SerializerMethodField()
     supply_point_address = serializers.SerializerMethodField()
     meter_serial_number = serializers.CharField(
-        source="supply_point_default.meter.token", read_only=True
+        source="supply_point_default.meter.code", read_only=True
     )
     meter_caliber = serializers.CharField(
         source="supply_point_default.meter.caliber.name", read_only=True
@@ -590,7 +590,7 @@ class BillingContractInvoicesOVSerializer(serializers.Serializer):
 
 
 class InvoiceConsumptionSerializer(serializers.ModelSerializer):
-    meter = serializers.CharField(source="contract.supply_point_default.meter.token")
+    meter = serializers.CharField(source="contract.supply_point_default.meter.code")
     reading = serializers.SerializerMethodField()
     is_estimated = serializers.SerializerMethodField()
     origin = serializers.CharField(default="")
@@ -915,7 +915,7 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
     last_invoice_date = serializers.SerializerMethodField()
     supply_point_address = serializers.SerializerMethodField()
     meter_serial_number = serializers.CharField(
-        source="supply_point_default.meter.token", read_only=True
+        source="supply_point_default.meter.code", read_only=True
     )
     meter_caliber = serializers.CharField(
         source="supply_point_default.meter.caliber.name", read_only=True
@@ -1387,7 +1387,7 @@ class MeterDetailSerializer(serializers.ModelSerializer):
 
     def get_meter_serial_number(self, obj):
         meter = self._meter(obj)
-        return meter.token if meter else None
+        return meter.code if meter else None
 
     def get_meter_caliber(self, obj):
         meter = self._meter(obj)
@@ -1674,7 +1674,7 @@ class ProcedureTariffDictionarySerializer(serializers.Serializer):
 
         return {
             "token": instance.token,
-            "name": instance.name,
+            "name": self._resolved_name(instance),
             "type_price": "variable" if variable_components else "fixed",
             "price": round(sum(fixed_prices), 2) if fixed_prices else None,
             "price_table": price_table,
@@ -1691,6 +1691,18 @@ class ProcedureTariffDictionarySerializer(serializers.Serializer):
                 for component in components
             ],
         }
+
+    @staticmethod
+    def _resolved_name(instance):
+        """`name` del tràmit: si el de la tarifa és genènic ("GENERAL") o
+        buit, es resol el del producte associat (p. ex.
+        "DCHOS.ACOMETIDA...", "CONTADOR - ALTA PUNTO SUMINISTRO"); si no, es
+        manté el de la tarifa."""
+        name = instance.name
+        if name and name.strip().upper() != "GENERAL":
+            return name
+        product = instance.product
+        return product.name if product else name
 
 
 def _procedure_tariff_stretches(interval, related_name):
@@ -1748,15 +1760,47 @@ class PropertyItemSerializer(serializers.Serializer):
     """Adreça d'una propietat per a l'autocompletat del frontal OV.
 
     Retorna el `token` de la propietat i l'adreça completa ja formatada
-    (`carrer, número, codi postal ciutat`), sense que el consumidor hagi de
-    compondre els camps.
+    (`carrer, número, codi postal ciutat`), juntament amb els seus camps
+    atòmics.
     """
 
     token = serializers.CharField()
     address = serializers.SerializerMethodField()
+    street_type = serializers.SerializerMethodField()
+    street_name = serializers.SerializerMethodField()
+    street_number = serializers.SerializerMethodField()
+    postal_code = serializers.SerializerMethodField()
+    city = serializers.SerializerMethodField()
 
     def get_address(self, obj):
         return _property_address(obj)
+
+    def get_street_type(self, obj):
+        return (
+            obj.address_street.type.abbreviation
+            if obj.address_street and obj.address_street.type
+            else None
+        )
+
+    def get_street_name(self, obj):
+        return obj.address_street.name if obj.address_street else None
+
+    def get_street_number(self, obj):
+        return (
+            obj.address_street_number.number
+            if obj.address_street_number
+            else None
+        )
+
+    def get_postal_code(self, obj):
+        return (
+            obj.address_postal_code.code
+            if obj.address_postal_code
+            else None
+        )
+
+    def get_city(self, obj):
+        return obj.address_city.name if obj.address_city else None
 
 
 def _property_address(property):
@@ -2027,3 +2071,16 @@ class ContractProcedureResponseSerializer(serializers.Serializer):
     supply_point = serializers.DictField()
     payment = serializers.DictField()
     created_at = serializers.DateTimeField()
+
+
+class ContractRequestStatusSerializer(serializers.Serializer):
+    """Estat d'una sol·licitud d'alta de contracte
+    (`GET /ov/procedures/contract/<contract_request_token>/`)."""
+
+    contract_request_token = serializers.CharField()
+    status = serializers.DictField(allow_null=True)
+    type = serializers.DictField(allow_null=True)
+    contract_token = serializers.CharField(allow_null=True)
+    created_at = serializers.DateTimeField()
+    supply_point = serializers.DictField(allow_null=True)
+    person = serializers.DictField(allow_null=True)

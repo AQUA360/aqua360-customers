@@ -611,11 +611,19 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         if placement:
             validated_data['placement'] = placement
         
+        cluster = Cluster.objects.get(id = cluster_id) if cluster_id else None
+
         if property_id:
             property = Property.objects.get(id = property_id)
+        elif cluster:
+            # New nozzle in an existing cluster: reuse the cluster's property,
+            # or the one its other supply points already belong to
+            property = cluster.property or Property.objects.filter(
+                supply_points__cluster_nozzle__cluster=cluster
+            ).order_by('id').first()
         else:
             property = None
-            
+
         default_status = SupplyPointStatus.objects.get(is_default=True)
         
         route_position = None
@@ -662,8 +670,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         else:
             auto_assign_route_to_property(property)
         nozzle = None
-        if cluster_id:
-            cluster = Cluster.objects.get(id = cluster_id)
+        if cluster:
             last_nozzle = ClusterNozzle.objects.filter(cluster=cluster).order_by('-col').first()
             nozzle = ClusterNozzle.objects.create(
                 cluster = cluster,

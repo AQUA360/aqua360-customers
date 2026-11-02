@@ -6,9 +6,9 @@ from django.utils import timezone
 from billing.models import Invoice, Payment, PaymentStatus
 from contract.models import Contract
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
-from coredata.models import ConfigProject
+from coredata.models import Address, City, ConfigProject, Street
 from pricing.models import ProductOrigin
-from service.models import Exploitation
+from service.models import Connection, Exploitation, SupplyPoint
 from service.serializers.exploitation_serializer import ExploitationSerializer
 from statistics.models import BillingConsumption
 from statistics.utils.billing_amount_average import (
@@ -16,7 +16,7 @@ from statistics.utils.billing_amount_average import (
     get_total_amount_avg,
     is_high_amount_for_period,
 )
-from statistics.utils.incasol import resolve_incasol_num
+from statistics.utils.incasol import resolve_incasol_num, resolve_municipi
 
 from statistics.utils.report_billing_by_zone_service import (
     classify_line,
@@ -357,6 +357,33 @@ class InformesFilterPayloadTests(SimpleTestCase):
         })
         self.assertEqual(start.date().isoformat(), '2026-01-01')
         self.assertEqual(end.date().isoformat(), '2026-03-31')
+
+
+class IncasolMunicipiResolutionTests(SimpleTestCase):
+    """El camp municipi dels informes INCASOL ha de ser la població de l'adreça, no el
+    nom de l'explotació, que només s'usa si l'adreça no en té cap."""
+
+    def _supply_point(self, address=None):
+        exploitation = Exploitation(name='Aigües Explotació')
+        return SupplyPoint(address=address, connection=Connection(exploitation=exploitation))
+
+    def test_address_city(self):
+        address = Address(city=City(name='Població'), city_name='Una altra')
+        self.assertEqual(resolve_municipi(self._supply_point(address)), 'POBLACIÓ')
+
+    def test_address_city_name_when_no_city(self):
+        address = Address(city_name='Població manual')
+        self.assertEqual(resolve_municipi(self._supply_point(address)), 'POBLACIÓ MANUAL')
+
+    def test_street_city_when_address_has_none(self):
+        address = Address(street=Street(name='Major', city=City(name='Població')))
+        self.assertEqual(resolve_municipi(self._supply_point(address)), 'POBLACIÓ')
+
+    def test_exploitation_name_as_last_resort(self):
+        self.assertEqual(resolve_municipi(self._supply_point(Address())), 'AIGÜES EXPLOTACIÓ')
+
+    def test_no_supply_point(self):
+        self.assertEqual(resolve_municipi(None), '')
 
 
 class IncasolNumResolutionTests(TestCase):

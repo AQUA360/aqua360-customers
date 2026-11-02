@@ -104,14 +104,8 @@ def contract_pre_save(sender, instance, **kwargs):
     if instance.pk:  # This is an update
         try:
             old_instance = Contract.objects.get(pk=instance.pk)
+            # Sense usuari (procés automàtic) el canvi queda sense usuari, no a nom del primer de la BD
             current_user = get_current_user()
-
-            # Fallback: if there is no real user (e.g. management command),
-            # try to use the first user in the DB; if none, log with user=None.
-            if not current_user or getattr(current_user, "is_anonymous", False):
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                current_user = User.objects.order_by("id").first()
 
             operation_token = str(uuid.uuid4())
 

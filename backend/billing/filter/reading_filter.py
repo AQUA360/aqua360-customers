@@ -17,11 +17,12 @@ class ReadingFilter(filters.FilterSet):
     previous_leak = filters.BooleanFilter(method='filter_previous_leak')
     leak = filters.BooleanFilter(method='filter_leak')
     is_control = filters.BooleanFilter(field_name='is_control')
+    is_active = filters.BooleanFilter(field_name='is_active')
     exploitation = filters.NumberFilter(field_name='supply_point__connection__exploitation__id', lookup_expr='exact')
     billed = filters.BooleanFilter(method='filter_billed')
     class Meta:
         model = Reading
-        fields = ['search', 'contract', 'supply_point', 'meter', 'alert', 'reader_alert', 'leak', 'previous_leak', 'is_control', 'exploitation', 'billed']
+        fields = ['search', 'contract', 'supply_point', 'meter', 'alert', 'reader_alert', 'leak', 'previous_leak', 'is_control', 'exploitation', 'billed', 'is_active']
 
     def filter_search(self, queryset, name, value):
         if not value:

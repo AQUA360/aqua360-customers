@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from contract.models import Bail, Contract
 from coredata.models import StreetType
-from statistics.utils.incasol import resolve_incasol_num
+from statistics.utils.incasol import resolve_incasol_num, resolve_municipi
 from statistics.utils.report_filters import get_multi_ids, contract_multi_filter_q
 from statistics.views.reports_views import save_report
 import logging
@@ -159,11 +159,7 @@ def generate_incasol_liquidation_report(request, black_fill=None, white_bold_fon
             street = address.street if address else None
             st_type = street_types_by_id.get(street.type_id) if street and street.type_id else None
             street_type = (st_type.aca_abbreviation or st_type.abbreviation or "") if st_type else ""
-            municipi = ""
-            if (contract.supply_point_default and contract.supply_point_default.connection
-                    and contract.supply_point_default.connection.exploitation
-                    and contract.supply_point_default.connection.exploitation.name):
-                municipi = contract.supply_point_default.connection.exploitation.name.upper()
+            municipi = resolve_municipi(contract.supply_point_default)
             holder = contract.holder
             return _build_detail_line(
                 tipus, _base_token(contract.token), bail_date, bail_amount,
@@ -193,7 +189,7 @@ def generate_incasol_liquidation_report(request, black_fill=None, white_bold_fon
                     'current': idx, 'total': total_movements,
                     'percent': round((idx / total_movements) * 100, 2) if total_movements else 0.0,
                 })
-            lines.append(_bail_line(bail, "BA", -round(bail.amount, 2), bail.return_date))
+            lines.append(_bail_line(bail, "CA", -round(bail.amount, 2), bail.return_date))
 
         content_file = BytesIO()
         for line in lines:

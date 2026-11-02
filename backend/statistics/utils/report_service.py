@@ -30,7 +30,7 @@ from logger.models import LogCommitmentDepositMovement, LogPaymentStatusChange
 from order.models import Operator, Order, OrderReport
 from pricing.models import Adjustment, BillingRange, Product, Tax
 from service.models import Company, Exploitation, Meter
-from statistics.utils.incasol import resolve_incasol_num
+from statistics.utils.incasol import resolve_incasol_num, resolve_municipi
 from statistics.utils.report_progress import report_progress
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, jump_row, save_report
 from statistics.utils.report_filters import (contract_multi_filter_q, get_billing_ids, get_multi_ids, has_serie_final_range,
@@ -2481,12 +2481,7 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
                 if st_type else ""
             )
             
-            exploitation_name = ""
-            if (contract.supply_point_default and 
-                contract.supply_point_default.connection and 
-                contract.supply_point_default.connection.exploitation and 
-                contract.supply_point_default.connection.exploitation.name):
-                exploitation_name = contract.supply_point_default.connection.exploitation.name.upper()
+            municipi = resolve_municipi(contract.supply_point_default)
             
             lines_content = [
                 "FI", contract.token, bail_contract.created_at.strftime('%d/%m/%Y'),
@@ -2494,7 +2489,7 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
                 (f"{street.name if street else ''}{', '+str(street_number) if street_number else ''}{', ' +address.stair if address and address.stair else ''}{', ' +address.floor if address and address.floor else ''}{', ' +address.door if address and address.door else ''}").upper()[:50],
                 
                 "", "", "",
-                "", address.postal_code if address else "", exploitation_name,
+                "", address.postal_code if address else "", municipi,
                 
                 address.building if address else "", "",
                 contract.holder.token, 
@@ -2526,12 +2521,7 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
                 if st_type else ""
             )
             
-            exploitation_name = ""
-            if (contract.supply_point_default and 
-                contract.supply_point_default.connection and 
-                contract.supply_point_default.connection.exploitation and 
-                contract.supply_point_default.connection.exploitation.name):
-                exploitation_name = contract.supply_point_default.connection.exploitation.name.upper()
+            municipi = resolve_municipi(contract.supply_point_default)
 
             lines_content = [
                 "CA", contract.token, bail_ter.return_date.strftime('%d/%m/%Y'),
@@ -2539,7 +2529,7 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
                 (f"{street.name if street else ''}{', '+str(street_number) if street_number else ''}{', ' +address.stair if address and address.stair else ''}{', ' +address.floor if address and address.floor else ''}{', ' +address.door if address and address.door else ''}").upper()[:50],
                 
                 "", "", "",
-                "", address.postal_code if address else "", exploitation_name,
+                "", address.postal_code if address else "", municipi,
                 
                 address.building if address else "", "",
                 contract.holder.token, 

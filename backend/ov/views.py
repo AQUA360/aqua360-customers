@@ -89,6 +89,7 @@ from ov.serializers import (
     ContractProcedureRequestSerializer,
     ContractProcedureResponseSerializer,
     mask_iban,
+    ContractRequestStatusSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
 from ov.throttles import (
@@ -1559,21 +1560,34 @@ class InvoiceStatusDictionaryOVView(APIView):
         )
 
 
+# Orígens de producte de tràmit/d'altes (drets d'alta, connexió, comptador,
+# pòlissa, dipòsit...). Exclou l'origen 1, de serveis periòdics recurrents
+# (aigua, brosses, canon, clavegueram...).
+PROCEDURE_TARIFF_ORIGIN_IDS = (2, 4, 5)
+
+
 class ProcedureTariffDictionaryOVView(APIView):
     """GET /ov/dictionary/procedure-tariffs/
 
-    Catàleg de tarifes actives (`is_active=True`) amb el seu cost per calcular
-    els tràmits: `type_price` (`fixed`/`variable`), `price` (suma dels
-    components fixos), `price_table` (taula de trams per calibre o consum) i
-    `components` amb el desglossament complet. Ordenat per `name`.
+    Catàleg de tarifes de tràmit actives (`is_active=True`) amb el seu cost
+    per calcular els tràmits: `type_price` (`fixed`/`variable`), `price`
+    (suma dels components fixos), `price_table` (taula de trams per calibre o
+    consum) i `components` amb el desglossament complet. Ordenat per `name`.
+
+    Restringit a tarifes de productes de tràmit (`origin_id` 2, 4 o 5): no
+    inclou serveis periòdics recurrents (`origin_id = 1`) ni tarifes sense
+    producte associat.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         tariffs = (
-            PriceRate.objects.filter(is_active=True)
-            .select_related("billing_range_active")
+            PriceRate.objects.filter(
+                is_active=True,
+                product__origin_id__in=PROCEDURE_TARIFF_ORIGIN_IDS,
+            )
+            .select_related("product", "billing_range_active")
             .prefetch_related(
                 "billing_range_active__line_item_types__price_interval"
                 "__price_interval_stretches",
@@ -2552,3 +2566,67 @@ class ContractProcedureOVView(APIView):
             ContractProcedureResponseSerializer(payload).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ContractRequestStatusOVView(APIView):
+    """GET /ov/procedures/contract/<contract_request_token>/
+
+    Estat de la sol·licitud d'alta de contracte per al seguiment des del
+    frontal OV. `contract_token` és `null` mentre la sol·licitud estigui
+    pendent (o sense contracte associat); un cop atenció al client l'ha
+    aprovada i existeix el `Contract` enllaçat (`contract_request_id`)
+    retorna el `token` del contracte. Respon 404 si la sol·licitud no
+    existeix o no està activa.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ContractProcedureThrottle]
+
+    def get(self, request, contract_request_token):
+        contract_request = (
+            ContractRequest.objects.select_related(
+                "status", "type", "supply_point_default", "person"
+            )
+            .prefetch_related("contract")
+            .filter(token=contract_request_token, is_active=True)
+            .first()
+        )
+        if contract_request is None:
+            raise NotFound({"error": "Contract request not found"})
+
+        contract = next(iter(contract_request.contract.all()), None)
+        payload = {
+            "contract_request_token": contract_request.token,
+            "status": (
+                {
+                    "token": contract_request.status.token,
+                    "name": contract_request.status.name,
+                }
+                if contract_request.status
+                else None
+            ),
+            "type": (
+                {
+                    "token": contract_request.type.token,
+                    "name": contract_request.type.name,
+                }
+                if contract_request.type
+                else None
+            ),
+            "contract_token": contract.token if contract else None,
+            "created_at": contract_request.created_at,
+            "supply_point": (
+                {"token": contract_request.supply_point_default.token}
+                if contract_request.supply_point_default
+                else None
+            ),
+            "person": (
+                {
+                    "token": contract_request.person.token,
+                    "name": contract_request.person.name,
+                }
+                if contract_request.person
+                else None
+            ),
+        }
+        return Response(ContractRequestStatusSerializer(payload).data)

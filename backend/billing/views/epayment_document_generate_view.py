@@ -482,7 +482,8 @@ def generate_xml(payment, invoice_inst=None):
     invoiceHeader = ET.SubElement(invoiceEL, "InvoiceHeader")
     ET.SubElement(invoiceHeader, "InvoiceNumber").text = invoice.serie_final
     #ET.SubElement(invoiceHeader, "InvoiceSeriesCode").text = invoice.serie_final
-    ET.SubElement(invoiceHeader, "InvoiceDocumentType").text = invoice.serie_token_final
+    # FC: factura completa. El token de la serie no és un valor vàlid de Facturae (FC/FA/AF)
+    ET.SubElement(invoiceHeader, "InvoiceDocumentType").text = "FC"
     #TODO: INVOICE CLASS
     ET.SubElement(invoiceHeader, "InvoiceClass").text = invoice.invoice_class_token_final if invoice.invoice_class else "OO"
     #

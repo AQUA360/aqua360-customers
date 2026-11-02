@@ -213,7 +213,7 @@ def add_wallet_payment(commitment_payment, user, is_paid, wallet_payment_date=No
         return payment
         
     
-def wallet_payment_deposit_update(payment, user, request):
+def wallet_payment_deposit_update(payment, user):
     from billing.serializers.payment_commitment_serializer import PaymentCommitmentSaveSerializer
     
     status = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
@@ -238,7 +238,7 @@ def wallet_payment_deposit_update(payment, user, request):
         "is_wallet": True,
     }
     
-    PaymentCommitmentSaveSerializer(commitment_deposit, context={'request': request}).create(payment_data)
+    PaymentCommitmentSaveSerializer(commitment_deposit, context={'user': user}).create(payment_data)
     
 def update_deposit(invoice_payment):
     status_paid = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)

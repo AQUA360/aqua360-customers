@@ -356,6 +356,8 @@ class BillingQueue(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     billing = models.ForeignKey(Billing, on_delete=models.CASCADE, related_name='queue_items')
+    # Usuari que ha encuat la tasca: l'execució (i els seus historials) va a nom seu
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     task_type = models.CharField(max_length=50, choices=TASK_TYPE_CHOICES)
     payload = models.JSONField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')

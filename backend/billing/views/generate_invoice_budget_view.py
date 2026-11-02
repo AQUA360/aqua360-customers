@@ -270,11 +270,11 @@ class GenerateInvoiceBudgetView(APIView):
                         
                         reading_ids.append(value)
                         reading = Reading.objects.get(id=value)
-                        new_reading = reading.modified_readings.filter(is_control=False).first()
+                        new_reading = reading.modified_readings.filter(is_control=False, is_active=True).first()
                         if not new_reading:
                             try:
                                 og_reading = reading.original_readings.first()
-                                og_reading = og_reading.modified_readings.filter(is_control=False).first()
+                                og_reading = og_reading.modified_readings.filter(is_control=False, is_active=True).first()
                                 if og_reading:
                                     new_reading = og_reading
                             except:
