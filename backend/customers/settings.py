@@ -528,6 +528,11 @@ ODOO_TIMEOUT = config("ODOO_TIMEOUT", default=30, cast=int)
 ODOO_PUSH_ENABLED = config("ODOO_PUSH_ENABLED", default=False, cast=bool)
 ODOO_PUSH_INVOICES = config("ODOO_PUSH_INVOICES", default=True, cast=bool)
 ODOO_PUSH_PAYMENTS = config("ODOO_PUSH_PAYMENTS", default=True, cast=bool)
+# Token Bearer que Odoo envia a l'inbound de resultats de lot.
+ODOO_INBOUND_BEARER_TOKEN = config(
+    "ODOO_INBOUND_BEARER_TOKEN",
+    default=config("ODOO_INBOUND_API_KEY", default=""),
+)
 
 SMART_METERING_API_URL = config("SMART_METERING_API_URL", default="")
 SMART_METERING_API_AUTH_PARAM = config("SMART_METERING_API_AUTH_PARAM", default="Authorization")

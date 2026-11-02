@@ -190,6 +190,9 @@ export default defineNuxtConfig({
     //verifactu
     '~/plugins/api/billing/verifactu-api.js',
 
+    //send-batch
+    '~/plugins/api/integrations/send-batch-api.js',
+
     //statistics
     '~/plugins/api/statistics/reports-api.js',
     '~/plugins/api/statistics/billing-consumption-api.js',
