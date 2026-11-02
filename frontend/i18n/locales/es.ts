@@ -4449,6 +4449,7 @@ supply_cut_actions:   {
     delete_occurrence_confirm: '¿Borrar solo esta ocurrencia?',
     delete_confirm: '¿Seguro que quieres borrar esta tarea?',
     order: 'Orden de trabajo',
-    badge_title: '{today} para hoy, {overdue} atrasadas'
+    badge_title: '{today} para hoy, {overdue} atrasadas',
+    text_color: 'Color del texto'
   }
 }

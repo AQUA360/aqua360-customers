@@ -4267,6 +4267,7 @@ export default {
     delete_occurrence_confirm: 'Delete only this occurrence?',
     delete_confirm: 'Are you sure you want to delete this task?',
     order: 'Work order',
-    badge_title: '{today} for today, {overdue} overdue'
+    badge_title: '{today} for today, {overdue} overdue',
+    text_color: 'Text color'
   }
 }

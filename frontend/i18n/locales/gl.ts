@@ -4267,7 +4267,8 @@ export default {
     delete_occurrence_confirm: 'Borrar só esta ocorrencia?',
     delete_confirm: 'Seguro que queres borrar esta tarefa?',
     order: 'Orde de traballo',
-    badge_title: '{today} para hoxe, {overdue} atrasadas'
+    badge_title: '{today} para hoxe, {overdue} atrasadas',
+    text_color: 'Cor do texto'
   }
 }
    
