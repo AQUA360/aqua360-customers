@@ -1229,6 +1229,11 @@ export default {
     position_occupied: 'The position is already occupied',
     notebook: 'Notebook',
     new_supply_cut: 'New supply cut',
+    sync_giswater: 'Sync with GIS Water',
+    sync_giswater_running: 'Syncing with GIS Water…',
+    sync_giswater_done: 'GIS Water sync completed',
+    sync_giswater_error: 'Error syncing with GIS Water',
+    sync_giswater_timeout: 'Could not confirm the GIS Water sync. Please try again later.',
     cut_supply: 'Cut supply',
     no_supply_cuts: 'No supply cuts',
     active_supply_cut_warning: 'Supply point with an active supply cut',
@@ -4269,6 +4274,7 @@ export default {
     delete_occurrence_confirm: 'Delete only this occurrence?',
     delete_confirm: 'Are you sure you want to delete this task?',
     order: 'Work order',
-    badge_title: '{today} for today, {overdue} overdue'
+    badge_title: '{today} for today, {overdue} overdue',
+    text_color: 'Text color'
   }
 }

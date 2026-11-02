@@ -98,6 +98,14 @@ def is_giswater_sync_enabled() -> bool:
     return getattr(settings, "GISWATER_SYNC_CONNECS_ENABLED", False)
 
 
+def is_supply_cut_manual_sync_enabled() -> bool:
+    """Botó «Sincronitzar amb GIS Water» de la llista de talls (ConfigProject)."""
+    from coredata.models import ConfigProject
+
+    config = ConfigProject.objects.filter(token="giswater_supply_cut_sync_enabled").first()
+    return bool(config and str(config.value).strip().lower() in ("true", "1", "yes"))
+
+
 def _catalog_key(value):
     if value is None:
         return None
