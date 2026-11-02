@@ -44,7 +44,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   filterset_class = InvoiceFilter
   search_fields = ['token','title_final', 'number', 'contract__token', 'contract_request__token', 'customer_final', 'customer_token_final', 'serie_final', 'payment_bank_final' ]
-  ordering_fields = ['token','name','origin','customer_final','total_final','status', 'customer_token_final', 'left_to_pay', "issue_date", "due_date", "payment_type"]
+  ordering_fields = ['token','name','origin','customer_final','total_final','status', 'customer_token_final', 'left_to_pay', "issue_date", "due_date", "payment_type", "serie_final"]
   
   def get_queryset(self):
     if self.action == 'list':
