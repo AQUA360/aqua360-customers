@@ -525,7 +525,7 @@ watch(() => props.id, () => {
         <FieldDetail :label="$t('send_batch_block.sent_at')" :value="data.sent_at ? formatDate(data.sent_at) : '-'" />
         <FieldDetail :label="$t('send_batch_block.finished_at')"
           :value="data.finished_at ? formatDate(data.finished_at) : '-'" />
-        <FieldDetail :label="$t('send_batch_block.instant_status')" :value="data.instant_status_code || '-'" />
+        <!-- <FieldDetail :label="$t('send_batch_block.instant_status')" :value="data.instant_status_code || '-'" /> -->
         <FieldDetail v-if="data.related_batch" :label="$t('send_batch_block.related_batch')">
           <span v-if="isSubRegion" class="font-mono">{{ data.related_batch_token || data.related_batch }}</span>
           <div v-else class="flex items-center gap-2 min-w-0">
