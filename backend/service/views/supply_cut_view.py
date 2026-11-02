@@ -1,7 +1,7 @@
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from django.db.models import Prefetch, Q
+from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
@@ -73,17 +73,30 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             )
         )
         # filter_queryset already applies the `ordering` param. Only fall
-        # back to the module default when no explicit ordering is requested,
-        # otherwise `order_by('-date_end')` would silently override the
-        # column the user asked to sort by (e.g. the ID column).
+        # back to the default when no explicit ordering is requested,
+        # otherwise it would silently override the column the user asked
+        # to sort by (e.g. the ID column).
         queryset = self.filter_queryset(qs)
         if 'ordering' not in request.query_params:
-            queryset = queryset.order_by('-date_end')
+            queryset = self._order_open_first(queryset)
         paginator = PageNumberPagination()
         paginator.page_size = 50
         result_page = paginator.paginate_queryset(queryset, request)
         serializer = SupplyCutMinimalSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+    @staticmethod
+    def _order_open_first(queryset):
+        """Ordre per defecte: talls oberts (planificats, actius, en conflicte)
+        primer i, dins de cada grup, l'identificador més nou primer."""
+        closed_tokens = supply_cut_service.closed_status_tokens()
+        return queryset.annotate(
+            closed_order=Case(
+                When(Q(is_active=False) | Q(status__token__in=closed_tokens), then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        ).order_by('closed_order', '-id')
 
     @staticmethod
     def _enforce_vulnerability_rules(data):
@@ -532,6 +545,24 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             day = timezone.now().strftime('%Y%m%d')
         return '{}-{}'.format(random.randint(10000, 99999), day)
 
+    @action(detail=False, methods=['post'], url_path='sync-giswater')
+    def sync_giswater(self, request):
+        """Llança en segon pla la sincronització dels talls amb GIS Water.
+
+        Només si el projecte ho té activat (`giswater_supply_cut_sync_enabled`).
+        Retorna el `task_id` perquè el frontend en pugui seguir l'estat.
+        """
+        from integrations.outbound.giswater.sync import is_supply_cut_manual_sync_enabled
+        from integrations.outbound.giswater.tasks import sync_giswater_suply_cuts_task
+
+        if not is_supply_cut_manual_sync_enabled():
+            return Response(
+                {'error': 'La sincronització amb GIS Water no està activada.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        task = sync_giswater_suply_cuts_task.delay()
+        return Response({'task_id': task.id}, status=status.HTTP_202_ACCEPTED)
+
     @action(detail=False, methods=['get'], url_path='permissions')
     def permissions(self, request):
         pk = request.query_params.get('id')
@@ -551,7 +582,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
-        if self.action in ('bulk_plan_preview', 'bulk_plan'):
+        if self.action in ('bulk_plan_preview', 'bulk_plan', 'sync_giswater'):
             # Custom POSTs: DjangoModelPermissions would demand add_supplycut
             # on the preview too; both are gated explicitly in check_permissions.
             return [IsAuthenticated()]
@@ -559,10 +590,10 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         super().check_permissions(request)
-        if self.action == 'bulk_plan' and not request.user.has_perm('service.add_supplycut'):
+        if self.action in ('bulk_plan', 'sync_giswater') and not request.user.has_perm('service.add_supplycut'):
             self.permission_denied(request)
         if self.action == 'bulk_plan_preview' and not (
             request.user.has_perm('service.add_supplycut')
             or request.user.has_perm('service.change_supplycut')
         ):
-            self.permission_denied(request)
+            self.permission_denied(request)
