@@ -513,7 +513,15 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
+            logger.exception(
+                "Failed to resolve send batch service for batch_id=%s",
+                batch.id,
+                exc_info=exc,
+            )
+            return Response(
+                {"detail": "No s'ha pogut preparar el reenviament."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             svc = get_send_batch_service(batch)
         except SendBatchProviderError as exc:
