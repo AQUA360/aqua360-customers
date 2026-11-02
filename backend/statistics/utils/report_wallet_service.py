@@ -587,18 +587,39 @@ def generate_wallet_bank_summary(request, black_fill=None, white_bold_font=None,
         logger.exception("Error inesperat")
         return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
-def _get_invoice_contract_token(invoice, contract_request_finalize_token):
+_PAYMENT_CONTRACT_SELECT_RELATED = ('invoice__contract', 'commitment_deposit')
+_PAYMENT_CONTRACT_PREFETCH_RELATED = ('commitment_deposit__invoices__contract',)
+
+def _get_payment_invoice(payment):
+    """Factura del pagament o, si és d'un dipòsit, la primera factura del dipòsit (usa el prefetch)."""
+    if payment.invoice:
+        return payment.invoice
+    if payment.commitment_deposit:
+        return min(payment.commitment_deposit.invoices.all(), key=lambda invoice: invoice.pk, default=None)
+    return None
+
+def _get_contract_tokens_by_request(invoices):
+    """Resol en bloc el contracte generat per cada sol·licitud finalitzada: {contract_request_id: contract.token}."""
+    contract_request_ids = {invoice.contract_request_id for invoice in invoices if invoice and not invoice.contract_id and invoice.contract_request_id}
+    finalize_token = ConfigProject.objects.filter(token="contract_request_finalize_token").values_list('value', flat=True).first()
+    if not contract_request_ids or not finalize_token:
+        return {}
+    contract_tokens = {}
+    contracts = Contract.objects.filter(
+        contract_request_id__in=contract_request_ids,
+        contract_request__status__token=finalize_token,
+    ).order_by('-created_at').values_list('contract_request_id', 'token')
+    for contract_request_id, token in contracts:
+        contract_tokens.setdefault(contract_request_id, token or "")
+    return contract_tokens
+
+def _get_invoice_contract_token(invoice, contract_tokens_by_request):
     """Contracte de la factura o, si ve d'una sol·licitud finalitzada, el contracte generat per aquesta."""
     if not invoice:
         return ""
-    if invoice.contract:
+    if invoice.contract_id:
         return invoice.contract.token or ""
-    contract_request = invoice.contract_request
-    if contract_request and contract_request_finalize_token and contract_request.status and contract_request.status.token == contract_request_finalize_token:
-        contract = contract_request.contract.order_by('-created_at').first()
-        if contract:
-            return contract.token or ""
-    return ""
+    return contract_tokens_by_request.get(invoice.contract_request_id, "")
 
 def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -615,7 +636,6 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
             
         paid_status_token = ConfigProject.objects.get(token="payment_status_paid_token").value
         payment_type_debit = ConfigProject.objects.get(token="direct_debit_token").value
-        contract_request_finalize_token = ConfigProject.objects.filter(token="contract_request_finalize_token").values_list('value', flat=True).first()
         
         start_date = None
         end_date = None
@@ -634,7 +654,10 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
             multi_q = payment_multi_filter_q(**get_multi_ids(request.data))
             if multi_q:
                 payments = payments.filter(multi_q).distinct()
+            payments = payments.select_related(*_PAYMENT_CONTRACT_SELECT_RELATED).prefetch_related(*_PAYMENT_CONTRACT_PREFETCH_RELATED)
             payments = sorted(payments, key=lambda x: x.payment_date if x.payment_date else datetime.date.max)
+            payment_invoices = {payment.id: _get_payment_invoice(payment) for payment in payments}
+            contract_tokens_by_request = _get_contract_tokens_by_request(payment_invoices.values())
         else:
             raise Exception("Error obtaining payments for report wallet summary")
 
@@ -676,11 +699,7 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
             
             remittance = None
             remittance_token = ""
-            invoice = None
-            if payment.invoice:
-                invoice = payment.invoice
-            elif payment.commitment_deposit:
-                invoice = payment.commitment_deposit.invoices.first()
+            invoice = payment_invoices[payment.id]
             
             invoice_amount = 0
             if invoice:
@@ -722,7 +741,7 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
             if bank_name and bank_name != "":
                 bank_title += f" ({bank_name})"
             invoice_serie = invoice.serie_final.upper() if invoice else ""
-            contract_token = _get_invoice_contract_token(invoice, contract_request_finalize_token)
+            contract_token = _get_invoice_contract_token(invoice, contract_tokens_by_request)
             
             row_data = [
                 remittance_token, payment.payment_date.strftime('%d-%m-%Y') if payment.payment_date else "", 
@@ -793,7 +812,6 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
         
         paid_status_token = ConfigProject.objects.get(token="payment_status_paid_token").value
         payment_type_debit = ConfigProject.objects.get(token="direct_debit_token").value
-        contract_request_finalize_token = ConfigProject.objects.filter(token="contract_request_finalize_token").values_list('value', flat=True).first()
         
         start_date = None
         end_date = None
@@ -814,7 +832,10 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
             multi_q = payment_multi_filter_q(**get_multi_ids(request.data))
             if multi_q:
                 payments = payments.filter(multi_q).distinct()
+            payments = payments.select_related(*_PAYMENT_CONTRACT_SELECT_RELATED).prefetch_related(*_PAYMENT_CONTRACT_PREFETCH_RELATED)
             payments = sorted(payments, key=lambda x: x.payment_date if x.payment_date else datetime.date.max)
+            payment_invoices = {payment.id: _get_payment_invoice(payment) for payment in payments}
+            contract_tokens_by_request = _get_contract_tokens_by_request(payment_invoices.values())
         else:
             raise Exception("Error obtaining payments for report wallet summary")
         wb = openpyxl.Workbook()
@@ -848,8 +869,7 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
                     }
                 )
             invoice_serie = payment.invoice.serie_final.upper() if payment.invoice else payment.commitment_deposit.token if payment.commitment_deposit else ""
-            invoice = payment.invoice or (payment.commitment_deposit.invoices.first() if payment.commitment_deposit else None)
-            contract_token = _get_invoice_contract_token(invoice, contract_request_finalize_token)
+            contract_token = _get_invoice_contract_token(payment_invoices[payment.id], contract_tokens_by_request)
             row_data = [
                 payment.payment_date.strftime('%d-%m-%Y') if payment.payment_date else "", 
                 payment.customer_token_final,
