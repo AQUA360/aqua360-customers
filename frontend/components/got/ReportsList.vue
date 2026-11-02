@@ -228,6 +228,7 @@ onBeforeUnmount(() => {
                     <Icon name="fa6-solid:hashtag" class="text-gray-400 text-xs flex-shrink-0" />
                     <span class="text-xs font-semibold text-gray-700">{{ report.token }}</span>
                   </div>
+                  <span v-if="report.title" class="text-sm font-medium text-gray-900 truncate">{{ report.title }}</span>
                   <div class="flex items-center gap-2">
                     <Icon name="fa6-solid:calendar" class="text-gray-400 text-xs flex-shrink-0" />
                     <span class="text-xs text-gray-500">{{ formatDate(report.report_date) }}</span>

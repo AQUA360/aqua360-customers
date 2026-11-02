@@ -7,6 +7,7 @@ from got.models import OrderFormSubmission, OrderForm
 from order.serializers.operator_serializer import OperatorSerializer
 from datetime import datetime, date
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 
 
 class OrderFormSerializer(serializers.ModelSerializer):
@@ -37,6 +38,21 @@ class OrderReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderReport
         fields = '__all__'
+
+    def validate(self, attrs):
+        # Les hores són opcionals, però si se n'informa una cal l'altra
+        start_at = attrs.get('start_at', self.instance.start_at if self.instance else None)
+        end_at = attrs.get('end_at', self.instance.end_at if self.instance else None)
+        if bool(start_at) != bool(end_at):
+            raise serializers.ValidationError({'end_at' if start_at else 'start_at': _("Start and end times must be provided together.")})
+        if start_at and end_at and end_at < start_at:
+            raise serializers.ValidationError({'end_at': _("End time must be after start time.")})
+        return attrs
+
+    @staticmethod
+    def _time_dedicated(start_at, end_at):
+        today = date.today()
+        return (datetime.combine(today, end_at) - datetime.combine(today, start_at)).total_seconds() / 60
     
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -146,9 +162,7 @@ class OrderReportSerializer(serializers.ModelSerializer):
             validated_data['operator'] = operator
 
         if start_at and end_at:
-            today = date.today()
-            time_dedicated = (datetime.combine(today, end_at) - datetime.combine(today, start_at)).total_seconds() / 60
-            validated_data['time_dedicated'] = time_dedicated
+            validated_data['time_dedicated'] = self._time_dedicated(start_at, end_at)
 
         validated_data['token'] = generate_token(OrderReport)
         report = super().create(validated_data)
@@ -167,9 +181,10 @@ class OrderReportSerializer(serializers.ModelSerializer):
             validated_data['operator'] = operator
 
         if start_at and end_at:
-            today = date.today()
-            time_dedicated = (datetime.combine(today, end_at) - datetime.combine(today, start_at)).total_seconds() / 60
-            validated_data['time_dedicated'] = time_dedicated
+            validated_data['time_dedicated'] = self._time_dedicated(start_at, end_at)
+        elif 'start_at' in validated_data or 'end_at' in validated_data:
+            # S'han buidat les hores: el temps dedicat ja no es pot calcular
+            validated_data['time_dedicated'] = None
 
         report = super().update(instance, validated_data)
         self._save_filled_form(report, filled_form)

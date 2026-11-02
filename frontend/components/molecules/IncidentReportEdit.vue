@@ -31,6 +31,7 @@ const incident = ref(null)
 const report = ref(null)
 
 const report_date = ref(null)
+const title = ref('')
 const description = ref('')
 
 const documents = ref([])
@@ -42,12 +43,14 @@ const getData = async () => {
             let response = await $IncidentReportApiService.getDetail(props.id);
             report.value = response;
             report_date.value = response.incident_data? response.incident_data : report_date.value;
+            title.value = response.title || '';
             description.value = response.description;
             documents.value = response.documentation_files;
         } else if (report.value) {
             let response = await $IncidentReportApiService.getDetail(report.value.id);
             report.value = response;
             report_date.value = response.incident_data? response.incident_data : report_date.value;
+            title.value = response.title || '';
             description.value = response.description;
             documents.value = response.documentation_files;
         }
@@ -69,6 +72,7 @@ const save = async (close = false) => {
         let save_data = {
             id: report.value ? report.value.id : null,
             incident: props.incident_id || null,
+            title: title.value || null,
             description: description.value,
             incident_data: report_date.value,
         }
@@ -128,6 +132,10 @@ watch(() => props.incident_id, (newValue, oldValue) => {
         <div v-if="!props.id" class="mb-6 w-[50%]">
             <AtomsInputDate v-model="report_date" :label="t('common.date')" class="mb-2"
                 :invalid="attemptedSave && (report_date == null || report_date == '')" :required="true" />
+        </div>
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.title') }}</label>
+            <input type="text" v-model="title" maxlength="255" class="input" />
         </div>
         <div class="mb-6">
             <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.description') }}</label>

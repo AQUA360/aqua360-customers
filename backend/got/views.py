@@ -999,6 +999,7 @@ def add_order_report(request, order_id):
 
     Request Body:
         {
+            "title": "text",            // Optional
             "start_at": "11:05",        // Optional (HH:MM or HH:MM:SS)
             "end_at": "13:05",          // Optional (HH:MM or HH:MM:SS)
             "observation": "text",      // Required if order has no form
@@ -1034,6 +1035,7 @@ def add_order_report(request, order_id):
         )
 
     # Extract fields
+    title = (data.get("title") or "").strip()[:255] or None
     start_at = data.get("start_at")
     end_at = data.get("end_at")
     observation = data.get("observation", "")
@@ -1150,6 +1152,7 @@ def add_order_report(request, order_id):
                 end_at=end_time,
                 time_dedicated=time_dedicated,
                 report_date=date.today(),
+                title=title,
                 observation=observation,
                 token=generate_token(OrderReport),
             )

@@ -64,7 +64,7 @@ const showDetail = function (component, id) {
 
 // Column definitions for the XLSX export — mirror the visible columns above.
 const exportColumns = computed(() => [
-  { header: t('common.date'), value: (row) => row.due_date ? formatDate(row.due_date) : (row.created_at ? formatDate(row.created_at) : '') },
+  { header: t('common.date'), value: (row) => row.due_at ? formatDate(row.due_at) : (row.created_at ? formatDate(row.created_at) : '') },
   { header: t('common.identification'), value: (row) => row.token, key: 'token' },
   { header: t('common.title'), value: (row) => row.name, key: 'name' },
   { header: t('common.status'), value: (row) => row.status_name, key: 'status' },
@@ -109,7 +109,7 @@ watch(() => props.person_id, () => {
         </thead>
         <tbody>
           <tr v-for="(element, index) in data" :key="element.id" class="border-b">
-            <td class="p-2">{{ element.due_date ? formatDate(element.due_date) : formatDate(element.created_at) }}</td>
+            <td class="p-2">{{ element.due_at ? formatDate(element.due_at) : formatDate(element.created_at) }}</td>
             <td class="p-2">
               <div v-if="!props.isSubRegion" class="flex gap-2">
                 <button @click="showDetail('IncidentRegion', element.id)"

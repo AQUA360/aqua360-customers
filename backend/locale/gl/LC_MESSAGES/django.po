@@ -4877,3 +4877,9 @@ msgstr "Cambio de nome"
 #: documentmanager/utils/export_registry.py
 msgid "Nova alta"
 msgstr "Nova alta"
+
+msgid "Start and end times must be provided together."
+msgstr "As horas de inicio e de fin deben informarse xuntas."
+
+msgid "End time must be after start time."
+msgstr "A hora de fin debe ser posterior á hora de inicio."

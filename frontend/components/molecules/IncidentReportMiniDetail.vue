@@ -101,10 +101,11 @@ watch(() => props.item, (newVal) => {
           <p>{{ item.incident_data? formatDate(item.incident_data) : '-' }}</p>
         </div>
   
-        <div class="footering text-slate-500 p-2 w-full">
+        <div class="footering text-slate-500 p-2 w-full flex items-baseline gap-2 min-w-0">
           <button v-if="!props.isSubRegion" @click="showDetail('IncidentReportEdit', item.id)"
-            class="text-start text-sky-500 underline">{{ item.token }}</button>
-          <span v-else>{{ item.token }}</span>
+            class="text-start text-sky-500 underline flex-shrink-0">{{ item.token }}</button>
+          <span v-else class="flex-shrink-0">{{ item.token }}</span>
+          <span v-if="item.title" class="text-slate-700 truncate" :title="item.title">{{ item.title }}</span>
         </div>
   
         <div class="footering text-slate-500 p-2 w-full">

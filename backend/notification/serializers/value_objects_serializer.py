@@ -72,7 +72,7 @@ class IncidentReportListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = IncidentReport
-        fields = ['id', 'token', 'incident_data', 'user_username'] 
+        fields = ['id', 'token', 'title', 'incident_data', 'user_username'] 
     
     def to_representation(self, instance):
         representation = super().to_representation(instance)

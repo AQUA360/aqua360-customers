@@ -31,6 +31,7 @@ const dynamicFormRef = ref(null);
 // Base form fields
 const startTime = ref('');
 const endTime = ref('');
+const title = ref('');
 const observation = ref('');
 
 // Legacy file upload (only used when no dynamic form)
@@ -219,6 +220,7 @@ const submitWithDynamicForm = async () => {
   const filledForm = dynamicFormRef.value?.getFilledForm() || [];
   
   const reportData = {
+    title: title.value,
     start_at: startTime.value,
     end_at: endTime.value,
     observation: observation.value || '',
@@ -251,6 +253,7 @@ const submitWithLegacyUpload = async () => {
   // Step 1: Create report (only if not already created)
   if (!reportCreated.value) {
     const reportResponse = await $gotApi.addReport(route.params.id, {
+      title: title.value,
       start_at: startTime.value,
       end_at: endTime.value,
       observation: observation.value
@@ -445,7 +448,19 @@ onMounted(() => {
           </div>
         </div>
         
-        <div class="px-4 py-4">
+        <div class="px-4 py-4 space-y-4">
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">
+              {{ $t('common.title') }}
+              <span class="text-gray-400 text-xs ml-1">({{ $t('common.optional') }})</span>
+            </label>
+            <input
+              v-model="title"
+              type="text"
+              maxlength="255"
+              class="w-full px-3 py-2.5 border border-gray-200/60 rounded-lg text-base transition-all duration-150 focus:border-blue-500 focus:ring-blue-500/20"
+            />
+          </div>
           <div class="space-y-2">
             <label class="block text-sm font-medium text-gray-700">
               {{ $t('GOT.work_description') }}

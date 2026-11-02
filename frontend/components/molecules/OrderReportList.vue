@@ -29,6 +29,7 @@ const { $OrderApiService } = useNuxtApp();
 const exportColumns = computed(() => [
   { header: t('common.date'), value: (row) => row.report_date ? formatDate(row.report_date) : '', key: 'report_date' },
   { header: t('common.report_detail'), value: (row) => row.token, key: 'token' },
+  { header: t('common.title'), value: (row) => row.title || '', key: 'title' },
   { header: `${t('common.dedicated')}(min)`, value: (row) => row.time_dedicated, key: 'time_dedicated' },
   { header: t('common.docs'), value: (row) => row?.active_documents || 0, key: 'active_documents' },
   { header: t('operator'), value: (row) => row.operator_full_name ? row.operator_full_name : row?.operator?.token },
@@ -98,9 +99,10 @@ watch(() => props.item, (newVal) => {
           <p>{{ formatDate(item.report_date) }}</p>
         </div>
   
-        <div class="footering text-slate-500 p-2 w-full">
+        <div class="footering text-slate-500 p-2 w-full flex items-baseline gap-2 min-w-0">
           <button @click="showDetail('OrderReportEdit', item.id)"
-            class="text-start text-sky-500 underline">{{ item.token }}</button>
+            class="text-start text-sky-500 underline flex-shrink-0">{{ item.token }}</button>
+          <span v-if="item.title" class="text-slate-700 truncate" :title="item.title">{{ item.title }}</span>
         </div>
         
         <div class="footering text-slate-500 p-2 w-full">

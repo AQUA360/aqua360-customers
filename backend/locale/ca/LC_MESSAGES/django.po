@@ -6279,3 +6279,9 @@ msgstr "Canvi de nom"
 #: documentmanager/utils/export_registry.py
 msgid "Nova alta"
 msgstr "Nova alta"
+
+msgid "Start and end times must be provided together."
+msgstr "Les hores d'inici i de fi s'han d'informar juntes."
+
+msgid "End time must be after start time."
+msgstr "L'hora de fi ha de ser posterior a l'hora d'inici."

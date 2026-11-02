@@ -36,6 +36,7 @@ const start_at = ref(null)
 const end_at = ref(null)
 const report_date = ref(null)
 const time_dedicated = ref(null)
+const title = ref('')
 const observation = ref('')
 
 const selected_operator = ref(null)
@@ -55,6 +56,7 @@ const getData = async () => {
             time_dedicated.value = response.time_dedicated;
             start_at.value = extractTime(response.start_at);
             end_at.value = extractTime(response.end_at);
+            title.value = response.title || '';
             observation.value = response.observation;
             if (showAllDocuments.value) {
                 documents.value = response.documents;
@@ -72,6 +74,7 @@ const getData = async () => {
         } else if (report.value) {
             report_date.value = report.value.report_date;
             time_dedicated.value = report.value.time_dedicated;
+            title.value = report.value.title || '';
             observation.value = report.value.observation;
             documents.value = report.value.documents;
             start_at.value = extractTime(report.value.start_at);
@@ -198,11 +201,12 @@ const save = async (close = false) => {
         let save_data = {
             id: report.value ? report.value.id : null,
             order: props.order_id || null,
+            title: title.value || null,
             observation: observation.value,
             report_date: report_date.value,
             operator_id: typeof selected_operator.value === 'object' && selected_operator.value !== null ? selected_operator.value.code : selected_operator.value,
-            start_at: start_at.value,
-            end_at: end_at.value,
+            start_at: start_at.value || null,
+            end_at: end_at.value || null,
             filled_form: formData.value.map(field => ({
                 token: field.token,
                 response: field.response
@@ -271,11 +275,21 @@ const viewFormDocument = async (documentId) => {
     }
 }
 
+const timesError = computed(() => {
+    if (!!start_at.value !== !!end_at.value) {
+        return start_at.value ? t('GOT.end_time_required_if_start') : t('GOT.start_time_required_if_end')
+    }
+    if (start_at.value && end_at.value && end_at.value < start_at.value) return t('GOT.end_time_must_be_after_start')
+    return null
+})
+
 const isValid = () => {
     if (report_date.value == null || report_date.value == '') return false
-    //if (time_dedicated.value == null || time_dedicated.value == '' || time_dedicated.value == 0) return false
-    if (start_at.value == null || start_at.value == '') return false
-    if (end_at.value == null || end_at.value == '') return false
+    // Les hores són opcionals, però si se n'informa una cal l'altra
+    if (timesError.value) {
+        toast.error(timesError.value)
+        return false
+    }
     if (selected_operator.value == null) return false
     return true
 }
@@ -304,8 +318,12 @@ watch(() => props.order_id, (newValue, oldValue) => {
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <InputDate v-model="report_date" :label="t('common.date')" required :invalid="attemptedSave && (report_date == null || report_date == '')" />
-            <InputTime v-model="start_at" :label="t('common.start')" required :invalid="attemptedSave && (start_at == null || start_at == '')" />
-            <InputTime v-model="end_at" :label="t('common.end')" required :invalid="attemptedSave && (end_at == null || end_at == '')" />
+            <InputTime v-model="start_at" :label="t('common.start')" :invalid="attemptedSave && !!timesError && !start_at" />
+            <InputTime v-model="end_at" :label="t('common.end')" :invalid="attemptedSave && !!timesError && !!start_at" />
+        </div>
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.title') }}</label>
+            <input type="text" v-model="title" maxlength="255" class="input" />
         </div>
         <div class="mb-6">
             <label class="block text-sm font-medium text-slate-500 mb-2">

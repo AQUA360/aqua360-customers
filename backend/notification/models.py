@@ -326,6 +326,7 @@ class IncidentReport(models.Model):
     
     incident_data = models.DateField(null=True, blank=True)
     incident = models.ForeignKey(Incident, on_delete=models.CASCADE, null=True, blank=True, related_name='reports')
+    title = models.CharField(max_length=255, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
     
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
