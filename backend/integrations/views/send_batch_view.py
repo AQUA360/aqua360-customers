@@ -473,7 +473,11 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
                 {"detail": "No s'ha pogut inicialitzar el servei d'enviament."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
+            logger.exception("Failed to build send payload preview for batch id=%s", batch.id)
+            return Response(
+                {"detail": "No s'ha pogut generar la previsualització del payload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
             payload = svc.build_send_payload_preview(batch, aqua_ids)
         except svc.api_error as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
