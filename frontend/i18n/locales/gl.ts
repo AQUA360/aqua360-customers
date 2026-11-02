@@ -2264,6 +2264,8 @@ export default {
     payments_to_remit: 'A remesar',
     exclude_contracts_with_pending_invoices_action: 'Excluír os de contratos con impagados',
     info_exclude_contracts_with_pending_invoices: "Ao buscar, marca como excluídos os pagos dos contratos que teñen facturas pendentes de pago (vencidas ou impagadas), sen contar as facturas de gastos de impagados. Non desaparecen do listado: pódense revisar e volver incluír desde a lapela «Excluídos».",
+    filter_reject_motives: 'Motivos de devolución',
+    info_filter_reject_motives: "Incluír: só os pagos cos motivos seleccionados. Excluír: quita da remesa os pagos con eses motivos.",
     sent_date: 'Data de envío',
     total_amount: 'Importe total',
     payments_count: 'Número de pagos',
