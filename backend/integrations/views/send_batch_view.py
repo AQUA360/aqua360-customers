@@ -468,8 +468,11 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
             )
         try:
             svc = get_send_batch_service(batch)
-        except SendBatchProviderError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except SendBatchProviderError:
+            return Response(
+                {"detail": "No s'ha pogut inicialitzar el servei d'enviament."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             payload = svc.build_send_payload_preview(batch, aqua_ids)
         except svc.api_error as exc:
