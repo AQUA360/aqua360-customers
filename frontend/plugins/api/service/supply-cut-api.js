@@ -212,6 +212,16 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    /** Launch the GIS Water supply cut sync in background; returns `{ task_id }`. */
+    const syncGiswater = async () => {
+      const apiUrl = `${apiHost}${entity}sync-giswater/`;
+      try {
+        return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify({}), { 'Content-Type': 'application/json' });
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const apiService = {
       getData,
       getFilterStatus,
@@ -224,7 +234,8 @@ export default defineNuxtPlugin(nuxtApp => {
       finishCut,
       resolveReview,
       bulkPlanPreview,
-      bulkPlanCreate
+      bulkPlanCreate,
+      syncGiswater
     };
   
     nuxtApp.provide(provideName, apiService);
