@@ -504,6 +504,7 @@ ODOO_TIMEOUT=30
 ODOO_PUSH_ENABLED=False
 ODOO_PUSH_INVOICES=True
 ODOO_PUSH_PAYMENTS=True
+ODOO_INBOUND_BEARER_TOKEN=
 ```
 
 Variables afegides a `.env.example` i carregades a `customers/settings.py`.

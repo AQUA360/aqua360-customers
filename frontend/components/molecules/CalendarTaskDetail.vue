@@ -4,6 +4,7 @@ import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { formatDate } from '~/utils/date';
 import Date from '~/components/atoms/Date.vue';
 import ButtonOutline from '../atoms/ButtonOutline.vue';
+import { taskChipClass, taskTextClass } from '~/utils/calendarTasks';
 
 const { $CalendarTaskApiService } = useNuxtApp();
 const sidebarStore = useSidebarStore();
@@ -60,31 +61,6 @@ const handleTaskCheck = async (event) => {
   sidebarStore.tasksChanged();
 };
 
-const getStyleColor = (color) => {
-  if (!color) return "border-slate-200 bg-slate-50";
-  //IF DIRECTLY USING return `border-${color}-400 bg-${color}-50`; BORDER WONT APPEAR
-  switch (color) {
-    case 'gray':
-      return `border-gray-400 bg-gray-50`;
-    case 'green':
-      return `border-green-400 bg-green-50`;
-    case 'red':
-      return `border-red-400 bg-red-50`;
-    case 'yellow':
-      return `border-yellow-400 bg-yellow-50`;
-    case 'blue':
-      return `border-blue-400 bg-blue-50`;
-    case 'purple':
-      return `border-purple-400 bg-purple-50`;
-    case 'pink':
-      return `border-pink-400 bg-pink-50`;
-    case 'orange':
-      return `border-orange-400 bg-orange-50`;
-    default:
-      return `border-${color}-400 bg-${color}-50`;
-  }
-};
-
 const showDetail = function (component, id) {
   emit('show-detail', component, id);
 }
@@ -132,10 +108,10 @@ watch(() => props.id, (newId, oldId) => {
     }}</span>
   </div>
 
-  <div v-else-if="localData" class="group rounded-md border-l-8 relative" :class="getStyleColor(localData.color)">
+  <div v-else-if="localData" class="group rounded-md border-l-8 relative" :class="taskChipClass(localData.color)">
     <div class="px-4 py-2">
       <div class="px-4 py-2 flex justify-between">
-        <div class="text-slate-700 font-medium rounded-t-md flex items-center gap-2">
+        <div class="font-medium rounded-t-md flex items-center gap-2" :class="taskTextClass(localData.text_color) || 'text-slate-700'">
           <span v-if="localData.time" class="text-slate-500 text-sm">{{ localData.time.slice(0, 5) }}</span>
           {{ localData.name }}
           <Icon v-if="localData.recurrence" name="fa6-solid:repeat" class="text-slate-400 text-xs" :title="t('calendar_tasks.recurring')" />
@@ -151,10 +127,10 @@ watch(() => props.id, (newId, oldId) => {
       </div>
 
       <div class="mt-2">
-        <FieldDetail :label="$t('common.assigned')"
+        <FieldDetail :label="$t('common.assigned')" :class="taskTextClass(localData.text_color) || 'text-slate-700'"
           :value="localData.user ? localData.user.username : t('common.no_user_assigned')" :strong="true" />
         <FieldDetail v-if="localData.description" :label="$t('dashboard.task_description')" :value="localData.description"
-          :strong="true" />
+          :strong="true" :class="taskTextClass(localData.text_color) || 'text-slate-700'" />
         <FieldDetail v-if="localData.order" :label="$t('calendar_tasks.order')" :strong="true">
           <NuxtLink :to="`/order/orders?id=${localData.order.id}`" class="text-sky-500 underline hover:no-underline">
             {{ localData.order.token }}<span v-if="localData.order.type" class="text-slate-400 no-underline ml-1">({{ localData.order.type }})</span>

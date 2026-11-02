@@ -57,6 +57,7 @@ const error = ref(null);
 const name = ref('');
 const description = ref('');
 const color = ref('');
+const textColor = ref('');
 //const user = ref('');
 const all_users = ref(true);
 
@@ -144,6 +145,8 @@ const fetchData = async () => {
     const detail = await $CalendarTaskApiService.getDetail(props.id);
     name.value = detail.name;
     description.value = detail.description;
+    color.value = detail.color || '';
+    textColor.value = detail.text_color || '';
     all_users.value = detail.user == null;
     selectedUser.value = detail.user
       ? { code: detail.user.id, label: detail.user.username }
@@ -245,6 +248,8 @@ watch(() => props.id, (newId, oldId) => {
   if (newId == null) {
     name.value = '';
     description.value = '';
+    color.value = '';
+    textColor.value = '';
     all_users.value = true;
     selectedUser.value = null;
     time.value = '';
@@ -255,7 +260,9 @@ watch(() => props.id, (newId, oldId) => {
   }
 });
 
-const handleColorChanged = () => {
+const handleColorChanged = (payload) => {
+  if (payload?.property === 'text_color') textColor.value = payload.code;
+  else if (payload?.property === 'color') color.value = payload.code;
   emit('change', false);
 }
 
@@ -315,9 +322,20 @@ const handleColorChanged = () => {
         <input type="text" v-model="name" class="input"
           :class="{ 'invalid': attemptedSave && name == '' || attemptedSave && name == null }" />
       </div>
-      <span v-if="id" class="text-slate-900 p-1 my-auto">
-        <AtomsColorPicker :entity="'notification/calendar-task'" :id="id" :code="color" @changed="handleColorChanged" />
-      </span>
+      <div v-if="id" class="flex items-end gap-4 p-1 my-auto">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-2">{{ t('common.color') }}</label>
+          <div class="relative h-8 w-8">
+            <AtomsColorPicker :entity="'notification/calendar-task'" :id="id" property="color" :code="color" @changed="handleColorChanged" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-2">{{ t('calendar_tasks.text_color') }}</label>
+          <div class="relative h-8 w-8">
+            <AtomsColorPicker :entity="'notification/calendar-task'" :id="id" property="text_color" :code="textColor || 'black'" @changed="handleColorChanged" />
+          </div>
+        </div>
+      </div>
     </div>
     <div class="mb-4 rounded-md border border-slate-200 p-3">
       <label class="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, subMonths, addMonths, isSameMonth, isSameDay, isToday } from 'date-fns';
 import CalendarTaskRegion from '../organisms/CalendarTaskRegion.vue';
-import { WEEKDAY_KEYS } from '~/utils/calendarTasks';
+import { taskIconClass, WEEKDAY_KEYS } from '~/utils/calendarTasks';
 
 const { t } = useI18n()
 
@@ -186,9 +186,9 @@ onMounted(() => {
                     :class="getGridCols(tasksByDay[format(day.date, 'yyyy-MM-dd')].length)">
                     <div v-for="task in tasksByDay[format(day.date, 'yyyy-MM-dd')]" :key="task.id" class="flex items-center">
                         <Icon v-show="!task.task_done" name="fa6-solid:circle" class="text-xs"
-                            :class="task.color ? 'text-' + task.color + '-500' : 'text-sky-500'" />
+                            :class="taskIconClass(task.color)" />
                         <Icon v-show="task.task_done" name="fa6-regular:circle-check" class="text-xs"
-                            :class="task.color ? 'text-' + task.color + '-500' : 'text-sky-500'" />
+                            :class="taskIconClass(task.color)" />
                     </div>
 
                 </div>
