@@ -525,7 +525,15 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             svc = get_send_batch_service(batch)
         except SendBatchProviderError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception(
+                "Failed to resolve send batch service for batch_id=%s",
+                batch.id,
+                exc_info=exc,
+            )
+            return Response(
+                {"detail": "No s'ha pogut preparar el reenviament."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         type_token = batch.batch_type.token if batch.batch_type else "invoices"
         send = request.data.get("send", True)
@@ -581,7 +589,15 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
                     send=bool(send),
                 )
         except (svc.api_error, svc.mapping_error) as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception(
+                "Failed to resend errored items for batch_id=%s",
+                batch.id,
+                exc_info=exc,
+            )
+            return Response(
+                {"detail": "S'ha produït un error en processar el reenviament."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         serializer = SendBatchDetailSerializer(
             created[0] if created else None, context={"request": request}
