@@ -214,17 +214,29 @@ Mismo JSON que v1. Solo cambian estos casos:
 
 ---
 
-## 4 · Implementación (lado Odoo)
+## 4 · Lotes (bulk)
+
+Documentación completa: [`batch-sending-v1.0.pdf`](batch-sending-v1.0.pdf).
+
+Envío: `{ "batch_id": "...", "items": [ <mismo JSON individual> ] }` a
+`POST /batch/invoices|payments|commitment/create|commitment/cancel` (máx. 1000).
+
+Resultado final: Odoo hace `POST` a Aqua360 (`/odoo/v1/batch-results/`) con
+`Authorization: Bearer` y el mismo JSON que `GET /aqua360/batch/{batch_id}`
+(`status: done`, `summary`, `results[]` con `aqua_id` / `status` / `message`).
+
+---
+
+## 5 · Implementación (lado Odoo)
 
 La nota para el desarrollador (PoC con FastAPI/OCA: stack, módulo `aqua360_connector`, schemas, resolución de relacionados y conciliación) consta en un **documento propio**, separado de este contrato.
 
 ---
 
-## 5 · Pendientes v2
+## 6 · Pendientes v2
 
 | Funcionalidad | Descripción |
 |---------------|-------------|
-| Compromiso | Crear un compromiso y conciliar contra él |
 | Conciliación múltiple | Un pago contra varias facturas (remesas agrupadas) |
-| Acuse / estado de vuelta | Si Aqua360 necesita saber qué documentos ha aceptado o rechazado Odoo para reintentar |
 | Devoluciones / impagados | R-transactions SEPA: deshacer la conciliación y devolver la factura a pendiente |
+| Reenvío selectivo UI | Seleccionar errores de un lote y crear un lote nuevo con `related_batch` |

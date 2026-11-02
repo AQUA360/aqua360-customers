@@ -1,6 +1,9 @@
+from datetime import date
 from decimal import Decimal
 
-from billing.models import Invoice, InvoiceLineItem, PaymentMovement
+from django.utils import timezone
+
+from billing.models import CommitmentDeposit, Invoice, InvoiceLineItem, PaymentMovement
 from coredata.utils.other_utils import round_ceil
 
 from .exceptions import OdooMappingError
@@ -79,10 +82,10 @@ def resolve_payment_mode(payment_type_token: str, payment_type_name: str = "") -
 
 def map_line_item(line: InvoiceLineItem) -> dict:
     product = line.product
-    if not product or not product.token:
-        raise OdooMappingError(
-            f"La línia {line.id} de factura no té producte amb token (pricing.Product)."
-        )
+    # if not product or not product.token:
+    #     raise OdooMappingError(
+    #         f"La línia {line.id} de factura no té producte amb token (pricing.Product)."
+    #     )
 
     tax_token = line.tax.token if line.tax and line.tax.token else None
     if not tax_token:
@@ -92,8 +95,8 @@ def map_line_item(line: InvoiceLineItem) -> dict:
 
     return {
         "product_id": {
-            "aqua_id": product.token,
-            "name": line.product_name or product.name or product.token,
+            "aqua_id": product.token if product else "CUSTOM",
+            "name": product.name or product.token if product else line.product_name,
         },
         "name": line.name or line.description or line.product_name or product.name,
         "quantity": _to_float(line.units),
@@ -285,3 +288,130 @@ def map_payment_movement_to_odoo(movement: PaymentMovement) -> dict:
         payload["journal_id"] = journal
 
     return payload
+
+
+def _commitment_date(deposit: CommitmentDeposit, override=None):
+    """
+    Data del compromís a Odoo.
+
+    Prioritat: override explícit → start_date → created_at (data civil).
+    """
+    if override is not None:
+        return override
+    if deposit.start_date:
+        return deposit.start_date
+    if deposit.created_at:
+        return deposit.created_at.date()
+    return None
+
+
+def map_commitment_deposit_create_to_odoo(
+    deposit: CommitmentDeposit, *, date_override=None
+) -> dict:
+    """
+    POST /commitment/create (i cada ítem de /batch/commitment/create).
+
+    id_compromis = CommitmentDeposit.token
+    aqua_invoice_ids = tokens de les factures vinculades
+    commitment_terms = PaymentCommitment amb is_guide=True (pla de terminis)
+    """
+    if not deposit.token:
+        raise OdooMappingError(
+            f"El compromís {deposit.id} no té token (id_compromis)."
+        )
+
+    commit_date = _commitment_date(deposit, date_override)
+    if not commit_date:
+        raise OdooMappingError(
+            f"El compromís {deposit.token} no té start_date ni created_at."
+        )
+
+    # Sense repeticions (contracte Odoo: almenys una, sense duplicats).
+    seen = set()
+    invoice_tokens = []
+    for token in (
+        deposit.invoices.exclude(token__isnull=True)
+        .exclude(token="")
+        .order_by("id")
+        .values_list("token", flat=True)
+    ):
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        invoice_tokens.append(token)
+    if not invoice_tokens:
+        raise OdooMappingError(
+            f"El compromís {deposit.token} no té factures amb token "
+            "(aqua_invoice_ids)."
+        )
+
+    terms_qs = (
+        deposit.payment_commitments.filter(is_guide=True)
+        .exclude(due_date__isnull=True)
+        .exclude(amount__isnull=True)
+        .order_by("due_date", "id")
+    )
+    terms = []
+    for term in terms_qs:
+        amount = _round2(term.amount)
+        if amount <= 0:
+            raise OdooMappingError(
+                f"El termini {term.id} del compromís {deposit.token} "
+                f"té amount={amount} (cal > 0)."
+            )
+        terms.append(
+            {
+                "due_date": term.due_date.isoformat(),
+                "amount": amount,
+            }
+        )
+    if not terms:
+        raise OdooMappingError(
+            f"El compromís {deposit.token} no té terminis guia "
+            "(PaymentCommitment is_guide=True amb due_date i amount)."
+        )
+
+    return {
+        "id_compromis": deposit.token,
+        "date": commit_date.isoformat(),
+        "aqua_invoice_ids": invoice_tokens,
+        "commitment_terms": terms,
+    }
+
+
+def map_commitment_deposit_cancel_to_odoo(
+    deposit: CommitmentDeposit, *, date_override=None
+) -> dict:
+    """
+    POST /commitment/cancel (i cada ítem de /batch/commitment/cancel).
+
+    date no pot ser posterior a avui (regla del connector Odoo).
+    """
+    if not deposit.token:
+        raise OdooMappingError(
+            f"El compromís {deposit.id} no té token (id_compromis)."
+        )
+
+    cancel_date = date_override
+    if cancel_date is None:
+        if deposit.updated_at:
+            cancel_date = deposit.updated_at.date()
+        else:
+            cancel_date = _commitment_date(deposit)
+    if not cancel_date:
+        raise OdooMappingError(
+            f"El compromís {deposit.token} no té data de cancel·lació."
+        )
+
+    today = timezone.localdate()
+    if isinstance(cancel_date, date) and cancel_date > today:
+        raise OdooMappingError(
+            f"La data de cancel·lació del compromís {deposit.token} "
+            f"({cancel_date.isoformat()}) no pot ser posterior a avui "
+            f"({today.isoformat()})."
+        )
+
+    return {
+        "id_compromis": deposit.token,
+        "date": cancel_date.isoformat(),
+    }

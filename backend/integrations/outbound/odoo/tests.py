@@ -10,6 +10,8 @@ from integrations.outbound.odoo.client import INVOICES_ENDPOINT, OdooClient, PRO
 from integrations.outbound.odoo.exceptions import OdooApiError, OdooMappingError
 from integrations.outbound.odoo.mappers import (
     is_movement_pushable,
+    map_commitment_deposit_cancel_to_odoo,
+    map_commitment_deposit_create_to_odoo,
     map_invoice_to_odoo,
     map_payment_movement_to_odoo,
     resolve_partner,
@@ -96,6 +98,42 @@ def _build_movement(**overrides):
     return movement
 
 
+def _build_commitment_deposit(**overrides):
+    deposit = MagicMock()
+    deposit.id = 42
+    deposit.token = "03000001234"
+    deposit.start_date = date(2026, 10, 1)
+    deposit.created_at = None
+    deposit.updated_at = None
+
+    inv_qs = MagicMock()
+    inv_qs.exclude.return_value.exclude.return_value.order_by.return_value.values_list.return_value = [
+        "2026Q3-000123",
+        "2026Q3-000124",
+    ]
+    deposit.invoices = inv_qs
+
+    term1 = MagicMock()
+    term1.id = 1
+    term1.due_date = date(2026, 11, 1)
+    term1.amount = Decimal("50.00")
+    term2 = MagicMock()
+    term2.id = 2
+    term2.due_date = date(2026, 12, 1)
+    term2.amount = Decimal("50.00")
+
+    terms_qs = MagicMock()
+    terms_qs.filter.return_value.exclude.return_value.exclude.return_value.order_by.return_value = [
+        term1,
+        term2,
+    ]
+    deposit.payment_commitments = terms_qs
+
+    for key, value in overrides.items():
+        setattr(deposit, key, value)
+    return deposit
+
+
 class OdooMappersTest(TestCase):
     def test_map_invoice_to_odoo(self):
         payload = map_invoice_to_odoo(_build_invoice())
@@ -170,6 +208,39 @@ class OdooMappersTest(TestCase):
         self.assertEqual(payload["reconcile"]["invoice_aqua_id"], "2026Q3-000123")
         self.assertEqual(payload["amount"], 27.50)
 
+    def test_map_commitment_deposit_create_to_odoo(self):
+        payload = map_commitment_deposit_create_to_odoo(_build_commitment_deposit())
+
+        self.assertEqual(payload["id_compromis"], "03000001234")
+        self.assertEqual(payload["date"], "2026-10-01")
+        self.assertEqual(
+            payload["aqua_invoice_ids"], ["2026Q3-000123", "2026Q3-000124"]
+        )
+        self.assertEqual(
+            payload["commitment_terms"],
+            [
+                {"due_date": "2026-11-01", "amount": 50.0},
+                {"due_date": "2026-12-01", "amount": 50.0},
+            ],
+        )
+
+    def test_map_commitment_deposit_cancel_to_odoo(self):
+        deposit = _build_commitment_deposit(
+            updated_at=MagicMock(date=lambda: date(2026, 10, 15))
+        )
+        payload = map_commitment_deposit_cancel_to_odoo(deposit)
+
+        self.assertEqual(payload["id_compromis"], "03000001234")
+        self.assertEqual(payload["date"], "2026-10-15")
+
+    def test_map_commitment_deposit_create_missing_terms_raises(self):
+        deposit = _build_commitment_deposit()
+        empty = MagicMock()
+        empty.filter.return_value.exclude.return_value.exclude.return_value.order_by.return_value = []
+        deposit.payment_commitments = empty
+        with self.assertRaises(OdooMappingError):
+            map_commitment_deposit_create_to_odoo(deposit)
+
     def test_map_payment_movement_return_has_negative_amount(self):
         movement = _build_movement(is_positive=False)
         self.assertTrue(is_movement_pushable(movement))
@@ -215,21 +286,23 @@ class OdooMappersTest(TestCase):
     ODOO_TIMEOUT=10,
 )
 class OdooClientTest(TestCase):
-    @patch("integrations.outbound.odoo.client.requests.post")
-    def test_push_invoice_success(self, mock_post):
+    @patch("integrations.outbound.odoo.client.requests.request")
+    def test_push_invoice_success(self, mock_request):
         mock_response = MagicMock()
         mock_response.ok = True
         mock_response.status_code = 201
         mock_response.json.return_value = {"id": 42, "aqua_id": "2026Q3-000123"}
-        mock_post.return_value = mock_response
+        mock_request.return_value = mock_response
 
         payload = {"aqua_id": "2026Q3-000123", "move_type": "out_invoice"}
         client = OdooClient()
         result = client.push_invoice(payload)
 
         self.assertEqual(result["id"], 42)
-        mock_post.assert_called_once()
-        call_kwargs = mock_post.call_args.kwargs
+        mock_request.assert_called_once()
+        call_args = mock_request.call_args
+        self.assertEqual(call_args.args[0], "POST")
+        call_kwargs = call_args.kwargs
         self.assertEqual(
             call_kwargs["headers"]["Aqua360-Api-Key"],
             "test-key",
@@ -241,14 +314,14 @@ class OdooClientTest(TestCase):
         self.assertTrue(log.success)
         self.assertEqual(log.object_type, "invoice")
 
-    @patch("integrations.outbound.odoo.client.requests.post")
-    def test_push_invoice_http_error(self, mock_post):
+    @patch("integrations.outbound.odoo.client.requests.request")
+    def test_push_invoice_http_error(self, mock_request):
         mock_response = MagicMock()
         mock_response.ok = False
         mock_response.status_code = 422
         mock_response.text = "Totals no quadren"
         mock_response.json.return_value = {"detail": "Totals no quadren"}
-        mock_post.return_value = mock_response
+        mock_request.return_value = mock_response
 
         client = OdooClient()
         with self.assertRaises(OdooApiError):
@@ -258,9 +331,9 @@ class OdooClientTest(TestCase):
         self.assertFalse(log.success)
         self.assertEqual(log.status_code, 422)
 
-    @patch("integrations.outbound.odoo.client.requests.post")
-    def test_push_invoice_connection_error(self, mock_post):
-        mock_post.side_effect = requests.RequestException("timeout")
+    @patch("integrations.outbound.odoo.client.requests.request")
+    def test_push_invoice_connection_error(self, mock_request):
+        mock_request.side_effect = requests.RequestException("timeout")
 
         client = OdooClient()
         with self.assertRaises(OdooApiError):
@@ -268,3 +341,37 @@ class OdooClientTest(TestCase):
 
         log = IntegrationRequestLog.objects.get()
         self.assertFalse(log.success)
+
+    @patch("integrations.outbound.odoo.client.requests.request")
+    def test_push_invoice_batch_accepted(self, mock_request):
+        mock_response = MagicMock()
+        mock_response.ok = True
+        mock_response.status_code = 202
+        mock_response.json.return_value = {
+            "batch_id": "INV-20261029-abc",
+            "status": "pending",
+            "items": 2,
+            "received_at": "2026-10-21T13:04:00Z",
+        }
+        mock_request.return_value = mock_response
+
+        client = OdooClient()
+        result = client.push_batch(
+            "/batch/invoices",
+            "INV-20261029-abc",
+            [{"aqua_id": "A"}, {"aqua_id": "B"}],
+            object_type="send_batch_invoices",
+        )
+
+        self.assertEqual(result["status_code"], 202)
+        self.assertEqual(result["payload"]["status"], "pending")
+        call_args = mock_request.call_args
+        self.assertEqual(call_args.args[0], "POST")
+        call_kwargs = call_args.kwargs
+        self.assertEqual(
+            call_kwargs["json"],
+            {"batch_id": "INV-20261029-abc", "items": [{"aqua_id": "A"}, {"aqua_id": "B"}]},
+        )
+        log = IntegrationRequestLog.objects.get()
+        self.assertEqual(log.endpoint, "/batch/invoices")
+        self.assertTrue(log.success)
