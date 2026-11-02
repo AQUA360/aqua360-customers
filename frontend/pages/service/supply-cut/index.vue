@@ -54,11 +54,16 @@ let requestSeq = 0;
 const giswaterSyncEnabled = ref(false);
 const syncingGiswater = ref(false);
 let giswaterSyncInterval = null;
+// Si la tasca no acaba en aquest temps (p. ex. cap worker de Celery actiu), es deixa d'esperar.
+const GISWATER_SYNC_POLL_MS = 2000;
+const GISWATER_SYNC_TIMEOUT_MS = 5 * 60 * 1000;
 
 const loadGiswaterSyncEnabled = async () => {
   try {
     const value = await $ConfigProjectApiService.get('giswater_supply_cut_sync_enabled');
-    giswaterSyncEnabled.value = value === true || String(value).toLowerCase() === 'true';
+    // Mateixos valors que el backend (`is_supply_cut_manual_sync_enabled`).
+    giswaterSyncEnabled.value = value === true
+      || ['true', '1', 'yes'].includes(String(value).trim().toLowerCase());
   } catch {
     giswaterSyncEnabled.value = false;
   }
@@ -79,10 +84,17 @@ const syncGiswater = async () => {
     const response = await $SupplyCutApiService.syncGiswater();
     if (!response?.task_id) throw new Error('task_id not received');
     toast.info(t('service_block.sync_giswater_running'));
+    const pollStartedAt = Date.now();
     giswaterSyncInterval = setInterval(async () => {
       try {
         const res = await $apiManager.checkTask(response.task_id);
-        if (!res || res.state === 'PENDING' || res.state === 'RUNNING') return;
+        if (!res || res.state === 'PENDING' || res.state === 'RUNNING') {
+          if (Date.now() - pollStartedAt >= GISWATER_SYNC_TIMEOUT_MS) {
+            stopGiswaterSyncPolling();
+            toast.error(t('service_block.sync_giswater_timeout'));
+          }
+          return;
+        }
         stopGiswaterSyncPolling();
         // La tasca captura els errors i acaba en SUCCESS amb `status: 'error'`.
         if (res.state === 'SUCCESS' && res.result?.status !== 'error') {
@@ -95,7 +107,7 @@ const syncGiswater = async () => {
         stopGiswaterSyncPolling();
         toast.error(t('service_block.sync_giswater_error'));
       }
-    }, 2000);
+    }, GISWATER_SYNC_POLL_MS);
   } catch {
     stopGiswaterSyncPolling();
     toast.error(t('service_block.sync_giswater_error'));
@@ -168,6 +180,11 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
     error.value = err;
     if (err?.response?.status === 401) {
       pending.value = false;
+    }
+    // Pàgina desada (última cerca) que ja no existeix: es torna a la primera.
+    if (err?.response?.status === 404 && page > 1) {
+      pagination.value.page = 1;
+      getData(searchQuery, filters, 1, sort, desc, searchByAddressQuery);
     }
   } finally {
     if (seq === requestSeq) {

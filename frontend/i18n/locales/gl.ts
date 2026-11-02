@@ -1233,6 +1233,7 @@ export default {
     sync_giswater_running: 'Sincronizando con GIS Water…',
     sync_giswater_done: 'Sincronización con GIS Water completada',
     sync_giswater_error: 'Erro ao sincronizar con GIS Water',
+    sync_giswater_timeout: 'Non se puido confirmar a sincronización con GIS Water. Volve tentalo máis tarde.',
     cut_supply: 'Cortar subministración',
     no_supply_cuts: 'Sen cortes de subministración',
     active_supply_cut_warning: 'Punto de subministración con corte vixente',

@@ -1243,6 +1243,7 @@ export default {
     sync_giswater_running: 'S\'està sincronitzant amb GIS Water…',
     sync_giswater_done: 'Sincronització amb GIS Water completada',
     sync_giswater_error: 'Error en sincronitzar amb GIS Water',
+    sync_giswater_timeout: 'No s\'ha pogut confirmar la sincronització amb GIS Water. Torna-ho a provar més tard.',
     cut_supply: 'Tallar subministrament',
     no_supply_cuts: 'Sense talls de subministrament',
     active_supply_cut_warning: 'Punt de subministrament amb tall vigent',
