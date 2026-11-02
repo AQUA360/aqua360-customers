@@ -1,3 +1,4 @@
+import logging
 from django.contrib.auth.models import Group
 from django.db.models import Count, Q
 from rest_framework import status, viewsets
@@ -17,6 +18,8 @@ from integrations.utils.send_batch_providers import (
     SendBatchProviderError,
     get_send_batch_service,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _ok_aqua_ids_from_resends(batch: SendBatch) -> set:
@@ -371,11 +374,19 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             svc = get_send_batch_service(batch)
         except SendBatchProviderError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Failed to resolve send batch service for batch id=%s", batch.id)
+            return Response(
+                {"detail": "No s'ha pogut preparar el reenviament del lot."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             svc.retry_send_batch(batch)
         except (svc.api_error, svc.mapping_error) as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Failed to retry send batch id=%s", batch.id)
+            return Response(
+                {"detail": "No s'ha pogut reenviar el lot."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         batch.refresh_from_db()
         serializer = SendBatchDetailSerializer(batch, context={"request": request})
@@ -408,11 +419,19 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             svc = get_send_batch_service(batch)
         except SendBatchProviderError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Failed to resolve send batch service for status check, batch id=%s", batch.id)
+            return Response(
+                {"detail": "No s'ha pogut preparar la consulta d'estat del lot."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             result = svc.check_batch_status(batch)
         except svc.api_error as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Failed to check status for batch id=%s", batch.id)
+            return Response(
+                {"detail": "No s'ha pogut consultar l'estat del lot."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         batch.refresh_from_db()
         serializer = SendBatchDetailSerializer(batch, context={"request": request})
