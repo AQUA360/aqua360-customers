@@ -112,7 +112,7 @@ class CalendarTaskRecurrence(models.Model):
     Regla d'una tasca recurrent. Les ocurrències són CalendarTask normals que es
     generen per endavant (vegeu notification.utils.recurrence), de manera que cada
     una es pot marcar com a feta o editar per separat. Els camps name/description/
-    color/user són la plantilla de les ocurrències que es generin a partir d'ara.
+    color/text_color/user són la plantilla de les ocurrències que es generin a partir d'ara.
     """
     FREQUENCY_DAILY = 'daily'
     FREQUENCY_WEEKLY = 'weekly'
@@ -141,6 +141,7 @@ class CalendarTaskRecurrence(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
     color = models.CharField(max_length=255, null=True, blank=True)
+    text_color = models.CharField(max_length=255, null=True, blank=True)
     time = models.TimeField(null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='calendar_task_recurrences')
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
@@ -171,6 +172,7 @@ class CalendarTask(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
     color = models.CharField(max_length=255, null=True, blank=True)
+    text_color = models.CharField(max_length=255, null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     task_done = models.BooleanField(default=False)
     #TODO:MISSING ROLE/GROUP

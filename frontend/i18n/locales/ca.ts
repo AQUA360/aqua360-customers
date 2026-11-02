@@ -4449,6 +4449,7 @@ export default {
     delete_occurrence_confirm: 'Esborrar només aquesta ocurrència?',
     delete_confirm: 'Segur que vols esborrar aquesta tasca?',
     order: 'Ordre de treball',
-    badge_title: '{today} per avui, {overdue} endarrerides'
+    badge_title: '{today} per avui, {overdue} endarrerides',
+    text_color: 'Color del text'
   }
 }
