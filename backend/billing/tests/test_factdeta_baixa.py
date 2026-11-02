@@ -267,6 +267,14 @@ class TestFactdetaValidatorBalance(SimpleTestCase):
         detail = build_factdeta_detail_record(record('D', canon))
         self.assertEqual(detail[TOTAL_AMOUNT], '00000000003820')
 
+    def test_fractions_of_cent_keep_declared_total(self):
+        canon = compute_factdeta_canon('D', [line(1, 10, 1, interval=1, price=37.905), part_fixa(2, 0.305)], PART_FIXA)
+        self.assertTrue(balance_factdeta_amounts(canon))
+        detail = build_factdeta_detail_record(record('D', canon))
+        variable, fixed, total = (int(detail[field]) for field in (VARIABLE_AMOUNT, FIXED_AMOUNT, TOTAL_AMOUNT))
+        self.assertEqual(total, 3821)
+        self.assertEqual(variable + fixed, total)
+
     def test_balanced_amounts_are_not_changed(self):
         canon = compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), part_fixa(2, 1.25)], PART_FIXA)
         self.assertTrue(balance_factdeta_amounts(canon))

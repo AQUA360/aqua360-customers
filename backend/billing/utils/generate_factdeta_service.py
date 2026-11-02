@@ -649,8 +649,11 @@ def balance_factdeta_amounts(canon, max_cents=20):
     """El validador de l'ACA compara en double i sense marge el total amb la part variable més la
     fixa (37,90 + 0,30 no dona 38,20). Mou els mínims cèntims entre la part variable (i un dels seus
     conceptes) i la fixa perquè la suma quadri sense canviar el total. False si no hi ha cap repartiment."""
-    variable, fixed = _rounded(canon['variable_amount'], 2), _rounded(canon['fixed_amount'], 2)
     total = _rounded(canon['variable_amount'] + canon['fixed_amount'], 2)
+    # Amb fraccions de cèntim la part fixa absorbeix l'arrodoniment: el total declarat és la suma de les dues
+    variable = _rounded(canon['variable_amount'], 2)
+    fixed = total - variable
+    canon['variable_amount'], canon['fixed_amount'] = variable, fixed
     if float(total) == float(variable) + float(fixed):
         return True
 
@@ -1097,7 +1100,12 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
                 'contract__supply_point_default__address__street__type',
                 'contract__supply_point_default__address__street_number',
                 'contract__supply_point_default__address__city',
-                'contract_termination__contract',
+                'contract_termination__contract__holder', 'contract_termination__contract__use_type',
+                'contract_termination__contract__supply_point_default__meter__status',
+                'contract_termination__contract__supply_point_default__connection',
+                'contract_termination__contract__supply_point_default__address__street__type',
+                'contract_termination__contract__supply_point_default__address__street_number',
+                'contract_termination__contract__supply_point_default__address__city',
             ).prefetch_related('readings__previous_reading').order_by('issue_date', 'token')
         )
         if not ine_invoices:
