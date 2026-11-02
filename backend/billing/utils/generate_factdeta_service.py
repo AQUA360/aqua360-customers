@@ -610,6 +610,78 @@ def compute_factdeta_canon(tariff_type, aca_lines, part_fixa_token):
     return canon
 
 
+def _rounded(value, decimals):
+    """Valor tal com queda escrit al fitxer."""
+    return _dec(value).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
+
+
+def _canon_concepts(canon):
+    """(clau, (volum, tarifa, import)) dels conceptes amb tarifa, en l'ordre del registre."""
+    return list(enumerate(canon['trams'])) + [(name, canon[name]) for name in ('general', 'specific', 'leak')]
+
+
+def _set_canon_concept(canon, key, concept):
+    if isinstance(key, int):
+        canon['trams'][key] = concept
+    else:
+        canon[key] = concept
+
+
+def has_factdeta_negative_amounts(canon):
+    """El validador de l'ACA calcula la desviació del ±5% amb signe i rebutja tots els imports negatius."""
+    amounts = [concept[2] for _key, concept in _canon_concepts(canon)]
+    return any(_dec(amount) < 0 for amount in amounts + [canon['variable_amount'], canon['fixed_amount']])
+
+
+def _validator_band_ok(amount, expected):
+    # Com el validador: en double i amb signe
+    amount, expected = float(amount), float(expected)
+    return expected - expected * 0.05 <= amount <= expected + expected * 0.05
+
+
+def _validator_relation_ok(total, amounts):
+    # Import total contra la suma de tots els imports (±5%), com el validador
+    expected = sum(float(amount) for amount in amounts)
+    return abs(expected - expected * 0.05) <= abs(float(total)) <= abs(expected + expected * 0.05)
+
+
+def balance_factdeta_amounts(canon, max_cents=20):
+    """El validador de l'ACA compara en double i sense marge el total amb la part variable més la
+    fixa (37,90 + 0,30 no dona 38,20). Mou els mínims cèntims entre la part variable (i un dels seus
+    conceptes) i la fixa perquè la suma quadri sense canviar el total. False si no hi ha cap repartiment."""
+    variable, fixed = _rounded(canon['variable_amount'], 2), _rounded(canon['fixed_amount'], 2)
+    total = _rounded(canon['variable_amount'] + canon['fixed_amount'], 2)
+    if float(total) == float(variable) + float(fixed):
+        return True
+
+    concepts = sorted(
+        ((key, concept) for key, concept in _canon_concepts(canon) if _rounded(concept[2], 4)),
+        key=lambda item: -abs(_rounded(item[1][2], 4)),
+    )
+    concept_amounts = [_rounded(concept[2], 4) for _key, concept in _canon_concepts(canon)]
+    for cents in range(1, max_cents + 1):
+        for shift in (Decimal(cents) / 100, -Decimal(cents) / 100):
+            new_variable, new_fixed = variable - shift, fixed + shift
+            # Sense crear part fixa on no n'hi ha ni canviar signes
+            if not fixed or new_fixed * fixed <= 0 or new_variable * variable < 0 or (not variable and new_variable):
+                continue
+            if float(total) != float(new_variable) + float(new_fixed):
+                continue
+            for key, (volume, rate, amount) in concepts:
+                new_amount = _rounded(amount, 4) - shift
+                expected = float(_rounded(rate, 6)) * float(_rounded(volume, 0))
+                if _validator_band_ok(new_amount, expected) and \
+                        _validator_relation_ok(total, concept_amounts + [-shift, new_fixed]):
+                    _set_canon_concept(canon, key, (volume, rate, new_amount))
+                    canon['variable_amount'], canon['fixed_amount'] = new_variable, new_fixed
+                    return True
+            # Imports petits: cap concepte admet el cèntim dins del ±5% i es deixa tal qual
+            if _validator_relation_ok(total, concept_amounts + [new_fixed]):
+                canon['variable_amount'], canon['fixed_amount'] = new_variable, new_fixed
+                return True
+    return False
+
+
 def build_factdeta_detail_record(record):
     canon = record['canon']
     fields = [
@@ -660,7 +732,8 @@ def build_factdeta_detail_record(record):
         _num(record['inhabitants'], 2),
         _alpha(record['social_tariff'], 1),
         _alpha(record['vulnerable'], 1),
-        _alpha(record['establishment_code'], 10),
+        # El validador de l'ACA el vol numèric: amb zeros a l'esquerra, sense espais al final
+        _num(record['establishment_code'], 10) if record['establishment_code'] else _alpha('', 10),
         _num(record['homes'], 3),
         _num(record['places'], 4),
         _num(record['utm_x'], 6, 2),
@@ -910,6 +983,10 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     )
     social_line_ids = {line.id for line in variable_lines if _has_social_adjustment(line, config.tarifa_social_token)}
     canon = compute_factdeta_canon(tariff_type, aca_lines, config.part_fixa_token)
+    # Industrial sense consum: el validador de l'ACA exigeix algun volum a la tarifa industrial
+    # (incidència) i en domèstic només és una alarma
+    if tariff_type == 'I' and not any(canon[concept][0] for concept in ('general', 'specific', 'leak')):
+        tariff_type = 'D'
 
     cancelled = context.cancelled_by_refund_token.get(invoice.token)
     consumed_volume = _dec(invoice.real_consumption if invoice.real_consumption is not None else invoice.consumption)
@@ -963,6 +1040,20 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
         'utm_x': utm_x,
         'utm_y': utm_y,
     }
+
+
+def _netted_invoice_ids(invoices, records, context):
+    """Factures anul·lades que són al mateix fitxer que el seu abonament i hi sumen zero: no es declaren
+    cap de les dues perquè el validador de l'ACA no accepta els imports negatius de l'abonament."""
+    netted = set()
+    for invoice in invoices:
+        cancelled = context.cancelled_by_refund_token.get(invoice.token)
+        if not cancelled or cancelled.id not in records or {invoice.id, cancelled.id} & netted:
+            continue
+        refund, original = records[invoice.id]['canon'], records[cancelled.id]['canon']
+        if all(refund[amount] + original[amount] == 0 for amount in ('variable_amount', 'fixed_amount')):
+            netted |= {invoice.id, cancelled.id}
+    return netted
 
 
 def generate_factdeta_normal_document(exploitations, invoices, config, company):
@@ -1040,8 +1131,22 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
                 + _num(ine_code, 6) + ' ' * 628
             ]
             invoices_by_warning = defaultdict(list)
-            for invoice in year_invoices:
-                record = _factdeta_detail_data(invoice, lines_by_invoice[invoice.id], invoice.exploitation, config, context)
+            records = {
+                invoice.id: _factdeta_detail_data(invoice, lines_by_invoice[invoice.id], invoice.exploitation, config, context)
+                for invoice in year_invoices
+            }
+            for invoice_id in _netted_invoice_ids(year_invoices, records, context):
+                del records[invoice_id]
+            for record in records.values():
+                if has_factdeta_negative_amounts(record['canon']):
+                    invoices_by_warning["abonament no declarat, el validador de l'ACA no accepta imports negatius"].append(
+                        record['invoice_number']
+                    )
+                    continue
+                if not balance_factdeta_amounts(record['canon']):
+                    invoices_by_warning["el validador de l'ACA no quadrarà el total amb la part variable i la fixa"].append(
+                        record['invoice_number']
+                    )
                 try:
                     lines.append(build_factdeta_detail_record(record))
                 except FactdetaValidationError as e:

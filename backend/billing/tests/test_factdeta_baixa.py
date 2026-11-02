@@ -10,11 +10,14 @@ from billing.utils.generate_factdeta_service import (
     FactdetaValidationError,
     _customer_id,
     _is_valid_in_period,
+    _netted_invoice_ids,
     _num,
+    balance_factdeta_amounts,
     build_factdeta_detail_record,
     compute_factdeta_canon,
     factdeta_record_warnings,
     get_factdeta_tariff_type,
+    has_factdeta_negative_amounts,
     latlon_to_utm31,
 )
 from coredata.models import ConfigProject
@@ -224,6 +227,83 @@ class TestFactdetaIndustrialRecord(SimpleTestCase):
         canon = compute_factdeta_canon('E', [line(1, 8, 0), part_fixa(2, 5)], PART_FIXA)
         self.assertEqual(canon['billed_volume'], 0)
         self.assertEqual(canon['fixed_amount'], 0)
+
+
+class TestFactdetaEstablishmentCode(SimpleTestCase):
+    """El codi d'establiment (posicions 631-640) ha de ser numèric per al validador de l'ACA."""
+
+    def test_code_is_zero_padded(self):
+        canon = compute_factdeta_canon('M', [], PART_FIXA)
+        detail = build_factdeta_detail_record(record('M', canon, establishment_code='123456789'))
+        self.assertEqual(detail[630:640], '0123456789')
+
+    def test_without_code_is_blank(self):
+        canon = compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1)], PART_FIXA)
+        self.assertEqual(build_factdeta_detail_record(record('D', canon))[630:640], ' ' * 10)
+
+
+class TestFactdetaValidatorBalance(SimpleTestCase):
+    """El validador de l'ACA compara en double el total amb la part variable més la fixa."""
+
+    def domestic_canon(self):
+        lines = [
+            line(1, 33, 0.4936, interval=1, price=16.29),
+            line(2, 19, 1.137, interval=2, price=21.61),
+            part_fixa(3, 0.30),
+        ]
+        return compute_factdeta_canon('D', lines, PART_FIXA)
+
+    def test_cents_are_moved_keeping_total(self):
+        canon = self.domestic_canon()
+        self.assertNotEqual(float('37.90') + float('0.30'), float('38.20'))
+
+        self.assertTrue(balance_factdeta_amounts(canon))
+
+        variable, fixed = canon['variable_amount'], canon['fixed_amount']
+        self.assertEqual(variable + fixed, Decimal('38.20'))
+        self.assertEqual(float(variable) + float(fixed), float('38.20'))
+        # La part variable continua sent la suma dels trams
+        self.assertEqual(sum(amount for _volume, _rate, amount in canon['trams']), variable)
+        detail = build_factdeta_detail_record(record('D', canon))
+        self.assertEqual(detail[TOTAL_AMOUNT], '00000000003820')
+
+    def test_balanced_amounts_are_not_changed(self):
+        canon = compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), part_fixa(2, 1.25)], PART_FIXA)
+        self.assertTrue(balance_factdeta_amounts(canon))
+        self.assertEqual((canon['variable_amount'], canon['fixed_amount']), (Decimal('5.0'), Decimal('1.25')))
+
+    def test_negative_amounts_are_detected(self):
+        refund = compute_factdeta_canon('D', [line(1, -10, 0.5, interval=1), part_fixa(2, -3.25)], PART_FIXA)
+        invoice = compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), part_fixa(2, 3.25)], PART_FIXA)
+        self.assertTrue(has_factdeta_negative_amounts(refund))
+        self.assertFalse(has_factdeta_negative_amounts(invoice))
+
+
+class TestFactdetaNettedInvoices(SimpleTestCase):
+    """Factura anul·lada i abonament al mateix fitxer: si sumen zero no es declara cap de les dues."""
+
+    def setUp(self):
+        self.original = SimpleNamespace(id=1, token='F1')
+        self.refund = SimpleNamespace(id=2, token='R1')
+        self.context = SimpleNamespace(cancelled_by_refund_token={'R1': self.original})
+
+    def records(self, refund_price):
+        canon = lambda price: compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), part_fixa(2, price)], PART_FIXA)
+        refund = compute_factdeta_canon('D', [line(1, -10, 0.5, interval=1), part_fixa(2, refund_price)], PART_FIXA)
+        return {1: {'canon': canon(3.25)}, 2: {'canon': refund}}
+
+    def test_pair_adding_to_zero_is_netted(self):
+        netted = _netted_invoice_ids([self.original, self.refund], self.records(-3.25), self.context)
+        self.assertEqual(netted, {1, 2})
+
+    def test_pair_not_adding_to_zero_is_kept(self):
+        netted = _netted_invoice_ids([self.original, self.refund], self.records(-1), self.context)
+        self.assertEqual(netted, set())
+
+    def test_refund_of_invoice_outside_file_is_kept(self):
+        records = self.records(-3.25)
+        del records[1]
+        self.assertEqual(_netted_invoice_ids([self.refund], records, self.context), set())
 
 
 class TestLatLonToUtm31(SimpleTestCase):
