@@ -1,3 +1,4 @@
+import hmac
 import logging
 
 from django.conf import settings
@@ -35,7 +36,7 @@ class OdooBatchResultView(APIView):
         if auth_header.lower().startswith("bearer "):
             received = auth_header[7:].strip()
 
-        if not expected or received != expected:
+        if not expected or not hmac.compare_digest(received, expected):
             log_odoo_batch_callback(
                 payload,
                 success=False,
