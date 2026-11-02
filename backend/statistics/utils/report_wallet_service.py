@@ -587,6 +587,19 @@ def generate_wallet_bank_summary(request, black_fill=None, white_bold_font=None,
         logger.exception("Error inesperat")
         return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
+def _get_invoice_contract_token(invoice, contract_request_finalize_token):
+    """Contracte de la factura o, si ve d'una sol·licitud finalitzada, el contracte generat per aquesta."""
+    if not invoice:
+        return ""
+    if invoice.contract:
+        return invoice.contract.token or ""
+    contract_request = invoice.contract_request
+    if contract_request and contract_request_finalize_token and contract_request.status and contract_request.status.token == contract_request_finalize_token:
+        contract = contract_request.contract.order_by('-created_at').first()
+        if contract:
+            return contract.token or ""
+    return ""
+
 def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_font=None, task=None):
     try:
         date_range = request.data.get('date_range', None)
@@ -602,6 +615,7 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
             
         paid_status_token = ConfigProject.objects.get(token="payment_status_paid_token").value
         payment_type_debit = ConfigProject.objects.get(token="direct_debit_token").value
+        contract_request_finalize_token = ConfigProject.objects.filter(token="contract_request_finalize_token").values_list('value', flat=True).first()
         
         start_date = None
         end_date = None
@@ -641,7 +655,7 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
 
         row = jump_row(row)
 
-        headers = [_("REMESA"), _("FECHA REGISTRO"), _("BANCO"), _("CIF"), _("FACTURA"), _("FECHA VENCIMIENTO"), _("IMPORTE FACTURA"), _("IMPORTE TOTAL REMESA")]
+        headers = [_("REMESA"), _("FECHA REGISTRO"), _("BANCO"), _("CIF"), _("FACTURA"), _("CONTRATO"), _("FECHA VENCIMIENTO"), _("IMPORTE FACTURA"), _("IMPORTE TOTAL REMESA")]
         row = add_row(summary, row, headers, fill=black_fill, font=white_bold_font)
         
         #TODO: LATER WORK WITH OTHER COUNTRIES
@@ -708,11 +722,12 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
             if bank_name and bank_name != "":
                 bank_title += f" ({bank_name})"
             invoice_serie = invoice.serie_final.upper() if invoice else ""
+            contract_token = _get_invoice_contract_token(invoice, contract_request_finalize_token)
             
             row_data = [
                 remittance_token, payment.payment_date.strftime('%d-%m-%Y') if payment.payment_date else "", 
                 bank_title, payment.customer_token_final or "",
-                invoice_serie, payment.due_date.strftime('%d-%m-%Y') if payment.due_date else "",
+                invoice_serie, contract_token, payment.due_date.strftime('%d-%m-%Y') if payment.due_date else "",
                 invoice_amount, payment.amount or 0
             ]
             colored =  [i for i in range(0, len(row_data) + 1) if i % 2 == 0]
@@ -722,7 +737,7 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
         grand_totals = [
             _("TOTALS"),
             str(total_payments),
-            "", "", "", "", "",
+            "", "", "", "", "", "",
             f"{round(grand_total, 2)} €"
         ]
         row = add_row(summary, row, grand_totals, fill=black_fill, font=white_bold_font)
@@ -778,6 +793,7 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
         
         paid_status_token = ConfigProject.objects.get(token="payment_status_paid_token").value
         payment_type_debit = ConfigProject.objects.get(token="direct_debit_token").value
+        contract_request_finalize_token = ConfigProject.objects.filter(token="contract_request_finalize_token").values_list('value', flat=True).first()
         
         start_date = None
         end_date = None
@@ -818,7 +834,7 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
         
         row = jump_row(row)
         
-        headers = [_("FECHA COBRO"), _("CIF"), _("FACTURA"), _("IMPORTE COBRADO")]
+        headers = [_("FECHA COBRO"), _("CIF"), _("FACTURA"), _("CONTRATO"), _("IMPORTE COBRADO")]
         row = add_row(summary, row, headers, fill=black_fill, font=white_bold_font)
         #TODO: LATER WORK WITH OTHER COUNTRIES
         for idx_payment, payment in enumerate(payments, start=1):
@@ -832,17 +848,19 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
                     }
                 )
             invoice_serie = payment.invoice.serie_final.upper() if payment.invoice else payment.commitment_deposit.token if payment.commitment_deposit else ""
+            invoice = payment.invoice or (payment.commitment_deposit.invoices.first() if payment.commitment_deposit else None)
+            contract_token = _get_invoice_contract_token(invoice, contract_request_finalize_token)
             row_data = [
                 payment.payment_date.strftime('%d-%m-%Y') if payment.payment_date else "", 
                 payment.customer_token_final,
-                invoice_serie, payment.amount
+                invoice_serie, contract_token, payment.amount
             ]
             colored =  [i for i in range(0, len(row_data) + 1) if i % 2 == 0]
             row = add_row(summary, row, row_data, colored=colored)
         row = jump_row(row)
         grand_totals = [
             _("TOTALES"),
-            str(total_payments), "",
+            str(total_payments), "", "",
             f"{round(grand_total, 2)} €"
         ]
         row = add_row(summary, row, grand_totals, fill=black_fill, font=white_bold_font)
