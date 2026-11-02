@@ -250,6 +250,20 @@ def get_sepa_payments_and_batches(request):
     if commitment:
         filters &= Q(commitment_deposit__id=commitment)
 
+    # Filtre SEPA per motius de devolució (RejectMotive): només s'aplica si
+    # n'hi ha de seleccionats. `include` es queda només amb aquests motius;
+    # `exclude` treu els pagaments que els tenen (els sense motiu es queden).
+    reject_motives = request.data.get('reject_motives') or []
+    if not isinstance(reject_motives, (list, tuple)):
+        reject_motives = [reject_motives]
+    reject_motives = [r for r in reject_motives if r not in (None, "")]
+    reject_motives_mode = (request.data.get('reject_motives_mode') or 'include').lower()
+    if reject_motives:
+        if reject_motives_mode == 'exclude':
+            filters &= ~Q(reject_id__in=reject_motives)
+        else:
+            filters &= Q(reject_id__in=reject_motives)
+
     # Empresa emissora: la remesa d'una empresa no pot arrossegar rebuts d'una
     # altra. L'empresa del rebut es dedueix igual que a
     # `remittance_routing.get_payment_company_id()`: de la factura, de la seva

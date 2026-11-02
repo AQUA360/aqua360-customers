@@ -2269,6 +2269,8 @@ export default {
     payments_to_remit: 'To remit',
     exclude_contracts_with_pending_invoices_action: 'Exclude those of contracts with unpaid invoices',
     info_exclude_contracts_with_pending_invoices: "On search, marks as excluded the payments of contracts having invoices pending payment (overdue or unpaid), not counting unpaid-management fee invoices. They do not disappear from the list: they can be reviewed and re-included from the «Excluded» tab.",
+    filter_reject_motives: 'Return reasons',
+    info_filter_reject_motives: "Include: only payments with the selected reasons. Exclude: remove payments with those reasons from the remittance.",
     sent_date: 'Sent date',
     total_amount: 'Total amount',
     payments_count: 'Number of payments',
