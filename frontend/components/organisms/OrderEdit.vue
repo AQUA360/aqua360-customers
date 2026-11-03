@@ -253,10 +253,7 @@ const getData = async () => {
   }
 
   getTypes();
-  if (selectedType.value && selectedType.value.length) {
-    let typeId = selectedType.value[0].code
-    getReasons(typeId)
-  }
+  getAllReasons();
   getStatuses();
   getOperators();
   loading.value = false;
@@ -301,21 +298,16 @@ const getTypes = async () => {
   })
 }
 
-const getReasons = async (typeId) => {
-  let reasons = await getOrderTypeReasons(typeId);
-  order_reason.value = reasons;
-}
+const getAllReasons = async () => {
+  const response = await $ConfiglistApiService.getAll('order/order-reason');
+  order_reason.value = [];
 
-const getOrderTypeReasons = async (typeId) => {
-  const response = await $OrderTypeApiService.getDetail(typeId);
-  let order_type_reasons = [];
-  response.reasons.forEach(function (item) {
-    order_type_reasons.push({
+  response.results.forEach(function (item) {
+    order_reason.value.push({
       label: item.name,
       code: item.id
     })
   })
-  return order_type_reasons
 }
 
 const getStatuses = async () => {
@@ -626,9 +618,7 @@ const updateSelect = async (event, entity) => {
     case 'order_type':
       selectedType.value = event;
       selectedReason.value = null;
-      if (selectedType) {
-        order_reason.value = await getOrderTypeReasons(selectedType.value.code);
-      }
+      await getAllReasons();
       break;
     case 'order_status':
       selectedStatus.value = event;
