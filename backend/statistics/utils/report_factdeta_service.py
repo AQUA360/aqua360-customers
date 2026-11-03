@@ -17,19 +17,40 @@ from statistics.views.reports_views import save_report
 logger = logging.getLogger(__name__)
 
 
-def generate_factdeta_report(request, black_fill=None, white_bold_font=None, task=None):
-    """Relació detallada de facturació (FACTDETA en baixa) d'un any: un fitxer per municipi,
-    comprimits en un zip amb el resum de les validacions que cal revisar."""
+def _parse_report_date(value):
+    """Data del filtre de la pàgina d'informes (ISO amb hora, com la Declaració ACA) o AAAA-MM-DD."""
     try:
-        year = request.data.get('year') or request.data.get('model_347_year')
-        if not year:
-            return Response({"error": "year is required."}, status=status.HTTP_400_BAD_REQUEST), None, None
-        try:
-            year = int(year)
-        except (TypeError, ValueError):
-            return Response({"error": "year must be a number."}, status=status.HTTP_400_BAD_REQUEST), None, None
+        return datetime.datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%fZ').date()
+    except ValueError:
+        return datetime.date.fromisoformat(value[:10])
 
-        invoices = Invoice.objects.filter(is_active=True, issue_date__year=year)
+
+def generate_factdeta_report(request, black_fill=None, white_bold_font=None, task=None):
+    """Relació detallada de facturació (FACTDETA en baixa) d'un any, o de les factures emeses dins el
+    filtre de dates: un fitxer per municipi i any, comprimits en un zip amb el resum de les validacions
+    que cal revisar."""
+    try:
+        date_range = request.data.get('date_range')
+        if date_range:
+            # Filtre de dates de la pàgina d'informes: les factures emeses dins el període, interpretat
+            # igual que a la Declaració ACA perquè els dos informes es puguin comparar
+            try:
+                start_date, end_date = (_parse_report_date(value) for value in date_range[:2])
+            except (TypeError, ValueError):
+                return Response({"error": "date_range must be two dates."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            invoices = Invoice.objects.filter(is_active=True, issue_date__range=(start_date, end_date))
+            label = f"{start_date:%Y%m%d}_{end_date:%Y%m%d}"
+        else:
+            year = request.data.get('year') or request.data.get('model_347_year')
+            if not year:
+                return Response({"error": "year or date_range is required."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            try:
+                year = int(year)
+            except (TypeError, ValueError):
+                return Response({"error": "year must be a number."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            start_date, end_date = datetime.date(year, 1, 1), datetime.date(year, 12, 31)
+            invoices = Invoice.objects.filter(is_active=True, issue_date__year=year)
+            label = str(year)
         # Amb múltiples empreses cada fitxer ACA és d'una sola empresa (veure resolve_aca_company)
         company_id = request.data.get('company_id', None)
         if company_id:
@@ -59,10 +80,10 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
                     warnings.append(file_data["file_name"])
                     warnings += [f"  - {warning}" for warning in file_data["warnings"]]
             if warnings:
-                zip_file.writestr(f"VALIDACIONS_FACTDETA_{year}.txt", "\n".join(warnings) + "\n")
+                zip_file.writestr(f"VALIDACIONS_FACTDETA_{label}.txt", "\n".join(warnings) + "\n")
 
-        # Amb data i hora perquè dues execucions del mateix any no comparteixin el nom del fitxer desat
-        file_name = f"FACTDETA_{year}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        # Amb data i hora perquè dues execucions del mateix període no comparteixin el nom del fitxer desat
+        file_name = f"FACTDETA_{label}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
         response = HttpResponse(buffer.getvalue(), content_type="application/zip")
         response["Content-Disposition"] = f'attachment; filename="{file_name}"'
         document_id = save_report(
@@ -70,8 +91,8 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
             filename=file_name,
             name=request.data.get('name', ''),
             type_id=request.data.get('type_id', None),
-            start_date=datetime.date(year, 1, 1),
-            end_date=datetime.date(year, 12, 31),
+            start_date=start_date,
+            end_date=end_date,
         )
         return response, document_id, None
     except Exception:
