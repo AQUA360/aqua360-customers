@@ -15,6 +15,7 @@ import ReadingBatchRegion from '../organisms/ReadingBatchRegion.vue';
 import MeterRegion from '../organisms/MeterRegion.vue';
 import { useToast } from 'vue-toastification';
 import { usePermissions } from '~/middleware/permission';
+import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 
 const { t } = useI18n();
@@ -179,8 +180,8 @@ const showSubRegion = function () {
   emit('show-subregion', true);
 }
 
-const showDocument = function () {
-  window.open(data.value.file, '_blank');
+const showDocument = async function () {
+  await openAuthenticatedFileUrl(data.value.file, false);
 }
 
 // subregions details
