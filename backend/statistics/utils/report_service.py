@@ -1856,7 +1856,7 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
     # --- Desglosament per USE TYPE de contracte (a nivell de factura) ---
     # Tipus d'ús que tenia el contracte quan es va generar la factura (vegeu dated_use_type).
     use_type_agg = list(
-        annotate_dated_use_type(invoices, contract_field="contract", created_at_field="created_at", name=True)
+        annotate_dated_use_type(invoices, invoice_prefix="", name=True)
         .values("exploitation_id", ut_name=F("dated_use_type_name"))
         .annotate(
             total_m3=Sum("consumption"),
@@ -1878,7 +1878,7 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
 
     # --- Desglosament per USE TYPE a nivell de línia de producte ---
     ut_line_agg = (
-        annotate_dated_use_type(line_items_qs, contract_field="contract", created_at_field="invoice__created_at", name=True)
+        annotate_dated_use_type(line_items_qs, contract_field="contract", name=True)
         .values("invoice__exploitation_id", "product_name", "interval", ut_name=F("dated_use_type_name"))
         .annotate(units_sum=Sum("units"), total_sum=Sum("total"), price_sum=Sum("price"))
     )

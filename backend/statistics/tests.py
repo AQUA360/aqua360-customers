@@ -588,13 +588,20 @@ class DatedUseTypeTests(TestCase):
         ]:
             cls.expected[invoice(contract, created_at).id] = use_type
 
+        # Factura sense contracte, només amb la baixa: es fa servir el contracte de la baixa.
+        from contract.models import ContractTerminationRequest
+        termination = ContractTerminationRequest.objects.bulk_create([ContractTerminationRequest(contract=cls.changed)])[0]
+        inv = Invoice.objects.bulk_create([Invoice(contract_termination=termination)])[0]
+        Invoice.objects.filter(id=inv.id).update(created_at=cls.t0)
+        cls.expected[inv.id] = cls.domestic
+
     def test_sql_annotation(self):
         from statistics.utils.dated_use_type import annotate_dated_use_type
 
         rows = annotate_dated_use_type(
-            Invoice.objects.filter(id__in=self.expected), contract_field='contract', created_at_field='created_at',
-            name=True,
+            Invoice.objects.filter(id__in=self.expected), invoice_prefix='', name=True,
         ).values('id', 'dated_use_type_id', 'dated_use_type_name')
+        self.assertEqual(len(rows), len(self.expected))
         for row in rows:
             self.assertEqual(row['dated_use_type_id'], self.expected[row['id']].id)
             self.assertEqual(row['dated_use_type_name'], self.expected[row['id']].name)
@@ -602,6 +609,11 @@ class DatedUseTypeTests(TestCase):
     def test_python_resolution_matches(self):
         from statistics.utils.dated_use_type import resolve_dated_use_types
 
-        invoices = Invoice.objects.filter(id__in=self.expected).select_related('contract__use_type')
-        resolved = resolve_dated_use_types((inv, inv.contract) for inv in invoices)
+        invoices = Invoice.objects.filter(id__in=self.expected).select_related(
+            'contract__use_type', 'contract_termination__contract__use_type',
+        )
+        resolved = resolve_dated_use_types(
+            (inv, inv.contract or (inv.contract_termination.contract if inv.contract_termination else None))
+            for inv in invoices
+        )
         self.assertEqual(resolved, self.expected)

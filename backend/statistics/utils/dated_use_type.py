@@ -19,26 +19,46 @@ Dues variants amb el mateix criteri:
 from bisect import bisect_right
 from collections import defaultdict
 
-from django.db.models import Case, CharField, Exists, F, OuterRef, Q, Subquery, Value, When
+from django.db.models import Case, CharField, Exists, F, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.db.models.functions import Coalesce
 
-from contract.models import ContractLog, ContractUseType
+from contract.models import Contract, ContractLog, ContractUseType
 
 USE_TYPE_FIELD_NAME = 'use_type'
 
 
-def annotate_dated_use_type(queryset, contract_field='invoice__contract', created_at_field='invoice__created_at',
-                            name=False):
+def annotate_dated_use_type(queryset, invoice_prefix='invoice__', contract_field=None, name=False):
     """
     Anota `dated_use_type_id` (i, amb name=True, `dated_use_type_name`) al queryset.
 
-    contract_field / created_at_field: camins des del model del queryset fins al
-    contracte i la data de creació de la factura ('contract' / 'created_at' per a Invoice).
+    invoice_prefix: camí des del model del queryset fins a la factura ('' per a Invoice,
+    'invoice__' per a InvoiceLineItem). contract_field: camí al contracte principal
+    (per defecte, el de la factura). Si és buit, es fa servir el contracte de la baixa
+    o el creat a partir de la sol·licitud, com als informes fila a fila.
     """
-    logs = ContractLog.objects.filter(contract=OuterRef(contract_field), field_name=USE_TYPE_FIELD_NAME)
+    if contract_field is None:
+        contract_field = f'{invoice_prefix}contract'
+    created_at_field = f'{invoice_prefix}created_at'
+
+    queryset = queryset.annotate(
+        _dated_use_type_contract_id=Coalesce(
+            F(f'{contract_field}_id'),
+            F(f'{invoice_prefix}contract_termination__contract_id'),
+            Subquery(
+                Contract.objects.filter(contract_request_id=OuterRef(f'{invoice_prefix}contract_request_id'))
+                .order_by('id').values('id')[:1]
+            ),
+            output_field=IntegerField(),
+        ),
+    )
+
+    logs = ContractLog.objects.filter(contract_id=OuterRef('_dated_use_type_contract_id'), field_name=USE_TYPE_FIELD_NAME)
     log_before = logs.filter(created_at__lte=OuterRef(created_at_field)).order_by('-created_at', '-id')
     log_after = logs.filter(created_at__gt=OuterRef(created_at_field)).order_by('created_at', 'id')
-    current_use_type_id = F(f'{contract_field}__use_type_id')
+    current_use_type_id = Subquery(
+        Contract.objects.filter(id=OuterRef('_dated_use_type_contract_id')).values('use_type_id')[:1],
+        output_field=IntegerField(),
+    )
 
     queryset = queryset.annotate(
         _dated_use_type_has_before=Exists(log_before),
@@ -62,10 +82,12 @@ def annotate_dated_use_type(queryset, contract_field='invoice__contract', create
                             .order_by('id').values('id')[:1]
                         ),
                         current_use_type_id,
+                        output_field=IntegerField(),
                     ),
                 ),
             ),
             default=current_use_type_id,
+            output_field=IntegerField(),
         ),
     )
     if name:
