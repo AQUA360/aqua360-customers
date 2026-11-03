@@ -3116,6 +3116,8 @@ export default {
     choose_daily_report: 'Choose the daily file',
     choose_daily_report_help: 'Select a section first, then the report that will be generated every day.',
     selected_daily_report: 'Selected daily file',
+    create_without_data: 'Create even without data',
+    create_without_data_help: 'If no data is found for that day, a record will still be created (without the file). If disabled, nothing will be created.',
     analysis_title: 'Analysis',
     tab_contracts: 'Contracts',
     contract_csv_export: 'Contracts: information and variables',
