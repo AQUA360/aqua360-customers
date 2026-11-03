@@ -51,13 +51,21 @@ class TestGiswaterSyncCustomersPriority(TestCase):
                 token=f'sp-{code}', status=cls.sp_active, connection=connection
             )
 
+    @staticmethod
+    def _response(fields):
+        return {'body': {'data': {'fields': fields}}}
+
     def _sync(self, mincuts, connecs):
-        """`connecs`: {id mincut: [connec_id, ...]}."""
-        with patch.object(sync_mod, 'fetch_om_mincuts', return_value=mincuts), \
-             patch.object(sync_mod, 'fetch_om_mincut_connecs', side_effect=lambda mid: connecs.get(mid, [])), \
-             patch.object(sync_mod, 'extract_fields', side_effect=lambda value: [
-                 {'connec_id': c} if isinstance(c, str) else c for c in value
-             ]):
+        """`connecs`: {id mincut: [connec_id, ...]}; un valor `None` simula una
+        resposta sense `fields`."""
+        def fetch_connecs(mincut_id):
+            ids = connecs.get(mincut_id, [])
+            if ids is None:
+                return {'body': {'data': {}}}
+            return self._response([{'connec_id': c} for c in ids])
+
+        with patch.object(sync_mod, 'fetch_om_mincuts', return_value=self._response(mincuts)), \
+             patch.object(sync_mod, 'fetch_om_mincut_connecs', side_effect=fetch_connecs):
             return sync_mod.sync_supply_cuts_from_giswater()
 
     def _status_of(self, code):
@@ -159,6 +167,23 @@ class TestGiswaterSyncCustomersPriority(TestCase):
         self.assertEqual(cut.giswater_connec_ids, ['C1', 'C2'])
 
 
+    def test_connecs_response_without_fields_keeps_points(self):
+        self._sync([{'id': 'm7', 'anl_cause': '0', 'state': '1'}], {'m7': ['C1', 'C2']})
+        self._sync([{'id': 'm7', 'anl_cause': '0', 'state': '1'}], {'m7': None})
+        cut = SupplyCut.objects.get(token='m7')
+        self.assertEqual(
+            set(cut.supply_points.values_list('id', flat=True)),
+            {self.points['C1'].id, self.points['C2'].id},
+        )
+        self.assertEqual(cut.giswater_connec_ids, ['C1', 'C2'])
+        self.assertEqual(self._status_of('C1'), self.sp_cut)
+
+        # Una llista buida sí que és vàlida: el tall es queda sense punts.
+        self._sync([{'id': 'm7', 'anl_cause': '0', 'state': '1'}], {'m7': []})
+        self.assertFalse(SupplyCut.objects.get(token='m7').supply_points.exists())
+        self.assertEqual(self._status_of('C1'), self.sp_active)
+
+
 class TestCustomersActionsLockFields(TestCase):
 
     @classmethod
@@ -170,7 +195,7 @@ class TestCustomersActionsLockFields(TestCase):
             ('supply_cut_status_closed_tokens', '2,3'),
         ):
             ConfigProject.objects.update_or_create(token=token, defaults={'name': token, 'value': value})
-        SupplyPointStatus.objects.create(token='sp-active', name='Actiu')
+        cls.sp_active = SupplyPointStatus.objects.create(token='sp-active', name='Actiu')
         SupplyPointStatus.objects.create(token='sp-cut', name='Tallat')
         cls.planned = _catalog(SupplyCutStatus, '0', name='Planificat')
         cls.active = _catalog(SupplyCutStatus, '1', name='Actiu')
@@ -199,7 +224,37 @@ class TestCustomersActionsLockFields(TestCase):
 
         self.assertEqual(self._post('finish_cut', cut).status_code, 200)
         cut.refresh_from_db()
-        self.assertEqual(set(cut.customers_locked_fields), {'status', 'exec_start', 'exec_end'})
+        self.assertEqual(
+            set(cut.customers_locked_fields), {'status', 'exec_start', 'exec_end', 'date_end'}
+        )
+
+    def test_finish_locks_filled_forecast_end(self):
+        cut = self._cut(self.active)
+        self.assertEqual(self._post('finish_cut', cut).status_code, 200)
+        cut.refresh_from_db()
+        self.assertIsNotNone(cut.date_end)
+        self.assertEqual(set(cut.customers_locked_fields), {'status', 'exec_end', 'date_end'})
+
+    def test_finish_keeps_forecast_end_unlocked_when_given(self):
+        cut = self._cut(self.active)
+        cut.date_end = timezone.now() + timedelta(days=1)
+        cut.save()
+        self._post('finish_cut', cut)
+        cut.refresh_from_db()
+        self.assertNotIn('date_end', cut.customers_locked_fields)
+
+    def test_removing_last_point_locks_status_and_filled_end_dates(self):
+        cut = self._cut(self.active)
+        point = SupplyPoint.objects.create(
+            token='sp-lock', status=self.sp_active, connection=Connection.objects.create(code_gis='L1')
+        )
+        cut.supply_points.add(point)
+        response = self._post('remove_supply_point', cut, {'supply_point': point.id})
+        self.assertEqual(response.status_code, 200)
+        cut.refresh_from_db()
+        self.assertEqual(
+            set(cut.customers_locked_fields), {'supply_points', 'status', 'date_end', 'exec_end'}
+        )
 
     def test_resolve_review_locks_status_and_given_fields(self):
         cut = self._cut(self.planned)

@@ -163,6 +163,24 @@ def _gis_supply_points(connec_ids):
     return list(SupplyPoint.objects.filter(connection__code_gis__in=connec_ids))
 
 
+def _connec_ids_from_response(response):
+    """Connexions d'un mincut, o `None` si la resposta no porta `body.data.fields`.
+
+    Una llista buida és una resposta vàlida (el mincut no afecta cap connexió);
+    una resposta sense `fields` no ho és i no ha de buidar els punts del tall.
+    """
+    body = response.get("body") if isinstance(response, dict) else None
+    data = body.get("data") if isinstance(body, dict) else None
+    fields = data.get("fields") if isinstance(data, dict) else None
+    if not isinstance(fields, list):
+        return None
+    return sorted({
+        str(c.get("connec_id"))
+        for c in fields
+        if isinstance(c, dict) and c.get("connec_id") is not None
+    })
+
+
 def _create_supply_cut(token, cause, status, review, raw, dates, connec_ids):
     """Mincut nou: es crea tal com l'envia Giswater i el seu estat inicial té
     els mateixos efectes sobre els punts que un canvi d'estat a Customers."""
@@ -177,11 +195,11 @@ def _create_supply_cut(token, cause, status, review, raw, dates, connec_ids):
         source=SupplyCut.SOURCE_GISWATER,
         mincut_cause_token=cause.token if cause else None,
         mincut_state_token=status.token if status else None,
-        giswater_connec_ids=connec_ids,
+        giswater_connec_ids=connec_ids or [],
         **raw,
         **dates,
     )
-    sc.supply_points.set(_gis_supply_points(connec_ids))
+    sc.supply_points.set(_gis_supply_points(connec_ids or []))
     if status is not None:
         supply_cut_service.sync_supply_points_status(
             sc, previous_status=None, observation=GISWATER_SYNC_OBSERVATION
@@ -233,7 +251,10 @@ def _update_supply_cut(sc, cause, cause_resolved, status, status_resolved, raw, 
     sc.save()
 
     current = set(sc.supply_points.values_list("id", flat=True))
-    if "supply_points" in locked:
+    if connec_ids is None:
+        # Resposta de connexions invàlida: els punts del tall no es toquen.
+        to_add, to_remove = set(), set()
+    elif "supply_points" in locked:
         known = set(sc.giswater_connec_ids or [])
         # Sense referència d'una sincronització anterior no es pot saber quines
         # connexions són noves: aquesta passada només la desa.
@@ -265,8 +286,9 @@ def _update_supply_cut(sc, cause, cause_resolved, status, status_resolved, raw, 
             observation=GISWATER_SYNC_OBSERVATION,
         )
 
-    sc.giswater_connec_ids = connec_ids
-    sc.save(update_fields=["giswater_connec_ids", "updated_at"])
+    if connec_ids is not None:
+        sc.giswater_connec_ids = connec_ids
+        sc.save(update_fields=["giswater_connec_ids", "updated_at"])
     return sc
 
 
@@ -299,12 +321,24 @@ def sync_supply_cuts_from_giswater():
         "created": 0,
         "updated": 0,
     }
+    # Les crides a Giswater es fan abans d'obrir la transacció: així els talls
+    # només queden bloquejats el temps d'aplicar els canvis.
+    connecs_by_mincut = {}
+    for mincut in mincuts:
+        id = mincut.get('id')
+        connec_ids = _connec_ids_from_response(fetch_om_mincut_connecs(id))
+        if connec_ids is None:
+            print(f"   ! mincut {id}: resposta de connexions sense 'fields' → no es toquen els punts")
+        connecs_by_mincut[id] = connec_ids
+
     with transaction.atomic():
+        # Bloqueig de les files: una edició simultània a Customers (i la seva
+        # protecció de camps) espera que acabi la sincronització, i a l'inrevés.
         existing_by_token = {
             cut.token: cut
-            for cut in SupplyCut.objects.select_related("status", "cause").filter(
-                token__in=[m.get("id") for m in mincuts if m.get("id")]
-            )
+            for cut in SupplyCut.objects.select_for_update(of=("self",))
+            .select_related("status", "cause")
+            .filter(token__in=[m.get("id") for m in mincuts if m.get("id")])
         }
         for mincut in mincuts:
             id = mincut.get('id')
@@ -328,10 +362,7 @@ def sync_supply_cuts_from_giswater():
 
             raw = {"cause_raw": anl_cause, "state_raw": state}
             dates = map_mincut_to_supply_cut_dates(mincut)
-            connec_fields = extract_fields(fetch_om_mincut_connecs(id))
-            connec_ids = sorted({
-                str(c.get('connec_id')) for c in connec_fields if c.get('connec_id') is not None
-            })
+            connec_ids = connecs_by_mincut.get(id)
 
             prev = existing_by_token.get(id)
             if prev is None:
