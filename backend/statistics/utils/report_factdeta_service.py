@@ -10,11 +10,23 @@ from rest_framework.response import Response
 
 from billing.models import Invoice
 from billing.utils.aca_company_service import ACACompanyError
+from billing.utils.factdeta_reader import build_factdeta_workbook, read_factdeta
 from billing.utils.generate_factdeta_service import FactdetaValidationError, generate_factdeta_document
 from service.models import Exploitation
 from statistics.views.reports_views import save_report
 
 logger = logging.getLogger(__name__)
+
+
+def _summary_file_name(file_name):
+    return f"RESUM_{file_name.rsplit('.', 1)[0]}.xlsx"
+
+
+def _factdeta_summary_xlsx(file_data):
+    """Resum de totals i validacions llegit del mateix .txt, per revisar-lo sense dependre del generador."""
+    buffer = BytesIO()
+    build_factdeta_workbook(read_factdeta(file_data["content"], file_data["file_name"])).save(buffer)
+    return buffer.getvalue()
 
 
 def _parse_report_date(value):
@@ -27,8 +39,7 @@ def _parse_report_date(value):
 
 def generate_factdeta_report(request, black_fill=None, white_bold_font=None, task=None):
     """Relació detallada de facturació (FACTDETA en baixa) d'un any, o de les factures emeses dins el
-    filtre de dates: un fitxer per municipi i any, comprimits en un zip amb el resum de les validacions
-    que cal revisar."""
+    filtre de dates: un fitxer per municipi i any, comprimits en un zip amb els resums i les validacions."""
     try:
         date_range = request.data.get('date_range')
         if date_range:
@@ -76,6 +87,7 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
             warnings = []
             for file_data in files:
                 zip_file.writestr(file_data["file_name"], file_data["content"])
+                zip_file.writestr(_summary_file_name(file_data["file_name"]), _factdeta_summary_xlsx(file_data))
                 if file_data["warnings"]:
                     warnings.append(file_data["file_name"])
                     warnings += [f"  - {warning}" for warning in file_data["warnings"]]
