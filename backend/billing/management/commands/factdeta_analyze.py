@@ -18,6 +18,7 @@ class Command(BaseCommand):
         parser.add_argument('--no-excel', action='store_true', help="Només mostra el resum per pantalla")
 
     def handle(self, *args, **options):
+        self.used_outputs = set()
         for path in options['paths']:
             if not os.path.isfile(path):
                 raise CommandError(f"No existeix el fitxer {path}")
@@ -47,6 +48,12 @@ class Command(BaseCommand):
         style = self.style.ERROR if factdeta.incidences else self.style.SUCCESS
         self.stdout.write(style(f"  Incidències {len(factdeta.incidences)}  |  Avisos {warnings}"))
         if not options['no_excel']:
-            output = os.path.join(output_dir, f"RESUM_{os.path.splitext(file_name)[0]}.xlsx")
+            # Dins d'un zip hi pot haver dos fitxers amb el mateix nom en carpetes diferents
+            base = os.path.join(output_dir, f"RESUM_{os.path.splitext(file_name)[0]}")
+            output, number = f"{base}.xlsx", 1
+            while output in self.used_outputs:
+                number += 1
+                output = f"{base}_{number}.xlsx"
+            self.used_outputs.add(output)
             build_factdeta_workbook(factdeta).save(output)
             self.stdout.write(f"  Excel: {output}")

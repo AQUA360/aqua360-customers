@@ -158,7 +158,7 @@ def _parse_number(text, dec_digits):
     digits = text
     if text.startswith('-'):
         sign, digits = -1, text[1:]
-    if not digits.isdigit():
+    if not digits.isdecimal():
         raise FieldError(f"valor numèric no vàlid «{text}»")
     return sign * Decimal(digits).scaleb(-dec_digits)
 
@@ -346,7 +346,7 @@ def validate_record(record, header=None):
 
     for name, volume_key, rate_key, amount_key in CONCEPTS:
         volume, rate, amount = value(volume_key), value(rate_key), value(amount_key)
-        if volume and amount and not _within_5_percent(amount, rate * volume):
+        if (volume or amount) and not _within_5_percent(amount, rate * volume):
             issues.append((INCIDENCE, f"{name}: l'import no és tarifa × volum (±5%)"))
     if value('leak_volume') and not value('leak_rate'):
         issues.append((INCIDENCE, "volum de fuites sense tarifa"))
@@ -357,7 +357,7 @@ def validate_record(record, header=None):
     if variable + fixed != total:
         issues.append((INCIDENCE, "l'import total no és la part variable més la fixa"))
     amounts = sum(value(amount_key) for _name, _volume, _rate, amount_key in CONCEPTS) + value('quota_billed') + fixed
-    if total and not _within_5_percent(total, amounts):
+    if (total or amounts) and not _within_5_percent(total, amounts):
         issues.append((INCIDENCE, "l'import total no coincideix amb la suma dels imports dels conceptes (±5%)"))
 
     cancelled_invoice, cancelled_date = record.get('cancelled_invoice'), record.get('cancelled_date')
@@ -378,6 +378,8 @@ def validate_record(record, header=None):
         issues.append((INCIDENCE, "vulnerable ha de ser «S» o «N»"))
     if record.get('establishment') and tariff not in ('M', 'Q'):
         issues.append((INCIDENCE, "codi d'establiment informat amb una tarifa que no és M ni Q"))
+    if tariff == 'M' and not record.get('establishment'):
+        issues.append((WARNING, "mesurament directe sense codi d'establiment"))
     if record.get('alternative_network') == 'R' and tariff != 'D':
         issues.append((INCIDENCE, "xarxa alternativa «R» amb una tarifa que no és domèstica"))
     if not value('utm_x') or not value('utm_y'):
@@ -423,8 +425,14 @@ def _code(value, length):
     return str(int(value)).zfill(length) if isinstance(value, Decimal) else value
 
 
-def _cell(record, key):
-    return _code(record.get(key), 6) if key == 'ine' else _number(record.get(key))
+def _cell(sheet, record, key):
+    value = _code(record.get(key), 6) if key == 'ine' else _number(record.get(key))
+    if isinstance(value, str) and value.startswith('='):
+        # openpyxl desaria com a fórmula qualsevol text que comenci per '='
+        cell = WriteOnlyCell(sheet, value=value)
+        cell.data_type = 's'
+        return cell
+    return value
 
 
 def _bold_row(sheet, values):
@@ -499,7 +507,7 @@ def build_factdeta_workbook(factdeta):
     sheet = workbook.create_sheet("Registres")
     _bold_row(sheet, ["Línia"] + [label for _key, label, _fmt in DETAIL_FIELDS])
     for record in factdeta.records:
-        sheet.append([record['line']] + [_cell(record, key) for key, _label, _fmt in DETAIL_FIELDS])
+        sheet.append([record['line']] + [_cell(sheet, record, key) for key, _label, _fmt in DETAIL_FIELDS])
 
     sheet = workbook.create_sheet("Validacions")
     _bold_row(sheet, ["Línia", "Factura", "Nivell", "Validació"])

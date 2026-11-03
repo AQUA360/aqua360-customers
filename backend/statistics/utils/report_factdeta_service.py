@@ -59,6 +59,8 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
                 year = int(year)
             except (TypeError, ValueError):
                 return Response({"error": "year must be a number."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            if not 1 <= year <= 9999:
+                return Response({"error": "year must be between 1 and 9999."}, status=status.HTTP_400_BAD_REQUEST), None, None
             start_date, end_date = datetime.date(year, 1, 1), datetime.date(year, 12, 31)
             invoices = Invoice.objects.filter(is_active=True, issue_date__year=year)
             label = str(year)

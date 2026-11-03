@@ -531,6 +531,15 @@ def get_factdeta_fire_billed_type(use_aca, variable_lines):
     return get_factdeta_tariff_type(use_aca, variable_lines)
 
 
+def get_factdeta_declared_tariff_type(use_aca, aca_lines, variable_lines, is_fire=False):
+    """Tipus de tarifa amb què es declara la factura. Els incendis amb cànon facturat es declaren amb el
+    tipus facturat: el validador de l'ACA no admet imports a la tarifa X (incidència)."""
+    tariff_type = get_factdeta_tariff_type(use_aca, variable_lines, is_fire)
+    if tariff_type == 'X' and any(_dec(line.price) for line in aca_lines):
+        return get_factdeta_fire_billed_type(use_aca, variable_lines)
+    return tariff_type
+
+
 def _empty_canon():
     return {
         'billed_volume': ZERO,
@@ -929,11 +938,7 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     is_fire = bool(contract and contract.id in context.fire_contract_ids)
     variable_lines = [line for line in aca_lines if not _is_part_fixa(line, config.part_fixa_token)]
     use_aca = invoice.used_aca or (contract.use_aca if contract else None)
-    tariff_type = get_factdeta_tariff_type(use_aca, variable_lines, is_fire)
-    # Incendis amb cànon facturat: el validador de l'ACA no admet imports a la tarifa X (incidència),
-    # es declaren amb el tipus amb què s'han facturat
-    if tariff_type == 'X' and any(_dec(line.price) for line in aca_lines):
-        tariff_type = get_factdeta_fire_billed_type(use_aca, variable_lines)
+    tariff_type = get_factdeta_declared_tariff_type(use_aca, aca_lines, variable_lines, is_fire)
     social_line_ids = {line.id for line in variable_lines if _has_social_adjustment(line, config.tarifa_social_token)}
     canon = compute_factdeta_canon(tariff_type, aca_lines, config.part_fixa_token)
     # Industrial sense consum: el validador de l'ACA exigeix algun volum a la tarifa industrial

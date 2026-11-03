@@ -14,6 +14,7 @@ from billing.utils.generate_factdeta_service import (
     build_factdeta_detail_record,
     compute_factdeta_canon,
     factdeta_record_warnings,
+    get_factdeta_declared_tariff_type,
     get_factdeta_fire_billed_type,
     get_factdeta_tariff_type,
     latlon_to_utm31,
@@ -120,6 +121,16 @@ class TestFactdetaTariffType(SimpleTestCase):
         self.assertEqual(get_factdeta_fire_billed_type('I', industrial), 'I')
         self.assertEqual(get_factdeta_fire_billed_type('X', domestic), 'D')
         self.assertEqual(get_factdeta_fire_billed_type('X', industrial), 'I')
+
+    def test_fire_with_canon_is_declared_with_billed_type(self):
+        domestic = [line(1, 10, 0.5, interval=1), part_fixa(2, 3.25)]
+        industrial = [line(1, 10, 0.5, name="CANON D'US INDUSTRIAL GENERAL"), part_fixa(2, 3.25)]
+        self.assertEqual(get_factdeta_declared_tariff_type('D', domestic, domestic[:1], is_fire=True), 'D')
+        self.assertEqual(get_factdeta_declared_tariff_type('I', industrial, industrial[:1], is_fire=True), 'I')
+
+    def test_fire_without_canon_stays_fire_extinction(self):
+        lines = [line(1, 10, 0, interval=1, price=0)]
+        self.assertEqual(get_factdeta_declared_tariff_type('D', lines, lines, is_fire=True), 'X')
 
     def test_fire_tariff_declares_no_amounts(self):
         canon = compute_factdeta_canon('X', [line(1, 10, 0.5, interval=1), part_fixa(2, 3.25)], PART_FIXA)
@@ -352,3 +363,9 @@ class TestFactdetaReportFilters(SimpleTestCase):
         where = str(invoices.query).split(' WHERE ')[1]
         self.assertIn('BETWEEN 2026-01-01 AND 2026-10-31', where)
         self.assertNotIn('2025', where)
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_year_out_of_range_is_rejected(self, generate):
+        response, _document_id, _ = generate_factdeta_report(SimpleNamespace(data={'year': 10000}))
+        self.assertEqual(response.status_code, 400)
+        generate.assert_not_called()

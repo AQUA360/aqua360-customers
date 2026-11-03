@@ -1,13 +1,18 @@
 import datetime
+import os
+import tempfile
+import zipfile
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import openpyxl
+from django.core.management import call_command
 from django.test import SimpleTestCase
 
 from billing.tests.test_factdeta_baixa import PART_FIXA, line, part_fixa, record
 from billing.utils.factdeta_reader import (
     INCIDENCE,
+    WARNING,
     build_factdeta_workbook,
     read_factdeta,
     summarize_factdeta,
@@ -140,3 +145,58 @@ class TestFactdetaReaderSummary(SimpleTestCase):
         self.assertEqual(workbook['Registres'].max_row, 2)
         totals = {row[0]: row[2] for row in workbook['Resum'].iter_rows(values_only=True) if row and row[0]}
         self.assertEqual(totals['Import total cànon'], 14.25)
+
+
+class TestFactdetaReaderReviewFixes(SimpleTestCase):
+
+    def parsed(self, **overrides):
+        return read_factdeta(factdeta_file(domestic_record(**overrides))).records[0]
+
+    def test_non_ascii_digit_is_a_format_incidence(self):
+        detail = domestic_record()
+        detail = detail[:270] + '²' + detail[271:]  # dins el volum del 1r tram
+        factdeta = read_factdeta(factdeta_file(detail))
+        self.assertTrue(any('valor numèric no vàlid' in message for message in messages(factdeta, INCIDENCE)))
+
+    def test_amount_without_volume_is_checked(self):
+        parsed = self.parsed()
+        parsed['t3_amount'] = Decimal('2')
+        self.assertIn((INCIDENCE, "3r tram: l'import no és tarifa × volum (±5%)"), validate_record(parsed))
+
+    def test_zero_total_with_concepts_is_checked(self):
+        parsed = self.parsed()
+        parsed['variable_amount'] = parsed['fixed_amount'] = parsed['total_amount'] = Decimal('0')
+        self.assertIn(
+            (INCIDENCE, "l'import total no coincideix amb la suma dels imports dels conceptes (±5%)"),
+            validate_record(parsed),
+        )
+
+    def test_direct_measurement_without_establishment(self):
+        parsed = self.parsed()
+        parsed['tariff'] = 'M'
+        self.assertIn((WARNING, "mesurament directe sense codi d'establiment"), validate_record(parsed))
+
+    def test_text_starting_with_equals_is_not_a_formula(self):
+        factdeta = read_factdeta(factdeta_file(domestic_record()))
+        factdeta.records[0]['street'] = '=1+1'
+        buffer = BytesIO()
+        build_factdeta_workbook(factdeta).save(buffer)
+        sheet = openpyxl.load_workbook(BytesIO(buffer.getvalue()))['Registres']
+        street_column = [cell.value for cell in sheet[1]].index('Nom via') + 1
+        cell = sheet.cell(row=2, column=street_column)
+        self.assertEqual((cell.value, cell.data_type), ('=1+1', 's'))
+
+
+class TestFactdetaAnalyzeCommand(SimpleTestCase):
+
+    def test_same_file_name_in_zip_does_not_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'factdeta.zip')
+            with zipfile.ZipFile(path, 'w') as zip_file:
+                for folder in ('a', 'b'):
+                    zip_file.writestr(f'{folder}/FD2189_080000_2026.txt', factdeta_file(domestic_record()))
+            call_command('factdeta_analyze', path, stdout=StringIO())
+            self.assertEqual(
+                sorted(name for name in os.listdir(directory) if name.endswith('.xlsx')),
+                ['RESUM_FD2189_080000_2026.xlsx', 'RESUM_FD2189_080000_2026_2.xlsx'],
+            )
