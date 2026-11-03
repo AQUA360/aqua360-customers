@@ -218,7 +218,11 @@ class Command(BaseCommand):
 
         try:
             recorded = read_migration_manifest(path)
-            current = migration_hashes() if recorded else {}
+            if not recorded:
+                raise SchemaDumpError(
+                    "L'abocament previ no té manifest de migracions."
+                )
+            current = migration_hashes()
             stale = stale_migration_files(recorded, current)
             if stale:
                 sample = ", ".join(stale[:5])
