@@ -90,6 +90,10 @@ GISWATER_TOKEN=
 GISWATER_SYNC_CONNECS_ENABLED=False
 GISWATER_SYNC_CONNECS_HOUR=3
 GISWATER_SYNC_CONNECS_MINUTE=0
+
+# Sincronització programada de talls de subministrament (mincuts)
+GISWATER_SYNC_SUPPLY_CUTS_ENABLED=False
+GISWATER_SYNC_SUPPLY_CUTS_MINUTES=60
 ```
 
 ### `customers/settings.py`
@@ -109,6 +113,8 @@ GISWATER_PASSWORD = config("GISWATER_PASSWORD", default="")
 GISWATER_SYNC_CONNECS_ENABLED = config("GISWATER_SYNC_CONNECS_ENABLED", default=False, cast=bool)
 GISWATER_SYNC_CONNECS_HOUR = config("GISWATER_SYNC_CONNECS_HOUR", default=3, cast=int)
 GISWATER_SYNC_CONNECS_MINUTE = config("GISWATER_SYNC_CONNECS_MINUTE", default=0, cast=int)
+GISWATER_SYNC_SUPPLY_CUTS_ENABLED = config("GISWATER_SYNC_SUPPLY_CUTS_ENABLED", default=False, cast=bool)
+GISWATER_SYNC_SUPPLY_CUTS_MINUTES = config("GISWATER_SYNC_SUPPLY_CUTS_MINUTES", default=60, cast=int)
 ```
 
 L'app `integrations` ha d'estar registrada a `OWN_APPS` a `customers/settings.py`.
@@ -402,6 +408,7 @@ Sincronització completada
 |-------|-------|------------|
 | `fetch_giswater_connecs_task` | `integrations.tasks` | Obté connecs de Giswater (sense sync) |
 | `sync_giswater_connections_task` | `integrations.tasks` | Sync completa Giswater → Connection |
+| `sync_giswater_suply_cuts_task` | `integrations.tasks` | Sync de talls (mincuts) Giswater → SupplyCut, precedida de la d'escomeses si està activa |
 
 ### Execució manual via Celery
 
@@ -427,6 +434,18 @@ Configuració a `customers/celery.py`:
 - La tasca `sync-giswater-connections` **només s'afegeix al beat schedule** si `GISWATER_SYNC_CONNECS_ENABLED=True`
 - Per defecte s'executa **cada dia a les 3:00**
 - Si `GISWATER_SYNC_CONNECS_ENABLED=False`, la tasca retorna `{"status": "skipped", ...}`
+
+#### Talls de subministrament
+
+```env
+GISWATER_SYNC_SUPPLY_CUTS_ENABLED=True
+GISWATER_SYNC_SUPPLY_CUTS_MINUTES=60
+```
+
+- La tasca `sync-giswater-supply-cuts` (`sync_giswater_suply_cuts_task`) **només s'afegeix al beat schedule** si `GISWATER_SYNC_SUPPLY_CUTS_ENABLED=True`
+- `GISWATER_SYNC_SUPPLY_CUTS_MINUTES`: interval en minuts. Per sota de 60, cada N minuts; a partir de 60, cada N/60 hores en punt
+- És la mateixa tasca que llança el botó «Sincronitzar amb GIS Water» de la llista de talls
+- Si `GISWATER_SYNC_CONNECS_ENABLED=True`, cada execució **sincronitza abans les escomeses**: els talls troben els seus punts per `Connection.code_gis`, i així inclouen les escomeses donades d'alta a Giswater des de l'última sincronització. Un error en aquest pas no atura la dels talls; el resultat de la tasca el recull a `connections`
 
 **Important:** reiniciar celery worker i celery beat després de canviar el `.env`.
 
