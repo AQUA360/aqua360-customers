@@ -89,6 +89,7 @@ def get_multi_ids(data):
         'remittance_ids': _ids_from(data, 'remittance_id', 'remittance_ids'),
         'person_ids': _ids_from_keys(data, 'person_ids', 'person_id'),
         'contract_ids': _ids_from_keys(data, 'contract_ids', 'contract_id'),
+        'company_ids': _ids_from_keys(data, 'company_ids'),
     }
 
 
@@ -100,10 +101,13 @@ def _person_roles_q(person_ids, prefix=''):
     )
 
 
-def invoice_multi_filter_q(billing_ids=None, remittance_ids=None, person_ids=None, contract_ids=None):
+def invoice_multi_filter_q(billing_ids=None, remittance_ids=None, person_ids=None, contract_ids=None, company_ids=None):
     q = None
     if billing_ids:
         q = Q(billing_id__in=billing_ids)
+    if company_ids:
+        clause = Q(company_id__in=company_ids)
+        q = clause if q is None else q & clause
     if contract_ids:
         clause = Q(contract_id__in=contract_ids)
         q = clause if q is None else q & clause
@@ -116,10 +120,13 @@ def invoice_multi_filter_q(billing_ids=None, remittance_ids=None, person_ids=Non
     return q
 
 
-def payment_multi_filter_q(billing_ids=None, remittance_ids=None, person_ids=None, contract_ids=None):
+def payment_multi_filter_q(billing_ids=None, remittance_ids=None, person_ids=None, contract_ids=None, company_ids=None):
     q = None
     if billing_ids:
         q = Q(invoice__billing_id__in=billing_ids)
+    if company_ids:
+        clause = Q(invoice__company_id__in=company_ids)
+        q = clause if q is None else q & clause
     if contract_ids:
         clause = Q(invoice__contract_id__in=contract_ids)
         q = clause if q is None else q & clause
