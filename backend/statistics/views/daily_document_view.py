@@ -10,6 +10,10 @@ from statistics.models import DailyDocument
 from statistics.serializers import DailyDocumentSerializer, DailyDocumentListSerializer
 from statistics.permissions import StatisticsPermission
 from statistics.tasks import regenerate_daily_document
+from statistics.utils.submission_service import (
+    SubmissionError,
+    submit_daily_document,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,6 +32,19 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return DailyDocumentListSerializer
         return DailyDocumentSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action in ('retrieve', 'submit'):
+            return qs.select_related(
+                'status',
+                'template',
+                'template__available_report',
+                'document',
+                'completed_by',
+                'cancelled_by',
+            )
+        return qs
     
     def get_permissions(self):
         if self.action == 'permissions':
@@ -57,3 +74,26 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             logger.exception("Error inesperat")
             return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'], url_path='submit')
+    def submit(self, request, pk=None):
+        """Submit the daily document via its AvailableReport.submission_channel handler."""
+        try:
+            daily_document = self.get_object()
+            result = submit_daily_document(daily_document)
+            daily_document.refresh_from_db()
+            payload = DailyDocumentSerializer(
+                daily_document,
+                context={'request': request},
+            ).data
+            payload['submission_result'] = result.to_api_dict()
+            # Always 200 when the remote call was attempted and the result persisted;
+            # the UI uses submission_result.ok / submission_status for success vs warnings.
+            return Response(payload, status=status.HTTP_200_OK)
+        except SubmissionError as e:
+            return Response({'error': str(e)}, status=e.status_code)
+        except Exception:
+            logger.exception("Error submitting daily document")
+            return Response(
+                {'error': "Ha ocorregut un error inesperat."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

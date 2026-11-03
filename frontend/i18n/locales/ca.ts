@@ -3241,6 +3241,27 @@ export default {
     creation_error_help: 'Proveu de regenerar i, si l\'error persisteix, contacteu amb suport',
     no_document_no_data: 'No s\'ha generat document, no s\'han trobat dades per a aquest dia',
     daily_document_cancelled: 'Informe cancel·lat',
+    submission: {
+      title: 'Enviament extern',
+      submit: 'Enviar',
+      submitted_at: 'Enviat',
+      status: 'Estat',
+      reference: 'Referència',
+      status_pending: 'Pendent',
+      status_correct: 'Correcte',
+      status_partially_correct: 'Parcialment correcte',
+      status_incorrect: 'Incorrecte',
+      status_error: 'Error',
+      channels: {
+        sii_emitidas: {
+          title: 'Enviament SII',
+          submit: 'Enviar al SII',
+          submitted_at: 'Enviat al SII',
+          status: 'Estat SII',
+          reference: 'CSV AEAT',
+        },
+      },
+    },
     report_section: 'Secció',
     choose_daily_report: 'Tria el fitxer diari',
     choose_daily_report_help: 'Selecciona primer la secció i després l\'informe que es generarà cada dia.',
@@ -3478,6 +3499,8 @@ export default {
     warning_valid_dates: 'Seleccioni dates vàlides',
     warning_due_date: 'Si us plau, indiqueu la data de venciment',
     no_send_date_warning: 'Si us plau, indica la data d\'enviament',
+    submission_with_errors: 'L\'enviament s\'ha completat amb errors o avisos',
+    submission_sii_emitidas_with_errors: 'L\'enviament al SII s\'ha completat amb errors o avisos',
     no_cancel_observation_warning: 'Si us plau, indica el motiu de la cancel·lació',
     no_termination_date_warning: 'Si us plau, seleccioni una data de baixa',
     no_order_date_warning: 'Si us plau, indica la data per crear les ordres de treball',
@@ -3809,6 +3832,8 @@ export default {
     confirm_remove_payment_from_remittance_trf: 'Segur que vols desvincular aquest pagament de la remesa de transferència?',
     confirm_send_remittance: 'Segur que vols marcar les remeses com a enviades?',
     confirm_send_daily_document: 'Segur que vols marcar aquest informe diari com a enviat?',
+    confirm_submit_external: 'Segur que vols enviar aquest document a l\'organisme extern?',
+    confirm_submit_sii_emitidas: 'Segur que vols enviar aquest XML al SII de l\'AEAT?',
     confirm_cancel_daily_document: 'Indica el motiu pel qual es cancel·la aquest informe. El comentari és obligatori.',
     confirm_supply_cut: 'Segur que vols realitzar el següent tallament de subministrament?',
     confirm_fraud_dismiss: 'Segur que vols desestimar els expedients de fraude?\nNo s\'aplicarà als expedients actius no resolts.',
@@ -4151,7 +4176,9 @@ export default {
     csv_exported: 'CSV exportat correctament',
     remittance_sent: 'Remesa enviada correctament',
     daily_document_sent: 'Informe diari enviat correctament',
-    daily_document_cancelled: 'Informe diari cancel·lat correctament'
+    daily_document_cancelled: 'Informe diari cancel·lat correctament',
+    submission_ok: 'Document enviat correctament',
+    submission_sii_emitidas_ok: 'XML enviat al SII correctament'
   },
   error_block:   {
     remove_payment_failed: 'Error en eliminar el pagament de la remesa',
@@ -4163,6 +4190,7 @@ export default {
     send_daily_document_failed: 'Error en enviar el informe diari',
     cancel_daily_document_failed: 'Error en cancel·lar el informe diari',
     daily_documents_not_found: 'No s\'han trobat els informes diaris',
+    submission_failed: 'Error en enviar el document',
     error_delete: 'Error en eliminar les dades'
   },
   breadcrumb:   {

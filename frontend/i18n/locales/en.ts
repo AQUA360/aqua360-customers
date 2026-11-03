@@ -3110,6 +3110,27 @@ export default {
     no_available_report: 'No report linked',
     creation_error_help: 'Try regenerating, and if the error persists, contact support',
     no_document_no_data: 'No document generated, no data found for this day',
+    submission: {
+      title: 'External submission',
+      submit: 'Submit',
+      submitted_at: 'Submitted',
+      status: 'Status',
+      reference: 'Reference',
+      status_pending: 'Pending',
+      status_correct: 'Correct',
+      status_partially_correct: 'Partially correct',
+      status_incorrect: 'Incorrect',
+      status_error: 'Error',
+      channels: {
+        sii_emitidas: {
+          title: 'SII submission',
+          submit: 'Submit to SII',
+          submitted_at: 'Submitted to SII',
+          status: 'SII status',
+          reference: 'AEAT CSV',
+        },
+      },
+    },
     report_section: 'Section',
     choose_daily_report: 'Choose the daily file',
     choose_daily_report_help: 'Select a section first, then the report that will be generated every day.',
@@ -3347,6 +3368,8 @@ export default {
     warning_valid_dates: 'Select valid dates',
     warning_due_date: 'Please enter the due date',
     no_send_date_warning: 'Please enter the send date',
+    submission_with_errors: 'Submission completed with errors or warnings',
+    submission_sii_emitidas_with_errors: 'SII submission completed with errors or warnings',
     no_cancel_observation_warning: 'Please enter the cancellation reason',
     no_termination_date_warning: 'Please select a termination date',
     no_order_date_warning: 'Please enter the date to create the work orders',
@@ -3672,6 +3695,8 @@ export default {
     confirm_remove_payment_from_remittance: 'Are you sure you want to unlink this payment from the SEPA remittance?',
     confirm_remove_payment_from_remittance_trf: 'Are you sure you want to unlink this payment from the transfer remittance?',
     confirm_send_remittance: 'Are you sure you want to mark the remittances as sent?',
+    confirm_submit_external: 'Are you sure you want to submit this document to the external authority?',
+    confirm_submit_sii_emitidas: 'Are you sure you want to submit this XML to the AEAT SII?',
     confirm_cancel_daily_document: 'Enter the reason why this document is being cancelled. The comment is required.',
     confirm_supply_cut: 'Are you sure you want to carry out the following supply cut?',
     confirm_fraud_dismiss: 'Are you sure you want to dismiss the fraud cases?\nThis will not apply to unresolved active cases.',
@@ -4002,7 +4027,9 @@ export default {
     document_downloaded: 'Document successfully downloaded',
     csv_exported: 'CSV successfully exported',
     remittance_sent: 'Remittance successfully sent',
-    daily_document_cancelled: 'Daily document cancelled successfully'
+    daily_document_cancelled: 'Daily document cancelled successfully',
+    submission_ok: 'Document submitted successfully',
+    submission_sii_emitidas_ok: 'XML successfully submitted to SII'
   },
   error_block:   {
     remove_payment_failed: 'Error removing the payment from the remittance',
@@ -4012,6 +4039,7 @@ export default {
     csv_export_failed: 'Error exporting the CSV',
     send_remittance_failed: 'Error sending the remittance',
     cancel_daily_document_failed: 'Error cancelling the daily document',
+    submission_failed: 'Error submitting the document',
     error_delete: 'Error deleting the data'
   },
   breadcrumb:   {

@@ -91,7 +91,8 @@ class AvailableReportSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description', 'is_active', 'function_name', 
             'section', 'section_name', 'section_token', 
-            'download_button_name', 'has_custom_config', 'required_fields', 'position'
+            'download_button_name', 'has_custom_config', 'required_fields', 'position',
+            'submission_channel',
         ]
 
     def get_name(self, obj):
@@ -218,4 +219,4 @@ class DailyDocumentListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = DailyDocument
-        fields = '__all__'
+        exclude = ('submission_response',)

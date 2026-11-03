@@ -228,6 +228,17 @@ class AvailableReport(models.Model):
     # Resolució d'ordre de visualització
     position = models.IntegerField(default=0, verbose_name="Posició")
 
+    # Canal d'enviament opcional (null = només descàrrega/revisió).
+    # El valor ha de coincidir amb un handler registrat a submission_service
+    # (p. ex. 'sii_emitidas').
+    submission_channel = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="Canal d'enviament",
+        help_text="Si està buit, l'informe no s'envia a cap organisme. Ha de coincidir amb un handler registrat (ex.: 'sii_emitidas').",
+    )
+
     class Meta:
         ordering = ['section__position', 'position', 'name']
         verbose_name = "Informe Disponible"
@@ -313,6 +324,24 @@ class DailyDocument(models.Model):
     document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True)
     creation_error = models.TextField(null=True, blank=True)
     no_data_found = models.BooleanField(default=False)
+
+    SUBMISSION_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('correct', 'Correct'),
+        ('partially_correct', 'Partially correct'),
+        ('incorrect', 'Incorrect'),
+        ('error', 'Error'),
+    ]
+    submission_status = models.CharField(
+        max_length=32,
+        choices=SUBMISSION_STATUS_CHOICES,
+        null=True,
+        blank=True,
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submission_csv = models.CharField(max_length=255, null=True, blank=True)
+    submission_response = models.TextField(null=True, blank=True)
+    submission_error = models.TextField(null=True, blank=True)
     
     is_active = models.BooleanField(default=True)
     def __str__(self):

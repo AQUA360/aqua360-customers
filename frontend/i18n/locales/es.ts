@@ -3241,6 +3241,27 @@ export default {
     creation_error_help: 'Pruebe a regenerar y, si el error persiste, contacte con soporte',
     no_document_no_data: 'No se ha generado documento, no se han encontrado datos para este día',
     daily_document_cancelled: 'Informe cancelado',
+    submission: {
+      title: 'Envío externo',
+      submit: 'Enviar',
+      submitted_at: 'Enviado',
+      status: 'Estado',
+      reference: 'Referencia',
+      status_pending: 'Pendiente',
+      status_correct: 'Correcto',
+      status_partially_correct: 'Parcialmente correcto',
+      status_incorrect: 'Incorrecto',
+      status_error: 'Error',
+      channels: {
+        sii_emitidas: {
+          title: 'Envío SII',
+          submit: 'Enviar al SII',
+          submitted_at: 'Enviado al SII',
+          status: 'Estado SII',
+          reference: 'CSV AEAT',
+        },
+      },
+    },
     report_section: 'Sección',
     choose_daily_report: 'Elige el fichero diario',
     choose_daily_report_help: 'Selecciona primero la sección y después el informe que se generará cada día.',
@@ -3478,6 +3499,8 @@ export default {
     warning_valid_dates: 'Seleccione fechas válidas',
     warning_due_date: 'Por favor, indique la fecha de vencimiento',
     no_send_date_warning: 'Por favor, indique la fecha de envío',
+    submission_with_errors: 'El envío se ha completado con errores o avisos',
+    submission_sii_emitidas_with_errors: 'El envío al SII se ha completado con errores o avisos',
     no_cancel_observation_warning: 'Por favor, indique el motivo de la cancelación',
     no_termination_date_warning: 'Por favor, seleccione una fecha de baja',
     no_order_date_warning: 'Por favor, indique la fecha para crear las órdenes de trabajo',
@@ -3810,6 +3833,8 @@ supply_cut_actions:   {
     confirm_remove_payment_from_remittance_trf: '¿Estás seguro de que quieres desvincular este pago de la remesa de transferencia?',
     confirm_send_remittance: '¿Estás seguro de que quieres marcar las remesas como enviadas?',
     confirm_send_daily_document: '¿Seguro que quieres marcar este informe diario como enviado?',
+    confirm_submit_external: '¿Seguro que quieres enviar este documento al organismo externo?',
+    confirm_submit_sii_emitidas: '¿Seguro que quieres enviar este XML al SII de la AEAT?',
     confirm_cancel_daily_document: 'Indica el motivo por el que se cancela este informe. El comentario es obligatorio.',
     confirm_supply_cut: '¿Estás seguro de que quieres realizar el siguiente corte de suministro?',
     confirm_fraud_dismiss: '¿Estás seguro de que quieres desestimar los expedientes de fraude?\nNo se aplicará a los expedientes activos no resueltos.',
@@ -4151,7 +4176,9 @@ supply_cut_actions:   {
     csv_exported: 'CSV exportado correctamente',
     remittance_sent: 'Remesa enviada correctamente',
     daily_document_sent: 'Informe diario enviado correctamente',
-    daily_document_cancelled: 'Informe diario cancelado correctamente'
+    daily_document_cancelled: 'Informe diario cancelado correctamente',
+    submission_ok: 'Documento enviado correctamente',
+    submission_sii_emitidas_ok: 'XML enviado al SII correctamente'
   },
   error_block:   {
     remove_payment_failed: 'Error al eliminar el pago de la remesa',
@@ -4163,6 +4190,7 @@ supply_cut_actions:   {
     send_daily_document_failed: 'Error al enviar el informe diario',
     cancel_daily_document_failed: 'Error al cancelar el informe diario',
     daily_documents_not_found: 'No se han encontrado los informes diarios',
+    submission_failed: 'Error al enviar el documento',
     error_delete: 'Error al eliminar las datos'
   },
   breadcrumb:   {
