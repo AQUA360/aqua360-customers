@@ -715,9 +715,6 @@ const recalculateNewReadingsConsumption = async (keep_calculated_value = false, 
                 }
             }
         }
-        if (r.estimated_used && r.estimated_used > r.calculated_value) {
-            r.estimated_used = r.calculated_value;
-        }
     });
     lastNewReadingReal.value = new_readings.value.filter(r => !r.is_estimated && !r.is_control && !r.is_close).sort((a, b) => b.reading_date.localeCompare(a.reading_date))[0]?.reading_date;
     if (!lastNewReadingReal.value || lastNewReadingReal.value == undefined) {
@@ -1923,7 +1920,7 @@ watch(() => props.estimated_bag, (newVal) => {
                                                     readingsToKeepEstimated.includes(pair.modified.id) ||
                                                     isPendingBillingLastReading(pair.modified) ||
                                                     pair.modified.block_estimate_correction"
-                                                    @input="recalculateNewReadingsConsumption(false)" />
+                                                    @input="recalculateNewReadingsConsumption(true)" />
                                             </div>
                                             <div class="mt-2">
                                                 <span
@@ -1937,7 +1934,7 @@ watch(() => props.estimated_bag, (newVal) => {
                                                     :disabled="readingsToDelete.includes(pair.modified.id) ||
                                                         pair.modified.is_initial ||
                                                         isPendingBillingLastReading(pair.modified)"
-                                                    @input="recalculateNewReadingsConsumption(false)" />
+                                                    @input="recalculateNewReadingsConsumption(true)" />
                                             </div>
 
                                             <div v-if="pair.modified.is_estimated"
