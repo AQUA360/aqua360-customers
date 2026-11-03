@@ -276,6 +276,10 @@ class OdooClient:
         )
 
     def _push_batch_json2(self, batch_id, items, *, endpoint, object_type):
+        if not self.api_key:
+            raise OdooApiError(
+                "ODOO_API_KEY no està configurat per al transport json2."
+            )
         model = json2_model_for_batch(endpoint, object_type)
         create_endpoint = f"/json/2/{model}/create"
         item_object_type = (
