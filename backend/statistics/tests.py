@@ -358,6 +358,17 @@ class InformesFilterPayloadTests(SimpleTestCase):
         self.assertEqual(start.date().isoformat(), '2026-01-01')
         self.assertEqual(end.date().isoformat(), '2026-03-31')
 
+    def test_company_ids_filter(self):
+        from django.db.models import Q
+        from statistics.utils.report_filters import get_multi_ids, invoice_multi_filter_q, payment_multi_filter_q
+
+        # `company_id` sol el fan servir els informes ACA per a una altra cosa: no és el filtre.
+        multi_ids = get_multi_ids({'company_ids': '3,5', 'company_id': 9})
+        self.assertEqual(multi_ids['company_ids'], [3, 5])
+        self.assertEqual(invoice_multi_filter_q(**multi_ids), Q(company_id__in=[3, 5]))
+        self.assertEqual(payment_multi_filter_q(**multi_ids), Q(invoice__company_id__in=[3, 5]))
+        self.assertEqual(get_multi_ids({'company_ids': ''})['company_ids'], [])
+
 
 class IncasolMunicipiResolutionTests(SimpleTestCase):
     """El camp municipi dels informes INCASOL ha de ser la població de l'adreça, no el
@@ -527,3 +538,70 @@ class ContractDebtViewTests(TestCase):
         self._payment('0', '20.00')
 
         self.assertEqual(self._debt(), Decimal('30.00'))
+
+
+class DatedUseTypeTests(TestCase):
+    """Tipus d'ús del contracte en el moment de generar la factura (historial ContractLog)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from contract.models import ContractLog, ContractUseType
+
+        cls.domestic = ContractUseType.objects.create(token='T-DOM', name='Tipus A')
+        cls.commercial = ContractUseType.objects.create(token='T-COM', name='Tipus B')
+        cls.industrial = ContractUseType.objects.create(token='T-IND', name='Tipus C')
+        now = timezone.now()
+        cls.t0 = now - timezone.timedelta(days=30)
+        cls.t1 = now - timezone.timedelta(days=20)
+        cls.t2 = now - timezone.timedelta(days=10)
+
+        # Contracte amb historial: A -> B (t1) -> C (t2). Ara és C.
+        cls.changed, cls.unchanged, cls.renamed = Contract.objects.bulk_create([
+            Contract(token='DUT-1', use_type=cls.industrial, is_active=True),
+            Contract(token='DUT-2', use_type=cls.domestic, is_active=True),
+            Contract(token='DUT-3', use_type=cls.domestic, is_active=True),
+        ])
+        logs = ContractLog.objects.bulk_create([
+            ContractLog(contract=cls.changed, field_name='use_type', old_value='Tipus A', new_value='Tipus B'),
+            ContractLog(contract=cls.changed, field_name='use_type', old_value='Tipus B', new_value='Tipus C'),
+            # Nom que ja no existeix: es fa servir el tipus d'ús actual.
+            ContractLog(contract=cls.renamed, field_name='use_type', old_value='Nom antic', new_value='Tipus A'),
+        ])
+        ContractLog.objects.filter(id=logs[0].id).update(created_at=cls.t1)
+        ContractLog.objects.filter(id=logs[1].id).update(created_at=cls.t2)
+        ContractLog.objects.filter(id=logs[2].id).update(created_at=cls.t1)
+
+        def invoice(contract, created_at):
+            inv = Invoice.objects.bulk_create([Invoice(contract=contract)])[0]
+            Invoice.objects.filter(id=inv.id).update(created_at=created_at)
+            inv.refresh_from_db()
+            return inv
+
+        cls.expected = {}
+        for contract, created_at, use_type in [
+            (cls.changed, cls.t0, cls.domestic),      # abans del primer canvi: old_value del primer
+            (cls.changed, cls.t1, cls.commercial),    # mateix instant que el canvi: new_value
+            (cls.changed, now - timezone.timedelta(days=15), cls.commercial),
+            (cls.changed, now, cls.industrial),
+            (cls.unchanged, cls.t0, cls.domestic),    # sense historial: actual
+            (cls.renamed, cls.t0, cls.domestic),      # nom inexistent: actual
+        ]:
+            cls.expected[invoice(contract, created_at).id] = use_type
+
+    def test_sql_annotation(self):
+        from statistics.utils.dated_use_type import annotate_dated_use_type
+
+        rows = annotate_dated_use_type(
+            Invoice.objects.filter(id__in=self.expected), contract_field='contract', created_at_field='created_at',
+            name=True,
+        ).values('id', 'dated_use_type_id', 'dated_use_type_name')
+        for row in rows:
+            self.assertEqual(row['dated_use_type_id'], self.expected[row['id']].id)
+            self.assertEqual(row['dated_use_type_name'], self.expected[row['id']].name)
+
+    def test_python_resolution_matches(self):
+        from statistics.utils.dated_use_type import resolve_dated_use_types
+
+        invoices = Invoice.objects.filter(id__in=self.expected).select_related('contract__use_type')
+        resolved = resolve_dated_use_types((inv, inv.contract) for inv in invoices)
+        self.assertEqual(resolved, self.expected)
