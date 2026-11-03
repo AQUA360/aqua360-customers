@@ -3247,6 +3247,8 @@ export default {
     choose_daily_report: 'Elige el fichero diario',
     choose_daily_report_help: 'Selecciona primero la sección y después el informe que se generará cada día.',
     selected_daily_report: 'Fichero diario seleccionado',
+    create_without_data: 'Crear también sin datos',
+    create_without_data_help: 'Si no se encuentran datos para ese día, se creará igualmente un registro (sin el fichero). Si está desactivado, no se creará nada.',
     analysis_title: 'Análisis',
     tab_contracts: 'Contratos',
     contract_csv_export: 'Contratos: información y variables',

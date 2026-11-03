@@ -734,9 +734,11 @@ class TestSupplyCutCatalogResolution(TestCase):
             defaults={'name': 'motiu', 'value': json.dumps({})},
         )
 
+        # Una correcció manual feta a Customers protegeix els camps tocats.
         manual = SupplyCut.objects.create(
             token='777', cause=self.cause_accidental, status=self.status_open,
             cause_raw='Accidental', state_raw='1', requires_review=False,
+            customers_locked_fields=['status', 'cause'],
         )
         payload = [
             {'id': '777', 'anl_cause': 'Accidental', 'state': '1'},
@@ -744,7 +746,7 @@ class TestSupplyCutCatalogResolution(TestCase):
         ]
         with patch.object(sync_mod, 'fetch_om_mincuts', return_value=payload), \
              patch.object(sync_mod, 'extract_fields', side_effect=lambda r: r), \
-             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value=[]):
+             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value={'body': {'data': {'fields': []}}}):
             sync_mod.sync_supply_cuts_from_giswater()
 
         manual.refresh_from_db()
@@ -882,7 +884,7 @@ class TestSupplyCutSyncConflicteFlag(TestCase):
         ]
         with patch.object(sync_mod, 'fetch_om_mincuts', return_value=payload), \
              patch.object(sync_mod, 'extract_fields', side_effect=lambda r: r), \
-             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value=[]):
+             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value={'body': {'data': {'fields': []}}}):
             sync_mod.sync_supply_cuts_from_giswater()
 
         conflicte = SupplyCut.objects.get(token='c1')
