@@ -56,6 +56,16 @@ const include_excluded = ref(false)
 // d'impagats. No els treu del llistat: queden a la pestanya "Exclosos".
 const excludeContractsWithPendingInvoices = ref(false)
 const useRemittanceDate = ref(false)
+// Filtre addicional només SEPA: motius de devolució (RejectMotive) amb mode
+// include (només aquests) o exclude (treure'ls de la remesa).
+const rejectMotivesMode = ref('include')
+const rejectMotivesModeOptions = computed(() => [
+  { label: t('billing_block.include'), value: 'include' },
+  { label: t('billing_block.exclude'), value: 'exclude' },
+])
+const selectedRejectMotives = ref([])
+const rejectMotives = ref([])
+const loadingRejectMotives = ref(false)
 
 const paymentsTypeOptions = ref([])
 
@@ -198,6 +208,11 @@ const search = async (applyPendingInvoicesExclusion = true) => {
       due_date_end: filter_due_date_end.value,
       use_remittance_date: useRemittanceDate.value,
 
+      ...(props.onlySEPA ? {
+        reject_motives: selectedRejectMotives.value.map(motive => motive.value),
+        reject_motives_mode: rejectMotivesMode.value,
+      } : {}),
+
       ...banksPayload(),
     }
 
@@ -297,6 +312,11 @@ const clickFinalize = async () => {
       include_excluded: include_excluded.value,
       use_remittance_date: useRemittanceDate.value,
       create_doc: true,
+
+      ...(props.onlySEPA ? {
+        reject_motives: selectedRejectMotives.value.map(motive => motive.value),
+        reject_motives_mode: rejectMotivesMode.value,
+      } : {}),
     }
 
     if (selectedBilling.value && selectedSendDate.value) {
@@ -558,6 +578,9 @@ const getData = async () => {
   getPaymentStatus()
   fetchConfigData('pricing', 'product-origin', origins, loadingOrigins);
   fetchConfigData('billing', 'billing', billings, loadingBillings);
+  if (props.onlySEPA) {
+    fetchConfigData('billing', 'reject-motive', rejectMotives, loadingRejectMotives);
+  }
 }
 
 const isValid = () => {
@@ -686,6 +709,8 @@ const resetFilters = (reset_all = true) => {
   include_excluded.value = false;
   useRemittanceDate.value = false;
   excludeContractsWithPendingInvoices.value = false;
+  rejectMotivesMode.value = 'include';
+  selectedRejectMotives.value = [];
   paymentsListTab.value = 'included';
   selectedInvoiceStatuses.value = [];
   selectedPaymentStatuses.value = [];
@@ -1204,6 +1229,26 @@ watch(selectedContracts, () => {
                         <label class="text-xs text-slate-500 whitespace-nowrap">{{ $t('common.to') }}</label>
                         <AtomsInputDate v-model="filter_due_date_end" class="w-full" />
                       </div>
+                    </div>
+                  </div>
+
+                  <div v-if="onlySEPA" class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">
+                      {{ $t('billing_block.filter_reject_motives') }}
+                      <abbr :title="$t('billing_block.info_filter_reject_motives')">
+                        <Icon name="fa6-solid:info" class="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
+                      </abbr>
+                    </label>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <SelectorType v-model="rejectMotivesMode" :options="rejectMotivesModeOptions" />
+                      <v-select
+                        multiple
+                        class="block flex-1 min-w-[14rem] custom-select custom-select-small"
+                        v-model="selectedRejectMotives"
+                        :options="rejectMotives"
+                        :loading="loadingRejectMotives"
+                        :placeholder="$t('common.return_reason')"
+                      />
                     </div>
                   </div>
                 </div>
