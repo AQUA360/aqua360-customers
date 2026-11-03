@@ -2693,6 +2693,8 @@ export default {
     remove_order: 'Orden de retirada',
     remove_orders: 'Órdenes de retirada',
     gmao_operator_readonly: 'Operario GMAO (solo lectura)',
+    delete_blocked_title: 'Orden en curso',
+    delete_blocked_message: 'Esta orden ya está en curso, tiene informes asociados o ya está cerrada, y no se puede eliminar. Solo se pueden eliminar órdenes pendientes, borradores u órdenes enviadas al GMAO que todavía ningún operario ha tomado.',
     update_property_geolocation_hint: 'Actualizar la geolocalización de la finca con la de la orden de trabajo',
     update_property_geolocation: 'Actualizar geolocalización de la finca',
     print_order: 'Imprimir orden de trabajo',

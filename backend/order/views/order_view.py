@@ -16,8 +16,9 @@ from ..filters.order_filter import OrderFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 from auth.permissions import PermissionManager
-from coredata.models import City
+from coredata.models import City, ConfigProject
 from coredata.serializers import CityMinimalSerializer
+from ..services.rabbit import publish_order_deleted_event
 
 class OrderViewSet(viewsets.ModelViewSet):
     
@@ -124,6 +125,42 @@ class OrderViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(read_serializer.data)
         return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers, content_type='application/json')
 
+    def destroy(self, request, *args, **kwargs):
+        # Només es poden eliminar ordres en estat inicial (Pendent, Esborrany
+        # o Enviada, aquesta darrera per permetre cancel·lar tasques despatxades
+        # a la GMAO encara no preses per cap operari). En Curs, Per validar
+        # i Tancada (i qualsevol altra ordre amb informes o completada) es bloqueja.
+        order = self.get_object()
+        try:
+            validate_token = ConfigProject.objects.get(
+                token="for_validate_order_status_token"
+            ).value
+            completed_token = ConfigProject.objects.get(
+                token="order_status_completed_token"
+            ).value
+        except ConfigProject.DoesNotExist:
+            validate_token = "2"
+            completed_token = "2"
+        blocked_tokens = {"5", "2", "10", validate_token, completed_token}
+        status_token = order.status.token if order.status else None
+        cannot_delete = (
+            order.reports.exists()
+            or order.completed_at is not None
+            or (status_token in blocked_tokens)
+        )
+        if cannot_delete:
+            return Response(
+                {
+                    "error": "L'ordre ja està en curs o té informes associats i no es pot eliminar.",
+                    "code": "order_delete_blocked",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            response = super().destroy(request, *args, **kwargs)
+            publish_order_deleted_event(order)
+        return response
+    
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
