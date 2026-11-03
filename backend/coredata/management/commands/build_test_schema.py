@@ -243,9 +243,12 @@ class Command(BaseCommand):
             load_sql_file(connection.settings_dict, BUILD_DATABASE, path)
             connection.close()
             executor = MigrationExecutor(connection)
+            known = set(executor.loader.graph.nodes)
+            for replacement in executor.loader.replacements.values():
+                known.update(replacement.replaces)
             missing = migrations_not_in_graph(
                 executor.loader.applied_migrations,
-                executor.loader.graph.nodes,
+                known,
             )
             if missing:
                 sample = ", ".join(missing[:5])
