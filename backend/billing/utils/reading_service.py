@@ -2102,6 +2102,10 @@ def modify_existing_readings(readings_data, readings_to_update, readings_to_dele
     
     estimated_from_readings = 0
     current_meter_id = supply_point.meter.id if supply_point.meter else None
+    try:
+      estimated_bag = EstimatedBag.objects.get(supply_point=supply_point, contract__id=contract_id)
+    except:
+      estimated_bag = None
 
     for reading_item in sorted(readings_list, key=lambda x: (x['reading_date'], str(x.get('meter_id')) == str(current_meter_id))):
         # print("reading_item", reading_item)
@@ -2126,10 +2130,6 @@ def modify_existing_readings(readings_data, readings_to_update, readings_to_dele
         print("\n")
         print("reading_id", reading_id)
         print("calculated_value", calculated_value)
-        try:
-          estimated_bag = EstimatedBag.objects.get(supply_point=supply_point, contract__id=contract_id)
-        except:
-          estimated_bag = None
         try:
           batch = ReadingBatch.objects.get(id=reading_batch_id)
         except:
