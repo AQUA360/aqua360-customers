@@ -32,7 +32,9 @@ def upload_to_aws(file, document, name, field, entity):
     print("got s3_client")
     print(s3_client)
     bucket_name = settings.AWS_STORAGE_BUCKET_NAME  
-    s3_file_path = f"{field}/{entity}/{date_year}/{month_folder_name}/{name}"  
+    original_name = name
+    base_name, separator, extension = original_name.partition('.')
+    extension = f"{separator}{extension}"
     
     current_user = get_current_user()
     
@@ -42,21 +44,43 @@ def upload_to_aws(file, document, name, field, entity):
     }
     tags_str = "&".join(f"{key}={value}" for key, value in tags.items())
 
-    file_exists = True
-    version = 1
+    prefix = f"{field}/{entity}/{date_year}/{month_folder_name}/"
+    max_key_length = Document._meta.get_field("folder").max_length
+    version = 0
     try:
-        while file_exists:
-            file_exists = file_already_exists_check(bucket_name, s3_file_path)
-            if file_exists:
-                name = f"{name[:name.find('.'):]}({version}){name[name.find('.'):]}"
-                version += 1
+        while True:
+            suffix = f"({version})" if version else ""
+            available = max_key_length - len(prefix) - len(suffix) - len(extension)
+            if available < 0:
+                raise ValidationError("S3 key prefix and extension exceed the document folder limit.")
+            name = f"{base_name[:available]}{suffix}{extension}"
+            s3_file_path = f"{prefix}{name}"
+            try:
+                # Reserve atomically before using the multipart-capable transfer.
+                s3_client.put_object(
+                    Bucket=bucket_name, Key=s3_file_path, Body=b"", IfNoneMatch="*"
+                )
+                break
+            except ClientError as e:
+                if e.response["Error"]["Code"] not in (
+                    "PreconditionFailed", "ConditionalRequestConflict"
+                ):
+                    raise
+            version += 1
     except Exception as e:
         raise ValidationError(f"Error checking if file already exists: {e}")
     
     
     try:
         print("going in try")
-        s3_client.upload_fileobj(file, bucket_name, s3_file_path, ExtraArgs={"Tagging": tags_str})
+        try:
+            s3_client.upload_fileobj(file, bucket_name, s3_file_path, ExtraArgs={"Tagging": tags_str})
+        except Exception:
+            try:
+                s3_client.delete_object(Bucket=bucket_name, Key=s3_file_path)
+            except ClientError:
+                logging.exception("Unable to remove failed S3 upload reservation")
+            raise
         print("uploaded")
         
         """ if file.closed:
@@ -165,5 +189,6 @@ def file_already_exists_check(location, folder):
         )
         return True
     except ClientError as e:
-        logging.error(e)
-        return False    
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            return False
+        raise

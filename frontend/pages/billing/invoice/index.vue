@@ -641,7 +641,7 @@ watch(() => route.query, () => {
       :is-empty="items.length === 0"
       @retry="getData">
       <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
+        <TableHeader :label="$t('common.identification')" sortKey="serie_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('common.date')" sortKey="issue_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />

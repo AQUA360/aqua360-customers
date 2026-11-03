@@ -165,8 +165,8 @@ const redirectNotification = async (result) => {
     return navigateTo('/calendar' + (result.object_id ? '?date=' + result.object_id : ''));
   }
   if (result.object_id) {
-    // For orders, open in lateral panel instead of edit page
-    if (result.module === 'order' && result.entity === 'orders') {
+    // For orders and incidents, open in lateral panel instead of edit page
+    if ((result.module === 'order' && result.entity === 'orders') || (result.module === 'incident' && result.entity === 'incidents')) {
       return navigateTo('/' + result.module + '/' + result.entity + '?id=' + result.object_id);
     }
     return navigateTo('/' + result.module + '/' + result.entity + '/edit/' + result.object_id);

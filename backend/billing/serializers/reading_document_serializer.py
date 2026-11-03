@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from billing.serializers.reading_batch_serializer import ReadingBatchMinimalSerializer
 from billing.serializers.reading_serializer import ReadingMinimalSerializer
+from billing.utils.smart_metering_service import smart_metering_scope_labels
 from coredata.utils.name_utils import generate_token
 from statistics.models import ReadingBatchImportTemplate
 from statistics.serializers import ReadingBatchImportTemplateSerializer
@@ -28,15 +29,17 @@ class ReadingDocumentSerializer(serializers.ModelSerializer):
     processed_at = serializers.DateTimeField(read_only=True)
     last_preview = serializers.JSONField(read_only=True)
     auto_process = serializers.BooleanField(write_only=True, required=False, default=True)
+    smart_metering_scope_labels = serializers.SerializerMethodField()
     
     class Meta:
         model = ReadingDocument
         fields = [
             'id', 'created_at', 'updated_at', 'token', 'file', 'batch', 'template',
             'status', 'task_id', 'processed_at', 'last_preview', 'not_found_readings',
-            'auto_process', 'source', 'reading_date',
+            'auto_process', 'source', 'reading_date', 'smart_metering_scope',
+            'smart_metering_scope_labels',
         ]
-        read_only_fields = ['source', 'reading_date']
+        read_only_fields = ['source', 'reading_date', 'smart_metering_scope']
         
     def create(self, validated_data):
         validated_data.pop('auto_process', None)
@@ -48,6 +51,9 @@ class ReadingDocumentSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         validated_data.pop('auto_process', None)
         return super().update(instance, validated_data)
+
+    def get_smart_metering_scope_labels(self, instance):
+        return smart_metering_scope_labels(instance.smart_metering_scope)
     
     # def update(self, instance, validated_data):
         
@@ -120,6 +126,9 @@ class ReadingDocumentListSerializer(serializers.ModelSerializer):
         
     def to_representation(self, instance):
         representation = super().to_representation(instance)
+        representation['smart_metering_scope_labels'] = smart_metering_scope_labels(
+            instance.smart_metering_scope
+        )
         representation['num_readings'] = instance.readings.count()
         representation['num_not_found_readings'] = instance.not_found_readings.count()
         return representation

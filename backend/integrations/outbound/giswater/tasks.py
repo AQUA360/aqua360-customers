@@ -42,19 +42,34 @@ def sync_giswater_connections_task():
             "message": f"Error sincronitzant connexions amb Giswater: {exc}",
         }
 
+def _sync_connections_before_supply_cuts():
+    """Els talls troben els seus punts per `Connection.code_gis`: si la
+    sincronització d'escomeses està activa, es fa abans perquè els talls
+    incloguin les escomeses donades d'alta a Giswater des de l'última.
+
+    Un error aquí no atura la dels talls, que continua amb els codis que ja hi ha.
+    """
+    if not is_giswater_sync_enabled():
+        return {"status": "skipped"}
+    try:
+        stats = sync_connections_from_giswater()
+    except Exception as exc:
+        return {"status": "error", "message": f"Error sincronitzant connexions amb Giswater: {exc}"}
+    return {
+        "status": "success",
+        **{key: stats[key] for key in ("total_fields", "updated", "unchanged", "not_found")},
+    }
+
+
 @shared_task
 def sync_giswater_suply_cuts_task():
-    # if not is_giswater_sync_enabled():
-    #     return {
-    #         "status": "skipped",
-    #         "message": "Sincronització Giswater desactivada (GISWATER_SYNC_CONNECS_ENABLED=False)",
-    #     }
-
+    connections = _sync_connections_before_supply_cuts()
     try:
         stats = sync_supply_cuts_from_giswater()
         return {
             "status": "success",
             "message": "Sincronització Giswater completada",
+            "connections": connections,
             **stats,
         }
     except Exception as exc:

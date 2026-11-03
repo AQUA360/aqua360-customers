@@ -1,5 +1,6 @@
 import datetime
 from django.core.files.storage import default_storage
+from django.db.models import Q
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
@@ -17,20 +18,32 @@ class DetailedBillingDocumentGenerateView(APIView):
     def put(self, request, *args, **kwargs):
         print("In Detailed Billing Document Generate View")
         # FACDETA
-        is_alta = request.data.get('is_alta', False)
+        # Pot arribar com a booleà o com a text ("false" en un formulari)
+        is_alta = str(request.data.get('is_alta', False)).strip().lower() in ('true', '1')
         exploitations = Exploitation.objects.filter(is_active=True)
-        invoices = Invoice.objects.filter(
-            is_active=True,
-            payments__is_active=True,
-            issue_date__gte=datetime.date(2026,8,17),
-        )
+        if is_alta:
+            invoices = Invoice.objects.filter(
+                is_active=True,
+                payments__is_active=True,
+                issue_date__gte=datetime.date(2026,8,17),
+            )
+        else:
+            # En baixa es declara tot l'any de facturació (per defecte, l'actual)
+            try:
+                year = int(request.data.get('year') or datetime.date.today().year)
+            except (TypeError, ValueError):
+                return Response({"error": "year must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+            invoices = Invoice.objects.filter(is_active=True, issue_date__year=year)
         # Amb múltiples empreses cada fitxer ACA és d'una sola empresa (veure resolve_aca_company)
         company_id = request.data.get('company_id', None)
         if company_id:
             invoices = invoices.filter(company_id=company_id)
+        if not is_alta:
+            # També les explotacions desactivades que tenen factures de l'any
+            exploitations = Exploitation.objects.filter(Q(is_active=True) | Q(id__in=invoices.values('exploitation_id')))
         try:
             files = generate_factdeta_document(exploitations, invoices, is_alta)
-        except ACACompanyError as e:
+        except (ACACompanyError, FactdetaValidationError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
         file_urls = []
@@ -43,6 +56,7 @@ class DetailedBillingDocumentGenerateView(APIView):
                 "year": file_data["year"],
                 "file_url": file_url,
                 "file_name": file_data["file_name"],
+                "warnings": file_data.get("warnings", []),
             })
         
         if file_urls:

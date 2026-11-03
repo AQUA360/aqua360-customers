@@ -10,7 +10,6 @@ from dateutil.relativedelta import relativedelta
 import datetime
 import calendar
 from faker import Faker
-from requests import Request
 from billing.models import CommitmentDeposit, EstimatedBag, EstimatedBagMovement, Invoice, InvoiceLog, InvoiceSerie, InvoiceStatus, InvoiceType, Payment, PaymentCommitment, PaymentCommitmentStatus, PaymentStatus, Reading
 from billing.utils.commitment_deposit_service import update_deposit, wallet_payment_deposit_update
 from billing.utils.payment_service import *
@@ -250,7 +249,6 @@ def update_payment(sender, instance, created, **kwargs):
         return
         
     print("update_payment signal connected")
-    pre_save.disconnect(payment_status_changed, Payment)
     """
     Signal que s'executa quan es crea o actualitza un pagament.
     Actualitza l'estat de la factura associada segons l'estat del pagament:
@@ -262,120 +260,117 @@ def update_payment(sender, instance, created, **kwargs):
     if not instance.id or hasattr(instance, "_skip_signal") or created:
         return
 
-    request = None
-    if hasattr(sender, 'request') and isinstance(sender.request, Request):
-        request = sender.request
-    elif hasattr(instance, '_request') and isinstance(instance._request, Request):
-            request = instance._request
-    user = None
-    if request and request.user and request.user.is_authenticated:
-        user = request.user
-    direct_debit_token = ConfigProject.objects.get(token='direct_debit_token').value
-    print(f"Payment {instance.id} is updated")
-    payment_status_map = get_status_map()
-    status = payment_status_map["payment_status_paid_token"]
-    status_expired = payment_status_map["payment_status_expired_token"]
-    status_endowment = payment_status_map["payment_status_endowment_token"]
-    status_irrecoverable = payment_status_map["payment_status_irrecoverable_token"]
-    status_returned = payment_status_map["payment_status_returned_token"]
-    status_cancelled = payment_status_map["payment_status_cancelled_token"]
-    status_commitment = payment_status_map["payment_status_commitment_token"]
-    payment_piggy = payment_status_map["payment_status_piggy_token"]
-    commitment_cancelled = ConfigProject.objects.get(token='commitment_deposit_status_cancelled_token').value
+    disconnected = pre_save.disconnect(payment_status_changed, Payment)
+    try:
+        user = get_current_user()
+        direct_debit_token = ConfigProject.objects.get(token='direct_debit_token').value
+        print(f"Payment {instance.id} is updated")
+        payment_status_map = get_status_map()
+        status = payment_status_map["payment_status_paid_token"]
+        status_expired = payment_status_map["payment_status_expired_token"]
+        status_endowment = payment_status_map["payment_status_endowment_token"]
+        status_irrecoverable = payment_status_map["payment_status_irrecoverable_token"]
+        status_returned = payment_status_map["payment_status_returned_token"]
+        status_cancelled = payment_status_map["payment_status_cancelled_token"]
+        status_commitment = payment_status_map["payment_status_commitment_token"]
+        payment_piggy = payment_status_map["payment_status_piggy_token"]
+        commitment_cancelled = ConfigProject.objects.get(token='commitment_deposit_status_cancelled_token').value
     
-    #
-    #   UPDATE IN CASE OF COMMITMENT DEPOSIT
-    #
+        #
+        #   UPDATE IN CASE OF COMMITMENT DEPOSIT
+        #
     
-    if instance.status == status and instance.payment_type_token != direct_debit_token and not instance.payment_date:
-        payment_date = timezone.now().date()
-        instance.payment_date = payment_date
+        if instance.status == status and instance.payment_type_token != direct_debit_token and not instance.payment_date:
+            payment_date = timezone.now().date()
+            instance.payment_date = payment_date
     
-    if not instance.invoice or instance.invoice == None:
-        if not instance.commitment_deposit or instance.commitment_deposit == None or instance.status != status:
+        if not instance.invoice or instance.invoice == None:
+            if not instance.commitment_deposit or instance.commitment_deposit == None or instance.status != status:
+                return
+            wallet_payment_deposit_update(instance, user)
             return
-        wallet_payment_deposit_update(instance, user, request)
-        return
 
-    #
-    #   CONTINUE UPDATE FOR INVOICE
-    #
+        #
+        #   CONTINUE UPDATE FOR INVOICE
+        #
     
-    invoice = instance.invoice
-    invoice._skip_signal = True
+        invoice = instance.invoice
+        invoice._skip_signal = True
     
-    if instance.status == status or instance.status == payment_piggy:
-        log_invoice_status(invoice, get_invoice_status("invoice_status_paid_token"), user)
-        # Basar-se en l'import cobrat en lloc de requerir que TOTS els Payment històrics
-        # estiguin pagats: un intent antic fallit (vençut/retornat) mai passa a "pagat"
-        # i bloquejaria la factura per sempre. left_to_pay NO es toca aquí: només es
-        # defineix a la creació/confirmació de la factura (total_final, o total_final
-        # menys saldo/moneder si es generen 2 payments).
-        total_paid = sum(
-            (payment.amount or 0)
-            for payment in invoice.payments.filter(status__in=[status, payment_piggy])
-        )
-        remaining = float(invoice.total_final or 0) - float(total_paid)
-        invoice_fully_paid = remaining <= 0
-        if invoice_fully_paid:
-            invoice.status = get_invoice_status("invoice_status_paid_token")
+        if instance.status == status or instance.status == payment_piggy:
+            log_invoice_status(invoice, get_invoice_status("invoice_status_paid_token"), user)
+            # Basar-se en l'import cobrat en lloc de requerir que TOTS els Payment històrics
+            # estiguin pagats: un intent antic fallit (vençut/retornat) mai passa a "pagat"
+            # i bloquejaria la factura per sempre. left_to_pay NO es toca aquí: només es
+            # defineix a la creació/confirmació de la factura (total_final, o total_final
+            # menys saldo/moneder si es generen 2 payments).
+            total_paid = sum(
+                (payment.amount or 0)
+                for payment in invoice.payments.filter(status__in=[status, payment_piggy])
+            )
+            remaining = float(invoice.total_final or 0) - float(total_paid)
+            invoice_fully_paid = remaining <= 0
+            if invoice_fully_paid:
+                invoice.status = get_invoice_status("invoice_status_paid_token")
+                invoice.save()
+            if instance.status == status:
+                try:
+                    commitment_deposit = CommitmentDeposit.objects.filter(invoices=invoice).exclude(status__token=commitment_cancelled).get()
+                    commitment_deposit.remaining_to_share -= instance.amount
+                    commitment_deposit.save()
+                
+                    log_data ={
+                        "object": commitment_deposit,
+                        "previous_status": commitment_deposit.status,
+                        "current_status": commitment_deposit.status,
+                        "previous_remaining": commitment_deposit.remaining,
+                        "current_remaining": commitment_deposit.remaining,
+                        "used_remaining": instance.amount,
+                        "paid_invoice": invoice if invoice_fully_paid else None,
+                        "paid_invoice_payment": instance,
+                        "user": user,
+                    }
+                    log = LogCommitmentDepositMovement.objects.create(**log_data)
+                
+                except CommitmentDeposit.DoesNotExist:
+                    pass
+        
+            instance._skip_signal = True
+            instance.save()
+        elif instance.status == status_expired:
+            log_invoice_status(invoice, get_invoice_status("invoice_status_expired_token"), user)
+            invoice.status = get_invoice_status("invoice_status_expired_token")
             invoice.save()
-        if instance.status == status:
-            try:
-                commitment_deposit = CommitmentDeposit.objects.filter(invoices=invoice).exclude(status__token=commitment_cancelled).get()
-                commitment_deposit.remaining_to_share -= instance.amount
-                commitment_deposit.save()
-                
-                log_data ={
-                    "object": commitment_deposit,
-                    "previous_status": commitment_deposit.status,
-                    "current_status": commitment_deposit.status,
-                    "previous_remaining": commitment_deposit.remaining,
-                    "current_remaining": commitment_deposit.remaining,
-                    "used_remaining": instance.amount,
-                    "paid_invoice": invoice if invoice_fully_paid else None,
-                    "paid_invoice_payment": instance,
-                    "user": user,
-                }
-                log = LogCommitmentDepositMovement.objects.create(**log_data)
-                
-            except CommitmentDeposit.DoesNotExist:
-                pass
         
-        instance._skip_signal = True
-        instance.save()
-    elif instance.status == status_expired:
-        log_invoice_status(invoice, get_invoice_status("invoice_status_expired_token"), user)
-        invoice.status = get_invoice_status("invoice_status_expired_token")
-        invoice.save()
+            contract = invoice.contract if invoice.contract else None
+            if contract:
+                contract.last_debt_data = instance.payment_date
+                contract.save()
         
-        contract = invoice.contract if invoice.contract else None
-        if contract:
-            contract.last_debt_data = instance.payment_date
-            contract.save()
-        
-        print(f"Invoice {invoice.id} marked as {status_expired.name}")
-    elif instance.status == status_returned:
-        log_invoice_status(invoice, get_invoice_status("invoice_status_confirmed_token"), user)
-        invoice.status = get_invoice_status("invoice_status_confirmed_token")
-        invoice.save()
-    elif instance.status == status_endowment:
-        log_invoice_status(invoice, get_invoice_status("invoice_status_endowment_token"), user)
-        invoice.status = get_invoice_status("invoice_status_endowment_token")
-        invoice.save()
-    elif instance.status == status_irrecoverable:
-        log_invoice_status(invoice, get_invoice_status("invoice_status_irrecoverable_token"), user)
-        invoice.status = get_invoice_status("invoice_status_irrecoverable_token")
-        invoice.save()
-    elif instance.status == status_commitment:
-        log_invoice_status(invoice, get_invoice_status("invoice_status_commitment_token"), user)
-        invoice.status = get_invoice_status("invoice_status_commitment_token")
-        invoice.save()
-    elif instance.status == status_cancelled:
-        log_invoice_status(invoice, get_invoice_status("invoice_status_cancelled_token"), user)
-        invoice.status = get_invoice_status("invoice_status_cancelled_token")
-        invoice.save()
-    pre_save.connect(payment_status_changed, Payment)
+            print(f"Invoice {invoice.id} marked as {status_expired.name}")
+        elif instance.status == status_returned:
+            log_invoice_status(invoice, get_invoice_status("invoice_status_confirmed_token"), user)
+            invoice.status = get_invoice_status("invoice_status_confirmed_token")
+            invoice.save()
+        elif instance.status == status_endowment:
+            log_invoice_status(invoice, get_invoice_status("invoice_status_endowment_token"), user)
+            invoice.status = get_invoice_status("invoice_status_endowment_token")
+            invoice.save()
+        elif instance.status == status_irrecoverable:
+            log_invoice_status(invoice, get_invoice_status("invoice_status_irrecoverable_token"), user)
+            invoice.status = get_invoice_status("invoice_status_irrecoverable_token")
+            invoice.save()
+        elif instance.status == status_commitment:
+            log_invoice_status(invoice, get_invoice_status("invoice_status_commitment_token"), user)
+            invoice.status = get_invoice_status("invoice_status_commitment_token")
+            invoice.save()
+        elif instance.status == status_cancelled:
+            log_invoice_status(invoice, get_invoice_status("invoice_status_cancelled_token"), user)
+            invoice.status = get_invoice_status("invoice_status_cancelled_token")
+            invoice.save()
+    finally:
+        if disconnected:
+            pre_save.connect(payment_status_changed, Payment)
 
 
     
@@ -438,7 +433,6 @@ def check_paid_invoice(sender, instance, **kwargs):
         return
     
     if instance.status and instance.status.token == ConfigProject.objects.get(token='invoice_status_paid_token').value:
-        from order.middleware import get_current_user
         user = get_current_user()
         # Obtenim els ClaimRequestPayment associats a la factura
         bail_paid_token = ConfigProject.objects.get(token='bail_status_returned_token').value
@@ -606,14 +600,7 @@ def payment_status_changed(sender, instance, **kwargs):
                     ) """
             
             if original_instance.status != instance.status:
-                request = None
-                if hasattr(sender, 'request') and isinstance(sender.request, Request):
-                    request = sender.request
-                elif hasattr(instance, '_request') and isinstance(instance._request, Request):
-                        request = instance._request
-                user = None
-                if request and request.user:
-                    user = request.user
+                user = get_current_user()
                 
                 print(
                     f"Payment status changed from {original_instance.status} "

@@ -12,6 +12,7 @@ import io
 import zipfile
 from urllib.parse import urljoin
 from celery import shared_task, chord, group
+from customers.celery import CURRENT_USER_HEADER
 from billing.utils.barcode_service import generate_barcode
 from statistics.utils.report_service import delete_file_later
 from django.core.files.storage import default_storage
@@ -40,8 +41,9 @@ from billing.utils.reading_service import (
     READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR,
     READING_ESTIMATE_STATISTIC_CHOICES,
     READING_ESTIMATE_STATISTIC_MEAN,
-    get_reading_document_target_contract,
     get_reading_minimal_object,
+    resolve_reading_document_previous_reading,
+    resolve_reading_document_target_contract,
 )
 from billing.serializers.reading_serializer import ReadingMinimalSerializer
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
@@ -1184,6 +1186,7 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
         "skipped_existing": 0,
         "created": 0,
         "updated": 0,
+        "previous_from_other_contract": 0,
     }
 
     print(
@@ -1325,12 +1328,18 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             print(f"[reading-doc] row {row_index}: meter {meter.code} has no supply_points")
             continue
 
-        # One reading per CSV row: only the active contract (ConfigProject contract_active_token).
-        # Prefer SP where the meter contract has supply_point_default; never attach to terminated.
+        # One reading per CSV row: the contract valid at the reading date.
+        # Prefer SP where the contract has supply_point_default. The resolved
+        # contract must cover the reading date (registration_date /
+        # termination_date), so rows from a previous contract period (changes
+        # of ownership) land on the right contract instead of the newest
+        # active one. Terminated-but-still-valid contracts are preferred over
+        # unrelated newer active contracts. No date-valid contract -> the row
+        # is reported as no_contracts and skipped.
         target = None
-        for supply_point in supply_points:
-            contract = get_reading_document_target_contract(
-                supply_point, active_contract_status_token
+        for supply_point in sorted(supply_points, key=lambda sp: sp.id):
+            contract = resolve_reading_document_target_contract(
+                supply_point, reading_date.date(), active_contract_status_token
             )
             if contract:
                 target = (supply_point, contract)
@@ -1341,7 +1350,7 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             stats["no_contracts"] += 1
             print(
                 f"[reading-doc] row {row_index}: meter {meter.code} "
-                f"no active contract (token={active_contract_status_token!r})"
+                f"no contract valid at {reading_date.date()} (token={active_contract_status_token!r})"
             )
             continue
 
@@ -1354,17 +1363,14 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
                 tele_obs = None
 
         base_date = reading_date.date()
-        previous_reading = (
-            Reading.objects.filter(
-                supply_point=supply_point,
-                reading_date__lt=base_date,
-                meter=meter,
-                contract=contract,
-                is_control=False,
-            )
-            .order_by("-reading_date", "-reading_value")
-            .first()
+        previous_reading, previous_tier = resolve_reading_document_previous_reading(
+            supply_point=supply_point,
+            meter=meter,
+            contract=contract,
+            reading_date=base_date,
         )
+        if previous_reading is not None and previous_tier == 2 and not is_control:
+            stats["previous_from_other_contract"] += 1
 
         existing_reading = Reading.objects.filter(
                 supply_point=supply_point,
@@ -1373,6 +1379,7 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
                 contract=contract,
                 is_control=is_control,
                 is_initial=False,
+                is_active=True,
             ).first()
 
         allow_by_period = check_billing_period(base_date, supply_point, meter, contract, previous_reading)
@@ -1408,7 +1415,9 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             stats["created"] += 1
             print(
                 f"[reading-doc] row {row_index}: CREATE reading "
-                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value}"
+                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value} "
+                f"previous_reading={previous_reading.id if previous_reading else '-'} "
+                f"previous_tier={previous_tier if previous_reading else '-'}"
             )
             new_reading = Reading.objects.create(
                 token=f"{meter.code}/DOC{reading_date.strftime('%y%m%d')}",
@@ -1437,18 +1446,45 @@ def _process_reading_document_file(document, uploaded_file, reading_document_id)
             stats["updated"] += 1
             print(
                 f"[reading-doc] row {row_index}: UPDATE reading "
-                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value}"
+                f"contract={contract.token} status={getattr(contract.status, 'token', None)} value={reading_value} "
+                f"overwriting={previous_reading.id}"
             )
             new_reading = previous_reading
             new_reading.reading_value = reading_value
             new_reading.reading_date = base_date
             new_reading.contract = contract
-            new_reading.calculated_value = new_reading.calculated_value + calculated_value if not is_control else 0
-            new_reading.real_consumption = new_reading.calculated_value + calculated_value if not is_control else 0
-            new_reading.consumption_days = new_reading.consumption_days + consumption_days if new_reading.consumption_days else consumption_days if not is_control else 0
             new_reading.leak_value = leak_value
             new_reading.remote_alert = tele_obs
             new_reading.document = document
+            # Overwrite keeps the row identity, so its own previous reading
+            # must be re-resolved against the new date/contract (excluding the
+            # row itself) and consumption recomputed from that reading, the
+            # same rule the create branch applies. The old link could point to
+            # a reading of another contract or to the overwritten row itself.
+            overwritten_previous, overwritten_previous_tier = resolve_reading_document_previous_reading(
+                supply_point=supply_point,
+                meter=meter,
+                contract=contract,
+                reading_date=base_date,
+                exclude_reading=new_reading,
+            )
+            if is_control:
+                new_reading.calculated_value = 0
+                new_reading.real_consumption = 0
+                new_reading.consumption_days = 0
+            else:
+                new_reading.previous_reading = overwritten_previous
+                if overwritten_previous and overwritten_previous.reading_value is not None:
+                    new_reading.calculated_value = reading_value - overwritten_previous.reading_value
+                    new_reading.real_consumption = new_reading.calculated_value
+                    new_reading.consumption_days = (base_date - overwritten_previous.reading_date).days
+                    if overwritten_previous_tier == 2:
+                        stats["previous_from_other_contract"] += 1
+                else:
+                    new_reading.previous_reading = None
+                    new_reading.calculated_value = 0
+                    new_reading.real_consumption = 0
+                    new_reading.consumption_days = 0
             new_reading.save()
             if is_negative_reading:
                 new_reading.alert = reading_alert_negative
@@ -1744,6 +1780,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
           is_control=False,
           is_initial=False,
           is_close=False,
+          is_active=True,
           reading_date__gte=minimum_date,
       ).filter(
           Q(previous_reading__is_close=False) |
@@ -1804,6 +1841,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                       is_control=False,
                       is_initial=False,
                       is_close=False,
+                      is_active=True,
                   ).filter(
                       Q(previous_reading__is_close=False) |
                       Q(previous_reading__isnull=True)
@@ -1820,6 +1858,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                       invoices__type_final='F',
                       is_initial=False,
                       is_close=False,
+                      is_active=True,
                   ).filter(
                       Q(previous_reading__is_close=False) |
                       Q(previous_reading__isnull=True)
@@ -1836,7 +1875,8 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                       is_control=False,
                       is_initial=False,
                       is_close=False,
-                      reading_date__gte=minimum_date
+                      reading_date__gte=minimum_date,
+                      is_active=True,
                   ).filter(
                       Q(previous_reading__is_close=False) |
                       Q(previous_reading__isnull=True)
@@ -1890,7 +1930,8 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                   is_control=False,
                   is_initial=False,
                   is_close=False,
-                  contract=contract
+                  contract=contract,
+                  is_active=True,
               ).filter(
                   Q(previous_reading__is_close=False) |
                   Q(previous_reading__isnull=True)
@@ -1907,6 +1948,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                   invoices__type_final='F',
                   is_close=False,
                   is_initial=False,
+                  is_active=True,
               ).filter(
                     Q(previous_reading__is_close=False) |
                     Q(previous_reading__isnull=True)
@@ -1923,7 +1965,8 @@ def assign_readings_task(self, reading_batch_id, payload=None):
                   is_control=False,
                   is_initial=False,
                   is_close=False,
-                  reading_date__gte=minimum_date
+                  reading_date__gte=minimum_date,
+                  is_active=True,
               ).filter(
                   Q(previous_reading__is_close=False) |
                   Q(previous_reading__isnull=True)
@@ -1989,7 +2032,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
 
 
 @shared_task(bind=True)
-def preview_smart_metering_task(self, reading_date):
+def preview_smart_metering_task(self, reading_date, scope=None):
   progress_recorder = ProgressRecorder(self)
 
   def on_progress(current, total, description=""):
@@ -1999,6 +2042,7 @@ def preview_smart_metering_task(self, reading_date):
       reading_date,
       api_timeout=SMART_METERING_PREVIEW_API_TIMEOUT,
       progress_callback=on_progress,
+      scope=scope,
   )
   return _json_safe(result)
 
@@ -2173,7 +2217,7 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
         ).distinct()
         for contract in contracts:
           try:
-            if not Reading.objects.filter(supply_point=supply_point, contract=contract, batch=reading_batch, is_estimated=True).exists():
+            if not Reading.objects.filter(supply_point=supply_point, contract=contract, batch=reading_batch, is_estimated=True, is_active=True).exists():
               
               # Lògica de càlcul de data específica per punt de subministrament
               sp_target_date = target_date
@@ -2189,7 +2233,8 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
                   last_reading = Reading.objects.filter(
                       supply_point=supply_point,
                       contract=contract,
-                      reading_value__isnull=False
+                      reading_value__isnull=False,
+                      is_active=True,
                   ).order_by('-reading_date').first()
 
                   if last_reading:
@@ -2203,7 +2248,8 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
                   last_reading = get_period_start_reading(Reading.objects.filter(
                       supply_point=supply_point,
                       contract=contract,
-                      reading_value__isnull=False
+                      reading_value__isnull=False,
+                      is_active=True,
                   ).order_by('-reading_date', 'is_close').first())
                   if last_reading:
                       sp_target_date = last_reading.reading_date + timedelta(days=sp_biller_days)
@@ -2729,7 +2775,8 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
   problematic_readings = Reading.objects.filter(
     billing__id=billing_id,
     invoices__billing__isnull=True,
-    invoices__type_final=invoice_type_invoice_token
+    invoices__type_final=invoice_type_invoice_token,
+    is_active=True,
   )
   
   pre_invoices_to_delete = Invoice.objects.filter(
@@ -3359,7 +3406,7 @@ def fix_readings_batch(reading_ids):
         estimated_bag.save()
     readings.update(is_control=True, batch=None, is_estimated=False)
     for reading in readings:
-      same_meter_readings = Reading.objects.filter(meter=reading.meter, reading_date=reading.reading_date, contract=reading.contract, is_control=False)
+      same_meter_readings = Reading.objects.filter(meter=reading.meter, reading_date=reading.reading_date, contract=reading.contract, is_control=False, is_active=True)
       if same_meter_readings.count() > 0:
         print(f"Same meter readings found for reading meter {reading.meter.code}: {same_meter_readings.count()}")
         fix_readings_batch.delay(list(same_meter_readings.values_list('id', flat=True)))
@@ -3676,7 +3723,11 @@ def regenerate_sepa_file(self, payment_remittance_id, payment_ids, send_date):
 
     payments_qs.update(document=document_file)
 
-    anomalies = [p.id for p in payments_qs if p.amount <= 0]
+    # A les transferències de retorn els imports negatius (abonaments) són vàlids.
+    if payment_remittance.is_return:
+      anomalies = [p.id for p in payments_qs if p.amount == 0]
+    else:
+      anomalies = [p.id for p in payments_qs if p.amount <= 0]
 
     return {
       "status": "ok",
@@ -3710,7 +3761,7 @@ def export_readings_by_batch_csv_task(batch_id):
         readings = Reading.objects.filter(
             batch_id=batch_id, 
             is_active=True,
-            is_control=False
+            is_control=False,
         ).select_related(
             'contract',
             'contract__holder',
@@ -3761,7 +3812,7 @@ def export_readings_by_batch_csv_task(batch_id):
                     contract_id=reading.contract_id,
                     reading_date__lt=reading.reading_date,
                     is_active=True,
-                    is_control=False
+                    is_control=False,
                 ).order_by('-reading_date')[:4]
                 for pr in prev_readings:
                     prev_consumptions.append(pr.calculated_value if pr.calculated_value is not None else '')
@@ -4179,7 +4230,11 @@ def process_next_queue_item():
       args = [next_item.billing_id]
     if task:
       Billing.objects.filter(id=next_item.billing_id).update(task_id=task_id)
-      task.apply_async(args=args, kwargs={'queue_item_id': next_item.id}, task_id=task_id)
+      # Es passa l'usuari de l'item: si no, heretaria el de la tasca que acaba d'acabar
+      task.apply_async(
+        args=args, kwargs={'queue_item_id': next_item.id}, task_id=task_id,
+        headers={CURRENT_USER_HEADER: next_item.created_by_id},
+      )
   except Exception as e:
     next_item.status = 'failed'
     next_item.completed_at = timezone.now()
@@ -4491,3 +4546,131 @@ def manage_deliquency(request_data, user_id):
     return {"invoices": serialized_invoices, "contracts": serialized_contracts}
   except Exception as e:
     return {"ERROR": str(e)}
+
+
+@shared_task(bind=True)
+def generate_billing_document_download(self, download_id):
+  """Ajunta els PDF d'unes facturacions o d'uns processos de comunicació."""
+  from django.core.files.base import ContentFile
+  from django.utils import timezone
+  from django.utils.translation import gettext as _
+
+  from billing.models import BillingDocumentDownload
+  from billing.utils.billing_document_download import (
+    BATCH_NONE, DownloadOptionsError, document_source_size, invoice_source_size,
+    iter_download_parts, open_pdf_zip, ordered_billing_invoices, ordered_process_files,
+    render_billing_download_pdf, render_documents_pdf,
+  )
+  from documentmanager.utils.main_utils import upload_document
+
+  record = BillingDocumentDownload.objects.select_related(
+    'billing', 'communication_process',
+  ).filter(id=download_id).first()
+  if record is None:
+    return {"status": "error", "message": "Download request not found"}
+
+  record.status = BillingDocumentDownload.STATUS_RUNNING
+  record.save(update_fields=['status'])
+  zip_file = None
+  try:
+    filters = dict(
+      payment_type_tokens=record.payment_type_tokens,
+      ordering=record.ordering,
+      descending=record.descending,
+    )
+    process_ids = list(record.communication_processes.values_list('id', flat=True))
+    if not process_ids and record.communication_process_id:
+      process_ids = [record.communication_process_id]
+    if process_ids:
+      files = ordered_process_files(
+        process_ids, delivery=record.delivery, **filters,
+      )
+      record.invoice_count = len(files)
+      if not files:
+        raise DownloadOptionsError('empty')
+      items = files
+      sizes = [document_source_size(comm_file.file) for comm_file in files]
+      render_batch = lambda batch: render_documents_pdf([comm_file.file for comm_file in batch])
+      tokens = list(record.communication_processes.values_list('token', flat=True))
+      if not tokens and record.communication_process_id:
+        tokens = [record.communication_process.token]
+      token = '_'.join(str(value) for value in tokens if value) or process_ids[0]
+      entity = 'COMUNICACIO'
+      entity_id = process_ids[0]
+      prefix = 'proces'
+      empty_message = _("No hi ha cap document per ajuntar.")
+    else:
+      billing_ids = list(record.billings.values_list('id', flat=True))
+      if not billing_ids and record.billing_id:
+        billing_ids = [record.billing_id]
+      invoices = list(ordered_billing_invoices(billing_ids, **filters))
+      record.invoice_count = len(invoices)
+      if not invoices:
+        raise DownloadOptionsError('empty')
+      items = invoices
+      sizes = [invoice_source_size(invoice) for invoice in invoices]
+      render_batch = lambda batch: render_billing_download_pdf(batch)
+      tokens = list(record.billings.values_list('token', flat=True))
+      token = '_'.join(value for value in tokens if value) or (record.billing_id or 'factures')
+      entity = 'BILLING'
+      entity_id = billing_ids[0]
+      prefix = 'factures'
+      empty_message = _("No hi ha cap PDF de factura per ajuntar.")
+    safe = ''.join(ch if ch.isalnum() or ch in '-_' else '_' for ch in str(token))[:80]
+    stamp = timezone.now().strftime('%Y%m%d%H%M%S')
+    parts = iter_download_parts(
+      items, sizes, render_batch, record.batch_mode, record.batch_size,
+    )
+    if record.batch_mode == BATCH_NONE:
+      content = next(parts)
+      record.batch_count = 1
+      filename = f"{prefix}_{safe}_{stamp}.pdf"
+      upload_file = ContentFile(content, name=filename)
+    else:
+      zip_file, record.batch_count = open_pdf_zip(
+        parts, lambda index: f"{prefix}_{safe}_lot_{index:03d}.pdf",
+      )
+      filename = f"{prefix}_{safe}_{stamp}.zip"
+      upload_file = zip_file
+    document = upload_document(
+      file=upload_file,
+      entity=entity,
+      field='DOCUMENT_DOWNLOAD',
+      entity_id=entity_id,
+      entity_token=str(token)[:255],
+      folder='',
+      service=settings.DOCUMENT_MANAGER_SERVICES.get('billing', 'hdd'),
+      document_name=filename,
+      date=timezone.now(),
+    )
+    record.document = document
+    record.status = BillingDocumentDownload.STATUS_COMPLETED
+    record.completed_at = timezone.now()
+    record.error_message = None
+    record.save(update_fields=['document', 'status', 'completed_at', 'invoice_count', 'batch_count', 'error_message'])
+    return {
+      "status": "success",
+      "document_id": document.id,
+      "document_name": document.document_name,
+    }
+  except DownloadOptionsError:
+    message = str(empty_message if 'empty_message' in locals() else _("No hi ha cap document per ajuntar."))
+  except Exception as exc:
+    message = str(exc)
+    import logging
+    logging.getLogger(__name__).exception("Error generant la descàrrega de factures %s", download_id)
+  finally:
+    if zip_file is not None:
+      import os
+      name = zip_file.name
+      zip_file.close()
+      try:
+        os.unlink(name)
+      except OSError:
+        pass
+
+  record.status = BillingDocumentDownload.STATUS_FAILED
+  record.error_message = message[:2000]
+  record.completed_at = timezone.now()
+  record.save(update_fields=['status', 'error_message', 'completed_at', 'invoice_count'])
+  return {"status": "error", "message": message}

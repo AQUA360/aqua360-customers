@@ -79,7 +79,7 @@ onMounted(() => {
         </span>
         <footer class="flex justify-between items-center pt-1">
           <div class="flex items-center mb-1 gap-3">
-            <p class="text-sm text-gray-700">{{ log.user?.username || t('common.admin') }}</p>
+            <p class="text-sm text-gray-700">{{ log.user?.username || t('common.automatic_process') }}</p>
             <p class="inline-flex items-center text-sm text-gray-900 font-semibold">
               <TimeRelative :datetime="log.created_at" />
             </p>

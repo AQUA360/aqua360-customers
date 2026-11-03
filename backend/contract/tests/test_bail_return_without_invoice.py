@@ -1,8 +1,10 @@
+import datetime
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from billing.models import InvoiceStatus, PaymentStatus
 from contract.models import Bail, BailStatus, Contract, ContractStatus, PiggyBank, PiggyBankMovement
@@ -63,6 +65,24 @@ class BailReturnWithoutInvoiceTest(TestCase):
 
         generate_invoice.assert_not_called()
         self._assert_returned_without_invoice(contract, bail)
+
+    @patch('contract.utils.bail_service.invoice_generate_return_bail')
+    def test_immediate_return_uses_given_return_date(self, generate_invoice):
+        contract, bail = self._contract_with_bail('5')
+
+        immediate_return_bail(self.user, bail.id, return_date=datetime.date(2026, 1, 15))
+
+        bail.refresh_from_db()
+        self.assertEqual(bail.return_date, datetime.date(2026, 1, 15))
+
+    @patch('contract.utils.bail_service.invoice_generate_return_bail')
+    def test_immediate_return_defaults_return_date_to_today(self, generate_invoice):
+        contract, bail = self._contract_with_bail('6')
+
+        immediate_return_bail(self.user, bail.id)
+
+        bail.refresh_from_db()
+        self.assertEqual(bail.return_date, timezone.localdate())
 
     @patch('contract.utils.bail_service.invoice_generate_return_bail')
     def test_immediate_return_without_balance(self, generate_invoice):

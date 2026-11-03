@@ -66,7 +66,7 @@ def download_multiple_documents(document_ids, service):
     else:
         raise ValidationError(f"Unsupported service: {service}")
 
-def upload_document(file, entity, field, entity_id, entity_token, folder, service, document_name, date=None):
+def upload_document(file, entity, field, entity_id, entity_token, folder, service, document_name, date=None, hdd_subfolder=None):
     """Function to handle document uploads depending on the service."""
     if '.' in document_name:
         ext = document_name[document_name.find('.'):]
@@ -111,7 +111,7 @@ def upload_document(file, entity, field, entity_id, entity_token, folder, servic
     file.seek(0)
     
     if service == 'hdd':
-        document = upload_to_hdd(file, entity, field, entity_id, entity_token, folder, versioned_name, document, date)
+        document = upload_to_hdd(file, entity, field, entity_id, entity_token, folder, versioned_name, document, date, subfolder=hdd_subfolder)
     elif service == 'ftp':
         document = upload_to_ftp(file, entity, field, entity_id, entity_token, folder, versioned_name, document, date)
     elif service == 'azure':

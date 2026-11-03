@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from billing.models import (
     CommitmentDepositStatus, Invoice, InvoiceStatus, Payment, PaymentCommitmentStatus, PaymentStatus, RejectMotive,
 )
+from billing.serializers.payment_remittance_return_serializer import PaymentSEPAReturnSerializer
 from billing.signals import payment_status_changed
 from billing.utils import payment_service
 from billing.utils.payment_service import (
@@ -20,7 +21,7 @@ from billing.utils.payment_service import (
 )
 from billing.utils.sepa_service import handle_not_found_payment
 from contract.models import Contract, PaymentType
-from coredata.models import ConfigProject
+from coredata.models import ConfigProject, Person
 
 
 class ReturnAfterPaymentMethodChangeBase(TestCase):
@@ -150,6 +151,30 @@ class TestSepaReturnFileAfterMethodChange(ReturnAfterPaymentMethodChangeBase):
 
         self.assertTrue(rejection['skip_return'])
         self.assertFalse(rejection['method_changed'])
+
+    def test_rejection_includes_contract_holder(self):
+        self.contract.holder = Person.objects.create(name='Titular', surname='Prova', token='00000000T')
+        self.contract.save()
+
+        rejection = self.parse()
+
+        self.assertEqual(rejection['contract_holder_name'], 'Titular Prova')
+        self.assertEqual(rejection['contract_holder_nif'], '00000000T')
+
+    def test_rejection_without_contract_holder(self):
+        rejection = self.parse()
+
+        self.assertIsNone(rejection['contract_holder_name'])
+        self.assertIsNone(rejection['contract_holder_nif'])
+
+    def test_return_detail_payments_include_contract_holder(self):
+        self.contract.holder = Person.objects.create(name='Titular', surname='Prova', token='00000000T')
+        self.contract.save()
+
+        contract = PaymentSEPAReturnSerializer(self.payment).data['contract']
+
+        self.assertEqual(contract['holder_name'], 'Titular Prova')
+        self.assertEqual(contract['holder_nif'], '00000000T')
 
 
 class TestManageRejectionAfterMethodChange(ReturnAfterPaymentMethodChangeBase):

@@ -341,3 +341,101 @@ class TestMultiMeterBilling(TestCase):
         # Verify the individual resolved consumption values
         units = sorted([item.units for item in line_items])
         self.assertEqual(units, [8.0, 10.0])
+
+    def _create_persons_invoice(self):
+        """Create an invoice whose occupants and rate can later differ from the contract."""
+        quantity, _ = VariableCalculation.objects.get_or_create(token='total_persons')
+        LineItemType.objects.update(quantity=quantity)
+        self.contract.total_persons = 4
+        self.contract.save(update_fields=['total_persons'])
+        previous = Reading.objects.create(
+            contract=self.contract, meter=self.meter1, supply_point=self.supply_point1,
+            reading_date=timezone.now().date() - timezone.timedelta(days=90),
+            reading_value=100, calculated_value=0,
+        )
+        reading = Reading.objects.create(
+            contract=self.contract, meter=self.meter1, supply_point=self.supply_point1,
+            reading_date=timezone.now().date(), previous_reading=previous,
+            reading_value=110, calculated_value=10, consumption_days=90,
+        )
+        invoice = generate_consumption_invoice_multiple(
+            self.contract, [reading], 'Historical occupants', period_months=3,
+        )
+        self.assertIsNotNone(invoice)
+        return invoice, reading
+
+    def test_generation_persists_configured_persons_fallback(self):
+        _, reading = self._create_persons_invoice()
+        ConfigProject.objects.update_or_create(
+            token='contract_min_persons', defaults={'value': '5'},
+        )
+        for persons, expected in ((0, 5), (-1, 5), (2, 2)):
+            with self.subTest(persons=persons):
+                self.contract.total_persons = persons
+                invoice = generate_consumption_invoice_multiple(
+                    self.contract, [reading], 'Occupants fallback', period_months=3,
+                )
+                self.assertIsNotNone(invoice)
+                self.assertEqual(invoice.persons_final, expected)
+                self.assertEqual(invoice.line_items.get().units, expected)
+
+    def test_recalculation_rejects_multiple_contracts_before_deleting_invoice(self):
+        from billing.models import Invoice
+        from billing.utils.recalculate_invoice_service import delete_and_recalculate_invoice
+
+        invoice, reading = self._create_persons_invoice()
+        other_contract = Contract.objects.create(token='OTHER-CONTRACT')
+        other_reading = Reading.objects.create(contract=other_contract)
+        invoice.readings.add(other_reading)
+        original_line_ids = list(invoice.line_items.values_list('pk', flat=True))
+
+        with patch.object(Invoice, 'delete') as delete_invoice, patch(
+            'billing.utils.recalculate_invoice_service.generate_consumption_invoice_multiple'
+        ) as generate_invoice:
+            with self.assertRaisesMessage(ValueError, 'multiple contracts'):
+                delete_and_recalculate_invoice(invoice.pk)
+
+        delete_invoice.assert_not_called()
+        generate_invoice.assert_not_called()
+        self.assertTrue(Invoice.objects.filter(pk=invoice.pk).exists())
+        self.assertCountEqual(invoice.readings.all(), [reading, other_reading])
+        self.assertEqual(list(invoice.line_items.values_list('pk', flat=True)), original_line_ids)
+
+    def test_recalculation_preserves_persons_and_removed_historical_rate(self):
+        from billing.models import Invoice
+        from billing.utils.recalculate_invoice_service import (
+            delete_and_recalculate_invoice, recalculate_invoice_smart,
+        )
+
+        for recalculate in (delete_and_recalculate_invoice, recalculate_invoice_smart):
+            with self.subTest(recalculate=recalculate.__name__):
+                original, reading = self._create_persons_invoice()
+                original_id = original.pk
+                historical_rate = original.line_items.get().price_rate
+                self.contract.total_persons = 2
+                self.contract.save(update_fields=['total_persons'])
+                historical_links = list(self.contract.price_rates.all())
+                self.contract.price_rates.clear()
+                historical_rate.is_active = False
+                historical_rate.save(update_fields=['is_active'])
+                current_rate = PriceRate.objects.create(
+                    name='Current rate', product=historical_rate.product,
+                )
+                current_link = ContractPriceRate.objects.create(
+                    price_rate=current_rate, supply_point=self.supply_point1,
+                )
+                self.contract.price_rates.add(current_link)
+
+                with patch('billing.utils.recalculate_invoice_service._get_invoice_warning', return_value=None):
+                    regenerated = recalculate(original_id)
+
+                self.assertFalse(Invoice.objects.filter(pk=original_id).exists())
+                self.assertEqual(regenerated.persons_final, 4)
+                line = regenerated.line_items.get()
+                self.assertEqual(line.price_rate_id, historical_rate.pk)
+                self.assertEqual(line.units, 4)
+                self.assertEqual(list(regenerated.readings.all()), [reading])
+                self.contract.price_rates.clear()
+                self.contract.price_rates.add(*historical_links)
+                historical_rate.is_active = True
+                historical_rate.save(update_fields=['is_active'])

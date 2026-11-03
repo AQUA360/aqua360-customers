@@ -1,6 +1,7 @@
 from django_filters import rest_framework as filters
 from ..models import Incident
-from django.db.models import Q
+from django.db.models import F, Q
+from django.utils import timezone
 
 class IncidentFilter(filters.FilterSet):
     search = filters.CharFilter(method='filter_search')
@@ -14,10 +15,21 @@ class IncidentFilter(filters.FilterSet):
     incident_type = filters.CharFilter(method='filter_incident_type')
     exploitation = filters.NumberFilter(method='filter_exploitation')
     status = filters.BaseInFilter(field_name='status__id', lookup_expr='in')
+    supply_cut = filters.NumberFilter(field_name='supply_cut__id', lookup_expr='exact')
+    assigned_to = filters.NumberFilter(field_name='assigned_to__id', lookup_expr='exact')
+    created_by = filters.NumberFilter(field_name='created_by__id', lookup_expr='exact')
+    assigned_to_me = filters.BooleanFilter(method='filter_assigned_to_me')
+    overdue = filters.BooleanFilter(method='filter_overdue')
+    channel = filters.BaseInFilter(field_name='channel__id', lookup_expr='in')
+    closed_out_of_term = filters.BooleanFilter(method='filter_closed_out_of_term')
+    created_from = filters.DateFilter(field_name='created_at__date', lookup_expr='gte')
+    created_to = filters.DateFilter(field_name='created_at__date', lookup_expr='lte')
 
     class Meta:
         model = Incident
-        fields = ['search', 'contract', 'invoice', 'incident_type', 'commitment_deposit', 'order', 'supply_point', 'cluster', 'status']
+        fields = ['search', 'contract', 'invoice', 'incident_type', 'commitment_deposit', 'order', 'supply_point', 'cluster', 'status',
+                  'supply_cut', 'assigned_to', 'created_by', 'assigned_to_me', 'overdue', 'channel', 'closed_out_of_term',
+                  'created_from', 'created_to']
    
     def filter_search(self, queryset, name, value):
         return queryset.filter(
@@ -45,6 +57,25 @@ class IncidentFilter(filters.FilterSet):
                 Q(order_incident__id=value) |
                 Q(orders__id=value)
             ).distinct()
+        return queryset
+
+    def filter_assigned_to_me(self, queryset, name, value):
+        user = getattr(self.request, 'user', None)
+        if value and user and user.is_authenticated:
+            return queryset.filter(assigned_to=user)
+        return queryset
+
+    def filter_overdue(self, queryset, name, value):
+        # Vençudes: pendents (no tancades) amb la data de venciment passada
+        if value:
+            from notification.utils.incident_utils import pending_incidents
+            return pending_incidents(queryset).filter(due_at__lt=timezone.now(), paused_at__isnull=True)
+        return queryset
+
+    def filter_closed_out_of_term(self, queryset, name, value):
+        # Tancades després de la data límit
+        if value:
+            return queryset.filter(closed_at__isnull=False, due_at__isnull=False, closed_at__gt=F('due_at'))
         return queryset
 
     def filter_incident_type(self, queryset, name, value):

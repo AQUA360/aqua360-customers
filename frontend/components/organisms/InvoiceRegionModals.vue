@@ -54,6 +54,19 @@ const onPaymentTypesLoaded = ({ byId }) => {
 };
 const selected_payment_bank = ref(null);
 const previous_payment_bank = ref(null);
+// Compte de l'empresa on s'ha de fer la transferència
+const selected_company_bank = ref(null);
+const companyBanks = computed(() => (props.data?.company?.company_banks || []).filter((bank) => bank.is_active && !!bank.iban));
+const isBankTransfer = computed(() => paymentTypeOptionsById.value[selected_payment_type.value]?.token == 'BANK_TRANSFER');
+watch([selected_payment_type, paymentTypeOptionsById], () => {
+  if (!openChangePaymentMethodModal.value && !openDateModal.value) return;
+  if (!isBankTransfer.value) {
+    selected_company_bank.value = null;
+  } else if (!selected_company_bank.value) {
+    selected_company_bank.value = companyBanks.value.find((bank) => bank.id == props.data.payment_company_bank)
+      ?? (companyBanks.value.length === 1 ? companyBanks.value[0] : null);
+  }
+});
 const selected_return_reason = ref(null);
 const add_invoice = ref(false);
 // Paid total of a credit note: keep it as balance or return it (mutually exclusive, or none of them).
@@ -218,12 +231,22 @@ const onPersonBankSelected = (bank) => {
 };
 
 const savePaymentMethod = async (refresh = true) => {
+  if (!selected_payment_type.value || !paymentTypeOptionsById.value[selected_payment_type.value]) {
+    toast.warning(t('warning_block.warning_select_payment_method'));
+    return false;
+  }
+  if (isBankTransfer.value && companyBanks.value.length > 0 && !selected_company_bank.value) {
+    toast.warning(t('billing_block.select_bank_data'));
+    return false;
+  }
   if (!confirm(t("confirmation_text_block.confirm_modify"))) return false;
   try {
     let save_data = {
       id: props.invoiceId,
       payment_type_final: selected_payment_type.value,
-      payment_bank_final: selected_payment_bank.value ? selected_payment_bank.value.iban : null
+      payment_bank_final: selected_payment_bank.value ? selected_payment_bank.value.iban : null,
+      payment_swift_final: selected_payment_bank.value ? selected_payment_bank.value.swift : null,
+      payment_company_bank: isBankTransfer.value && selected_company_bank.value ? selected_company_bank.value.id : null
     };
     let response = await $InvoiceApiService.changePaymentMethod(save_data);
     if (response) {
@@ -244,9 +267,12 @@ const closeChangePaymentMethodModal = () => {
   selected_payment_type.value = null;
   selected_payment_bank.value = null;
   previous_payment_bank.value = null;
+  selected_company_bank.value = null;
 };
 
 const openDateModalForPayment = async (dueDate) => {
+  selected_payment_type.value = null;
+  selected_company_bank.value = null;
   selected_doc_payment_date.value = dueDate;
   openDateModal.value = true;
 };
@@ -537,10 +563,21 @@ defineExpose({
               </div>
             </div>
           </div>
+
+          <div class="select_bank my-3 max-w-xl" v-if="isBankTransfer && companyBanks.length > 0">
+            <label class="block font-medium text-slate-500 mb-2">{{ $t('common.select') }} {{ $t('common.account_bank') }}</label>
+            <button v-for="bank in companyBanks" :key="bank.id" type="button" @click="selected_company_bank = bank"
+              class="border w-full p-4 block text-left mb-2 rounded"
+              :class="selected_company_bank?.id == bank.id ? 'bg-green-100 border-green-300' : 'bg-gray-100 hover:bg-yellow-100 border-gray-200'">
+              <BankDetail :item="bank" :company="data.company" />
+            </button>
+          </div>
         </div>
         <div class="flex justify-end">
           <button class="button-primary" @click="savePaymentMethod" :disabled="!selected_payment_type ||
-            (paymentTypeOptionsById[selected_payment_type]?.token == 'DIRECT_DEBIT' && !selected_payment_bank)">
+            !paymentTypeOptionsById[selected_payment_type] ||
+            (paymentTypeOptionsById[selected_payment_type]?.token == 'DIRECT_DEBIT' && !selected_payment_bank) ||
+            (isBankTransfer && companyBanks.length > 0 && !selected_company_bank)">
             {{ $t('common.change') }}
           </button>
         </div>
@@ -563,14 +600,24 @@ defineExpose({
         </div>
         <div v-if="data.payment_type_token_final == 'DIRECT_DEBIT'">
           <SelectPaymentType v-model="selected_payment_type" :exclude-tokens="['DIRECT_DEBIT']" :model-as-number="true"
-            select-class="w-full text-base border border-gray-300 rounded p-2" select-wrapper-class="max-w-xl my-2" />
+            select-class="w-full text-base border border-gray-300 rounded p-2" select-wrapper-class="max-w-xl my-2"
+            @loaded="onPaymentTypesLoaded" />
           <p class="block font-medium text-slate-500 text-xs italic">
             {{ $t('informative_block.info_direct_debit_payment_method') }}
           </p>
+          <div class="select_bank my-3 max-w-xl" v-if="isBankTransfer && companyBanks.length > 0">
+            <label class="block font-medium text-slate-500 mb-2">{{ $t('common.select') }} {{ $t('common.account_bank') }}</label>
+            <button v-for="bank in companyBanks" :key="bank.id" type="button" @click="selected_company_bank = bank"
+              class="border w-full p-4 block text-left mb-2 rounded"
+              :class="selected_company_bank?.id == bank.id ? 'bg-green-100 border-green-300' : 'bg-gray-100 hover:bg-yellow-100 border-gray-200'">
+              <BankDetail :item="bank" :company="data.company" />
+            </button>
+          </div>
         </div>
         <div class="flex justify-end">
           <button class="button-primary" @click="generatePaymentDoc"
-            :disabled="!selected_doc_payment_date || selected_doc_payment_date == ''">
+            :disabled="!selected_doc_payment_date || selected_doc_payment_date == '' ||
+              (data.payment_type_token_final == 'DIRECT_DEBIT' && isBankTransfer && companyBanks.length > 0 && !selected_company_bank)">
             {{ $t('common.generate') }}
           </button>
         </div>

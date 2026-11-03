@@ -3082,5 +3082,41 @@
             "value": "general",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 260,
+        "fields": {
+            "created_at": "2026-10-28T00:00:00.000Z",
+            "updated_at": "2026-10-28T00:00:00.000Z",
+            "token": "contract_min_persons",
+            "name": "Mínimo de personas de un contrato (persons_min en las fórmulas y valor cuando el contrato no tiene)",
+            "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 261,
+        "fields": {
+            "created_at": "2026-10-29T00:00:00.000Z",
+            "updated_at": "2026-10-29T00:00:00.000Z",
+            "token": "ODOO_ENABLED",
+            "name": "Integración Odoo habilitada",
+            "value": "false",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 262,
+        "fields": {
+            "created_at": "2026-11-02T00:00:00.000Z",
+            "updated_at": "2026-11-02T00:00:00.000Z",
+            "token": "giswater_supply_cut_sync_enabled",
+            "name": "Mostrar el botón «Sincronizar con GIS Water» en la lista de cortes de suministro",
+            "value": "false",
+            "file": null
+        }
     }
 ]

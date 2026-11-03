@@ -17,10 +17,11 @@ class ContractRequestFilter(filters.FilterSet):
     client_type = filters.CharFilter(method='filter_client_type')
     use_type = filters.CharFilter(method='filter_use_type')
     no_invoice = filters.BooleanFilter(method='filter_no_invoice')
+    is_change_of_name = filters.BooleanFilter(field_name='is_change_of_name')
     
     class Meta:
         model = ContractRequest
-        fields = ['search', 'status', 'category', 'client_type', 'use_type', 'exploitation', 'no_invoice']
+        fields = ['search', 'status', 'category', 'client_type', 'use_type', 'exploitation', 'no_invoice', 'is_change_of_name']
 
     def filter_use_type(self, queryset, name, value):
         if value:

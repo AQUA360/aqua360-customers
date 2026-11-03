@@ -10,10 +10,15 @@ class BailSerializer(serializers.ModelSerializer):
     contract = serializers.SerializerMethodField()
     product = ProductMinimalSerializer(read_only=True, required=False, allow_null=True)
     invoice = serializers.SerializerMethodField()
+    return_invoice_disabled = serializers.SerializerMethodField()
     
     class Meta:
         model = Bail
         fields = '__all__'
+    
+    def get_return_invoice_disabled(self, obj):
+        from contract.utils.bail_service import is_bail_return_invoice_disabled
+        return is_bail_return_invoice_disabled()
     
     def get_contract(self, obj):
         from contract.serializers.contract_serializer import ContractListSerializer

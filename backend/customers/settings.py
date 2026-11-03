@@ -199,7 +199,6 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Ha d'anar abans dels middlewares d'usuari actual: resol l'usuari del token DRF
     "ov.middleware.RestrictOVUserMiddleware",
-    "order.middleware.CurrentUserMiddleware",
     "contract.middleware.UserMiddleware",
     "logger.middleware.PostRequestLoggingMiddleware",  # Custom middleware for logging POST requests
     "coredata.middleware.SetPostgresUserMiddleware",
@@ -494,6 +493,12 @@ GISWATER_SYNC_CONNECS_HOUR = config("GISWATER_SYNC_CONNECS_HOUR", default=3, cas
 GISWATER_SYNC_CONNECS_MINUTE = config(
     "GISWATER_SYNC_CONNECS_MINUTE", default=0, cast=int
 )
+GISWATER_SYNC_SUPPLY_CUTS_ENABLED = config(
+    "GISWATER_SYNC_SUPPLY_CUTS_ENABLED", default=False, cast=bool
+)
+GISWATER_SYNC_SUPPLY_CUTS_MINUTES = config(
+    "GISWATER_SYNC_SUPPLY_CUTS_MINUTES", default=60, cast=int
+)
 
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")
@@ -528,6 +533,11 @@ ODOO_TIMEOUT = config("ODOO_TIMEOUT", default=30, cast=int)
 ODOO_PUSH_ENABLED = config("ODOO_PUSH_ENABLED", default=False, cast=bool)
 ODOO_PUSH_INVOICES = config("ODOO_PUSH_INVOICES", default=True, cast=bool)
 ODOO_PUSH_PAYMENTS = config("ODOO_PUSH_PAYMENTS", default=True, cast=bool)
+# Token Bearer que Odoo envia a l'inbound de resultats de lot.
+ODOO_INBOUND_BEARER_TOKEN = config(
+    "ODOO_INBOUND_BEARER_TOKEN",
+    default=config("ODOO_INBOUND_API_KEY", default=""),
+)
 
 SMART_METERING_API_URL = config("SMART_METERING_API_URL", default="")
 SMART_METERING_API_AUTH_PARAM = config("SMART_METERING_API_AUTH_PARAM", default="Authorization")

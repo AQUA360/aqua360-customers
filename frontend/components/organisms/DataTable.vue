@@ -315,7 +315,7 @@ defineExpose({ resetColumns });
 </script>
 
 <template>
-  <div ref="container" class="data-table flex flex-col overflow-hidden relative" :style="containerStyle">
+  <div ref="container" class="data-table flex flex-col overflow-hidden relative isolate" :style="containerStyle">
     <div v-if="isColumnMode" ref="picker" class="absolute top-1 right-2 z-20" @click.stop>
       <button type="button" class="px-2 py-1 hover:bg-slate-200 rounded text-slate-500"
         :title="t('common.configure_columns')" @click="isPickerOpen = !isPickerOpen">
@@ -362,7 +362,7 @@ defineExpose({ resetColumns });
     <div class="data-table__body flex-1 min-h-0 overflow-y-auto overflow-x-auto" :style="scrollStyle"
       @scroll="emit('scroll', $event)">
       <div
-        class="data-table__header sticky top-0 z-0 bg-white text-xs font-medium uppercase tracking-wider text-gray-400 border-b border-gray-200 items-center px-1 py-1"
+        class="data-table__header sticky top-0 z-10 bg-white text-xs font-medium uppercase tracking-wider text-gray-400 border-b border-gray-200 items-center px-1 py-1"
         :class="isColumnMode ? 'gap-2 pr-9' : 'gap-3'" :style="gridStyle">
         <span v-if="pinColumn" aria-hidden="true"></span>
 

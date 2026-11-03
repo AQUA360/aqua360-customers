@@ -13,7 +13,7 @@ from notification.utils.task_notifications import notify_due_today
 from ..models import *
 
 # Camps de la tasca que es copien a la plantilla de la sèrie i a les ocurrències pendents.
-SERIES_FIELDS = ['name', 'description', 'color', 'user', 'time']
+SERIES_FIELDS = ['name', 'description', 'color', 'text_color', 'user', 'time']
 
 
 class CalendarTaskRecurrenceSerializer(serializers.ModelSerializer):

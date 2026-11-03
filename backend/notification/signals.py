@@ -1,4 +1,3 @@
-from urllib.request import Request
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 
@@ -7,36 +6,30 @@ from notification.models import Incident, Notification
 
 @receiver(pre_save, sender=Incident)
 def detect_status_change(sender, instance, **kwargs):
+    from notification.utils.incident_utils import apply_status_change
     if not instance.pk:
+        # En crear-la, l'estat inicial també pot aturar el termini o tancar-la
+        apply_status_change(instance, None)
         return
     try:
         previous = sender.objects.get(pk=instance.pk)
     except sender.DoesNotExist:
         return
-    if previous.status.id == instance.status.id:
+    if previous.status_id == instance.status_id:
         return
     
-    request = None
-    if hasattr(sender, 'request') and isinstance(sender.request, Request):
-        request = sender.request
-    elif hasattr(instance, '_request') and isinstance(instance._request, Request):
-        request = instance._request
-    user = None
+    # Data de tancament i pausa del termini segons el nou estat
+    apply_status_change(instance, previous.status)
     
-    if request and request.user and request.user.is_authenticated:
-        user = request.user
-    
-    if user is None:
-        print("No authenticated user found.")
-    
-    print(f"Incident {instance.pk} status changed from {previous.status.name} to {instance.status.name}")
+    # L'usuari el posa el serialitzador que desa el canvi
+    user = getattr(instance, '_change_user', None)
     
     # Create a LogOrderStatus object
     LogIncidentStatusChange.objects.create(
         object=instance,
         previous_status=previous.status,
         current_status=instance.status,
-        observation=f"Status changed from {previous.status.name} to {instance.status.name}",
+        observation=f"Status changed from {previous.status.name if previous.status else '-'} to {instance.status.name if instance.status else '-'}",
         user=user
     )
 

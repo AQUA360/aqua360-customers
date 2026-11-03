@@ -9,7 +9,11 @@ from billing.tasks import (
     iter_reading_document_rows,
     parse_reading_document_date,
 )
-from billing.utils.reading_service import check_billing_period, get_reading_document_target_contract
+from billing.utils.reading_service import (
+    check_billing_period,
+    resolve_reading_document_previous_reading,
+    resolve_reading_document_target_contract,
+)
 from contract.models import Contract
 from coredata.models import ConfigProject
 from service.models import Meter
@@ -139,10 +143,11 @@ def _empty_preview_stats():
         "skipped_existing": 0,
         "would_create": 0,
         "would_update": 0,
+        "previous_from_other_contract": 0,
     }
 
 
-PREVIEW_SCHEMA_VERSION = 5
+PREVIEW_SCHEMA_VERSION = 6
 
 
 def _json_safe_number(value):
@@ -233,6 +238,8 @@ def _preview_row(
     previous_reading_value=None,
     reading_value=None,
     raw_reading_value=None,
+    previous_reading_contract_token=None,
+    previous_from_other_contract=False,
 ):
     """Full preview row payload shared by all actions."""
     payload = {
@@ -252,6 +259,8 @@ def _preview_row(
             raw_reading_value if raw_reading_value is not None else fields.get("raw_reading_value")
         ),
         "previous_reading_value": _json_safe_number(previous_reading_value),
+        "previous_reading_contract_token": previous_reading_contract_token,
+        "previous_from_other_contract": previous_from_other_contract,
         "origin": fields.get("origin"),
         "is_control": fields.get("is_control"),
         "leak_value": _json_safe_number(fields.get("leak_value")),
@@ -325,10 +334,13 @@ def build_reading_document_preview(document):
             ))
             continue
 
+        # Same contract resolution as the process task: the contract valid at
+        # the reading date (registration/termination window), never an
+        # arbitrary newer active contract. No date-valid contract -> skip.
         target = None
-        for supply_point in supply_points:
-            contract = get_reading_document_target_contract(
-                supply_point, config["active_contract_status_token"]
+        for supply_point in meter.supply_points.order_by("id"):
+            contract = resolve_reading_document_target_contract(
+                supply_point, reading_date.date(), config["active_contract_status_token"]
             )
             if contract:
                 target = (supply_point, contract)
@@ -352,16 +364,26 @@ def build_reading_document_preview(document):
 
         supply_point, contract = target
         base_date = reading_date.date()
-        previous_reading = (
-            Reading.objects.filter(
-                supply_point=supply_point,
-                reading_date__lt=base_date,
-                meter=meter,
-                contract=contract,
-                is_control=False,
-            )
-            .order_by("-reading_date", "-reading_value")
-            .first()
+        previous_reading, _previous_tier = resolve_reading_document_previous_reading(
+            supply_point=supply_point,
+            meter=meter,
+            contract=contract,
+            reading_date=base_date,
+        )
+        # Tier 2: the previous reading belongs to a contract other than the
+        # one receiving the row (change of ownership history). The process
+        # task counts these; surface the same fact per preview row.
+        previous_from_other_contract = (
+            previous_reading is not None
+            and _previous_tier == 2
+            and not fields["is_control"]
+        )
+        if previous_from_other_contract:
+            stats["previous_from_other_contract"] += 1
+        previous_reading_contract_token = (
+            previous_reading.contract.token
+            if previous_reading is not None and previous_reading.contract is not None
+            else None
         )
         existing_reading = Reading.objects.filter(
             supply_point=supply_point,
@@ -370,6 +392,7 @@ def build_reading_document_preview(document):
             contract=contract,
             is_control=fields["is_control"],
             is_initial=False,
+            is_active=True,
         ).first()
         allow_by_period = check_billing_period(
             base_date, supply_point, meter, contract, previous_reading
@@ -404,6 +427,8 @@ def build_reading_document_preview(document):
                 reading_value=reading_value,
                 raw_reading_value=raw_reading_value,
                 previous_reading_value=previous_reading_value,
+                previous_reading_contract_token=previous_reading_contract_token,
+                previous_from_other_contract=previous_from_other_contract,
             ))
             continue
 
@@ -428,6 +453,8 @@ def build_reading_document_preview(document):
             reading_value=reading_value,
             raw_reading_value=raw_reading_value,
             previous_reading_value=previous_reading_value,
+            previous_reading_contract_token=previous_reading_contract_token,
+            previous_from_other_contract=previous_from_other_contract,
         ))
 
     return {

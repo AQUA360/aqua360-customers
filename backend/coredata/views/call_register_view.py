@@ -14,7 +14,15 @@ from coredata.serializers import CallRegisterSerializer
 from coredata.filters.call_register_filter import CallRegisterFilter
 
 class CallRegisterViewSet(viewsets.ModelViewSet):
-  queryset = CallRegister.objects.all().order_by('-created_at').filter()
+  queryset = CallRegister.objects.all().select_related(
+      'person_contact',
+      'person_contact__person',
+      'contract',
+      'incident',
+      'user',
+      'transfered_to',
+      'transfered_from',
+  ).order_by('-created_at')
   permission_classes = [IsAuthenticated, ContractPermission]
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   filterset_class = CallRegisterFilter

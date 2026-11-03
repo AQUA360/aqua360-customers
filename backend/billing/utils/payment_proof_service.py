@@ -76,7 +76,9 @@ def build_payment_proof_line(payment, observation=None):
     }
 
 
-def build_payment_proof_context(payments, request, payment_date=None, observation=None):
+def build_payment_proof_context(
+    payments, request, payment_date=None, observation=None, language=None
+):
     if not payments:
         raise ValueError('At least one payment is required')
     
@@ -133,6 +135,7 @@ def build_payment_proof_context(payments, request, payment_date=None, observatio
         'secondary_color': secondary_color,
         'logo': logo,
         'exploitation': exploitation,
+        'receipt_language': language,
     }
 
 
@@ -143,12 +146,15 @@ def payment_proof_pdf_filename(now_date, payment_lines):
     return f"{now_date.strftime('%m%d')}_{first_ref}.pdf"
 
 
-def render_payment_proof_pdf(payments, request, payment_date=None, observation=None):
+def render_payment_proof_pdf(
+    payments, request, payment_date=None, observation=None, language=None
+):
     context = build_payment_proof_context(
         payments,
         request,
         payment_date=payment_date,
         observation=observation,
+        language=language,
     )
     
     html_content = render_to_string('payment_proof_template.html', context)

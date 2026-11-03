@@ -228,7 +228,7 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="1fr,1fr,1fr,150px,100px,50px,15px"
+      grid-template="1fr,1fr,1fr,150px,100px,125px,15px"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
@@ -241,9 +241,9 @@ watch(() => route.query, () => {
         <TableHeader :label="$t('common.surname')" sortKey="surname" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('contract_block.is_juridic')" sortKey="is_juridic" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('contract_block.vulnerability')" :sortable="false" />
-        <TableHeader :label="$t('common.debt')" :sortable="false" />
+          :sortDesc="sortDesc" @sort="handleSort" class="justify-center" />
+        <TableHeader :label="$t('contract_block.vulnerability')" :sortable="false" class="justify-center" />
+        <TableHeader :label="$t('common.debt')" :sortable="false" class="justify-center" />
         <span></span>
       </template>
 
@@ -262,16 +262,18 @@ watch(() => route.query, () => {
           </span>
           <span class="p-0">{{ item.name }}</span>
           <span class="p-1">{{ item.surname }}</span>
-          <span class="p-1">
+          <span class="p-1 flex items-center justify-center">
             <AtomsColorBadge :value="item.is_juridic ? t('common.yes') : t('common.no')"
               :color="item.is_juridic ? 'green' : 'gray'" />
           </span>
-          <span class="p-1">
-
+          <span class="p-1 flex items-center justify-center">
             <AtomsVulnerabilityCheck :vulnerability_level="item.vulnerability_level" :small="true" />
           </span>
-          <span class="p-1">
-            <AtomsDelinquencyLevel :amount="item.debt_amount" />
+          <span class="p-1 flex items-center justify-center">
+            <span
+              :class="Number(item.debt_amount) !== 0 ? 'inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-sm font-semibold' : ''">
+              {{ formatMoneyWithCurrency(item.debt_amount) }}
+            </span>
           </span>
         </div><!-- end for items -->
       </template>
@@ -282,7 +284,7 @@ watch(() => route.query, () => {
   </div><!-- end wrapper -->
 
   <div role="region" id="right_page"
-    class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white"
+    class="fixed h-full border-l border-gray-100 top-0 right-0 z-30 transition-all duration-500 ease py-2 text-base bg-white"
     :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion, 'w-[95%]': isSubRegionOpen, 'w-1/2': !isSubRegionOpen }">
     <div id="region_nav" class="mb-3 px-3">
       <button @click="toggleRegion(false)" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">

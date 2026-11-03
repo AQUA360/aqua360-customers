@@ -2,7 +2,7 @@ from __future__ import absolute_import, unicode_literals
 import os
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import worker_ready
+from celery.signals import before_task_publish, task_postrun, task_prerun, worker_ready
 from django.conf import settings
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'customers.settings')
@@ -10,6 +10,39 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'customers.settings')
 app = Celery('customers')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
+
+# Les tasques porten l'usuari que les ha encuat: així els historials dels processos
+# automàtics que llança algú queden a nom seu. Les del beat no en tenen.
+CURRENT_USER_HEADER = 'current_user_id'
+
+
+@before_task_publish.connect
+def attach_current_user(headers=None, **kwargs):
+    if headers is None or CURRENT_USER_HEADER in headers:
+        return
+    from contract.middleware import get_current_user
+    user = get_current_user()
+    headers[CURRENT_USER_HEADER] = user.pk if user else None
+
+
+@task_prerun.connect
+def restore_current_user(task=None, **kwargs):
+    # En mode eager la tasca corre dins la petició, que ja té l'usuari
+    if task is None or task.request.is_eager:
+        return
+    from django.contrib.auth import get_user_model
+    from contract.middleware import set_current_user
+    user_id = getattr(task.request, CURRENT_USER_HEADER, None)
+    user = get_user_model().objects.filter(pk=user_id).first() if user_id else None
+    set_current_user(user)
+
+
+@task_postrun.connect
+def clear_current_user(task=None, **kwargs):
+    if task is None or task.request.is_eager:
+        return
+    from contract.middleware import set_current_user
+    set_current_user(None)
 
 # Les tasques periòdiques van amb `crontab`, no amb `timedelta`: un interval es
 # compta des de l'arrencada del beat, i com que cada desplegament recrea el
@@ -52,6 +85,15 @@ beat_schedule = {
     'check-today-tasks': {
         'task': 'notification.tasks.notify_today_tasks',
         'schedule': crontab(minute=25, hour=0)
+    },
+    'check-due-incidents': {
+        'task': 'notification.tasks.notify_due_incidents',
+        'schedule': crontab(minute=27, hour=0)
+    },
+    # Els terminis poden ser en hores: avisos i escalats cada 15 minuts
+    'check-incident-deadlines': {
+        'task': 'notification.tasks.check_incident_deadlines',
+        'schedule': crontab(minute='*/15')
     },
     # El resum per correu surt a primera hora del matí, no de matinada.
     'send-daily-tasks-email': {
@@ -107,6 +149,21 @@ if getattr(settings, "GISWATER_SYNC_CONNECS_ENABLED", False):
         "schedule": crontab(
             minute=settings.GISWATER_SYNC_CONNECS_MINUTE,
             hour=settings.GISWATER_SYNC_CONNECS_HOUR,
+        ),
+    }
+
+if getattr(settings, "GISWATER_SYNC_SUPPLY_CUTS_ENABLED", False):
+    # Talls de subministrament (mincuts) de Giswater. Cada execució sincronitza
+    # abans les escomeses si GISWATER_SYNC_CONNECS_ENABLED està actiu.
+    # Interval en minuts: per sota de 60, cada N minuts; a partir de 60, cada
+    # N/60 hores en punt.
+    _supply_cuts_minutes = max(1, settings.GISWATER_SYNC_SUPPLY_CUTS_MINUTES)
+    beat_schedule["sync-giswater-supply-cuts"] = {
+        "task": "integrations.tasks.sync_giswater_suply_cuts_task",
+        "schedule": (
+            crontab(minute=f"*/{_supply_cuts_minutes}")
+            if _supply_cuts_minutes < 60
+            else crontab(minute=0, hour=f"*/{_supply_cuts_minutes // 60}")
         ),
     }
 

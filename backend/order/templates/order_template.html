@@ -62,12 +62,12 @@
                     <tr>
                         <td style="font-size: 14px; font-family: 'OpenSansBold';">{{ order_type.name }}</td>
                     </tr>
+                    <!-- CANVI: adreça o, si no n'hi ha, coordenades -->
                     <tr>
-                        <td style="font-size: 14px; font-family: 'OpenSansBold';">{{ supply_point.address }}</td>
+                        <td style="font-size: 14px; font-family: 'OpenSansBold';">{{ location_text|default:"" }}</td>
                     </tr>
                 </table>
             </td>
-            
 
             <td width="40%" valign="top" style="text-align: right;">
                 <table width="100%">
@@ -105,45 +105,98 @@
         <td width="100%" valign="top">
             <table width="100%">
                 <tr style="font-family: 'OpenSansBold'; font-size: 12px;">
-                    <td colspan="2">DADES DE L'ORDRE</td>
+                    <td colspan="3">DADES DE L'ORDRE</td>
                 </tr>
-                
+
                 <tr>
+                    <!-- COLUMNA ESQUERRA -->
                     <td width="50%" valign="top">
                         <table width="100%">
                             <tr>
                                 <td style="color: #666;">Estat</td>
                                 <td style="text-align: right;">{{ order_status.name }}</td>
                             </tr>
+                            {% if order.priority %}
                             <tr>
-                                <td style="color: #666;">Data d'acció</td>
-                                <td style="text-align: right;">{{ order.action_date|date:"d/m/Y" }}</td>
+                                <td style="color: #666;">Prioritat</td>
+                                <td style="text-align: right;">{{ order.priority.name }}</td>
                             </tr>
+                            {% endif %}
+                            {% if order.reason %}
                             <tr>
-                                <td width="75%" style="color: #666;">Punt de subministrament</td>
-                                <td width="25%" style="text-align: right;">{{ supply_point }}</td>
+                                <td style="color: #666;">Motiu</td>
+                                <td style="text-align: right;">{{ order.reason.name }}</td>
                             </tr>
+                            {% endif %}
+                            {% if order.dueDateAt %}
+                            <tr>
+                                <td style="color: #666;">Data prevista</td>
+                                <td style="text-align: right;">{{ order.dueDateAt|date:"d/m/Y" }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if order.completed_at %}
+                            <tr>
+                                <td style="color: #666;">Data de tancament</td>
+                                <td style="text-align: right;">{{ order.completed_at|date:"d/m/Y" }}</td>
+                            </tr>
+                            {% endif %}
                         </table>
                     </td>
+
                     <td width="5%" valign="top"></td>
+
+                    <!-- COLUMNA DRETA -->
                     <td width="45%" valign="top">
                         <table width="100%">
-                            {% if supply_point %}
+                            {% if latitude and location_label != "Coordenades" %}
+                            <tr>
+                                <td style="color: #666;">Coordenades</td>
+                                <td style="text-align: right;">{{ latitude }}, {{ longitude }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if supply_point.meter %}
                             <tr>
                                 <td style="color: #666;">Comptador</td>
                                 <td style="text-align: right;">{{ supply_point.meter.code }}</td>
                             </tr>
                             {% endif %}
-                            {% if contract %}
+                            {% if contract_code %}
                             <tr>
-                                <td style="color: #666;">Contract</td>
-                                <td style="text-align: right;">{{ contract.token }}</td>
+                                <td style="color: #666;">Contracte</td>
+                                <td style="text-align: right;">{{ contract_code }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if physical_person %}
+                            <tr>
+                                <td style="color: #666;">Persona de contacte</td>
+                                <td style="text-align: right;">{{ physical_person }}</td>
                             </tr>
                             {% endif %}
                         </table>
                     </td>
                 </tr>
+                {% if location_label or physical_address %}
+                <tr>
+                    <td colspan="3" style="padding-top: 8px;">
+                        <table width="100%">
+                            {% if location_label %}
+                            <tr>
+                                <td width="25%" valign="top" style="color: #666;">{{ location_label }}</td>
+                                <td width="75%" valign="top" style="text-align: right;">{{ location_text }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if physical_address %}
+                            <tr>
+                                <td width="25%" valign="top" style="color: #666;">Adreça de contacte</td>
+                                <td width="75%" valign="top" style="text-align: right;">{{ physical_address }}{% if physical_location %}, {{ physical_location }}{% endif %}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </td>
+                </tr>
+                {% endif %}
             </table>
+        </td>
     </tr>
 </table>
 
@@ -163,7 +216,6 @@
 </table>
 <br><br>
 {% endif %}
-
 
 
 <div style="font-family: 'OpenSansBold'; font-size: 12px; margin-bottom: 5px;">
@@ -199,6 +251,7 @@
         <i>No hi ha observacions addicionals.</i>
     {% endif %}
 </div>
+<!-- FI OBSERVACIONES -->
 
 <br><br>
 {% endlanguage %}

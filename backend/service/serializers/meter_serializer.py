@@ -555,6 +555,7 @@ class MeterListSerializer(serializers.ModelSerializer):
             'status_color',
             'is_general',
             'has_remote_reading',
+            'remote_reading_type',
             'last_reading_id',
             'manufacturer',
             'manufacturing_year',

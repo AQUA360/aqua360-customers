@@ -103,6 +103,16 @@ def filter_payments_by_contracts_with_pending_invoices(payments, keep_only=False
     return payments.exclude(Exists(pending_invoices))
 
 
+def get_remittance_amount(payment, is_return=False):
+    """
+    Import del pagament dins la remesa. A les transferències de retorn els
+    pagaments de factures negatives porten l'import en negatiu, però el que es
+    transfereix al client és el valor absolut.
+    """
+    amount = Decimal(str(payment.amount))
+    return abs(amount) if is_return else amount
+
+
 class RequestData:
     """
     Embolcall minim amb l'atribut `data`, per poder cridar
@@ -165,7 +175,8 @@ def get_sepa_payments_and_batches(request):
         "joined_payment_status_expired_token"
     ]
     joined_payment_status_tokens = ConfigProject.objects.filter(token__in=joined_payment_status_tokens_config).values_list('value', flat=True)
-    if selected_payments_type == "return":
+    is_return = selected_payments_type == "return"
+    if is_return:
         filters = Q(payment_type_token="BANK_TRANSFER")
     else:
         filters = Q(payment_type_token="DIRECT_DEBIT")
@@ -177,9 +188,14 @@ def get_sepa_payments_and_batches(request):
     if selected_payments_type == "commitment":
         filters &= Q(commitment_deposit__isnull=False)
     
-    if selected_payments_type == "return":
-        filters &= Q(commitment_deposit__isnull=True, invoice__isnull=True)
-    
+    if is_return:
+        # Retorns al client: la devolució de saldo (pagament sense factura ni
+        # compromís) i els pagaments negatius de factures (abonaments i
+        # factures negatives), que es transfereixen en valor absolut.
+        filters &= Q(commitment_deposit__isnull=True) & (
+            Q(invoice__isnull=True) | Q(amount__lt=0)
+        )
+
     if exploitation:
         filters &= (
             Q(invoice__exploitation__id=exploitation) | 
@@ -208,10 +224,10 @@ def get_sepa_payments_and_batches(request):
         filters &= (Q(invoice__id__in=invoices) | Q(commitment_deposit__invoices__id__in=invoices))
         
     if send_date_start:
-        filters &= (Q(invoice__send_at__gte=send_date_start) | Q(due_date__gte=send_date_start) | Q(issue_date__gte=send_date_start))
+        filters &= (Q(invoice__send_at__gte=send_date_start) | Q(due_date__gte=send_date_start) | Q(invoice__issue_date__gte=send_date_start)) | Q(payment_date__gte=send_date_start)
         
     if send_date_end:
-        filters &= (Q(invoice__send_at__lte=send_date_end) | Q(due_date__lte=send_date_end) | Q(issue_date__lte=send_date_end))
+        filters &= (Q(invoice__send_at__lte=send_date_end) | Q(due_date__lte=send_date_end) | Q(invoice__issue_date__lte=send_date_end)) | Q(payment_date__lte=send_date_end)
         
     if issue_date_start:
         filters &= (Q(invoice__issue_date__gte=issue_date_start) | Q(commitment_deposit__invoices__issue_date__gte=issue_date_start))
@@ -233,6 +249,20 @@ def get_sepa_payments_and_batches(request):
         
     if commitment:
         filters &= Q(commitment_deposit__id=commitment)
+
+    # Filtre SEPA per motius de devolució (RejectMotive): només s'aplica si
+    # n'hi ha de seleccionats. `include` es queda només amb aquests motius;
+    # `exclude` treu els pagaments que els tenen (els sense motiu es queden).
+    reject_motives = request.data.get('reject_motives') or []
+    if not isinstance(reject_motives, (list, tuple)):
+        reject_motives = [reject_motives]
+    reject_motives = [r for r in reject_motives if r not in (None, "")]
+    reject_motives_mode = (request.data.get('reject_motives_mode') or 'include').lower()
+    if reject_motives:
+        if reject_motives_mode == 'exclude':
+            filters &= ~Q(reject_id__in=reject_motives)
+        else:
+            filters &= Q(reject_id__in=reject_motives)
 
     # Empresa emissora: la remesa d'una empresa no pot arrossegar rebuts d'una
     # altra. L'empresa del rebut es dedueix igual que a
@@ -366,12 +396,12 @@ def get_sepa_payments_and_batches(request):
             if r_date_str not in groups:
                 groups[r_date_str] = {'remittance_date': r_date_str, 'total_amount': Decimal("0"), 'payments': [], 'invoices': []}
             
-            groups[r_date_str]['total_amount'] += Decimal(str(payment.amount))
+            groups[r_date_str]['total_amount'] += get_remittance_amount(payment, is_return)
             groups[r_date_str]['payments'].append(payment)
             if payment.invoice:
-                groups[r_date_str]['invoices'].append({'id': payment.invoice.id, 'token': payment.invoice.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': payment.amount})
+                groups[r_date_str]['invoices'].append({'id': payment.invoice.id, 'token': payment.invoice.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': get_remittance_amount(payment, is_return)})
             else:
-                groups[r_date_str]['invoices'].append({'id': payment.id, 'token': payment.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': payment.amount})
+                groups[r_date_str]['invoices'].append({'id': payment.id, 'token': payment.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': get_remittance_amount(payment, is_return)})
 
     payments_batches = []
     max_limit = Decimal(str(max_total_remittance)) if max_total_remittance and Decimal(str(max_total_remittance)) > 0 else None
@@ -383,7 +413,7 @@ def get_sepa_payments_and_batches(request):
             if max_limit:
                 current_batch, current_sum = [], Decimal("0")
                 for p in group_payments:
-                    amt = Decimal(str(p.amount))
+                    amt = get_remittance_amount(p, is_return)
                     if amt > max_limit:
                         if current_batch:
                             payments_batches.append((current_batch, d_str))
@@ -403,7 +433,7 @@ def get_sepa_payments_and_batches(request):
         if max_limit:
             current_batch, current_sum = [], Decimal("0")
             for p in payments:
-                amt = Decimal(str(p.amount))
+                amt = get_remittance_amount(p, is_return)
                 if amt > max_limit:
                     if current_batch:
                         payments_batches.append((current_batch, send_date))
@@ -420,7 +450,7 @@ def get_sepa_payments_and_batches(request):
         else:
             payments_batches = [(list(payments), send_date)]
             
-    return payments, payments_batches, selected_payments_type == "return"
+    return payments, payments_batches, is_return
 
 
 def get_bank_distribution(request_data, required=True):
@@ -584,11 +614,11 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             task = generate_sepa_document.apply_async(kwargs={"request_data": payload})
             return JsonResponse({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
-        payments, _, _ = get_sepa_payments_and_batches(request)
+        payments, _, is_return = get_sepa_payments_and_batches(request)
 
-        total_import = sum(payment.amount for payment in payments) if hasattr(payments, '__iter__') else Decimal("0")
+        total_import = sum(get_remittance_amount(payment, is_return) for payment in payments) if hasattr(payments, '__iter__') else Decimal("0")
         total_excluded = payments.filter(is_excluded=True).count() if hasattr(payments, 'filter') else 0
-        _, total_anomalies = check_for_anomalies(payments, return_list=False) if hasattr(payments, '__iter__') else (None, 0)
+        _, total_anomalies = check_for_anomalies(payments, return_list=False, is_return=is_return) if hasattr(payments, '__iter__') else (None, 0)
 
         # El recompte de fitxers es fa banc a banc: cada banc seleccionat genera
         # els seus propis fitxers SEPA amb els pagaments que te assignats.
@@ -618,7 +648,7 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
                 "company": company_bank.company.id if company_bank and company_bank.company else None,
                 "company_name": company_bank.company.alias if company_bank and company_bank.company else None,
                 "total_invoices": len(bank_payments),
-                "total_amount": sum(payment.amount for payment in bank_payments),
+                "total_amount": sum(get_remittance_amount(payment, is_return) for payment in bank_payments),
                 "total_sepa_files": len(bank_batches),
             })
 
@@ -636,7 +666,7 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
 
 
 
-def check_for_anomalies(payments, return_list=True, exclude_all=False):
+def check_for_anomalies(payments, return_list=True, exclude_all=False, is_return=False):
     anomaly_types = {
         "negative_total": [],
         "validate_nif_not": [],
@@ -645,7 +675,9 @@ def check_for_anomalies(payments, return_list=True, exclude_all=False):
     total_anomalies = 0
     for payment in payments:
         nif_valid, _ = validate_nif(payment.customer_token_final)
-        if payment.amount < 0:
+        # A les transferències de retorn els imports negatius (abonaments i
+        # factures negatives) són els esperats: es transfereixen en absolut.
+        if payment.amount < 0 and not is_return:
             if return_list: anomaly_types['negative_total'].append(PaymentSEPASerializer(payment).data)
             if exclude_all:
                 payment.is_excluded = True
@@ -737,10 +769,10 @@ class SEPAPaymentAnomaliesViewSet(APIView):
     queryset = Payment.objects.all()
     
     def put(self, request, *args, **kwargs):
-        payments, _, _ = get_sepa_payments_and_batches(request)
+        payments, _, is_return = get_sepa_payments_and_batches(request)
         exclude_all_anomalies = request.data.get('exclude_all', False)
         exclude_all = str(exclude_all_anomalies).upper() == "TRUE"
-        anomalies, total_anomalies = check_for_anomalies(payments, return_list=True, exclude_all=exclude_all) if payments else ({}, 0)
+        anomalies, total_anomalies = check_for_anomalies(payments, return_list=True, exclude_all=exclude_all, is_return=is_return) if payments else ({}, 0)
         return JsonResponse({"anomalies": anomalies, "total_anomalies": total_anomalies})
 
 class SEPAPaymentFilesPreviewViewSet(APIView):
@@ -767,17 +799,18 @@ class SEPAPaymentFilesPreviewViewSet(APIView):
         # exactament els fitxers que generara la remesa.
         for bank_id, bank_data in distribution:
             company_bank = banks.get(str(bank_id))
-            _, payments_batches, _ = get_sepa_payments_and_batches(RequestData(bank_data))
+            _, payments_batches, is_return = get_sepa_payments_and_batches(RequestData(bank_data))
             for batch_payments, d_str in payments_batches:
                 if not batch_payments: continue
                 batch_invoices, batch_total = [], Decimal("0")
                 for payment in batch_payments:
-                    batch_total += Decimal(str(payment.amount))
+                    amount = get_remittance_amount(payment, is_return)
+                    batch_total += amount
                     contract = payment.commitment_deposit.contract if payment.commitment_deposit else payment.invoice.contract if payment.invoice else None
                     if payment.invoice:
-                        batch_invoices.append({'id': payment.invoice.id, 'token': payment.invoice.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': payment.amount})
+                        batch_invoices.append({'id': payment.invoice.id, 'token': payment.invoice.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': amount})
                     else:
-                        batch_invoices.append({'id': payment.id, 'token': payment.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': payment.amount})
+                        batch_invoices.append({'id': payment.id, 'token': payment.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': amount})
                 sepa_files_preview.append({
                     'remittance_date': d_str if d_str else datetime.now().strftime("%Y-%m-%d"),
                     'total_amount': batch_total,

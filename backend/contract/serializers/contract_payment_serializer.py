@@ -7,11 +7,13 @@ class ContractPaymentSerializer(serializers.ModelSerializer):
     invoice_id = serializers.IntegerField(source='invoice.id')
     invoice_token = serializers.CharField(source='invoice.token')
     invoice_serie_final = serializers.CharField(source='invoice.serie_final')
+    contract_request_token = serializers.CharField(source='invoice.contract_request.token', allow_null=True)
     
     class Meta:
         model = Payment 
         fields = ['id', 'token', 'status', 
                   'invoice_id', 'invoice_token', 'invoice_serie_final', 
+                  'contract_request_token',
                   'due_date', 'amount', 'payment_type', 
                   'payment_type_token', 'payment_bank']
 

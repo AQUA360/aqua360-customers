@@ -12,6 +12,7 @@ from contract.models import ContractStatus
 from coredata.models import Address, City, ConfigProject, Country, PostalCode, Province, Street, StreetNumber, StreetNumberType, StreetType
 from coredata.serializers import AddressSerializer
 from auth.serializers import UserMinimalSerializer
+from coredata.utils.address_utils import address_extra_filter, normalize_address_extra
 from coredata.utils.name_utils import generate_token, check_token_exists
 from fraud.models import Fraud
 from service.utils.supply_point_service import supply_point_change_address, supply_point_change_connection, supply_point_change_meter, supply_point_change_property
@@ -610,11 +611,19 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         if placement:
             validated_data['placement'] = placement
         
+        cluster = Cluster.objects.get(id = cluster_id) if cluster_id else None
+
         if property_id:
             property = Property.objects.get(id = property_id)
+        elif cluster:
+            # New nozzle in an existing cluster: reuse the cluster's property,
+            # or the one its other supply points already belong to
+            property = cluster.property or Property.objects.filter(
+                supply_points__cluster_nozzle__cluster=cluster
+            ).order_by('id').first()
         else:
             property = None
-            
+
         default_status = SupplyPointStatus.objects.get(is_default=True)
         
         route_position = None
@@ -661,8 +670,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         else:
             auto_assign_route_to_property(property)
         nozzle = None
-        if cluster_id:
-            cluster = Cluster.objects.get(id = cluster_id)
+        if cluster:
             last_nozzle = ClusterNozzle.objects.filter(cluster=cluster).order_by('-col').first()
             nozzle = ClusterNozzle.objects.create(
                 cluster = cluster,
@@ -1260,9 +1268,11 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
         floor = address_data.get('floor') or ''
         door = address_data.get('door') or ''
         stair = address_data.get('stair') or ''
+        address_extra = normalize_address_extra(address_data.get('address_extra'))
 
         # Create Address
-        if Address.objects.filter(street=street,
+        if Address.objects.filter(address_extra_filter(address_extra),
+            street=street,
             street_number=street_number,
             city=city,
             province=province,
@@ -1273,7 +1283,8 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
             door=door,
             stair=stair).exists():
             
-            address = Address.objects.filter(street=street,
+            address = Address.objects.filter(address_extra_filter(address_extra),
+                street=street,
                 street_number=street_number,
                 city=city,
                 province=province,
@@ -1294,7 +1305,8 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
                 building=building,
                 floor=floor,
                 door=door,
-                stair=stair
+                stair=stair,
+                address_extra=address_extra
             )
         
         return address

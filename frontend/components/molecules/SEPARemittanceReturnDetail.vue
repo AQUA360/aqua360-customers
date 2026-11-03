@@ -208,6 +208,8 @@ const exportColumns = computed(() => [
   { header: t('invoice'), value: (row) => row.invoice ? row.invoice.token : t('commitment_deposit') },
   { header: t('common.total'), value: (row) => row.amount !== null && row.amount !== undefined ? Number(row.amount) : '' },
   { header: t('contract'), value: (row) => row.contract?.token },
+  { header: t('common.holder'), value: (row) => row.contract?.holder_name },
+  { header: t('common.person_id'), value: (row) => row.contract?.holder_nif },
   { header: t('billing_block.payment'), value: (row) => row.payment_date ? formatDate(row.payment_date) : '' },
   { header: t('common.status'), value: (row) => row.status?.name },
   { header: t('common.limit'), value: (row) => row.due_date ? formatDate(row.due_date) : '' },

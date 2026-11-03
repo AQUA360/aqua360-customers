@@ -11,14 +11,13 @@ from coredata.utils.other_utils import round_ceil
 from service.models import ConnectionDiameter, MeterCaliber
 
 from contract.models import Contract, VariableType
-from service.models import ConnectionDiameter
 from ..models import AppliedAdjustment, Invoice, InvoiceLineItem, Reading
 from coredata.models import ConfigProject
 from coredata.utils.invoice_tram_config import should_show_all_consumption_trams
 from pricing.models import LineItemType, Product
 from pricing.utils.formula_evaluator import replace_percentage
 from contract.utils.contract_service import get_meter_caliber, get_variables_actives, get_connection_diameter
-from billing.utils.adjustment_service import adjustment_eval_conditions, convert_value, evaluate_formula, calc_consumption_responsible, generate_variables, get_contract_variable, get_line_item_type_adjustments, get_tram_adjustments, adjustment_has_interval_stretches
+from billing.utils.adjustment_service import adjustment_eval_conditions, convert_value, evaluate_formula, calc_consumption_responsible, generate_variables, get_contract_min_persons, get_contract_variable, get_line_item_type_adjustments, get_tram_adjustments, adjustment_has_interval_stretches
 
 _invoice_percentage_correction_cached = None
 _default_connection_diameter_cached = None
@@ -456,7 +455,23 @@ def return_billing_months_for_lineitemtype(billing_period_token):
 
 
 # Create Contract from ContractRequest
-def create_from_lineitemtype(contract, line_item_type, reading, consumption, consumption_days, existing_line_items=None, change_date=None, prev_invoice = None, leak_reading=None, is_termination=False, billing_correction=None, prev_date = None, period_months=None):
+def create_from_lineitemtype(
+    contract,
+    line_item_type,
+    reading,
+    consumption,
+    consumption_days,
+    existing_line_items=None,
+    change_date=None,
+    prev_invoice=None,
+    leak_reading=None,
+    is_termination=False,
+    billing_correction=None,
+    prev_date=None,
+    period_months=None,
+    recalculation_strategy="current",
+    effective_persons=None,
+):
     """Builds the invoice line items for a contract's line item type based on the given reading and consumption."""
     # log removed
     # print(f"Contract: {contract}")
@@ -607,7 +622,12 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
             else:
                 return None
         consumption_responsible = calc_consumption_responsible(contract, consum) if contract else None
-        variables, variable_types = generate_variables(contract, consum, dies_consum, diferencia_fuita, consumption_responsible, prev_invoice)
+        variables, variable_types = generate_variables(
+            contract, consum, dies_consum, diferencia_fuita,
+            consumption_responsible, prev_invoice,
+            recalculation_strategy=recalculation_strategy,
+            effective_persons=effective_persons
+        )
 
         # Correctors de variables de càlcul
         if line_item_type.active_choice or line_item_type.inactive_choice or line_item_type.is_prorated:
@@ -654,7 +674,12 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
         es_prorratejat = False
         prorratejat_quantitat = None
         consumption_responsible = calc_consumption_responsible(contract, consum) if contract else None
-        variables, variable_types = generate_variables(contract, consum, dies_consum, diferencia_fuita, consumption_responsible, prev_invoice)
+        variables, variable_types = generate_variables(
+            contract, consum, dies_consum, diferencia_fuita,
+            consumption_responsible, prev_invoice,
+            recalculation_strategy=recalculation_strategy,
+            effective_persons=effective_persons
+        )
         units_multiplier = None
         units_adjusted = None
     # print("got initial data\n")
@@ -669,7 +694,10 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
         prorratejat_quantitat = line_item_type.billing_period.days
         
     if line_item_type.quantity and line_item_type.quantity.token == 'total_persons':
-        quantitat = contract.total_persons if contract else 3
+        if effective_persons is not None:
+            quantitat = effective_persons
+        else:
+            quantitat = contract.total_persons if contract and contract.total_persons > 0 else get_contract_min_persons()
     # print("passed reading")
     
     # Càlcul del preu
@@ -734,7 +762,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                             units = units * (correction_ptg)
 
             units = round_ceil(units or 0)
-            price = float(price_unit or 0) * float(units or 0)
+            price = round_ceil(Decimal(str(price_unit or 0)) * Decimal(str(units or 0)))
             _, _, _, corrected_price, var_adjustments, extra_description, _ = calc_correctors_variables_calcul(variables, variable_types, line_item_type, consum, dies_consum, diferencia_fuita, days_correction, contract, units_adjusted=units_adjusted, reading_batch_id=reading_batch_id)
             if extra_description and extra_description.replace(" ", "") != "":
                 description = extra_description
@@ -864,7 +892,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         name = f"{line_item_type_name} - {tram.name_stretch} "
                         
                         if adjustment_name:
@@ -888,10 +916,11 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         if corrected_price_tram:
                             price = corrected_price_tram
                         # print("name: ", name)
+                        
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
                 else: # vol dir que el tram és 30 i tenim quantitat de 5, hem de facturar 5 unitats.
                     name = f"{line_item_type_name} - {tram.name_stretch} ({quantitat} {line_item_type.price_interval.units})" # informem de la quantitat
@@ -911,7 +940,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         if corrected_price_tram:
                             price = corrected_price_tram
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
@@ -926,7 +955,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                         if line_item_type.quantity and line_item_type.quantity.token in ['consum', 'diferencia_fuita_consum', 'diferencia_fuita']:
                             units = round_ceil(units, to_int=True)
                         units = round_ceil(units or 0)
-                        price = float(price_unit) * float(units)
+                        price = round_ceil(Decimal(str(price_unit)) * Decimal(str(units)))
                         if corrected_price_tram:
                             price = corrected_price_tram
                         linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, name, True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
@@ -992,7 +1021,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                 name = f"{line_item_type_name} - {tram.name_stretch}"
                 if adjustment_name:
                     name += f" - {adjustment_name}"
-
+                
                 if price_original:
                     price_unit = tram.price
                     units = 1 # 1 unitat perquè és preu fix
@@ -1012,6 +1041,7 @@ def create_from_lineitemtype(contract, line_item_type, reading, consumption, con
                     if es_prorratejat:
                         units = dies_consum
                         price_unit = price_unit / prorratejat_quantitat
+                    
                     name += f" ({ quantitat } {line_item_type.price_variable.units})" # informem de la quantitat
                     
                     linies.append(create_line_item_data(contract, line_item_type, price_unit, price, units, name, "", True, reading, applied_adjustments, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
@@ -1301,4 +1331,3 @@ def create_from_lineitemtype_connection(connection, line_item_type, existing_lin
     
     
     return linies
-

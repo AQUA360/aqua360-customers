@@ -8,7 +8,7 @@ export default defineNuxtPlugin(nuxtApp => {
     const config = useRuntimeConfig();
     const apiHost = config.public.apiHost;
 
-    const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, contract_id=null, invoice_id=null, types=[], commitment_id=null, order_id=null) => {
+    const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, contract_id=null, invoice_id=null, types=[], commitment_id=null, order_id=null, assigned_to_me=false, overdue=false, out_of_term=false) => {
         let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
 
         let filtersValues = [];
@@ -40,6 +40,15 @@ export default defineNuxtPlugin(nuxtApp => {
         }
         if (types.length > 0) {
             apiUrl += `&incident_type=${types.join(',')}`;
+        }
+        if (assigned_to_me) {
+            apiUrl += `&assigned_to_me=true`;
+        }
+        if (overdue) {
+            apiUrl += `&overdue=true`;
+        }
+        if (out_of_term) {
+            apiUrl += `&closed_out_of_term=true`;
         }
 
         try {
@@ -104,7 +113,7 @@ export default defineNuxtPlugin(nuxtApp => {
         }
       }
 
-    const exportExcel = async (searchQuery = '', filters = [], types = []) => {
+    const exportExcel = async (searchQuery = '', filters = [], types = [], assigned_to_me = false, overdue = false, out_of_term = false) => {
         let apiUrl = apiHost + entity + 'export/excel/?search=' + encodeURIComponent(searchQuery);
 
         let filtersValues = [];
@@ -121,6 +130,15 @@ export default defineNuxtPlugin(nuxtApp => {
         if (types.length > 0) {
             apiUrl += `&incident_type=${types.join(',')}`;
         }
+        if (assigned_to_me) {
+            apiUrl += `&assigned_to_me=true`;
+        }
+        if (overdue) {
+            apiUrl += `&overdue=true`;
+        }
+        if (out_of_term) {
+            apiUrl += `&closed_out_of_term=true`;
+        }
 
         try {
             const response = await $apiManager.fetch(apiUrl, 'GET')
@@ -130,12 +148,32 @@ export default defineNuxtPlugin(nuxtApp => {
         }
     }
 
+    // Esborrat lògic: el backend desa qui l'ha esborrat i quan
+    const deleteItem = async (id) => {
+        const apiUrl = `${apiHost}${entity}${id}/`;
+        await $apiManager.fetch(apiUrl, 'DELETE');
+        return true;
+    };
+
+    // Cronologia unificada de la incidència
+    const getTimeline = async (id) => {
+        return await $apiManager.fetch(`${apiHost}${entity}${id}/timeline/`, 'GET');
+    };
+
+    // Genera i envia (si hi ha correu) el justificant de registre
+    const sendReceipt = async (id) => {
+        return await $apiManager.fetch(`${apiHost}${entity}${id}/send-receipt/`, 'POST');
+    };
+
     const apiService = {
         getAll,
         getDetail,
         save,
         getPermissions,
-        exportExcel
+        exportExcel,
+        deleteItem,
+        getTimeline,
+        sendReceipt
     };
 
     nuxtApp.provide(provideName, apiService);

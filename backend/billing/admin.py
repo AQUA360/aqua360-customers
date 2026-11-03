@@ -95,6 +95,13 @@ class BillingAdmin(admin.ModelAdmin):
 
 admin.site.register(Billing, BillingAdmin)
 
+class BillingDocumentDownloadAdmin(admin.ModelAdmin):
+    list_display = ('id', 'billing', 'communication_process', 'delivery', 'ordering', 'batch_mode', 'batch_count', 'status', 'invoice_count', 'created_at')
+    list_filter = ('status', 'delivery', 'ordering', 'batch_mode')
+    search_fields = ('billing__token', 'billings__token', 'communication_process__token', 'communication_processes__token')
+
+admin.site.register(BillingDocumentDownload, BillingDocumentDownloadAdmin)
+
 class BillingBatchAdmin(admin.ModelAdmin):
     list_display = ('id', 'token', 'created_at', 'updated_at')
     list_filter = ('created_at', 'updated_at')

@@ -196,7 +196,8 @@ const loadVariables = async () => {
 }
 
 const loadPriceRates = async () => {
-  const dataResponse = await $PriceRateApiService.getAll();
+  // Totes les tarifes, sense paginar: si no, les seleccionades fora de la primera pàgina no es mostren
+  const dataResponse = await $PriceRateApiService.getAll('', [], 1, null, false, null, null, true);
   allPriceRates.value = dataResponse.results
 }
 

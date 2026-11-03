@@ -95,7 +95,7 @@ def suppress_invoice(invoice, user, reason=None, payment_type_id=None, return_pa
                             payment_type = PaymentType.objects.get(token=payment.payment_type_token)
                         piggy_bank.amount -= payment.amount
                         new_return_payment = Payment.objects.create(
-                            token=generate_payment_id('04'),
+                            token=generate_payment_id('04', exploitation_token=invoice.exploitation.token if invoice.exploitation else '0'),
                             name=f"{_('RETURN BALANCE')} {contract.token}",
                             status=payment_pending if payment_type.token == "BANK_TRANSFER" else payment_paid,
                             contract=contract,

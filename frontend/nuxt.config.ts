@@ -97,6 +97,7 @@ export default defineNuxtConfig({
     '~/plugins/api/service/meter-api.js',
     '~/plugins/api/service/meter-manufacturer-api.js',
     '~/plugins/api/service/meter-model-api.js',
+    '~/plugins/api/service/meter-comm-technology-api.js',
     '~/plugins/api/service/supply-point-api.js',
     '~/plugins/api/service/supply-point-request-api.js',
     '~/plugins/api/service/route-api.js',
@@ -189,6 +190,9 @@ export default defineNuxtConfig({
 
     //verifactu
     '~/plugins/api/billing/verifactu-api.js',
+
+    //send-batch
+    '~/plugins/api/integrations/send-batch-api.js',
 
     //statistics
     '~/plugins/api/statistics/reports-api.js',

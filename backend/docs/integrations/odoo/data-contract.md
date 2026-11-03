@@ -212,17 +212,57 @@ Mateix JSON que v1. Només canvien aquests casos:
 
 ---
 
-## 4 · Implementació (costat Odoo)
+## 4 · Lots (bulk)
+
+Documentació completa: [`batch-sending-v1.0.pdf`](batch-sending-v1.0.pdf).
+
+### Enviament
+
+```json
+{
+  "batch_id": "FACT-202610-001",
+  "items": [ { "...": "mateix JSON individual" } ]
+}
+```
+
+Rutes: `POST /batch/invoices`, `/batch/payments`, `/batch/commitment/create`, `/batch/commitment/cancel`.
+Fins a 1000 `items`. Resposta immediata: `202` (acceptat) o `200` (ja rebut).
+
+### Resultat final (inbound a Aqua360)
+
+Quan el lot acaba, Odoo fa `POST` a l'endpoint d'Aventec (`/odoo/v1/batch-results/`) amb
+`Authorization: Bearer <ODOO_INBOUND_BEARER_TOKEN>` i el mateix JSON que
+`GET /aqua360/batch/{batch_id}`:
+
+```json
+{
+  "batch_id": "FACT-202610-001",
+  "type": "invoices",
+  "status": "done",
+  "received_at": "2026-10-21T13:04:00Z",
+  "finished_at": "2026-10-21T13:08:12Z",
+  "summary": {"total": 1000, "ok": 940, "duplicate_ignored": 2, "error": 58, "pending": 0},
+  "results": [
+    {"aqua_id": "...", "odoo_id": 442, "status": "ok", "message": null},
+    {"aqua_id": "...", "odoo_id": null, "status": "error", "message": "..."}
+  ]
+}
+```
+
+`type`: `invoices` | `payments` | `commitment_create` | `commitment_cancel`.
+
+---
+
+## 5 · Implementació (costat Odoo)
 
 La nota per al desenvolupador (PoC amb FastAPI/OCA: stack, mòdul `aqua360_connector`, schemas, resolució de relacionats i conciliació) consta en un **document propi** separat d'aquest contracte.
 
 ---
 
-## 5 · Pendents v2
+## 6 · Pendents v2
 
 | Funcionalitat | Descripció |
 |---------------|------------|
-| Compromís | Crear compromís i conciliar contra ell |
 | Conciliació múltiple | Un pagament contra diverses factures (remeses agrupades) |
-| Acusament / estat de tornada | Si Aqua360 necessita saber quins documents Odoo ha acceptat/rebutjat per reintentar |
 | Devolucions / impagats | R-transactions SEPA: desfer conciliació i tornar la factura a pendent |
+| Reenviament selectiu UI | Seleccionar errors d'un lot i crear un lot nou amb `related_batch` |

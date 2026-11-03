@@ -45,3 +45,5 @@ class GeneralNoteAdmin(admin.ModelAdmin):
     list_display = ('token', 'title', 'description', 'user', 'is_active')
     list_filter = ('is_active',)
     search_fields = ('token', 'title', 'description', 'user')
+
+admin.site.register(IncidentChannel)

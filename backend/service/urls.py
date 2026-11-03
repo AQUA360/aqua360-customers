@@ -42,6 +42,7 @@ from service.views.supply_point_view import SupplyPointViewSet
 from service.views.meter_view import MeterViewSet
 from service.views.meter_manufacturer_view import MeterManufacturerViewSet
 from service.views.meter_model_view import MeterModelViewSet
+from service.views.meter_comm_technology_view import MeterCommTechnologyViewSet
 from service.views.supply_cut_view import SupplyCutViewSet
 from service.views.supply_cut_observation_view import SupplyCutObservationViewSet
 from service.views.supply_cut_status_view import SupplyCutStatusViewSet
@@ -103,6 +104,7 @@ router.register(r'supply-point', SupplyPointViewSet, basename='supplypoint')
 router.register(r'meter', MeterViewSet)
 router.register(r'meter-manufacturer', MeterManufacturerViewSet)
 router.register(r'meter-model', MeterModelViewSet)
+router.register(r'meter-comm-technology', MeterCommTechnologyViewSet)
 
 router.register(r'supply-cut', SupplyCutViewSet)
 router.register(r'supply-cut-observation', SupplyCutObservationViewSet)

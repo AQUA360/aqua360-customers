@@ -19,7 +19,7 @@ from billing.utils.pdf_overlap import client_info_overlaps_header
 from contract.models import Contract, ContractRequest, Variable
 from coredata.models import City
 from coredata.serializers import AddressSerializer, PersonCardSerializer
-from coredata.utils.address_utils import get_address_complete_without_city
+from coredata.utils.address_utils import get_address_complete_without_city, get_address_extra
 from coredata.utils.template_utils import build_template_candidates
 from coredata.utils.pdf_utils import add_watermark_to_pdf
 from documentmanager.utils.main_utils import upload_document
@@ -399,17 +399,20 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
         physical_person = None
         att_to = None
         physical_address = None
+        physical_address_extra = None
         physical_location = None
         supply_address = None
         if contract:
             if is_connection_request:
-                physical_address = get_address_complete_without_city(contract.address_billing.address) if contract.address_billing and contract.address_billing.address else None
+                physical_address = get_address_complete_without_city(contract.address_billing.address, include_extra=False) if contract.address_billing and contract.address_billing.address else None
+                physical_address_extra = get_address_extra(contract.address_billing.address) if contract.address_billing else None
                 physical_location = contract.address_billing.address.postal_code + ' ' + contract.address_billing.address.city.name if contract.address_billing and contract.address_billing.address else None
                 physical_person = str(contract.person) if contract.person else None
             else:
                 address_contact = getattr(contract, 'address_contact', None)
                 if address_contact:
-                    physical_address = get_address_complete_without_city(address_contact.address) if address_contact.address else None
+                    physical_address = get_address_complete_without_city(address_contact.address, include_extra=False) if address_contact.address else None
+                    physical_address_extra = get_address_extra(address_contact.address)
                     physical_location = address_contact.address.postal_code + ' ' + address_contact.address.city.name if address_contact.address else None
                     physical_person = str(address_contact.person) if address_contact.person else None
                     att_to = address_contact.attention_to if address_contact.attention_to else None
@@ -421,7 +424,8 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
             physical_address = invoice.address_final
             physical_location = invoice.location_final
         if not physical_address and supply_point_default and supply_point_default.address:
-            physical_address = get_address_complete_without_city(supply_point_default.address)
+            physical_address = get_address_complete_without_city(supply_point_default.address, include_extra=False)
+            physical_address_extra = get_address_extra(supply_point_default.address)
             physical_location = supply_point_default.address.postal_code + ' ' + supply_point_default.address.city.name if supply_point_default and supply_point_default.address else None
         if not physical_person:
             physical_person = invoice.customer_final
@@ -600,6 +604,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                 'qr_web': qr_web,
                 'ov_image': ov_image,
                 'physical_address': physical_address,
+                'physical_address_extra': physical_address_extra,
                 'physical_location': physical_location,
                 'physical_person': physical_person,
                 'contract_variables': contract_variables,
@@ -660,6 +665,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
                 'qr_web': qr_web,
                 'ov_image': ov_image,
                 'physical_address': physical_address,
+                'physical_address_extra': physical_address_extra,
                 'physical_location': physical_location,
                 'physical_person': physical_person,
                 'contract_variables': contract_variables,

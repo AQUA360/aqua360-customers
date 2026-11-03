@@ -76,6 +76,12 @@ const checkSmartMeteringEnabled = async () => {
   }
 }
 
+// Rutes, zones i lots de la càrrega de Smart Metering (buit = tots els comptadors).
+const smartMeteringScopeText = (labels) => {
+  const names = [...(labels?.routes || []), ...(labels?.route_zones || []), ...(labels?.batches || [])];
+  return names.length ? names.join(', ') : t('reading_block.smart_metering_all_meters');
+}
+
 const onSmartMeteringLoaded = async (documentId) => {
   showSmartMeteringLoad.value = false;
   await getData(searchInput.value, [], pagination.value.page, sortBy.value, sortDesc.value);
@@ -283,6 +289,11 @@ watch(() => route.query, () => {
                 class="shrink-0 border border-sky-500 rounded-md text-sky-600 text-xs px-1"
                 :title="$t('billing_block.reading_date')">
                 <Icon name="fa6-solid:tower-broadcast" class="mr-1" />{{ $t('billing_block.smart_metering') }} · {{ formatDate(item.reading_date) }}
+                <span
+                  class="inline-block max-w-[12rem] truncate align-bottom"
+                  :title="smartMeteringScopeText(item.smart_metering_scope_labels)">
+                  · {{ smartMeteringScopeText(item.smart_metering_scope_labels) }}
+                </span>
               </span>
               <span class="p-1">{{ item.file?.split('/').pop() }}</span>
             </button>

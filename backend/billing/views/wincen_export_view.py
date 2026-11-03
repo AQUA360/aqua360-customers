@@ -29,6 +29,7 @@ class WinCenExportView(views.APIView):
 
         queue_item = BillingQueue.objects.create(
             billing=billing,
+            created_by=request.user,
             task_type='WINCEN_EXPORT',
             status='pending',
             total_items=invoice_count,

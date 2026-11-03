@@ -105,16 +105,8 @@ const suppressLocationWatch = ref(false);
 
 watch(locationTypeRadio, (newVal, oldVal) => {
   if (suppressLocationWatch.value || newVal === oldVal) return;
-  // No esborrem les seleccions dels altres tipus en canviar de radiobutton, es mantenen
-  // per si l'usuari torna a seleccionar-los. Només s'omplen valors si falten.
-  if (newVal === 'CON' && !selectedContract.value && linkedContract.value) {
-    selectedContract.value = linkedContract.value;
-    if (!selectedSupplyPoint.value) {
-      selectedSupplyPoint.value = linkedContract.value.supply_point_default ?? null;
-    }
-  } else if (newVal === 'SP' && !selectedSupplyPoint.value && linkedContract.value) {
-    selectedSupplyPoint.value = linkedContract.value.supply_point_default ?? null;
-  }
+  // No auto-seleccionem cap entitat: si l'usuari no entra res, no es guarda res.
+  // Les seleccions dels altres tipus es mantenen per si torna a seleccionar-los.
 }, { flush: 'sync' });
 
 const loadFromDetail = async (data) => {
@@ -198,7 +190,7 @@ const getData = async () => {
     } else if (item.value.latitude && item.value.longitude) {
       locationTypeRadio.value = 'G';
     } else {
-      locationTypeRadio.value = 'SP';
+      locationTypeRadio.value = 'N';
     }
     suppressLocationWatch.value = false;
 
@@ -261,10 +253,7 @@ const getData = async () => {
   }
 
   getTypes();
-  if (selectedType.value && selectedType.value.length) {
-    let typeId = selectedType.value[0].code
-    getReasons(typeId)
-  }
+  getAllReasons();
   getStatuses();
   getOperators();
   loading.value = false;
@@ -309,21 +298,16 @@ const getTypes = async () => {
   })
 }
 
-const getReasons = async (typeId) => {
-  let reasons = await getOrderTypeReasons(typeId);
-  order_reason.value = reasons;
-}
+const getAllReasons = async () => {
+  const response = await $ConfiglistApiService.getAll('order/order-reason');
+  order_reason.value = [];
 
-const getOrderTypeReasons = async (typeId) => {
-  const response = await $OrderTypeApiService.getDetail(typeId);
-  let order_type_reasons = [];
-  response.reasons.forEach(function (item) {
-    order_type_reasons.push({
+  response.results.forEach(function (item) {
+    order_reason.value.push({
       label: item.name,
       code: item.id
     })
   })
-  return order_type_reasons
 }
 
 const getStatuses = async () => {
@@ -437,6 +421,15 @@ const save = async () => {
       selectedOptions.address = null;
       selectedOptions.contract = null;
     }
+    else if (locationTypeRadio.value == 'N') {
+      // Sense adreça: no es guarda cap localització
+      selectedOptions.supply_point = null;
+      selectedOptions.connection = null;
+      selectedOptions.address = null;
+      selectedOptions.contract = null;
+      selectedOptions.latitude = null;
+      selectedOptions.longitude = null;
+    }
     try {
       item.value = await $OrderApiService.save(selectedOptions);
       if (updatePropertyGeolocation.value && 
@@ -485,12 +478,20 @@ const save = async () => {
   }
 }
 
+const deleteBlocked = ref(false);
+
 const deleteItem = async () => {
   if (confirm(t('confirmation_text_block.confirm_delete'))) {
     saving.value = true;
     try {
       await $OrderApiService.deleteItem(props.id);
       return navigateTo('/order/orders/')
+    } catch (error) {
+      if ((error?.response?.status ?? error?.status) === 400) {
+        deleteBlocked.value = true;
+      } else {
+        toast.error(t('common.error'));
+      }
     } finally {
       saving.value = false;
     }
@@ -625,9 +626,7 @@ const updateSelect = async (event, entity) => {
     case 'order_type':
       selectedType.value = event;
       selectedReason.value = null;
-      if (selectedType) {
-        order_reason.value = await getOrderTypeReasons(selectedType.value.code);
-      }
+      await getAllReasons();
       break;
     case 'order_status':
       selectedStatus.value = event;
@@ -757,17 +756,6 @@ const onIdLostFocus = async () => {
         </div>
       </div>
 
-      <!-- Observations field (només en edició: en crear l'ordre es fa servir la descripció) -->
-      <div v-if="props.id" class="mb-4">
-        <label class="block text-sm font-medium text-slate-500 mb-2">
-          {{ t('common.observations') }}
-        </label>
-        <MoleculesObservationList 
-          parent_entity="order" 
-          :id="props.id" 
-          module="order" />
-      </div>
-
       <!-- Location section -->
       <div v-if="selectedType" class="row">
         <label class="block text-sm font-medium text-slate-500 mb-2">
@@ -791,6 +779,9 @@ const onIdLostFocus = async () => {
           </label>
           <label class="flex items-center gap-2">
             <input type="radio" v-model="locationTypeRadio" value="G" /> {{ t('order_block.only_coordinates') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="radio" v-model="locationTypeRadio" value="N" /> {{ t('address_block.no_address') }}
           </label>
         </div>
       </div>
@@ -992,6 +983,23 @@ const onIdLostFocus = async () => {
           :isSubRegion="true" :onlyExploitation="true" />
         <MoleculesAddContracts v-if="editingContract" :show="editingContract"
           :selected_items="selectedContract ? [selectedContract] : []" @item-clicked="contractClicked" :multiple="false" />
+      </div>
+    </div>
+
+    <div v-if="deleteBlocked" role="dialog" aria-modal="true" aria-labelledby="order-delete-blocked-title" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 p-5">
+        <h3 id="order-delete-blocked-title" class="text-lg font-semibold flex items-center gap-2 mb-2 text-red-800">
+          <Icon name="fa6-solid:triangle-exclamation" />
+          {{ $t('order_block.delete_blocked_title') }}
+        </h3>
+        <p class="text-sm mb-3 text-red-700">
+          {{ $t('order_block.delete_blocked_message') }}
+        </p>
+        <div class="flex justify-end">
+          <button @click="deleteBlocked = false" class="px-3 py-1.5 rounded border border-red-300 text-red-800 hover:bg-red-50">
+            {{ $t('common.close') }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

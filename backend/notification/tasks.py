@@ -6,7 +6,7 @@ from django.utils.translation import gettext as _
 
 
 @shared_task
-def export_incidents_csv_task(query_params):
+def export_incidents_csv_task(query_params, user_id=None):
     try:
         from notification.models import Incident
         from notification.filters.incident_filter import IncidentFilter
@@ -16,14 +16,19 @@ def export_incidents_csv_task(query_params):
         from django.conf import settings
         
         # Filter the queryset according to the query_params received
-        queryset = Incident.objects.all().order_by('status__position', '-created_at')
+        queryset = Incident.objects.filter(is_active=True).order_by('status__position', '-created_at')
+        # Els filtres que depenen de l'usuari (assignades a mi) necessiten la petició
+        from types import SimpleNamespace
+        from django.contrib.auth.models import User
+        user = User.objects.filter(pk=user_id).first() if user_id else None
         filterset = IncidentFilter(
             data=query_params,
             queryset=queryset,
+            request=SimpleNamespace(user=user),
         )
         filtered = filterset.qs
         
-        csv_bytes = build_incident_export_csv_bytes(filtered)
+        csv_bytes = build_incident_export_csv_bytes(filtered, query_params=query_params, user=user)
         
         filename = f"incidents_export_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         service = settings.DOCUMENT_MANAGER_SERVICES.get("statistics", "hdd")
@@ -87,6 +92,35 @@ def notify_today_tasks():
     )
     notifications = notify_tasks(tasks)
     return {'notified_tasks': len(tasks), 'notifications': notifications}
+
+
+@shared_task
+def notify_due_incidents():
+    """Avisa els usuaris assignats de les incidències pendents que vencen avui o ja han vençut."""
+    from notification.utils.incident_utils import notify_due_incidents as notify
+
+    return {'notifications': notify()}
+
+
+@shared_task
+def check_incident_deadlines():
+    """Avisos previs, escalats i pauses massa llargues de les incidències (cada pocs minuts, per als terminis en hores)."""
+    from notification.utils.incident_utils import check_incident_deadlines as check
+
+    return check()
+
+
+@shared_task
+def send_incident_receipt(incident_id):
+    """Genera i envia el justificant de registre de la incidència."""
+    from notification.models import Incident
+    from notification.utils.incident_utils import send_receipt
+
+    incident = Incident.objects.filter(pk=incident_id).first()
+    if not incident:
+        return {'sent': False}
+    return {'sent': send_receipt(incident)}
+
 
 
 @shared_task

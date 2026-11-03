@@ -591,7 +591,7 @@ const groupedPriceRates = computed(() => {
     <section v-show="activeTab === 'call_register'" role="tabpanel" id="tab_call_register" class="bg-white antialiased">
       <div class="h-content max-h-[40vh] overflow-y-auto mb-10">
         <MoleculesCallRegisterList v-if="contract" @update:count="updateCallRegisterCount" :contract_id="contract.id"
-          :reload="reload" />
+          :contract="contract" :reload="reload" />
       </div>
     </section>
 
@@ -737,7 +737,7 @@ const groupedPriceRates = computed(() => {
           <li class="me-2">
             <a href="#tab_invoice_generals" @click.prevent="setInvoiceActiveTab('invoice_generals')"
               :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_generals', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_generals' }">
-              {{ $t("billing_block.general_invoices") }} ({{ general_invoices ? general_invoices.filter(invoice => invoice.type_final === invoiceTypeToken).length : 0 }})
+              {{ $t("billing_block.general_invoices") }} ({{ generalInvoiceRuns.length }})
             </a>
           </li>
         </AtomsTabs>
@@ -847,7 +847,7 @@ const groupedPriceRates = computed(() => {
 
             <footer class="flex justify-between items-center pt-1">
               <div class="flex items-center mb-1 gap-3">
-                <p class="text-sm text-gray-700">{{ entry.user?.username || t('common.admin') }}</p>
+                <p class="text-sm text-gray-700">{{ entry.user?.username || t('common.automatic_process') }}</p>
 
                 <p class="inline-flex items-center text-sm text-gray-900 font-semibold">
                   <TimeRelative :datetime="entry.created_at" />

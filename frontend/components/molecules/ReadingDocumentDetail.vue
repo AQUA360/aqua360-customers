@@ -64,6 +64,14 @@ onMounted(async () => {
       <div role="row" class="grid grid-cols-2 gap-3">
         <FieldDetail class="truncate" :label='$t("common.doc")' :value="localData.file?.split('/').pop()" />
         <FieldDetail v-if="localData.source === 'SMART_METERING'" :label="`${$t('billing_block.smart_metering')} · ${$t('billing_block.reading_date')}`" :value="formatDate(localData.reading_date)" />
+        <template v-if="localData.source === 'SMART_METERING'">
+          <FieldDetail v-if="!localData.smart_metering_scope_labels" :label="$t('billing_block.smart_metering')" :value="$t('reading_block.smart_metering_all_meters')" />
+          <template v-else>
+            <FieldDetail v-if="localData.smart_metering_scope_labels.routes?.length" :label="$t('reading_block.smart_metering_routes')" :value="localData.smart_metering_scope_labels.routes.join(', ')" />
+            <FieldDetail v-if="localData.smart_metering_scope_labels.route_zones?.length" :label="$t('reading_block.smart_metering_route_zones')" :value="localData.smart_metering_scope_labels.route_zones.join(', ')" />
+            <FieldDetail v-if="localData.smart_metering_scope_labels.batches?.length" :label="$t('reading_block.smart_metering_batches')" :value="localData.smart_metering_scope_labels.batches.join(', ')" />
+          </template>
+        </template>
         <FieldDetail :label='$t("common.uploaded")' :value="formatDate(localData.created_at)" class="items-center"/>
         <FieldDetail :label='$t("billing_block.added_readings")' :value="(localData.num_readings).toString()" />
         <FieldDetail :label="$t('billing_block.reading_batch')">

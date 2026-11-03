@@ -59,6 +59,7 @@ def _task_from_template(recurrence, set_date):
         name=recurrence.name,
         description=recurrence.description,
         color=recurrence.color,
+        text_color=recurrence.text_color,
         user=recurrence.user,
         time=recurrence.time,
         set_date=set_date,

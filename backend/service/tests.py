@@ -505,8 +505,8 @@ class TestSupplyCutListSortingAndStatusFilter(TestCase):
         cls.status_gamma = SupplyCutStatus.objects.create(token='gamma', name='Gamma', color='red')
 
         now = timezone.now()
-        # date_end is the default list ordering; deliberately NOT aligned
-        # with id so sorting checks are meaningful.
+        # date_end deliberately NOT aligned with id so sorting checks are
+        # meaningful.
         cls.cut_late = SupplyCut.objects.create(
             token='cut-late', status=cls.status_alfa, date_end=now + timedelta(days=3)
         )
@@ -555,6 +555,88 @@ class TestSupplyCutListSortingAndStatusFilter(TestCase):
         self.assertEqual(self._list({'status': 'Alfa'}).data['count'], 1)
         self.assertEqual(self._list({'status': 'alfa'}).data['count'], 1)
         self.assertEqual(self._list({'status': 'does-not-exist'}).data['count'], 0)
+
+
+class TestSupplyCutListDefaultOrderAndGiswaterSync(TestCase):
+    """Ordre per defecte (oberts primer, id més nou primer) i botó de GIS Water."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from coredata.models import ConfigProject
+        from service.models import SupplyCut, SupplyCutStatus
+
+        cls.factory = APIRequestFactory()
+        cls.user = User.objects.create_superuser(username='cutorder', password='p', email='cutorder@example.com')
+        ConfigProject.objects.update_or_create(
+            token='supply_cut_status_closed_tokens', defaults={'value': '2,3'}
+        )
+        planned = SupplyCutStatus.objects.create(token='0', name='Planificada')
+        active = SupplyCutStatus.objects.create(token='1', name='Actiu')
+        finished = SupplyCutStatus.objects.create(token='2', name='Acabat')
+        conflict = SupplyCutStatus.objects.create(token='5', name='Conflicte')
+
+        cls.cut_active_old = SupplyCut.objects.create(token='c1', status=active)
+        cls.cut_finished_old = SupplyCut.objects.create(token='c2', status=finished)
+        cls.cut_planned = SupplyCut.objects.create(token='c3', status=planned)
+        cls.cut_finished_new = SupplyCut.objects.create(token='c4', status=finished)
+        cls.cut_conflict = SupplyCut.objects.create(token='c5', status=conflict)
+        cls.cut_inactive = SupplyCut.objects.create(token='c6', status=active, is_active=False)
+
+    def _request(self, method, action, path, params=None):
+        from service.views.supply_cut_view import SupplyCutViewSet
+
+        request = getattr(self.factory, method)(path, params or {})
+        force_authenticate(request, user=self.user)
+        return SupplyCutViewSet.as_view({method: action})(request)
+
+    def test_default_order_open_first_then_newest_id(self):
+        response = self._request('get', 'simple_list', '/service/supply-cut/list/')
+        self.assertEqual(
+            [item['id'] for item in response.data['results']],
+            [
+                self.cut_conflict.id, self.cut_planned.id, self.cut_active_old.id,
+                self.cut_inactive.id, self.cut_finished_new.id, self.cut_finished_old.id,
+            ],
+        )
+
+    def test_explicit_ordering_overrides_default(self):
+        response = self._request('get', 'simple_list', '/service/supply-cut/list/', {'ordering': 'id'})
+        ids = [item['id'] for item in response.data['results']]
+        self.assertEqual(ids, sorted(ids))
+
+    def test_sync_giswater_rejected_when_disabled(self):
+        from unittest.mock import patch
+
+        with patch('integrations.outbound.giswater.tasks.sync_giswater_suply_cuts_task.delay') as delay:
+            response = self._request('post', 'sync_giswater', '/service/supply-cut/sync-giswater/')
+        self.assertEqual(response.status_code, 400)
+        delay.assert_not_called()
+
+    def test_sync_giswater_launches_task_when_enabled(self):
+        from unittest.mock import MagicMock, patch
+        from coredata.models import ConfigProject
+
+        ConfigProject.objects.update_or_create(
+            token='giswater_supply_cut_sync_enabled', defaults={'value': 'true'}
+        )
+        with patch(
+            'integrations.outbound.giswater.tasks.sync_giswater_suply_cuts_task.delay',
+            return_value=MagicMock(id='task-1'),
+        ) as delay:
+            response = self._request('post', 'sync_giswater', '/service/supply-cut/sync-giswater/')
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.data, {'task_id': 'task-1'})
+        delay.assert_called_once()
+
+    def test_sync_giswater_requires_add_permission(self):
+        from coredata.models import ConfigProject
+
+        ConfigProject.objects.update_or_create(
+            token='giswater_supply_cut_sync_enabled', defaults={'value': 'true'}
+        )
+        self.user = User.objects.create_user(username='cutorder-ro', password='p')
+        response = self._request('post', 'sync_giswater', '/service/supply-cut/sync-giswater/')
+        self.assertEqual(response.status_code, 403)
 
 
 class TestSupplyCutCatalogResolution(TestCase):
@@ -652,9 +734,11 @@ class TestSupplyCutCatalogResolution(TestCase):
             defaults={'name': 'motiu', 'value': json.dumps({})},
         )
 
+        # Una correcció manual feta a Customers protegeix els camps tocats.
         manual = SupplyCut.objects.create(
             token='777', cause=self.cause_accidental, status=self.status_open,
             cause_raw='Accidental', state_raw='1', requires_review=False,
+            customers_locked_fields=['status', 'cause'],
         )
         payload = [
             {'id': '777', 'anl_cause': 'Accidental', 'state': '1'},
@@ -662,7 +746,7 @@ class TestSupplyCutCatalogResolution(TestCase):
         ]
         with patch.object(sync_mod, 'fetch_om_mincuts', return_value=payload), \
              patch.object(sync_mod, 'extract_fields', side_effect=lambda r: r), \
-             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value=[]):
+             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value={'body': {'data': {'fields': []}}}):
             sync_mod.sync_supply_cuts_from_giswater()
 
         manual.refresh_from_db()
@@ -800,7 +884,7 @@ class TestSupplyCutSyncConflicteFlag(TestCase):
         ]
         with patch.object(sync_mod, 'fetch_om_mincuts', return_value=payload), \
              patch.object(sync_mod, 'extract_fields', side_effect=lambda r: r), \
-             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value=[]):
+             patch.object(sync_mod, 'fetch_om_mincut_connecs', return_value={'body': {'data': {'fields': []}}}):
             sync_mod.sync_supply_cuts_from_giswater()
 
         conflicte = SupplyCut.objects.get(token='c1')

@@ -219,7 +219,7 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
     # Només aplica als processos d'impagats (`fixed_data == 'claimrequest'`): decideix si el
     # document del pas (carta de suspensió / recordatori) s'envia amb la comunicació, per
     # correu o per carta. Es genera i queda arxivat a la comunicació en tots dos casos.
-    # Per defecte `True`, per no canviar el comportament dels clients que no enviïn el camp.
+    # Si no s'envia, s'agafa el valor de la plantilla (`MessageTemplate.attach_claim_documents`).
     attach_claim_documents = serializers.BooleanField(write_only=True, required=False, allow_null=True)
     og_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     # Destinataris que queden fora del procés, amb els motius ({id, person_type,
@@ -252,9 +252,8 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
         attach_invoices = validated_data.pop('attach_invoices', False)
         attach_readings = validated_data.pop('attach_readings', False)
         attach_reading_invoices = validated_data.pop('attach_reading_invoices', False)
-        # `None` (camp enviat buit) es tracta com a True: només un `false` explícit desactiva l'adjunt.
+        # `None` (camp no enviat): es resol amb el valor de la plantilla un cop carregada.
         attach_claim_documents = validated_data.pop('attach_claim_documents', None)
-        attach_claim_documents = True if attach_claim_documents is None else attach_claim_documents
 
         og_id = validated_data.pop('og_id', None)
         run_token = validated_data.pop('run_token', None)
@@ -348,6 +347,8 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
             template_instance = MessageTemplate.objects.filter(id=message_template_id).first()
             if template_instance is None:
                 template_instance = MessageTemplate.objects.filter(token=message_template_id).first()
+        if attach_claim_documents is None:
+            attach_claim_documents = template_instance.attach_claim_documents if template_instance else True
 
         company_config = None
         if company_id:

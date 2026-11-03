@@ -79,6 +79,51 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
         if supply_point and getattr(supply_point, 'address', None):
             supply_address = AddressSerializer(supply_point.address).data
 
+        # Text de localització de l'ordre segons l'origen triat a l'edició
+        # (Punt de subministrament, Adreça, Escomesa, Contracte o Coordenades).
+        connection = order.connection if hasattr(order, 'connection') else None
+        order_address = order.address if hasattr(order, 'address') else None
+
+        lat = getattr(order, 'latitude', None)
+        lon = getattr(order, 'longitude', None)
+        lat_text = f"{lat:.6f}" if lat is not None else None
+        lon_text = f"{lon:.6f}" if lon is not None else None
+
+        # Punt de subministrament: el de l'ordre o, si no, el per defecte del contracte
+        address_source = supply_point
+        if not address_source and contract:
+            address_source = getattr(contract, 'supply_point_default', None)
+
+        location_label = None
+        location_text = None
+
+        if address_source and getattr(address_source, 'address', None):
+            location_label = "Punt de subministrament"
+            location_text = str(address_source.address)
+        elif connection:
+            location_label = "Escomesa"
+            parts = []
+            if getattr(connection, 'address_street', None):
+                parts.append(str(connection.address_street))
+            if getattr(connection, 'address_street_number', None):
+                parts.append(str(connection.address_street_number))
+            location_text = " ".join(parts).strip()
+            if getattr(connection, 'token', None):
+                location_text = f"{location_text} ({connection.token})" if location_text else str(connection.token)
+        elif order_address:
+            location_label = "Adreça"
+            location_text = str(order_address)
+        elif lat_text and lon_text:
+            location_label = "Coordenades"
+            location_text = f"{lat_text}, {lon_text}"
+
+        # Codi per a la fila "Contracte" (buit si només hi ha coordenades)
+        contract_code = None
+        if contract:
+            contract_code = getattr(contract, 'token', None)
+        if not contract_code and supply_point:
+            contract_code = supply_point.token  # SUPOSICIÓ: el codi del punt fa de codi de contracte
+            
         main_color = "#074df0"
         secondary_color = "#ffffff"
         try:
@@ -117,8 +162,16 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
             'main_color': main_color,
             'secondary_color': secondary_color,
             'supply_address': supply_address,
+            'location_text': location_text,
             'now': datetime.now(),
             'data_protection_law_text': company.get('data_protection_law_text') if company else None,
+            'location_label': location_label,
+            'contract_code': contract_code,
+            'latitude': lat_text,
+            'longitude': lon_text,
+            'physical_address': physical_address,
+            'physical_location': physical_location,
+            'physical_person': physical_person,
         }
 
         ctx = Context(context_data)

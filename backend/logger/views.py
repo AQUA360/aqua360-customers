@@ -49,7 +49,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class LogConnectionStatusViewSet(viewsets.ModelViewSet):
+class LogConnectionStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Street to be viewed or edited.
     """
@@ -58,7 +58,7 @@ class LogConnectionStatusViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
 
-class LogConnectionRequestStatusViewSet(viewsets.ModelViewSet):
+class LogConnectionRequestStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Street to be viewed or edited.
     """
@@ -70,7 +70,7 @@ class LogConnectionRequestStatusViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
     
-class LogSupplyCutStatusViewSet(viewsets.ModelViewSet):
+class LogSupplyCutStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Street to be viewed or edited.
     """
@@ -84,7 +84,7 @@ class LogSupplyCutStatusViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogSupplyPointChangeViewSet(viewsets.ModelViewSet):
+class LogSupplyPointChangeViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Street to be viewed or edited.
     """
@@ -96,7 +96,7 @@ class LogSupplyPointChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['action']
     ordering_fields = []
 
-class LogContractRequestStatusViewSet(viewsets.ModelViewSet):
+class LogContractRequestStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Street to be viewed or edited.
     """
@@ -108,7 +108,7 @@ class LogContractRequestStatusViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogOrderStatusViewSet(viewsets.ModelViewSet):
+class LogOrderStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Street to be viewed or edited.
     """
@@ -120,7 +120,7 @@ class LogOrderStatusViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogBailStatusViewSet(viewsets.ModelViewSet):
+class LogBailStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows Street to be viewed or edited.
     """
@@ -132,7 +132,7 @@ class LogBailStatusViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogContractTotalMembersViewSet(viewsets.ModelViewSet):
+class LogContractTotalMembersViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = LogContractTotalMembers.objects.all().order_by('-timestamp')
     serializer_class = LogContractTotalMembersSerializer
@@ -143,7 +143,7 @@ class LogContractTotalMembersViewSet(viewsets.ModelViewSet):
     ordering_fields = []
 
 
-class LogContractPhonesViewSet(viewsets.ModelViewSet):
+class LogContractPhonesViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogContractPhones.objects.all().order_by('-timestamp')
     serializer_class = LogContractPhonesSerializer
     permission_classes = [IsAuthenticated]
@@ -156,7 +156,7 @@ class LogContractPhonesViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
-class LogContractBonificationsVariablesChangeViewSet(viewsets.ModelViewSet):
+class LogContractBonificationsVariablesChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogContractBonificationsVariablesChange.objects.all().order_by('-timestamp')
     serializer_class = LogContractBonificationsVariablesChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -165,7 +165,7 @@ class LogContractBonificationsVariablesChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
     
-class LogContractExpiredBonificationsVariablesViewSet(viewsets.ModelViewSet):
+class LogContractExpiredBonificationsVariablesViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogContractExpiredBonificationsVariables.objects.all().order_by('-timestamp')
     serializer_class = LogContractExpiredBonificationsVariablesSerializer
     permission_classes = [IsAuthenticated]
@@ -174,7 +174,7 @@ class LogContractExpiredBonificationsVariablesViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogClaimRequestContractChangeViewSet(viewsets.ModelViewSet):
+class LogClaimRequestContractChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogClaimRequestContractChange.objects.all().order_by('-created_at')
     serializer_class = LogClaimRequestContractChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -183,7 +183,7 @@ class LogClaimRequestContractChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogInvoiceChangeStatusViewSet(viewsets.ModelViewSet):
+class LogInvoiceChangeStatusViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogInvoiceChangeStatus.objects.all().order_by('-timestamp')
     serializer_class = LogInvoiceChangeStatusSerializer
     permission_classes = [IsAuthenticated]
@@ -192,7 +192,7 @@ class LogInvoiceChangeStatusViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogCommitmentDepositMovementViewSet(viewsets.ModelViewSet):
+class LogCommitmentDepositMovementViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommitmentDepositMovement.objects.all().order_by('-timestamp')
     serializer_class = LogCommitmentDepositMovementSerializer
     permission_classes = [IsAuthenticated]
@@ -201,7 +201,7 @@ class LogCommitmentDepositMovementViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogPaymentStatusChangeViewSet(viewsets.ModelViewSet):
+class LogPaymentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogPaymentStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogPaymentStatusChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -210,7 +210,7 @@ class LogPaymentStatusChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogCommunicationChangeViewSet(viewsets.ModelViewSet):
+class LogCommunicationChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommunicationChange.objects.all().order_by('-timestamp')
     serializer_class = LogCommunicationChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -219,7 +219,7 @@ class LogCommunicationChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogFraudStatusChangeViewSet(viewsets.ModelViewSet):
+class LogFraudStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogFraudStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogFraudStatusChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -228,7 +228,7 @@ class LogFraudStatusChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogIncidentStatusChangeViewSet(viewsets.ModelViewSet):
+class LogIncidentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogIncidentStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogIncidentStatusChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -238,7 +238,7 @@ class LogIncidentStatusChangeViewSet(viewsets.ModelViewSet):
     ordering_fields = []
     
 
-class LogCommunicationStatusChangeViewSet(viewsets.ModelViewSet):
+class LogCommunicationStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommunicationStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogCommunicationStatusChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -247,7 +247,7 @@ class LogCommunicationStatusChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogCommunicationProcessStatusChangeViewSet(viewsets.ModelViewSet):
+class LogCommunicationProcessStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommunicationProcessStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogCommunicationProcessStatusChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -256,7 +256,7 @@ class LogCommunicationProcessStatusChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogInvoiceDataChangeViewSet(viewsets.ModelViewSet):
+class LogInvoiceDataChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogInvoiceDataChange.objects.all().order_by('-timestamp')
     serializer_class = LogInvoiceDataChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -266,7 +266,7 @@ class LogInvoiceDataChangeViewSet(viewsets.ModelViewSet):
     ordering_fields = []
 
 
-class LogContractDataChangeViewSet(viewsets.ModelViewSet):
+class LogContractDataChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ContractDataChange.objects.all().order_by('-created_at')
     serializer_class = LogContractDataChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -276,7 +276,7 @@ class LogContractDataChangeViewSet(viewsets.ModelViewSet):
     ordering_fields = []
 
 
-class LogReadingChangeViewSet(viewsets.ModelViewSet):
+class LogReadingChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogReadingChange.objects.all().order_by('-timestamp')
     serializer_class = LogReadingChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -285,7 +285,7 @@ class LogReadingChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['observation']
     ordering_fields = []
 
-class LogJoinedPaymentStatusChangeViewSet(viewsets.ModelViewSet):
+class LogJoinedPaymentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogJoinedPaymentStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogJoinedPaymentStatusChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -294,7 +294,7 @@ class LogJoinedPaymentStatusChangeViewSet(viewsets.ModelViewSet):
     search_fields = ['object']
     ordering_fields = []
 
-class LogProductChangeViewSet(viewsets.ModelViewSet):
+class LogProductChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogProductChange.objects.all().order_by('-timestamp')
     serializer_class = LogProductChangeSerializer
     permission_classes = [IsAuthenticated]
@@ -304,7 +304,7 @@ class LogProductChangeViewSet(viewsets.ModelViewSet):
     ordering_fields = []
 
 
-class LogPriceRateChangeViewSet(viewsets.ModelViewSet):
+class LogPriceRateChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogPriceRateChange.objects.all().order_by('-timestamp')
     serializer_class = LogPriceRateChangeSerializer
     permission_classes = [IsAuthenticated]

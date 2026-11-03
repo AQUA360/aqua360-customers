@@ -31,6 +31,16 @@ export default defineNuxtPlugin(nuxtApp => {
         return result
     }
 
+    const getOrCreate = async (manufacturerId, name) => {
+        const apiUrl = apiHost + entity + 'get-or-create/';
+        return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify({
+            manufacturer_id: manufacturerId,
+            name
+        }), {
+            'Content-Type': 'application/json'
+        });
+    }
+
     const getByName_DEPRECATED = async (name) => {
         let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(name)
         try {
@@ -43,7 +53,7 @@ export default defineNuxtPlugin(nuxtApp => {
     }
 
     const apiService = {
-        getModelsByManufacturer, getByName
+        getModelsByManufacturer, getByName, getOrCreate
     };
     
     nuxtApp.provide(provideName, apiService);

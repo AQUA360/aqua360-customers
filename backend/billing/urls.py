@@ -79,6 +79,7 @@ from .views.epayment_document_generate_view import EPaymentDocumentGenerateViewS
 from .views.detailed_billing_document_generate_view import DetailedBillingDocumentGenerateView
 from .views.generate_sgttxs_document_view import GenerateSgtTxsDocumentView
 from .views.commitment_deposit_pdf_view import CommitmentDepositPDFDownloadViewSet
+from .views.billing_document_download_view import BillingDocumentDownloadPreviewView, BillingDocumentDownloadView
 from .views.billing_invoices_view import BillingInvoicesViewSet, BillingInvoicesExportView, BillingInvoicesSummaryViewSet, BillingInvoicesPdfViewSet
 from .views.invoice_mark_reviewed_range_view import InvoiceMarkReviewedRangeView
 from .views.invoice_reviewed_range_preview_view import InvoiceReviewedRangePreviewView
@@ -104,6 +105,7 @@ from .views.contract_estimation_view import ContractEstimationView
 from .views.invoice_clavegueram_export_view import InvoiceClavegueramExcelExportView
 from .views.exclude_invoice_view import ExcludeInvoiceView
 from .views.smart_metering_meter_reading_view import SmartMeteringMeterReadingView
+from .views.smart_metering_settings_view import SmartMeteringSettingsView
 
 router = routers.DefaultRouter()
 
@@ -226,6 +228,8 @@ urlpatterns = [
     path('sgttxs-document-generate/', GenerateSgtTxsDocumentView.as_view(http_method_names=['put']), name='sgttxs-document-generate'),
     path('commitment-deposit-document-generate/<int:id>/', CommitmentDepositPDFDownloadViewSet.as_view(http_method_names=['get']), name='fd-document-generate'),
     path('billing/<int:id>/readings', BillingReadingsViewSet.as_view(http_method_names=['get']), name='billing-readings'),
+    path('document-downloads/preview/', BillingDocumentDownloadPreviewView.as_view(http_method_names=['get']), name='billing-document-download-preview'),
+    path('document-downloads/', BillingDocumentDownloadView.as_view(http_method_names=['get', 'post']), name='billing-document-downloads'),
     path('billing/<int:id>/invoices', BillingInvoicesViewSet.as_view(http_method_names=['get']), name='billing-invoices'),
     path('billing/<int:id>/invoices/export', BillingInvoicesExportView.as_view(http_method_names=['post']), name='billing-invoices-export'),
     path('billing/<int:id>/invoices/summary', BillingInvoicesSummaryViewSet.as_view(http_method_names=['get']), name='billing-invoices-summary'),
@@ -250,6 +254,7 @@ urlpatterns = [
     
     path('contract-estimation/', ContractEstimationView.as_view(), name='contract-estimation'),
     path('smart-metering/meter-reading/', SmartMeteringMeterReadingView.as_view(), name='smart-metering-meter-reading'),
+    path('smart-metering/settings/', SmartMeteringSettingsView.as_view(), name='smart-metering-settings'),
     # Nova URL per exportació CSV de lectures per batch
     path('reading/by-batch/csv-export/', ReadingByBatchCSVExportView.as_view(), name='reading-by-batch-csv-export'),
     # Exportació CSV de SupplyPoints de les Routes d'un ReadingBatch (+ lectura + contractes)

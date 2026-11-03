@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -14,13 +16,13 @@ from django.core.files.base import ContentFile
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 
-from billing.models import Reading, ReadingDocument
+from billing.models import Reading, ReadingBatch, ReadingDocument
 from billing.utils.reading_service import check_billing_period, check_overflow_value
 from contract.models import Contract
 from coredata.models import ConfigProject
 from coredata.utils.address_utils import get_address_complete_without_city
 from integrations.models import IntegrationRequestLog
-from service.models import SupplyPoint
+from service.models import Route, RouteZone, SupplyPoint
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +32,19 @@ SMART_METERING_AUTH_CONFIG_TOKEN = "smart_metering_authentication_token"
 SMART_METERING_EXPLOITATION_CONFIG_TOKEN = "smart_metering_explotation_id"
 # Preview runs in Celery; allow a longer wait for the massive external API.
 SMART_METERING_PREVIEW_API_TIMEOUT = 120
+# Settings-page probe: a short reachability check, and a capped sample of a day's readings.
+SMART_METERING_CONNECTIVITY_TIMEOUT = 10
+SMART_METERING_PROBE_SAMPLE_LIMIT = 20
+SMART_METERING_PROBE_DETAIL_LIMIT = 500
+SMART_METERING_INBOUND_CONTRACTS_PATH = "/smartmetering/v1/contracts/"
 
 
 class SmartMeteringApiError(Exception):
     pass
+
+
+class SmartMeteringPreviewOutdated(ValueError):
+    """The preview has rows outside the selected routes, zones or batches."""
 
 
 def _response_payload_for_log(data):
@@ -537,12 +548,148 @@ def _is_smart_metering_meter(meter):
     )
 
 
-def _collect_telecontrol_targets(reading_date):
+SMART_METERING_SCOPE_KEYS = ("route_ids", "route_zone_ids", "batch_ids")
+SMART_METERING_METER_Q = Q(
+    meter__has_remote_reading=True,
+    meter__remote_reading_type="SMART_METERING",
+)
+
+
+def normalize_smart_metering_scope(scope):
+    """
+    Keep only the known keys with integer ids. Returns None when nothing is
+    selected, which means "every Smart Metering meter".
+
+    Invalid ids raise ValueError instead of being dropped: dropping them could
+    turn the scope into None and load every meter.
+    """
+    if not isinstance(scope, dict):
+        return None
+    normalized = {}
+    for key in SMART_METERING_SCOPE_KEYS:
+        values = scope.get(key)
+        if values is None:
+            continue
+        if not isinstance(values, (list, tuple)):
+            values = [values]
+        tokens = [str(value).strip() for value in values]
+        if any(not token.isascii() or not token.isdigit() or int(token) <= 0 for token in tokens):
+            raise ValueError(f"Invalid ids for '{key}'")
+        ids = sorted({int(token) for token in tokens})
+        if ids:
+            normalized[key] = ids
+    return normalized or None
+
+
+def _smart_metering_scope_q(scope):
+    """
+    Supply points of the selected routes, zones or reading batches (union).
+
+    A batch covers its routes and its fix meters, like the batch setup, but only
+    if it includes telecontrol meters (a manuals-only batch has no Smart Metering).
+    """
+    scope = normalize_smart_metering_scope(scope)
+    if not scope:
+        return None
+    scope_q = Q(pk__in=[])
+    if scope.get("route_ids"):
+        scope_q |= Q(property__route_position__route_id__in=scope["route_ids"])
+    if scope.get("route_zone_ids"):
+        scope_q |= Q(property__route_position__route__route_zone_id__in=scope["route_zone_ids"])
+    if scope.get("batch_ids"):
+        batch_ids = list(
+            ReadingBatch.objects.filter(
+                id__in=scope["batch_ids"], include_telecontrol=True
+            ).values_list("id", flat=True)
+        )
+        scope_q |= Q(property__route_position__route__reading_batches__in=batch_ids)
+        scope_q |= Q(meter__reading_batches__in=batch_ids)
+    return scope_q
+
+
+def smart_metering_scope_supply_point_ids(scope):
+    """Ids of the Smart Metering supply points covered by ``scope`` (None = all)."""
+    queryset = SupplyPoint.objects.filter(SMART_METERING_METER_Q)
+    scope_q = _smart_metering_scope_q(scope)
+    if scope_q is not None:
+        queryset = queryset.filter(scope_q)
+    return set(queryset.values_list("id", flat=True).distinct())
+
+
+def smart_metering_document_supply_point_ids(reading_document):
+    """
+    Supply points of a Smart Metering document: those of its scope plus those of
+    the readings it already holds (a supply point may have changed route since).
+    """
+    return smart_metering_scope_supply_point_ids(reading_document.smart_metering_scope) | set(
+        reading_document.readings.filter(supply_point__isnull=False).values_list("supply_point_id", flat=True)
+    )
+
+
+def _label(obj):
+    return " - ".join(str(value) for value in (obj.token, obj.name) if value) or str(obj.id)
+
+
+def smart_metering_scope_options():
+    """Routes, zones and open reading batches that have Smart Metering meters."""
+    route_sm_q = Q(
+        positions__properties__supply_points__meter__has_remote_reading=True,
+        positions__properties__supply_points__meter__remote_reading_type="SMART_METERING",
+    )
+    routes = Route.objects.filter(route_sm_q, is_active=True).distinct().order_by("position", "token", "id")
+    zones = (
+        RouteZone.objects.filter(
+            is_active=True,
+            routes__is_active=True,
+            routes__positions__properties__supply_points__meter__has_remote_reading=True,
+            routes__positions__properties__supply_points__meter__remote_reading_type="SMART_METERING",
+        )
+        .distinct()
+        .order_by("position", "name", "id")
+    )
+    batches = (
+        ReadingBatch.objects.filter(
+            is_active=True,
+            is_processed=False,
+            is_excluded=False,
+            include_telecontrol=True,
+        )
+        .filter(
+            Q(
+                routes__positions__properties__supply_points__meter__has_remote_reading=True,
+                routes__positions__properties__supply_points__meter__remote_reading_type="SMART_METERING",
+            )
+            | Q(fix_meters__has_remote_reading=True, fix_meters__remote_reading_type="SMART_METERING")
+        )
+        .distinct()
+        .order_by("-created_at")
+    )
+    return {
+        "routes": [{"id": route.id, "label": _label(route)} for route in routes],
+        "route_zones": [{"id": zone.id, "label": _label(zone)} for zone in zones],
+        "batches": [{"id": batch.id, "label": _label(batch)} for batch in batches],
+    }
+
+
+def smart_metering_scope_labels(scope):
+    """Readable names of the selected routes, zones and batches (for the document)."""
+    scope = normalize_smart_metering_scope(scope)
+    if not scope:
+        return None
+    return {
+        "routes": [_label(obj) for obj in Route.objects.filter(id__in=scope.get("route_ids", []))],
+        "route_zones": [_label(obj) for obj in RouteZone.objects.filter(id__in=scope.get("route_zone_ids", []))],
+        "batches": [_label(obj) for obj in ReadingBatch.objects.filter(id__in=scope.get("batch_ids", []))],
+    }
+
+
+def _collect_telecontrol_targets(reading_date, scope=None):
     """
     Supply points with a Smart Metering meter (``remote_reading_type=SMART_METERING``).
 
-    The load is no longer tied to a reading batch: it covers every Smart Metering
-    meter and the batch picks the resulting reading document afterwards.
+    The load is not tied to a reading batch: it covers the Smart Metering meters
+    of the selected routes, zones or batches (all of them if ``scope`` is empty)
+    and the batch picks the resulting reading document afterwards.
     """
     active_contract_token = ConfigProject.objects.get(token="contract_active_token").value
     terminated_contract_token = ConfigProject.objects.get(token="contract_terminated_status").value
@@ -550,10 +697,10 @@ def _collect_telecontrol_targets(reading_date):
         token="contract_termination_completed_token"
     ).value
     token_meter_status_no_meter = ConfigProject.objects.get(token="token_meter_status_no_meter").value
-    smart_metering_q = Q(
-        meter__has_remote_reading=True,
-        meter__remote_reading_type="SMART_METERING",
-    )
+    smart_metering_q = SMART_METERING_METER_Q
+    scope_q = _smart_metering_scope_q(scope)
+    if scope_q is not None:
+        smart_metering_q &= scope_q
     prefetch_args = (
         active_contract_token,
         terminated_contract_token,
@@ -963,11 +1110,11 @@ def _parse_request_date(reading_date_str):
     return reading_date_str
 
 
-def _coerce_client_preview(preview, reading_date_str):
+def _coerce_client_preview(preview, reading_date_str, scope=None):
     if not isinstance(preview, dict):
         raise ValueError("Invalid preview payload")
     readings = preview.get("readings")
-    if not isinstance(readings, list):
+    if not isinstance(readings, list) or not all(isinstance(row, dict) for row in readings):
         raise ValueError("Invalid preview readings")
     expected_date = _parse_request_date(reading_date_str)
     preview_date = preview.get("reading_date")
@@ -975,10 +1122,17 @@ def _coerce_client_preview(preview, reading_date_str):
         parsed = _parse_request_date(preview_date) if isinstance(preview_date, str) else preview_date
         if parsed != expected_date:
             raise ValueError("Preview reading_date does not match request")
+    if normalize_smart_metering_scope(preview.get("scope")) != normalize_smart_metering_scope(scope):
+        raise ValueError("Preview scope does not match request")
+    # The rows come from the client and the routes may have changed since the
+    # preview: reject it (instead of skipping rows) so the user previews again.
+    scope_supply_point_ids = smart_metering_scope_supply_point_ids(scope)
+    if any(row.get("id") not in scope_supply_point_ids for row in readings):
+        raise SmartMeteringPreviewOutdated("Preview rows do not match the selected scope")
     return preview
 
 
-def build_smart_metering_preview(reading_date_str, api_timeout=None, progress_callback=None):
+def build_smart_metering_preview(reading_date_str, api_timeout=None, progress_callback=None, scope=None):
     def _progress(current, total, description=""):
         if progress_callback:
             progress_callback(current, total, description)
@@ -986,7 +1140,7 @@ def build_smart_metering_preview(reading_date_str, api_timeout=None, progress_ca
     reading_date = _parse_request_date(reading_date_str)
     _progress(0, 100, "targets_loading")
 
-    supply_points = _collect_telecontrol_targets(reading_date)
+    supply_points = _collect_telecontrol_targets(reading_date, scope)
     batch_codes = {
         _normalize_meter_code_for_match(sp.meter.code)
         for sp in supply_points
@@ -1086,6 +1240,7 @@ def build_smart_metering_preview(reading_date_str, api_timeout=None, progress_ca
         "extra_in_api": [],
         "reading_date": reading_date.isoformat(),
         "origin": ORIGIN_SMART_METERING,
+        "scope": normalize_smart_metering_scope(scope),
     }
 
 
@@ -1131,6 +1286,311 @@ def fetch_smart_metering_meter_reading(meter_code=None, reading_date_str=None, m
     }
 
 
+def smart_metering_config_token_value():
+    """ConfigProject value for the Smart Metering token, stripped. Empty if missing."""
+    try:
+        config = ConfigProject.objects.get(token=SMART_METERING_AUTH_CONFIG_TOKEN)
+    except ConfigProject.DoesNotExist:
+        return ""
+    return (config.value or "").strip()
+
+
+def smart_metering_is_enabled():
+    """True only when the Smart Metering ConfigProject token has a written value."""
+    return bool(smart_metering_config_token_value())
+
+
+def _inbound_contracts_path():
+    """Path Smart Metering calls to read contracts. Includes /api when that prefix is on."""
+    from decouple import config as env_config
+
+    raw = env_config("API_URL_PREFIX", default="False")
+    prefix = "/api" if str(raw) == "True" else ""
+    return f"{prefix}{SMART_METERING_INBOUND_CONTRACTS_PATH}"
+
+
+def _truncate_probe_detail(value):
+    text = str(value or "").strip()
+    if len(text) <= SMART_METERING_PROBE_DETAIL_LIMIT:
+        return text
+    return text[:SMART_METERING_PROBE_DETAIL_LIMIT] + "…"
+
+
+def get_smart_metering_settings():
+    """
+    Connection data for the settings screen.
+
+    The token is the ConfigProject value (not the env fallback). The URL comes
+    from SMART_METERING_API_URL.
+    """
+    token = smart_metering_config_token_value()
+    api_url = (getattr(settings, "SMART_METERING_API_URL", "") or "").rstrip("/")
+    return {
+        "enabled": bool(token),
+        "api_url": api_url,
+        "authentication_token": token,
+        "auth_param": getattr(settings, "SMART_METERING_API_AUTH_PARAM", "Authorization"),
+        "timeout": getattr(settings, "SMART_METERING_API_TIMEOUT", 30),
+        "margin": getattr(settings, "SMART_METERING_API_MARGIN", 5),
+        "inbound_endpoint": _inbound_contracts_path(),
+        "massive_readings_endpoint": SmartMeteringClient.MASSIVE_READINGS_ENDPOINT,
+        "single_readings_endpoint": SmartMeteringClient.SINGLE_READINGS_ENDPOINT,
+    }
+
+
+_OPENAPI_SPEC_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "integrations"
+    / "smartmetering"
+    / "openapi.yaml"
+)
+_OPENAPI_SERVERS_BLOCK = """servers:
+  - url: https://customers.example.com
+    description: Entorn de producció (substituir pel domini real)
+  - url: http://localhost:8000
+    description: Entorn local de desenvolupament
+"""
+
+
+def build_smart_metering_openapi(server_url):
+    """Public inbound OpenAPI, with this deployment as the server URL."""
+    server_url = str(server_url or "").strip().rstrip("/")
+    if not server_url or any(char in server_url for char in "\n\r"):
+        raise ValueError("server_url_invalid")
+    text = _OPENAPI_SPEC_PATH.read_text(encoding="utf-8")
+    if _OPENAPI_SERVERS_BLOCK not in text:
+        raise ValueError("openapi_template_invalid")
+    servers = (
+        "servers:\n"
+        f"  - url: {server_url}\n"
+        "    description: Aquest desplegament\n"
+    )
+    return text.replace(_OPENAPI_SERVERS_BLOCK, servers, 1)
+
+
+def build_smart_metering_server_curl(reading_date_str=None, meter_code=None):
+    """
+    Shell script that calls Smart Metering for one day.
+
+    The token is inside the script so it can be run on the server. Callers must
+    not print the result.
+    """
+    import shlex
+    from urllib.parse import urlencode
+
+    if not smart_metering_is_enabled():
+        raise ValueError("not_configured")
+    connection = get_smart_metering_settings()
+    if not connection["api_url"]:
+        raise ValueError("url_missing")
+    reading_date = _parse_probe_date(reading_date_str) if reading_date_str else timezone.localdate()
+    meter = str(meter_code).strip() if meter_code not in (None, "") else ""
+    meter = meter or None
+    endpoint = (
+        SmartMeteringClient.SINGLE_READINGS_ENDPOINT
+        if meter
+        else SmartMeteringClient.MASSIVE_READINGS_ENDPOINT
+    )
+    params = {"date": reading_date.isoformat(), "margin": connection["margin"]}
+    if meter:
+        params["meter"] = meter
+    url = f"{connection['api_url']}{endpoint}?{urlencode(params)}"
+    header_accept = shlex.quote("Accept: application/json")
+    header_auth = shlex.quote(f"{connection['auth_param']}: {connection['authentication_token']}")
+    quoted_url = shlex.quote(url)
+    timeout = int(SMART_METERING_PREVIEW_API_TIMEOUT)
+    return (
+        "#!/bin/sh\n"
+        "# Prova de lectures Smart Metering. Executar-la al servidor.\n"
+        "# No desa lectures al programa.\n"
+        "set -eu\n"
+        "curl --fail-with-body --silent --show-error "
+        f"--max-time {timeout} \\\n"
+        f"  --header {header_accept} \\\n"
+        f"  --header {header_auth} \\\n"
+        f"  {quoted_url}\n"
+    )
+
+
+def _parse_probe_date(reading_date_str):
+    if reading_date_str is None or str(reading_date_str).strip() == "":
+        raise ValueError("reading_date_required")
+    try:
+        return datetime.strptime(str(reading_date_str).strip(), "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("reading_date_invalid") from exc
+
+
+def probe_smart_metering_connectivity():
+    """
+    Ask the Smart Metering host whether it answers.
+
+    Any HTTP status means the host is reachable. 401/403 means the token was rejected.
+    This does not load readings.
+    """
+    client = SmartMeteringClient(timeout=SMART_METERING_CONNECTIVITY_TIMEOUT)
+    url = client.base_url
+    endpoint = client.SINGLE_READINGS_ENDPOINT
+    if not smart_metering_is_enabled():
+        return {
+            "reachable": False,
+            "authenticated": None,
+            "status_code": None,
+            "elapsed_ms": 0,
+            "url": url,
+            "code": "not_configured",
+            "detail": "",
+        }
+    if not url:
+        return {
+            "reachable": False,
+            "authenticated": None,
+            "status_code": None,
+            "elapsed_ms": 0,
+            "url": "",
+            "code": "url_missing",
+            "detail": "SMART_METERING_API_URL is not configured",
+        }
+
+    # A fake meter on the single-reading endpoint: the host and the token are
+    # checked without downloading the day's massive payload.
+    probe_meter = "__connectivity_probe__"
+    params = client._request_params(timezone.localdate(), meter_code=probe_meter)
+    started = time.perf_counter()
+    try:
+        response = requests.get(
+            f"{url}{endpoint}",
+            params=params,
+            headers=client._headers(),
+            timeout=SMART_METERING_CONNECTIVITY_TIMEOUT,
+            verify=True,
+            stream=True,
+        )
+    except requests.RequestException as exc:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        logger.warning("Error connecting to smart metering API", exc_info=exc)
+        detail = _truncate_probe_detail("Error connecting to smart metering API")
+        client._log(
+            method="GET",
+            endpoint=endpoint,
+            request_payload={"probe": "connectivity", "params": params},
+            success=False,
+            error_message=detail,
+        )
+        return {
+            "reachable": False,
+            "authenticated": None,
+            "status_code": None,
+            "elapsed_ms": elapsed_ms,
+            "url": url,
+            "code": "unreachable",
+            "detail": detail,
+        }
+
+    try:
+        status_code = response.status_code
+    finally:
+        response.close()
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    authenticated = status_code not in (401, 403)
+    accepted = authenticated and status_code < 500
+    client._log(
+        method="GET",
+        endpoint=endpoint,
+        request_payload={"probe": "connectivity", "params": params},
+        status_code=status_code,
+        success=accepted,
+        error_message="" if accepted else f"HTTP {status_code}",
+    )
+    code = "ok"
+    if not authenticated:
+        code = "unauthorized"
+    elif status_code >= 500:
+        code = "server_error"
+    return {
+        "reachable": True,
+        "authenticated": authenticated,
+        "status_code": status_code,
+        "elapsed_ms": elapsed_ms,
+        "url": url,
+        "code": code,
+        "detail": "",
+    }
+
+
+def _probe_sample(payload):
+    sample = []
+    rows = _extract_api_rows(payload)
+    for row in rows[:SMART_METERING_PROBE_SAMPLE_LIMIT]:
+        if not isinstance(row, dict):
+            continue
+        reading = row.get("reading") if row.get("reading") is not None else row.get("reading_value")
+        sample.append({
+            "meter": _meter_code_from_api_row(row),
+            "reading": reading,
+            "timestamp": row.get("timestamp") or row.get("reading_date") or row.get("date"),
+        })
+    return rows, sample
+
+
+def probe_smart_metering_readings(reading_date_str, meter_code=None):
+    """
+    Fetch readings for one day from Smart Metering and return a short sample.
+
+    Does not create a reading document. With a meter code, calls the single-meter
+    endpoint; otherwise the massive readings endpoint (same source as the load).
+    """
+    reading_date = _parse_probe_date(reading_date_str)
+    meter = str(meter_code).strip() if meter_code not in (None, "") else ""
+    meter = meter or None
+    endpoint = (
+        SmartMeteringClient.SINGLE_READINGS_ENDPOINT
+        if meter
+        else SmartMeteringClient.MASSIVE_READINGS_ENDPOINT
+    )
+    base = {
+        "ok": False,
+        "reading_date": reading_date.isoformat(),
+        "meter": meter,
+        "count": 0,
+        "sample": [],
+        "sample_limit": SMART_METERING_PROBE_SAMPLE_LIMIT,
+        "elapsed_ms": 0,
+        "endpoint": endpoint,
+        "detail": "",
+        "code": "",
+    }
+    if not smart_metering_is_enabled():
+        base["code"] = "not_configured"
+        return base
+
+    client = SmartMeteringClient(timeout=SMART_METERING_PREVIEW_API_TIMEOUT)
+    started = time.perf_counter()
+    try:
+        if meter:
+            payload = client.fetch_meter_reading(reading_date, meter)
+        else:
+            payload = client.fetch_readings(reading_date)
+    except SmartMeteringApiError:
+        logger.exception("Smart metering provider error during readings probe")
+        base["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        base["code"] = "provider_error"
+        base["detail"] = "Provider error"
+        return base
+
+    rows, sample = _probe_sample(payload)
+    base.update({
+        "ok": True,
+        "count": len(rows),
+        "sample": sample,
+        "elapsed_ms": int((time.perf_counter() - started) * 1000),
+        "code": "ok" if rows else "empty",
+    })
+    return base
+
+
 def _row_reading_date(row, fallback_date):
     if row.get("reading_date"):
         return _parse_request_date(row["reading_date"])
@@ -1147,16 +1607,23 @@ SKIP_REASON_NO_API_READING = "no_api_reading"
 SKIP_REASON_NOT_SAVED = "existing_reading_protected_or_older"
 
 
-def find_smart_metering_document(reading_date):
-    """Smart Metering reading document already loaded for ``reading_date`` (one per date)."""
-    return (
-        ReadingDocument.objects.filter(
-            source=ReadingDocument.SOURCE_SMART_METERING,
-            reading_date=reading_date,
-        )
-        .order_by("-created_at")
-        .first()
-    )
+def find_smart_metering_documents(reading_date, scope=None):
+    """
+    Smart Metering reading documents of ``reading_date`` whose routes, zones or
+    batches (or its readings) share some meter with ``scope``. Only one load per
+    date and meter: different routes can be loaded separately for the same date.
+    """
+    documents = ReadingDocument.objects.filter(
+        source=ReadingDocument.SOURCE_SMART_METERING,
+        reading_date=reading_date,
+    ).order_by("-created_at")
+    target_ids = smart_metering_scope_supply_point_ids(scope)
+    return [
+        document
+        for document in documents
+        if target_ids & smart_metering_document_supply_point_ids(document)
+        or (not target_ids and not normalize_smart_metering_scope(document.smart_metering_scope))
+    ]
 
 
 def smart_metering_document_is_replaceable(reading_document):
@@ -1226,18 +1693,23 @@ def import_smart_metering_readings(reading_document, preview=None):
     """
     reading_date_str = reading_document.reading_date.isoformat()
     if preview is None:
-        preview = build_smart_metering_preview(reading_date_str)
+        preview = build_smart_metering_preview(
+            reading_date_str, scope=reading_document.smart_metering_scope
+        )
     else:
-        preview = _coerce_client_preview(preview, reading_date_str)
+        preview = _coerce_client_preview(
+            preview, reading_date_str, reading_document.smart_metering_scope
+        )
     fallback_date = reading_document.reading_date
     saved_readings = []
     reading_ids = set()
     set_added_readings = set()
+    preview_rows = preview["readings"]
     not_loaded_rows = [
-        (row, SKIP_REASON_NO_API_READING) for row in preview["readings"] if not row.get("matched")
+        (row, SKIP_REASON_NO_API_READING) for row in preview_rows if not row.get("matched")
     ]
 
-    matched_rows = [row for row in preview["readings"] if row.get("matched")]
+    matched_rows = [row for row in preview_rows if row.get("matched")]
     supply_points_by_id = {
         sp.id: sp
         for sp in SupplyPoint.objects.filter(

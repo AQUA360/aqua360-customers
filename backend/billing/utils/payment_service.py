@@ -10,7 +10,7 @@ from coredata.utils.name_utils import generate_token
 from logger.models import LogPaymentStatusChange
 from pricing.models import ProductOrigin
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.models.signals import post_save, pre_save
 
 logger = logging.getLogger(__name__)
@@ -258,6 +258,13 @@ def get_status_map():
         for token in tokens
     }
 
+def get_acting_user(user=None):
+    # Sense usuari explícit, el de la petició o el de qui ha encuat la tasca de Celery
+    if user:
+        return user
+    from contract.middleware import get_current_user
+    return get_current_user()
+
 def log_payment_status(payment, payment_status, user, payment_date=None, payment_type_token=None):
     paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
     piggy_token = ConfigProject.objects.get(token='payment_status_piggy_token').value
@@ -266,7 +273,7 @@ def log_payment_status(payment, payment_status, user, payment_date=None, payment
         previous_status=payment.status,
         current_status=payment_status,
         used_payment_token=payment_type_token if payment_type_token else payment.payment_type_token,
-        user=user,
+        user=get_acting_user(user),
         timestamp= payment_date if payment_status.token in [paid_token, piggy_token] and payment_date else timezone.now()
     )
 
@@ -298,7 +305,7 @@ def generate_payment_movement(payment, payment_status, payment_date, payment_typ
     
     new_movement = PaymentMovement.objects.create(
         token = generate_token(PaymentMovement),
-        user = user,
+        user = get_acting_user(user),
         payment = payment,
         movement_date = payment_date,
         payment_type = payment_type,
@@ -366,11 +373,56 @@ def generate_method_change_rejection_movements(payment, returned_status, rejecti
         finally:
             payment.status = paid_status
 
+def add_negative_payment_to_balance(payment, payment_date):
+    """
+    Liquida un pagament negatiu (factura negativa o abonament) afegint-ne l'import
+    al saldo del client en comptes de retornar-l'hi per transferència.
+    Fa servir el moneder del contracte de la factura o, si la factura és d'una
+    sol·licitud sense contracte, el de la persona.
+    """
+    from coredata.models import PersonPiggyBankMovement
+
+    amount = abs(payment.amount)
+    invoice = payment.invoice
+    contract = payment.contract
+    if invoice and invoice.contract:
+        contract = invoice.contract
+    elif invoice and invoice.contract_termination:
+        contract = invoice.contract_termination.contract
+
+    if contract and contract.piggy_bank:
+        piggy_bank = contract.piggy_bank
+        # Actualització atòmica: dos abonaments simultanis al mateix moneder no
+        # es poden trepitjar.
+        PiggyBank.objects.filter(id=piggy_bank.id).update(amount=F('amount') + amount)
+        return PiggyBankMovement.objects.create(
+            token=generate_token(PiggyBankMovement),
+            piggy_bank=piggy_bank,
+            amount=amount,
+            is_positive=True,
+            movement_date=payment_date,
+            payment=payment,
+        )
+
+    request = invoice and (invoice.connection_request or invoice.contract_request)
+    person = request.person if request else None
+    if not contract and person and person.piggy_bank:
+        piggy_bank = person.piggy_bank
+        type(piggy_bank).objects.filter(id=piggy_bank.id).update(amount=F('amount') + amount)
+        return PersonPiggyBankMovement.objects.create(
+            token=generate_token(PersonPiggyBankMovement),
+            person_piggy_bank=piggy_bank,
+            amount=amount,
+            is_positive=True,
+            movement_date=payment_date,
+            payment=payment,
+        )
+
+    raise ValueError("Piggy bank not found to add the payment to the balance")
+
+
 def log_invoice_status(invoice, invoice_status, current_user=None):
-    if not current_user:
-        from order.middleware import get_current_user
-        current_user = get_current_user()
-    change_status_logger(current_user, invoice, invoice_status)
+    change_status_logger(get_acting_user(current_user), invoice, invoice_status)
 
 def disconnect_payment_signals():
     from billing.signals import check_cancel_invoice, check_paid_invoice, create_payment_invoice, payment_status_changed, update_payment, update_contract_debt

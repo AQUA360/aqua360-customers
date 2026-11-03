@@ -9,7 +9,7 @@ from coredata.utils.name_utils import generate_token
 {
 "reading_at": "YYYY-mm-dd",
 "contract": "<contract_token>",
-"meter": "<meter_token>",
+"meter": "<meter_code>",
 "reading": <reading_value>
 }
 """
@@ -22,14 +22,12 @@ class CreateReadingSerializer(serializers.Serializer):
     contract = serializers.SlugRelatedField(
         slug_field="token", queryset=Contract.objects.all(), required=True
     )
-    meter = serializers.SlugRelatedField(
-        slug_field="token", queryset=Meter.objects.all(), required=True
-    )
+    meter = serializers.CharField(required=True, trim_whitespace=False)
     reading = serializers.FloatField(required=True)
 
     def validate(self, data):
         contract = data.get("contract")
-        meter = data.get("meter")
+        meter_code = data.get("meter")
 
         # Check if contract has a supply_point_default
         supply_point = contract.supply_point_default
@@ -38,15 +36,17 @@ class CreateReadingSerializer(serializers.Serializer):
                 {"contract": "Contract does not have a default supply point."}
             )
 
-        # Check if the supply_point_default's meter matches the provided meter
-        if supply_point.meter != meter:
+        # Resolve the code against the contract's meter, since codes are not unique.
+        meter = Meter.objects.filter(pk=supply_point.meter_id, code=meter_code).first()
+        if not meter:
             raise serializers.ValidationError(
                 {
                     "meter": "The provided meter does not match the contract's default supply point meter."
                 }
             )
 
-        # Store supply_point for use in create
+        # Store the resolved meter and supply point for use in create.
+        data["meter"] = meter
         data["supply_point"] = supply_point
         return data
 

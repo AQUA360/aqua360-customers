@@ -57,9 +57,11 @@ class JoinedPaymentSaveSerializer(serializers.ModelSerializer):
         payment_method_id = validated_data.pop('payment_method_id', None)
         
         person_ins = None
+        exploitation = None
         
         if contract_id:
             contract = Contract.objects.get(id=contract_id)
+            exploitation = contract.supply_point_default.connection.exploitation
             person_ins = contract.holder
             validated_data['contract'] = contract
             validated_data['person'] = contract.holder
@@ -80,11 +82,20 @@ class JoinedPaymentSaveSerializer(serializers.ModelSerializer):
         
         if payments_data:
             payments = Payment.objects.filter(id__in=payments_data)
+            if not exploitation:
+                if any(payment.invoice for payment in payments):
+                    exploitation = payments.filter(invoice__isnull=False).first().invoice.exploitation
+                elif any(payment.commitment_deposit for payment in payments):
+                    exploitation = payments.filter(commitment_deposit__isnull=False).first().commitment_deposit.contract.supply_point_default.connection.exploitation
+                elif any(payment.contract for payment in payments):
+                    exploitation = payments.filter(contract__isnull=False).first().contract.supply_point_default.connection.exploitation
             validated_data['payments'] = payments
             validated_data['total_final'] = sum(payment.amount for payment in payments)
         
         validated_data['status'] = JoinedPaymentStatus.objects.get(is_default=True)
-        number = generate_joined_payment_id('05')
+            
+            
+        number = generate_joined_payment_id('05', exploitation_token=exploitation.token if exploitation else '0')
         validated_data['token'] = number
         validated_data['number'] = number
         object = super().create(validated_data)

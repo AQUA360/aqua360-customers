@@ -102,6 +102,10 @@ const filteredContracts = computed(() => {
   });
 });
 
+// Exporta els contractes que es veuen al llistat (amb la cerca i els filtres aplicats).
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
+  filteredContracts.value.map(c => c.id), { claim_request_id: props.request.id });
+
 // Excloure un contracte i els seus pagaments
 const excludeContract = async (contractId) => {
   if (!confirm(t('confirmation_text_block.confirm_exclude_contract'))) return;
@@ -146,6 +150,9 @@ onMounted(async () => {
     <div class="h-full flex flex-col transition-all duration-500 ease" :class="{ 'mr-[48vw]': showRegion }">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">{{ $t('contract_block.contract_list') }}</h3>
+        <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
+          :disabled="loading || !filteredContracts.length"
+          :export-name="[$t('common.contracts'), request?.token].filter(Boolean).join(' – ')" />
         <!-- <button @click="$emit('close')" class="text-gray-500 hover:text-gray-700">
           <Icon name="fa6-solid:xmark" class="text-xl" />
         </button> -->

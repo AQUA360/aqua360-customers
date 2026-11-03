@@ -18,7 +18,7 @@ class MessageTemplateListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = MessageTemplate
-        fields = ['created_at', 'id', 'name', 'token', 'origin', 'total_templates', 'origin_name', 'is_active']
+        fields = ['created_at', 'id', 'name', 'token', 'origin', 'total_templates', 'origin_name', 'attach_claim_documents', 'is_active']
         
     def get_total_templates(self, obj):
         return obj.templates.count()

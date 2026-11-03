@@ -226,6 +226,16 @@ const filterSelectedContracts = computed(() => {
     .filter(Boolean);
 });
 
+// Exporta tots els resultats de la pestanya activa, en l'ordre del llistat.
+const exportContracts = computed(() => {
+  if (selectedTypeTab.value === 'filter') return filterSelectedContracts.value;
+  if (selectedTypeTab.value === 'document') return documentSelectedContracts.value;
+  return filteredContracts.value;
+});
+
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
+  exportContracts.value.map(c => c.id), { claim_request_id: props.request.id });
+
 const hasNumericRangeFilter = (min, max) => {
   return Number(min) > 0 || Number(max) > 0;
 };
@@ -506,6 +516,9 @@ onMounted(async () => {
             {{ $t('common.total') }}
             <span class="font-semibold tabular-nums text-slate-800">{{ filteredContracts.length }}</span>
           </span>
+          <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
+            :disabled="loading || filterLoading || !exportContracts.length"
+            :export-name="[$t(title), request?.token].filter(Boolean).join(' – ')" />
         </div>
       </div>
 

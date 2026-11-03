@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import InvoiceRegion from '~/components/organisms/InvoiceRegion.vue';
@@ -7,14 +7,34 @@ import ContractRegion from '~/components/organisms/ContractRegion.vue';
 import ContractRequestRegion from '~/components/organisms/ContractRequestRegion.vue';
 import CommitmentDepositRegion from './CommitmentDepositRegion.vue';
 import JoinedPaymentRegion from '~/components/organisms/JoinedPaymentRegion.vue';
+import PaymentRegion from '~/components/organisms/PaymentRegion.vue';
 import AddInvoices from '~/components/molecules/AddInvoices.vue';
 import SearchWalletMovements from '../molecules/SearchWalletMovements.vue';
+import LegacyExploitationTabs from '~/components/molecules/LegacyExploitationTabs.vue';
+import LegacyExploitationPaymentsPanel from '~/components/molecules/LegacyExploitationPaymentsPanel.vue';
+import { useLegacyExploitationPayments } from '~/composables/useLegacyExploitationPayments';
 
 const toast = useToast();
 const { t } = useI18n();
 const { $PaymentApiService } = useNuxtApp();
 const loading_data = ref(false);
 const error_data = ref(false);
+
+const {
+    useExploitationToken,
+    activeTab,
+    loadConfig,
+    splitItems,
+    resetExclusions,
+    isLegacyItem,
+    isExcluded,
+    toggleExcluded,
+    setAllExcluded,
+    excludedPaymentIds,
+    amountsMatch,
+    holdersMatch,
+    tokensMatch,
+} = useLegacyExploitationPayments();
 
 const props = defineProps({
     save_data: {
@@ -107,13 +127,21 @@ const getRowClasses = (element) => {
 
 const linkBtnClass = 'inline-flex items-center gap-1 text-sm font-medium text-sky-600 hover:text-sky-800 hover:underline underline-offset-2 max-w-full truncate';
 
+const paymentBuckets = computed(() => splitItems(data.value || []));
+const standardPayments = computed(() => paymentBuckets.value.standard);
+const legacyPayments = computed(() => paymentBuckets.value.legacy);
+const showLegacyTab = computed(() => useExploitationToken.value && legacyPayments.value.length > 0);
+
 const displayRows = computed(() => {
-    if (!data.value) return [];
+    const source = showLegacyTab.value ? standardPayments.value : (data.value || []);
+    if (!source.length) return [];
     const rows = [];
-    for (const item of data.value) {
+    for (const item of source) {
         rows.push(item);
         if (item.is_joined && item.joined_payment_id && isJoinedExpanded(item.joined_payment_id)) {
-            rows.push(...getChildPayments(item.joined_payment_id));
+            rows.push(...getChildPayments(item.joined_payment_id).filter(child =>
+                !showLegacyTab.value || !isLegacyItem(child)
+            ));
         }
     }
     return rows;
@@ -131,6 +159,7 @@ const getData = async (file, is_saving = false) => {
     allPayments.value = []
     expandedJoinedPayments.value = new Set();
     paid_payments.value = false;
+    if (!is_saving) resetExclusions();
     try {
 
         sepaFile.value = file;
@@ -138,8 +167,9 @@ const getData = async (file, is_saving = false) => {
             file: file,
             is_saving: is_saving,
             payment_origin: paymentOrigin.value,
+            excluded_payment_ids: is_saving ? excludedPaymentIds.value : [],
         };
-        
+
         let response = await $PaymentApiService.returnBank(save_data);
         documentExists.value = response.document_exists;
         allPayments.value = response.data.map(item => ({ ...item, save_balance: false }));
@@ -178,7 +208,7 @@ const getData = async (file, is_saving = false) => {
 }
 
 const saveBalance = async () => {
-    
+
 
     const save_balance_data = allPayments.value.filter(item => item.save_balance);
 
@@ -244,6 +274,10 @@ watch(() => props.save_data, (newValue) => {
     getData(sepaFile.value, true);
 });
 
+onMounted(async () => {
+    await loadConfig();
+});
+
 </script>
 
 <template>
@@ -278,14 +312,15 @@ watch(() => props.save_data, (newValue) => {
                         {{ t('billing_block.payment_origin') }}
                     </label>
                     <div class="relative group">
-                        <select v-model="paymentOrigin" 
+                        <select v-model="paymentOrigin"
                             class="w-full pl-3 pr-10 py-2 text-sm bg-white border border-slate-200 rounded-xl shadow-sm appearance-none focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 transition-all cursor-pointer hover:border-slate-300">
                             <option :value="null" disabled>{{ t('common.select') }}...</option>
                             <option v-for="origin in paymentOrigins" :key="origin.id" :value="origin.id">
                                 {{ origin.name }}
                             </option>
                         </select>
-                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400 group-hover:text-slate-500">
+                        <div
+                            class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400 group-hover:text-slate-500">
                             <Icon name="fa6-solid:chevron-down" class="h-3 w-3" />
                         </div>
                     </div>
@@ -343,23 +378,34 @@ watch(() => props.save_data, (newValue) => {
         <!-- Compact Results -->
         <div v-if="!loading_data && !error_data" class="space-y-3">
 
-            <div v-if="paid_payments || documentExists"
+            <div v-if="paid_payments || documentExists || showLegacyTab"
                 class="flex items-start gap-2 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2">
                 <Icon name="fa6-solid:circle-info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
                 <ul class="min-w-0 space-y-0.5 text-xs font-medium text-amber-900/90">
                     <li v-if="paid_payments">{{ t("informative_block.info_paid_payments") }}</li>
                     <li v-if="documentExists">{{ t("informative_block.info_document_exists") }}</li>
+                    <li v-if="showLegacyTab">{{ t("informative_block.info_legacy_exploitation_payments") }}</li>
                 </ul>
             </div>
 
+            <LegacyExploitationTabs v-if="showLegacyTab" v-model="activeTab" :standard-count="standardPayments.length"
+                :legacy-count="legacyPayments.length" />
+
+            <LegacyExploitationPaymentsPanel v-if="showLegacyTab && activeTab === 'legacy'" :items="legacyPayments"
+                :is-excluded="isExcluded" :amounts-match="amountsMatch" :holders-match="holdersMatch"
+                :tokens-match="tokensMatch" @toggle-exclude="toggleExcluded"
+                @exclude-all="setAllExcluded(legacyPayments, true)" @include-all="setAllExcluded(legacyPayments, false)"
+                @show-detail="openRegion" />
+
             <!-- Payments table -->
-            <div v-if="data && data.length > 0"
+            <div v-if="data && data.length > 0 && (!showLegacyTab || activeTab === 'standard')"
                 class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div class="overflow-x-auto max-h-[28rem]">
                     <table class="w-full border-collapse text-sm">
                         <thead class="sticky top-0 border-b border-slate-200 bg-slate-100/95 backdrop-blur-sm">
                             <tr class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                                <th v-if="totalJoinedPayments > 0" class="w-8 px-1 py-1.5" :aria-label="t('common.expand')" />
+                                <th v-if="totalJoinedPayments > 0" class="w-8 px-1 py-1.5"
+                                    :aria-label="t('common.expand')" />
                                 <th class="px-2 py-1.5 text-left">{{ t("contract") }}</th>
                                 <th v-if="totalInvoices > 0 || totalJoinedPayments > 0" class="px-2 py-1.5 text-left">
                                     <template v-if="totalInvoices > 0 && totalJoinedPayments > 0">
@@ -383,12 +429,9 @@ watch(() => props.save_data, (newValue) => {
                         </thead>
                         <tbody class="divide-y divide-slate-100/90">
                             <tr v-for="(element, index) in displayRows" :key="`${element.payment_id}-${index}`"
-                                class="transition-colors hover:bg-slate-50/70"
-                                :class="getRowClasses(element)">
+                                class="transition-colors hover:bg-slate-50/70" :class="getRowClasses(element)">
                                 <td v-if="totalJoinedPayments > 0" class="w-8 px-1 py-1 align-middle">
-                                    <button
-                                        v-if="isJoinedParent(element)"
-                                        type="button"
+                                    <button v-if="isJoinedParent(element)" type="button"
                                         class="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
                                         :title="`${$t('common.expand')}/${$t('common.collapse')}`"
                                         :aria-expanded="isJoinedExpanded(element.joined_payment_id)"
@@ -398,8 +441,7 @@ watch(() => props.save_data, (newValue) => {
                                             class="h-2.5 w-2.5" />
                                     </button>
                                     <div v-else-if="isChildPayment(element)"
-                                        class="flex h-6 w-6 items-center justify-center pl-2.5"
-                                        aria-hidden="true">
+                                        class="flex h-6 w-6 items-center justify-center pl-2.5" aria-hidden="true">
                                         <span class="block h-3 w-px bg-slate-300" />
                                     </div>
                                 </td>
@@ -408,7 +450,8 @@ watch(() => props.save_data, (newValue) => {
                                         @click="openRegion('ContractRegion', element.contract.id)">
                                         {{ element.contract.token }}
                                     </button>
-                                    <button v-else-if="element?.contract_request?.token" type="button" :class="linkBtnClass"
+                                    <button v-else-if="element?.contract_request?.token" type="button"
+                                        :class="linkBtnClass"
                                         @click="openRegion('ContractRequestRegion', element.contract_request.id)">
                                         {{ element.contract_request.token }}
                                     </button>
@@ -416,15 +459,12 @@ watch(() => props.save_data, (newValue) => {
                                 </td>
                                 <td v-if="totalInvoices > 0 || totalJoinedPayments > 0"
                                     class="px-2 py-1.5 align-middle max-w-[12rem]">
-                                    <button
-                                        v-if="isJoinedParent(element)"
-                                        type="button"
-                                        :class="linkBtnClass"
+                                    <button v-if="isJoinedParent(element)" type="button" :class="linkBtnClass"
                                         @click="openRegion('JoinedPaymentRegion', element.joined_payment_id)">
-                                        <Icon name="fa6-solid:layer-group" class="shrink-0 text-[10px] text-slate-400" />
+                                        <Icon name="fa6-solid:layer-group"
+                                            class="shrink-0 text-[10px] text-slate-400" />
                                         <span class="truncate">{{ element.reference || "—" }}</span>
-                                        <span
-                                            v-if="getJoinedChildCount(element.joined_payment_id)"
+                                        <span v-if="getJoinedChildCount(element.joined_payment_id)"
                                             class="shrink-0 rounded bg-slate-100 px-1 py-px text-[10px] font-semibold tabular-nums text-slate-600">
                                             {{ getJoinedChildCount(element.joined_payment_id) }}
                                         </span>
@@ -436,7 +476,8 @@ watch(() => props.save_data, (newValue) => {
                                     <span v-else class="text-slate-400 text-sm">—</span>
                                 </td>
                                 <td v-if="totalCommitments > 0" class="px-2 py-1.5 align-middle">
-                                    <button v-if="element?.commitment_deposit?.token" type="button" :class="linkBtnClass"
+                                    <button v-if="element?.commitment_deposit?.token" type="button"
+                                        :class="linkBtnClass"
                                         @click="openRegion('CommitmentDepositRegion', element?.commitment_deposit?.id)">
                                         {{ element.commitment_deposit.token }}
                                     </button>
@@ -449,20 +490,17 @@ watch(() => props.save_data, (newValue) => {
                                     :title="element?.contract?.holder || undefined">
                                     {{ element?.contract?.holder || "—" }}
                                 </td>
-                                <td class="px-2 py-1.5 text-sm font-semibold tabular-nums text-slate-900 whitespace-nowrap">
+                                <td
+                                    class="px-2 py-1.5 text-sm font-semibold tabular-nums text-slate-900 whitespace-nowrap">
                                     {{ formatMoneyWithCurrency(element.amount) || "—" }}
                                 </td>
                                 <td class="px-2 py-1.5 text-center align-middle">
-                                    <button
-                                        v-if="element.is_paid"
-                                        type="button"
-                                        :class="[
-                                            'inline-flex h-6 w-6 items-center justify-center rounded border transition-colors',
-                                            element.save_balance
-                                                ? 'border-orange-400 bg-orange-50 text-orange-600'
-                                                : 'border-slate-200 bg-white text-slate-400 hover:border-sky-400 hover:text-sky-600',
-                                        ]"
-                                        @click="element.save_balance = !element.save_balance">
+                                    <button v-if="element.is_paid" type="button" :class="[
+                                        'inline-flex h-6 w-6 items-center justify-center rounded border transition-colors',
+                                        element.save_balance
+                                            ? 'border-orange-400 bg-orange-50 text-orange-600'
+                                            : 'border-slate-200 bg-white text-slate-400 hover:border-sky-400 hover:text-sky-600',
+                                    ]" @click="element.save_balance = !element.save_balance">
                                         <Icon v-if="element.save_balance" name="fa6-solid:check" class="h-3 w-3" />
                                     </button>
                                 </td>
@@ -477,7 +515,8 @@ watch(() => props.save_data, (newValue) => {
                 class="overflow-hidden rounded-lg border border-red-200/90 bg-white shadow-sm">
                 <div class="flex items-center justify-between gap-3 border-b border-red-200/80 bg-red-50/90 px-3 py-2">
                     <div>
-                        <h3 class="text-xs font-semibold text-red-800">{{ t("reports_block.paid_payments_no_info") }}</h3>
+                        <h3 class="text-xs font-semibold text-red-800">{{ t("reports_block.paid_payments_no_info") }}
+                        </h3>
                         <p class="text-[11px] text-red-600/90">{{ t("informative_block.info_manual_review") }}</p>
                     </div>
                     <span class="rounded bg-red-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-red-800">
@@ -502,12 +541,12 @@ watch(() => props.save_data, (newValue) => {
                                 <td class="px-2 py-1.5 text-sm text-slate-600 tabular-nums">
                                     {{ formatPaymentDate(element.payment_date) }}
                                 </td>
-                                <td class="px-2 py-1.5 text-sm font-semibold tabular-nums text-slate-900 whitespace-nowrap">
+                                <td
+                                    class="px-2 py-1.5 text-sm font-semibold tabular-nums text-slate-900 whitespace-nowrap">
                                     {{ formatMoneyWithCurrency(element.amount) || "—" }}
                                 </td>
                                 <td class="px-2 py-1.5 text-right">
-                                    <button
-                                        type="button"
+                                    <button type="button"
                                         class="inline-flex h-6 w-6 items-center justify-center rounded border border-red-200 bg-white text-red-600 hover:border-red-400 hover:bg-red-50"
                                         @click="openRegion('SearchWalletMovements', element.amount)">
                                         <Icon name="fa6-solid:eye" class="h-3 w-3" />
@@ -576,6 +615,8 @@ watch(() => props.save_data, (newValue) => {
         </div>
         <div class="px-10">
             <!-- Subregions aqui -->
+            <PaymentRegion v-if="showRegionDetailComponent === 'PaymentRegion'" :id="regionDetailId"
+                :isSubRegionOpen="isSubRegionOpen" @show-subregion="handleSubRegionEvent" />
             <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'" :id="regionDetailId"
                 :isSubRegionOpen="isSubRegionOpen" @show-subregion="handleSubRegionEvent" />
             <ContractRegion v-if="showRegionDetailComponent === 'ContractRegion'" :id="regionDetailId"

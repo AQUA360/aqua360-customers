@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ConnectionRequest, Exploitation, ExploitationSite, Connection, Cluster, Route, RouteZone, SupplyPoint, Meter, ClusterNozzle, Property, Company, CompanyBank, SupplyCut, MeterManufacturer, MeterModel, ConnectionStatus, CompanyConfig, SupplyPointPlacement
+from .models import ConnectionRequest, Exploitation, ExploitationSite, Connection, Cluster, Route, RouteZone, SupplyPoint, Meter, ClusterNozzle, Property, Company, CompanyBank, SupplyCut, MeterManufacturer, MeterModel, MeterCommTechnology, ConnectionStatus, CompanyConfig, SupplyPointPlacement
 
 @admin.register(Exploitation)
 class ExploitationAdmin(admin.ModelAdmin):
@@ -58,6 +58,12 @@ class MeterModelAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'manufacturer', 'created_at')
     list_filter = ('created_at', 'manufacturer')
     search_fields = ('name', 'manufacturer')
+
+@admin.register(MeterCommTechnology)
+class MeterCommTechnologyAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('name',)
 
 @admin.register(Route)
 class RouteAdmin(admin.ModelAdmin):

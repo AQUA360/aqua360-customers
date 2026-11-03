@@ -165,12 +165,13 @@ const onCategoriesLoaded = ({ options }) => {
 
 const localCompany = ref(null)
 
+// El selector de comptes rep sempre la llista ja filtrada (comptes actius amb IBAN)
 const resolvedCompany = computed(() => {
-  if (props.company) return props.company;
+  if (props.company) return { ...props.company, company_banks: companyBanks.value };
   if (localCompany.value) {
     return {
       ...localCompany.value,
-      company_banks: companyBanks.value?.length ? companyBanks.value : localCompany.value.company_banks
+      company_banks: companyBanks.value
     }
   }
   const d = data.value?.results ? data.value.results[0] : data.value;
@@ -179,7 +180,7 @@ const resolvedCompany = computed(() => {
   if (c && typeof c === 'object') {
     return {
       ...c,
-      company_banks: companyBanks.value?.length ? companyBanks.value : c.company_banks
+      company_banks: companyBanks.value
     }
   }
   if (companyBanks.value?.length) {
@@ -198,6 +199,7 @@ const paymentTypeOptionsById = ref([]);
 
 const onPaymentTypesLoaded = ({ byId }) => {
   paymentTypeOptionsById.value = byId;
+  validateCompanyBank();
 };
 
 const paymentData = ref({})
@@ -462,15 +464,65 @@ const loadCompanies = async () => {
 
 const showCompanySelector = computed(() => useMultipleCompanies.value && companies.value?.length > 1);
 
+const isSelectableCompanyBank = (bank) => bank.is_active && !!bank.iban;
+
+// L'API pagina els comptes: es recorren totes les pàgines abans de filtrar-los
+const fetchAllCompanyBanks = async (compId) => {
+  const banks = [];
+  let page = 1;
+  while (true) {
+    const banksResp = await $ExploitationApiService.getCompanyBanks(compId, { page });
+    if (Array.isArray(banksResp)) return banksResp;
+    banks.push(...(banksResp?.results || []));
+    if (!banksResp?.next) return banks;
+    page += 1;
+  }
+};
+
+// Cada càrrega es numera: si l'usuari canvia de contracte abans que acabi, la resposta antiga es descarta
+let companyBanksLoadId = 0;
+let companyBanksVerified = false;
+
+const validateCompanyBank = () => {
+  if (paymentTypeOptionsById.value[selectedPaymentType.value]?.token !== 'BANK_TRANSFER') return;
+  if (companyBanksVerified && selectedCompanyBankDebit.value && !companyBanks.value.some((bank) => bank.id === selectedCompanyBankDebit.value.id)) {
+    selectedCompanyBankDebit.value = null;
+  }
+  if (companyBanks.value.length === 1 && !selectedCompanyBankDebit.value) {
+    selectedCompanyBankDebit.value = companyBanks.value[0];
+  }
+};
+
 const loadCompanyBanks = async () => {
+  const loadId = ++companyBanksLoadId;
+  const isStale = () => loadId !== companyBanksLoadId;
+  companyBanksVerified = false;
   const d = data.value?.results ? data.value.results[0] : data.value;
   const c = d?.company || d?.contract?.company || d?.exploitation?.company || d?.contract?.exploitation?.company ||
             selectedCustom.value?.company || selectedCustom.value?.contract?.company || selectedCustom.value?.exploitation?.company || selectedCustom.value?.contract?.exploitation?.company;
   let compId = selectedCompanyId.value || props.company?.id || (c && typeof c === 'object' ? c.id : c);
+  let explId = selectedExploitation.value || d?.exploitation?.id || d?.contract?.exploitation?.id;
 
-  if (!compId && selectedExploitation.value) {
+  // Com al backend, l'empresa emissora és la del contracte o, si no en té, la de la seva explotació.
+  // El contracte triat al formulari només porta l'id, i el detall no inclou l'empresa de l'explotació.
+  // Va abans de l'explotació triada: pot ser d'una persona seleccionada abans.
+  if (!compId && selectedCustom.value?.entity === 'contract' && selectedCustom.value?.id) {
     try {
-      const explResp = await $ExploitationApiService.getDetail(selectedExploitation.value);
+      const contractResp = await $ContractApiService.getDetail(selectedCustom.value.id);
+      if (isStale()) return;
+      const cc = contractResp?.company;
+      compId = cc && typeof cc === 'object' ? cc.id : cc;
+      const ce = contractResp?.exploitation;
+      explId = (ce && typeof ce === 'object' ? ce.id : ce) || explId;
+    } catch(err) {
+      console.error(err);
+    }
+  }
+
+  if (!compId && explId) {
+    try {
+      const explResp = await $ExploitationApiService.getDetail(explId);
+      if (isStale()) return;
       const ec = explResp?.company;
       compId = ec && typeof ec === 'object' ? ec.id : ec;
     } catch(err) {
@@ -478,11 +530,13 @@ const loadCompanyBanks = async () => {
     }
   }
 
+  // Només es revisa el compte triat quan s'ha pogut comprovar quins comptes té l'empresa
   if (compId) {
     try {
       if (!props.company) {
         try {
           const compResp = await $ExploitationApiService.getCompany(compId);
+          if (isStale()) return;
           if (compResp) {
             localCompany.value = compResp;
           }
@@ -490,21 +544,24 @@ const loadCompanyBanks = async () => {
           console.error(err);
         }
       }
-      const banksResp = await $ExploitationApiService.getCompanyBanks(compId);
-      if (banksResp?.results) {
-        companyBanks.value = banksResp.results;
-      } else if (Array.isArray(banksResp)) {
-        companyBanks.value = banksResp;
-      }
+      const banks = await fetchAllCompanyBanks(compId);
+      if (isStale()) return;
+      companyBanks.value = banks.filter(isSelectableCompanyBank);
+      companyBanksVerified = true;
     } catch(e) {
+      if (isStale()) return;
       console.error(e);
+      companyBanks.value = [];
     }
   } else if (props.company?.company_banks) {
-    companyBanks.value = props.company.company_banks;
+    companyBanks.value = props.company.company_banks.filter(isSelectableCompanyBank);
+    companyBanksVerified = true;
+  } else {
+    companyBanks.value = [];
   }
-  if (companyBanks.value?.length === 1 && paymentTypeOptionsById?.value[selectedPaymentType?.value]?.token == 'BANK_TRANSFER' && !selectedCompanyBankDebit.value) {
-    selectedCompanyBankDebit.value = companyBanks.value[0];
-  }
+  // A les transferències, el compte triat ha de ser de l'empresa actual (també si no en té cap).
+  // A la domiciliació el compte ve de la forma de pagament del contracte i no es toca.
+  validateCompanyBank();
 };
 
 watch([selectedExploitation, () => selectedCustom.value?.id, () => selectedCustom.value?.company, selectedCompanyId], () => {
@@ -993,13 +1050,7 @@ watch([selectedPaymentType, selectedBankDebit, selectedCompanyBankDebit, electro
   showWarning.value = true
 }, { deep: true, immediate: true })
 
-watch(selectedPaymentType, (newVal) => {
-  if (paymentTypeOptionsById?.value[newVal]?.token == 'BANK_TRANSFER') {
-    if (companyBanks.value?.length === 1 && !selectedCompanyBankDebit.value) {
-      selectedCompanyBankDebit.value = companyBanks.value[0];
-    }
-  }
-})
+watch(selectedPaymentType, validateCompanyBank)
 
 watch(selectedCustom, () => {
   if (selectedCustom.value?.type == 'custom') {

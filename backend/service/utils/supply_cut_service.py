@@ -33,6 +33,31 @@ ALLOWED_TRANSITIONS = {
 }
 
 
+# Camps d'un tall que, un cop modificats a Customers, queden protegits de la
+# sincronització amb Giswater (Customers té prioritat, camp a camp).
+LOCKABLE_FIELDS = (
+    'status', 'cause', 'date_start', 'date_end', 'exec_start', 'exec_end', 'supply_points',
+)
+
+
+def lock_fields(supply_cut, *fields):
+    """Marca camps del tall com a gestionats a Customers (Giswater ja no els toca)."""
+    current = list(supply_cut.customers_locked_fields or [])
+    new = [
+        field for field in dict.fromkeys(fields)
+        if field in LOCKABLE_FIELDS and field not in current
+    ]
+    if not new:
+        return False
+    supply_cut.customers_locked_fields = current + new
+    supply_cut.save(update_fields=['customers_locked_fields', 'updated_at'])
+    return True
+
+
+def is_field_locked(supply_cut, field):
+    return field in (supply_cut.customers_locked_fields or [])
+
+
 def validate_transition(from_token, to_token):
     """Verdader si la transició d'estat és permesa (token antic -> token nou)."""
     if from_token == to_token:

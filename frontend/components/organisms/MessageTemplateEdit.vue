@@ -20,7 +20,10 @@ const SubRegion = ref(false);
 
 const item = ref(props.item);
 const name = ref(props.item?.name || '');
-const origin = ref(props?.item?.origin? { code: props.item.origin.id, label: props.item.origin.name } : null);
+const origin = ref(props?.item?.origin? { code: props.item.origin.id, label: props.item.origin.name, token: props.item.origin.token } : null);
+// Gestió d'impagats: valor per defecte del checkbox d'adjuntar el document del pas als processos
+const attachClaimDocuments = ref(props.item?.attach_claim_documents ?? true);
+const isClaimOrigin = computed(() => origin.value?.token === 'claim');
 
 const saving = ref(false);
 const attemptedSave = ref(false);
@@ -36,6 +39,7 @@ const save = async () => {
       id: item?.value?.id || null,
       name: name.value,
       origin: origin.value.code,
+      attach_claim_documents: attachClaimDocuments.value,
     }
     item.value = await $MessageTemplateApiService.save(save_data);
     emit('saved', item.value);
@@ -53,7 +57,8 @@ const getOrigins = async () => {
     const result = await $ConfiglistApiService.getAll('communication/message-origin');
     origins.value = result.results.map(origin => ({
       code: origin.id,
-      label: origin.name
+      label: origin.name,
+      token: origin.token
     }));
   } catch (error) {
     console.error('Error getting origins:', error);
@@ -71,6 +76,7 @@ const isValid = computed(() => {
 const resetForm = () => {
   name.value = '';
   origin.value = null;
+  attachClaimDocuments.value = true;
 };
 
 onMounted(async () => {
@@ -92,6 +98,7 @@ watch(() => props.item, async (newItem) => {
     name.value = newItem.name;
     const matchingOrigin = origins.value.find(o => o.code === newItem.origin.id);
     origin.value = matchingOrigin || null;
+    attachClaimDocuments.value = newItem.attach_claim_documents ?? true;
   } else { // is creating
     resetForm();
   }
@@ -115,6 +122,15 @@ watch(() => props.item, async (newItem) => {
         <v-select id="msg-origin-select" :class="{ 'invalid': attemptedSave && origin == null }"
           class="block w-full required" :model-value="origin" :options="origins"
           @update:modelValue="updateSelect($event)" />
+      </div>
+      <div v-if="isClaimOrigin" class="mb-2">
+        <label class="flex items-center gap-2 text-sm font-medium text-slate-500 cursor-pointer">
+          <abbr class="flex items-center" :title="t('informative_block.info_attach_claim_documents')">
+            <Icon name="fa6-solid:circle-info" class="text-slate-500" />
+          </abbr>
+          <span>{{ t('common.attach_claim_documents_to_email') }}</span>
+          <input type="checkbox" v-model="attachClaimDocuments" />
+        </label>
       </div>
       <hr class="mb-2 col-span-3" />
       <div class="col-span-3 flex flex-row-reverse mt-4">

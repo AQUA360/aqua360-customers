@@ -32,8 +32,15 @@ export default defineNuxtPlugin(nuxtApp => {
         }
     }
 
+    const getOrCreate = async (name) => {
+        const apiUrl = apiHost + entity + 'get-or-create/';
+        return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify({ name }), {
+            'Content-Type': 'application/json'
+        });
+    }
+
     const apiService = {
-        getAll, getByName
+        getAll, getByName, getOrCreate
     };
     
     nuxtApp.provide(provideName, apiService);

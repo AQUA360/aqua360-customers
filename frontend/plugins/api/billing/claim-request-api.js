@@ -383,6 +383,21 @@ export default defineNuxtPlugin(nuxtApp => {
   }
 
   /**
+   * Exporta a Excel els contractes d'un llistat de reclamació i el detall de les seves
+   * factures (va a la cua de descàrregues)
+   * @param {Array<number>} contract_ids - IDs dels contractes, en l'ordre del llistat
+   * @param {Object} scope - Abast del llistat: `{ claim_request_id }` o, en crear la gestió,
+   *   `{ filter_task_id, exclude_payment_ids }`
+   * @returns {Promise<Object>} - `{ task_id, export_job_id }`
+   */
+  const exportContracts = async (contract_ids, scope) => {
+    const apiUrl = `${apiHost}/claimrequest/claim-request-manage/contracts-export/`;
+    // Nom per a la cua de descàrregues (el fixa useServerExport).
+    const export_name = $apiManager.pendingExportName || null;
+    return await $apiManager.fetch(apiUrl, 'POST', { contract_ids, export_name, ...scope }, { 'Content-Type': 'application/json' })
+  }
+
+  /**
    * Actualitza un step d'una reclamació
    * @param {Object} data - Dades de la petició
    * @param {number} data.id - ID del claim-request-step
@@ -533,6 +548,7 @@ export default defineNuxtPlugin(nuxtApp => {
     getContracts,
     getContractsClaimRequest,
     markContractsAsVulnerable,
+    exportContracts,
 
     updateClaimRequestStep,
     saveDocumentationFile,

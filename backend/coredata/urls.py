@@ -26,6 +26,7 @@ from coredata.views.person_observation_view import PersonObservationViewSet
 from coredata.views.main_permission_view import MainPermissionViewSet
 from coredata.views.call_register_view import CallRegisterViewSet
 from coredata.views.return_reason_view import ReturnReasonViewSet
+from coredata.views.holiday_view import HolidayViewSet
 
 router = routers.DefaultRouter()
 router.register(r'person', PersonViewSet)
@@ -47,6 +48,7 @@ router.register(r'main-permission', MainPermissionViewSet)
 router.register(r'cnae', CnaeViewSet)
 router.register(r'bank', BankViewSet)
 router.register(r'call-register', CallRegisterViewSet)
+router.register(r'holiday', HolidayViewSet)
 router.register(r'identification-type', IdentificationTypeViewSet)
 router.register(r'return-reason', ReturnReasonViewSet)
 router.register(r'person-piggy-bank', PersonPiggyBankViewSet)

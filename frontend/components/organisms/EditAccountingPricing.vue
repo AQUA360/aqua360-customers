@@ -1419,7 +1419,7 @@ const getAccountingConcepts = async () => {
     try {
         const response = await $AccountingConceptApiService.getAll(
             '', 1, null, false,
-            selectedCategory.value, selectedExploitation.value.code,
+            selectedCategory.value, selectedExploitation.value?.code || null,
             selectAddTaxes.value || selectAddSubtotal.value ? selectAddTaxes.value : null,
             selectAddTaxes.value || selectAddSubtotal.value ? selectAddSubtotal.value : null,
         );

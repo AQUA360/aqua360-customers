@@ -17,7 +17,8 @@ from coredata.utils.pdf_utils import add_watermark_to_pdf
 from xhtml2pdf import pisa
 from billing.models import JoinedPayment, Payment, PaymentRemittance, PaymentStatus
 from billing.serializers.payment_serializer import PaymentListSerializer
-from billing.utils.barcode_service import generate_barcode
+from billing.utils.barcode_service import generate_barcode, get_payments_company_bank
+from billing.utils.invoice_service import get_use_exploitation_token_for_payment
 from billing.utils.payment_service import disconnect_payment_signals, generate_payment_movement, log_payment_status, reconnect_payment_signals
 from contract.models import Contract, PaymentType
 from contract.serializers.contract_serializer import ContractMinimalListSerializer
@@ -211,9 +212,17 @@ def register_joined_payment_log(joined_payment, previous_status, current_status,
     )
 
 
-def generate_joined_payment_id(used_token, count = 1):
+def generate_joined_payment_id(used_token, count = 1, exploitation_token='0'):
     from django.db.models import Max
-    
+    if get_use_exploitation_token_for_payment().lower() == 'true' and exploitation_token:
+        try:
+            if int(exploitation_token) > 0 and int(exploitation_token) < 10:
+                used_token = exploitation_token + used_token[1:]
+            else:
+                used_token = used_token
+        except Exception:
+            used_token = used_token
+            
     max_token = JoinedPayment.objects.filter(
         token__startswith=used_token
     ).aggregate(
@@ -331,11 +340,13 @@ def generate_report_joined_payment_pdf(joined_payment, user, request = None):
         
         company = exploitation.company if exploitation else Company.objects.get(vat=ConfigProject.objects.get(token="main_company_token").value)
         
+        company_bank = get_payments_company_bank(payments, company)
         ident = joined_payment.due_date.strftime("%d%m%y") if joined_payment else "000000"
         barcode_data = {
             'reference': joined_payment.token if joined_payment else "00000000000",
             'total_final': total if joined_payment else 0,
             'company': company,
+            'company_bank': company_bank,
             'ident': ident,
         }
         barcode = generate_barcode(barcode_data)
@@ -384,10 +395,6 @@ def generate_report_joined_payment_pdf(joined_payment, user, request = None):
         clean_sender = str(int(re.sub(r'[^0-9]', '', company_data['vat'] or ''))).zfill(8)
         
         payment_type_token = payment_type.token
-        
-        company_bank = exploitation.company.company_banks.filter(is_default=True, is_active=True).first()
-        if not company_bank:
-            company_bank = exploitation.company.company_banks.filter(is_active=True).first()
         
         company_iban = company_bank.iban if company_bank else None
         company_swift = company_bank.swift if company_bank else None

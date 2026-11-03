@@ -371,6 +371,9 @@ export default defineNuxtPlugin(nuxtApp => {
       if (data.payment_origin) {
         formData.append('payment_origin', data.payment_origin);
       }
+      if (data.excluded_payment_ids?.length) {
+        formData.append('excluded_payment_ids', JSON.stringify(data.excluded_payment_ids));
+      }
       options = formData;
       const response = await $apiManager.fetch(apiUrl, 'PUT', options);
       return response;

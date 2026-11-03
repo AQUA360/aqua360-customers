@@ -4,8 +4,8 @@ export const useConfigStore = defineStore('config', {
     state: () => ({
         ovEnabled: null as boolean | null,
         documentSignEnabled: null as boolean | null,
+        sendBatchEnabled: null as boolean | null,
         acaNotificationEnabled: null as boolean | null,
-        attachClaimDocumentsEnabled: null as boolean | null,
         loading: false,
     }),
     actions: {
@@ -43,6 +43,23 @@ export const useConfigStore = defineStore('config', {
                 this.loading = false;
             }
         },
+        async fetchSendBatchEnabled() {
+            if (this.sendBatchEnabled !== null) return;
+
+            this.loading = true;
+
+            try {
+                const { $ConfigProjectApiService } = useNuxtApp();
+                // ODOO_ENABLED gates send-batch UI today; rename later if more providers share it.
+                const value = await $ConfigProjectApiService.get('ODOO_ENABLED');
+                this.sendBatchEnabled = value === true || value === 'True' || value === 'true';
+            } catch (error) {
+                console.error('Error fetching send-batch enabled config:', error);
+                this.sendBatchEnabled = false;
+            } finally {
+                this.loading = false;
+            }
+        },
         async fetchAcaNotificationEnabled() {
             if (this.acaNotificationEnabled !== null) return; // Already fetched
 
@@ -56,23 +73,6 @@ export const useConfigStore = defineStore('config', {
             } catch (error) {
                 console.error('Error fetching aca_notification_enabled config:', error);
                 this.acaNotificationEnabled = false; // Fallback
-            } finally {
-                this.loading = false;
-            }
-        },
-        async fetchAttachClaimDocumentsEnabled() {
-            if (this.attachClaimDocumentsEnabled !== null) return; // Already fetched
-
-            this.loading = true;
-
-            try {
-                const { $ConfigProjectApiService } = useNuxtApp();
-                // The API service handles caching in localStorage
-                const value = await $ConfigProjectApiService.get('ATTACH_CLAIM_DOCUMENTS_ENABLED');
-                this.attachClaimDocumentsEnabled = value === true || value === 'True' || value === 'true';
-            } catch (error) {
-                console.error('Error fetching ATTACH_CLAIM_DOCUMENTS_ENABLED config:', error);
-                this.attachClaimDocumentsEnabled = false; // Fallback
             } finally {
                 this.loading = false;
             }

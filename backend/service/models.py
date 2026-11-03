@@ -2,6 +2,7 @@
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Upper
 from coredata.models import Address, Bank, Country, PersonAddress, Street, StreetNumber, PostalCode, Person, City
 from django.contrib.auth.models import User
 from documentmanager.models import Document
@@ -389,6 +390,8 @@ class CompanyBank(models.Model):
     is_sepa = models.BooleanField(default=False)
     sepa_cred_identifier = models.CharField(max_length=255, null=True, blank=True)
     barcode_cif = models.CharField(max_length=255, null=True, blank=True)
+    # Sufix de la referència del codi de barres (quadern 60), propi de cada compte
+    barcode_suffix = models.CharField(max_length=255, null=True, blank=True)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
@@ -1055,6 +1058,18 @@ class SupplyCut(models.Model):
         max_length=255, null=True, blank=True,
         help_text="Token del catàleg de motiu del PA assignat al sincronitzar.",
     )
+    # Customers té prioritat sobre Giswater: els camps que un usuari ha
+    # modificat aquí ja no els sobreescriu la sincronització.
+    customers_locked_fields = models.JSONField(
+        default=list, blank=True,
+        help_text="Camps modificats a Customers que la sincronització amb Giswater no sobreescriu "
+                  "(status, cause, date_start, date_end, exec_start, exec_end, supply_points).",
+    )
+    giswater_connec_ids = models.JSONField(
+        null=True, blank=True, default=None,
+        help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització "
+                  "(buit si encara no se n'ha llegit cap resposta vàlida).",
+    )
     
     class Meta:
         verbose_name = "Supply Cut"
@@ -1155,11 +1170,36 @@ class SupplyCutObservation(models.Model):
 class MeterManufacturer(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Upper('name'), name='meter_manufacturer_name_ci_unique'),
+        ]
     
 class MeterModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     manufacturer = models.ForeignKey(MeterManufacturer, on_delete=models.CASCADE, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Upper('name'), 'manufacturer', name='meter_model_name_manufacturer_ci_unique'),
+            models.UniqueConstraint(
+                Upper('name'),
+                condition=models.Q(manufacturer__isnull=True),
+                name='meter_model_name_no_manufacturer_ci_unique',
+            ),
+        ]
+
+
+class MeterCommTechnology(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Upper('name'), name='meter_comm_technology_name_ci_unique'),
+        ]
 
 
 class ClusterDocumentationType(models.Model):

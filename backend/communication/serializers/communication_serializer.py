@@ -279,8 +279,24 @@ class CommunicationSaveSerializer(serializers.ModelSerializer):
         communication = super().update(instance, validated_data)
         communication.type_tokens = ','.join(communication.types.values_list('token', flat=True))
         communication.type_names = ','.join(communication.types.values_list('name', flat=True))
+        # Es conserven els missatges dels tipus que es mantenen (poden haver estat
+        # modificats); només es creen des de la plantilla els dels tipus nous.
+        existing_messages = {msg.type_id: msg for msg in communication.messages.all()}
         messages = []
         for msg_type in communication.types.all():
+            if msg_type.id in existing_messages:
+                message = existing_messages[msg_type.id]
+                # Si el missatge és compartit amb el procés o altres comunicacions,
+                # se'n fa una còpia perquè editar aquesta comunicació no els afecti.
+                if message.communication_processes.exists() or message.communications.exclude(id=communication.id).exists():
+                    message = Message.objects.create(
+                        token=generate_token(Message),
+                        subject=message.subject,
+                        body=message.body,
+                        type=message.type,
+                    )
+                messages.append(message)
+                continue
             template = instance.process.template if instance.process and instance.process.template else None
             template_type = template.templates.filter(type=msg_type).first() if template else None
             messages.append(Message.objects.create(

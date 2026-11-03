@@ -624,3 +624,114 @@ class ConfigProjectPermissionTests(TestCase):
         self.assertTrue(self.client.get('/auth/permission/my-permissions/').data['can_edit_config_project'])
         self.client.force_authenticate(self.admin)
         self.assertFalse(self.client.get('/auth/permission/my-permissions/').data['can_edit_config_project'])
+
+
+class AddressExtraTests(TestCase):
+    """L'ampliació surt a l'adreça completa i postal sense substituir l'edifici."""
+
+    def setUp(self):
+        from coredata.models import Street, StreetNumber, StreetNumberType
+
+        self.spain = Country.objects.create(name='Espanya', iso_code='ES')
+        self.city = City.objects.create(token='T1', name='Ciutat')
+        self.street = Street.objects.create(name='Carrer Major')
+        number_type = StreetNumberType.objects.get_or_create(type='N', defaults={'description': 'N'})[0]
+        self.street_number = StreetNumber.objects.create(street=self.street, number_type=number_type, number=5)
+
+    def _address(self, **fields):
+        from coredata.models import Address
+
+        return Address.objects.create(street=self.street, street_number=self.street_number, city=self.city,
+                                      country=self.spain, building='Edifici', floor='2', door='1', **fields)
+
+    def test_str_afegeix_l_ampliacio_despres_de_l_edifici(self):
+        address = self._address(address_extra=' Bar ')
+
+        self.assertEqual(str(address), 'Carrer Major, 5 Edifici 2-1, Bar, Ciutat')
+        self.assertEqual(address.building, 'Edifici')
+        self.assertEqual(address.address_search, 'Carrer Major, 5 Edifici 2-1, Bar, Ciutat')
+
+    def test_str_sense_ampliacio_no_canvia(self):
+        self.assertEqual(str(self._address()), 'Carrer Major, 5 Edifici 2-1, Ciutat')
+        self.assertEqual(str(self._address(address_extra='  ')), 'Carrer Major, 5 Edifici 2-1, Ciutat')
+
+    def test_ampliacio_llarga_no_fa_fallar_el_desat(self):
+        address = self._address(address_extra='x' * 400)
+
+        self.assertEqual(len(address.address_search), 255)
+
+    def test_adreca_postal_inclou_l_ampliacio(self):
+        from coredata.utils.address_utils import (
+            get_address_complete_with_city, get_address_complete_without_city,
+        )
+
+        address = self._address(address_extra='Bar')
+
+        self.assertEqual(get_address_complete_without_city(address), 'Carrer Major, 5 Edifici  2-1, Bar')
+        self.assertEqual(get_address_complete_with_city(address), 'Carrer Major, 5 Edifici  2-1, Bar, Ciutat')
+
+    def test_adreca_postal_pot_separar_l_ampliacio(self):
+        from coredata.utils.address_utils import get_address_complete_without_city, get_address_extra
+
+        address = self._address(address_extra=' Bar ')
+
+        self.assertEqual(get_address_complete_without_city(address, include_extra=False), 'Carrer Major, 5 Edifici  2-1')
+        self.assertEqual(get_address_extra(address), 'Bar')
+        self.assertIsNone(get_address_extra(self._address(address_extra='  ')))
+        self.assertIsNone(get_address_extra(None))
+
+    def test_adreca_postal_sense_ampliacio_no_canvia(self):
+        from coredata.utils.address_utils import (
+            get_address_complete_with_city, get_address_complete_without_city,
+        )
+
+        address = self._address()
+
+        self.assertEqual(get_address_complete_without_city(address), 'Carrer Major, 5 Edifici  2-1')
+        self.assertEqual(get_address_complete_with_city(address), 'Carrer Major, 5 Edifici  2-1, Ciutat')
+
+    def test_adreca_estrangera_inclou_l_ampliacio(self):
+        from coredata.utils.address_utils import get_address_complete_with_city
+
+        address = self._address(address_extra='Bar')
+        address.country = Country(name='França', iso_code='FR')
+        address.postal_code = '75001'
+
+        self.assertEqual(get_address_complete_with_city(address), 'Carrer Major, 5  2-1, Bar - 75001 - Ciutat - França')
+
+    def test_opscript_recalcula_address_search(self):
+        import importlib
+
+        from coredata.models import Address
+
+        address = self._address(address_extra='Bar')
+        untouched = self._address()
+        Address.objects.filter(id__in=[address.id, untouched.id]).update(address_search='antiga')
+
+        importlib.import_module('coredata.opscripts.0005_refresh_address_search_with_extra').run()
+
+        address.refresh_from_db()
+        untouched.refresh_from_db()
+        self.assertEqual(address.address_search, 'Carrer Major, 5 Edifici 2-1, Bar, Ciutat')
+        self.assertEqual(untouched.address_search, 'antiga')
+
+    def test_cerca_sense_ampliacio_coincideix_amb_null_i_buida(self):
+        from coredata.models import Address
+        from coredata.utils.address_utils import address_extra_filter, normalize_address_extra
+
+        empty = self._address(address_extra='')
+        blank = self._address(address_extra=' \t')
+        null = self._address()
+        with_extra = self._address(address_extra=' Bar.\n')
+        self._address(address_extra='Bar2')
+
+        self.assertIsNone(normalize_address_extra('  '))
+        self.assertEqual(normalize_address_extra(' Bar '), 'Bar')
+        self.assertEqual(
+            set(Address.objects.filter(address_extra_filter(normalize_address_extra(''))).values_list('id', flat=True)),
+            {empty.id, blank.id, null.id},
+        )
+        self.assertEqual(
+            list(Address.objects.filter(address_extra_filter('Bar.')).values_list('id', flat=True)),
+            [with_extra.id],
+        )

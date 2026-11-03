@@ -636,7 +636,7 @@ const setActiveTab = (tab) => {
         <div v-if="contract" class="overflow-y-auto scrollbar-hide">
 
             <div v-if="new_call" class="fixed inset-0 z-50 flex items-center justify-center">
-                <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 my-auto relative">
+                <div class="bg-white rounded-lg shadow-xl p-6 max-w-3xl w-full mx-4 my-auto relative">
                     <AddNewCall :data="new_call" @exit="handleNewCall" />
                 </div>
             </div>
@@ -678,6 +678,10 @@ const setActiveTab = (tab) => {
             </div>
 
             <div class="mb-3">
+                <div v-if="contract?.blocking_incident" class="mb-2 text-xs px-2 py-1 rounded bg-red-100 text-red-700"
+                  :title="contract.blocking_incident.name">
+                  <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
+                </div>
                 <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall" />
             </div>
 

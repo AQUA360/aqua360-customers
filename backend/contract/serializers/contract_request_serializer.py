@@ -169,8 +169,8 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
                         ).first()
                     contract_price_rates.append(contract_price_rate)
             obj.price_rates.set(contract_price_rates)
-            obj.registration_price_rates.set(obj.type.registration_price_rates.all())
-            obj.order_types.set(obj.type.order_types.all())
+            obj.registration_price_rates.set(obj.type.get_registration_price_rates(obj.is_change_of_name))
+            obj.order_types.set(obj.type.get_order_types(obj.is_change_of_name))
         
         # Registrar canvis d'estat
         self.log_status_change(None, obj, observation)
@@ -477,6 +477,7 @@ class ContractRequestListSerializer(serializers.ModelSerializer):
             'supply_point_default_token',
             'type_token',
             'type_name',
+            'is_change_of_name',
             'status_token',
             'status_name',
             'status_color',

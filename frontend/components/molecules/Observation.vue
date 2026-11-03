@@ -36,7 +36,7 @@ const markObservation = () => {
         <footer class="flex justify-between items-center relative pt-1">
             <div class="flex items-center mb-1">
                 <p v-if="props.user?.trim() != ''" class="text-sm text-gray-700 mr-3">{{ props.user }}</p>
-                <p v-else class="text-sm text-gray-700 mr-3">{{ t('common.admin') }}</p>
+                <p v-else class="text-sm text-gray-700 mr-3">{{ t('common.automatic_process') }}</p>
                 <p class="inline-flex items-center text-sm text-gray-900 font-semibold">
                     <TimeRelative :datetime=props.datetime></TimeRelative>
                 </p>

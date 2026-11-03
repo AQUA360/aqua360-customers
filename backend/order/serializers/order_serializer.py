@@ -21,6 +21,7 @@ from .value_objects_serializer import (
 )
 from .operator_serializer import OperatorSerializer
 from coredata.models import Address, ConfigProject
+from service.models import SupplyPoint, Connection
 
 
 class OrderObservationSerializer(serializers.ModelSerializer):
@@ -88,7 +89,7 @@ class OrderSerializer(serializers.ModelSerializer):
         from django.db.models import Q
         from notification.models import Incident
         return Incident.objects.filter(
-            Q(order_incident=obj) | Q(orders=obj)
+            Q(order_incident=obj) | Q(orders=obj), is_active=True
         ).distinct().count()
 
     contract_token = serializers.CharField(source="contract.token", read_only=True)
@@ -150,21 +151,28 @@ class OrderSaveSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
-        address_input = mutable_data.pop('address', None) or mutable_data.pop('address_id', None)
-        if address_input:
-            if isinstance(address_input, dict):
-                addr_id = address_input.get('id')
-                mutable_data['address'] = addr_id
-            else:
-                mutable_data['address'] = address_input
-                
+
+        has_address_key = 'address' in mutable_data or 'address_id' in mutable_data
+        address_input = mutable_data.pop('address', None)
+        address_id_input = mutable_data.pop('address_id', None)
+        if address_input in (None, ''):
+            address_input = address_id_input
+
+        if isinstance(address_input, dict):
+            mutable_data['address'] = address_input.get('id')
+        elif address_input not in (None, ''):
+            mutable_data['address'] = address_input
+        elif has_address_key:
+            # S'ha enviat explícitament buit: s'ha d'esborrar l'adreça
+            mutable_data['address'] = None
+
         return super().to_internal_value(mutable_data)
 
     # observation = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
     class Meta:
         model = Order
         fields = "__all__"
-
+        
     @transaction.atomic
     def create(self, validated_data):
         operators_data = validated_data.pop("operators", [])
@@ -287,6 +295,27 @@ class OrderSaveSerializer(serializers.ModelSerializer):
                 if validated_data.get("longitude") is None:
                     validated_data["longitude"] = cr.longitude
 
+        # Handle supply_point and connection from request (read-only serializers
+        # ignore them otherwise, so switching location type never clears them).
+        if "supply_point" in self.initial_data:
+            sp_id = self.initial_data.get("supply_point")
+            if sp_id is None or sp_id == "" or sp_id == "null":
+                validated_data["supply_point"] = None
+            else:
+                try:
+                    validated_data["supply_point"] = SupplyPoint.objects.get(pk=sp_id)
+                except (SupplyPoint.DoesNotExist, ValueError, TypeError):
+                    validated_data["supply_point"] = None
+        if "connection" in self.initial_data:
+            conn_id = self.initial_data.get("connection")
+            if conn_id is None or conn_id == "" or conn_id == "null":
+                validated_data["connection"] = None
+            else:
+                try:
+                    validated_data["connection"] = Connection.objects.get(pk=conn_id)
+                except (Connection.DoesNotExist, ValueError, TypeError):
+                    validated_data["connection"] = None
+
         # Inferred reason logic
         if not validated_data.get("reason") and validated_data.get("type"):
             reasons = validated_data["type"].reasons.all()
@@ -329,6 +358,27 @@ class OrderSaveSerializer(serializers.ModelSerializer):
         if order_status and order_status.token not in [order_closed_status_token, order_validate_status_token]:
             validated_data["completed_at"] = None
         
+        # Handle supply_point and connection from request (read-only serializers
+        # ignore them otherwise, so switching location type clears them).
+        if "supply_point" in self.initial_data:
+            sp_id = self.initial_data.get("supply_point")
+            if sp_id is None or sp_id == "" or sp_id == "null":
+                validated_data["supply_point"] = None
+            else:
+                try:
+                    validated_data["supply_point"] = SupplyPoint.objects.get(pk=sp_id)
+                except (SupplyPoint.DoesNotExist, ValueError, TypeError):
+                    validated_data["supply_point"] = None
+        if "connection" in self.initial_data:
+            conn_id = self.initial_data.get("connection")
+            if conn_id is None or conn_id == "" or conn_id == "null":
+                validated_data["connection"] = None
+            else:
+                try:
+                    validated_data["connection"] = Connection.objects.get(pk=conn_id)
+                except (Connection.DoesNotExist, ValueError, TypeError):
+                    validated_data["connection"] = None
+
         # Actualitzar camps de ContractRequest
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

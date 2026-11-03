@@ -235,6 +235,7 @@ class BillingBatchSummaryView(views.APIView):
             # Create a queue item
             queue_item = BillingQueue.objects.create(
                 billing=billing,
+                created_by=request.user,
                 task_type='PRE_INVOICE',
                 status='pending'
             )
@@ -360,6 +361,7 @@ class BillingBatchDocumentsView(views.APIView):
             # Create a queue item
             queue_item = BillingQueue.objects.create(
                 billing=billing,
+                created_by=request.user,
                 task_type='DEFINITIVE_INVOICE',
                 payload={
                     'invoice_ids': invoice_ids,

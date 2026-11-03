@@ -150,7 +150,9 @@ const loadFromDetail = async (data) => {
     useConnectionAddress.value = false;
   }
 
-  if (data.address_street && selected_connection.value && selected_connection.value.address_street && data.address_street.id == selected_connection.value.address_street.id) {
+  // Només fem servir l'adreça de la connexió si coincideixen carrer i número
+  if (data.address_street && selected_connection.value && selected_connection.value.address_street && data.address_street.id == selected_connection.value.address_street.id
+    && (data.address_street_number?.id ?? null) == (selected_connection.value.address_street_number?.id ?? null)) {
     addressEntity.value = selected_connection.value;
     useConnectionAddress.value = true
   }

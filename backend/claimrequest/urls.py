@@ -16,6 +16,7 @@ from .views.vulnerability_request_documentation_view import VulnerabilityRequest
 from .views.vulnerability_request_observation_view import VulnerabilityRequestObservationViewSet
 from .views.claim_manage_view import ClaimManageViewSet, ExcludeContractViewSet
 from .views.claim_request_excel_generate_view import ClaimRequestExcelGenerateViewSet
+from .views.claim_contracts_export_view import ClaimContractsExportView
 from .views.claim_document_pdf_view import ClaimDocumentPDFDownloadViewSet
 from .views.massive_termination_contract_view import MassiveTerminationContractViewSet
 from .views.vulnerability_request_massive_view import MassiveVulnerabilityRequestViewSet
@@ -49,6 +50,7 @@ urlpatterns = [
     path('claim-request/<int:id>/contracts/', ClaimRequestContractsViewSet.as_view({'get': 'retrieve'})),
     path('claim-request/excel/<int:id>/', ClaimRequestExcelGenerateViewSet.as_view()),
     path('claim-request-manage/mark-contracts-vulnerable/', MarkContractsVulnerableViewSet.as_view(http_method_names=['post']), name='mark-contracts-vulnerable'),
+    path('claim-request-manage/contracts-export/', ClaimContractsExportView.as_view(), name='claim-contracts-export'),
     path('claim-request-manage/exclude-contract/', ExcludeContractViewSet.as_view(http_method_names=['post']), name='exclude-contract'),
     path('claim-request-manage/massive-termination-contract/', MassiveTerminationContractViewSet.as_view(http_method_names=['post']), name='massive-termination-contract'),
     path('download-claim-document/<int:id>/', ClaimDocumentPDFDownloadViewSet.as_view(), name='download-claim-doc-pdf'),

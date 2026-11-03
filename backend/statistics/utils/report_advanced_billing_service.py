@@ -1242,7 +1242,7 @@ def generate_claim_response_time_report(request, black_fill, white_bold_font, ta
             closed_status_token = '2'
 
         # Filter incidents in range
-        incidents = Incident.objects.filter(created_at__range=(start_date, end_date))
+        incidents = Incident.objects.filter(created_at__range=(start_date, end_date), is_active=True)
         
         if exploitation_id and exploitation_id != 'all':
             incidents = incidents.filter(contract__supply_point_default__connection__exploitation_id=exploitation_id)
@@ -1264,7 +1264,7 @@ def generate_claim_response_time_report(request, black_fill, white_bold_font, ta
             status_name = incident.status.name if incident.status else _("Sense Estat")
             
             if incident.status and incident.status.token == closed_status_token:
-                duration = (incident.updated_at - incident.created_at).days
+                duration = ((incident.closed_at or incident.updated_at) - incident.created_at).days
             else:
                 duration = (timezone.now() - incident.created_at).days
                 
@@ -1328,8 +1328,8 @@ def generate_claim_response_time_report(request, black_fill, white_bold_font, ta
             status_name = incident.status.name if incident.status else _("Sense Estat")
 
             if incident.status and incident.status.token == closed_status_token:
-                duration = (incident.updated_at - incident.created_at).days
-                resolution_date = incident.updated_at.date()
+                duration = ((incident.closed_at or incident.updated_at) - incident.created_at).days
+                resolution_date = (incident.closed_at or incident.updated_at).date()
             else:
                 duration = (timezone.now() - incident.created_at).days
                 resolution_date = ""
@@ -1397,7 +1397,7 @@ def generate_management_volume_report(request, black_fill, white_bold_font, task
             ]),
             (_("Altes"), [Contract.objects.filter(status__token='1')]),
             (_("Baixes"), [ContractTerminationRequest.objects.all()]),
-            (_("Reclamacions"), [Incident.objects.filter(type__token='reclamacio')]),
+            (_("Reclamacions"), [Incident.objects.filter(type__token='reclamacio', is_active=True)]),
             (_("Actualitzacions de dades"), [
                 ContractDataChange.objects.all(),
                 ContractObservation.objects.all()

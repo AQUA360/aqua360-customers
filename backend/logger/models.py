@@ -65,7 +65,8 @@ class LogSupplyCutStatus(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
 
     def __str__(self):
-        return f"{self.timestamp} - From {self.previous_status} to {self.current_status} by {self.user.username}"
+        username = self.user.username if self.user else "system"
+        return f"{self.timestamp} - From {self.previous_status} to {self.current_status} by {username}"
 
 class LogSupplyPointChange(models.Model):
     ACTION_CHOICES = [
@@ -274,6 +275,18 @@ class LogIncidentStatusChange(models.Model):
 
     def __str__(self):
         return f"{self.timestamp} - From {self.previous_status} to {self.current_status} by {self.user.username}"
+
+class LogIncidentChange(models.Model):
+    """Canvi d'un camp d'una incidència: qui, quan i quin valor tenia abans i després."""
+    timestamp = models.DateTimeField(auto_now_add=True)
+    object = models.ForeignKey(Incident, on_delete=models.SET_NULL, null=True, related_name='change_logs')
+    field = models.CharField(max_length=100)
+    old_value = models.TextField(null=True, blank=True)
+    new_value = models.TextField(null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+
+    def __str__(self):
+        return f"{self.timestamp} - {self.field}"
 
 class LogCommunicationStatusChange(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)

@@ -13,7 +13,7 @@ const props = defineProps({
     current_meter_id: Number,
     persisted_draft: Object,
 });
-const { $ContractApiService, $ReadingApiService } = useNuxtApp();
+const { $ContractApiService, $ReadingApiService, $SmartMeteringApiService } = useNuxtApp();
 
 const emit = defineEmits(['changed', 'allowSave']);
 
@@ -715,9 +715,6 @@ const recalculateNewReadingsConsumption = async (keep_calculated_value = false, 
                 }
             }
         }
-        if (r.estimated_used && r.estimated_used > r.calculated_value) {
-            r.estimated_used = r.calculated_value;
-        }
     });
     lastNewReadingReal.value = new_readings.value.filter(r => !r.is_estimated && !r.is_control && !r.is_close).sort((a, b) => b.reading_date.localeCompare(a.reading_date))[0]?.reading_date;
     if (!lastNewReadingReal.value || lastNewReadingReal.value == undefined) {
@@ -980,6 +977,62 @@ const estimateNewReading = async () => {
         console.error(error);
     } finally {
         //showDialogNewReadings();
+    }
+}
+
+const fetchingSmartMetering = ref(false);
+
+const canFetchFromSmartMetering = computed(() => {
+    const reading = addedReadings.value[0];
+    if (!reading || addedIsClose.value) return false;
+    const meter = meters.value.find(m => m.id === reading.meter_id);
+    return Boolean(meter?.has_remote_reading && meter?.remote_reading_type === 'SMART_METERING');
+});
+
+const fetchReadingFromSmartMetering = async () => {
+    if (!canFetchFromSmartMetering.value) return;
+
+    const reading = addedReadings.value[0];
+    const requestedMeterId = reading.meter_id;
+    const requestedDate = reading.reading_date;
+    fetchingSmartMetering.value = true;
+    try {
+        const response = await $SmartMeteringApiService.getMeterReading({
+            meter_id: requestedMeterId,
+            date: requestedDate || format(new Date(), 'yyyy-MM-dd'),
+            margin: 5,
+        });
+
+        // The dialog may have been closed, reset or edited while waiting for the response
+        if (
+            !showAddingReadingDialog.value ||
+            !addedReadings.value.includes(reading) ||
+            reading.meter_id !== requestedMeterId ||
+            reading.reading_date !== requestedDate
+        ) return;
+
+        if (response?.found && response.reading_value != null) {
+            reading.reading_value = response.reading_value;
+            // The initial reading date is fixed to the contract registration date
+            if (response.reading_date && !reading.is_initial) {
+                reading.reading_date = response.reading_date;
+            }
+            reading.origin = response.origin;
+            addedIsEstimated.value = false;
+            toast.success(
+                t('billing_block.smart_metering_reading_found', {
+                    value: response.reading_value,
+                    date: formatDate(response.reading_date || reading.reading_date),
+                })
+            );
+        } else {
+            toast.warning(t('billing_block.smart_metering_reading_not_found'));
+        }
+    } catch (error) {
+        console.error('Error fetching smart metering reading:', error);
+        toast.error(error?.data?.error || t('billing_block.smart_metering_fetch_error'));
+    } finally {
+        fetchingSmartMetering.value = false;
     }
 }
 
@@ -1263,6 +1316,16 @@ watch(() => props.estimated_bag, (newVal) => {
 
                             </div>
                             <div class="flex justify-end gap-x-2">
+                                <button v-if="canFetchFromSmartMetering" type="button"
+                                    class="button-default flex items-center gap-x-2" :disabled="fetchingSmartMetering"
+                                    @click="fetchReadingFromSmartMetering">
+                                    <Icon v-if="fetchingSmartMetering" name="fa6-solid:spinner"
+                                        class="h-3.5 w-3.5 shrink-0 animate-spin" />
+                                    <Icon v-else name="fa6-solid:satellite-dish" class="h-3.5 w-3.5 shrink-0 text-sky-500" />
+                                    <span>
+                                        {{ t('billing_block.fetch_reading_smart_metering') }}
+                                    </span>
+                                </button>
                                 <button v-if="pairedReadings.length > 0"
                                     class="button-default flex items-center gap-x-2" @click="estimateNewReading">
                                     <Icon name="fa6-solid:scale-unbalanced" class="h-3.5 w-3.5 shrink-0" />
@@ -1270,8 +1333,8 @@ watch(() => props.estimated_bag, (newVal) => {
                                         {{ t('billing_block.estimate') }}
                                     </span>
                                 </button>
-                                <button class="button-primary flex items-center gap-x-2" :disabled="!allowToAdd"
-                                    @click="addReadingsToList">
+                                <button class="button-primary flex items-center gap-x-2"
+                                    :disabled="!allowToAdd || fetchingSmartMetering" @click="addReadingsToList">
                                     <Icon name="fa6-solid:angles-down" class="h-3.5 w-3.5 shrink-0" />
                                     <span>
                                         {{ t('common.add') }}
@@ -1857,7 +1920,7 @@ watch(() => props.estimated_bag, (newVal) => {
                                                     readingsToKeepEstimated.includes(pair.modified.id) ||
                                                     isPendingBillingLastReading(pair.modified) ||
                                                     pair.modified.block_estimate_correction"
-                                                    @input="recalculateNewReadingsConsumption(false)" />
+                                                    @input="recalculateNewReadingsConsumption(true)" />
                                             </div>
                                             <div class="mt-2">
                                                 <span
@@ -1871,7 +1934,7 @@ watch(() => props.estimated_bag, (newVal) => {
                                                     :disabled="readingsToDelete.includes(pair.modified.id) ||
                                                         pair.modified.is_initial ||
                                                         isPendingBillingLastReading(pair.modified)"
-                                                    @input="recalculateNewReadingsConsumption(false)" />
+                                                    @input="recalculateNewReadingsConsumption(true)" />
                                             </div>
 
                                             <div v-if="pair.modified.is_estimated"
