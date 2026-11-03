@@ -528,6 +528,22 @@ def publish_order_invalidation_event(order):
     publish_event("order.invalidated", payload)
 
 
+def publish_order_deleted_event(order):
+    """
+    Publica un esdeveniment per notificar a la GMAO que una Order s'ha eliminat
+    del CRM (només es permet eliminar ordres pendents, esborrany o enviades
+    sense informes). La GMAO l'ha d'usar per cancel·lar o descartar la tasca
+    despatxada i no enviar cap operari.
+
+    Args:
+        order: Instància del model Order
+    """
+    payload = {
+        "order_token": order.token,
+    }
+    publish_event("order.deleted", payload)
+
+
 # def publish_order_updated(order):
 #     """
 #     Publica un esdeveniment quan s'actualitza una Order

@@ -478,12 +478,20 @@ const save = async () => {
   }
 }
 
+const deleteBlocked = ref(false);
+
 const deleteItem = async () => {
   if (confirm(t('confirmation_text_block.confirm_delete'))) {
     saving.value = true;
     try {
       await $OrderApiService.deleteItem(props.id);
       return navigateTo('/order/orders/')
+    } catch (error) {
+      if ((error?.response?.status ?? error?.status) === 400) {
+        deleteBlocked.value = true;
+      } else {
+        toast.error(t('common.error'));
+      }
     } finally {
       saving.value = false;
     }
@@ -975,6 +983,23 @@ const onIdLostFocus = async () => {
           :isSubRegion="true" :onlyExploitation="true" />
         <MoleculesAddContracts v-if="editingContract" :show="editingContract"
           :selected_items="selectedContract ? [selectedContract] : []" @item-clicked="contractClicked" :multiple="false" />
+      </div>
+    </div>
+
+    <div v-if="deleteBlocked" role="dialog" aria-modal="true" aria-labelledby="order-delete-blocked-title" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 p-5">
+        <h3 id="order-delete-blocked-title" class="text-lg font-semibold flex items-center gap-2 mb-2 text-red-800">
+          <Icon name="fa6-solid:triangle-exclamation" />
+          {{ $t('order_block.delete_blocked_title') }}
+        </h3>
+        <p class="text-sm mb-3 text-red-700">
+          {{ $t('order_block.delete_blocked_message') }}
+        </p>
+        <div class="flex justify-end">
+          <button @click="deleteBlocked = false" class="px-3 py-1.5 rounded border border-red-300 text-red-800 hover:bg-red-50">
+            {{ $t('common.close') }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

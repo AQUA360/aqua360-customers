@@ -31,6 +31,7 @@ from order.models import Operator, Order, OrderReport
 from pricing.models import Adjustment, BillingRange, Product, Tax
 from service.models import Company, Exploitation, Meter
 from statistics.utils.incasol import resolve_incasol_num, resolve_municipi
+from statistics.utils.dated_use_type import annotate_dated_use_type, resolve_dated_use_types
 from statistics.utils.report_progress import report_progress
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, jump_row, save_report
 from statistics.utils.report_filters import (contract_multi_filter_q, get_billing_ids, get_multi_ids, has_serie_final_range,
@@ -892,6 +893,9 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
             return contracts_by_request.get(invoice.contract_request_id)
         return None
 
+    # Tipus d'ús que tenia el contracte quan es va generar cada factura (vegeu dated_use_type).
+    dated_use_types = resolve_dated_use_types((inv, _resolve_contract(inv)) for inv in invoice_list)
+
     # --- Dimensionament estable de les columnes -----------------------------
     # Abans, l'amplada del full es derivava de les factures del rang exportat
     # (màxim de lectures d'una factura, productes que hi apareixien, línies per
@@ -1335,7 +1339,7 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
                 biller_types.get(i.billing_period_days) if i.billing_period_days else (
                     i.billing.biller.period_type.capitalize() if i.billing and i.billing.biller else "Puntual"
                 ),
-                contract.use_type.name if contract and contract.use_type else "",
+                dated_use_types[i.id].name if dated_use_types.get(i.id) else "",
                 contract.get_use_aca_display() if contract and contract.use_aca else "",
                 ]
             total_estimated_used = 0
@@ -1850,20 +1854,22 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
         }
 
     # --- Desglosament per USE TYPE de contracte (a nivell de factura) ---
+    # Tipus d'ús que tenia el contracte quan es va generar la factura (vegeu dated_use_type).
     use_type_agg = list(
-        invoices.values("exploitation_id", "contract__use_type__name")
+        annotate_dated_use_type(invoices, invoice_prefix="", name=True)
+        .values("exploitation_id", ut_name=F("dated_use_type_name"))
         .annotate(
             total_m3=Sum("consumption"),
             total_final_sum=Sum("total_final"),
             subtotal_sum=Sum("subtotal_final"),
         )
-        .order_by("exploitation_id", "contract__use_type__name")
+        .order_by("exploitation_id", "ut_name")
     )
-    all_use_types = sorted(set(r["contract__use_type__name"] or _("(Sense tipus)") for r in use_type_agg))
+    all_use_types = sorted(set(r["ut_name"] or _("(Sense tipus)") for r in use_type_agg))
     # (eid, ut) -> {total_m3, total_final_sum, subtotal_sum}
     use_type_inv = {}
     for r in use_type_agg:
-        ut = r["contract__use_type__name"] or _("(Sense tipus)")
+        ut = r["ut_name"] or _("(Sense tipus)")
         use_type_inv[(r["exploitation_id"], ut)] = {
             "total_m3": float(r["total_m3"] or 0),
             "total_final_sum": float(r["total_final_sum"] or 0),
@@ -1872,15 +1878,15 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
 
     # --- Desglosament per USE TYPE a nivell de línia de producte ---
     ut_line_agg = (
-        line_items_qs
-        .values("invoice__exploitation_id", "contract__use_type__name", "product_name", "interval")
+        annotate_dated_use_type(line_items_qs, contract_field="contract", name=True)
+        .values("invoice__exploitation_id", "product_name", "interval", ut_name=F("dated_use_type_name"))
         .annotate(units_sum=Sum("units"), total_sum=Sum("total"), price_sum=Sum("price"))
     )
     # (eid, ut, (pn, iv)) -> {units, total, price}
     ut_product_sums = {}
     for agg in ut_line_agg:
         eid = agg["invoice__exploitation_id"]
-        ut = agg["contract__use_type__name"] or _("(Sense tipus)")
+        ut = agg["ut_name"] or _("(Sense tipus)")
         pn = agg["product_name"] or ""
         iv = agg["interval"]
         key = (eid, ut, (pn, iv))
@@ -1914,7 +1920,7 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
 
     use_type_m3_totals = defaultdict(float)
     for r in use_type_agg:
-        ut = r["contract__use_type__name"] or _("(Sense tipus)")
+        ut = r["ut_name"] or _("(Sense tipus)")
         use_type_m3_totals[_normalize_use_type(ut)] += float(r["total_m3"] or 0)
 
     total_m3_grand = sum(float(exp["total_m3"] or 0) for exp in invoices_grouped_by_exploitation)

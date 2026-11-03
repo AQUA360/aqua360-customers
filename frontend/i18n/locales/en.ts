@@ -2629,6 +2629,8 @@ export default {
     remove_order: 'Removal order',
     remove_orders: 'Removal orders',
     gmao_operator_readonly: 'GMAO operator (read-only)',
+    delete_blocked_title: 'Order in progress',
+    delete_blocked_message: 'This order is already in progress, has associated reports or is already closed, and cannot be deleted. Only pending orders, drafts or orders sent to GMAO that have not yet been taken by any operator can be deleted.',
     update_property_geolocation_hint: 'Update the property geolocation with that of the work order',
     update_property_geolocation: 'Update property geolocation',
     print_order: 'Print work order',
