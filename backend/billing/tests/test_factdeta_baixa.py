@@ -369,3 +369,9 @@ class TestFactdetaReportFilters(SimpleTestCase):
         response, _document_id, _ = generate_factdeta_report(SimpleNamespace(data={'year': 10000}))
         self.assertEqual(response.status_code, 400)
         generate.assert_not_called()
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_company_filter_of_reports_page(self, generate):
+        generate_factdeta_report(SimpleNamespace(data={'year': 2026, 'company_ids': '3,5'}))
+        exploitations, invoices = generate.call_args.args
+        self.assertIn('"company_id" IN (3, 5)', str(invoices.query).split(' WHERE ')[1])

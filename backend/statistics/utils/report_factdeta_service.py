@@ -13,6 +13,7 @@ from billing.utils.aca_company_service import ACACompanyError
 from billing.utils.factdeta_reader import build_factdeta_workbook, read_factdeta
 from billing.utils.generate_factdeta_service import FactdetaValidationError, generate_factdeta_document
 from service.models import Exploitation
+from statistics.utils.report_filters import get_multi_ids, invoice_multi_filter_q
 from statistics.views.reports_views import save_report
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,10 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
         company_id = request.data.get('company_id', None)
         if company_id:
             invoices = invoices.filter(company_id=company_id)
+        # Filtres múltiples de la pàgina d'informes (empreses, lots, abonats...), com a la Declaració ACA
+        multi_q = invoice_multi_filter_q(**get_multi_ids(request.data))
+        if multi_q:
+            invoices = invoices.filter(multi_q).distinct()
 
         # També les explotacions desactivades que tenen factures de l'any
         exploitation_id = request.data.get('exploitation_id', None)
