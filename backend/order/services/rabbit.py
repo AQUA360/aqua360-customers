@@ -290,6 +290,11 @@ def publish_order_created(order: Order):
     supply_point = _resolve_order_supply_point(order)
     exploitation_token = _resolve_exploitation_token(order)
     last_reading = _get_last_reading_info(supply_point)
+    meter_caliber = (
+        supply_point.meter.caliber.name
+        if supply_point and supply_point.meter and supply_point.meter.caliber
+        else None
+    )
 
     payload = {
         "event_id": f"order:{order.pk}:created",
@@ -462,6 +467,10 @@ def publish_order_created(order: Order):
             {
                 "key": "supply_point_meter_code",
                 "text": order.supply_point.meter.code if order.supply_point and order.supply_point.meter else None,
+            },
+            {
+                "key": "supply_point_meter_caliber",
+                "text": meter_caliber,
             },
             {
                 "key": "supply_point_meter_manufacturer",
