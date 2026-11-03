@@ -133,7 +133,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         validate_token = (
 +           ConfigProject.objects.filter(token="for_validate_order_status_token")
-+           .values_list("value", flat=True)
++           values_list("value", flat=True)
 +           .first()
 +        ) or "2"
 +        completed_token = (
