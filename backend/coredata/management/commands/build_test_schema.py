@@ -185,8 +185,8 @@ class Command(BaseCommand):
                         )
                     except SchemaDumpError as exc:
                         raise CommandError(str(exc)) from exc
+                    write_migration_manifest(partial, migration_hashes())
                     os.replace(partial, output)
-                    write_migration_manifest(output, migration_hashes())
                 finally:
                     if os.path.exists(partial):
                         os.remove(partial)
