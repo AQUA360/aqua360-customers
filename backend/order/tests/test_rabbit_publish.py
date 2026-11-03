@@ -25,7 +25,14 @@ from order.services.rabbit import (
     _resolve_order_supply_point,
     publish_order_created,
 )
-from service.models import Connection, ConnectionRequest, Exploitation, Meter, SupplyPoint
+from service.models import (
+    Connection,
+    ConnectionRequest,
+    Exploitation,
+    Meter,
+    MeterCaliber,
+    SupplyPoint,
+)
 
 
 class RabbitPublishTestCase(TestCase):
@@ -58,8 +65,8 @@ def make_connection(exploitation=None, token="CON-1"):
     return Connection.objects.create(token=token, exploitation=exploitation)
 
 
-def make_meter(token="MET-1", code="MTR-1"):
-    return Meter.objects.create(token=token, code=code)
+def make_meter(token="MET-1", code="MTR-1", caliber=None):
+    return Meter.objects.create(token=token, code=code, caliber=caliber)
 
 
 def make_supply_point(connection=None, meter=None, token="SP-1"):
@@ -564,6 +571,35 @@ class PublishOrderCreatedPayloadTest(RabbitPublishTestCase):
         self.assertEqual(additional_info_of(payload, "last_reading_value"), "1000")
         self.assertEqual(additional_info_of(payload, "last_reading_date"), "2026-10-01")
         self.assertEqual(additional_info_of(payload, "last_reading_consumption"), "25m3")
+
+    def test_payload_contains_meter_caliber_name(self):
+        caliber = MeterCaliber.objects.create(name="15")
+        self.meter.caliber = caliber
+        self.meter.save(update_fields=["caliber"])
+        order = make_order(supply_point=self.supply_point)
+
+        payload = self._publish(order)
+
+        self.assertEqual(additional_info_of(payload, "supply_point_meter_caliber"), "15")
+
+    def test_payload_meter_caliber_is_none_without_caliber(self):
+        order = make_order(supply_point=self.supply_point)
+
+        payload = self._publish(order)
+
+        self.assertIsNone(additional_info_of(payload, "supply_point_meter_caliber"))
+
+    def test_payload_meter_caliber_is_none_without_meter_or_supply_point(self):
+        order_without_meter = make_order(supply_point=make_supply_point())
+        payload_without_meter = self._publish(order_without_meter)
+        self.assertIsNone(
+            additional_info_of(payload_without_meter, "supply_point_meter_caliber")
+        )
+
+        payload_without_supply_point = self._publish(make_order(token="ORD-NO-SP"))
+        self.assertIsNone(
+            additional_info_of(payload_without_supply_point, "supply_point_meter_caliber")
+        )
 
     def test_payload_last_reading_keys_always_present_with_none(self):
         order = make_order(supply_point=self.supply_point)
