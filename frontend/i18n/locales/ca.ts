@@ -3247,6 +3247,8 @@ export default {
     choose_daily_report: 'Tria el fitxer diari',
     choose_daily_report_help: 'Selecciona primer la secció i després l\'informe que es generarà cada dia.',
     selected_daily_report: 'Fitxer diari seleccionat',
+    create_without_data: 'Crear també sense dades',
+    create_without_data_help: 'Si no es troben dades per a aquell dia, es crearà igualment un registre (sense el fitxer). Si està desactivat, no es crearà res.',
     analysis_title: 'Anàlisi',
     tab_contracts: 'Contractes',
     contract_csv_export: 'Contractes: informació i variables',
