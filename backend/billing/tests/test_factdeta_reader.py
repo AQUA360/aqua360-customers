@@ -4,6 +4,7 @@ import tempfile
 import zipfile
 from decimal import Decimal
 from io import BytesIO, StringIO
+from unittest import mock
 
 import openpyxl
 from django.core.management import call_command
@@ -146,6 +147,14 @@ class TestFactdetaReaderSummary(SimpleTestCase):
         totals = {row[0]: row[2] for row in workbook['Resum'].iter_rows(values_only=True) if row and row[0]}
         self.assertEqual(totals['Import total cànon'], 14.25)
 
+    def test_validations_sheet_lists_each_issue(self):
+        factdeta = read_factdeta(factdeta_file(domestic_record(sign=-1)), 'FD2189_080000_2026.txt')
+        buffer = BytesIO()
+        build_factdeta_workbook(factdeta).save(buffer)
+        rows = list(openpyxl.load_workbook(BytesIO(buffer.getvalue()))['Validacions'].iter_rows(values_only=True))
+        self.assertEqual(rows[0], ('Línia', 'Factura', 'Nivell', 'Validació'))
+        self.assertIn((2, '1000000001', INCIDENCE, "import negatiu sense factura anul·lada"), rows[1:])
+
 
 class TestFactdetaReaderReviewFixes(SimpleTestCase):
 
@@ -177,17 +186,46 @@ class TestFactdetaReaderReviewFixes(SimpleTestCase):
         self.assertIn((WARNING, "mesurament directe sense codi d'establiment"), validate_record(parsed))
 
     def test_text_starting_with_equals_is_not_a_formula(self):
-        factdeta = read_factdeta(factdeta_file(domestic_record()))
+        factdeta = read_factdeta(factdeta_file(domestic_record()), '=FD.txt')
+        factdeta.header['nif'] = '=NIF()'
         factdeta.records[0]['street'] = '=1+1'
+        factdeta.records[0]['tariff'] = '='
+        factdeta.add_issue(INCIDENCE, 2, 'prova', invoice='=FACTURA()')
         buffer = BytesIO()
         build_factdeta_workbook(factdeta).save(buffer)
-        sheet = openpyxl.load_workbook(BytesIO(buffer.getvalue()))['Registres']
-        street_column = [cell.value for cell in sheet[1]].index('Nom via') + 1
-        cell = sheet.cell(row=2, column=street_column)
-        self.assertEqual((cell.value, cell.data_type), ('=1+1', 's'))
+        workbook = openpyxl.load_workbook(BytesIO(buffer.getvalue()))
+        formula_like = [
+            cell for sheet in workbook for row in sheet.iter_rows() for cell in row
+            if isinstance(cell.value, str) and cell.value.startswith('=')
+        ]
+        self.assertEqual(
+            sorted(cell.value for cell in formula_like),
+            ['=', '= - desconegut', '=1+1', '=FACTURA()', '=FD.txt', '=NIF()'],
+        )
+        self.assertTrue(all(cell.data_type == 's' for cell in formula_like))
 
 
 class TestFactdetaAnalyzeCommand(SimpleTestCase):
+
+    def test_creates_output_dir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'FD2189_080000_2026.txt')
+            with open(path, 'w') as file:
+                file.write(factdeta_file(domestic_record()))
+            output_dir = os.path.join(directory, 'resums', 'nova')
+            call_command('factdeta_analyze', path, '-o', output_dir, stdout=StringIO())
+            self.assertEqual(os.listdir(output_dir), ['RESUM_FD2189_080000_2026.xlsx'])
+
+    @mock.patch('billing.management.commands.factdeta_analyze.MAX_TXT_SIZE', 100)
+    def test_too_big_txt_in_zip_is_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'factdeta.zip')
+            with zipfile.ZipFile(path, 'w') as zip_file:
+                zip_file.writestr('FD2189_080000_2026.txt', factdeta_file(domestic_record()))
+            stderr = StringIO()
+            call_command('factdeta_analyze', path, stdout=StringIO(), stderr=stderr)
+            self.assertIn('massa gran', stderr.getvalue())
+            self.assertFalse([name for name in os.listdir(directory) if name.endswith('.xlsx')])
 
     def test_same_file_name_in_zip_does_not_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:

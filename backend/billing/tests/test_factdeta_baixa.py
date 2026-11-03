@@ -1,5 +1,7 @@
 import datetime
+import zipfile
 from decimal import Decimal
+from io import BytesIO
 from types import SimpleNamespace
 from unittest import mock
 
@@ -375,3 +377,22 @@ class TestFactdetaReportFilters(SimpleTestCase):
         generate_factdeta_report(SimpleNamespace(data={'year': 2026, 'company_ids': '3,5'}))
         exploitations, invoices = generate.call_args.args
         self.assertIn('"company_id" IN (3, 5)', str(invoices.query).split(' WHERE ')[1])
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_malformed_or_inverted_date_range_is_rejected(self, generate):
+        for date_range in (['2026-01-01Tnot-a-time', '2026-10-31T00:00:00.000Z'],
+                           ['2026-10-31T00:00:00.000Z', '2026-01-01T00:00:00.000Z']):
+            response, _document_id, _ = generate_factdeta_report(SimpleNamespace(data={'date_range': date_range}))
+            self.assertEqual(response.status_code, 400, date_range)
+        generate.assert_not_called()
+
+    @mock.patch('statistics.utils.report_factdeta_service.save_report', return_value=1)
+    @mock.patch('statistics.utils.report_factdeta_service.read_factdeta', side_effect=RuntimeError)
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document')
+    def test_summary_failure_keeps_factdeta(self, generate, _read, _save):
+        generate.return_value = [{'year': 2026, 'file_name': 'FD2189_080000_2026.txt', 'content': b'x', 'warnings': []}]
+        response, document_id, _ = generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
+        self.assertEqual((response.status_code, document_id), (200, 1))
+        with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
+            self.assertEqual(zip_file.namelist(), ['FD2189_080000_2026.txt'])
+

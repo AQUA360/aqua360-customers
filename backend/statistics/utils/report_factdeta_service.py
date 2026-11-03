@@ -24,18 +24,23 @@ def _summary_file_name(file_name):
 
 
 def _factdeta_summary_xlsx(file_data):
-    """Resum de totals i validacions llegit del mateix .txt, per revisar-lo sense dependre del generador."""
-    buffer = BytesIO()
-    build_factdeta_workbook(read_factdeta(file_data["content"], file_data["file_name"])).save(buffer)
-    return buffer.getvalue()
+    """Resum de totals i validacions llegit del mateix .txt, per revisar-lo sense dependre del generador.
+    És un afegit: si falla, el zip surt igualment amb el FACTDETA (None)."""
+    try:
+        buffer = BytesIO()
+        build_factdeta_workbook(read_factdeta(file_data["content"], file_data["file_name"])).save(buffer)
+        return buffer.getvalue()
+    except Exception:
+        logger.exception("No s'ha pogut generar el resum de %s", file_data["file_name"])
+        return None
 
 
 def _parse_report_date(value):
-    """Data del filtre de la pàgina d'informes (ISO amb hora, com la Declaració ACA) o AAAA-MM-DD."""
-    try:
-        return datetime.datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%fZ').date()
-    except ValueError:
-        return datetime.date.fromisoformat(value[:10])
+    """Data del filtre de la pàgina d'informes (ISO amb hora en UTC, com la Declaració ACA) o AAAA-MM-DD.
+    Qualsevol altre format llança ValueError."""
+    if len(value) == 10:
+        return datetime.date.fromisoformat(value)
+    return datetime.datetime.fromisoformat(value.replace('Z', '+00:00')).date()
 
 
 def generate_factdeta_report(request, black_fill=None, white_bold_font=None, task=None):
@@ -50,6 +55,8 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
                 start_date, end_date = (_parse_report_date(value) for value in date_range[:2])
             except (TypeError, ValueError):
                 return Response({"error": "date_range must be two dates."}, status=status.HTTP_400_BAD_REQUEST), None, None
+            if start_date > end_date:
+                return Response({"error": "date_range start must not be after end."}, status=status.HTTP_400_BAD_REQUEST), None, None
             invoices = Invoice.objects.filter(is_active=True, issue_date__range=(start_date, end_date))
             label = f"{start_date:%Y%m%d}_{end_date:%Y%m%d}"
         else:
@@ -94,7 +101,9 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
             warnings = []
             for file_data in files:
                 zip_file.writestr(file_data["file_name"], file_data["content"])
-                zip_file.writestr(_summary_file_name(file_data["file_name"]), _factdeta_summary_xlsx(file_data))
+                summary = _factdeta_summary_xlsx(file_data)
+                if summary:
+                    zip_file.writestr(_summary_file_name(file_data["file_name"]), summary)
                 if file_data["warnings"]:
                     warnings.append(file_data["file_name"])
                     warnings += [f"  - {warning}" for warning in file_data["warnings"]]

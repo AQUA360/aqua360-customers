@@ -425,23 +425,30 @@ def _code(value, length):
     return str(int(value)).zfill(length) if isinstance(value, Decimal) else value
 
 
-def _cell(sheet, record, key):
-    value = _code(record.get(key), 6) if key == 'ine' else _number(record.get(key))
-    if isinstance(value, str) and value.startswith('='):
-        # openpyxl desaria com a fórmula qualsevol text que comenci per '='
-        cell = WriteOnlyCell(sheet, value=value)
+def _cell_value(record, key):
+    return _code(record.get(key), 6) if key == 'ine' else _number(record.get(key))
+
+
+def _safe_cell(sheet, value, bold=False):
+    """Els valors venen del fitxer analitzat: openpyxl desaria com a fórmula qualsevol text que
+    comenci per '=', i es forcen com a text."""
+    is_formula_like = isinstance(value, str) and value.startswith('=')
+    if not bold and not is_formula_like:
+        return value
+    cell = WriteOnlyCell(sheet, value=value)
+    if is_formula_like:
         cell.data_type = 's'
-        return cell
-    return value
+    if bold:
+        cell.font = Font(bold=True)
+    return cell
+
+
+def _append(sheet, values, bold=False):
+    sheet.append([_safe_cell(sheet, value, bold) for value in values])
 
 
 def _bold_row(sheet, values):
-    cells = []
-    for value in values:
-        cell = WriteOnlyCell(sheet, value=value)
-        cell.font = Font(bold=True)
-        cells.append(cell)
-    sheet.append(cells)
+    _append(sheet, values, bold=True)
 
 
 SUMMARY_COLUMNS = [
@@ -454,8 +461,8 @@ def _summary_table(sheet, title, groups, first_column):
     _bold_row(sheet, [title])
     _bold_row(sheet, [first_column] + [label for _key, label in SUMMARY_COLUMNS])
     for name, totals in groups:
-        sheet.append([name] + [_number(totals[key]) for key, _label in SUMMARY_COLUMNS])
-    sheet.append([])
+        _append(sheet, [name] + [_number(totals[key]) for key, _label in SUMMARY_COLUMNS])
+    _append(sheet, [])
 
 
 def build_factdeta_workbook(factdeta):
@@ -467,28 +474,28 @@ def build_factdeta_workbook(factdeta):
     sheet = workbook.create_sheet("Resum")
     sheet.column_dimensions['A'].width = 38
     _bold_row(sheet, ["Anàlisi del fitxer FACTDETA"])
-    sheet.append(["Fitxer", factdeta.file_name or ''])
-    sheet.append(["Codi entitat", _code(header.get('entity'), 4)])
-    sheet.append(["NIF entitat", header.get('nif')])
-    sheet.append(["Any de facturació", _number(header.get('year'))])
-    sheet.append(["Codi INE", _code(header.get('ine'), 6)])
-    sheet.append(["Registres de detall", len(factdeta.records)])
-    sheet.append(["Incidències", len(factdeta.incidences)])
-    sheet.append(["Avisos", len(factdeta.issues) - len(factdeta.incidences)])
-    sheet.append([])
+    _append(sheet, ["Fitxer", factdeta.file_name or ''])
+    _append(sheet, ["Codi entitat", _code(header.get('entity'), 4)])
+    _append(sheet, ["NIF entitat", header.get('nif')])
+    _append(sheet, ["Any de facturació", _number(header.get('year'))])
+    _append(sheet, ["Codi INE", _code(header.get('ine'), 6)])
+    _append(sheet, ["Registres de detall", len(factdeta.records)])
+    _append(sheet, ["Incidències", len(factdeta.incidences)])
+    _append(sheet, ["Avisos", len(factdeta.issues) - len(factdeta.incidences)])
+    _append(sheet, [])
 
     total = summary['total']
     _bold_row(sheet, ["Totals del fitxer", "Volum", "Import"])
-    sheet.append(["Volum consumit total", _number(total['consumed_volume'])])
-    sheet.append(["Volum facturat total", _number(total['billed_volume'])])
+    _append(sheet, ["Volum consumit total", _number(total['consumed_volume'])])
+    _append(sheet, ["Volum facturat total", _number(total['billed_volume'])])
     for name, volume_key, _rate_key, amount_key in CONCEPTS:
-        sheet.append([name, _number(total[volume_key]), _number(total[amount_key])])
-    sheet.append(["Quota anual", None, _number(total['quota_annual'])])
-    sheet.append(["Quota facturada", None, _number(total['quota_billed'])])
+        _append(sheet, [name, _number(total[volume_key]), _number(total[amount_key])])
+    _append(sheet, ["Quota anual", None, _number(total['quota_annual'])])
+    _append(sheet, ["Quota facturada", None, _number(total['quota_billed'])])
     _bold_row(sheet, ["Import part variable i quota ramadera", None, _number(total['variable_amount'])])
     _bold_row(sheet, ["Import part fixa", None, _number(total['fixed_amount'])])
     _bold_row(sheet, ["Import total cànon", None, _number(total['total_amount'])])
-    sheet.append([])
+    _append(sheet, [])
 
     _summary_table(sheet, "Per tipus de tarifa", [
         (f"{tariff} - {TARIFF_TYPES.get(tariff, 'desconegut')}", totals)
@@ -502,15 +509,15 @@ def build_factdeta_workbook(factdeta):
         issues_by_message[(issue['level'], issue['message'])] += 1
     _bold_row(sheet, ["Validacions", "Nivell", "Registres"])
     for (level, message), count in sorted(issues_by_message.items()):
-        sheet.append([message, level, count])
+        _append(sheet, [message, level, count])
 
     sheet = workbook.create_sheet("Registres")
     _bold_row(sheet, ["Línia"] + [label for _key, label, _fmt in DETAIL_FIELDS])
     for record in factdeta.records:
-        sheet.append([record['line']] + [_cell(sheet, record, key) for key, _label, _fmt in DETAIL_FIELDS])
+        _append(sheet, [record['line']] + [_cell_value(record, key) for key, _label, _fmt in DETAIL_FIELDS])
 
     sheet = workbook.create_sheet("Validacions")
     _bold_row(sheet, ["Línia", "Factura", "Nivell", "Validació"])
     for issue in sorted(factdeta.issues, key=lambda issue: (issue['line'], issue['level'])):
-        sheet.append([issue['line'], issue['invoice'], issue['level'], issue['message']])
+        _append(sheet, [issue['line'], issue['invoice'], issue['level'], issue['message']])
     return workbook

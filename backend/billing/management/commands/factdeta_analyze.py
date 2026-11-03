@@ -5,6 +5,9 @@ from django.core.management.base import BaseCommand, CommandError
 
 from billing.utils.factdeta_reader import build_factdeta_workbook, read_factdeta, summarize_factdeta
 
+# Un FACTDETA té 664 caràcters per factura: 500 MB són unes 750.000 factures
+MAX_TXT_SIZE = 500 * 1024 * 1024
+
 
 class Command(BaseCommand):
     help = (
@@ -27,6 +30,9 @@ class Command(BaseCommand):
                 with zipfile.ZipFile(path) as zip_file:
                     for name in zip_file.namelist():
                         if name.lower().endswith('.txt') and os.path.basename(name).upper().startswith('FD'):
+                            if zip_file.getinfo(name).file_size > MAX_TXT_SIZE:
+                                self.stderr.write(self.style.ERROR(f"{name}: massa gran per analitzar-lo"))
+                                continue
                             self._analyze(zip_file.read(name), os.path.basename(name), output_dir, options)
             else:
                 with open(path, 'rb') as file:
@@ -48,6 +54,7 @@ class Command(BaseCommand):
         style = self.style.ERROR if factdeta.incidences else self.style.SUCCESS
         self.stdout.write(style(f"  Incidències {len(factdeta.incidences)}  |  Avisos {warnings}"))
         if not options['no_excel']:
+            os.makedirs(output_dir, exist_ok=True)
             # Dins d'un zip hi pot haver dos fitxers amb el mateix nom en carpetes diferents
             base = os.path.join(output_dir, f"RESUM_{os.path.splitext(file_name)[0]}")
             output, number = f"{base}.xlsx", 1
