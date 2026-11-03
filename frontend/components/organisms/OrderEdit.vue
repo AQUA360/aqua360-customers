@@ -986,9 +986,9 @@ const onIdLostFocus = async () => {
       </div>
     </div>
 
-    <div v-if="deleteBlocked" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+    <div v-if="deleteBlocked" role="dialog" aria-modal="true" aria-labelledby="order-delete-blocked-title" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 p-5">
-        <h3 class="text-lg font-semibold flex items-center gap-2 mb-2 text-red-800">
+        <h3 id="order-delete-blocked-title" class="text-lg font-semibold flex items-center gap-2 mb-2 text-red-800">
           <Icon name="fa6-solid:triangle-exclamation" />
           {{ $t('order_block.delete_blocked_title') }}
         </h3>
