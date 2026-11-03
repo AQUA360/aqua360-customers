@@ -295,10 +295,13 @@ class OdooClient:
                     object_type=item_object_type,
                     object_id=aqua_id,
                 )
+                odoo_id = _odoo_id_from_create_response(response["payload"])
+                if odoo_id is None:
+                    raise OdooApiError("Odoo no ha retornat l'ID del document creat.")
                 results.append(
                     {
                         "aqua_id": aqua_id,
-                        "odoo_id": _odoo_id_from_create_response(response["payload"]),
+                        "odoo_id": odoo_id,
                         "status": "ok",
                         "message": None,
                     }
