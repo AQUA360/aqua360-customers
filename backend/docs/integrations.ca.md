@@ -498,6 +498,7 @@ Integració **outbound** per enviar factures, rectificatives i moviments de paga
 ### Configuració (`.env`)
 
 ```env
+ODOO_TRANSPORT=fastapi
 ODOO_BASE_URL=
 ODOO_API_KEY=
 ODOO_TIMEOUT=30
@@ -506,6 +507,8 @@ ODOO_PUSH_INVOICES=True
 ODOO_PUSH_PAYMENTS=True
 ODOO_INBOUND_BEARER_TOKEN=
 ```
+
+`ODOO_TRANSPORT=json2` és el perfil Odoo Enterprise SaaS: el mateix JSON del contracte viatja dins `x_aqua_json`. Diari i producte han de preexistir. Vegeu [`integrations/odoo/perfil-saas.es.md`](integrations/odoo/perfil-saas.es.md).
 
 Variables afegides a `.env.example` i carregades a `customers/settings.py`.
 
