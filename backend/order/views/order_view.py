@@ -131,16 +131,16 @@ class OrderViewSet(viewsets.ModelViewSet):
         # a la GMAO encara no preses per cap operari). En Curs, Per validar
         # i Tancada (i qualsevol altra ordre amb informes o completada) es bloqueja.
         order = self.get_object()
-        validate_token = (
-+           ConfigProject.objects.filter(token="for_validate_order_status_token")
-+           .values_list("value", flat=True)
-+           .first()
-+        ) or "2"
-+        completed_token = (
-+           ConfigProject.objects.filter(token="order_status_completed_token")
-+           .values_list("value", flat=True)
-+           .first()
-+        ) or "2"
+        try:
+            validate_token = ConfigProject.objects.get(
+                token="for_validate_order_status_token"
+            ).value
+            completed_token = ConfigProject.objects.get(
+                token="order_status_completed_token"
+            ).value
+        except ConfigProject.DoesNotExist:
+            validate_token = "2"
+            completed_token = "2"
         blocked_tokens = {"5", "2", "10", validate_token, completed_token}
         status_token = order.status.token if order.status else None
         cannot_delete = (
@@ -159,7 +159,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
 +           response = super().destroy(request, *args, **kwargs)
 +           publish_order_deleted_event(order)
-+       return response
++        return response
     
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
