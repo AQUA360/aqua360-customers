@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='supplycut',
             name='giswater_connec_ids',
-            field=models.JSONField(blank=True, default=list, help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització."),
+            field=models.JSONField(blank=True, default=None, help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització (buit si encara no se n'ha llegit cap resposta vàlida).", null=True),
         ),
         migrations.RunPython(lock_cuts_managed_in_customers, migrations.RunPython.noop),
     ]

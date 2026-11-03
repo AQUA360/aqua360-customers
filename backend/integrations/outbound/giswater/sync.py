@@ -164,21 +164,25 @@ def _gis_supply_points(connec_ids):
 
 
 def _connec_ids_from_response(response):
-    """Connexions d'un mincut, o `None` si la resposta no porta `body.data.fields`.
+    """Connexions d'un mincut, o `None` si la resposta no és vàlida.
 
-    Una llista buida és una resposta vàlida (el mincut no afecta cap connexió);
-    una resposta sense `fields` no ho és i no ha de buidar els punts del tall.
+    Una llista buida és una resposta vàlida (el mincut no afecta cap connexió).
+    No ho és una resposta sense `body.data.fields`, ni una amb alguna entrada
+    sense `connec_id` (mateix criteri que `map_connec_to_connection_values`): una
+    llista incompleta no ha de treure punts del tall.
     """
     body = response.get("body") if isinstance(response, dict) else None
     data = body.get("data") if isinstance(body, dict) else None
     fields = data.get("fields") if isinstance(data, dict) else None
     if not isinstance(fields, list):
         return None
-    return sorted({
-        str(c.get("connec_id"))
-        for c in fields
-        if isinstance(c, dict) and c.get("connec_id") is not None
-    })
+    connec_ids = set()
+    for field in fields:
+        connec_id = field.get("connec_id") if isinstance(field, dict) else None
+        if connec_id in (None, ""):
+            return None
+        connec_ids.add(str(connec_id))
+    return sorted(connec_ids)
 
 
 def _create_supply_cut(token, cause, status, review, raw, dates, connec_ids):
@@ -195,7 +199,7 @@ def _create_supply_cut(token, cause, status, review, raw, dates, connec_ids):
         source=SupplyCut.SOURCE_GISWATER,
         mincut_cause_token=cause.token if cause else None,
         mincut_state_token=status.token if status else None,
-        giswater_connec_ids=connec_ids or [],
+        giswater_connec_ids=connec_ids,
         **raw,
         **dates,
     )
@@ -238,12 +242,14 @@ def _update_supply_cut(sc, cause, cause_resolved, status, status_resolved, raw, 
         if status_resolved:
             sc.status = status
             sc.mincut_state_token = status.token if status else None
-        # Quarantena si Giswater envia valors no mapejats o un estat que ho
-        # requereix (Conflicte). Si l'estat ja l'ha decidit Customers, es manté.
+        # Quarantena si Giswater envia valors no mapejats, un estat que ho
+        # requereix (Conflicte) o si encara no se n'han pogut llegir mai les
+        # connexions. Si l'estat ja l'ha decidit Customers, es manté.
         sc.requires_review = (
             not (cause_resolved or "cause" in locked)
             or not status_resolved
             or (sc.status is not None and sc.status.requires_review)
+            or (connec_ids is None and sc.giswater_connec_ids is None)
         )
     for field in GISWATER_DATE_FIELDS:
         if field not in locked and dates.get(field) is not None:
@@ -255,10 +261,11 @@ def _update_supply_cut(sc, cause, cause_resolved, status, status_resolved, raw, 
         # Resposta de connexions invàlida: els punts del tall no es toquen.
         to_add, to_remove = set(), set()
     elif "supply_points" in locked:
-        known = set(sc.giswater_connec_ids or [])
-        # Sense referència d'una sincronització anterior no es pot saber quines
-        # connexions són noves: aquesta passada només la desa.
-        new_connecs = [c for c in connec_ids if c not in known] if known else []
+        # Sense referència d'una sincronització anterior (`None`, no una llista
+        # buida) no es pot saber quines connexions són noves: aquesta passada
+        # només la desa.
+        known = sc.giswater_connec_ids
+        new_connecs = [] if known is None else [c for c in connec_ids if c not in set(known)]
         to_add = {sp.id for sp in _gis_supply_points(new_connecs)} - current
         to_remove = set()
     else:
@@ -321,53 +328,61 @@ def sync_supply_cuts_from_giswater():
         "created": 0,
         "updated": 0,
     }
-    # Les crides a Giswater es fan abans d'obrir la transacció: així els talls
-    # només queden bloquejats el temps d'aplicar els canvis.
+    # Les crides a Giswater es fan abans d'obrir cap transacció: així els talls
+    # només queden bloquejats el temps d'aplicar-hi els canvis.
     connecs_by_mincut = {}
     for mincut in mincuts:
         id = mincut.get('id')
+        if id in (None, ""):
+            continue
         connec_ids = _connec_ids_from_response(fetch_om_mincut_connecs(id))
         if connec_ids is None:
-            print(f"   ! mincut {id}: resposta de connexions sense 'fields' → no es toquen els punts")
+            print(f"   ! mincut {id}: resposta de connexions no vàlida → no es toquen els punts")
         connecs_by_mincut[id] = connec_ids
 
-    with transaction.atomic():
-        # Bloqueig de les files: una edició simultània a Customers (i la seva
-        # protecció de camps) espera que acabi la sincronització, i a l'inrevés.
-        existing_by_token = {
-            cut.token: cut
-            for cut in SupplyCut.objects.select_for_update(of=("self",))
-            .select_related("status", "cause")
-            .filter(token__in=[m.get("id") for m in mincuts if m.get("id")])
-        }
-        for mincut in mincuts:
-            id = mincut.get('id')
-            anl_cause = mincut.get('anl_cause')
-            state = mincut.get('state')
+    for mincut in mincuts:
+        id = mincut.get('id')
+        if id in (None, ""):
+            print("   ! mincut sense id → s'omet")
+            continue
+        anl_cause = mincut.get('anl_cause')
+        state = mincut.get('state')
 
-            cause, cause_resolved = _resolve_catalog_with_map(
-                cause_map, SupplyCutCause, anl_cause
+        cause, cause_resolved = _resolve_catalog_with_map(
+            cause_map, SupplyCutCause, anl_cause
+        )
+        status, status_resolved = _resolve_catalog_with_map(
+            state_map, SupplyCutStatus, state
+        )
+        if cause_resolved and status_resolved:
+            stats["resolved"] += 1
+        else:
+            stats["unresolved"] += 1
+            print(
+                f"   ! mincut {id}: motiu {anl_cause!r} / estat {state!r} "
+                "no mapejats → queda en revisió manual (MAI s'auto-activa)"
             )
-            status, status_resolved = _resolve_catalog_with_map(
-                state_map, SupplyCutStatus, state
+
+        raw = {"cause_raw": anl_cause, "state_raw": state}
+        dates = map_mincut_to_supply_cut_dates(mincut)
+        connec_ids = connecs_by_mincut.get(id)
+
+        # Una transacció per tall: la fila queda bloquejada només mentre s'hi
+        # apliquen els canvis, i una edició simultània a Customers (i la seva
+        # protecció de camps) espera que acabi, i a l'inrevés.
+        with transaction.atomic():
+            prev = (
+                SupplyCut.objects.select_for_update(of=("self",))
+                .select_related("status", "cause")
+                .filter(token=id)
+                .order_by("id")
+                .first()
             )
-            if cause_resolved and status_resolved:
-                stats["resolved"] += 1
-            else:
-                stats["unresolved"] += 1
-                print(
-                    f"   ! mincut {id}: motiu {anl_cause!r} / estat {state!r} "
-                    "no mapejats → queda en revisió manual (MAI s'auto-activa)"
-                )
-
-            raw = {"cause_raw": anl_cause, "state_raw": state}
-            dates = map_mincut_to_supply_cut_dates(mincut)
-            connec_ids = connecs_by_mincut.get(id)
-
-            prev = existing_by_token.get(id)
             if prev is None:
-                review = not (cause_resolved and status_resolved) or (
-                    status is not None and status.requires_review
+                review = (
+                    not (cause_resolved and status_resolved)
+                    or (status is not None and status.requires_review)
+                    or connec_ids is None
                 )
                 _create_supply_cut(id, cause, status, review, raw, dates, connec_ids)
                 stats["created"] += 1

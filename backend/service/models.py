@@ -1066,8 +1066,9 @@ class SupplyCut(models.Model):
                   "(status, cause, date_start, date_end, exec_start, exec_end, supply_points).",
     )
     giswater_connec_ids = models.JSONField(
-        default=list, blank=True,
-        help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització.",
+        null=True, blank=True, default=None,
+        help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització "
+                  "(buit si encara no se n'ha llegit cap resposta vàlida).",
     )
     
     class Meta:

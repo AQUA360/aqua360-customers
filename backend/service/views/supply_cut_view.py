@@ -257,6 +257,8 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         target_status = SupplyCutStatus.objects.get(token=status_token)
         previous_status = supply_cut.status
         observation = request.data.get('observation')
+        date_fields = ('date_start', 'date_end', 'exec_start', 'exec_end')
+        before = {field: getattr(supply_cut, field) for field in ('cause_id', *date_fields)}
 
         if 'cause' in request.data:
             try:
@@ -268,15 +270,18 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 )
         supply_cut.status = target_status
         supply_cut.requires_review = False
-        locked = ['status']
-        if 'cause' in request.data:
-            locked.append('cause')
-        for field in ('date_start', 'date_end', 'exec_start', 'exec_end'):
+        for field in date_fields:
             if field in request.data:
                 setattr(supply_cut, field, request.data[field])
-                locked.append(field)
         supply_cut.save()
-        supply_cut_service.lock_fields(supply_cut, *locked)
+        supply_cut.refresh_from_db()
+        # L'estat és la decisió de la revisió: sempre queda protegit. El motiu i
+        # les dates, només si la revisió els ha canviat.
+        changed = [
+            field.removesuffix('_id') for field, value in before.items()
+            if getattr(supply_cut, field) != value
+        ]
+        supply_cut_service.lock_fields(supply_cut, 'status', *changed)
 
         supply_cut_service.sync_supply_points_status(
             supply_cut,
@@ -323,10 +328,12 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             )
 
         observation = request.data.get('observation')
+        removes_points = supply_cut.supply_points.filter(id__in=supply_point_ids).exists()
         restored = supply_cut_service.remove_supply_points_from_cut(
             supply_cut, supply_point_ids, user=request.user, observation=observation
         )
-        supply_cut_service.lock_fields(supply_cut, 'supply_points')
+        if removes_points:
+            supply_cut_service.lock_fields(supply_cut, 'supply_points')
 
         # A cut with no points no longer affects anyone: it is closed so that it
         # does not stay open forever nor get reactivated by the scheduled tasks.
@@ -377,6 +384,8 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         previous_status = supply_cut.status
         observation = request.data.get('observation')
         override_vulnerable = bool(request.data.get('override_vulnerable'))
+        # exec_start només s'estampa si és buit: llavors també es protegeix.
+        stamped = [] if supply_cut.exec_start else ['exec_start']
         try:
             started = supply_cut_service.start_cut(
                 supply_cut, user=request.user, observation=observation,
@@ -389,7 +398,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        supply_cut_service.lock_fields(started, 'status', 'exec_start')
+        supply_cut_service.lock_fields(started, 'status', *stamped)
         LogSupplyCutStatus.objects.create(
             object=started,
             previous_status=previous_status,
@@ -414,8 +423,9 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         supply_cut = self._get_object_for_update()
         previous_status = supply_cut.status
         observation = request.data.get('observation')
-        # date_end (previsió) només s'omple si és buida: llavors també es protegeix.
-        filled_dates = ['date_end'] if not supply_cut.date_end else []
+        # El tancament només omple les dates de final buides: aquestes també
+        # queden protegides.
+        filled_dates = [f for f in ('date_end', 'exec_end') if not getattr(supply_cut, f)]
         try:
             finished = supply_cut_service.finish_cut(
                 supply_cut, user=request.user, observation=observation
@@ -425,7 +435,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        supply_cut_service.lock_fields(finished, 'status', 'exec_end', *filled_dates)
+        supply_cut_service.lock_fields(finished, 'status', *filled_dates)
         LogSupplyCutStatus.objects.create(
             object=finished,
             previous_status=previous_status,

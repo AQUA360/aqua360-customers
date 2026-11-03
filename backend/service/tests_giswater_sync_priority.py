@@ -183,6 +183,50 @@ class TestGiswaterSyncCustomersPriority(TestCase):
         self.assertFalse(SupplyCut.objects.get(token='m7').supply_points.exists())
         self.assertEqual(self._status_of('C1'), self.sp_active)
 
+    def test_malformed_connec_entries_invalidate_response(self):
+        parse = sync_mod._connec_ids_from_response
+        self.assertIsNone(parse(self._response([{}])))
+        self.assertIsNone(parse(self._response([{'connec_id': 'C1'}, {}])))
+        self.assertIsNone(parse(self._response([{'connec_id': ''}])))
+        self.assertIsNone(parse(self._response(['C1'])))
+        self.assertEqual(parse(self._response([])), [])
+        self.assertEqual(parse(self._response([{'connec_id': 2}, {'connec_id': '1'}])), ['1', '2'])
+
+    def test_new_cut_without_valid_connecs_stays_in_review(self):
+        self._sync([{'id': 'm8', 'anl_cause': '0', 'state': '1'}], {'m8': None})
+        cut = SupplyCut.objects.get(token='m8')
+        self.assertTrue(cut.requires_review)
+        self.assertIsNone(cut.giswater_connec_ids)
+
+        # Una altra resposta invàlida no treu la revisió…
+        self._sync([{'id': 'm8', 'anl_cause': '0', 'state': '1'}], {'m8': None})
+        self.assertTrue(SupplyCut.objects.get(token='m8').requires_review)
+
+        # …i la primera resposta vàlida sí.
+        self._sync([{'id': 'm8', 'anl_cause': '0', 'state': '1'}], {'m8': ['C1']})
+        cut.refresh_from_db()
+        self.assertFalse(cut.requires_review)
+        self.assertEqual(cut.giswater_connec_ids, ['C1'])
+
+    def test_invalid_connecs_do_not_flag_cut_with_known_connecs(self):
+        self._sync([{'id': 'm9', 'anl_cause': '0', 'state': '1'}], {'m9': ['C1']})
+        self._sync([{'id': 'm9', 'anl_cause': '0', 'state': '1'}], {'m9': None})
+        self.assertFalse(SupplyCut.objects.get(token='m9').requires_review)
+
+    def test_locked_points_with_empty_baseline_receive_new_connecs(self):
+        self._sync([{'id': 'm10', 'anl_cause': '0', 'state': '1'}], {'m10': []})
+        cut = SupplyCut.objects.get(token='m10')
+        self.assertEqual(cut.giswater_connec_ids, [])
+        supply_cut_service.lock_fields(cut, 'supply_points')
+
+        self._sync([{'id': 'm10', 'anl_cause': '0', 'state': '1'}], {'m10': ['C1']})
+        self.assertEqual(list(cut.supply_points.all()), [self.points['C1']])
+
+    def test_mincut_without_id_is_skipped(self):
+        stats = self._sync([{'anl_cause': '0', 'state': '1'}], {})
+        self.assertEqual(stats['created'], 0)
+        self.assertFalse(SupplyCut.objects.filter(token__isnull=True).exists())
+
 
 class TestCustomersActionsLockFields(TestCase):
 
@@ -201,6 +245,7 @@ class TestCustomersActionsLockFields(TestCase):
         cls.active = _catalog(SupplyCutStatus, '1', name='Actiu')
         cls.finished = _catalog(SupplyCutStatus, '2', name='Acabat')
         cls.cause = _catalog(SupplyCutCause, '4', name='Manteniment', is_temporary=True)
+        cls.other_cause = _catalog(SupplyCutCause, '0', name='Altres', is_temporary=False)
         cls.user = User.objects.create_superuser(username='locker', password='p', email='locker@example.com')
         cls.factory = APIRequestFactory()
 
@@ -256,14 +301,45 @@ class TestCustomersActionsLockFields(TestCase):
             set(cut.customers_locked_fields), {'supply_points', 'status', 'date_end', 'exec_end'}
         )
 
-    def test_resolve_review_locks_status_and_given_fields(self):
+    def test_resolve_review_locks_status_and_changed_fields(self):
         cut = self._cut(self.planned)
         cut.requires_review = True
         cut.save()
-        response = self._post('resolve_review', cut, {'status': '0', 'cause': self.cause.id})
+        response = self._post('resolve_review', cut, {'status': '0', 'cause': self.other_cause.id})
         self.assertEqual(response.status_code, 200)
         cut.refresh_from_db()
         self.assertEqual(set(cut.customers_locked_fields), {'status', 'cause'})
+
+    def test_resolve_review_does_not_lock_unchanged_cause(self):
+        cut = self._cut(self.planned)
+        cut.requires_review = True
+        cut.save()
+        self._post('resolve_review', cut, {'status': '0', 'cause': self.cause.id})
+        cut.refresh_from_db()
+        self.assertEqual(cut.customers_locked_fields, ['status'])
+
+    def test_start_keeps_existing_exec_start_unlocked(self):
+        cut = self._cut(self.planned)
+        cut.exec_start = timezone.now() - timedelta(hours=1)
+        cut.save()
+        self.assertEqual(self._post('start_cut', cut).status_code, 200)
+        cut.refresh_from_db()
+        self.assertEqual(cut.customers_locked_fields, ['status'])
+
+    def test_removing_points_not_in_cut_does_not_lock_points(self):
+        cut = self._cut(self.active)
+        attached, other = (
+            SupplyPoint.objects.create(
+                token=f'sp-{code}', status=self.sp_active,
+                connection=Connection.objects.create(code_gis=code),
+            )
+            for code in ('A1', 'A2')
+        )
+        cut.supply_points.add(attached)
+        self._post('remove_supply_point', cut, {'supply_point': other.id})
+        cut.refresh_from_db()
+        self.assertNotIn('supply_points', cut.customers_locked_fields)
+        self.assertEqual(list(cut.supply_points.all()), [attached])
 
     def test_lock_fields_ignores_unknown_and_duplicates(self):
         cut = self._cut(self.planned)
