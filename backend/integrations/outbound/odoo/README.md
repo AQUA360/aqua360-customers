@@ -12,6 +12,7 @@ Integració outbound del Programa d'Abonats amb **Odoo 19 Community** (ERP Compt
 | Contracte de dades (castellà) | [`docs/integrations/odoo/data-contract.es.md`](../../../docs/integrations/odoo/data-contract.es.md) |
 | OpenAPI | [`docs/integrations/odoo/openapi.yaml`](../../../docs/integrations/odoo/openapi.yaml) |
 | Pla d'implementació | [`docs/integrations/odoo/plan.md`](../../../docs/integrations/odoo/plan.md) |
+| Perfil Enterprise SaaS (JSON-2) | [`docs/integrations/odoo/perfil-saas.es.md`](../../../docs/integrations/odoo/perfil-saas.es.md) |
 
 ## Estructura
 
@@ -57,6 +58,7 @@ El ViewSet resol el client via `integrations.utils.send_batch_providers` (token 
 ## Configuració (`.env`)
 
 ```env
+ODOO_TRANSPORT=fastapi
 ODOO_BASE_URL=
 ODOO_API_KEY=
 ODOO_TIMEOUT=30
@@ -65,6 +67,8 @@ ODOO_PUSH_INVOICES=True
 ODOO_PUSH_PAYMENTS=True
 ODOO_INBOUND_BEARER_TOKEN=
 ```
+
+`ODOO_TRANSPORT=json2` embolcalla el mateix JSON del contracte (`x_aqua_id` + `x_aqua_json`) i l'envia a `/json/2/x_aqua_invoice/create` o `/json/2/x_aqua_payment/create`, amb `Authorization: Bearer`. Un document per crida; el lot es tanca amb la resposta síncrona. Els compromisos no s'envien. Detall: [`perfil-saas.es.md`](../../../docs/integrations/odoo/perfil-saas.es.md).
 
 Flags `ConfigProject`:
 - `ODOO_ENABLED` (`true`/`false`): mostra el menú de lots al front.
