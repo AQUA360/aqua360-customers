@@ -19,7 +19,7 @@ Dues variants amb el mateix criteri:
 from bisect import bisect_right
 from collections import defaultdict
 
-from django.db.models import Case, CharField, Exists, F, IntegerField, OuterRef, Q, Subquery, Value, When
+from django.db.models import Case, CharField, Exists, F, IntegerField, OuterRef, Subquery, Value, When
 from django.db.models.functions import Coalesce
 
 from contract.models import Contract, ContractLog, ContractUseType
@@ -55,10 +55,41 @@ def annotate_dated_use_type(queryset, invoice_prefix='invoice__', contract_field
     logs = ContractLog.objects.filter(contract_id=OuterRef('_dated_use_type_contract_id'), field_name=USE_TYPE_FIELD_NAME)
     log_before = logs.filter(created_at__lte=OuterRef(created_at_field)).order_by('-created_at', '-id')
     log_after = logs.filter(created_at__gt=OuterRef(created_at_field)).order_by('created_at', 'id')
-    current_use_type_id = Subquery(
-        Contract.objects.filter(id=OuterRef('_dated_use_type_contract_id')).values('use_type_id')[:1],
-        output_field=IntegerField(),
-    )
+
+    # Les subconsultes es construeixen de nou a cada ús, i el nom de l'historial es
+    # resol a tipus d'ús dins la mateixa subconsulta del log: referenciar amb OuterRef
+    # una anotació que ja conté subconsultes fa petar Django en reanomenar els àlies.
+    def current_use_type(field):
+        return Subquery(
+            Contract.objects.filter(id=OuterRef('_dated_use_type_contract_id')).values(f'use_type__{field}')[:1],
+            output_field=output_fields[field](),
+        )
+
+    def log_use_type(log_qs, value_field, field):
+        use_type_by_name = ContractUseType.objects.filter(name=OuterRef(value_field)).order_by('id').values(field)[:1]
+        return Subquery(
+            log_qs.annotate(_use_type_value=Subquery(use_type_by_name)).values('_use_type_value')[:1],
+            output_field=output_fields[field](),
+        )
+
+    def dated_use_type(field):
+        def from_log(log_qs, value_field):
+            return Case(
+                When(_dated_use_type_log_name__isnull=True, then=Value(None)),
+                default=Coalesce(
+                    log_use_type(log_qs, value_field, field), current_use_type(field),
+                    output_field=output_fields[field](),
+                ),
+                output_field=output_fields[field](),
+            )
+        return Case(
+            When(_dated_use_type_has_before=True, then=from_log(log_before, 'new_value')),
+            When(_dated_use_type_has_after=True, then=from_log(log_after, 'old_value')),
+            default=current_use_type(field),
+            output_field=output_fields[field](),
+        )
+
+    output_fields = {'id': IntegerField, 'name': CharField}
 
     queryset = queryset.annotate(
         _dated_use_type_has_before=Exists(log_before),
@@ -70,32 +101,9 @@ def annotate_dated_use_type(queryset, invoice_prefix='invoice__', contract_field
             default=Value(None),
             output_field=CharField(),
         ),
-    ).annotate(
-        dated_use_type_id=Case(
-            When(
-                Q(_dated_use_type_has_before=True) | Q(_dated_use_type_has_after=True),
-                then=Case(
-                    When(_dated_use_type_log_name__isnull=True, then=Value(None)),
-                    default=Coalesce(
-                        Subquery(
-                            ContractUseType.objects.filter(name=OuterRef('_dated_use_type_log_name'))
-                            .order_by('id').values('id')[:1]
-                        ),
-                        current_use_type_id,
-                        output_field=IntegerField(),
-                    ),
-                ),
-            ),
-            default=current_use_type_id,
-            output_field=IntegerField(),
-        ),
-    )
+    ).annotate(dated_use_type_id=dated_use_type('id'))
     if name:
-        queryset = queryset.annotate(
-            dated_use_type_name=Subquery(
-                ContractUseType.objects.filter(id=OuterRef('dated_use_type_id')).values('name')[:1]
-            ),
-        )
+        queryset = queryset.annotate(dated_use_type_name=dated_use_type('name'))
     return queryset
 
 
