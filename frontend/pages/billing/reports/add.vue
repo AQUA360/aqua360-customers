@@ -48,6 +48,12 @@
   const selectedSeries = ref([])
   const loadingSeries = ref(false)
   const serieIds = computed(() => selectedSeries.value.map(s => s.code))
+
+  // Filtre extra: factures de les empreses seleccionades (Invoice.company)
+  const companyOptions = ref([])
+  const selectedCompanies = ref([])
+  const loadingCompanies = ref(false)
+  const companyIds = computed(() => selectedCompanies.value.map(c => c.code))
   
   const openDetailedProducts = ref(false)
   const openRegisterBillingProducts = ref(false)
@@ -274,6 +280,28 @@
     selectedReportType.value = no_type;
   }
   
+  const getCompanies = async () => {
+    loadingCompanies.value = true;
+    try {
+      const companies = [];
+      let page = 1;
+      let response;
+      do {
+        response = await $ExploitationApiService.getCompanies('', page);
+        companies.push(...(response?.results || []));
+        page += 1;
+      } while (response?.next);
+      companyOptions.value = companies.map(company => ({
+        label: company.alias ? `${company.name} (${company.alias})` : company.name,
+        code: company.id,
+      }));
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    } finally {
+      loadingCompanies.value = false;
+    }
+  }
+
   const getSeries = async () => {
     loadingSeries.value = true;
     try {
@@ -508,6 +536,7 @@
       remittance_ids: remittanceObjects.value.map(r => r.id).join(','),
       person_ids: personIds.value.join(','),
       contract_ids: contractIds.value.join(','),
+      company_ids: companyIds.value.join(','),
       report_type_id: (formData.report_type_id && formData.report_type_id !== 'null')
         ? formData.report_type_id
         : (selectedReportType.value && selectedReportType.value.code !== 'null' ? selectedReportType.value.code : null),
@@ -668,6 +697,7 @@
     getPaymentTypes();
     getReportTypes();
     getSeries();
+    getCompanies();
     fetchActiveReports();
     checkQueueStatus();
     queueInterval.value = setInterval(checkQueueStatus, 5000);
@@ -1055,6 +1085,14 @@
                     <v-select class="block w-full custom-select bg-white rounded" v-model="selectedSeries"
                       :options="seriesOptions" :loading="loadingSeries" :multiple="true"
                       :placeholder="t('billing_block.serie')" />
+                  </div>
+
+                  <!-- Company multi-select -->
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">{{ t('company') }}</label>
+                    <v-select class="block w-full custom-select bg-white rounded" v-model="selectedCompanies"
+                      :options="companyOptions" :loading="loadingCompanies" :multiple="true"
+                      :placeholder="t('company')" />
                   </div>
 
                   <!-- Excluded billing box (single-select) -->

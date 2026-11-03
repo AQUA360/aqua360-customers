@@ -157,9 +157,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         with transaction.atomic():
-+           response = super().destroy(request, *args, **kwargs)
-+           publish_order_deleted_event(order)
-+        return response
+            response = super().destroy(request, *args, **kwargs)
+            publish_order_deleted_event(order)
+        return response
     
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
