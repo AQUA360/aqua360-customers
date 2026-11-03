@@ -134,13 +134,14 @@ class ReuseDumpTests(SimpleTestCase):
         self.migrate.assert_not_called()
         self.recreate.assert_not_called()
 
-    def test_legacy_dump_without_manifest_can_be_reused(self):
+    def test_dump_without_manifest_is_rebuilt_from_scratch(self):
         legacy = self._dump("-- sense manifest\n", manifest=False)
 
-        self.assertEqual(self.command._try_reuse(str(legacy), 1), "current")
+        self.assertIsNone(self.command._try_reuse(str(legacy), 1))
 
-        self.load.assert_called_once()
-        self.recreate.assert_not_called()
+        self.load.assert_not_called()
+        self.migrate.assert_not_called()
+        self.recreate.assert_called_once_with()
 
     def test_edited_migration_is_not_reused(self):
         path = self._dump()
