@@ -1565,7 +1565,7 @@ class InvoiceStatusDictionaryOVView(APIView):
 # Tokens d'origen (`ProductOrigin.token`) dels productes de tràmit/d'altes
 # (drets d'alta, connexió, comptador, pòlissa, dipòsit...). Exclou els orígens
 # de serveis periòdics recurrents (`aigua`, `subministrament`).
-PROCEDURE_TARIFF_ORIGIN_TOKENS = ("contracte", "escomesa", "altres")
+PROCEDURE_TARIFF_ORIGIN_TOKENS = ("contracte",)
 
 
 class ProcedureTariffDictionaryOVView(APIView):
