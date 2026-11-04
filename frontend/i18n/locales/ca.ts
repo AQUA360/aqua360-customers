@@ -2615,7 +2615,10 @@ export default {
     reading_alert_estimated: 'Lectura Estimada',
     reading_alert_unusual: 'Lectura inusual',
     reading_alert_low_consumption: 'Consum inusualment baix',
-    readings_continue_from_to: 'Lectures des de {from} → fins a {to}'
+    readings_continue_from_to: 'Lectures des de {from} → fins a {to}',
+    apply_email_to_all: 'Aplicar el canvi a totes les factures',
+    email_applied_to_all: 'Canvi aplicat a totes les factures',
+    send_all: 'Enviar totes'
   },
   reading_block:   {
     smart_metering_load_title: 'Carregar Smart Metering',

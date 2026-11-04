@@ -2551,7 +2551,10 @@ export default {
     reading_alert_estimated: 'Estimated reading',
     reading_alert_unusual: 'Unusual reading',
     reading_alert_low_consumption: 'Unusually low consumption',
-    readings_continue_from_to: 'Readings from {from} → to {to}'
+    readings_continue_from_to: 'Readings from {from} → to {to}',
+    apply_email_to_all: 'Apply change to all invoices',
+    email_applied_to_all: 'Change applied to all invoices',
+    send_all: 'Send all'
   },
   reading_block:   {
     smart_metering_load_title: 'Load Smart Metering',

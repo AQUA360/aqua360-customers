@@ -57,13 +57,27 @@ const props = defineProps({
   canGoNext: {
     type: Boolean,
     default: false
+  },
+
+  // IDs de factures ja enviades (el pare ho controla)
+  sentIds: {
+    type: Array,
+    default: () => []
+  },
+
+  // Factures seleccionades (per aplicar a totes / enviar totes)
+  invoices: {
+    type: Array,
+    default: () => []
   }
 });
 
 const emit = defineEmits([
   'close',
   'previous',
-  'next'
+  'next',
+  'sent',
+  'sent-all'
 ]);
 
 const OTHER = '__other__';
@@ -135,43 +149,41 @@ const applyDefaultEmail = () => {
   customEmail.value = '';
 };
 
-const loadPersonContacts = async () => {
+// Carrega els contactes de la persona de la factura.
+// - Descarta la resposta si mentrestant s'ha canviat de factura.
+// - Només reseteja el correu si no hi ha esborrany (resetEmail).
+const loadPersonContacts = async (invoice, resetEmail = true) => {
   personContacts.value = [];
+
+  let contacts = [];
 
   try {
     let person = null;
 
     const personId =
-      props.invoice?.person_id ??
-      props.invoice?.person?.id ??
-      (
-        typeof props.invoice?.person === 'number'
-          ? props.invoice.person
-          : null
-      );
+      invoice?.person_id ??
+      invoice?.person?.id ??
+      (typeof invoice?.person === 'number' ? invoice.person : null);
 
     if (personId) {
-      person =
-        await $PersonApiService
-          .getFullDetail(personId);
-    } else if (
-      props.invoice?.customer_token_final
-    ) {
-      person =
-        await $PersonApiService
-          .getFullDetailByToken(
-            props.invoice
-              .customer_token_final
-          );
+      person = await $PersonApiService.getFullDetail(personId);
+    } else if (invoice?.customer_token_final) {
+      person = await $PersonApiService.getFullDetailByToken(
+        invoice.customer_token_final
+      );
     }
 
-    personContacts.value =
-      person?.contacts || [];
+    contacts = person?.contacts || [];
   } catch (err) {
     console.error(err);
   }
 
-  applyDefaultEmail();
+  // Si mentrestant s'ha canviat de factura, descartem la resposta
+  if (currentInvoiceId.value !== invoice?.id) return;
+
+  personContacts.value = contacts;
+
+  if (resetEmail) applyDefaultEmail();
 };
 
 const email = computed(() =>
@@ -199,10 +211,10 @@ const defaultBodyFor = (lang) =>
     }
   );
 
-const defaultSubjectFor = (lang) =>
+const defaultSubjectFor = (lang, invoice = props.invoice) =>
   [
     t('invoice', {}, { locale: lang }),
-    props.invoice?.serie_final
+    invoice?.serie_final
   ]
     .filter(Boolean)
     .join(' ');
@@ -340,6 +352,24 @@ const companyConfigs = ref([]);
 const selectedCompanyConfig = ref(null);
 const loadingCompanyConfigs = ref(false);
 
+const companyConfigFor = (invoice) => {
+  const invoiceCompanyId =
+    invoice?.company?.id ??
+    invoice?.company ??
+    invoice?.company_id ??
+    null;
+
+  const match = companyConfigs.value.find(
+    (c) => c.companyId != null && c.companyId === invoiceCompanyId
+  );
+
+  return match?.value ?? companyConfigs.value[0]?.value ?? null;
+};
+
+const applyDefaultCompanyConfig = () => {
+  selectedCompanyConfig.value = companyConfigFor(props.invoice);
+};
+
 const getCompanyConfigs = async () => {
   loadingCompanyConfigs.value = true;
 
@@ -369,30 +399,240 @@ const getCompanyConfigs = async () => {
   applyDefaultCompanyConfig();
 };
 
-const applyDefaultCompanyConfig = () => {
-  const invoiceCompanyId =
-    props.invoice?.company?.id ??
-    props.invoice?.company ??
-    props.invoice?.company_id ??
-    null;
-
-  const match =
-    companyConfigs.value.find(
-      (c) =>
-        c.companyId != null &&
-        c.companyId === invoiceCompanyId
-    );
-
-  selectedCompanyConfig.value =
-    match?.value ??
-    companyConfigs.value[0]?.value ??
-    null;
-};
-
 onMounted(() => {
   getCompanyConfigs();
   getMessageTemplates();
 });
+
+// ---------------------------------------------------------
+// DRAFTS PER FACTURA
+// ---------------------------------------------------------
+
+const drafts = ref({});
+const currentInvoiceId = ref(null);
+
+const isSent = computed(() =>
+  props.sentIds.includes(props.invoice?.id)
+);
+
+const saveDraft = (invoiceId) => {
+  if (!invoiceId) return;
+
+  drafts.value[invoiceId] = {
+    selectedEmail: selectedEmail.value,
+    customEmail: customEmail.value,
+    subject: subject.value,
+    body: body.value,
+    selectedLang: selectedLang.value,
+    selectedTemplate: selectedTemplate.value,
+    templateContent: templateContent.value,
+    selectedCompanyConfig: selectedCompanyConfig.value
+  };
+};
+
+const initInvoice = async (invoice) => {
+  if (!invoice) return;
+
+  // Síncron, abans de qualsevol await
+  currentInvoiceId.value = invoice.id;
+  applyToAll.value = false; // abans de restaurar valors
+
+  const draft = drafts.value[invoice.id];
+
+  if (draft) {
+    selectedEmail.value = draft.selectedEmail;
+    customEmail.value = draft.customEmail;
+    subject.value = draft.subject;
+    body.value = draft.body;
+    selectedLang.value = draft.selectedLang;
+    selectedTemplate.value = draft.selectedTemplate;
+    templateContent.value = draft.templateContent;
+    selectedCompanyConfig.value = draft.selectedCompanyConfig;
+  } else {
+    selectedTemplate.value = null;
+    templateContent.value = null;
+    selectedLang.value = props.contract?.language || locale.value;
+
+    applyMessageContent();
+    applyDefaultEmail();
+    applyDefaultCompanyConfig();
+  }
+
+  if (!props.contract?.person_contact_email?.email) {
+    await loadPersonContacts(invoice, !draft);
+  }
+};
+
+const onLangChange = () => applyMessageContent();
+
+const onTemplateChange = async () => {
+  await loadTemplateContent(selectedTemplate.value);
+  applyMessageContent();
+};
+
+// Esborrany per defecte d'una factura que no s'ha visitat
+const buildDefaultDraft = (invoice) => {
+  const lang = props.contract?.language || locale.value;
+
+  return {
+    selectedEmail: currentEmail.value || contactEmails.value[0] || OTHER,
+    customEmail: '',
+    subject: defaultSubjectFor(lang, invoice),
+    body: defaultBodyFor(lang),
+    selectedLang: lang,
+    selectedTemplate: null,
+    templateContent: null,
+    selectedCompanyConfig: companyConfigFor(invoice)
+  };
+};
+
+// Factures de la selecció pendents d'enviar (sense comptar l'actual)
+const pendingOthers = computed(() =>
+  props.invoices.filter(
+    (inv) =>
+      inv.id !== props.invoice?.id &&
+      !props.sentIds.includes(inv.id)
+  )
+);
+
+// Factures de la selecció pendents d'enviar (incloent l'actual)
+const pendingAll = computed(() =>
+  props.invoices.filter(
+    (inv) => !props.sentIds.includes(inv.id)
+  )
+);
+
+const applyToAll = ref(false);
+
+// Copia el correu actual a la resta de factures pendents
+const applyEmailToOthers = () => {
+  saveDraft(currentInvoiceId.value);
+
+  pendingOthers.value.forEach((inv) => {
+    const base = drafts.value[inv.id] || buildDefaultDraft(inv);
+
+    drafts.value[inv.id] = {
+      ...base,
+      selectedEmail: selectedEmail.value,
+      customEmail: customEmail.value
+    };
+  });
+};
+
+const onApplyToAllChange = () => {
+  if (applyToAll.value) {
+    applyEmailToOthers();
+    toast.success(t('billing_block.email_applied_to_all'));
+  }
+};
+
+// Mentre el quadradet està marcat, qualsevol canvi de correu es propaga
+watch([selectedEmail, customEmail], () => {
+  if (applyToAll.value) applyEmailToOthers();
+});
+
+const sendingAll = ref(false);
+
+const sendAll = async () => {
+  saveDraft(currentInvoiceId.value);
+
+  const targets = pendingAll.value.map((inv) => {
+    const draft = drafts.value[inv.id] || buildDefaultDraft(inv);
+    const to =
+      (draft.selectedEmail === OTHER
+        ? draft.customEmail
+        : draft.selectedEmail) || null;
+
+    return { invoice: inv, draft, to };
+  });
+
+  if (!targets.length) return;
+
+  if (targets.some((x) => !x.to || !x.draft.selectedCompanyConfig)) {
+    toast.error(t('billing_block.error_send_email'));
+    return;
+  }
+
+  // Agrupem per destinatari + config d'empresa (el remitent ha de ser el mateix)
+  const groupsMap = new Map();
+
+  targets.forEach((x) => {
+    const key = `${x.to.trim().toLowerCase()}|${x.draft.selectedCompanyConfig}`;
+
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, { to: x.to.trim(), items: [] });
+    }
+
+    groupsMap.get(key).items.push(x);
+  });
+
+  const groups = [...groupsMap.values()];
+
+  // Confirmació: un correu per grup, amb les factures que hi van dins
+  const summary = groups
+    .map(
+      (g) =>
+        `${g.to}: ${g.items.map((x) => x.invoice.serie_final).join(', ')}`
+    )
+    .join('\n');
+
+  if (
+    !window.confirm(
+      `${groups.length} ${t('billing_block.emails_to_send')}\n\n${summary}`
+    )
+  ) {
+    return;
+  }
+
+  sendingAll.value = true;
+
+  const okIds = [];
+  let failed = 0;
+
+  for (const group of groups) {
+    const first = group.items[0];
+
+    try {
+      if (group.items.length === 1) {
+        // Un sol document: l'endpoint actual, sense canvis
+        await $InvoiceApiService.sendEmail(first.invoice.id, {
+          email: group.to,
+          subject: first.draft.subject,
+          body: first.draft.body,
+          company_config_id: first.draft.selectedCompanyConfig
+        });
+      } else {
+        // Diverses factures al mateix destinatari: un sol correu
+        const lang = first.draft.selectedLang;
+
+        await $InvoiceApiService.sendGroupedEmail({
+          invoice_ids: group.items.map((x) => x.invoice.id),
+          email: group.to,
+          subject: `${t('invoices', {}, { locale: lang })} ${group.items
+            .map((x) => x.invoice.serie_final)
+            .join(', ')}`,
+          body: first.draft.body,
+          company_config_id: first.draft.selectedCompanyConfig
+        });
+      }
+
+      group.items.forEach((x) => okIds.push(x.invoice.id));
+    } catch (err) {
+      console.error(err);
+      failed++;
+    }
+  }
+
+  sendingAll.value = false;
+
+  if (failed) {
+    toast.error(`${t('billing_block.error_send_email')} (${failed})`);
+  } else {
+    toast.success(t('billing_block.correct_send_email'));
+  }
+
+  if (okIds.length) emit('sent-all', okIds);
+};
 
 // ---------------------------------------------------------
 // WATCHERS
@@ -400,69 +640,29 @@ onMounted(() => {
 
 watch(
   () => props.show,
-  (isOpen) => {
+  async (isOpen) => {
     if (!isOpen) {
+      drafts.value = {};
+      currentInvoiceId.value = null;
+      applyToAll.value = false;
       return;
     }
 
-    selectedLang.value =
-      props.contract?.language ||
-      locale.value;
-
-    applyMessageContent();
-
-    applyDefaultEmail();
-
-    if (
-      !props.contract
-        ?.person_contact_email
-        ?.email
-    ) {
-      loadPersonContacts();
-    }
-
-    applyDefaultCompanyConfig();
+    await initInvoice(props.invoice);
   }
 );
 
-watch(
-  selectedLang,
-  applyMessageContent
-);
-
-watch(
-  selectedTemplate,
-  async (templateId) => {
-    await loadTemplateContent(templateId);
-    applyMessageContent();
-  }
-);
-
-// Quan canviem de factura mitjançant
-// les fletxes, actualitzem les dades
+// Quan canviem de factura mitjançant les fletxes
 watch(
   () => props.invoice,
-  (newInvoice) => {
-    if (!props.show || !newInvoice) {
-      return;
-    }
+  async (newInvoice) => {
+    if (!props.show || !newInvoice) return;
 
-    selectedLang.value =
-      props.contract?.language ||
-      locale.value;
+    // Mateixa factura (p. ex. refetch del pare): no resetegem res
+    if (newInvoice.id === currentInvoiceId.value) return;
 
-    applyMessageContent();
-
-    applyDefaultEmail();
-    applyDefaultCompanyConfig();
-
-    if (
-      !props.contract
-        ?.person_contact_email
-        ?.email
-    ) {
-      loadPersonContacts();
-    }
+    saveDraft(currentInvoiceId.value); // ABANS d'initInvoice
+    await initInvoice(newInvoice);
   }
 );
 
@@ -543,16 +743,18 @@ const sending = ref(false);
 const sendEmail = async () => {
   if (
     !email.value ||
-    !props.invoice?.id
+    !props.invoice?.id ||
+    isSent.value
   ) {
     return;
   }
 
+  const invoiceId = props.invoice.id;
   sending.value = true;
 
   try {
     await $InvoiceApiService.sendEmail(
-      props.invoice.id,
+      invoiceId,
       {
         email: email.value,
         subject: subject.value,
@@ -568,13 +770,13 @@ const sendEmail = async () => {
       )
     );
 
-    /*
-     * Tanquem el modal després d'enviar.
-     *
-     * InvoiceMiniDetail controla la navegació
-     * entre les factures seleccionades.
-     */
-    emit('close');
+    if (props.invoices.length) {
+      // Mode agrupat: el pare decideix si passa a la següent o tanca
+      emit('sent', invoiceId);
+    } else {
+      // Ús d'una sola factura (com abans): tanquem
+      emit('close');
+    }
   } catch (err) {
     console.error(err);
 
@@ -631,7 +833,7 @@ const sendEmail = async () => {
             {{ t('common.send') }}
             {{ t('invoice') }}
           </h3>
-
+          
           <!-- Invoice navigation -->
           <div
             v-if="showNavigation"
@@ -644,28 +846,28 @@ const sendEmail = async () => {
                 v-if="canGoPrevious"
                 type="button"
                 @click="goPrevious"
-                :disabled="sending"
+                :disabled="sending || sendingAll"
                 class="flex items-center justify-center w-8 h-8 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 :title="t('common.previous')"
               >
                 <Icon name="fa6-solid:chevron-left" />
               </button>
             </div>
-            
+
             <!-- Current invoice -->
             <span
               class="text-sm text-slate-500 font-medium min-w-[100px] text-center"
             >
               {{ invoice?.serie_final || '-' }}
             </span>
-            
+
             <!-- Next -->
             <div class="w-8 flex justify-center">
               <button
                 v-if="canGoNext"
                 type="button"
                 @click="goNext"
-                :disabled="sending"
+                :disabled="sending || sendingAll"
                 class="flex items-center justify-center w-8 h-8 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 :title="t('common.next')"
               >
@@ -824,6 +1026,21 @@ const sendEmail = async () => {
             :placeholder="t('common.email_long')"
             class="w-full border border-slate-300 rounded-lg p-2 mt-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
           />
+
+          <!-- Aplicar el correu a totes les factures -->
+          <label
+            v-if="selectedEmail === OTHER && invoices.length > 1"
+            class="mt-2 flex items-center gap-2 text-sm text-slate-600 cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              v-model="applyToAll"
+              @change="onApplyToAllChange"
+              :disabled="!customEmail"
+              class="w-4 h-4 rounded border-slate-300 text-sky-500 focus:ring-sky-500 disabled:opacity-50"
+            />
+            {{ t('billing_block.apply_email_to_all') }}
+          </label>
         </div>
 
         <!-- Message template -->
@@ -836,6 +1053,7 @@ const sendEmail = async () => {
 
           <select
             v-model="selectedTemplate"
+            @change="onTemplateChange"
             :disabled="loadingTemplates"
             class="w-full border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 disabled:opacity-50"
           >
@@ -882,6 +1100,7 @@ const sendEmail = async () => {
             <!-- L'idioma només aplica als textos per defecte -->
             <select
               v-model="selectedLang"
+              @change="onLangChange"
               :disabled="!!templateContent"
               class="border border-slate-300 rounded-md text-sm text-slate-700 py-1 px-2 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 disabled:opacity-50"
               :title="t('common.language')"
@@ -938,13 +1157,45 @@ const sendEmail = async () => {
             {{ t('common.close') }}
           </button>
 
+          <!-- Enviar totes les factures pendents -->
+          <button
+            v-if="invoices.length > 1"
+            type="button"
+            @click="sendAll"
+            :disabled="sending || sendingAll || !pendingAll.length"
+            class="button-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Icon
+              v-if="sendingAll"
+              name="fa6-solid:spinner"
+              class="animate-spin"
+            />
+
+            <span
+              v-else
+              class="flex items-center -space-x-1"
+            >
+              <Icon
+                name="fa6-solid:paper-plane"
+                class="text-xs"
+              />
+              <Icon name="fa6-solid:paper-plane" />
+            </span>
+
+            {{ t('billing_block.send_all') }}
+            ({{ pendingAll.length }})
+          </button>
+
+          <!-- Enviar només aquesta factura -->
           <button
             type="button"
             @click="sendEmail"
             :disabled="
               !email ||
               !selectedCompanyConfig ||
-              sending
+              sending ||
+              sendingAll ||
+              isSent
             "
             class="button-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
