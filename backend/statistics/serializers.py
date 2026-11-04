@@ -249,6 +249,6 @@ class CustomReportSerializer(serializers.ModelSerializer):
         from .utils.custom_report_service import CustomReportError, validate_sql
         try:
             validate_sql(value)
-        except CustomReportError as exc:
-            raise serializers.ValidationError(str(exc))
+        except CustomReportError:
+            raise serializers.ValidationError("Invalid SQL query.")
         return value.strip()
