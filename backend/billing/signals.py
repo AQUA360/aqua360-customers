@@ -10,7 +10,8 @@ from dateutil.relativedelta import relativedelta
 import datetime
 import calendar
 from faker import Faker
-from billing.models import CommitmentDeposit, EstimatedBag, EstimatedBagMovement, Invoice, InvoiceLog, InvoiceSerie, InvoiceStatus, InvoiceType, Payment, PaymentCommitment, PaymentCommitmentStatus, PaymentStatus, Reading
+from billing.models import Billing, ReadingBatch, CommitmentDeposit, EstimatedBag, EstimatedBagMovement, Invoice, InvoiceLog, InvoiceSerie, InvoiceStatus, InvoiceType, Payment, PaymentCommitment, PaymentCommitmentStatus, PaymentStatus, Reading
+from billing.utils.metrics_snapshot_service import sync_billing_snapshot, sync_reading_batch_snapshot
 from billing.utils.commitment_deposit_service import update_deposit, wallet_payment_deposit_update
 from billing.utils.payment_service import *
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, VulnerabilityRequest, VulnerabilityRequestStatus
@@ -707,3 +708,18 @@ def reading_estimated_bag_fix(sender, instance, **kwargs):
                 estimated_movement.delete()
         except Exception as e:
             print(e)
+
+@receiver(post_save, sender=ReadingBatch)
+def reading_batch_metrics_snapshot(sender, instance, update_fields=None, **kwargs):
+    """Fixa (o esborra en reobrir) els comptadors del lot quan canvia d'estat."""
+    if update_fields is not None and 'status' not in update_fields:
+        return
+    sync_reading_batch_snapshot(instance)
+
+
+@receiver(post_save, sender=Billing)
+def billing_metrics_snapshot(sender, instance, update_fields=None, **kwargs):
+    """Fixa (o esborra en reobrir) el resum per ruta de la facturació quan canvia d'estat."""
+    if update_fields is not None and 'status' not in update_fields:
+        return
+    sync_billing_snapshot(instance)

@@ -10,6 +10,13 @@ class BillingStatusSerializer(serializers.ModelSerializer):
         model = BillingStatus
         fields = '__all__'
 
+def pop_metrics_snapshot(representation):
+    """El resum fixat només el serveix BillingRoutesView; aquí només la data de tancament."""
+    snapshot = representation.pop('metrics_snapshot', None) or {}
+    representation['metrics_frozen_at'] = snapshot.get('frozen_at')
+    return representation
+
+
 class BillingListSerializer(serializers.ModelSerializer):
     status = BillingStatusSerializer(read_only=True, required=False, allow_null=True)
     send_at = serializers.SerializerMethodField()
@@ -17,6 +24,10 @@ class BillingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Billing
         fields = '__all__'
+        read_only_fields = ['metrics_snapshot']
+
+    def to_representation(self, instance):
+        return pop_metrics_snapshot(super().to_representation(instance))
         
     def get_send_at(self, obj):
         if hasattr(obj, 'effective_send_at'):
@@ -39,6 +50,7 @@ class BillingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Billing
         fields = '__all__'
+        read_only_fields = ['metrics_snapshot']
 
     def validate_token(self, value):
         # Evita codis duplicats també en editar (a la creació ja ho valida
@@ -57,7 +69,7 @@ class BillingSerializer(serializers.ModelSerializer):
         return value
 
     def to_representation(self, instance):
-        representation = super().to_representation(instance)
+        representation = pop_metrics_snapshot(super().to_representation(instance))
         representation['missing_batch'] = ReadingBatchMinimalSerializer(instance.missing_batch.all(), many=True).data if instance.missing_batch.all() else None
         return representation
     

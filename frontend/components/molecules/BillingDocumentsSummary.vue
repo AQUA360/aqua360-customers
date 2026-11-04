@@ -80,6 +80,7 @@ const regeneratePdfs = async () => {
         if (status.state === 'SUCCESS') {
           regenPdfProgress.value = 100;
           clearInterval(regenPdfItvl);
+          loadMultiPageInvoices();
         } else if (status.state === 'FAILURE') {
           regenPdfError.value = true;
           clearInterval(regenPdfItvl);
@@ -159,6 +160,7 @@ const startPdfPolling = () => {
 
     if (allFinished || pdfError.value) {
       clearInterval(pdfItvl.value);
+      loadMultiPageInvoices();
     }
   }, 2000);
 };
@@ -179,6 +181,10 @@ const exportingInvoices = ref(false)
 const sortBy = ref('total_final')
 const sortDesc = ref(false)
 const filterPossibleLeakComm = ref(false)
+const filterMultiPage = ref(false)
+const multiPageFilter = computed(() => (filterMultiPage.value ? 'multi_page=true' : null))
+// Factures amb el PDF de 2 o més pàgines (null fins que es carrega).
+const multiPageInvoices = ref(null)
 
 const showInvoices = ref([])
 
@@ -215,7 +221,7 @@ const getData = async (query = null, page = 1) => {
     }
     console.log("sortBy.value", sortBy.value)
     console.log("sortDesc.value", sortDesc.value)
-    const result = await $InvoiceApiService.getBatchInvoices(props.billing_id, query, page, null, sortBy.value, sortDesc.value, filterPossibleLeakComm.value);
+    const result = await $InvoiceApiService.getBatchInvoices(props.billing_id, query, page, multiPageFilter.value, sortBy.value, sortDesc.value, filterPossibleLeakComm.value);
 
     if (page === 1) {
       showInvoices.value = result.results; // Replace data on initial load
@@ -268,7 +274,18 @@ const getInfoMissingContracts = async (reload = false) => {
   }
 }
 
-const openDetail = (component) => {
+const loadMultiPageInvoices = async () => {
+  if (!props.billing_id) return;
+  try {
+    const res = await $InvoiceApiService.getBatchInvoicesSummary(props.billing_id);
+    multiPageInvoices.value = res?.multi_page_invoices ?? null;
+  } catch (e) {
+    console.error("Error loading multi-page invoices:", e);
+  }
+};
+
+const openDetail = (component, onlyMultiPage = false) => {
+  filterMultiPage.value = onlyMultiPage;
   getData(searchInput.value, 1)
   showRegion.value = true;
   showRegionComponent.value = component;
@@ -342,6 +359,7 @@ const loadData = async () => {
     counters.value = res.counters;
   }
   updateCards.value = !updateCards.value
+  loadMultiPageInvoices();
 
   if (counters.value) {
     progress.value = 100;
@@ -459,6 +477,12 @@ const sortInvoicesBy = (field) => {
   getData(searchInput.value, 1)
 }
 
+const toggleMultiPageFilter = () => {
+  filterMultiPage.value = !filterMultiPage.value;
+  pagination.value.page = 1;
+  getData(searchInput.value, 1)
+}
+
 const togglePossibleLeakCommFilter = () => {
   filterPossibleLeakComm.value = !filterPossibleLeakComm.value;
   pagination.value.page = 1;
@@ -506,7 +530,7 @@ const fetchAllInvoices = async () => {
       props.billing_id,
       searchInput.value,
       page,
-      null,
+      multiPageFilter.value,
       sortBy.value,
       sortDesc.value,
       filterPossibleLeakComm.value
@@ -652,6 +676,17 @@ watch(() => props.load_invoices, (newValue) => {
               class="inline-flex items-center bg-sky-300 text-slate-700 text-sm rounded-full px-2 py-1 ml-2 mr-5">{{
                 `${numDocuments} / ${totalQueueItems}` }}</span>
           </li>
+          <li v-if="multiPageInvoices !== null" class="flex justify-between items-center py-4 relative group">
+            <span class="font-bold" :title="t('billing_block.multi_page_invoices_help')">{{ t('billing_block.multi_page_invoices') }}:</span>
+            <span
+              class="inline-flex items-center text-slate-700 text-sm rounded-full px-2 py-1 ml-2 mr-5"
+              :class="multiPageInvoices > 0 ? 'bg-amber-300' : 'bg-slate-200'">{{ multiPageInvoices }}</span>
+            <div v-if="multiPageInvoices > 0"
+              class="w-10 cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-150 bg-gradient-to-r from-transparent to-slate-300 h-full absolute top-0 right-0 flex items-center justify-center"
+              @click="openDetail('BillingSummary', true)">
+              <Icon name="fa6-solid:eye" class="w-4 h-4 text-slate-500" />
+            </div>
+          </li>
           <li v-if="!loadingBilling && billing">
             <div v-if="!billing.communication_process" class="flex justify-between items-center py-4 relative group">
               <span class="font-bold">{{ t('customer_service_block.generate_comms_process') }}</span>
@@ -747,7 +782,16 @@ watch(() => props.load_invoices, (newValue) => {
             <span class="ml-1">{{ exportingInvoices ? `${t('common.loading')}...` : `${t('common.download')} XLSX` }}</span>
           </button>
         </div>
-        <div class="my-2">
+        <div class="my-2 flex flex-wrap gap-2">
+          <button type="button" @click="toggleMultiPageFilter"
+            class="inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium transition-colors"
+            :class="filterMultiPage
+              ? 'border-amber-400 bg-amber-100 text-amber-800'
+              : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'">
+            <input type="checkbox" :checked="filterMultiPage" tabindex="-1"
+              class="pointer-events-none w-3.5 h-3.5 rounded border-amber-300 text-amber-500 focus:ring-0" />
+            {{ t('billing_block.multi_page_invoices') }}
+          </button>
           <button type="button" @click="togglePossibleLeakCommFilter"
             class="inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium transition-colors"
             :class="filterPossibleLeakComm

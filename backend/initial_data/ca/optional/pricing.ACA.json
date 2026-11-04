@@ -2258,11 +2258,11 @@
       "name": "FACTURA ACA",
       "quantity": {
         "url": "",
-        "label": "Variable: Factura ACA (char)",
-        "value": "variable.ACA-TRAM"
+        "label": "Variable: Factura ACA (int)",
+        "value": "variable.Factura-ACA"
       },
-      "operation": "is_true",
-      "formula": null,
+      "operation": "ge",
+      "formula": "1",
       "position": null
     }
   },

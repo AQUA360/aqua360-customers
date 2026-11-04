@@ -191,7 +191,11 @@ class BillingInvoicesSummaryViewSet(views.APIView):
             counters['date_range_median'] = median
             counters['date_range_above_margin_count'] = count_above_margin
             
-            return Response({'counters': counters}, status=status.HTTP_200_OK)
+            # Fora de `counters`: el pas d'avisos els suma tots com a avisos, i aquest
+            # només té sentit un cop generats els PDF definitius.
+            multi_page_invoices = invoices.filter(is_excluded=False, is_active=True, pdf_page_count__gt=1).count()
+
+            return Response({'counters': counters, 'multi_page_invoices': multi_page_invoices}, status=status.HTTP_200_OK)
         
         except Exception as e:
             logger.exception("Error inesperat")

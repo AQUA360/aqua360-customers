@@ -40,10 +40,21 @@ class CommunicationSerializer(serializers.ModelSerializer):
     invoices = serializers.SerializerMethodField()
     readings = serializers.SerializerMethodField()
     contracts = serializers.SerializerMethodField()
+    multi_page_invoices = serializers.SerializerMethodField()
     
     class Meta:
         model = Communication
         fields = '__all__'
+
+    def get_multi_page_invoices(self, obj):
+        """Codis de les factures de la comunicació el PDF de les quals ocupa més d'una pàgina."""
+        from django.db.models import Q
+        from billing.models import Invoice
+        invoices = Invoice.objects.filter(
+            Q(communications=obj) | Q(files__communication=obj, files__is_active=True),
+            pdf_page_count__gt=1,
+        ).distinct().order_by('serie_final', 'id')
+        return [invoice.serie_final or invoice.token for invoice in invoices]
     
     def get_invoices(self, obj):
         from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
@@ -78,6 +89,7 @@ class CommunicationListSerializer(serializers.ModelSerializer):
     process_message_ids = serializers.SerializerMethodField()
     message_ids = serializers.SerializerMethodField()
     message_subject = serializers.SerializerMethodField()
+    has_multi_page_invoice = serializers.SerializerMethodField()
     class Meta:
         model = Communication
         fields = [
@@ -85,8 +97,16 @@ class CommunicationListSerializer(serializers.ModelSerializer):
             'user', 'user_username', 'person_name', 'status_name', 
             'status_color', 'process_token', 'type_names', 'person_token',
             'use_type_name', 'process_message_ids', 'message_ids',
-            'used_email', 'due_date', 'message_subject'
+            'used_email', 'due_date', 'message_subject', 'has_multi_page_invoice'
             ]
+
+    def get_has_multi_page_invoice(self, obj):
+        # El llistat ja ho anota; si no, es consulta.
+        annotated = getattr(obj, 'has_multi_page_invoice', None)
+        if annotated is not None:
+            return annotated
+        from communication.filters.communication_filter import multi_page_invoice_exists
+        return Communication.objects.filter(pk=obj.pk).filter(multi_page_invoice_exists()).exists()
     
     def get_message_subject(self, obj):
         return obj.messages.first().subject if obj.messages.first() else None

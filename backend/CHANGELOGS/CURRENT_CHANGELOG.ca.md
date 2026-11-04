@@ -5,6 +5,9 @@
 #### BILLING (`billing/views/payment_view.py` — segona devolució d'un rebut tornat a presentar el mateix dia de la primera)
     - En carregar un fitxer de devolucions, un retorn ja registrat només impedeix el nou si és POSTERIOR al cobrament per domiciliació que es retorna (per data i, el mateix dia, per ordre de registre). Abans es comparava només la data: si el rebut s'havia tornat a presentar el mateix dia de la primera devolució i tornava amb el mateix motiu, la segona devolució es descartava sense cap avís i el rebut quedava pagat.
     - Tornar a carregar el mateix fitxer continua sense duplicar la devolució. Tests a `billing/tests/test_return_after_payment_method_change.py`.
+#### PRICING (`initial_data/ca/optional/pricing.ACA.json` — condició «FACTURA ACA» del cànon domèstic L2-2023)
+    - La condició 9003001 del corrector `ACA/D/PV/FACTURA-ACA-DIRECTAMENT/L2-2023` deia «Variable: Factura ACA (char)» però avaluava `variable.ACA-TRAM` (ampliació de trams per família nombrosa): un contracte amb ampliació de trams refacturat en un període 2023–2025 quedava amb el cànon a 0 (i el mínim el pujava a 18 m³). Ara avalua `variable.Factura-ACA` ≥ 1, igual que totes les altres condicions «factura ACA directament» del paquet.
+    - Les instal·lacions que ja tenien el paquet carregat s'han corregit a part, a la base de dades (mateixa condició, mateix valor).
 
 ## [23-10-2026]
 ### FEAT

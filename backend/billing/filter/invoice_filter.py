@@ -79,6 +79,7 @@ class InvoiceFilter(filters.FilterSet):
     person = filters.CharFilter(field_name='person__id', lookup_expr='exact')
     line_item = filters.CharFilter(method='filter_line_item')
     invoice_kinds = filters.CharFilter(method='filter_invoice_kinds')
+    multi_page = filters.BooleanFilter(method='filter_multi_page')
     
     class Meta:
         model = Invoice
@@ -96,6 +97,7 @@ class InvoiceFilter(filters.FilterSet):
             'line_item',
             'person',
             'invoice_kinds',
+            'multi_page',
         ]
 
     def filter_search(self, queryset, name, value):
@@ -259,6 +261,14 @@ class InvoiceFilter(filters.FilterSet):
                 ).distinct()
         return queryset.distinct()
     
+    def filter_multi_page(self, queryset, name, value):
+        # Factures el PDF de les quals ocupa més d'una pàgina (o, amb false, la resta).
+        if value is True:
+            return queryset.filter(pdf_page_count__gt=1)
+        if value is False:
+            return queryset.exclude(pdf_page_count__gt=1)
+        return queryset
+
     def filter_contract_null(self, queryset, name, value):
         if value is True:
             return queryset.filter(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True).distinct()
