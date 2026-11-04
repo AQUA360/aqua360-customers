@@ -29,7 +29,24 @@ from billing.utils.message_service import invoice_add_messages
 from verifactu.utils.notify_verifactu_service import notify_cancelled_invoices
 from billing.serializers.billing_serializer import BillingListSerializer
 
-class InvoiceSerializer(serializers.ModelSerializer):
+
+class PdfPageCountMixin:
+    """El nombre de pàgines només el desa qui genera el PDF.
+
+    Si l'API canvia el document de la factura, el recompte anterior deixa de valer.
+    """
+
+    def to_internal_value(self, data):
+        validated_data = super().to_internal_value(data)
+        validated_data.pop('pdf_page_count', None)
+        instance = getattr(self, 'instance', None)
+        if instance is not None and 'invoice_file' in validated_data \
+                and validated_data['invoice_file'] != instance.invoice_file:
+            validated_data['pdf_page_count'] = None
+        return validated_data
+
+
+class InvoiceSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     line_items = InvoiceLineItemSerializer(many=True, read_only=True, required=False, allow_null=True)
     type = InvoiceTypeSerializer(read_only=True, required=False, allow_null=True)
     serie = InvoiceSerieSerializer(read_only=True, required=False, allow_null=True)
@@ -305,12 +322,12 @@ class InvoiceMinimalListSerializer(serializers.ModelSerializer):
         return any([reading.communication_processes.exclude(status__token=cancelled_token).exists() for reading in obj.readings.filter(is_control=False)])
         # return obj.readings.filter(is_control=False).communication_processes.exclude(status__token=cancelled_token).exists()
         
-class InvoiceSaveSerializer(serializers.ModelSerializer):
+class InvoiceSaveSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = '__all__'
 
-class InvoiceFullSerializer(serializers.ModelSerializer):
+class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     line_items = InvoiceLineItemSerializer(many=True, read_only=True, required=False, allow_null=True)
     contract = ContractMinimalSerializer(read_only=True, required=False, allow_null=True)
     contract_request = ContractRequestMinimalSerializer(read_only=True, required=False, allow_null=True)

@@ -16,7 +16,7 @@ from billing.models import Invoice, InvoiceTemplate
 from billing.signals import check_paid_invoice, create_payment_invoice
 from billing.utils.barcode_service import generate_barcode, get_barcode_values
 from billing.utils.invoice_service import get_totals, reading_has_blocking_invoices
-from billing.utils.pdf_overlap import client_info_overlaps_header
+from billing.utils.pdf_overlap import client_info_overlaps_header, count_pdf_pages
 from billing.utils.message_service import invoice_add_messages
 from contract.models import Contract, ContractRequest, ContractTerminationRequest
 from faker import Faker
@@ -695,6 +695,7 @@ def generate(context, invoice, exploitation, temporary=False):
             old_document = invoice.invoice_file
             document_file = upload_document(ContentFile(signed_pdf_buffer.getvalue()), 'FACTURES', 'FACTURA', invoice.id, invoice.customer_token_final, '', service, pdf_filename)
             invoice.invoice_file = document_file
+        invoice.pdf_page_count = count_pdf_pages(pdf_buffer)
         invoice._skip_pdf_generation = True
         invoice.save()
         discard_unused_invoice_pdf_document(old_document)

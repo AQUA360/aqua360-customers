@@ -39,6 +39,12 @@ const deliveryLabel = (value) => ({
   email: t('billing_block.download_delivery_email'),
 }[value] || value);
 
+const pagesLabel = (value) => ({
+  all: t('billing_block.download_pages_all'),
+  single: t('billing_block.download_pages_single'),
+  multiple: t('billing_block.download_pages_multiple'),
+}[value || 'all'] || value);
+
 const paymentLabel = (tokens) => {
   if (!tokens?.length) return t('billing_block.download_delivery_all');
   return tokens.map(token => paymentTypes.value.find(item => item.token === token)?.label || token).join(', ');
@@ -179,6 +185,7 @@ onBeforeUnmount(() => {
               <th class="p-3 font-medium">{{ t('billing_block.download_requested_by') }}</th>
               <th class="p-3 font-medium">{{ t('billing_block.download_payment_types') }}</th>
               <th class="p-3 font-medium">{{ t('billing_block.download_delivery') }}</th>
+              <th class="p-3 font-medium">{{ t('billing_block.download_pages') }}</th>
               <th class="p-3 font-medium">{{ t('billing_block.download_ordering') }}</th>
                 <th class="p-3 font-medium">{{ t('billing_block.download_document_count') }}</th>
                 <th class="p-3 font-medium">{{ t('billing_block.download_batch') }}</th>
@@ -193,6 +200,7 @@ onBeforeUnmount(() => {
               <td class="p-3">{{ item.requested_by_name || '—' }}</td>
               <td class="p-3">{{ paymentLabel(item.payment_type_tokens) }}</td>
               <td class="p-3">{{ item.source === 'process' ? deliveryLabel(item.delivery) : '—' }}</td>
+              <td class="p-3">{{ pagesLabel(item.pages) }}</td>
               <td class="p-3">
                 {{ orderLabel(item.ordering) }}
                 <span class="text-slate-400">({{ item.descending ? t('billing_block.download_order_desc') : t('billing_block.download_order_asc') }})</span>

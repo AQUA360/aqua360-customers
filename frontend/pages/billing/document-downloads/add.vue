@@ -32,6 +32,7 @@ const selectedPaymentTypes = ref([]);
 const delivery = ref('all');
 const ordering = ref('contact_address');
 const descending = ref(false);
+const pages = ref('all');
 const batchMode = ref('none');
 const batchSize = ref(null);
 const previewCount = ref(null);
@@ -69,6 +70,7 @@ const payload = () => {
     delivery: source.value === 'process' ? delivery.value : 'all',
     ordering: ordering.value,
     descending: descending.value,
+    pages: pages.value,
   };
   if (batchMode.value !== 'none' && Number(batchSize.value) >= 1) {
     data.batch_mode = batchMode.value;
@@ -218,7 +220,7 @@ watch(batchMode, (mode) => {
 });
 
 watch(
-  [source, selectedBillings, selectedProcesses, selectedPaymentTypes, delivery, ordering, descending, batchMode, batchSize],
+  [source, selectedBillings, selectedProcesses, selectedPaymentTypes, delivery, ordering, descending, pages, batchMode, batchSize],
   schedulePreview,
   { deep: true },
 );
@@ -346,6 +348,25 @@ onBeforeUnmount(() => {
           <div v-if="delivery === 'postal'" class="mt-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             {{ t('billing_block.download_postal_mark_sent') }}
           </div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="text-sm font-medium text-slate-700 mb-2">{{ t('billing_block.download_pages') }}</legend>
+          <div class="flex flex-wrap gap-4">
+            <label class="inline-flex items-center gap-2">
+              <input type="radio" value="all" v-model="pages" />
+              {{ t('billing_block.download_pages_all') }}
+            </label>
+            <label class="inline-flex items-center gap-2">
+              <input type="radio" value="single" v-model="pages" />
+              {{ t('billing_block.download_pages_single') }}
+            </label>
+            <label class="inline-flex items-center gap-2">
+              <input type="radio" value="multiple" v-model="pages" />
+              {{ t('billing_block.download_pages_multiple') }}
+            </label>
+          </div>
+          <p class="mt-2 text-xs text-slate-500">{{ t('billing_block.download_pages_help') }}</p>
         </fieldset>
 
         <div class="grid gap-6 border-t border-slate-100 pt-5 lg:grid-cols-2">

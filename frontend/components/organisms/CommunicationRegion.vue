@@ -401,8 +401,12 @@ onMounted(async () => {
         </div>
 
         <div class="mb-5">
-          <span class="text-slate-500 font-bold my-2">
+          <span class="text-slate-500 font-bold my-2 inline-flex items-center gap-1.5">
             {{ t('invoices') }}
+            <span v-if="data.multi_page_invoices?.length" class="inline-flex cursor-help"
+              :title="`${t('billing_block.multi_page_communication_alert')} ${data.multi_page_invoices.join(', ')}`">
+              <Icon name="fa6-solid:circle-exclamation" class="w-3.5 h-3.5 text-amber-500" />
+            </span>
           </span>
           <div class="my-2 border-t border-slate-200">
             <InvoiceMiniDetail :item="data.invoices" @show-detail="showDetail" :isSubRegion="isSubRegion" />

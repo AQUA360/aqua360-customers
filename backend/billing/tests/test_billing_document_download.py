@@ -163,6 +163,23 @@ class BillingDocumentDownloadSelectionTests(TestCase):
         with self.assertRaises(DownloadOptionsError):
             parse_download_options({'batch_mode': 'count', 'batch_size': 0})
 
+    def test_filters_by_pdf_pages(self):
+        self.invoice('ONE', self.contract('C-1', 'PAPER'), pdf_page_count=1)
+        self.invoice('TWO', self.contract('C-2', 'PAPER'), pdf_page_count=2)
+        self.invoice('OLD', self.contract('C-3', 'PAPER'))
+
+        self.assertCountEqual(self.series(pages='all'), ['ONE', 'TWO', 'OLD'])
+        self.assertEqual(self.series(pages='multiple'), ['TWO'])
+        # Sense recompte (PDF anterior al camp) compta com d'una pàgina.
+        self.assertCountEqual(self.series(pages='single'), ['ONE', 'OLD'])
+
+    def test_parse_pages_option(self):
+        self.assertEqual(parse_download_options({})['pages'], 'all')
+        self.assertEqual(parse_download_options({'pages': 'multiple'})['pages'], 'multiple')
+        with self.assertRaises(DownloadOptionsError) as raised:
+            parse_download_options({'pages': 'three'})
+        self.assertEqual(raised.exception.field, 'pages')
+
     def test_channel_filter_requires_a_process(self):
         parsed = parse_download_request({
             'billing_ids': [self.billing.id, self.other_billing.id],
@@ -188,7 +205,7 @@ class ProcessDocumentDownloadSelectionTests(TestCase):
 
     def add_file(self, type_tokens, *, address, serie=None, payment='DIRECT_DEBIT',
                  attach_letter=True, attach_email=True, is_letter=False, contract_token=None,
-                 process=None):
+                 process=None, pages=None):
         communication = Communication.objects.create(
             process=process or self.process,
             type_tokens=type_tokens,
@@ -203,6 +220,7 @@ class ProcessDocumentDownloadSelectionTests(TestCase):
                 serie_final=serie,
                 token=serie,
                 payment_type_token_final=payment,
+                pdf_page_count=pages,
             )
             communication.invoices.add(invoice)
         document = Document.objects.create(entity_id=communication.id, service='hdd', document_name=serie or address)
@@ -239,6 +257,42 @@ class ProcessDocumentDownloadSelectionTests(TestCase):
             self.names(delivery='postal', payment_type_tokens=['CASH']),
             ['CASH', 'Casa 2'],
         )
+
+    def test_pages_filter_keeps_the_letter_with_its_invoice(self):
+        long_invoice = self.add_file('letter', address='Llarga', serie='LONG', pages=2)
+        letter = self.add_file('letter', address='Carta llarga', is_letter=True)
+        letter.communication.invoices.add(long_invoice.invoice)
+        self.add_file('letter', address='Curta', serie='SHORT', pages=1)
+
+        self.assertCountEqual(self.names(pages='multiple'), ['LONG', 'Carta llarga'])
+        self.assertCountEqual(self.names(pages='single'), ['SHORT'])
+        self.assertCountEqual(self.names(), ['LONG', 'Carta llarga', 'SHORT'])
+
+    def test_communications_show_multi_page_invoices(self):
+        from communication.filters.communication_filter import CommunicationFilter
+        from communication.serializers.communication_process_serializer import CommunicationProcessSerializer
+
+        long_file = self.add_file('letter', address='Llarga', serie='LONG', pages=2)
+        letter = self.add_file('letter', address='Carta llarga', is_letter=True)
+        letter.communication.invoices.add(long_file.invoice)
+        short_file = self.add_file('letter', address='Curta', serie='SHORT', pages=1)
+        queryset = Communication.objects.filter(process=self.process)
+
+        def ids(value):
+            return set(CommunicationFilter({'multi_page': value}, queryset=queryset).qs.values_list('id', flat=True))
+
+        self.assertEqual(ids('true'), {long_file.communication_id, letter.communication_id})
+        self.assertEqual(ids('false'), {short_file.communication_id})
+        self.assertEqual(CommunicationProcessSerializer().get_multi_page_communications(self.process), 2)
+
+        from communication.serializers.communication_serializer import CommunicationSerializer
+        self.assertEqual(CommunicationSerializer().get_multi_page_invoices(letter.communication), ['LONG'])
+        self.assertEqual(CommunicationSerializer().get_multi_page_invoices(short_file.communication), [])
+
+        # El recompte del procés té el mateix àmbit que la descàrrega
+        Communication.objects.filter(pk=long_file.communication_id).update(is_active=False)
+        self.assertEqual(CommunicationProcessSerializer().get_multi_page_communications(self.process), 2)
+        self.assertIn(long_file.id, [f.id for f in ordered_process_files(self.process.id, pages='multiple')])
 
     def test_orders_process_files_by_address_and_contract(self):
         self.add_file('letter', address='Carrer B', serie='F-2', contract_token='C-2')
@@ -490,3 +544,61 @@ class BillingDocumentDownloadApiTests(TestCase):
         client.force_authenticate(user=stranger)
         self.assertEqual(client.get(self.url).status_code, 403)
         self.assertEqual(APIClient().get(self.url).status_code, 401)
+
+
+class InvoicePdfPageCountTests(SimpleTestCase):
+    def pdf(self, pages):
+        import fitz
+        from io import BytesIO
+        doc = fitz.open()
+        for _ in range(pages):
+            doc.new_page()
+        buffer = BytesIO(doc.tobytes())
+        doc.close()
+        return buffer
+
+    def test_counts_pages_and_tolerates_invalid_pdfs(self):
+        from io import BytesIO
+        from billing.utils.pdf_overlap import count_pdf_pages
+
+        self.assertEqual(count_pdf_pages(self.pdf(1)), 1)
+        self.assertEqual(count_pdf_pages(self.pdf(2)), 2)
+        self.assertIsNone(count_pdf_pages(BytesIO(b'no es un pdf')))
+
+
+class InvoiceMultiPageFilterTests(TestCase):
+    def test_api_cannot_write_page_count_and_new_file_resets_it(self):
+        from billing.serializers.invoice_serializer import InvoiceSaveSerializer
+
+        seed_configs()
+        old_doc = Document.objects.create(entity_id=1, service='hdd', document_name='vell')
+        new_doc = Document.objects.create(entity_id=1, service='hdd', document_name='nou')
+        invoice = Invoice.objects.create(token='API', invoice_file=old_doc, pdf_page_count=2)
+
+        serializer = InvoiceSaveSerializer(invoice, data={'pdf_page_count': 1}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.pdf_page_count, 2)
+
+        serializer = InvoiceSaveSerializer(invoice, data={'invoice_file': new_doc.id}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        invoice.refresh_from_db()
+        self.assertIsNone(invoice.pdf_page_count)
+
+    def test_multi_page_filter(self):
+        from billing.filter.invoice_filter import InvoiceFilter
+
+        seed_configs()
+        billing = Billing.objects.create(token='FAC-M')
+        Invoice.objects.create(billing=billing, token='ONE', pdf_page_count=1)
+        Invoice.objects.create(billing=billing, token='TWO', pdf_page_count=2)
+        Invoice.objects.create(billing=billing, token='OLD')
+        queryset = Invoice.objects.filter(billing=billing)
+
+        def tokens(value):
+            return sorted(InvoiceFilter({'multi_page': value}, queryset=queryset).qs.values_list('token', flat=True))
+
+        self.assertEqual(tokens('true'), ['TWO'])
+        self.assertEqual(tokens('false'), ['OLD', 'ONE'])
