@@ -4586,6 +4586,7 @@ def generate_billing_document_download(self, download_id):
       payment_type_tokens=record.payment_type_tokens,
       ordering=record.ordering,
       descending=record.descending,
+      pages=record.pages,
     )
     process_ids = list(record.communication_processes.values_list('id', flat=True))
     if not process_ids and record.communication_process_id:

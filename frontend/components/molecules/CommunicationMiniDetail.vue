@@ -48,6 +48,8 @@ const statuses = ref([]);
 const filter_types = ref([]);
 const types = ref([]);
 const selected_types = ref([]);
+// Només comunicacions amb alguna factura de 2 pàgines o més (per imprimir-les a part).
+const onlyMultiPage = ref(false);
 
 const showDetail = function (component, id) {
   selectedId.value = id
@@ -117,7 +119,7 @@ const getData = async (skip_clear = false, targetPage = pagination.value.page) =
     const result = await $CommunicationApiService.getAll(
       searchQuery.value, [statuses.value], targetPage, null,
       false, props.id, props.person_ids, null,
-      [types.value], props.contract_id
+      [types.value], props.contract_id, null, false, onlyMultiPage.value
     );
 
     if (skip_clear) localData.value = [];
@@ -202,6 +204,8 @@ const exportCommunications = (columns) => $CommunicationApiService.exportData(
   props.contract_id,
   null,
   columns,
+  false,
+  onlyMultiPage.value,
 );
 
 const resetFilters = () => {
@@ -210,6 +214,13 @@ const resetFilters = () => {
   statuses.value = [];
   types.value = [];
   selected_types.value = [];
+  onlyMultiPage.value = false;
+  pagination.value.page = 1;
+  getData();
+}
+
+const toggleMultiPage = () => {
+  onlyMultiPage.value = !onlyMultiPage.value;
   pagination.value.page = 1;
   getData();
 }
@@ -256,6 +267,16 @@ watch(() => props.item, (newVal) => {
             <Icon name="fa6-solid:ruler-combined" class="text-md ml-2 mr-1" size="10px" />
           </template>
         </FilterSelect>
+
+        <button v-if="props.id" type="button" @click="toggleMultiPage"
+          class="inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium transition-colors"
+          :class="onlyMultiPage
+            ? 'border-amber-400 bg-amber-100 text-amber-800'
+            : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'">
+          <input type="checkbox" :checked="onlyMultiPage" tabindex="-1"
+            class="pointer-events-none w-3.5 h-3.5 rounded border-amber-300 text-amber-500 focus:ring-0" />
+          {{ t('billing_block.multi_page_invoices') }}
+        </button>
 
         <FilterSelect :options="filter_types" :filters="selected_types" :multiple="false"
           :placeholder="t(`common.type`)" @update:modelValue="handleTypeChange($event)">
@@ -308,6 +329,10 @@ watch(() => props.item, (newVal) => {
               class="text-start text-sky-500 underline">{{ item.token }}</button>
             <span v-else>{{ item.token }}</span>
             <AtomsRedirectButton :id="item.id" :path="'/communication/communications/'" />
+            <span v-if="item.has_multi_page_invoice" class="inline-flex shrink-0 cursor-help"
+              :title="t('billing_block.multi_page_invoices_help')" :aria-label="t('billing_block.multi_page_badge')">
+              <Icon name="fa6-solid:circle-exclamation" class="w-3.5 h-3.5 text-amber-500" />
+            </span>
           </div>
 
           <div v-if="!props.person_ids || props.person_ids.length == 0" class="footering text-slate-500 p-2 w-full">
