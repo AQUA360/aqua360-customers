@@ -841,6 +841,8 @@ class Invoice(models.Model):
     budget_comment = models.TextField(null=True, blank=True)
     
     warning = models.ForeignKey(InvoiceWarning, on_delete=models.SET_NULL, null=True, blank=True)
+    # Pàgines del darrer PDF desat. Buit si encara no s'ha generat amb aquest camp.
+    pdf_page_count = models.PositiveSmallIntegerField(null=True, blank=True)
     
     manually_modified = models.BooleanField(default=False)
     
@@ -1327,6 +1329,15 @@ class BillingDocumentDownload(models.Model):
         (ORDER_INVOICE_CODE, 'Invoice code'),
     ]
 
+    PAGES_ALL = 'all'
+    PAGES_SINGLE = 'single'
+    PAGES_MULTIPLE = 'multiple'
+    PAGES_CHOICES = [
+        (PAGES_ALL, 'All'),
+        (PAGES_SINGLE, 'Single page'),
+        (PAGES_MULTIPLE, 'Two or more pages'),
+    ]
+
     BATCH_NONE = 'none'
     BATCH_COUNT = 'count'
     BATCH_SIZE = 'size'
@@ -1362,6 +1373,7 @@ class BillingDocumentDownload(models.Model):
     delivery = models.CharField(max_length=20, choices=DELIVERY_CHOICES, default=DELIVERY_ALL)
     ordering = models.CharField(max_length=40, choices=ORDER_CHOICES, default=ORDER_CONTACT_ADDRESS)
     descending = models.BooleanField(default=False)
+    pages = models.CharField(max_length=20, choices=PAGES_CHOICES, default=PAGES_ALL)
     batch_mode = models.CharField(max_length=20, choices=BATCH_CHOICES, default=BATCH_NONE)
     batch_size = models.PositiveIntegerField(null=True, blank=True)
     batch_count = models.PositiveIntegerField(null=True, blank=True)
