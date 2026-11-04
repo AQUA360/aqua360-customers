@@ -961,6 +961,7 @@ export default {
     deleted_correctly: 'Eliminado correctamente',
     billing_to_applicant: 'A cargo do solicitante',
     read_contracts_total_contracts: 'Contratos lidos / totais',
+    metrics_frozen_at: 'Valores fixados á data de peche: {date}',
     total_readings: 'Lecturas totais',
     total_supply_points: 'Puntos de subministración totais',
     min_length_error: 'Mínimo {min} caracteres requiridos',

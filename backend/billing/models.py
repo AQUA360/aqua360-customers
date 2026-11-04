@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.translation import gettext_lazy as _
 
 from coredata.models import ConfigProject, Person, PersonBank
@@ -331,6 +332,9 @@ class Billing(models.Model):
     
     send_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+
+    # Comptadors fixats en processar la facturació (resum per ruta); null mentre està oberta.
+    metrics_snapshot = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
     
     class Meta:
         verbose_name = "Billing"
@@ -494,6 +498,9 @@ class ReadingBatch(models.Model):
     missing_end = models.DateField(null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
+
+    # Comptadors (PS, contractes...) fixats en tancar el lot; null mentre està obert.
+    metrics_snapshot = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
     
     class Meta:
         verbose_name = "Reading Batch"

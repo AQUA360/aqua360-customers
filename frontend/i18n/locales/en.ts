@@ -961,6 +961,7 @@ export default {
     deleted_correctly: 'Deleted successfully',
     billing_to_applicant: 'Charged to applicant',
     read_contracts_total_contracts: 'Read / total contracts',
+    metrics_frozen_at: 'Values frozen at closing date: {date}',
     total_readings: 'Total readings',
     total_supply_points: 'Total supply points',
     min_length_error: 'Minimum {min} characters required',

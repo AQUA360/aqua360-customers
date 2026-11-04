@@ -970,6 +970,7 @@ export default {
     deleted_correctly: 'Eliminado correctamente',
     billing_to_applicant: 'A cargo del solicitante',
     read_contracts_total_contracts: 'Contratos leídos / totales',
+    metrics_frozen_at: 'Valores fijados a fecha de cierre: {date}',
     total_readings: 'Lecturas totales',
     total_supply_points: 'Puntos de suministro totales',
     min_length_error: 'Mínimo {min} caracteres requeridos',

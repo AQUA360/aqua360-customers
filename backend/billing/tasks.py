@@ -2919,6 +2919,11 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
             is_active=True
         ).distinct()
   batches.update(status=reading_batch_billed)
+  # update() no dispara post_save: fixar els comptadors dels lots que encara no en tenen
+  from billing.utils.metrics_snapshot_service import reading_batch_closed_status_tokens, sync_reading_batch_snapshot
+  closed_tokens = reading_batch_closed_status_tokens()
+  for batch in ReadingBatch.objects.filter(id__in=batches.values('id'), metrics_snapshot__isnull=True).select_related('status'):
+    sync_reading_batch_snapshot(batch, closed_tokens)
   
   with translation.override(settings.LANGUAGE_CODE):
     notification_save = {
@@ -4284,6 +4289,10 @@ def _sync_billing_status_after_queue_action(queue_item, action, previous_status)
     return
 
   Billing.objects.filter(id=billing.id).update(status=BillingStatus.objects.get(token=target_token))
+  # update() no dispara post_save
+  from billing.utils.metrics_snapshot_service import sync_billing_snapshot
+  billing.refresh_from_db(fields=['status', 'metrics_snapshot'])
+  sync_billing_snapshot(billing)
 
 
 def apply_billing_queue_action(queue_item, action):
