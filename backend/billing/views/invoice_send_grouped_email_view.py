@@ -54,7 +54,13 @@ class InvoiceSendGroupedEmailView(APIView):
 
     def post(self, request, *args, **kwargs):
         # 1. Validar el destinatari
-        raw_email = (request.data.get('email') or '').strip()
+        raw_email = request.data.get('email') or ''
+        if not isinstance(raw_email, str):
+            return Response(
+                {"error": "El camp 'email' ha de ser un text."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        raw_email = raw_email.strip()
         if not raw_email:
             return Response(
                 {"error": "El camp 'email' és obligatori."},
@@ -87,7 +93,7 @@ class InvoiceSendGroupedEmailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        invoices_by_id = {inv.id: inv for inv in Invoice.objects.filter(id__in=invoice_ids)}
+        invoices_by_id = {inv.id: inv for inv in Invoice.objects.filter(id__in=invoice_ids).select_related('invoice_file')}
         missing = [i for i in invoice_ids if i not in invoices_by_id]
         if missing:
             return Response(
@@ -100,11 +106,12 @@ class InvoiceSendGroupedEmailView(APIView):
         without_pdf = [
             (inv.serie_final or inv.token or str(inv.id))
             for inv in invoices
-            if not inv.invoice_file
+            # send_electronic_mail no adjunta els documents desactivats
+            if not inv.invoice_file or not inv.invoice_file.is_active
         ]
         if without_pdf:
             return Response(
-                {"error": f"Aquestes factures no tenen PDF vinculat: {', '.join(without_pdf)}."},
+                {"error": f"Aquestes factures no tenen PDF vinculat o actiu: {', '.join(without_pdf)}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -113,6 +120,13 @@ class InvoiceSendGroupedEmailView(APIView):
         # 3. Resoldre la configuració de correu i el remitent (igual que send-email)
         company_config_id = request.data.get('company_config_id')
         if company_config_id:
+            try:
+                company_config_id = int(company_config_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"error": "'company_config_id' ha de ser un enter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             comm_config = CompanyConfig.objects.filter(id=company_config_id).first()
             if not comm_config:
                 return Response(

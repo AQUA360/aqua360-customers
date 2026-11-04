@@ -293,17 +293,28 @@ const getMessageTemplates = async () => {
   }
 };
 
+// Retorna false si la resposta s'ha descartat (canvi de factura o de
+// plantilla mentre es carregava)
 const loadTemplateContent = async (templateId) => {
   templateContent.value = null;
 
   if (!templateId) {
-    return;
+    return true;
   }
+
+  const invoiceId = currentInvoiceId.value;
 
   try {
     const result =
       await $MessageTemplateApiService
         .getMessageTypeTemplates(templateId);
+
+    if (
+      currentInvoiceId.value !== invoiceId ||
+      selectedTemplate.value !== templateId
+    ) {
+      return false;
+    }
 
     // No filtrem per is_active: la UI de plantilles no el gestiona i en
     // desar amb FormData DRF el posa a false (com fa la resta de
@@ -328,6 +339,8 @@ const loadTemplateContent = async (templateId) => {
   } catch (err) {
     console.error(err);
   }
+
+  return true;
 };
 
 // Omple l'assumpte i el cos amb la plantilla seleccionada
@@ -466,8 +479,9 @@ const initInvoice = async (invoice) => {
 const onLangChange = () => applyMessageContent();
 
 const onTemplateChange = async () => {
-  await loadTemplateContent(selectedTemplate.value);
-  applyMessageContent();
+  if (await loadTemplateContent(selectedTemplate.value)) {
+    applyMessageContent();
+  }
 };
 
 // Esborrany per defecte d'una factura que no s'ha visitat

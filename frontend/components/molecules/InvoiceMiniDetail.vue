@@ -355,6 +355,29 @@ const onInvoiceSent = (invoiceId) => {
   closeSendModal();
 };
 
+// «Enviar totes»: marquem les enviades i, si no en queda cap, tanquem
+const onInvoicesSent = (invoiceIds) => {
+  invoiceIds.forEach((id) => {
+    if (!sentInvoiceIds.value.includes(id)) {
+      sentInvoiceIds.value.push(id);
+    }
+  });
+
+  const pending = selectedInvoices.value.filter(
+    (inv) => !sentInvoiceIds.value.includes(inv.id)
+  );
+
+  if (pending.length) {
+    // Algun enviament ha fallat: ens quedem a la primera pendent
+    currentSendIndex.value = selectedInvoices.value.indexOf(pending[0]);
+    invoiceToSend.value = pending[0];
+    return;
+  }
+
+  selectedInvoiceIds.value = [];
+  closeSendModal();
+};
+
 // ---------------------------------------------------------
 // PAYMENTS
 // ---------------------------------------------------------
