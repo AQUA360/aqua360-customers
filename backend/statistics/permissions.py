@@ -25,3 +25,19 @@ class ReportViewPermission(permissions.BasePermission):
         billing_view_permission = request.user.has_perm('billing.view_billing')
         
         return order_view_permission or payment_view_permission or billing_view_permission
+
+class CustomReportPermission(permissions.BasePermission):
+    """Informes personalitzats (explorer.Query).
+
+    - Consultar i executar informes desats: `explorer.view_query`.
+    - Crear, editar, esborrar, executar SQL lliure i veure l'esquema: `explorer.change_query`.
+    """
+
+    VIEW_ACTIONS = ('list', 'retrieve', 'run', 'export', 'status')
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if getattr(view, 'action', None) in self.VIEW_ACTIONS:
+            return request.user.has_perm('explorer.view_query') or request.user.has_perm('explorer.change_query')
+        return request.user.has_perm('explorer.change_query')
