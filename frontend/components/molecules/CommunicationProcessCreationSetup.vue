@@ -39,6 +39,7 @@ const showNoPersonsWarning = ref(false)
 const firstWarning = ref(true)
 const attachInvoices = ref(false)
 const attachReadings = ref(false)
+const invoiceEmailDelivery = ref(null)
 
 const filteringTaskId = ref(null)
 
@@ -96,7 +97,7 @@ const refreshData = async () => {
         showNoPersonsWarning.value = response.result.persons.length === 0
         // Persones que no poden rebre cap dels canals triats, amb el motiu.
         emit('change-unreachable', response.result.excluded || [])
-        emit('change', persons_data.value, typeSelect.value, attachInvoices.value, attachReadings.value)
+        emit('change', persons_data.value, typeSelect.value, attachInvoices.value, attachReadings.value, invoiceEmailDelivery.value)
         filteringTaskId.value = null;
     } catch (error) {
         console.error(error)
@@ -148,6 +149,7 @@ const onFilterChange = async (newVal) => {
     filter_data.value = newVal
     attachInvoices.value = newVal.attach_invoices || false
     attachReadings.value = (newVal.attach_readings && newVal.attach_invoices) || false
+    invoiceEmailDelivery.value = (newVal.attach_invoices && newVal.invoice_email_delivery) || null
     // El filtre de talls arriba com a objectes, però el payload de save() espera
     // ids: es normalitzen aquí perquè el vincle es pugui llegir després del procés.
     const cuts = Array.isArray(newVal?.supply_cuts) ? newVal.supply_cuts : []

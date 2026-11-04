@@ -7,7 +7,7 @@ from billing.models import Invoice, Reading
 from billing.utils.aca_company_service import use_multiple_companies
 from billing.tasks import generate_and_upload_xml
 from claimrequest.tasks import generate_claim_document_pdf
-from communication.utils.communication_service import create_email_template, get_communication_file
+from communication.utils.communication_service import create_email_template, get_communication_file, invoices_attached_to_email
 from contract.models import Contract
 from coredata.models import ConfigProject, Person, PersonAddress
 from communication.models import Communication, CommunicationFile, CommunicationStatus, CommunicationProcess, MessageType, MessageTypeTemplate, MessageTemplate
@@ -23,7 +23,7 @@ from billing.views.epayment_document_generate_view import generate_xml
 from collections import defaultdict
 
 
-def create_comm_from_persons(user, persons, process, company_config, msg_name, msg_token, fixed_data, attach_letter, progress_recorder=None, progress_start=10, progress_end=40, message_template_id=None, attach_invoices=False, company_config_email=None, attach_readings = False, attach_reading_invoices=False, attach_claim_documents=True):
+def create_comm_from_persons(user, persons, process, company_config, msg_name, msg_token, fixed_data, attach_letter, progress_recorder=None, progress_start=10, progress_end=40, message_template_id=None, attach_invoices=False, company_config_email=None, attach_readings = False, attach_reading_invoices=False, attach_claim_documents=True, invoice_email_delivery=None):
     all_com_files_created = False
     created_files = []
     created_invoice_files = []
@@ -521,6 +521,14 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
 
                 invoice_com_files = []
                 electronic_invoice_com_files = []
+                # Amb l'enllaç a l'oficina virtual el PDF de la factura no s'adjunta al correu,
+                # però es vincula igualment (arxiu i carta). L'XML de la factura electrònica sí.
+                attach_invoices_to_email = {}
+                def _attach_invoice_to_email(comm):
+                    if comm.id not in attach_invoices_to_email:
+                        attach_invoices_to_email[comm.id] = invoices_attached_to_email(comm, invoice_email_delivery)
+                    return attach_invoices_to_email[comm.id]
+
                 if (fixed_data and fixed_data == 'billing') or attach_invoices:
                     
                     for comm, payload in zip(created_communications, communication_payloads):
@@ -531,6 +539,7 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                                     token=generate_token(CommunicationFile, offset=counter),
                                     communication=comm,
                                     file=invoice.invoice_file,
+                                    attach_to_email=_attach_invoice_to_email(comm),
                                 ))
                                 counter += 1
                                 # CREATE AND ADD ELECTRONIC INVOICE XML
@@ -580,6 +589,7 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                                 token=generate_token(CommunicationFile, offset=counter),
                                 communication=comm,
                                 file=invoice.invoice_file,
+                                attach_to_email=_attach_invoice_to_email(comm),
                             ))
                             counter += 1
 

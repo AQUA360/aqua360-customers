@@ -34,6 +34,7 @@ export const getMessageVariableGroups = (t: TranslateFn, noContracts = false) =>
         { token: '%company.phone', label: t('common.tlf') },
         { token: '%company.email', label: t('common.email_long') },
         { token: '%company.address_complete', label: t('address_block.address') },
+        { token: '%company.ov_url', label: t('service_block.virtual_office_url') },
       ],
     },
     {

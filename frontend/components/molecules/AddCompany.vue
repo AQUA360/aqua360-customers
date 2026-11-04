@@ -44,6 +44,9 @@ const show_breakdown_schedule = ref(true)
 const breakdown_schedule = ref('')
 const email = ref('')
 const website = ref('')
+// Com arriben les factures per correu a les comunicacions de facturació.
+const virtual_office_url = ref('')
+const invoice_email_delivery = ref('attachment')
 const contact_name = ref('')
 const contact_phone = ref('')
 const contact_email = ref('')
@@ -118,6 +121,8 @@ const save = async () => {
       breakdown_schedule: breakdown_schedule.value || null,
       email: email.value,
       website: website.value,
+      virtual_office_url: virtual_office_url.value || null,
+      invoice_email_delivery: invoice_email_delivery.value || 'attachment',
       contact_name: contact_name.value,
       contact_phone: contact_phone.value,
       contact_email: contact_email.value,
@@ -193,6 +198,8 @@ const getData = () => {
       alias.value = company.alias;
       vat.value = company.vat;
       website.value = company.website;
+      virtual_office_url.value = company.virtual_office_url || '';
+      invoice_email_delivery.value = company.invoice_email_delivery || 'attachment';
       phone.value = company.phone;
       phone2.value = company.phone2;
       show_customer_service_block.value = company.show_customer_service_block ?? true;
@@ -248,6 +255,8 @@ const getData = () => {
     show_breakdown_schedule.value = true;
     breakdown_schedule.value = '';
     website.value = null;
+    virtual_office_url.value = '';
+    invoice_email_delivery.value = 'attachment';
     email.value = null;
     contact_name.value = null;
     contact_phone.value = null;
@@ -615,6 +624,19 @@ watch(() => props.company_id, (newValue) => {
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.web_page') }} *</label>
           <input type="text" v-model="website" class="input" />
         </div>
+        <div class="mb-2">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.virtual_office_url') }}</label>
+          <input type="url" v-model="virtual_office_url" class="input" placeholder="https://" />
+        </div>
+        <div class="mb-2">
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.invoice_email_delivery') }}</label>
+          <select v-model="invoice_email_delivery" class="input w-full">
+            <option value="attachment">{{ t('service_block.invoice_email_delivery_attachment') }}</option>
+            <option value="ov_link">{{ t('service_block.invoice_email_delivery_ov_link') }}</option>
+            <option value="both">{{ t('service_block.invoice_email_delivery_both') }}</option>
+          </select>
+        </div>
+        <p class="mb-2 col-span-2 text-xs text-slate-500">{{ t('service_block.invoice_email_delivery_help') }}</p>
         <hr class="mb-2 col-span-2" />
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.contact_name') }}</label>

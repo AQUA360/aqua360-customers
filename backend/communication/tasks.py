@@ -10,7 +10,7 @@ from billing.models import Invoice, PaymentRemittance
 from billing.utils.payment_pdf_service import generate_report_payment_pdf
 from claimrequest.models import ClaimRequest
 from communication.models import Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
-from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file, validate_letter_contract_companies
+from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file, validate_letter_contract_companies, invoices_attached_to_email
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
 from claimrequest.tasks import generate_claim_document_pdf
@@ -524,6 +524,7 @@ def generate_communication_invoice_documents_task(communication_ids):
         files_to_create = []
         for comm in communications:
             has_electronic_inv = True if 'electronic_inv' in comm.type_tokens.split(',') else False
+            attach_to_email = invoices_attached_to_email(comm)
             for invoice in comm.invoices.all():
                 if not invoice.invoice_file:
                     from billing.views.invoice_pdf_view import generate_report_invoice_pdf
@@ -533,6 +534,7 @@ def generate_communication_invoice_documents_task(communication_ids):
                     token=generate_token(CommunicationFile, offset=counter),
                     communication=comm,
                     file=invoice.invoice_file,
+                    attach_to_email=attach_to_email,
                 ))
                 counter += 1
                 if has_electronic_inv:
@@ -595,7 +597,7 @@ def generate_communication_files(communication_ids):
         return {"status": "error", "message": str(e)}
 
 @shared_task(bind=True)
-def process_communication_creation_task(self, process_id, user_id, persons, company_config_id, single_name, msg_tokens, fixed_data, attach_letter, fixed_data_id, message_template_id, attach_invoices, company_config_email_id, attach_claim_documents=True, attach_readings=False, attach_reading_invoices=False):
+def process_communication_creation_task(self, process_id, user_id, persons, company_config_id, single_name, msg_tokens, fixed_data, attach_letter, fixed_data_id, message_template_id, attach_invoices, company_config_email_id, attach_claim_documents=True, attach_readings=False, attach_reading_invoices=False, invoice_email_delivery=None):
     """
     Task to handle the full communication creation process with granular progress tracking:
     1. Change status to processing (0-10%)
@@ -650,7 +652,8 @@ def process_communication_creation_task(self, process_id, user_id, persons, comp
             message_template_id=message_template_id, attach_invoices=attach_invoices,
             company_config_email=company_config_email, attach_readings=attach_readings,
             attach_reading_invoices=attach_reading_invoices,
-            attach_claim_documents=attach_claim_documents
+            attach_claim_documents=attach_claim_documents,
+            invoice_email_delivery=invoice_email_delivery,
         )
         
         # Step 3: Get communication IDs (40-50%)
