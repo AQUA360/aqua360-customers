@@ -2554,7 +2554,8 @@ export default {
     readings_continue_from_to: 'Lecturas desde {from} → ata {to}',
     apply_email_to_all: 'Aplicar o cambio a todas as facturas',
     email_applied_to_all: 'Cambio aplicado a todas as facturas',
-    send_all: 'Enviar todo'
+    send_all: 'Enviar todo',
+    emails_to_send: 'correos serán enviados a'
   },
   reading_block:   {
     smart_metering_load_title: 'Cargar Smart Metering',
