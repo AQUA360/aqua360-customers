@@ -54,7 +54,7 @@ from billing.models import (
     Reading,
 )
 from documentmanager.utils.main_utils import download_document, upload_document
-from pricing.models import PriceRate
+from pricing.models import PriceRate, Product
 from service.models import Property, SupplyPoint
 from ov.serializers import (
     BillingDataOVSerializer,
@@ -1562,10 +1562,10 @@ class InvoiceStatusDictionaryOVView(APIView):
         )
 
 
-# Orígens de producte de tràmit/d'altes (drets d'alta, connexió, comptador,
-# pòlissa, dipòsit...). Exclou l'origen 1, de serveis periòdics recurrents
-# (aigua, brosses, canon, clavegueram...).
-PROCEDURE_TARIFF_ORIGIN_IDS = (2, 4, 5)
+# Tokens d'origen (`ProductOrigin.token`) dels productes de tràmit/d'altes
+# (drets d'alta, connexió, comptador, pòlissa, dipòsit...). Exclou els orígens
+# de serveis periòdics recurrents (`aigua`, `subministrament`).
+PROCEDURE_TARIFF_ORIGIN_TOKENS = ("contracte", "escomesa", "altres")
 
 
 class ProcedureTariffDictionaryOVView(APIView):
@@ -1576,27 +1576,29 @@ class ProcedureTariffDictionaryOVView(APIView):
     (suma dels components fixos), `price_table` (taula de trams per calibre o
     consum) i `components` amb el desglossament complet. Ordenat per `name`.
 
-    Restringit a tarifes de productes de tràmit (`origin_id` 2, 4 o 5): no
-    inclou serveis periòdics recurrents (`origin_id = 1`) ni tarifes sense
-    producte associat.
+    La consulta parteix de `Product`, restringit als orígens de tràmit
+    (`contracte`, `escomesa`, `altres`), i recull les seves tarifes actives:
+    no inclou serveis periòdics recurrents (`aigua`, `subministrament`) ni
+    tarifes sense producte associat.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        tariffs = (
-            PriceRate.objects.filter(
-                is_active=True,
-                product__origin_id__in=PROCEDURE_TARIFF_ORIGIN_IDS,
-            )
-            .select_related("product", "billing_range_active")
-            .prefetch_related(
-                "billing_range_active__line_item_types__price_interval"
-                "__price_interval_stretches",
-                "billing_range_active__line_item_types__price_variable"
-                "__price_variable_interval_stretches",
-            )
-            .order_by("name")
+        active_rates = PriceRate.objects.filter(is_active=True).select_related(
+            "billing_range_active"
+        ).prefetch_related(
+            "billing_range_active__line_item_types__price_interval"
+            "__price_interval_stretches",
+            "billing_range_active__line_item_types__price_variable"
+            "__price_variable_interval_stretches",
+        )
+        products = Product.objects.filter(
+            origin__token__in=PROCEDURE_TARIFF_ORIGIN_TOKENS
+        ).prefetch_related(Prefetch("price_rates", queryset=active_rates))
+        tariffs = sorted(
+            (rate for product in products for rate in product.price_rates.all()),
+            key=lambda rate: rate.name or "",
         )
         return Response(
             ProcedureTariffDictionarySerializer(tariffs, many=True).data

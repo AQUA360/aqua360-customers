@@ -1519,6 +1519,18 @@ class DictionaryEndpointsTests(TestCase):
         cls.tariff_no_product = PriceRate.objects.create(
             token="TR-NOPROD", name="Tarifa sense producte", is_active=True
         )
+        cls.origin_supply = ProductOrigin.objects.create(
+            id=3, token="subministrament", name="Subministrament"
+        )
+        cls.product_supply = Product.objects.create(
+            token="BROSSES", name="Brosses", origin=cls.origin_supply
+        )
+        cls.tariff_supply = PriceRate.objects.create(
+            token="TR-SUPPLY",
+            name="Taxa periòdica brosses",
+            is_active=True,
+            product=cls.product_supply,
+        )
 
     @classmethod
     def _tariff_with_range(cls, token, name, product=None):
@@ -1670,6 +1682,15 @@ class DictionaryEndpointsTests(TestCase):
 
         self.assertIn("TR-FIXED", tariffs)
         self.assertNotIn("TR-REC", tariffs)
+
+    def test_supply_origin_product_excluded(self):
+        self.assertNotIn("TR-SUPPLY", self._tariffs_by_token())
+
+    def test_only_procedure_origin_rates_returned(self):
+        self.assertEqual(
+            set(self._tariffs_by_token()),
+            {"TR-EMPTY", "TR-GENERAL", "TR-VAR", "TR-FIXED", "TR-MIXED"},
+        )
 
     def test_tariff_without_product_excluded(self):
         self.assertNotIn("TR-NOPROD", self._tariffs_by_token())
