@@ -110,16 +110,25 @@ const calculateLeakEstimate = async (reading) => {
         toast.warning(t('warning_block.warning_leak_estimate_missing_data'));
         return;
     }
+    const request = {
+        contract_id: props.contract_id,
+        supply_point_id: reading.supply_point_id || props.supply_point_id,
+        reading_date: reading.reading_date,
+        consumption_days: Number(reading.consumption_days),
+        consumption,
+    };
+    const leakBefore = reading.leak_value;
     leakEstimateLoadingId.value = reading.id;
     try {
-        const estimate = await $ReadingApiService.leakEstimate({
-            contract_id: props.contract_id,
-            supply_point_id: reading.supply_point_id || props.supply_point_id,
-            reading_date: reading.reading_date,
-            consumption_days: reading.consumption_days,
-            consumption,
-        });
-        leakEstimates.value[reading.id] = estimate;
+        const estimate = await $ReadingApiService.leakEstimate(request);
+        // Si la lectura ha canviat mentre es calculava, la proposta ja no li correspon
+        if (reading.leak_value !== leakBefore ||
+            reading.reading_date !== request.reading_date ||
+            Number(reading.consumption_days) !== request.consumption_days ||
+            getLeakAvailableConsumption(reading) !== consumption) {
+            return;
+        }
+        leakEstimates.value[reading.id] = { ...estimate, reading_date: request.reading_date };
         reading.leak_value = estimate.leak_value;
         recalculateNewReadingsConsumption(true);
     } catch (error) {
@@ -129,12 +138,14 @@ const calculateLeakEstimate = async (reading) => {
     }
 };
 
-// La proposta només es dona per aplicada si la fuita no s'ha editat ni ha canviat el consum
+// La proposta només es dona per aplicada si no s'han editat la fuita, el consum, la data ni els dies
 const isLeakEstimateApplied = (reading) => {
     const estimate = leakEstimates.value[reading.id];
     return !!estimate &&
         Number(reading.leak_value || 0) === Number(estimate.leak_value) &&
-        getLeakAvailableConsumption(reading) === Number(estimate.consumption);
+        getLeakAvailableConsumption(reading) === Number(estimate.consumption) &&
+        reading.reading_date === estimate.reading_date &&
+        Number(reading.consumption_days) === Number(estimate.consumption_days);
 };
 
 const formatLeakEstimate = (estimate) => {
@@ -906,9 +917,10 @@ const changesLog = computed(() => {
             if (parseInt(original.leak_value || 0) !== parseInt(modified.leak_value || 0)) {
                 const leakAction = !original.leak_value ? "S'ha afegit fuita" : t('billing_block.leak');
                 changes.push(`${leakAction}: ${original.leak_value || 0} -> ${modified.leak_value || 0}`);
-                if (isLeakEstimateApplied(modified)) {
-                    changes.push(formatLeakEstimate(leakEstimates.value[modified.id]));
-                }
+            }
+
+            if (isLeakEstimateApplied(modified)) {
+                changes.push(formatLeakEstimate(leakEstimates.value[modified.id]));
             }
 
             if (changes.length > 0) {
@@ -922,9 +934,9 @@ const changesLog = computed(() => {
             let details = `${t('reading')}: ${modified.reading_value}`;
             if (modified.leak_value) {
                 details += `, ${t('billing_block.leak')}: ${modified.leak_value}`;
-                if (isLeakEstimateApplied(modified)) {
-                    details += `, ${formatLeakEstimate(leakEstimates.value[modified.id])}`;
-                }
+            }
+            if (isLeakEstimateApplied(modified)) {
+                details += `, ${formatLeakEstimate(leakEstimates.value[modified.id])}`;
             }
             logLines.push(`${t('billing_block.new_reading')} (${modified.reading_date}) [${typeStr}]: ${details}`);
         }

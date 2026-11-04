@@ -86,6 +86,20 @@ class TestLeakEstimate(TestCase):
         self.assertEqual(result['readings_count'], 1)
         self.assertEqual(result['habitual_consumption'], 22)  # 90 / 365 * 90
 
+    def test_reading_starting_before_window_is_prorated(self):
+        # La lectura de 2026-01-01 comença un any abans de la finestra d'1 any: només en compta la meitat
+        Reading.objects.filter(contract=self.contract, reading_date=date(2026, 1, 1)).update(consumption_days=730)
+        result = self.estimate(years_back=1)
+        self.assertEqual(result['history_days'], 365)
+        self.assertEqual(result['history_consumption'], 45)
+        self.assertEqual(result['habitual_consumption'], 11)  # 45 / 365 * 90
+
+    def test_years_out_of_range(self):
+        ConfigProject.objects.create(token='leak_estimate_years', value='5000')
+        self.assertEqual(self.estimate()['years'], 2)
+        with self.assertRaises(ValueError):
+            self.estimate(years_back=5000)
+
     def test_habitual_never_exceeds_consumption(self):
         result = get_leak_estimate(self.contract, self.sp, date(2026, 4, 1), 90, 20)
         self.assertEqual(result['habitual_consumption'], 20)
@@ -118,3 +132,13 @@ class TestLeakEstimate(TestCase):
             400,
         )
         self.assertEqual(self.post({**base, 'reading_date': '2023-06-01', 'consumption': 200}).status_code, 422)
+        self.assertEqual(self.post({**base, 'reading_date': '2026-04-01', 'consumption': 'Infinity'}).status_code, 400)
+        self.assertEqual(self.post({**base, 'reading_date': '2026-04-01', 'consumption': 200, 'years': 5000}).status_code, 400)
+        self.assertEqual(
+            self.post({**base, 'reading_date': '2026-04-01', 'consumption': 200, 'consumption_days': 10 ** 9}).status_code,
+            400,
+        )
+        self.assertEqual(
+            self.post({**base, 'reading_date': '2026-04-01', 'consumption': 200, 'supply_point_id': 999999}).status_code,
+            404,
+        )

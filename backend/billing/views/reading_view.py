@@ -34,6 +34,7 @@ from billing.utils.reading_service import (
     get_estimated_reading_minimal_object,
     get_estimated_reading,
     get_leak_estimate,
+    LEAK_ESTIMATE_MAX_YEARS,
     LEAK_ESTIMATE_STATISTIC_CHOICES,
     READING_ESTIMATE_PERIOD_CHOICES,
     READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR,
@@ -713,10 +714,16 @@ class ReadingViewSet(viewsets.ModelViewSet):
       consumption_days = int(consumption_days)
       consumption = Decimal(str(consumption))
       years = int(years) if years is not None else None
+      contract_id = int(contract_id)
+      supply_point_id = int(supply_point_id) if supply_point_id else None
     except (TypeError, ValueError, InvalidOperation):
       return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
 
-    if consumption_days <= 0 or consumption <= 0 or (years is not None and years <= 0):
+    if (
+      not 0 < consumption_days <= LEAK_ESTIMATE_MAX_YEARS * 366
+      or not consumption.is_finite() or consumption <= 0
+      or (years is not None and not 1 <= years <= LEAK_ESTIMATE_MAX_YEARS)
+    ):
       return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
     if statistic and statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
       return Response(
@@ -727,12 +734,19 @@ class ReadingViewSet(viewsets.ModelViewSet):
     contract = Contract.objects.filter(id=contract_id).first()
     if not contract:
       return Response({'error': _('Contracte no trobat')}, status=status.HTTP_404_NOT_FOUND)
-    supply_point = SupplyPoint.objects.filter(id=supply_point_id).first() if supply_point_id else None
+    supply_point = None
+    if supply_point_id:
+      supply_point = SupplyPoint.objects.filter(id=supply_point_id).first()
+      if not supply_point:
+        return Response({'error': _('Punt de subministrament no trobat')}, status=status.HTTP_404_NOT_FOUND)
 
-    estimate = get_leak_estimate(
-      contract, supply_point, reading_date, consumption_days, consumption,
-      years_back=years, statistic=statistic,
-    )
+    try:
+      estimate = get_leak_estimate(
+        contract, supply_point, reading_date, consumption_days, consumption,
+        years_back=years, statistic=statistic,
+      )
+    except (OverflowError, ValueError):
+      return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
     if estimate is None:
       return Response({'error': _("No hi ha prou historial de lectures per calcular el consum habitual")},
                       status=status.HTTP_422_UNPROCESSABLE_ENTITY)

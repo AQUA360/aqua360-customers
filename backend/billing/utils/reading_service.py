@@ -1413,6 +1413,7 @@ LEAK_ESTIMATE_STATISTIC_MEAN = 'mean'
 LEAK_ESTIMATE_STATISTIC_MAX = 'max'
 LEAK_ESTIMATE_STATISTIC_CHOICES = (LEAK_ESTIMATE_STATISTIC_MEAN, LEAK_ESTIMATE_STATISTIC_MAX)
 LEAK_ESTIMATE_DEFAULT_YEARS = 2
+LEAK_ESTIMATE_MAX_YEARS = 10
 
 def get_leak_estimate_config():
   """
@@ -1427,7 +1428,7 @@ def get_leak_estimate_config():
     years = int(config.get('leak_estimate_years') or LEAK_ESTIMATE_DEFAULT_YEARS)
   except (TypeError, ValueError):
     years = LEAK_ESTIMATE_DEFAULT_YEARS
-  if years <= 0:
+  if not 1 <= years <= LEAK_ESTIMATE_MAX_YEARS:
     years = LEAK_ESTIMATE_DEFAULT_YEARS
   statistic = config.get('leak_estimate_statistic') or LEAK_ESTIMATE_STATISTIC_MEAN
   if statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
@@ -1444,7 +1445,8 @@ def get_leak_estimate(contract, supply_point, reading_date, consumption_days, co
   de l'inici del període de la lectura (abans de la fuita) multiplicat pels dies de
   consum de la lectura. El consum diari és la mitjana (total de m3 / total de dies)
   o el màxim de les lectures del període. De cada lectura es fa servir el consum
-  net: sense les fuites ja declarades ni la correcció d'estimades.
+  net: sense les fuites ja declarades ni la correcció d'estimades. Una lectura que
+  comença abans de la finestra només hi compta pels dies que hi cauen.
 
   La resta del consum de la lectura es proposa com a fuita. Retorna None si no hi
   ha historial.
@@ -1454,6 +1456,8 @@ def get_leak_estimate(contract, supply_point, reading_date, consumption_days, co
   statistic = statistic or default_statistic
   if statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
     raise ValueError(f"Estadístic desconegut: {statistic}")
+  if not 1 <= years_back <= LEAK_ESTIMATE_MAX_YEARS:
+    raise ValueError(f"Anys fora de rang: {years_back}")
 
   consumption_days = int(consumption_days or 0)
   if consumption_days <= 0:
@@ -1481,9 +1485,11 @@ def get_leak_estimate(contract, supply_point, reading_date, consumption_days, co
     net = Decimal(str(r.calculated_value)) - Decimal(str(r.leak_value or 0)) - Decimal(str(r.estimated_used or 0))
     if net < 0:
       net = Decimal('0')
-    total_value += net
-    total_days += r.consumption_days
-    dailies.append(net / Decimal(r.consumption_days))
+    daily = net / Decimal(r.consumption_days)
+    days_in_window = min(r.consumption_days, (r.reading_date - window_start).days)
+    total_value += daily * Decimal(days_in_window)
+    total_days += days_in_window
+    dailies.append(daily)
 
   if total_days <= 0:
     return None
