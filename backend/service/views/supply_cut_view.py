@@ -393,7 +393,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             )
         except supply_cut_service.SupplyCutActivationError as exc:
             return Response(exc.detail, status=exc.status_code)
-        except ValueError as exc:
+        except supply_cut_service.SupplyCutStateError as exc:
             return Response(
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -430,7 +430,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             finished = supply_cut_service.finish_cut(
                 supply_cut, user=request.user, observation=observation
             )
-        except ValueError as exc:
+        except supply_cut_service.SupplyCutStateError as exc:
             return Response(
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,

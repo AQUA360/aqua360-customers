@@ -370,6 +370,10 @@ def _cut_status(token):
     return SupplyCutStatus.objects.get(token=token)
 
 
+class SupplyCutStateError(ValueError):
+    """Transició d'estat no permesa; el missatge es pot mostrar a l'usuari."""
+
+
 class SupplyCutActivationError(ValueError):
     def __init__(self, message, code, vulnerable, status_code):
         super().__init__(message)
@@ -404,7 +408,7 @@ def start_cut(supply_cut, user=None, observation=None, *, override_vulnerable=Fa
     """
     validate_activation(supply_cut, override_vulnerable=override_vulnerable)
     if supply_cut.status is None or supply_cut.status.token != PLANNED_STATUS_TOKEN:
-        raise ValueError("Només un tall Planificat es pot iniciar.")
+        raise SupplyCutStateError("Només un tall Planificat es pot iniciar.")
 
     supply_cut.status = _cut_status(ACTIVE_STATUS_TOKEN)
     supply_cut.save(update_fields=['status', 'updated_at'])
@@ -421,7 +425,7 @@ def finish_cut(supply_cut, user=None, observation=None):
     s'acaba.
     """
     if supply_cut.status is None or supply_cut.status.token != ACTIVE_STATUS_TOKEN:
-        raise ValueError("Només un tall Actiu es pot finalitzar; els plans es cancel·len.")
+        raise SupplyCutStateError("Només un tall Actiu es pot finalitzar; els plans es cancel·len.")
 
     supply_cut.status = _cut_status(FINISHED_STATUS_TOKEN)
     supply_cut.save(update_fields=['status', 'updated_at'])

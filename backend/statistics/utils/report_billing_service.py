@@ -200,8 +200,6 @@ def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
     ).distinct()
 
     print(f"invoices_by_exploitation from query: {len(invoices_by_exploitation)} exploitations")
-    for invoice in invoices_by_exploitation:
-        print(f"  - {invoice['exploitation__name']}: {invoice['count']} invoices, sum: {invoice['sum']}")
 
     line_items_totals_by_exploitation = InvoiceLineItem.objects.filter(
         _aca_product_token_q('product__token', aca_product_token),
@@ -222,7 +220,6 @@ def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
 
     for item in invoices_by_exploitation:
         item['line_items_total_final'] = totals_dict.get(item['exploitation__name'], 0)
-        print(f"{item['exploitation__name']}: {item['count']} invoices, total: {item['line_items_total_final']}")
 
     # Base queryset for ACA line items
     aca_line_items_qs = InvoiceLineItem.objects.filter(
