@@ -13,6 +13,7 @@ from django.db.models import Count, Sum, Q, OuterRef, Subquery, F, Min, Max
 from django.db.models.functions import Coalesce
 
 from auth.permissions import PermissionManager
+from billing.utils.metrics_snapshot_service import build_billing_routes_summary
 from billing.utils.billing_service import generate_invoice_budgets_from_billing, get_billed_invoices_without_billing, move_budget_to_billing_pre_invoice, move_invoice_to_billing
 from contract.models import Contract, ContractStatus, ContractTerminationRequest, ContractTerminationStatus
 from coredata.models import ConfigProject
@@ -932,61 +933,12 @@ class BillingRoutesView(views.APIView):
         return Response({"error": "ID is required."}, status=status.HTTP_400_BAD_REQUEST)
       
       billing = Billing.objects.get(id=billing_id)
-      
-      pending_billing_status_token = ConfigProject.objects.get(token='batch_status_finish_token').value
-      pending_billing_status = ReadingBatchStatus.objects.filter(token=pending_billing_status_token).order_by('created_at').first()
-      reading_batches = ReadingBatch.objects.filter( status=pending_billing_status).all()
-      
-      response = []
 
-      if billing.is_excluded:
-        
-        readings_count = billing.readings.count()
-        
-        response = [{
-          'route': {'name': "Lectures excloses"},
-          'batch': None,
-          'processed_at': billing.created_at,
-          'processed_readings': readings_count,
-          'warning': False
-        }]
-        
-        return Response(response, status=status.HTTP_200_OK)
-      
-      for route in billing.routes.all():
-        
-        # Find the first batch in reading_batches that has this route
-        batch = reading_batches.filter(routes=route).first()
-        
-        # Count readings in the batch that have supply points in this route
-        readings_count = 0
-        
-        # Get all supply points that belong to this route with active contracts
-        contract_active_token = ConfigProject.objects.get(token='contract_active_token').value
-        active_contract_status = ContractStatus.objects.get(token=contract_active_token)
-        route_supply_points = SupplyPoint.objects.filter(
-            property__route_position__route=route
-        ).filter(
-            Q(contracts__status=active_contract_status) | Q(default_contracts__status=active_contract_status)
-        ).distinct()
+      # Facturació processada: resum fixat en el moment de tancar-la.
+      if billing.metrics_snapshot:
+        return Response(billing.metrics_snapshot.get('routes', []), status=status.HTTP_200_OK)
 
-        # Count readings in the batch that have these supply points
-        readings_count = billing.readings.filter(
-            supply_point__in=route_supply_points
-        ).count()
-        
-        route_data = RouteListSerializer(route).data
-        
-        response.append( {
-          'route': route_data,
-          'batch': batch.id if batch else None,
-          'processed_at': batch.processed_at if batch else None,
-          'processed_readings': readings_count,
-          # 'reading_route': ReadingRouteMinimalSerializer(reading_route).data if reading_route else None,
-          'warning': True if readings_count != route_data['num_total_readings'] else False
-        })
-        
-    
+      response = build_billing_routes_summary(billing)
       return Response(response, status=status.HTTP_200_OK)
     except Exception as e:
       logger.exception("Error inesperat")

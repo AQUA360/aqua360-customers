@@ -108,6 +108,7 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
     num_contracts = serializers.SerializerMethodField()
     num_read_contracts = serializers.SerializerMethodField()
     num_supplies = serializers.SerializerMethodField()
+    metrics_frozen_at = serializers.SerializerMethodField()
 
     class Meta:
         model = ReadingBatch
@@ -125,6 +126,7 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
             "num_contracts",
             "num_read_contracts",
             "num_supplies",
+            "metrics_frozen_at",
         ]
 
     def _tokens(self):
@@ -328,8 +330,8 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
             "num_total_readings": 0,
         }
 
-    def _graph_metrics(self, obj):
-        tokens = self._tokens()
+    def _graph_scope(self, obj, tokens):
+        """(memo_key, compute) de l'àmbit del lot: rutes, comptadors fixos o tots els PS."""
         include_manual = obj.include_manual
         include_telecontrol = obj.include_telecontrol
 
@@ -343,14 +345,8 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
                 tokens["active_contract"],
                 tokens["no_meter"],
             )
-            hit = self._memo_get(memo_key)
-            if hit is not None:
-                return hit
-            return self._memo_set(
-                memo_key,
-                self._compute_route_graph_metrics(
-                    route_ids, include_manual, include_telecontrol, tokens
-                ),
+            return memo_key, lambda: self._compute_route_graph_metrics(
+                route_ids, include_manual, include_telecontrol, tokens
             )
 
         if self._has_fix_meters(obj):
@@ -360,13 +356,7 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
                 meter_ids,
                 tokens["active_contract"],
             )
-            hit = self._memo_get(memo_key)
-            if hit is not None:
-                return hit
-            return self._memo_set(
-                memo_key,
-                self._compute_fix_meter_graph_metrics(meter_ids, tokens),
-            )
+            return memo_key, lambda: self._compute_fix_meter_graph_metrics(meter_ids, tokens)
 
         memo_key = (
             "all_sp",
@@ -375,15 +365,25 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
             tokens["active_contract"],
             tokens["activate_sp"],
         )
+        return memo_key, lambda: self._compute_all_sp_graph_metrics(
+            include_manual, include_telecontrol, tokens
+        )
+
+    def compute_graph_metrics(self, obj):
+        """Càlcul en viu, sense cache (per fixar els comptadors en tancar el lot)."""
+        _memo_key, compute = self._graph_scope(obj, self._tokens())
+        return compute()
+
+    def _graph_metrics(self, obj):
+        # Lot tancat: comptadors fixats en el moment del tancament.
+        if obj.metrics_snapshot:
+            return obj.metrics_snapshot
+
+        memo_key, compute = self._graph_scope(obj, self._tokens())
         hit = self._memo_get(memo_key)
         if hit is not None:
             return hit
-        return self._memo_set(
-            memo_key,
-            self._compute_all_sp_graph_metrics(
-                include_manual, include_telecontrol, tokens
-            ),
-        )
+        return self._memo_set(memo_key, compute())
 
     def _get_all_metrics(self, obj):
         """Reading stats (per batch) + graph metrics (shared by route/meter set)."""
@@ -458,6 +458,9 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
     def get_num_total_readings(self, obj):
         return self._get_all_metrics(obj)["num_total_readings"]
 
+    def get_metrics_frozen_at(self, obj):
+        return (obj.metrics_snapshot or {}).get("frozen_at")
+
 
 class ReadingBatchSaveSerializer(serializers.ModelSerializer):
     status_token = serializers.IntegerField(write_only=True, required=False, allow_null=True)
@@ -471,6 +474,7 @@ class ReadingBatchSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReadingBatch
         fields = '__all__'
+        read_only_fields = ['metrics_snapshot']
         
     def create(self, validated_data):
         routes_data = validated_data.pop('route_ids', [])  # Extract routes
@@ -573,6 +577,7 @@ class ReadingBatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReadingBatch
         fields = '__all__'
+        read_only_fields = ['metrics_snapshot']
     
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -593,12 +598,18 @@ class ReadingBatchSerializer(serializers.ModelSerializer):
         metrics = ReadingBatchMinimalSerializer()._get_metrics(instance)
         representation['num_routes'] = instance.routes.count()
         representation['num_supplies'] = metrics['num_supplies']
-        representation['num_active_supplies'] = self._count_active_supplies(instance)
+        snapshot = instance.metrics_snapshot or {}
+        representation['num_active_supplies'] = (
+            snapshot['num_active_supplies'] if 'num_active_supplies' in snapshot
+            else self._count_active_supplies(instance)
+        )
+        representation['metrics_frozen_at'] = snapshot.get('frozen_at')
         representation['num_readings'] = instance.readings.count()
 
         return representation
 
-    def _count_active_supplies(self, obj):
+    @staticmethod
+    def _count_active_supplies(obj):
         """Mateix àmbit que num_supplies (rutes / tele·manual), només SupplyPoints actius."""
         activate_token = ConfigProject.objects.get(token='supply_point_status_activate_token').value
         include_manual = obj.include_manual

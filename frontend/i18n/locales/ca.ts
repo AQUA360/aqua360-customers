@@ -970,6 +970,7 @@ export default {
     deleted_correctly: 'Eliminat correctament',
     billing_to_applicant: 'A càrrec del sol·licitant',
     read_contracts_total_contracts: 'Contractes llegits / totals',
+    metrics_frozen_at: 'Valors fixats a data de tancament: {date}',
     total_readings: 'Lectures totals',
     total_supply_points: 'Punts de subministrament totals',
     min_length_error: 'Mínim {min} caràcters requerits',
