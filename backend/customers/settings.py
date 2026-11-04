@@ -144,6 +144,7 @@ EXTRA_APPS = [
     "rest_framework.authtoken",  # Ensure this is included
     "corsheaders",
     "django_filters",
+    "explorer",  # django-sql-explorer: models dels informes personalitzats (statistics/custom-report)
 ]
 
 # Apps només per a ús intern, que no es pugen al repositori (p. ex. `importexport`, eines de
@@ -290,6 +291,34 @@ DATABASES = {
         "PORT": config("DATABASE_PORT", cast=int, default=5432),
     }
 }
+
+# Informes personalitzats (django-sql-explorer + statistics/custom-report).
+# Les consultes SQL dels usuaris s'executen SEMPRE amb un rol de PostgreSQL de només lectura i
+# sense accés a taules sensibles (tokens, contrasenyes, sessions). Si no es configura el rol,
+# els informes es poden desar però no executar. Per crear-lo: `manage.py setup_custom_reports_role`.
+CUSTOM_REPORTS_DB_ALIAS = "custom_reports"
+CUSTOM_REPORTS_DATABASE_USER = config("CUSTOM_REPORTS_DATABASE_USER", default="")
+CUSTOM_REPORTS_DATABASE_PASSWORD = config("CUSTOM_REPORTS_DATABASE_PASSWORD", default="")
+if CUSTOM_REPORTS_DATABASE_USER:
+    DATABASES[CUSTOM_REPORTS_DB_ALIAS] = {
+        **DATABASES["default"],
+        "USER": CUSTOM_REPORTS_DATABASE_USER,
+        "PASSWORD": CUSTOM_REPORTS_DATABASE_PASSWORD,
+        "TEST": {"MIRROR": "default"},
+    }
+# Temps màxim d'una consulta (segons) i files màximes a pantalla / a l'exportació.
+CUSTOM_REPORTS_STATEMENT_TIMEOUT = config("CUSTOM_REPORTS_STATEMENT_TIMEOUT", default=60, cast=int)
+CUSTOM_REPORTS_MAX_ROWS = config("CUSTOM_REPORTS_MAX_ROWS", default=5000, cast=int)
+CUSTOM_REPORTS_EXPORT_MAX_ROWS = config("CUSTOM_REPORTS_EXPORT_MAX_ROWS", default=200000, cast=int)
+
+# django-sql-explorer: només se n'usen els models i la validació SQL. La seva interfície web no es
+# munta, no hi ha connexions pròpies, ni assistent IA ni telemetria (que per defecte està activada).
+EXPLORER_CONNECTIONS = {}
+EXPLORER_ENABLE_ANONYMOUS_STATS = False
+EXPLORER_AI_API_KEY = None
+EXPLORER_TASKS_ENABLED = False
+EXPLORER_USER_UPLOADS_ENABLED = False
+EXPLORER_DB_CONNECTIONS_ENABLED = False
 
 
 # Password validation
@@ -527,6 +556,8 @@ BROADCASTER_TEMPLATE_CODE = config("BROADCASTER_TEMPLATE_CODE", default="aqua360
 BROADCASTER_TEMPLATE_NAME = config("BROADCASTER_TEMPLATE_NAME", default="Comunicació")
 BROADCASTER_TEMPLATE_BODY = config("BROADCASTER_TEMPLATE_BODY", default="{{ message }}")
 
+# fastapi: connector aqua360_connector. json2: API nativa d'Odoo Enterprise SaaS.
+ODOO_TRANSPORT = config("ODOO_TRANSPORT", default="fastapi")
 ODOO_BASE_URL = config("ODOO_BASE_URL", default="")
 ODOO_API_KEY = config("ODOO_API_KEY", default="")
 ODOO_TIMEOUT = config("ODOO_TIMEOUT", default=30, cast=int)

@@ -284,7 +284,9 @@ watch(() => showRegion.value, (newVal) => {
               <span class="text-xs font-bold">{{ item.num_warnings }}</span>
             </button>
           </span>
-          <span class="p-1 truncate min-w-0" :title="`${item.num_read_contracts || 0} / ${item.num_contracts || 0 }`">
+          <span class="p-1 truncate min-w-0"
+            :title="item.metrics_frozen_at ? t('common.metrics_frozen_at', { date: formatDate(item.metrics_frozen_at) }) : `${item.num_read_contracts || 0} / ${item.num_contracts || 0 }`">
+            <Icon v-if="item.metrics_frozen_at" name="fa6-solid:lock" class="text-xs text-slate-400" />
             {{ item.num_read_contracts || 0 }} / {{ item.num_contracts || 0 }}
           </span>
           <span class="p-1 truncate min-w-0">

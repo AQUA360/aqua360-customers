@@ -106,6 +106,8 @@ from .views.invoice_clavegueram_export_view import InvoiceClavegueramExcelExport
 from .views.exclude_invoice_view import ExcludeInvoiceView
 from .views.smart_metering_meter_reading_view import SmartMeteringMeterReadingView
 from .views.smart_metering_settings_view import SmartMeteringSettingsView
+from .views.invoice_send_email_view import InvoiceSendEmailView
+from .views.invoice_send_grouped_email_view import InvoiceSendGroupedEmailView
 
 router = routers.DefaultRouter()
 
@@ -178,6 +180,7 @@ urlpatterns = [
     path('config-aca/update/', UpdateConfigAcaView.as_view(http_method_names=['post']), name='update-config-aca'),
     path('invoice/manage-massively-paid/', InvoiceManageMassivelyViewSet.as_view(), name='invoice-manage-massively-paid'),
     path('reading/exclude/', ExcludeReadingView.as_view(http_method_names=['put']), name='exclude-reading'),
+    path('invoice/send-grouped-email/', InvoiceSendGroupedEmailView.as_view(http_method_names=['post']), name='invoice-send-grouped-email'),
     path('exclude/', ExcludeBillingView.as_view(http_method_names=['post']), name='exclude-billing'),
     path('invoice/exclude/', ExcludeInvoiceView.as_view(http_method_names=['post']), name='exclude-invoice'),
     path('invoice/mark-reviewed-range/', InvoiceMarkReviewedRangeView.as_view(http_method_names=['post']), name='invoice-mark-reviewed-range'),

@@ -2,6 +2,8 @@
 
 Contrato de datos **push** desde Aqua360 (Aventec) hacia **Odoo 19 Community**.
 
+El JSON de este contrato es el cuerpo de datos. Con el conector FastAPI (`ODOO_TRANSPORT=fastapi`, por defecto) se envía tal cual. Con Odoo Enterprise SaaS (`ODOO_TRANSPORT=json2`) el mismo JSON viaja dentro de `x_aqua_json`. Véase [`perfil-saas.es.md`](perfil-saas.es.md).
+
 Aqua360 empuja facturas, rectificativas y movimientos (pagos). Odoo actúa como receptor: no renumera, no genera Verifactu propio (vive en Aqua360) y no origina pagos ni remesas. La resolución del JSON custom se hace con OCA fastapi (`rest-framework`), con `get_or_create` por `aqua_id` en cada modelo relacionado.
 
 **OpenAPI (para integradores):** [`openapi.yaml`](openapi.yaml) — importable en [Swagger Editor](https://editor.swagger.io), Postman o Redoc. Especificación OpenAPI 3.0, con las descripciones en castellano.

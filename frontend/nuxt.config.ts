@@ -205,6 +205,7 @@ export default defineNuxtConfig({
     '~/plugins/api/statistics/reading-batch-import-column-api.js',
     '~/plugins/api/statistics/daily-document-api.js',
     '~/plugins/api/statistics/daily-document-template-api.js',
+    '~/plugins/api/statistics/custom-report-api.js',
 
     //search
     '~/plugins/api/search/search-api.js',

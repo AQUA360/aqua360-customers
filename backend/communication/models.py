@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from contract.models import Contract
 from coredata.models import Person, PersonAddress
 from documentmanager.models import Document
-from service.models import CompanyConfig, CompanyConfigEmail
+from service.models import Company, CompanyConfig, CompanyConfigEmail
 
 
 def validate_email_list(value):
@@ -120,6 +120,12 @@ class MessageTemplate(models.Model):
     # decideix si el document del pas (carta de suspensió / recordatori) s'envia amb la
     # comunicació. Cada procés el pot canviar.
     attach_claim_documents = models.BooleanField(default=True)
+
+    # Només aplica a facturació: com van les factures per correu (adjuntes, enllaç a l'oficina
+    # virtual o tots dos). Buit = el que tingui configurat l'empresa. El procés el pot canviar.
+    invoice_email_delivery = models.CharField(
+        max_length=20, choices=Company.INVOICE_EMAIL_DELIVERY_CHOICES, null=True, blank=True
+    )
 
     is_active = models.BooleanField(default=True)
 

@@ -2,8 +2,9 @@
 Tests de la construcció del payload de l'event RabbitMQ "order.created"
 (order/services/rabbit.py).
 
-Es centra en les dues dades noves per a la GMAO:
+Es centra en les dades noves per a la GMAO:
   - exploitation_token (camp arrel del payload)
+  - created_by (nom de l'usuari creador, a additional_info)
   - last_reading_value / last_reading_date / last_reading_consumption (additional_info)
 
 publish_event queda sempre patchejat: cap test ha d'arribar a un broker real.
@@ -12,6 +13,7 @@ import datetime
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 
 from billing.models import Reading
@@ -25,7 +27,14 @@ from order.services.rabbit import (
     _resolve_order_supply_point,
     publish_order_created,
 )
-from service.models import Connection, ConnectionRequest, Exploitation, Meter, SupplyPoint
+from service.models import (
+    Connection,
+    ConnectionRequest,
+    Exploitation,
+    Meter,
+    MeterCaliber,
+    SupplyPoint,
+)
 
 
 class RabbitPublishTestCase(TestCase):
@@ -58,8 +67,8 @@ def make_connection(exploitation=None, token="CON-1"):
     return Connection.objects.create(token=token, exploitation=exploitation)
 
 
-def make_meter(token="MET-1", code="MTR-1"):
-    return Meter.objects.create(token=token, code=code)
+def make_meter(token="MET-1", code="MTR-1", caliber=None):
+    return Meter.objects.create(token=token, code=code, caliber=caliber)
 
 
 def make_supply_point(connection=None, meter=None, token="SP-1"):
@@ -565,6 +574,35 @@ class PublishOrderCreatedPayloadTest(RabbitPublishTestCase):
         self.assertEqual(additional_info_of(payload, "last_reading_date"), "2026-10-01")
         self.assertEqual(additional_info_of(payload, "last_reading_consumption"), "25m3")
 
+    def test_payload_contains_meter_caliber_name(self):
+        caliber = MeterCaliber.objects.create(name="15")
+        self.meter.caliber = caliber
+        self.meter.save(update_fields=["caliber"])
+        order = make_order(supply_point=self.supply_point)
+
+        payload = self._publish(order)
+
+        self.assertEqual(additional_info_of(payload, "supply_point_meter_caliber"), "15")
+
+    def test_payload_meter_caliber_is_none_without_caliber(self):
+        order = make_order(supply_point=self.supply_point)
+
+        payload = self._publish(order)
+
+        self.assertIsNone(additional_info_of(payload, "supply_point_meter_caliber"))
+
+    def test_payload_meter_caliber_is_none_without_meter_or_supply_point(self):
+        order_without_meter = make_order(supply_point=make_supply_point())
+        payload_without_meter = self._publish(order_without_meter)
+        self.assertIsNone(
+            additional_info_of(payload_without_meter, "supply_point_meter_caliber")
+        )
+
+        payload_without_supply_point = self._publish(make_order(token="ORD-NO-SP"))
+        self.assertIsNone(
+            additional_info_of(payload_without_supply_point, "supply_point_meter_caliber")
+        )
+
     def test_payload_last_reading_keys_always_present_with_none(self):
         order = make_order(supply_point=self.supply_point)
 
@@ -609,3 +647,38 @@ class PublishOrderCreatedPayloadTest(RabbitPublishTestCase):
         self.assertEqual(additional_info_of(payload, "last_reading_value"), "500")
         self.assertEqual(additional_info_of(payload, "last_reading_date"), "2026-09-15")
         self.assertEqual(additional_info_of(payload, "last_reading_consumption"), "12m3")
+
+    def test_payload_created_by_prefers_the_full_name(self):
+        user = User.objects.create_user(
+            "user-2303", "user-2303@example.com", "x"
+        )
+        user.first_name = "Primera"
+        user.last_name = "Última"
+        user.save(update_fields=["first_name", "last_name"])
+        order = make_order(created_by=user)
+
+        payload = self._publish(order)
+
+        self.assertEqual(additional_info_of(payload, "created_by"), "Primera Última")
+
+    def test_payload_created_by_falls_back_to_the_username(self):
+        user = User.objects.create_user(
+            "user-2303-username", "user-2303-username@example.com", "x"
+        )
+        user.first_name = ""
+        user.last_name = "  "
+        user.save(update_fields=["first_name", "last_name"])
+        order = make_order(created_by=user)
+
+        payload = self._publish(order)
+
+        self.assertEqual(
+            additional_info_of(payload, "created_by"), "user-2303-username"
+        )
+
+    def test_payload_created_by_is_none_without_a_user(self):
+        order = make_order()
+
+        payload = self._publish(order)
+
+        self.assertIsNone(additional_info_of(payload, "created_by"))

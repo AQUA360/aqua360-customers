@@ -780,6 +780,18 @@ export default defineNuxtPlugin(nuxtApp => {
         throw error;
       }
     }
+
+    // Un sol correu amb diverses factures per al mateix destinatari.
+    // data: { invoice_ids, email, subject, body, company_config_id }
+    const sendGroupedEmail = async (data) => {
+      const apiUrl = `${apiHost}${entity}send-grouped-email/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'POST', data, { 'Content-Type': 'application/json' })
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    }
   
     const apiService = {
       getAll,
@@ -823,6 +835,7 @@ export default defineNuxtPlugin(nuxtApp => {
       recalculateSmart,
       manageMassivelyPaid,
       sendEmail,
+      sendGroupedEmail,
       getBilledInvoices
     }
   

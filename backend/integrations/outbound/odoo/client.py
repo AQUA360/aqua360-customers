@@ -1,27 +1,98 @@
 import requests
 from django.conf import settings
+from django.utils import timezone
 
 from integrations.models import IntegrationRequestLog
 
 from .exceptions import OdooApiError
 
 PROVIDER = "odoo"
+TRANSPORT_FASTAPI = "fastapi"
+TRANSPORT_JSON2 = "json2"
 INVOICES_ENDPOINT = "/invoices"
 PAYMENTS_ENDPOINT = "/payments"
+JSON2_INVOICE_MODEL = "x_aqua_invoice"
+JSON2_PAYMENT_MODEL = "x_aqua_payment"
+JSON2_INVOICE_ENDPOINT = f"/json/2/{JSON2_INVOICE_MODEL}/create"
+JSON2_PAYMENT_ENDPOINT = f"/json/2/{JSON2_PAYMENT_MODEL}/create"
+JSON2_COMMITMENTS_UNSUPPORTED = (
+    "El transport json2 no admet compromisos de pagament. "
+    "Només factures (x_aqua_invoice) i pagaments (x_aqua_payment)."
+)
+
+
+def normalize_odoo_transport(value) -> str:
+    transport = (value or TRANSPORT_FASTAPI).strip().lower()
+    if transport not in (TRANSPORT_FASTAPI, TRANSPORT_JSON2):
+        raise OdooApiError(
+            f"ODOO_TRANSPORT desconegut: {value!r}. "
+            f"Usa '{TRANSPORT_FASTAPI}' o '{TRANSPORT_JSON2}'."
+        )
+    return transport
+
+
+def wrap_json2_vals(payload: dict) -> dict:
+    """Embolcalla el JSON del contracte per al create natiu d'Odoo."""
+    aqua_id = ""
+    if isinstance(payload, dict) and payload.get("aqua_id") is not None:
+        aqua_id = str(payload.get("aqua_id"))
+    return {
+        "vals_list": [
+            {
+                "x_aqua_id": aqua_id,
+                "x_aqua_json": payload,
+            }
+        ]
+    }
+
+
+def json2_model_for_batch(endpoint: str, object_type: str = "") -> str:
+    hint = f"{endpoint or ''} {object_type or ''}".lower()
+    if "commitment" in hint:
+        raise OdooApiError(JSON2_COMMITMENTS_UNSUPPORTED)
+    if "payment" in hint:
+        return JSON2_PAYMENT_MODEL
+    return JSON2_INVOICE_MODEL
+
+
+def ensure_commitments_supported(client) -> None:
+    if getattr(client, "is_json2", False):
+        raise OdooApiError(JSON2_COMMITMENTS_UNSUPPORTED)
+
+
+def _odoo_id_from_create_response(payload):
+    if isinstance(payload, list):
+        return payload[0] if payload else None
+    if isinstance(payload, dict):
+        return payload.get("id")
+    if isinstance(payload, int):
+        return payload
+    return None
 
 
 class OdooClient:
-    def __init__(self, base_url=None, api_key=None, timeout=None):
-        self.base_url = (base_url or settings.ODOO_BASE_URL).rstrip("/")
+    def __init__(self, base_url=None, api_key=None, timeout=None, transport=None):
+        self.base_url = (base_url or settings.ODOO_BASE_URL or "").rstrip("/")
         self.api_key = api_key or getattr(settings, "ODOO_API_KEY", "")
         self.timeout = timeout or getattr(settings, "ODOO_TIMEOUT", 30)
+        if transport is None:
+            transport = getattr(settings, "ODOO_TRANSPORT", TRANSPORT_FASTAPI)
+        self.transport = normalize_odoo_transport(transport)
+
+    @property
+    def is_json2(self) -> bool:
+        return self.transport == TRANSPORT_JSON2
 
     def _get_headers(self):
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-        if self.api_key:
+        if not self.api_key:
+            return headers
+        if self.is_json2:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        else:
             headers["Aqua360-Api-Key"] = self.api_key
         return headers
 
@@ -158,31 +229,43 @@ class OdooClient:
             accept_statuses=accept_statuses,
         )
 
-    def push_invoice(self, payload: dict):
+    def _push_document(self, payload: dict, *, endpoint: str, object_type: str):
+        aqua_id = payload.get("aqua_id", "") if isinstance(payload, dict) else ""
+        body = wrap_json2_vals(payload) if self.is_json2 else payload
         result = self._post(
-            INVOICES_ENDPOINT,
-            payload,
-            object_type="invoice",
-            object_id=payload.get("aqua_id", ""),
+            endpoint,
+            body,
+            object_type=object_type,
+            object_id=str(aqua_id or ""),
         )
         return result["payload"]
 
+    def push_invoice(self, payload: dict):
+        endpoint = JSON2_INVOICE_ENDPOINT if self.is_json2 else INVOICES_ENDPOINT
+        return self._push_document(payload, endpoint=endpoint, object_type="invoice")
+
     def push_payment(self, payload: dict):
-        result = self._post(
-            PAYMENTS_ENDPOINT,
-            payload,
-            object_type="payment_movement",
-            object_id=payload.get("aqua_id", ""),
+        endpoint = JSON2_PAYMENT_ENDPOINT if self.is_json2 else PAYMENTS_ENDPOINT
+        return self._push_document(
+            payload, endpoint=endpoint, object_type="payment_movement"
         )
-        return result["payload"]
 
     def push_batch(self, endpoint: str, batch_id: str, items: list, *, object_type=""):
         """
-        Envia un lot: { "batch_id": "...", "items": [ ... ] }.
-        L'endpoint ve de SendBatchType.endpoint.
+        Envia un lot.
 
-        Retorna {status_code, payload}. Accepta 202 (nou) i 200 (ja rebut).
+        fastapi: { "batch_id", "items" } a l'endpoint del SendBatchType.
+        Accepta 202 (nou) i 200 (ja rebut).
+
+        json2: un POST create per ítem. No s'atura al primer error.
+        Retorna un resultat final (summary + results) perquè el lot es tanqui
+        sense webhook.
         """
+        if self.is_json2:
+            return self._push_batch_json2(
+                batch_id, items, endpoint=endpoint, object_type=object_type
+            )
+
         payload = {"batch_id": batch_id, "items": items}
         return self._post(
             endpoint,
@@ -192,11 +275,85 @@ class OdooClient:
             accept_statuses={200, 202},
         )
 
+    def _push_batch_json2(self, batch_id, items, *, endpoint, object_type):
+        if not self.api_key:
+            raise OdooApiError(
+                "ODOO_API_KEY no està configurat per al transport json2."
+            )
+        model = json2_model_for_batch(endpoint, object_type)
+        create_endpoint = f"/json/2/{model}/create"
+        item_object_type = (
+            "payment_movement" if model == JSON2_PAYMENT_MODEL else "invoice"
+        )
+        results = []
+        ok = 0
+        error = 0
+        for item in items:
+            aqua_id = ""
+            if isinstance(item, dict) and item.get("aqua_id") is not None:
+                aqua_id = str(item.get("aqua_id"))
+            try:
+                response = self._post(
+                    create_endpoint,
+                    wrap_json2_vals(item if isinstance(item, dict) else {}),
+                    object_type=item_object_type,
+                    object_id=aqua_id,
+                )
+                odoo_id = _odoo_id_from_create_response(response["payload"])
+                if odoo_id is None:
+                    raise OdooApiError("Odoo no ha retornat l'ID del document creat.")
+                results.append(
+                    {
+                        "aqua_id": aqua_id,
+                        "odoo_id": odoo_id,
+                        "status": "ok",
+                        "message": None,
+                    }
+                )
+                ok += 1
+            except OdooApiError as exc:
+                results.append(
+                    {
+                        "aqua_id": aqua_id,
+                        "odoo_id": None,
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+                error += 1
+
+        now = timezone.now().isoformat()
+        return {
+            "status_code": 200,
+            "payload": {
+                "batch_id": batch_id,
+                "type": "payments" if model == JSON2_PAYMENT_MODEL else "invoices",
+                "status": "done",
+                "received_at": now,
+                "finished_at": now,
+                "summary": {
+                    "total": len(items),
+                    "ok": ok,
+                    "duplicate_ignored": 0,
+                    "error": error,
+                    "pending": 0,
+                },
+                "results": results,
+            },
+        }
+
     def get_batch_status(self, batch_id: str):
         """
         Consulta l'estat d'un lot a Odoo: GET /batch/{batch_id}.
         Retorna {status_code, payload} (mateix JSON que l'inbound final).
+
+        json2 no té aquesta consulta: el resultat es tanca en enviar.
         """
+        if self.is_json2:
+            raise OdooApiError(
+                "El transport json2 no consulta l'estat del lot a Odoo. "
+                "El resultat queda tancat en enviar."
+            )
         endpoint = f"/batch/{batch_id}"
         return self._get(
             endpoint,

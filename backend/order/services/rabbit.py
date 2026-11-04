@@ -286,10 +286,20 @@ def publish_order_created(order: Order):
             customer_email = default_contact.email
             customer_phone = default_contact.phone
 
+    # Usuari que ha creat l'ordre (nom complert o, si manca, username)
+    created_by_name = (
+        order.created_by.get_full_name().strip() or order.created_by.username
+    ) if order.created_by else None
+
     # Contexte addicional per a la GMAO
     supply_point = _resolve_order_supply_point(order)
     exploitation_token = _resolve_exploitation_token(order)
     last_reading = _get_last_reading_info(supply_point)
+    meter_caliber = (
+        supply_point.meter.caliber.name
+        if supply_point and supply_point.meter and supply_point.meter.caliber
+        else None
+    )
 
     payload = {
         "event_id": f"order:{order.pk}:created",
@@ -331,6 +341,10 @@ def publish_order_created(order: Order):
         "long": str(order.longitude) if order.longitude else None,
         "lat": str(order.latitude) if order.latitude else None,
         "additional_info": [
+            {
+                "key": "created_by",
+                "text": created_by_name,
+            },
             {
                 "key": "customer_name",
                 "text": customer_name,
@@ -464,6 +478,10 @@ def publish_order_created(order: Order):
                 "text": order.supply_point.meter.code if order.supply_point and order.supply_point.meter else None,
             },
             {
+                "key": "supply_point_meter_caliber",
+                "text": meter_caliber,
+            },
+            {
                 "key": "supply_point_meter_manufacturer",
                 "text": order.supply_point.meter.manufacturer if order.supply_point and order.supply_point.meter else None,
             },
@@ -526,6 +544,22 @@ def publish_order_invalidation_event(order):
         "order_token": order.token,
     }
     publish_event("order.invalidated", payload)
+
+
+def publish_order_deleted_event(order):
+    """
+    Publica un esdeveniment per notificar a la GMAO que una Order s'ha eliminat
+    del CRM (només es permet eliminar ordres pendents, esborrany o enviades
+    sense informes). La GMAO l'ha d'usar per cancel·lar o descartar la tasca
+    despatxada i no enviar cap operari.
+
+    Args:
+        order: Instància del model Order
+    """
+    payload = {
+        "order_token": order.token,
+    }
+    publish_event("order.deleted", payload)
 
 
 # def publish_order_updated(order):

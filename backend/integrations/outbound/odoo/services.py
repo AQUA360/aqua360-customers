@@ -12,7 +12,7 @@ from integrations.models import (
 from integrations.utils.send_batch_status import payload_is_final_batch_result
 
 from .batch_utils import MAX_BATCH_ITEMS, chunked, generate_batch_id
-from .client import OdooClient
+from .client import OdooClient, ensure_commitments_supported
 from .exceptions import OdooApiError, OdooMappingError
 from .mappers import (
     map_commitment_deposit_cancel_to_odoo,
@@ -638,6 +638,8 @@ def push_commitment_deposit_batch(
     """
     if dry_run and not send:
         raise OdooApiError("dry_run i send=False són incompatibles.")
+    if not dry_run:
+        ensure_commitments_supported(client if client is not None else OdooClient())
 
     action = (action or "create").strip().lower()
     if action not in ("create", "cancel"):

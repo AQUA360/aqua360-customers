@@ -1,5 +1,11 @@
 # Changelog Backend
 
+## [04-11-2026]
+### FIX
+#### PRICING (`initial_data/ca/optional/pricing.ACA.json` — condició «FACTURA ACA» del cànon domèstic L2-2023)
+    - La condició 9003001 del corrector `ACA/D/PV/FACTURA-ACA-DIRECTAMENT/L2-2023` deia «Variable: Factura ACA (char)» però avaluava `variable.ACA-TRAM` (ampliació de trams per família nombrosa): un contracte amb ampliació de trams refacturat en un període 2023–2025 quedava amb el cànon a 0 (i el mínim el pujava a 18 m³). Ara avalua `variable.Factura-ACA` ≥ 1, igual que totes les altres condicions «factura ACA directament» del paquet.
+    - Les instal·lacions que ja tenien el paquet carregat s'han corregit a part, a la base de dades (mateixa condició, mateix valor).
+
 ## [23-10-2026]
 ### FEAT
 #### COMMUNICATION (`communication/tasks.py`, `coredata/migrations/0143_add_attach_extra_docs_in_claims_config.py` — comunicacions d'impagats sense factures ni rebuts adjunts) (PR #115)
