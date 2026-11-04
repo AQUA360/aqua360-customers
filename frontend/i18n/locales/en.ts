@@ -2554,7 +2554,8 @@ export default {
     readings_continue_from_to: 'Readings from {from} → to {to}',
     apply_email_to_all: 'Apply change to all invoices',
     email_applied_to_all: 'Change applied to all invoices',
-    send_all: 'Send all'
+    send_all: 'Send all',
+    emails_to_send: 'emails will be sent to'
   },
   reading_block:   {
     smart_metering_load_title: 'Load Smart Metering',
