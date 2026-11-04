@@ -88,6 +88,8 @@ const unreachablePersons = shallowRef([])
 const setupType = ref(null)
 const attachInvoices = ref(false)
 const attachReadings = ref(false)
+// Mode d'enviament de les factures per correu triat al filtre de facturació (null = el de l'empresa).
+const invoiceEmailDelivery = ref(null)
 const excludedPersons = ref([])
 const messageData = ref({})
 const finalData = ref({})
@@ -152,6 +154,14 @@ const isObjectFixed = ref(false)
 const supplyCutIds = ref([])
 
 const isClaimRequest = computed(() => objectSearchData.value?.entity === 'claimrequest')
+// Amb l'enllaç a l'oficina virtual triat al procés o a la plantilla, el correu ha de portar la variable de l'enllaç.
+const missingOvUrlVariable = computed(() => {
+  // Valor del procés; si no n'hi ha, el de la plantilla (el de l'empresa no es coneix aquí)
+  const delivery = invoiceEmailDelivery.value || messageData.value?.invoice_email_delivery
+  if (!attachInvoices.value || !['ov_link', 'both'].includes(delivery)) return false
+  const emailMessage = (finalData.value?.messages_data || []).find(message => message?.type?.token === 'email')
+  return !!emailMessage && !(emailMessage.msg_data?.body || '').includes('%company.ov_url')
+})
 
 // Context de la comunicació segons el que s'ha triat al pas 1 (facturació fixada,
 // gestió d'impagats o cerca per facturació). Els passos 3 i 4 el fan servir per
@@ -504,6 +514,7 @@ const save = async () => {
         batch_number: i + 1,
         attach_invoices: attachInvoices.value,
         attach_readings: attachReadings.value,
+        invoice_email_delivery: attachInvoices.value ? invoiceEmailDelivery.value : null,
         total_batches: personChunks.length,
         use_type_id: rawFinalData.use_type?.value || null,
         run_token: runToken,
@@ -561,12 +572,13 @@ const onUnreachableChange = (value) => {
   unreachablePersons.value = [...(value || [])]
 }
 
-const onPersonsChange = (value, type = null, attach_invoices = false, attach_readings = false) => {
+const onPersonsChange = (value, type = null, attach_invoices = false, attach_readings = false, invoice_email_delivery = null) => {
   persons.value = [...value]
   request.value.persons = value
   setupType.value = type
   attachInvoices.value = attach_invoices || false
   attachReadings.value = attach_readings || false
+  invoiceEmailDelivery.value = invoice_email_delivery || null
 }
 
 const onProcessInfoChange = (values) => {
@@ -725,6 +737,10 @@ onMounted(async () => {
 
         <!-- Pas 5: Confirmació de missatge -->
         <div v-if="currentStep === 4" class="space-y-4">
+          <div v-if="missingOvUrlVariable"
+            class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {{ t('service_block.invoice_email_delivery_missing_variable') }}
+          </div>
           <CommunicationProcessCreationFinalMessage :message="messageData" :final_data="finalData" :persons="persons"
             @change="onFinalDataChange" :fixed_data="objectSearchData" />
         </div>

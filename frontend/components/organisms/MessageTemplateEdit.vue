@@ -24,6 +24,15 @@ const origin = ref(props?.item?.origin? { code: props.item.origin.id, label: pro
 // Gestió d'impagats: valor per defecte del checkbox d'adjuntar el document del pas als processos
 const attachClaimDocuments = ref(props.item?.attach_claim_documents ?? true);
 const isClaimOrigin = computed(() => origin.value?.token === 'claim');
+// Facturació: com van les factures per correu (buit = el que tingui configurat l'empresa)
+const invoiceEmailDelivery = ref(props.item?.invoice_email_delivery || '');
+const isBillingOrigin = computed(() => origin.value?.token === 'billing');
+const invoiceEmailDeliveryOptions = [
+  { value: '', label: 'service_block.invoice_email_delivery_company' },
+  { value: 'attachment', label: 'service_block.invoice_email_delivery_attachment' },
+  { value: 'ov_link', label: 'service_block.invoice_email_delivery_ov_link' },
+  { value: 'both', label: 'service_block.invoice_email_delivery_both' },
+];
 
 const saving = ref(false);
 const attemptedSave = ref(false);
@@ -40,6 +49,7 @@ const save = async () => {
       name: name.value,
       origin: origin.value.code,
       attach_claim_documents: attachClaimDocuments.value,
+      invoice_email_delivery: isBillingOrigin.value ? (invoiceEmailDelivery.value || null) : null,
     }
     item.value = await $MessageTemplateApiService.save(save_data);
     emit('saved', item.value);
@@ -77,6 +87,7 @@ const resetForm = () => {
   name.value = '';
   origin.value = null;
   attachClaimDocuments.value = true;
+  invoiceEmailDelivery.value = '';
 };
 
 onMounted(async () => {
@@ -99,6 +110,7 @@ watch(() => props.item, async (newItem) => {
     const matchingOrigin = origins.value.find(o => o.code === newItem.origin.id);
     origin.value = matchingOrigin || null;
     attachClaimDocuments.value = newItem.attach_claim_documents ?? true;
+    invoiceEmailDelivery.value = newItem.invoice_email_delivery || '';
   } else { // is creating
     resetForm();
   }
@@ -131,6 +143,15 @@ watch(() => props.item, async (newItem) => {
           <span>{{ t('common.attach_claim_documents_to_email') }}</span>
           <input type="checkbox" v-model="attachClaimDocuments" />
         </label>
+      </div>
+      <div v-if="isBillingOrigin" class="mb-2">
+        <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.invoice_email_delivery') }}</label>
+        <select v-model="invoiceEmailDelivery" class="input w-full">
+          <option v-for="option in invoiceEmailDeliveryOptions" :key="option.value" :value="option.value">
+            {{ t(option.label) }}
+          </option>
+        </select>
+        <p class="mt-1 text-xs text-slate-500">{{ t('service_block.invoice_email_delivery_help') }}</p>
       </div>
       <hr class="mb-2 col-span-3" />
       <div class="col-span-3 flex flex-row-reverse mt-4">

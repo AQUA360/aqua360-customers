@@ -36,6 +36,14 @@ const modificationSelect = ref([])
 
 const attachInvoices = ref(true)
 const attachReadings = ref(true)
+// Com van les factures per correu en aquest procés; buit = el que tingui configurat l'empresa.
+const invoiceEmailDelivery = ref('')
+const invoiceEmailDeliveryOptions = [
+  { value: '', label: 'service_block.invoice_email_delivery_company' },
+  { value: 'attachment', label: 'service_block.invoice_email_delivery_attachment' },
+  { value: 'ov_link', label: 'service_block.invoice_email_delivery_ov_link' },
+  { value: 'both', label: 'service_block.invoice_email_delivery_both' },
+]
 
 const consumptionOptions = [
   { value: 'responsible_consumption', name: 'responsible_consumption' },
@@ -138,6 +146,7 @@ const loadData = async (billingData) => {
   if (billingData?.rejection_types) selectedRejectionTypes.value = rejectionTypes.value.filter(c => billingData?.rejection_types.includes(c.code))
   if (billingData?.attach_invoices) attachInvoices.value = billingData?.attach_invoices
   if (billingData?.attach_readings) attachReadings.value = billingData?.attach_readings
+  if (billingData?.invoice_email_delivery) invoiceEmailDelivery.value = billingData?.invoice_email_delivery
 }
 
 const onInvoiceSelected = async (invoice) => {
@@ -248,6 +257,7 @@ const emitChange = () => {
     companies: selectedCompanies.value.map(c => c.token),
     attach_invoices: attachInvoices.value,
     attach_readings: attachReadings.value,
+    invoice_email_delivery: invoiceEmailDelivery.value || null,
   }
   emit('change', invoice_filter_data.value)
 }
@@ -260,6 +270,8 @@ onMounted(async () => {
   consumptionSelect.value = consumptionOptions.map(c => c.value)
   modificationSelect.value = modificationOptions.map(c => c.value)
 })
+
+watch(invoiceEmailDelivery, () => emitChange())
 
 watch([
   selectedPaymentTypes,
@@ -373,6 +385,14 @@ watch(props.billing_data, async (newVal) => {
               </span>
             </div>
           </div>
+        </div>
+        <div v-if="attachInvoices" class="mt-3">
+          <label class="block text-sm font-medium text-gray-500 mb-2">{{ t('service_block.invoice_email_delivery') }}:</label>
+          <select v-model="invoiceEmailDelivery" class="input w-full">
+            <option v-for="option in invoiceEmailDeliveryOptions" :key="option.value" :value="option.value">
+              {{ t(option.label) }}
+            </option>
+          </select>
         </div>
       </div>
     </div>
