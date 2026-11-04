@@ -722,7 +722,6 @@ def contract_bank_change(file, is_saving, user=None):
                             
                         })
                     else:
-                        print("contract: ", contract.token)
                         found_contracts.append({
                             'contract_id': contract.id,
                             'contract_token': contract.token,

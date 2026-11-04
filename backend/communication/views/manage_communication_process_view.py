@@ -1031,11 +1031,7 @@ def filter_by_supply_point(filter_data, group_same, excluded=None):
         filters &= Q(installation_at__lte=installed_at_end_date)
         
     supply_points = SupplyPoint.objects.filter(filters)
-    print("supply_points")
-    print(supply_points)
     supply_point_contracts = Contract.objects.filter(supply_points__in=supply_points).distinct()
-    print("supply_point_contracts")
-    print(supply_point_contracts)
     
     if len(supply_point_contracts) > 0:
         filter_contract_data = {

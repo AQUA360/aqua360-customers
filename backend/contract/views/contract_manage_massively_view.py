@@ -50,7 +50,6 @@ class ContractManageMassivelyViewSet(APIView):
 
         contracts = Contract.objects.filter(filters).distinct()
         
-        print("contracts", contracts)
         if not is_saving:
             contract_ids = contracts.values_list('id', flat=True)
             total_contracts_debt_management = getContractsCount(contracts)
