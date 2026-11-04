@@ -289,6 +289,11 @@ class ProcessDocumentDownloadSelectionTests(TestCase):
         self.assertEqual(CommunicationSerializer().get_multi_page_invoices(letter.communication), ['LONG'])
         self.assertEqual(CommunicationSerializer().get_multi_page_invoices(short_file.communication), [])
 
+        # El recompte del procés té el mateix àmbit que la descàrrega
+        Communication.objects.filter(pk=long_file.communication_id).update(is_active=False)
+        self.assertEqual(CommunicationProcessSerializer().get_multi_page_communications(self.process), 2)
+        self.assertIn(long_file.id, [f.id for f in ordered_process_files(self.process.id, pages='multiple')])
+
     def test_orders_process_files_by_address_and_contract(self):
         self.add_file('letter', address='Carrer B', serie='F-2', contract_token='C-2')
         self.add_file('letter', address='Carrer A', serie='F-10', contract_token='C-10')
@@ -562,6 +567,26 @@ class InvoicePdfPageCountTests(SimpleTestCase):
 
 
 class InvoiceMultiPageFilterTests(TestCase):
+    def test_api_cannot_write_page_count_and_new_file_resets_it(self):
+        from billing.serializers.invoice_serializer import InvoiceSaveSerializer
+
+        seed_configs()
+        old_doc = Document.objects.create(entity_id=1, service='hdd', document_name='vell')
+        new_doc = Document.objects.create(entity_id=1, service='hdd', document_name='nou')
+        invoice = Invoice.objects.create(token='API', invoice_file=old_doc, pdf_page_count=2)
+
+        serializer = InvoiceSaveSerializer(invoice, data={'pdf_page_count': 1}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.pdf_page_count, 2)
+
+        serializer = InvoiceSaveSerializer(invoice, data={'invoice_file': new_doc.id}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        invoice.refresh_from_db()
+        self.assertIsNone(invoice.pdf_page_count)
+
     def test_multi_page_filter(self):
         from billing.filter.invoice_filter import InvoiceFilter
 

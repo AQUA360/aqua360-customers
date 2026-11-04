@@ -261,27 +261,22 @@ def _payment_matches(comm_file, tokens):
     return False
 
 
-def _is_multi_page(comm_file):
+def _communication_is_multi_page(communication):
     """La comunicació porta alguna factura de més d'una pàgina.
 
-    Es decideix per comunicació, no per fitxer, perquè la carta vagi al mateix
-    paquet que la seva factura.
+    Es decideix per comunicació, no per fitxer, perquè tot el que va al mateix
+    sobre (carta i factures) surti al mateix paquet.
     """
-    invoices = []
-    if comm_file.invoice is not None:
-        invoices.append(comm_file.invoice)
-    communication = comm_file.communication
-    if communication is not None:
-        invoices.extend(communication.invoices.all())
-        invoices.extend(sibling.invoice for sibling in communication.files.all() if sibling.invoice is not None)
+    invoices = list(communication.invoices.all())
+    invoices.extend(comm_file.invoice for comm_file in communication.files.all() if comm_file.invoice is not None)
     return any((invoice.pdf_page_count or 0) > 1 for invoice in invoices)
 
 
-def _pages_match(comm_file, pages):
+def _pages_match(is_multi_page, pages):
     if pages == PAGES_MULTIPLE:
-        return _is_multi_page(comm_file)
+        return is_multi_page
     if pages == PAGES_SINGLE:
-        return not _is_multi_page(comm_file)
+        return not is_multi_page
     return True
 
 
@@ -379,13 +374,14 @@ def ordered_process_files(process_ids, *, payment_type_tokens=None, delivery=DEL
 
     selected = []
     for communication in communications:
+        is_multi_page = pages != PAGES_ALL and _communication_is_multi_page(communication)
         for comm_file in communication.files.all():
             comm_file.communication = communication
             if not _channel_included(comm_file, postal_token, email_token, delivery):
                 continue
             if not _payment_matches(comm_file, tokens):
                 continue
-            if not _pages_match(comm_file, pages):
+            if not _pages_match(is_multi_page, pages):
                 continue
             selected.append(comm_file)
     selected.sort(key=lambda comm_file: _sort_key(comm_file, ordering, descending))

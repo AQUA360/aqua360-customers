@@ -141,7 +141,8 @@ watch(() => props.updatingMessagesTaskId, (newId, oldId) => {
       <FieldDetail v-if="localData.type_names" class="col-span-2 truncate" :label='$t("common.type")' :value=localData.type_names />
       <FieldDetail class="" :label='$t("common.send_date")' :value="localData.due_date ? formatDate(localData.due_date) : '-' " />
       <FieldDetail class="" :label='$t("user")' :value="localData.user.username" />
-      <FieldDetail v-if="localData.has_invoices" :label="t('billing_block.multi_page_invoices')">
+      <FieldDetail v-if="localData.has_invoices || localData.multi_page_communications > 0"
+        :label="t('billing_block.multi_page_invoices')">
         <span class="inline-flex items-center gap-1.5" :title="t('billing_block.multi_page_invoices_help')">
           <Icon v-if="localData.multi_page_communications > 0" name="fa6-solid:circle-exclamation"
             class="w-3.5 h-3.5 text-amber-500" />
