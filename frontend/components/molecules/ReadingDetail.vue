@@ -28,6 +28,11 @@ const props = defineProps({
   selectingDisabled: {
     type: Boolean,
     default: false
+  },
+  // Obre el detall amb les lectures de control visibles
+  showControl: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -49,7 +54,7 @@ const closePhotoModal = () => {
   modalPhoto.value = '';
 }
 
-const showControlReadings = ref(false);
+const showControlReadings = ref(props.showControl);
 
 const photoSrc = computed(() => {
   const photo = modalPhoto.value;
@@ -81,16 +86,23 @@ const copiesTooltip = (element) => t('billing_block.reading_copies_tooltip', {
   contracts: element.copies.map(copy => copy.contract?.token || '-').join(', ')
 });
 
+// Només la darrera petició pot actualitzar les dades (el filtre de control pot canviar amb una petició pendent)
+let latestRequestId = 0;
+
 const getData = async (load = true) => {
+  const requestId = ++latestRequestId;
   loading.value = load;
   try {
     const response = await $ReadingApiService.getAll('', [], 1, null, false, props.contract_ids, props.supply_point_id, props.meter_id, showControlReadings.value? null : false);
+    if (requestId !== latestRequestId) return;
     data.value = []
     data.value = response.results;
   } catch (error) {
     console.error(error)
+    // No es deixen a la vista les lectures d'una selecció anterior
+    if (requestId === latestRequestId) data.value = [];
   } finally {
-    loading.value = false
+    if (requestId === latestRequestId) loading.value = false
   }
 }
 
@@ -153,6 +165,15 @@ onMounted(async () => {
 
 watch(() => props.contract_ids, async () => {
   await getData();
+});
+
+// El detall pot seguir obert mentre se'n canvia el punt de subministrament o el comptador
+watch(() => [props.supply_point_id, props.meter_id], async () => {
+  await getData();
+});
+
+watch(() => props.showControl, (value) => {
+  showControlReadings.value = value;
 });
 
 watch(() => showControlReadings.value, async () => {
