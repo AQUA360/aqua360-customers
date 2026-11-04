@@ -316,6 +316,11 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const leakEstimate = async (data) => {
+      const apiUrl = `${apiHost}${entity}leak-estimate/`;
+      return await $apiManager.fetch(apiUrl, 'POST', data, { 'Content-Type': 'application/json' });
+    }
+
     const estimateReading = async (data) => {
       let apiUrl = `${apiHost}${entity}estimate/`;
       try {
@@ -371,6 +376,7 @@ export default defineNuxtPlugin(nuxtApp => {
       exportReadingsByBatchMinimal,
       getModificationData,
       recalculateEstimatedReadings,
+      leakEstimate,
       estimateReading,
       filterExportReadings,
       exportReadings,
