@@ -773,8 +773,10 @@ class InvoiceDetailByTokenOVView(RetrieveAPIView):
     def get_queryset(self):
         cfg = ConfigProject.objects.filter(token="invoice_type_invoice_token").first()
         invoice_type_token = cfg.value if cfg and cfg.value else None
-        queryset = Invoice.objects.exclude(status__token="1").select_related(
-            "contract", "status"
+        queryset = (
+            Invoice.objects.exclude(status__token="1")
+            .select_related("contract", "status")
+            .prefetch_related("readings__previous_reading")
         )
         if invoice_type_token:
             queryset = queryset.filter(type_final=invoice_type_token)

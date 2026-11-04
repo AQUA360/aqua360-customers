@@ -1269,11 +1269,35 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
             return False
         return True
 
+    @staticmethod
+    def _billed_days(obj):
+        """Dies naturals facturats: suma, per cada lectura de la factura, dels
+        dies entre la lectura anterior i la lectura (un canvi de comptador
+        parteix el període en trams consecutius). `None` si la factura no té
+        lectures amb lectura anterior (quotes fixes, càrrecs puntuals)."""
+        total = None
+        for reading in obj.readings.all():
+            previous = reading.previous_reading
+            if (
+                reading.is_control
+                or reading.reading_date is None
+                or previous is None
+                or previous.reading_date is None
+            ):
+                continue
+            days = (reading.reading_date - previous.reading_date).days
+            if days > 0:
+                total = (total or 0) + days
+        return total
+
     def get_billing_period(self, obj):
+        """`year`/`month` corresponen a la data d'emissió (`issue_date`);
+        `days` són els dies facturats entre lectures (`null` sense lectures)."""
+        issue_date = obj.issue_date
         return {
-            "year": obj.billing_period_year,
-            "month": obj.billing_period_month,
-            "days": obj.billing_period_days,
+            "year": issue_date.year if issue_date else None,
+            "month": issue_date.month if issue_date else None,
+            "days": self._billed_days(obj),
         }
 
     def get_dwelling_code(self, obj):

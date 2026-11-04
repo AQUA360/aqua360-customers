@@ -541,6 +541,58 @@ class InvoiceStatusObjectTests(TestCase):
         self.assertEqual(response.data["invoice_status"], "Enviada")
         self.assertEqual(response.data["status"], {"token": "3", "name": "Enviada"})
 
+    def _billing_period(self, token):
+        response = self.client.get(
+            reverse("invoice-detail-by-token-ov", kwargs={"token": token})
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.data["billing_period"]
+
+    def test_billing_period_uses_issue_date_and_null_days_without_readings(self):
+        Invoice.objects.filter(pk=self.invoice.pk).update(
+            billing_period_year=2025, billing_period_month=10, billing_period_days=90
+        )
+
+        self.assertEqual(
+            self._billing_period("INV-001"),
+            {"year": 2026, "month": 1, "days": None},
+        )
+
+    def test_billing_period_days_sum_reading_segments(self):
+        first = Reading.objects.create(
+            contract=self.contract, reading_date=date(2025, 10, 1)
+        )
+        second = Reading.objects.create(
+            contract=self.contract,
+            reading_date=date(2025, 11, 1),
+            previous_reading=first,
+        )
+        third = Reading.objects.create(
+            contract=self.contract,
+            reading_date=date(2025, 12, 1),
+            previous_reading=second,
+        )
+        control = Reading.objects.create(
+            contract=self.contract,
+            reading_date=date(2025, 12, 15),
+            previous_reading=third,
+            is_control=True,
+        )
+        self.invoice.readings.add(second, third, control)
+
+        self.assertEqual(
+            self._billing_period("INV-001"),
+            {"year": 2026, "month": 1, "days": 31 + 30},
+        )
+
+    def test_billing_period_days_null_when_reading_has_no_previous(self):
+        reading = Reading.objects.create(
+            contract=self.contract, reading_date=date(2025, 12, 1)
+        )
+        self.invoice.readings.add(reading)
+
+        self.assertIsNone(self._billing_period("INV-001")["days"])
+
 
 class InvoiceFilterAlignmentTests(TestCase):
     """Phase 2: `/ov/unpayed-invoices/` comparteix els filtres base de
