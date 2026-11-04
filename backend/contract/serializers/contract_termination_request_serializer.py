@@ -44,7 +44,10 @@ class ContractTerminationRequestSerializer(serializers.ModelSerializer):
         supply_points = obj.contract.supply_points.all()
         readings = []
         for supply_point in supply_points:
-            reading = Reading.objects.filter(supply_point=supply_point, contract=obj.contract).order_by('-reading_date').first()
+            # Valor proposat per a la lectura de tall: les lectures de control no es facturen
+            reading = Reading.objects.filter(
+                supply_point=supply_point, contract=obj.contract, is_control=False, is_active=True
+            ).order_by('-reading_date').first()
             if reading:
                 readings.append({
                     'id': reading.id,

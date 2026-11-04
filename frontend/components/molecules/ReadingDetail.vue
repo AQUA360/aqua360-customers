@@ -28,6 +28,11 @@ const props = defineProps({
   selectingDisabled: {
     type: Boolean,
     default: false
+  },
+  // Obre el detall amb les lectures de control visibles
+  showControl: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -49,7 +54,7 @@ const closePhotoModal = () => {
   modalPhoto.value = '';
 }
 
-const showControlReadings = ref(false);
+const showControlReadings = ref(props.showControl);
 
 const photoSrc = computed(() => {
   const photo = modalPhoto.value;
@@ -153,6 +158,10 @@ onMounted(async () => {
 
 watch(() => props.contract_ids, async () => {
   await getData();
+});
+
+watch(() => props.showControl, (value) => {
+  showControlReadings.value = value;
 });
 
 watch(() => showControlReadings.value, async () => {

@@ -3,6 +3,7 @@ import { ref, watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
+import { splitLastReading } from '~/utils/last-reading';
 import ButtonOutline from '~/components/atoms/ButtonOutline.vue';
 import ContractStatusBadges from '~/components/molecules/ContractStatusBadges.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
@@ -77,7 +78,8 @@ const loadPreviousReadings = async () => {
   for (const sp of supplyPoints) {
     try {
       const response = await $ReadingApiService.getAll('', [], 1, null, false, [], sp.id);
-      previousReadings.value[sp.id] = response?.results?.[0] ?? null;
+      // L'avís de lectura ja facturada mira l'última lectura facturable, no les de control
+      previousReadings.value[sp.id] = splitLastReading(response?.results).reading;
     } catch {
       previousReadings.value[sp.id] = null;
     }

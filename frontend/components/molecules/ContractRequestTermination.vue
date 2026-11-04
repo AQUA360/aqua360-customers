@@ -9,6 +9,8 @@ import { useToast } from 'vue-toastification';
 import H1 from '~/components/atoms/H1.vue';
 import OrderTypeDetail from '~/components/molecules/OrderTypeDetail.vue';
 import ReadingDetail from '../molecules/ReadingDetail.vue';
+import NewerControlReadingsNotice from '~/components/atoms/NewerControlReadingsNotice.vue';
+import { splitLastReading } from '~/utils/last-reading';
 import MeterDetail from '../molecules/MeterDetail.vue';
 import ButtonSeleccio from '../atoms/ButtonSeleccio.vue';
 import AddMeters from '../molecules/AddMeters.vue';
@@ -73,6 +75,8 @@ const meterData = ref(null);
 const loadingMeterData = ref(false);
 
 const previous_readings = ref({});
+// Lectures de control més recents que l'última lectura facturable, per punt de subministrament
+const newer_control_readings = ref({});
 
 // Alguns registres antics guarden el token ('reading_alert_zero') al camp
 // alert/alert_notes en lloc del nom llegible; el traduïm igual que StatusesNav.vue.
@@ -103,14 +107,13 @@ const loadPreviousReadings = async () => {
   for (const sp of supplyPointsList) {
     try {
       const response = await $ReadingApiService.getAll('', [], 1, null, false, [], sp.id);
-      if (response && response.results && response.results.length > 0) {
-        previous_readings.value[sp.id] = response.results[0];
-      } else {
-        previous_readings.value[sp.id] = null;
-      }
+      const { reading, newerControlReadings } = splitLastReading(response?.results);
+      previous_readings.value[sp.id] = reading;
+      newer_control_readings.value[sp.id] = newerControlReadings;
     } catch (error) {
       console.error('Error loading previous reading for supply point:', sp.id, error);
       previous_readings.value[sp.id] = null;
+      newer_control_readings.value[sp.id] = [];
     }
   }
 }
@@ -829,7 +832,16 @@ const contractCardDone = computed(() => activeContract.value == null || !!termin
 const showRegionComponent = ref(null);
 const regionDetailId = ref(null);
 
+// El detall de lectures s'obre amb les de control visibles si n'hi ha de posteriors a l'última lectura
+const readingDetailShowControl = ref(false);
+
+const openLastReadingDetail = (supply_point) => {
+  showDetail('ReadingDetail', supply_point.meter_id);
+  readingDetailShowControl.value = newer_control_readings.value[supply_point.id]?.length > 0;
+}
+
 const showDetail = (component, id) => {
+  readingDetailShowControl.value = false;
   showRegionComponent.value = component;
   regionDetailId.value = id;
   showRegion.value = true;
@@ -1448,14 +1460,15 @@ watch(billCutReading, async (newVal) => {
                           </span>
                         </div>
                         <div v-else class="text-sm font-semibold text-slate-400">
-                          {{ t('common.no_records') }}
+                          {{ newer_control_readings[supply_point.id]?.length ? t('billing_block.no_billable_readings') : t('common.no_records') }}
                         </div>
+                        <NewerControlReadingsNotice :readings="newer_control_readings[supply_point.id]" />
                         <span class="text-xs text-slate-500 block mt-0.5 font-medium">
                           {{ supply_point?.is_telecontrol ? t('informative_block.info_supply_telecontrol') : t('informative_block.info_supply_no_telecontrol') }}
                         </span>
                       </div>
                     </div>
-                    <button type="button" @click="showDetail('ReadingDetail', supply_point.meter_id)" class="button-default shadow-sm hover:scale-105 transition-all" :disabled="saving || loading_termination">
+                    <button type="button" @click="openLastReadingDetail(supply_point)" class="button-default shadow-sm hover:scale-105 transition-all" :disabled="saving || loading_termination">
                       <Icon name="fa6-solid:eye" />
                     </button>
                   </div>
@@ -1652,7 +1665,7 @@ watch(billCutReading, async (newVal) => {
             </h2>
             <MoleculesContractDetail v-if="regionDetailId" :isSubRegion="true" :id="regionDetailId" />
           </div>
-          <ReadingDetail v-if="showRegionComponent == 'ReadingDetail'" :meter_id="regionDetailId" :isSubRegion="true" />
+          <ReadingDetail v-if="showRegionComponent == 'ReadingDetail'" :meter_id="regionDetailId" :show-control="readingDetailShowControl" :isSubRegion="true" />
           <div v-if="showRegionComponent === 'InitialReadingSelect'">
             <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">
               <Icon name="fa6-solid:flag-checkered" class="text-emerald-600" />
