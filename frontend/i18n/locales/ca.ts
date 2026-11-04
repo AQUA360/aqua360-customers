@@ -2618,7 +2618,8 @@ export default {
     readings_continue_from_to: 'Lectures des de {from} → fins a {to}',
     apply_email_to_all: 'Aplicar el canvi a totes les factures',
     email_applied_to_all: 'Canvi aplicat a totes les factures',
-    send_all: 'Enviar totes'
+    send_all: 'Enviar totes',
+    emails_to_send: "correus s'enviaran a"
   },
   reading_block:   {
     smart_metering_load_title: 'Carregar Smart Metering',
