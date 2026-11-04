@@ -500,7 +500,12 @@ class AccountingPricing(models.Model):
     
     token = models.CharField(max_length=255, null=True, blank=True)
     # Replaces the accounting concept token when the declared line is negative or an undeclaration.
+    # Default fallback when a category-specific return token below is empty.
     token_return = models.CharField(max_length=255, null=True, blank=True)
+    # Optional overrides by the operation that caused the return/undeclare.
+    token_return_invoice = models.CharField(max_length=255, null=True, blank=True)
+    token_return_payment = models.CharField(max_length=255, null=True, blank=True)
+    token_return_lineitem = models.CharField(max_length=255, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
     # Accounting line title. When empty, the line keeps name.
     declared_as = models.CharField(max_length=255, null=True, blank=True)
@@ -510,7 +515,18 @@ class AccountingPricing(models.Model):
     #invoices category
     invoice_category = models.CharField(max_length=255, null=True, blank=True) # normal - irrecoverable - endownment
     # this value also works for payment to allow and detect if a marked invoice is being paid
-    undeclare_previous = models.BooleanField(default=False) # if TRUE, undeclare previous declarations (example, declared normal invoice set as endowment will be firt subtracted from normal invoices accounting and then declared on endowment accounting)
+    # if TRUE, undeclare previous declarations (example, declared normal invoice
+    # set as endowment will first be subtracted from normal invoices accounting
+    # and then declared on endowment accounting).
+    # undeclare_declare_as / undeclare_sign (below) control how that reversal
+    # is written on the previous account, as an exception to its return settings.
+    undeclare_previous = models.BooleanField(default=False)
+    # When collecting an endowment/irrecoverable invoice with no payment pricing
+    # for that category: if TRUE (and undeclare_previous), restore the previous
+    # clients tier for the paid amount and put the payment counterpart there.
+    # If FALSE, only reverse this pricing (plus additional lines) and the bank
+    # payment line — no FACTURACIÓ / normal-clients restore lines.
+    restore_previous_on_payment = models.BooleanField(default=True)
     origins = models.ManyToManyField(ProductOrigin, related_name='accounting_pricings') # declare only if separated by these, otherwise all together
     separate_by_origin = models.BooleanField(default=False) # if TRUE, separate by origin of the product in case invoices share one same pricing
     contract_types = models.ManyToManyField(ContractUseType, related_name='accounting_pricings')
@@ -537,8 +553,43 @@ class AccountingPricing(models.Model):
     payment_origin = models.CharField(max_length=20, choices=PAYMENT_ORIGIN_CHOICES, null=True, blank=True)
     # When grouped_lines and BANK_PAYMENT is among the payment types, split those lines by origin.
     separate_by_payment_origin = models.BooleanField(default=False)
-    
+    # Payment category only. When set, the payment have counterpart uses this
+    # pricing's account instead of the matched invoice clients account.
+    counterpart_accounting_pricing = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payment_counterpart_of',
+    )
+
     grouped_lines = models.BooleanField(default=True) # if FALSE, each value will be a separate line
+
+    # How normal amounts and returns/undeclares are placed on debt/have.
+    DECLARE_CHOICES = [
+        ('debt', _('Debt')),
+        ('have', _('Have')),
+    ]
+    SIGN_CHOICES = [
+        ('positive', _('Normal')),
+        ('negative', _('Negative')),
+    ]
+    declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')
+    declare_sign = models.CharField(max_length=10, choices=SIGN_CHOICES, default='positive')
+    # Defaults used when a category-specific return pair below is empty.
+    return_declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')
+    return_sign = models.CharField(max_length=10, choices=SIGN_CHOICES, default='negative')
+    # Used when undeclare_previous is True: how the previous-account reversal
+    # is declared (overrides that previous pricing's return_* settings).
+    undeclare_declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')
+    undeclare_sign = models.CharField(max_length=10, choices=SIGN_CHOICES, default='negative')
+    # Optional overrides by the operation that caused the return/undeclare.
+    return_declare_as_invoice = models.CharField(max_length=10, choices=DECLARE_CHOICES, null=True, blank=True)
+    return_sign_invoice = models.CharField(max_length=10, choices=SIGN_CHOICES, null=True, blank=True)
+    return_declare_as_payment = models.CharField(max_length=10, choices=DECLARE_CHOICES, null=True, blank=True)
+    return_sign_payment = models.CharField(max_length=10, choices=SIGN_CHOICES, null=True, blank=True)
+    return_declare_as_lineitem = models.CharField(max_length=10, choices=DECLARE_CHOICES, null=True, blank=True)
+    return_sign_lineitem = models.CharField(max_length=10, choices=SIGN_CHOICES, null=True, blank=True)
     
     company = models.ForeignKey(Company, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     exploitation = models.ForeignKey(Exploitation, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
@@ -562,6 +613,12 @@ class AccountingAdditionalLine(models.Model):
     accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='additional_lines', null=True, blank=True)
 
     is_negative = models.BooleanField(default=False)
+    DECLARE_CHOICES = AccountingPricing.DECLARE_CHOICES
+    SIGN_CHOICES = AccountingPricing.SIGN_CHOICES
+    declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')
+    declare_sign = models.CharField(max_length=10, choices=SIGN_CHOICES, default='positive')
+    return_declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')
+    return_sign = models.CharField(max_length=10, choices=SIGN_CHOICES, default='negative')
     is_active = models.BooleanField(default=True)
     def __str__(self):
         return f"AccountingAditionalLine {self.name}"

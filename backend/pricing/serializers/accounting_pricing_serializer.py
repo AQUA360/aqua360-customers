@@ -104,6 +104,10 @@ class AccountingAdditionalLineNestedSerializer(serializers.ModelSerializer):
             'declared_as',
             'accounting_concept',
             'is_negative',
+            'declare_as',
+            'declare_sign',
+            'return_declare_as',
+            'return_sign',
             'is_active',
             'created_at',
             'updated_at',
@@ -132,6 +136,9 @@ class AccountingPricingSerializer(serializers.ModelSerializer):
     company = CompanyMinimalSerializer(read_only=True, required=False, allow_null=True)
     exploitation = ExploitationMinimalSerializer(read_only=True, required=False, allow_null=True)
     aditional_lines = AccountingAdditionalLineNestedSerializer(many=True, read_only=True)
+    counterpart_accounting_pricing = AccountingPricingListSerializer(
+        read_only=True, required=False, allow_null=True,
+    )
 
     class Meta:
         model = AccountingPricing
