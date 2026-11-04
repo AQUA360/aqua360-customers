@@ -119,7 +119,6 @@ def generate_billing_missing_contracts_report(contracts_data, billing, first_sta
         reading = readings.filter(contract__id=item['contract_id']).order_by('-reading_date').first()
         prev_reading = previous_readings.filter(contract__id=item['contract_id']).order_by('-reading_date').first()
         contract = contracts.get(id=item['contract_id'])
-        print(contract.token)
         termination = contract_termination_requests.filter(contract__id=item['contract_id']).order_by('-created_at').first()
         line_row = [
             contract.token, contract.created_at.strftime('%d/%m/%Y'), 

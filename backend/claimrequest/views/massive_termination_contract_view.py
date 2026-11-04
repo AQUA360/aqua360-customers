@@ -108,10 +108,6 @@ class MassiveTerminationContractViewSet(APIView):
                                 is_active=True
                             )
 
-                            print("--------------------------------")
-                            print(associated_orders)
-                            print("--------------------------------")
-
                             if associated_orders:
                                 for order in associated_orders:
                                     order.contract_termination_request = termination_request

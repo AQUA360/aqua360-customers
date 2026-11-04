@@ -933,6 +933,26 @@ class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):
         cut.refresh_from_db()
         self.assertEqual(cut.status_id, self.status_active.id)
 
+    def test_start_cut_not_planned_returns_state_message(self):
+        """Return the service message as a 400 when the cut is not planned."""
+        cut = self._make_cut([self.sp_1], status=self.status_active)
+
+        response = self._start(cut)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['message'], "Només un tall Planificat es pot iniciar.")
+
+    def test_start_cut_does_not_expose_internal_value_errors(self):
+        """Do not return unexpected ValueError messages to the client."""
+        from unittest import mock
+
+        cut = self._make_cut([self.sp_1])
+        with mock.patch(
+            'service.utils.supply_cut_service.cut_supply_points',
+            side_effect=ValueError('internal detail'),
+        ):
+            with self.assertRaisesMessage(ValueError, 'internal detail'):
+                self._start(cut)
+
 
     def test_start_cut_without_cause_blocks_vulnerable_even_with_override(self):
         holder = self.make_person('P-NO-CAUSE', vulnerability_level=2)
