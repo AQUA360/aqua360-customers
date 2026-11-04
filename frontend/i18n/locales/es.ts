@@ -2620,7 +2620,11 @@ export default {
     reading_alert_estimated: 'Lectura Estimada',
     reading_alert_unusual: 'Lectura inusual',
     reading_alert_low_consumption: 'Consumo inusualmente bajo',
-    readings_continue_from_to: 'Lecturas desde {from} → hasta {to}'
+    readings_continue_from_to: 'Lecturas desde {from} → hasta {to}',
+    apply_email_to_all: 'Aplicar el cambio a todas las facturas',
+    email_applied_to_all: 'Cambio aplicado a todas las facturas',
+    send_all: 'Enviar todas',
+    emails_to_send: 'correos se enviarán a'
   },
   reading_block:   {
     smart_metering_load_title: 'Cargar Smart Metering',
