@@ -21,7 +21,7 @@ import AddInvoiceBudget from '../molecules/AddInvoiceBudget.vue';
 import InvoiceView from './InvoiceView.vue';
 import ReadingDetail from '../molecules/ReadingDetail.vue';
 import NewerControlReadingsNotice from '~/components/atoms/NewerControlReadingsNotice.vue';
-import { splitLastReading } from '~/utils/last-reading';
+import { fetchLastReading } from '~/utils/last-reading';
 import WizardStatusNav from '../molecules/WizardStatusNav.vue';
 import WorkOrderTypeSelectorModal from '../molecules/WorkOrderTypeSelectorModal.vue';
 
@@ -136,16 +136,21 @@ const getDaysSinceLastReading = (dateString) => {
   return `fa ${diff} dies`;
 }
 
+// Descarta les respostes d'una càrrega anterior si el watcher n'ha començat una de nova
+let previousReadingsRequestId = 0;
+
 const loadPreviousReadings = async () => {
   if (!supply_points.value || supply_points.value.length === 0) return;
+  const requestId = ++previousReadingsRequestId;
+  const contract_ids = [props.request?.contract?.id].filter(Boolean);
   for (const sp of supply_points.value) {
     try {
-      const contract_ids = [props.request?.contract?.id] || [];
-      const response = await $ReadingApiService.getAll('', [], 1, null, false, contract_ids, sp.id);
-      const { reading, newerControlReadings } = splitLastReading(response?.results);
+      const { reading, newerControlReadings } = await fetchLastReading($ReadingApiService, { contractIds: contract_ids, supplyPointId: sp.id });
+      if (requestId !== previousReadingsRequestId) return;
       previous_readings.value[sp.id] = reading;
       newer_control_readings.value[sp.id] = newerControlReadings;
     } catch (error) {
+      if (requestId !== previousReadingsRequestId) return;
       console.error('Error loading previous reading for supply point:', sp.id, error);
       previous_readings.value[sp.id] = null;
       newer_control_readings.value[sp.id] = [];

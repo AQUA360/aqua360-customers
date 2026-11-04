@@ -3,7 +3,7 @@ import { ref, watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
-import { splitLastReading } from '~/utils/last-reading';
+import { fetchLastReading } from '~/utils/last-reading';
 import ButtonOutline from '~/components/atoms/ButtonOutline.vue';
 import ContractStatusBadges from '~/components/molecules/ContractStatusBadges.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
@@ -72,15 +72,22 @@ const toggleIgnoreInvoice = async () => {
 
 const previousReadings = ref({});
 
+// Descarta les respostes d'una càrrega anterior si se n'ha començat una de nova
+let previousReadingsRequestId = 0;
+
 const loadPreviousReadings = async () => {
   const supplyPoints = terminationData.value?.contract?.supply_points;
   if (!supplyPoints?.length) return;
+  const requestId = ++previousReadingsRequestId;
+  // L'avís de lectura ja facturada mira l'última lectura facturable del contracte de la baixa
+  const contractIds = [terminationData.value?.contract?.id].filter(Boolean);
   for (const sp of supplyPoints) {
     try {
-      const response = await $ReadingApiService.getAll('', [], 1, null, false, [], sp.id);
-      // L'avís de lectura ja facturada mira l'última lectura facturable, no les de control
-      previousReadings.value[sp.id] = splitLastReading(response?.results).reading;
+      const { reading } = await fetchLastReading($ReadingApiService, { contractIds, supplyPointId: sp.id });
+      if (requestId !== previousReadingsRequestId) return;
+      previousReadings.value[sp.id] = reading;
     } catch {
+      if (requestId !== previousReadingsRequestId) return;
       previousReadings.value[sp.id] = null;
     }
   }

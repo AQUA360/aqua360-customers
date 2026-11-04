@@ -10,7 +10,7 @@ import H1 from '~/components/atoms/H1.vue';
 import OrderTypeDetail from '~/components/molecules/OrderTypeDetail.vue';
 import ReadingDetail from '../molecules/ReadingDetail.vue';
 import NewerControlReadingsNotice from '~/components/atoms/NewerControlReadingsNotice.vue';
-import { splitLastReading } from '~/utils/last-reading';
+import { fetchLastReading } from '~/utils/last-reading';
 import MeterDetail from '../molecules/MeterDetail.vue';
 import ButtonSeleccio from '../atoms/ButtonSeleccio.vue';
 import AddMeters from '../molecules/AddMeters.vue';
@@ -101,16 +101,23 @@ const getDaysSinceLastReading = (dateString) => {
   return `fa ${diff} dies`;
 }
 
+// Descarta les respostes d'una càrrega anterior si el watcher n'ha començat una de nova
+let previousReadingsRequestId = 0;
+
 const loadPreviousReadings = async () => {
   const supplyPointsList = termination_request.value?.contract?.supply_points;
   if (!supplyPointsList || supplyPointsList.length === 0) return;
+  const requestId = ++previousReadingsRequestId;
+  // Només les lectures del contracte que es dona de baixa
+  const contractIds = [termination_request.value?.contract?.id].filter(Boolean);
   for (const sp of supplyPointsList) {
     try {
-      const response = await $ReadingApiService.getAll('', [], 1, null, false, [], sp.id);
-      const { reading, newerControlReadings } = splitLastReading(response?.results);
+      const { reading, newerControlReadings } = await fetchLastReading($ReadingApiService, { contractIds, supplyPointId: sp.id });
+      if (requestId !== previousReadingsRequestId) return;
       previous_readings.value[sp.id] = reading;
       newer_control_readings.value[sp.id] = newerControlReadings;
     } catch (error) {
+      if (requestId !== previousReadingsRequestId) return;
       console.error('Error loading previous reading for supply point:', sp.id, error);
       previous_readings.value[sp.id] = null;
       newer_control_readings.value[sp.id] = [];
@@ -832,16 +839,20 @@ const contractCardDone = computed(() => activeContract.value == null || !!termin
 const showRegionComponent = ref(null);
 const regionDetailId = ref(null);
 
-// El detall de lectures s'obre amb les de control visibles si n'hi ha de posteriors a l'última lectura
+// El detall de lectures s'obre amb les de control visibles si n'hi ha de posteriors a l'última lectura,
+// i limitat al punt de subministrament (el comptador pot no estar informat)
 const readingDetailShowControl = ref(false);
+const readingDetailSupplyPointId = ref(null);
 
 const openLastReadingDetail = (supply_point) => {
   showDetail('ReadingDetail', supply_point.meter_id);
   readingDetailShowControl.value = newer_control_readings.value[supply_point.id]?.length > 0;
+  readingDetailSupplyPointId.value = supply_point.id;
 }
 
 const showDetail = (component, id) => {
   readingDetailShowControl.value = false;
+  readingDetailSupplyPointId.value = null;
   showRegionComponent.value = component;
   regionDetailId.value = id;
   showRegion.value = true;
@@ -1665,7 +1676,7 @@ watch(billCutReading, async (newVal) => {
             </h2>
             <MoleculesContractDetail v-if="regionDetailId" :isSubRegion="true" :id="regionDetailId" />
           </div>
-          <ReadingDetail v-if="showRegionComponent == 'ReadingDetail'" :meter_id="regionDetailId" :show-control="readingDetailShowControl" :isSubRegion="true" />
+          <ReadingDetail v-if="showRegionComponent == 'ReadingDetail'" :meter_id="regionDetailId" :supply_point_id="readingDetailSupplyPointId" :show-control="readingDetailShowControl" :isSubRegion="true" />
           <div v-if="showRegionComponent === 'InitialReadingSelect'">
             <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">
               <Icon name="fa6-solid:flag-checkered" class="text-emerald-600" />

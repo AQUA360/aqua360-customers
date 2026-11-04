@@ -86,16 +86,21 @@ const copiesTooltip = (element) => t('billing_block.reading_copies_tooltip', {
   contracts: element.copies.map(copy => copy.contract?.token || '-').join(', ')
 });
 
+// Només la darrera petició pot actualitzar les dades (el filtre de control pot canviar amb una petició pendent)
+let latestRequestId = 0;
+
 const getData = async (load = true) => {
+  const requestId = ++latestRequestId;
   loading.value = load;
   try {
     const response = await $ReadingApiService.getAll('', [], 1, null, false, props.contract_ids, props.supply_point_id, props.meter_id, showControlReadings.value? null : false);
+    if (requestId !== latestRequestId) return;
     data.value = []
     data.value = response.results;
   } catch (error) {
     console.error(error)
   } finally {
-    loading.value = false
+    if (requestId === latestRequestId) loading.value = false
   }
 }
 
@@ -157,6 +162,11 @@ onMounted(async () => {
 });
 
 watch(() => props.contract_ids, async () => {
+  await getData();
+});
+
+// El detall pot seguir obert mentre se'n canvia el punt de subministrament o el comptador
+watch(() => [props.supply_point_id, props.meter_id], async () => {
   await getData();
 });
 

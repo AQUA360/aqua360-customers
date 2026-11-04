@@ -46,7 +46,8 @@ class ContractTerminationRequestSerializer(serializers.ModelSerializer):
         for supply_point in supply_points:
             # Valor proposat per a la lectura de tall: les lectures de control no es facturen
             reading = Reading.objects.filter(
-                supply_point=supply_point, contract=obj.contract, is_control=False, is_active=True
+                supply_point=supply_point, contract=obj.contract, is_control=False, is_active=True,
+                reading_value__isnull=False,
             ).order_by('-reading_date').first()
             if reading:
                 readings.append({
@@ -57,7 +58,7 @@ class ContractTerminationRequestSerializer(serializers.ModelSerializer):
                     "calculated_value": reading.calculated_value,
                     "estimated_used": reading.estimated_used,
                     "supply_point": supply_point.id,
-                    "meter": reading.meter.id,
+                    "meter": reading.meter_id,
                 })
         return readings
     
@@ -201,7 +202,7 @@ class ContractTerminationRequestSaveSerializer(serializers.ModelSerializer):
                 ex_reading = existing_reading.first()
                 total_days = (last_reading_at.date() - ex_reading.reading_date.date()).days if hasattr(ex_reading.reading_date, 'date') else (last_reading_at.date() - ex_reading.reading_date).days
                 reading_data = {
-                    'token': f"{supply_point.meter.code}/MANUAL",
+                    'token': f"{supply_point.meter.code if supply_point.meter else 'NOMETER'}/MANUAL",
                     'reading_date': last_reading_at,
                     'reading_value': last_reading,
                     'leak_value': last_leak_reading if last_leak_reading else 0,
@@ -228,7 +229,7 @@ class ContractTerminationRequestSaveSerializer(serializers.ModelSerializer):
                         supply_point=supply_point, meter__id=meter_id, reading_date__lt=last_reading_at, contract=instance.contract
                         ).exclude(is_control=True).order_by('-reading_date').first()
                 
-                if previous_reading.reading_value == None:
+                if previous_reading and previous_reading.reading_value is None:
                     og_previous_reading = previous_reading
                     previous_reading = og_previous_reading.previous_reading
                     og_previous_reading.is_control = True
@@ -236,7 +237,7 @@ class ContractTerminationRequestSaveSerializer(serializers.ModelSerializer):
                 
                 total_days = (last_reading_at.date() - previous_reading.reading_date).days if previous_reading else 0
                 reading_data = {
-                    'token': f"{supply_point.meter.code}/MANUAL",
+                    'token': f"{supply_point.meter.code if supply_point.meter else 'NOMETER'}/MANUAL",
                     'reading_date': last_reading_at,
                     'reading_value': last_reading,
                     'leak_value': last_leak_reading,
@@ -256,7 +257,7 @@ class ContractTerminationRequestSaveSerializer(serializers.ModelSerializer):
             instance_readings = instance.readings.all()
             #check if reading with same supply point and meter already exists, if they do, remove it from intance
             for reading in instance_readings:
-                if reading.supply_point.id == supply_point.id and reading.meter.id == supply_point.meter.id:
+                if reading.supply_point_id == supply_point.id and reading.meter_id == supply_point.meter_id:
                     instance.readings.remove(reading)
             instance.readings.add(new_reading)
         

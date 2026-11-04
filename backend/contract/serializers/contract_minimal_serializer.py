@@ -30,7 +30,8 @@ class ContractMinimalSerializer(serializers.ModelSerializer):
         readings = []
         for supply_point in supply_points:
             reading = Reading.objects.filter(
-                supply_point=supply_point, contract=instance, is_active=True, is_control=False
+                supply_point=supply_point, contract=instance, is_active=True, is_control=False,
+                reading_value__isnull=False,
             ).order_by('-reading_date').first()
             if reading:
                 readings.append({

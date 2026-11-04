@@ -11,7 +11,7 @@ from service.models import Company, Meter, MeterStatus, SupplyPoint, SupplyPoint
 
 
 class TerminationLastReadingsTest(TestCase):
-    """El valor proposat per a la lectura de tall no pot ser una lectura de control ni inactiva."""
+    """El valor proposat per a la lectura de tall no pot ser una lectura de control, inactiva ni sense valor."""
 
     @classmethod
     def setUpTestData(cls):
@@ -37,6 +37,7 @@ class TerminationLastReadingsTest(TestCase):
         cls.valid = reading(1, 100)
         reading(10, 120, is_control=True)
         reading(20, 130, is_active=False)
+        reading(25, None)
 
     def test_termination_proposes_last_non_control_reading(self):
         readings = ContractTerminationRequestSerializer().get_contract_last_readings(self.termination)
@@ -47,3 +48,11 @@ class TerminationLastReadingsTest(TestCase):
         readings = ContractMinimalSerializer().get_last_readings(self.contract)
 
         self.assertEqual([r['id'] for r in readings], [self.valid.id])
+
+    def test_termination_proposal_without_meter(self):
+        self.valid.meter = None
+        self.valid.save()
+
+        readings = ContractTerminationRequestSerializer().get_contract_last_readings(self.termination)
+
+        self.assertEqual([(r['id'], r['meter']) for r in readings], [(self.valid.id, None)])
