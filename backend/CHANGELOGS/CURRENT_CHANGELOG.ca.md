@@ -1,5 +1,11 @@
 # Changelog Backend
 
+## [04-11-2026]
+### FIX
+#### BILLING (`billing/views/payment_view.py` — segona devolució d'un rebut tornat a presentar el mateix dia de la primera)
+    - En carregar un fitxer de devolucions, un retorn ja registrat només impedeix el nou si és POSTERIOR al cobrament per domiciliació que es retorna (per data i, el mateix dia, per ordre de registre). Abans es comparava només la data: si el rebut s'havia tornat a presentar el mateix dia de la primera devolució i tornava amb el mateix motiu, la segona devolució es descartava sense cap avís i el rebut quedava pagat.
+    - Tornar a carregar el mateix fitxer continua sense duplicar la devolució. Tests a `billing/tests/test_return_after_payment_method_change.py`.
+
 ## [23-10-2026]
 ### FEAT
 #### COMMUNICATION (`communication/tasks.py`, `coredata/migrations/0143_add_attach_extra_docs_in_claims_config.py` — comunicacions d'impagats sense factures ni rebuts adjunts) (PR #115)
