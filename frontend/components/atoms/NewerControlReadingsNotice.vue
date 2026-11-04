@@ -17,7 +17,7 @@ const latest = computed(() => props.readings[0] ?? null);
 <template>
   <div v-if="latest" class="mt-1 flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-0.5 w-fit">
     <Icon name="fa6-solid:triangle-exclamation" class="text-amber-500" />
-    {{ t('billing_block.newer_control_reading', { value: latest.reading_value, date: formatDate(latest.reading_date) }) }}
+    {{ t('billing_block.newer_control_reading', { value: latest.reading_value ?? '-', date: formatDate(latest.reading_date) }) }}
     <span v-if="readings.length > 1" class="font-normal text-amber-600">
       {{ t('billing_block.newer_control_readings_more', { count: readings.length - 1 }) }}
     </span>

@@ -99,6 +99,8 @@ const getData = async (load = true) => {
     data.value = response.results;
   } catch (error) {
     console.error(error)
+    // No es deixen a la vista les lectures d'una selecció anterior
+    if (requestId === latestRequestId) data.value = [];
   } finally {
     if (requestId === latestRequestId) loading.value = false
   }

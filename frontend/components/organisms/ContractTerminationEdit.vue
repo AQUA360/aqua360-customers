@@ -142,7 +142,8 @@ let previousReadingsRequestId = 0;
 const loadPreviousReadings = async () => {
   if (!supply_points.value || supply_points.value.length === 0) return;
   const requestId = ++previousReadingsRequestId;
-  const contract_ids = [props.request?.contract?.id].filter(Boolean);
+  // A l'alta encara no hi ha props.request: el contracte de la baixa és a contract
+  const contract_ids = [contract.value?.id || props.request?.contract?.id].filter(Boolean);
   for (const sp of supply_points.value) {
     try {
       const { reading, newerControlReadings } = await fetchLastReading($ReadingApiService, { contractIds: contract_ids, supplyPointId: sp.id });

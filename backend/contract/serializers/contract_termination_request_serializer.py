@@ -49,17 +49,18 @@ class ContractTerminationRequestSerializer(serializers.ModelSerializer):
                 supply_point=supply_point, contract=obj.contract, is_control=False, is_active=True,
                 reading_value__isnull=False,
             ).order_by('-reading_date').first()
-            if reading:
-                readings.append({
-                    'id': reading.id,
-                    "reading_date": reading.reading_date,
-                    "reading_value": reading.reading_value,
-                    "leak_value": reading.leak_value,
-                    "calculated_value": reading.calculated_value,
-                    "estimated_used": reading.estimated_used,
-                    "supply_point": supply_point.id,
-                    "meter": reading.meter_id,
-                })
+            # Cada punt hi és encara que no tingui cap lectura proposable: el formulari
+            # de la lectura de tall es mostra igualment, amb el valor buit
+            readings.append({
+                'id': reading.id if reading else None,
+                "reading_date": reading.reading_date if reading else None,
+                "reading_value": reading.reading_value if reading else None,
+                "leak_value": reading.leak_value if reading else None,
+                "calculated_value": reading.calculated_value if reading else None,
+                "estimated_used": reading.estimated_used if reading else None,
+                "supply_point": supply_point.id,
+                "meter": reading.meter_id if reading else supply_point.meter_id,
+            })
         return readings
     
     def get_invoices(self, obj):
@@ -229,11 +230,17 @@ class ContractTerminationRequestSaveSerializer(serializers.ModelSerializer):
                         supply_point=supply_point, meter__id=meter_id, reading_date__lt=last_reading_at, contract=instance.contract
                         ).exclude(is_control=True).order_by('-reading_date').first()
                 
-                if previous_reading and previous_reading.reading_value is None:
+                # Les lectures anteriors sense valor queden com a control fins a trobar-ne una amb valor
+                # (amb protecció contra una cadena circular)
+                skipped_ids = set()
+                while previous_reading and previous_reading.reading_value is None and previous_reading.id not in skipped_ids:
+                    skipped_ids.add(previous_reading.id)
                     og_previous_reading = previous_reading
                     previous_reading = og_previous_reading.previous_reading
                     og_previous_reading.is_control = True
                     og_previous_reading.save()
+                if previous_reading and previous_reading.reading_value is None:
+                    previous_reading = None
                 
                 total_days = (last_reading_at.date() - previous_reading.reading_date).days if previous_reading else 0
                 reading_data = {

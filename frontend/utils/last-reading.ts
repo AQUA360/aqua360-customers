@@ -28,18 +28,19 @@ export const splitLastReading = <T extends ReadingLike>(readings: T[] | null | u
 };
 
 /**
- * Obté l'última lectura facturable d'un punt de subministrament (i contractes) i les
- * lectures de control més recents. Si la primera pàgina no en té cap de facturable,
- * la busca directament entre les que no són de control.
+ * Obté l'última lectura facturable d'un punt de subministrament (i contractes) i totes
+ * les lectures de control més recents. Recorre les pàgines fins a trobar la lectura
+ * facturable o arribar al final.
  */
 export const fetchLastReading = async <T extends ReadingLike>(
   readingApi: ReadingApi<T>,
   { contractIds = [], supplyPointId }: { contractIds?: (number | string)[]; supplyPointId: number | string },
 ) => {
-  const response = await readingApi.getAll('', [], 1, null, false, contractIds, supplyPointId);
-  const split = splitLastReading(response?.results);
-  if (split.reading || !response?.next) return split;
-
-  const billable = await readingApi.getAll('', [], 1, null, false, contractIds, supplyPointId, null, false);
-  return { ...split, reading: splitLastReading(billable?.results).reading };
+  let newerControlReadings: T[] = [];
+  for (let page = 1; ; page++) {
+    const response = await readingApi.getAll('', [], page, null, false, contractIds, supplyPointId);
+    const split = splitLastReading(response?.results);
+    newerControlReadings = newerControlReadings.concat(split.newerControlReadings);
+    if (split.reading || !response?.next) return { reading: split.reading, newerControlReadings };
+  }
 };

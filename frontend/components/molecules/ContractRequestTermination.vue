@@ -766,7 +766,8 @@ const handleMeterCreated = async (meter) => {
 }
 
 const clickGuardarLectura = async (id, meter_id) => {
-  const reading_entry = last_reading_values.value.find(item => item.meter == meter_id);
+  // Pel punt de subministrament: diversos punts poden no tenir comptador
+  const reading_entry = last_reading_values.value.find(item => item.supply_point == id);
   const save_data = {
     id: termination_request.value.id,
     last_reading: reading_entry.value,
