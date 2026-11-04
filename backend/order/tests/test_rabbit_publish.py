@@ -2,8 +2,9 @@
 Tests de la construcció del payload de l'event RabbitMQ "order.created"
 (order/services/rabbit.py).
 
-Es centra en les dues dades noves per a la GMAO:
+Es centra en les dades noves per a la GMAO:
   - exploitation_token (camp arrel del payload)
+  - created_by (nom de l'usuari creador, a additional_info)
   - last_reading_value / last_reading_date / last_reading_consumption (additional_info)
 
 publish_event queda sempre patchejat: cap test ha d'arribar a un broker real.
@@ -12,6 +13,7 @@ import datetime
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 
 from billing.models import Reading
@@ -645,3 +647,38 @@ class PublishOrderCreatedPayloadTest(RabbitPublishTestCase):
         self.assertEqual(additional_info_of(payload, "last_reading_value"), "500")
         self.assertEqual(additional_info_of(payload, "last_reading_date"), "2026-09-15")
         self.assertEqual(additional_info_of(payload, "last_reading_consumption"), "12m3")
+
+    def test_payload_created_by_prefers_the_full_name(self):
+        user = User.objects.create_user(
+            "user-2303", "user-2303@example.com", "x"
+        )
+        user.first_name = "Primera"
+        user.last_name = "Última"
+        user.save(update_fields=["first_name", "last_name"])
+        order = make_order(created_by=user)
+
+        payload = self._publish(order)
+
+        self.assertEqual(additional_info_of(payload, "created_by"), "Primera Última")
+
+    def test_payload_created_by_falls_back_to_the_username(self):
+        user = User.objects.create_user(
+            "user-2303-username", "user-2303-username@example.com", "x"
+        )
+        user.first_name = ""
+        user.last_name = "  "
+        user.save(update_fields=["first_name", "last_name"])
+        order = make_order(created_by=user)
+
+        payload = self._publish(order)
+
+        self.assertEqual(
+            additional_info_of(payload, "created_by"), "user-2303-username"
+        )
+
+    def test_payload_created_by_is_none_without_a_user(self):
+        order = make_order()
+
+        payload = self._publish(order)
+
+        self.assertIsNone(additional_info_of(payload, "created_by"))

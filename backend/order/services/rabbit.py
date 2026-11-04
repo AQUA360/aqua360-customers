@@ -286,6 +286,11 @@ def publish_order_created(order: Order):
             customer_email = default_contact.email
             customer_phone = default_contact.phone
 
+    # Usuari que ha creat l'ordre (nom complert o, si manca, username)
+    created_by_name = (
+        order.created_by.get_full_name().strip() or order.created_by.username
+    ) if order.created_by else None
+
     # Contexte addicional per a la GMAO
     supply_point = _resolve_order_supply_point(order)
     exploitation_token = _resolve_exploitation_token(order)
@@ -336,6 +341,10 @@ def publish_order_created(order: Order):
         "long": str(order.longitude) if order.longitude else None,
         "lat": str(order.latitude) if order.latitude else None,
         "additional_info": [
+            {
+                "key": "created_by",
+                "text": created_by_name,
+            },
             {
                 "key": "customer_name",
                 "text": customer_name,

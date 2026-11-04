@@ -221,6 +221,11 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
     # correu o per carta. Es genera i queda arxivat a la comunicació en tots dos casos.
     # Si no s'envia, s'agafa el valor de la plantilla (`MessageTemplate.attach_claim_documents`).
     attach_claim_documents = serializers.BooleanField(write_only=True, required=False, allow_null=True)
+    # Com s'envien les factures per correu en aquest procés (adjuntes, enllaç a l'oficina
+    # virtual o tots dos). Sense valor, mana la configuració de l'empresa de cada comunicació.
+    invoice_email_delivery = serializers.ChoiceField(
+        choices=Company.INVOICE_EMAIL_DELIVERY_CHOICES, write_only=True, required=False, allow_null=True
+    )
     og_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     # Destinataris que queden fora del procés, amb els motius ({id, person_type,
     # contracts, reasons}). El wizard l'envia només al primer lot.
@@ -254,6 +259,7 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
         attach_reading_invoices = validated_data.pop('attach_reading_invoices', False)
         # `None` (camp no enviat): es resol amb el valor de la plantilla un cop carregada.
         attach_claim_documents = validated_data.pop('attach_claim_documents', None)
+        invoice_email_delivery = validated_data.pop('invoice_email_delivery', None)
 
         og_id = validated_data.pop('og_id', None)
         run_token = validated_data.pop('run_token', None)
@@ -349,6 +355,9 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
                 template_instance = MessageTemplate.objects.filter(token=message_template_id).first()
         if attach_claim_documents is None:
             attach_claim_documents = template_instance.attach_claim_documents if template_instance else True
+        # Sense valor al procés, el de la plantilla; si la plantilla tampoc en té, el de l'empresa.
+        if not invoice_email_delivery and template_instance:
+            invoice_email_delivery = template_instance.invoice_email_delivery
 
         company_config = None
         if company_id:
@@ -436,7 +445,8 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
             company_config_email.id if company_config_email else None,
             attach_claim_documents=attach_claim_documents,
             attach_readings=attach_readings,
-            attach_reading_invoices=attach_reading_invoices
+            attach_reading_invoices=attach_reading_invoices,
+            invoice_email_delivery=invoice_email_delivery,
         ))
         
         return instance
