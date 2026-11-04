@@ -566,6 +566,15 @@ onUnmounted(() => {
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.reports') }}</span>
           </div>
         </NuxtLink>
+        <NuxtLink v-if="permissions?.permissions?.view_custom_report || permissions?.permissions?.change_custom_report" to="/statistics/custom-reports/"
+          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
+          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/statistics/custom-reports') != -1, 'justify-center': isCollapsed }]"
+          :title="isCollapsed ? $t('custom_report_block.title') : undefined">
+          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
+            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-cells" class="text-slate-500" /></span>
+            <span v-show="!isCollapsed" class="truncate">{{ $t('custom_report_block.title') }}</span>
+          </div>
+        </NuxtLink>
         <NuxtLink to="/statistics/daily-documents/"
           class="flex w-full items-center px-3 py-2 leading-[14px] text-slate-600 rounded"
           :class="[hoverClass, {
