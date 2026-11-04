@@ -150,6 +150,11 @@ const onFilterChange = async (newVal) => {
     attachInvoices.value = newVal.attach_invoices || false
     attachReadings.value = (newVal.attach_readings && newVal.attach_invoices) || false
     invoiceEmailDelivery.value = (newVal.attach_invoices && newVal.invoice_email_delivery) || null
+    // Amb els destinataris ja cercats, els canvis dels adjunts i del mode d'enviament de les
+    // factures han d'arribar igualment al procés (si no, només s'agafaven en tornar a cercar).
+    if (persons_data.value?.length) {
+        emit('change', persons_data.value, typeSelect.value, attachInvoices.value, attachReadings.value, invoiceEmailDelivery.value)
+    }
     // El filtre de talls arriba com a objectes, però el payload de save() espera
     // ids: es normalitzen aquí perquè el vincle es pugui llegir després del procés.
     const cuts = Array.isArray(newVal?.supply_cuts) ? newVal.supply_cuts : []

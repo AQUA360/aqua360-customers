@@ -271,6 +271,8 @@ onMounted(async () => {
   modificationSelect.value = modificationOptions.map(c => c.value)
 })
 
+watch(invoiceEmailDelivery, () => emitChange())
+
 watch([
   selectedPaymentTypes,
   selectedInvoiceStatuses,
@@ -386,7 +388,7 @@ watch(props.billing_data, async (newVal) => {
         </div>
         <div v-if="attachInvoices" class="mt-3">
           <label class="block text-sm font-medium text-gray-500 mb-2">{{ t('service_block.invoice_email_delivery') }}:</label>
-          <select v-model="invoiceEmailDelivery" class="input w-full" @change="emitChange">
+          <select v-model="invoiceEmailDelivery" class="input w-full">
             <option v-for="option in invoiceEmailDeliveryOptions" :key="option.value" :value="option.value">
               {{ t(option.label) }}
             </option>
