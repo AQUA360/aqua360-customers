@@ -58,8 +58,9 @@ class CustomReportViewSet(viewsets.ModelViewSet):
             if isinstance(exc, service.CustomReportNotConfigured)
             else status.HTTP_400_BAD_REQUEST
         )
-        logger.exception('Custom report request failed')
-        return Response({'error': 'An internal error has occurred.'}, status=code)
+        # Errors esperats (SQL invàlid, error de PostgreSQL, sense configurar): sense traça.
+        logger.info('Custom report request rejected: %s', exc.public_message)
+        return Response({'error': exc.public_message}, status=code)
 
     def _run(self, request, sql, query=None):
         try:

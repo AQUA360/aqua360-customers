@@ -45,7 +45,15 @@ EXPORT_FORMATS = ("csv", "xlsx")
 
 
 class CustomReportError(Exception):
-    """Error de validació o d'execució que es pot mostrar a l'usuari."""
+    """Error de validació o d'execució pensat per mostrar-lo a l'usuari.
+
+    `public_message` és l'únic text que arriba al client: es construeix explícitament (missatges
+    propis o la línia principal de l'error de PostgreSQL), mai amb traces ni context intern.
+    """
+
+    def __init__(self, public_message):
+        super().__init__(public_message)
+        self.public_message = public_message
 
 
 class CustomReportNotConfigured(CustomReportError):
@@ -174,7 +182,7 @@ def execute(sql, values=None, max_rows=None):
             # Mai es confirma res: la transacció es desfà sempre.
             transaction.set_rollback(True, using=connection.alias)
     except DatabaseError as exc:
-        raise CustomReportError(str(exc).strip()) from exc
+        raise CustomReportError(_database_error_message(exc)) from exc
 
     truncated = len(rows) > max_rows
     rows = rows[:max_rows]
@@ -186,6 +194,19 @@ def execute(sql, values=None, max_rows=None):
         "max_rows": max_rows,
         "duration_ms": round((time.monotonic() - start) * 1000, 1),
     }
+
+
+def _database_error_message(exc):
+    """Línia principal (i pista) de l'error de PostgreSQL, sense CONTEXT ni detalls interns.
+
+    És el que necessita qui escriu la consulta (p. ex. `column "x" does not exist`).
+    """
+    diag = getattr(getattr(exc, "__cause__", None), "diag", None)
+    primary = getattr(diag, "message_primary", None)
+    if not primary:
+        return "The query could not be executed."
+    hint = getattr(diag, "message_hint", None)
+    return f"{primary} ({hint})" if hint else primary
 
 
 def to_json_rows(rows):
