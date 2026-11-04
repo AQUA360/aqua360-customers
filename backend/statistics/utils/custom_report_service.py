@@ -31,6 +31,7 @@ PARAM_REGEX = re.compile(r"\$\$([a-z0-9_]+)(?:\|([^\$\:]+))?(?:\:([^\$]+))?\$\$"
 EXCLUDED_TABLES = (
     "authtoken_token",
     "django_session",
+    "lecturapp_token",
     "explorer_databaseconnection",
 )
 EXCLUDED_TABLE_PREFIXES = ("explorer_",)

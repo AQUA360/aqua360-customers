@@ -94,7 +94,12 @@ const resetParams = () => {
   for (const p of detectedParams.value) paramValues[p.name] = p.default;
 };
 
+// Augmenta cada cop que l'editor es reemplaça (canvi d'informe o informe nou): una operació
+// asíncrona que acaba més tard no ha de trepitjar el que l'usuari té obert ara.
+let editorRevision = 0;
+
 const applyReport = (report) => {
+  editorRevision += 1;
   selected.value = report;
   Object.assign(form, { id: report?.id ?? null, title: report?.title ?? '', description: report?.description ?? '', sql: report?.sql ?? '' });
   savedSnapshot.value = snapshotOf(form);
@@ -126,14 +131,20 @@ const save = async (asNew = false) => {
     return;
   }
   saving.value = true;
+  const revision = editorRevision;
+  const sent = { title: form.title, description: form.description, sql: form.sql };
   try {
-    const saved = await api.save({ ...form, id: asNew ? null : form.id });
+    const saved = await api.save({ ...sent, id: asNew ? null : form.id });
     toast.success(t('custom_report_block.saved'));
     await loadReports();
-    const fresh = reports.value.find((r) => r.id === saved.id) || saved;
-    selected.value = fresh;
-    Object.assign(form, { id: saved.id, title: saved.title, description: saved.description, sql: saved.sql });
-    savedSnapshot.value = snapshotOf(form);
+    if (revision !== editorRevision) return; // l'usuari ha obert un altre informe mentrestant
+    const savedFields = { title: saved.title, description: saved.description, sql: saved.sql };
+    // Si ha seguit editant durant el desament, es conserven els canvis (i queden com a pendents).
+    const untouched = form.title === sent.title && form.description === sent.description && form.sql === sent.sql;
+    form.id = saved.id;
+    if (untouched) Object.assign(form, savedFields);
+    savedSnapshot.value = snapshotOf({ id: saved.id, ...savedFields });
+    selected.value = reports.value.find((r) => r.id === saved.id) || saved;
     router.replace({ query: { ...route.query, id: saved.id } });
   } catch (e) {
     console.error(e);
@@ -144,13 +155,16 @@ const save = async (asNew = false) => {
 
 const removeReport = async () => {
   if (!form.id || !window.confirm(t('custom_report_block.confirm_delete'))) return;
+  const revision = editorRevision;
   try {
     await api.remove(form.id);
     toast.success(t('custom_report_block.deleted'));
-    savedSnapshot.value = snapshotOf(form); // evita la pregunta de canvis sense desar
-    applyReport(null);
-    const { id, ...query } = route.query;
-    router.replace({ query });
+    if (revision === editorRevision) {
+      savedSnapshot.value = snapshotOf(form); // evita la pregunta de canvis sense desar
+      applyReport(null);
+      const { id, ...query } = route.query;
+      router.replace({ query });
+    }
     await loadReports();
   } catch (e) {
     console.error(e);
