@@ -2680,7 +2680,7 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
             ET.SubElement(sumIDFact, "sum1:FechaExpedicionFacturaEmisor").text = invoice.issue_date.strftime('%d-%m-%Y') 
             
             sumFactExp = ET.SubElement(sumRegLRFactEmt, "sum:FacturaExpedida")
-            invoice_type = 'F1' if invoice.total_final >= 3000 and not invoice.refactored_token else 'R1' if invoice.total_final >= 3000 and invoice.refactored_token else 'R5' if invoice.refactored_token else 'F2'
+            invoice_type = 'F1' if abs(invoice.total_final) >= 400 and not invoice.refactored_token else 'R1' if abs(invoice.total_final) >= 400 and invoice.refactored_token else 'R5' if invoice.refactored_token else 'F2'
             ET.SubElement(sumFactExp, "sum1:TipoFactura").text = invoice_type
             if invoice_type == 'R1' or invoice_type == 'R5':
                 ET.SubElement(sumFactExp, "sum1:TipoRectificativa").text = "S"
@@ -2690,15 +2690,16 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
             
             ET.SubElement(sumFactExp, "sum1:ClaveRegimenEspecialOTrascendencia").text = '01' 
             ET.SubElement(sumFactExp, "sum1:ImporteTotal").text = str(total) 
-            
-            if invoice_type == 'R1' or invoice_type == 'F1':
-                contraparte = ET.SubElement(sumFactExp, "sum1:Contraparte")
-                ET.SubElement(contraparte, "sum1:NIF").text = str(invoice.customer_token_final)
-                ET.SubElement(contraparte, "sum1:NombreRazonSocial").text = str(invoice.customer_final)
-            
             ET.SubElement(sumFactExp, "sum1:DescripcionOperacion").text = invoice.title_final 
             ET.SubElement(sumFactExp, "sum1:Macrodato").text = 'N' if invoice.total_final < 100000000 else 'S' 
-            
+
+            # Contraparte must follow Macrodato and precede TipoDesglose (FacturaExpedidaType).
+            # PersonaFisicaJuridicaType requires NombreRazon then NIF.
+            if invoice_type == 'R1' or invoice_type == 'F1':
+                contraparte = ET.SubElement(sumFactExp, "sum1:Contraparte")
+                ET.SubElement(contraparte, "sum1:NombreRazon").text = str(invoice.customer_final)
+                ET.SubElement(contraparte, "sum1:NIF").text = str(invoice.customer_token_final)
+
             sumTpDesgl = ET.SubElement(sumFactExp, "sum1:TipoDesglose")
             sumDesglTpOp = ET.SubElement(sumTpDesgl, "sum1:DesgloseTipoOperacion") 
             sumPrsServ = ET.SubElement(sumDesglTpOp, "sum1:PrestacionServicios")
