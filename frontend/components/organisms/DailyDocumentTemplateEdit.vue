@@ -39,6 +39,7 @@ const name = ref('');
 const description = ref('');
 const daysToComplete = ref(2);
 const isWorkDays = ref(false);
+const createWithoutData = ref(false);
 
 const dayTypeOptions = computed(() => [
     { value: 'work', label: t('common.work') },
@@ -96,6 +97,7 @@ const getData = async () => {
         description.value = response.description;
         daysToComplete.value = response.days_to_complete;
         isWorkDays.value = !!response.is_work_days;
+        createWithoutData.value = !!response.create_without_data;
         const report = response.available_report;
         if (report) {
             const normalized = normalizeReport(report);
@@ -168,6 +170,7 @@ const save = async () => {
             description: description.value,
             days_to_complete: daysToComplete.value,
             is_work_days: isWorkDays.value,
+            create_without_data: createWithoutData.value,
             available_report_id: selectedAvailableReport.value?.id
         }
         const response = await $DailyDocumentTemplateApiService.save(payload);
@@ -232,6 +235,20 @@ onMounted(async () => {
                     <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.description') }}</label>
                     <textarea name="description" id="description" rows="3" v-model="description"
                         class="w-full border border-slate-300 rounded-md p-2 focus:outline-none focus:border-primary"></textarea>
+                </div>
+                <div class="col-span-2">
+                    <label for="create_without_data" class="flex items-start gap-2.5 cursor-pointer">
+                        <input id="create_without_data" v-model="createWithoutData" type="checkbox"
+                            class="checkbox mt-0.5" />
+                        <span>
+                            <span class="block text-sm font-medium text-slate-700">
+                                {{ t('statistics_block.create_without_data') }}
+                            </span>
+                            <span class="mt-0.5 block text-xs text-slate-500">
+                                {{ t('statistics_block.create_without_data_help') }}
+                            </span>
+                        </span>
+                    </label>
                 </div>
             </div>
 

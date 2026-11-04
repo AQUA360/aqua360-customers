@@ -4,7 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from integrations.outbound.giswater.mappers import (
@@ -190,3 +190,52 @@ class MapMincutDatesTest(TestCase):
         self.assertIsNone(mapped["exec_start"])
         self.assertIsNone(mapped["exec_end"])
         self.assertEqual(set(mapped), {"date_start", "date_end", "exec_start", "exec_end"})
+
+
+class SyncSupplyCutsTaskTest(TestCase):
+    """La tasca de talls sincronitza abans les escomeses (si està activa)."""
+
+    def _run(self, connections_side_effect=None):
+        from integrations.outbound.giswater import tasks
+
+        calls = []
+        connections = patch.object(
+            tasks, "sync_connections_from_giswater",
+            side_effect=connections_side_effect or (lambda: calls.append("connections") or {
+                "total_fields": 3, "updated": 1, "unchanged": 1, "not_found": 1,
+                "not_found_tokens": [{"customer_code": "X"}],
+            }),
+        )
+        supply_cuts = patch.object(
+            tasks, "sync_supply_cuts_from_giswater",
+            side_effect=lambda: calls.append("supply_cuts") or {"created": 0, "updated": 0},
+        )
+        with connections, supply_cuts:
+            result = tasks.sync_giswater_suply_cuts_task()
+        return calls, result
+
+    @override_settings(GISWATER_SYNC_CONNECS_ENABLED=True)
+    def test_connections_are_synced_before_supply_cuts(self):
+        calls, result = self._run()
+        self.assertEqual(calls, ["connections", "supply_cuts"])
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(
+            result["connections"],
+            {"status": "success", "total_fields": 3, "updated": 1, "unchanged": 1, "not_found": 1},
+        )
+
+    @override_settings(GISWATER_SYNC_CONNECS_ENABLED=False)
+    def test_connections_skipped_when_disabled(self):
+        calls, result = self._run()
+        self.assertEqual(calls, ["supply_cuts"])
+        self.assertEqual(result["connections"], {"status": "skipped"})
+
+    @override_settings(GISWATER_SYNC_CONNECS_ENABLED=True)
+    def test_connections_error_does_not_stop_supply_cuts(self):
+        def fail():
+            raise RuntimeError("timeout")
+
+        calls, result = self._run(connections_side_effect=fail)
+        self.assertEqual(calls, ["supply_cuts"])
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["connections"]["status"], "error")

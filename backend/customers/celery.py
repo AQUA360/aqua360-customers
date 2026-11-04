@@ -152,6 +152,21 @@ if getattr(settings, "GISWATER_SYNC_CONNECS_ENABLED", False):
         ),
     }
 
+if getattr(settings, "GISWATER_SYNC_SUPPLY_CUTS_ENABLED", False):
+    # Talls de subministrament (mincuts) de Giswater. Cada execució sincronitza
+    # abans les escomeses si GISWATER_SYNC_CONNECS_ENABLED està actiu.
+    # Interval en minuts: per sota de 60, cada N minuts; a partir de 60, cada
+    # N/60 hores en punt.
+    _supply_cuts_minutes = max(1, settings.GISWATER_SYNC_SUPPLY_CUTS_MINUTES)
+    beat_schedule["sync-giswater-supply-cuts"] = {
+        "task": "integrations.tasks.sync_giswater_suply_cuts_task",
+        "schedule": (
+            crontab(minute=f"*/{_supply_cuts_minutes}")
+            if _supply_cuts_minutes < 60
+            else crontab(minute=0, hour=f"*/{_supply_cuts_minutes // 60}")
+        ),
+    }
+
 if getattr(settings, "SIGNING_POLL_ENABLED", False):
     # Aquesta sí que ha d'anar sovint, però continua sent un crontab (i no un
     # timedelta) pel motiu explicat a dalt: així no depèn de l'hora del deploy.

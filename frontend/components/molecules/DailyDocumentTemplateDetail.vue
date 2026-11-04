@@ -158,6 +158,13 @@ const fieldLabel = (field) => {
       </FieldDetail>
 
       <FieldDetail class="col-span-2" :label='$t("common.description")' :value="localData.description || '-'" />
+
+      <FieldDetail class="col-span-2" :label="t('statistics_block.create_without_data')">
+        <div class="flex flex-col gap-0.5">
+          <span>{{ localData.create_without_data ? t('common.yes') : t('common.no') }}</span>
+          <span class="text-xs text-slate-500">{{ t('statistics_block.create_without_data_help') }}</span>
+        </div>
+      </FieldDetail>
     </div>
 
     <section v-if="availableReport" id="daily_report__box"

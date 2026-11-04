@@ -206,7 +206,13 @@ const assignReadings = async () => {
 <template>
   <div id="wrapper" class="text-base">
     <div class="flex justify-between items-center">
-      <h2 class="text-xl font-semibold mb-4">{{ $t('billing_block.batches_to_bill') }}</h2>
+      <div class="mb-4">
+        <h2 class="text-xl font-semibold">{{ $t('billing_block.batches_to_bill') }}</h2>
+        <span v-if="billing.metrics_frozen_at" class="text-sm text-slate-500">
+          <Icon name="fa6-solid:lock" class="text-xs" />
+          {{ t('common.metrics_frozen_at', { date: formatDate(billing.metrics_frozen_at) }) }}
+        </span>
+      </div>
       <!-- <button v-if="!readingsAssigned" @click="openDialog" class="button-primary"> -->
       <button @click.stop="openDialog" class="button-primary">
         {{ t('billing_block.select_reading_batch') }}

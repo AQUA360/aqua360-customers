@@ -3094,5 +3094,29 @@
             "value": "3",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 261,
+        "fields": {
+            "created_at": "2026-10-29T00:00:00.000Z",
+            "updated_at": "2026-10-29T00:00:00.000Z",
+            "token": "ODOO_ENABLED",
+            "name": "Integració Odoo habilitada",
+            "value": "false",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 262,
+        "fields": {
+            "created_at": "2026-11-02T00:00:00.000Z",
+            "updated_at": "2026-11-02T00:00:00.000Z",
+            "token": "giswater_supply_cut_sync_enabled",
+            "name": "Mostrar el botó «Sincronitzar amb GIS Water» a la llista de talls de subministrament",
+            "value": "false",
+            "file": null
+        }
     }
 ]

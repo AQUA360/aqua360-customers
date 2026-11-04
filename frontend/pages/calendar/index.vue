@@ -6,7 +6,7 @@ import {
   isSameMonth, isToday,
 } from 'date-fns';
 import CalendarTaskRegion from '~/components/organisms/CalendarTaskRegion.vue';
-import { taskChipClass, taskDotClass, WEEKDAY_KEYS } from '~/utils/calendarTasks';
+import { taskChipClass, taskDotClass, taskTextClass, WEEKDAY_KEYS } from '~/utils/calendarTasks';
 import { formatDate, formatDateVerbose } from '~/utils/date';
 
 /**
@@ -271,7 +271,10 @@ onMounted(() => {
             <div class="text-xs font-semibold mb-1" :class="day.isToday ? 'text-sky-700' : ''">{{ format(day.date, 'd') }}</div>
             <div v-for="task in (tasksByDay[day.key] || []).slice(0, MONTH_CHIPS)" :key="task.id"
               class="flex items-center gap-1 text-xs rounded px-1 mb-0.5 border-l-4 truncate"
-              :class="[taskChipClass(task.color), { 'line-through text-slate-400': task.task_done, 'text-red-600': task.is_overdue }]">
+              :class="[
+                taskChipClass(task.color),
+                task.task_done ? 'line-through text-slate-400' : (task.is_overdue ? 'text-red-600' : taskTextClass(task.text_color)),
+              ]">
               <span v-if="task.time" class="text-slate-500">{{ taskTime(task) }}</span>
               <span class="truncate">{{ task.name }}</span>
               <Icon v-if="task.recurrence" name="fa6-solid:repeat" class="text-slate-400 text-[9px] shrink-0" />
@@ -301,7 +304,7 @@ onMounted(() => {
                 <input type="checkbox" class="mt-0.5" :checked="task.task_done" @change="toggleDone(task)" />
                 <button type="button" class="text-left min-w-0" @click="openDay(day.key)">
                   <span v-if="task.time" class="text-slate-500 mr-1">{{ taskTime(task) }}</span>
-                  <span :class="{ 'line-through text-slate-400': task.task_done }">{{ task.name }}</span>
+                  <span :class="task.task_done ? 'line-through text-slate-400' : taskTextClass(task.text_color)">{{ task.name }}</span>
                 </button>
               </div>
               <div class="flex gap-1 mt-0.5 text-slate-400">
@@ -322,7 +325,7 @@ onMounted(() => {
             <li v-for="task in overdueTasks" :key="task.id" class="flex items-center gap-3 py-2 text-sm">
               <input type="checkbox" :checked="task.task_done" @change="toggleDone(task)" />
               <span class="h-2 w-2 rounded-full shrink-0" :class="taskDotClass(task.color)" />
-              <button type="button" class="text-left text-slate-700 hover:text-sky-700" @click="openDay(task.set_date)">{{ task.name }}</button>
+              <button type="button" class="text-left hover:text-sky-700" :class="taskTextClass(task.text_color) || 'text-slate-700'" @click="openDay(task.set_date)">{{ task.name }}</button>
               <span class="ml-auto text-xs text-red-500">{{ formatDate(task.set_date) }}</span>
             </li>
           </ul>
@@ -337,7 +340,7 @@ onMounted(() => {
               <span class="h-2 w-2 rounded-full shrink-0" :class="taskDotClass(task.color)" />
               <span v-if="task.time" class="text-xs text-slate-500 w-10">{{ taskTime(task) }}</span>
               <button type="button" class="text-left min-w-0 truncate hover:text-sky-700"
-                :class="task.task_done ? 'line-through text-slate-400' : 'text-slate-700'" @click="openDay(day.key)">
+                :class="task.task_done ? 'line-through text-slate-400' : (taskTextClass(task.text_color) || 'text-slate-700')" @click="openDay(day.key)">
                 {{ task.name }}
               </button>
               <Icon v-if="task.recurrence" name="fa6-solid:repeat" class="text-slate-300 text-xs" :title="t('calendar_tasks.recurring')" />

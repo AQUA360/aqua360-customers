@@ -419,6 +419,14 @@ python manage.py poll_signing_sessions --dry-run
 
 ---
 
+## statistics
+
+| Command | Descripció |
+|--------|-------------|
+| **setup_custom_reports_role** | Crea/actualitza el rol de PostgreSQL de només lectura dels informes personalitzats (SELECT a tot l'esquema excepte taules i columnes sensibles). Idempotent: tornar-lo a executar després d'actualitzar per incloure taules noves. `python manage.py setup_custom_reports_role [--role R] [--password P] [--exclude-table T]`. |
+
+---
+
 ## verifactu
 
 | Command | Descripció |

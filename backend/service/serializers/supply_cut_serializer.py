@@ -36,6 +36,8 @@ class SupplyCutSerializer(serializers.ModelSerializer):
             'mincut_cause_token',
             'mincut_state_token',
             'requires_review',
+            'customers_locked_fields',
+            'giswater_connec_ids',
         )
 
     def to_representation(self, instance):
@@ -154,9 +156,15 @@ class SupplyCutSerializer(serializers.ModelSerializer):
         if instance is None:
             instance, created = SupplyCut.objects.get_or_create(**validated_data)
         else:
+            before = self._lockable_snapshot(instance)
             for attr, value in validated_data.items():
                 setattr(instance, attr, value)
             instance.save()
+            # Els camps editats a Customers ja no els sobreescriu Giswater.
+            after = self._lockable_snapshot(instance)
+            supply_cut_service.lock_fields(
+                instance, *[field for field in before if before[field] != after[field]]
+            )
 
         if created and supply_points is not None:
             instance.supply_points.set(supply_points)
@@ -174,6 +182,17 @@ class SupplyCutSerializer(serializers.ModelSerializer):
         #TODO: optimitza. Al desar molts talls, el log estarà molt llarg
         self.log_status_change(previous_status, instance, observation)
         return instance
+
+    @staticmethod
+    def _lockable_snapshot(instance):
+        return {
+            'status': instance.status_id,
+            'cause': instance.cause_id,
+            'date_start': instance.date_start,
+            'date_end': instance.date_end,
+            'exec_start': instance.exec_start,
+            'exec_end': instance.exec_end,
+        }
 
     def _request_user(self):
         request = self.context.get('request')

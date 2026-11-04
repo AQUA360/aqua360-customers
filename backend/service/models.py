@@ -325,6 +325,22 @@ class Company(models.Model):
     show_breakdown_schedule = models.BooleanField(default=True)
     breakdown_schedule = models.CharField(max_length=255, null=True, blank=True)
     website = models.URLField(null=True, blank=True)
+    # Adreça de l'oficina virtual: la variable `%company.ov_url` dels missatges.
+    virtual_office_url = models.URLField(null=True, blank=True)
+    # Com arriben les factures per correu a les comunicacions de facturació:
+    # adjuntes, només amb l'enllaç a l'oficina virtual (el PDF es continua arxivant
+    # i enviant per carta) o de les dues maneres.
+    INVOICE_EMAIL_ATTACHMENT = 'attachment'
+    INVOICE_EMAIL_OV_LINK = 'ov_link'
+    INVOICE_EMAIL_BOTH = 'both'
+    INVOICE_EMAIL_DELIVERY_CHOICES = [
+        (INVOICE_EMAIL_ATTACHMENT, 'Attachment'),
+        (INVOICE_EMAIL_OV_LINK, 'Virtual office link'),
+        (INVOICE_EMAIL_BOTH, 'Attachment and virtual office link'),
+    ]
+    invoice_email_delivery = models.CharField(
+        max_length=20, choices=INVOICE_EMAIL_DELIVERY_CHOICES, default=INVOICE_EMAIL_ATTACHMENT
+    )
     email =  models.EmailField(null=True, blank=True)
     contact_name = models.CharField(max_length=255, null=True, blank=True)
     contact_phone = models.CharField(max_length=255, null=True, blank=True)
@@ -390,6 +406,8 @@ class CompanyBank(models.Model):
     is_sepa = models.BooleanField(default=False)
     sepa_cred_identifier = models.CharField(max_length=255, null=True, blank=True)
     barcode_cif = models.CharField(max_length=255, null=True, blank=True)
+    # Sufix de la referència del codi de barres (quadern 60), propi de cada compte
+    barcode_suffix = models.CharField(max_length=255, null=True, blank=True)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
@@ -1055,6 +1073,18 @@ class SupplyCut(models.Model):
     mincut_cause_token = models.CharField(
         max_length=255, null=True, blank=True,
         help_text="Token del catàleg de motiu del PA assignat al sincronitzar.",
+    )
+    # Customers té prioritat sobre Giswater: els camps que un usuari ha
+    # modificat aquí ja no els sobreescriu la sincronització.
+    customers_locked_fields = models.JSONField(
+        default=list, blank=True,
+        help_text="Camps modificats a Customers que la sincronització amb Giswater no sobreescriu "
+                  "(status, cause, date_start, date_end, exec_start, exec_end, supply_points).",
+    )
+    giswater_connec_ids = models.JSONField(
+        null=True, blank=True, default=None,
+        help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització "
+                  "(buit si encara no se n'ha llegit cap resposta vàlida).",
     )
     
     class Meta:

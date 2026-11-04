@@ -4,6 +4,7 @@ export const useConfigStore = defineStore('config', {
     state: () => ({
         ovEnabled: null as boolean | null,
         documentSignEnabled: null as boolean | null,
+        sendBatchEnabled: null as boolean | null,
         acaNotificationEnabled: null as boolean | null,
         loading: false,
     }),
@@ -38,6 +39,23 @@ export const useConfigStore = defineStore('config', {
             } catch (error) {
                 console.error('Error fetching DOCUMENT_SIGN_ENABLED config:', error);
                 this.documentSignEnabled = false; // Fallback
+            } finally {
+                this.loading = false;
+            }
+        },
+        async fetchSendBatchEnabled() {
+            if (this.sendBatchEnabled !== null) return;
+
+            this.loading = true;
+
+            try {
+                const { $ConfigProjectApiService } = useNuxtApp();
+                // ODOO_ENABLED gates send-batch UI today; rename later if more providers share it.
+                const value = await $ConfigProjectApiService.get('ODOO_ENABLED');
+                this.sendBatchEnabled = value === true || value === 'True' || value === 'true';
+            } catch (error) {
+                console.error('Error fetching send-batch enabled config:', error);
+                this.sendBatchEnabled = false;
             } finally {
                 this.loading = false;
             }

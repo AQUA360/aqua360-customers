@@ -191,6 +191,9 @@ export default defineNuxtConfig({
     //verifactu
     '~/plugins/api/billing/verifactu-api.js',
 
+    //send-batch
+    '~/plugins/api/integrations/send-batch-api.js',
+
     //statistics
     '~/plugins/api/statistics/reports-api.js',
     '~/plugins/api/statistics/billing-consumption-api.js',
@@ -202,6 +205,7 @@ export default defineNuxtConfig({
     '~/plugins/api/statistics/reading-batch-import-column-api.js',
     '~/plugins/api/statistics/daily-document-api.js',
     '~/plugins/api/statistics/daily-document-template-api.js',
+    '~/plugins/api/statistics/custom-report-api.js',
 
     //search
     '~/plugins/api/search/search-api.js',

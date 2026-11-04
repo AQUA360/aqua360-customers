@@ -7,7 +7,7 @@ from celery import shared_task
 from celery_progress.backend import ProgressRecorder
 from django.conf import settings
 from django.core.files.base import ContentFile
-from billing.utils.barcode_service import generate_barcode, get_barcode_values
+from billing.utils.barcode_service import generate_barcode, get_barcode_values, get_payments_company_bank
 from billing.utils.confirm_invoice_service import confirm_invoice
 from billing.utils.invoice_service import generate_empty_invoice
 from contract.models import Contract, ContractTerminationRequest, PaymentType
@@ -168,10 +168,12 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             if limit_date:
                 ident = limit_date.strftime("%d%m%y")
             token = joined_payment.token or ""
+            company_bank = get_payments_company_bank(original_payments, company_obj)
             barcode_data = {
                 'reference': token if len(token) == 11 else token[:-2],
                 'total_final': joined_payment.total_final,
                 'company': company_obj,
+                'company_bank': company_bank,
                 'ident': ident,
             }
             barcode = generate_barcode(barcode_data)

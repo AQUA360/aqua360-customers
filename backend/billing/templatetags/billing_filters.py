@@ -637,7 +637,12 @@ def group_by_order_priority(line_items, arg=None):
             val = x.get('product_order')
         else:
             val = getattr(x, 'product_order', 4000000)
-        return val if val is not None else 4000000
+        # product_order pot ser "" (línia sense custom_order ni order_priority):
+        # forcem un enter perquè l'ordenació no barregi int i str.
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return 4000000
 
     def get_product_name(x):
         if isinstance(x, dict):

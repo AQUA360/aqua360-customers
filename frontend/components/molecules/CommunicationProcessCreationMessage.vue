@@ -98,7 +98,8 @@ const getMessageTemplates = async () => {
             templates.value.push({
                 label: data.name || data.token,
                 code: data.id,
-                attach_claim_documents: data.attach_claim_documents !== false
+                attach_claim_documents: data.attach_claim_documents !== false,
+                invoice_email_delivery: data.invoice_email_delivery || null,
             })
         })
     } catch (error) {
@@ -205,7 +206,9 @@ const emitChange = () => {
             selectedMessageTypes.value.map(message_type_template => message_type_template.type.id),
         message_type_names: selectedMessageTypes.value.map(message_type_template => message_type_template.type.name),
         type_ids: selectedMessageTypes.value.filter(msg => msg.type?.id).map(msg => msg.type.id),
-        attach_claim_documents: isClaimContext.value ? attachClaimDocuments.value : null
+        attach_claim_documents: isClaimContext.value ? attachClaimDocuments.value : null,
+        // Mode d'enviament de factures de la plantilla, per avisar si el correu no porta l'enllaç
+        invoice_email_delivery: selectedTemplate.value?.invoice_email_delivery || null,
     }
     emit('change', messageData.value)
 }

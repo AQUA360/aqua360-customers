@@ -79,6 +79,8 @@ watch(() => props.id, (newId, oldId) => {
       <FieldDetail :label='$t("common.origin")' :value="localData.origin? localData.origin.name : t('common.no_origin')" />
       <FieldDetail v-if="localData.origin?.token === 'claim'" :label='$t("common.attach_claim_documents_to_email")'
         :value="localData.attach_claim_documents ? $t('common.yes') : $t('common.no')" />
+      <FieldDetail v-if="localData.origin?.token === 'billing'" :label='$t("service_block.invoice_email_delivery")'
+        :value="$t(`service_block.invoice_email_delivery_${localData.invoice_email_delivery || 'company'}`)" />
     </div>
 
   </div>

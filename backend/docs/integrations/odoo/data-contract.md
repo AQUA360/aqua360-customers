@@ -2,6 +2,8 @@
 
 Contracte de dades **push** des d'Aqua360 (Aventec) cap a **Odoo 19 Community**.
 
+El JSON d'aquest contracte és el cos de dades. Amb el connector FastAPI (`ODOO_TRANSPORT=fastapi`, per defecte) s'envia tal qual. Amb Odoo Enterprise SaaS (`ODOO_TRANSPORT=json2`) el mateix JSON viatja dins `x_aqua_json`. Vegeu [`perfil-saas.es.md`](perfil-saas.es.md).
+
 Aqua360 empeny factures, rectificatives i moviments (pagaments). Odoo actua com a receptor: no renumera, no genera Verifactu propi (viu a Aqua360) i no origina pagaments ni remeses. La resolució del JSON custom es fa amb OCA fastapi (`rest-framework`), amb `get_or_create` per `aqua_id` a cada model relacionat.
 
 **OpenAPI (per a integradors):** [`openapi.yaml`](openapi.yaml) — importable a [Swagger Editor](https://editor.swagger.io), Postman o Redoc. Especificació OpenAPI 3.0 amb les descripcions en castellà. El mateix contracte, en castellà: [`data-contract.es.md`](data-contract.es.md).
@@ -212,17 +214,57 @@ Mateix JSON que v1. Només canvien aquests casos:
 
 ---
 
-## 4 · Implementació (costat Odoo)
+## 4 · Lots (bulk)
+
+Documentació completa: [`batch-sending-v1.0.pdf`](batch-sending-v1.0.pdf).
+
+### Enviament
+
+```json
+{
+  "batch_id": "FACT-202610-001",
+  "items": [ { "...": "mateix JSON individual" } ]
+}
+```
+
+Rutes: `POST /batch/invoices`, `/batch/payments`, `/batch/commitment/create`, `/batch/commitment/cancel`.
+Fins a 1000 `items`. Resposta immediata: `202` (acceptat) o `200` (ja rebut).
+
+### Resultat final (inbound a Aqua360)
+
+Quan el lot acaba, Odoo fa `POST` a l'endpoint d'Aventec (`/odoo/v1/batch-results/`) amb
+`Authorization: Bearer <ODOO_INBOUND_BEARER_TOKEN>` i el mateix JSON que
+`GET /aqua360/batch/{batch_id}`:
+
+```json
+{
+  "batch_id": "FACT-202610-001",
+  "type": "invoices",
+  "status": "done",
+  "received_at": "2026-10-21T13:04:00Z",
+  "finished_at": "2026-10-21T13:08:12Z",
+  "summary": {"total": 1000, "ok": 940, "duplicate_ignored": 2, "error": 58, "pending": 0},
+  "results": [
+    {"aqua_id": "...", "odoo_id": 442, "status": "ok", "message": null},
+    {"aqua_id": "...", "odoo_id": null, "status": "error", "message": "..."}
+  ]
+}
+```
+
+`type`: `invoices` | `payments` | `commitment_create` | `commitment_cancel`.
+
+---
+
+## 5 · Implementació (costat Odoo)
 
 La nota per al desenvolupador (PoC amb FastAPI/OCA: stack, mòdul `aqua360_connector`, schemas, resolució de relacionats i conciliació) consta en un **document propi** separat d'aquest contracte.
 
 ---
 
-## 5 · Pendents v2
+## 6 · Pendents v2
 
 | Funcionalitat | Descripció |
 |---------------|------------|
-| Compromís | Crear compromís i conciliar contra ell |
 | Conciliació múltiple | Un pagament contra diverses factures (remeses agrupades) |
-| Acusament / estat de tornada | Si Aqua360 necessita saber quins documents Odoo ha acceptat/rebutjat per reintentar |
 | Devolucions / impagats | R-transactions SEPA: desfer conciliació i tornar la factura a pendent |
+| Reenviament selectiu UI | Seleccionar errors d'un lot i crear un lot nou amb `related_batch` |

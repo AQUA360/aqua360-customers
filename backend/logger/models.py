@@ -65,7 +65,8 @@ class LogSupplyCutStatus(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
 
     def __str__(self):
-        return f"{self.timestamp} - From {self.previous_status} to {self.current_status} by {self.user.username}"
+        username = self.user.username if self.user else "system"
+        return f"{self.timestamp} - From {self.previous_status} to {self.current_status} by {username}"
 
 class LogSupplyPointChange(models.Model):
     ACTION_CHOICES = [

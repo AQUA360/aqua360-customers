@@ -280,6 +280,7 @@ class DailyDocumentTemplate(models.Model):
     description = models.TextField(null=True, blank=True)
     
     available_report = models.ForeignKey(AvailableReport, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_document_templates')
+    create_without_data = models.BooleanField(default=False)
     days_to_complete = models.IntegerField(null=True, blank=True)
     is_work_days = models.BooleanField(default=False)
     

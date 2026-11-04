@@ -306,6 +306,84 @@ class MeterSerialNumberSerializationTests(TestCase):
         self.assertEqual(response.data[0]["consumptions"][0]["meter"], "METER-CODE")
 
 
+class CreateReadingOVTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-create-reading-test")
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+        ):
+            ConfigProject.objects.get_or_create(token=token, defaults={"value": value})
+        cls.meter = Meter.objects.create(token="METER-TOKEN", code="METER-CODE")
+        cls.other_meter = Meter.objects.create(token="OTHER-TOKEN", code="OTHER-CODE")
+        cls.supply_point = SupplyPoint.objects.create(token="SP-READING", meter=cls.meter)
+        cls.contract = Contract.objects.create(
+            token="CONTRACT-READING", supply_point_default=cls.supply_point
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.data = {
+            "reading_at": "2026-01-15",
+            "contract": self.contract.token,
+            "meter": self.meter.code,
+            "reading": 1250.5,
+        }
+
+    @patch("ov.serializers_refactor.create_reading_serializer.check_billing_period", return_value=True)
+    def test_create_reading_resolves_meter_by_code(self, check_billing_period):
+        response = self.client.post(reverse("create-reading-ov"), self.data, format="json")
+
+        self.assertEqual(response.status_code, 201)
+        reading = Reading.objects.get(token=response.data["reading_token"])
+        self.assertEqual(reading.meter, self.meter)
+        self.assertEqual(reading.contract, self.contract)
+        self.assertEqual(reading.supply_point, self.supply_point)
+        self.assertEqual(response.data["meter_token"], self.meter.token)
+        check_billing_period.assert_called_once()
+
+    @patch("ov.serializers_refactor.create_reading_serializer.check_billing_period", return_value=True)
+    def test_duplicate_code_resolves_to_contract_meter(self, check_billing_period):
+        self.other_meter.code = self.meter.code
+        self.other_meter.save(update_fields=["code"])
+
+        response = self.client.post(reverse("create-reading-ov"), self.data, format="json")
+
+        self.assertEqual(response.status_code, 201)
+        reading = Reading.objects.get(token=response.data["reading_token"])
+        self.assertEqual(reading.meter, self.meter)
+        self.assertEqual(response.data["meter_token"], self.meter.token)
+        check_billing_period.assert_called_once()
+
+    def test_rejects_unknown_meter_code(self):
+        self.data["meter"] = "UNKNOWN-CODE"
+        response = self.client.post(reverse("create-reading-ov"), self.data, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("meter", response.data)
+        self.assertFalse(Reading.objects.exists())
+
+    def test_rejects_contract_without_default_supply_point(self):
+        self.contract.supply_point_default = None
+        self.contract.save(update_fields=["supply_point_default"])
+
+        response = self.client.post(reverse("create-reading-ov"), self.data, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("contract", response.data)
+        self.assertFalse(Reading.objects.exists())
+
+    def test_rejects_code_of_meter_on_another_supply_point(self):
+        self.data["meter"] = self.other_meter.code
+        response = self.client.post(reverse("create-reading-ov"), self.data, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("meter", response.data)
+        self.assertFalse(Reading.objects.exists())
+
+
 class ContractDetailRoleFlagsTests(TestCase):
     """Phase 2: `status` objectiu i banderes `is_holder` / `is_payer` als tres
     endpoints de detall de contracte, sense alterar `status_token`,

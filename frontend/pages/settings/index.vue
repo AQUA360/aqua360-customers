@@ -60,6 +60,12 @@ const showConfigList = (title, entity, hasColor = false, hasMandatoryCheck = fal
 }
 
 const config_projects = ref([]);
+const smartMeteringEnabled = computed(() => {
+  const item = (config_projects.value || []).find(
+    (entry) => entry?.token === 'smart_metering_authentication_token',
+  );
+  return Boolean(String(item?.value ?? '').trim());
+});
 const getConfigProject = async () => {
   const response = await $ConfigProjectApiService.getAll();
   config_projects.value = response;
@@ -602,6 +608,11 @@ getConfigProject();
           <NuxtLink to="/settings/accounting/" class="text-sky-500 underline hover:no-underline"
             :class="{ 'bg-slate-200': $route.path.indexOf('/settings/accounting/') != -1 }">{{
               t('pricing_block.accounting') }}</NuxtLink>
+        </li>
+        <li v-if="smartMeteringEnabled" class="mb-1">
+          <NuxtLink to="/settings/smart_metering/" class="text-sky-500 underline hover:no-underline"
+            :class="{ 'bg-slate-200': $route.path.indexOf('/settings/smart_metering/') != -1 }">{{
+              t('settings_block.smart_metering_config') }}</NuxtLink>
         </li>
       </ul>
 
