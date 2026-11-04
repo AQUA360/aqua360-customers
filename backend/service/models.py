@@ -325,6 +325,22 @@ class Company(models.Model):
     show_breakdown_schedule = models.BooleanField(default=True)
     breakdown_schedule = models.CharField(max_length=255, null=True, blank=True)
     website = models.URLField(null=True, blank=True)
+    # Adreça de l'oficina virtual: la variable `%company.ov_url` dels missatges.
+    virtual_office_url = models.URLField(null=True, blank=True)
+    # Com arriben les factures per correu a les comunicacions de facturació:
+    # adjuntes, només amb l'enllaç a l'oficina virtual (el PDF es continua arxivant
+    # i enviant per carta) o de les dues maneres.
+    INVOICE_EMAIL_ATTACHMENT = 'attachment'
+    INVOICE_EMAIL_OV_LINK = 'ov_link'
+    INVOICE_EMAIL_BOTH = 'both'
+    INVOICE_EMAIL_DELIVERY_CHOICES = [
+        (INVOICE_EMAIL_ATTACHMENT, 'Attachment'),
+        (INVOICE_EMAIL_OV_LINK, 'Virtual office link'),
+        (INVOICE_EMAIL_BOTH, 'Attachment and virtual office link'),
+    ]
+    invoice_email_delivery = models.CharField(
+        max_length=20, choices=INVOICE_EMAIL_DELIVERY_CHOICES, default=INVOICE_EMAIL_ATTACHMENT
+    )
     email =  models.EmailField(null=True, blank=True)
     contact_name = models.CharField(max_length=255, null=True, blank=True)
     contact_phone = models.CharField(max_length=255, null=True, blank=True)

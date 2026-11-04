@@ -43,6 +43,7 @@ class CompanySerializer(MultiTranslatableFieldMixin, serializers.ModelSerializer
         "customer_service_schedule",
         "breakdown_label",
         "breakdown_schedule",
+        "virtual_office_url",
     ]
 
     class Meta:
