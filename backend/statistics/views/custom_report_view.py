@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db.models import Count, Max
 from django.http import HttpResponse
@@ -9,6 +11,8 @@ from rest_framework.response import Response
 from ..permissions import CustomReportPermission
 from ..serializers import CustomReportSerializer
 from ..utils import custom_report_service as service
+
+logger = logging.getLogger(__name__)
 
 
 class CustomReportViewSet(viewsets.ModelViewSet):
@@ -54,7 +58,8 @@ class CustomReportViewSet(viewsets.ModelViewSet):
             if isinstance(exc, service.CustomReportNotConfigured)
             else status.HTTP_400_BAD_REQUEST
         )
-        return Response({'error': str(exc)}, status=code)
+        logger.exception('Custom report request failed')
+        return Response({'error': 'An internal error has occurred.'}, status=code)
 
     def _run(self, request, sql, query=None):
         try:
