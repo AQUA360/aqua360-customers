@@ -293,26 +293,26 @@ const getMessageTemplates = async () => {
   }
 };
 
-// Retorna false si la resposta s'ha descartat (canvi de factura o de
-// plantilla mentre es carregava)
+// Cada petició (o canvi de factura) incrementa el comptador: una resposta
+// d'una petició anterior es descarta encara que sigui la mateixa plantilla
+let templateRequestId = 0;
+
+// Retorna false si la resposta s'ha descartat o ha fallat: així no se
+// sobreescriuen l'assumpte i el cos
 const loadTemplateContent = async (templateId) => {
+  const requestId = ++templateRequestId;
   templateContent.value = null;
 
   if (!templateId) {
     return true;
   }
 
-  const invoiceId = currentInvoiceId.value;
-
   try {
     const result =
       await $MessageTemplateApiService
         .getMessageTypeTemplates(templateId);
 
-    if (
-      currentInvoiceId.value !== invoiceId ||
-      selectedTemplate.value !== templateId
-    ) {
+    if (requestId !== templateRequestId) {
       return false;
     }
 
@@ -338,6 +338,7 @@ const loadTemplateContent = async (templateId) => {
     }
   } catch (err) {
     console.error(err);
+    return false;
   }
 
   return true;
@@ -448,6 +449,7 @@ const initInvoice = async (invoice) => {
 
   // Síncron, abans de qualsevol await
   currentInvoiceId.value = invoice.id;
+  templateRequestId++; // invalida les plantilles pendents de la factura anterior
   applyToAll.value = false; // abans de restaurar valors
 
   const draft = drafts.value[invoice.id];
@@ -745,6 +747,9 @@ const goNext = () => {
 // ---------------------------------------------------------
 
 const handleClose = () => {
+  // Mentre s'envia, el pare encara ha de rebre 'sent' / 'sent-all'
+  if (sending.value || sendingAll.value) return;
+
   emit('close');
 };
 

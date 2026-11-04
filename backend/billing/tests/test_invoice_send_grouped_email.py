@@ -41,6 +41,15 @@ class TestInvoiceSendGroupedEmailValidation(TestCase):
         response = self.post(email=['client@example.com'])
         self.assertEqual(response.status_code, 400)
 
+    def test_email_without_addresses(self):
+        response = self.post(email=';;;')
+        self.assertEqual(response.status_code, 400)
+
+    def test_invoice_ids_not_integers(self):
+        for value in (float(self.active.id) + 0.9, True, 'abc'):
+            response = self.post(invoice_ids=[value])
+            self.assertEqual(response.status_code, 400, value)
+
     def test_company_config_id_not_integer(self):
         response = self.post(company_config_id='abc')
         self.assertEqual(response.status_code, 400)

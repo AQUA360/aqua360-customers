@@ -68,6 +68,11 @@ class InvoiceSendGroupedEmailView(APIView):
             )
 
         emails = [e.strip() for e in raw_email.split(';') if e.strip()]
+        if not emails:
+            return Response(
+                {"error": "El camp 'email' és obligatori."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         for email in emails:
             try:
                 validate_email(email)
@@ -85,13 +90,18 @@ class InvoiceSendGroupedEmailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            invoice_ids = list(dict.fromkeys(int(i) for i in raw_ids))
-        except (TypeError, ValueError):
+        # Només enters o textos amb un enter: int() truncaria un 12.9 a 12
+        valid_ids = all(
+            (isinstance(i, int) and not isinstance(i, bool))
+            or (isinstance(i, str) and i.strip().isdigit())
+            for i in raw_ids
+        )
+        if not valid_ids:
             return Response(
                 {"error": "'invoice_ids' conté valors no vàlids."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        invoice_ids = list(dict.fromkeys(int(i) for i in raw_ids))
 
         invoices_by_id = {inv.id: inv for inv in Invoice.objects.filter(id__in=invoice_ids).select_related('invoice_file')}
         missing = [i for i in invoice_ids if i not in invoices_by_id]
