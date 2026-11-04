@@ -527,6 +527,8 @@ BROADCASTER_TEMPLATE_CODE = config("BROADCASTER_TEMPLATE_CODE", default="aqua360
 BROADCASTER_TEMPLATE_NAME = config("BROADCASTER_TEMPLATE_NAME", default="Comunicació")
 BROADCASTER_TEMPLATE_BODY = config("BROADCASTER_TEMPLATE_BODY", default="{{ message }}")
 
+# fastapi: connector aqua360_connector. json2: API nativa d'Odoo Enterprise SaaS.
+ODOO_TRANSPORT = config("ODOO_TRANSPORT", default="fastapi")
 ODOO_BASE_URL = config("ODOO_BASE_URL", default="")
 ODOO_API_KEY = config("ODOO_API_KEY", default="")
 ODOO_TIMEOUT = config("ODOO_TIMEOUT", default=30, cast=int)

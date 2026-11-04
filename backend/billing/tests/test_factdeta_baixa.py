@@ -1,5 +1,7 @@
 import datetime
+import zipfile
 from decimal import Decimal
+from io import BytesIO
 from types import SimpleNamespace
 from unittest import mock
 
@@ -10,15 +12,15 @@ from billing.utils.generate_factdeta_service import (
     FactdetaValidationError,
     _customer_id,
     _is_valid_in_period,
-    _netted_invoice_ids,
     _num,
-    balance_factdeta_amounts,
     build_factdeta_detail_record,
     compute_factdeta_canon,
     factdeta_record_warnings,
+    get_factdeta_declared_tariff_type,
+    get_factdeta_fire_billed_type,
     get_factdeta_tariff_type,
-    has_factdeta_negative_amounts,
     latlon_to_utm31,
+    round_factdeta_amounts,
 )
 from coredata.models import ConfigProject
 from statistics.models import AvailableReport
@@ -113,6 +115,28 @@ class TestFactdetaTariffType(SimpleTestCase):
 
     def test_fire_use_is_fire_extinction(self):
         self.assertEqual(get_factdeta_tariff_type('D', [line(1, 10, 0.5, interval=1)], is_fire=True), 'X')
+
+    def test_fire_amounts_follow_billed_use(self):
+        domestic = [line(1, 10, 0.5, interval=1)]
+        industrial = [line(1, 10, 0.5, name="CANON D'US INDUSTRIAL GENERAL")]
+        self.assertEqual(get_factdeta_fire_billed_type('D', domestic), 'D')
+        self.assertEqual(get_factdeta_fire_billed_type('I', industrial), 'I')
+        self.assertEqual(get_factdeta_fire_billed_type('X', domestic), 'D')
+        self.assertEqual(get_factdeta_fire_billed_type('X', industrial), 'I')
+
+    def test_fire_with_canon_is_declared_with_billed_type(self):
+        domestic = [line(1, 10, 0.5, interval=1), part_fixa(2, 3.25)]
+        industrial = [line(1, 10, 0.5, name="CANON D'US INDUSTRIAL GENERAL"), part_fixa(2, 3.25)]
+        self.assertEqual(get_factdeta_declared_tariff_type('D', domestic, domestic[:1], is_fire=True), 'D')
+        self.assertEqual(get_factdeta_declared_tariff_type('I', industrial, industrial[:1], is_fire=True), 'I')
+
+    def test_fire_without_canon_stays_fire_extinction(self):
+        lines = [line(1, 10, 0, interval=1, price=0)]
+        self.assertEqual(get_factdeta_declared_tariff_type('D', lines, lines, is_fire=True), 'X')
+
+    def test_fire_tariff_declares_no_amounts(self):
+        canon = compute_factdeta_canon('X', [line(1, 10, 0.5, interval=1), part_fixa(2, 3.25)], PART_FIXA)
+        self.assertEqual((canon['variable_amount'], canon['fixed_amount']), (Decimal('0'), Decimal('0')))
 
     def test_industrial_without_price_is_exempt(self):
         self.assertEqual(get_factdeta_tariff_type('I', [line(1, 10, 0, name="CANON D'US INDUSTRIAL GENERAL")]), 'E')
@@ -242,76 +266,49 @@ class TestFactdetaEstablishmentCode(SimpleTestCase):
         self.assertEqual(build_factdeta_detail_record(record('D', canon))[630:640], ' ' * 10)
 
 
-class TestFactdetaValidatorBalance(SimpleTestCase):
-    """El validador de l'ACA compara en double el total amb la part variable més la fixa."""
+class TestFactdetaRoundedAmounts(SimpleTestCase):
+    """El validador de l'ACA compara en cèntims el total amb la part variable més la fixa."""
 
-    def domestic_canon(self):
+    def test_amounts_are_not_moved(self):
         lines = [
             line(1, 33, 0.4936, interval=1, price=16.29),
             line(2, 19, 1.137, interval=2, price=21.61),
             part_fixa(3, 0.30),
         ]
-        return compute_factdeta_canon('D', lines, PART_FIXA)
-
-    def test_cents_are_moved_keeping_total(self):
-        canon = self.domestic_canon()
-        self.assertNotEqual(float('37.90') + float('0.30'), float('38.20'))
-
-        self.assertTrue(balance_factdeta_amounts(canon))
-
-        variable, fixed = canon['variable_amount'], canon['fixed_amount']
-        self.assertEqual(variable + fixed, Decimal('38.20'))
-        self.assertEqual(float(variable) + float(fixed), float('38.20'))
-        # La part variable continua sent la suma dels trams
-        self.assertEqual(sum(amount for _volume, _rate, amount in canon['trams']), variable)
+        canon = compute_factdeta_canon('D', lines, PART_FIXA)
+        round_factdeta_amounts(canon)
+        self.assertEqual((canon['variable_amount'], canon['fixed_amount']), (Decimal('37.90'), Decimal('0.30')))
+        self.assertEqual(canon['trams'][0][2], Decimal('16.29'))
         detail = build_factdeta_detail_record(record('D', canon))
-        self.assertEqual(detail[TOTAL_AMOUNT], '00000000003820')
+        variable, fixed, total = (int(detail[field]) for field in (VARIABLE_AMOUNT, FIXED_AMOUNT, TOTAL_AMOUNT))
+        self.assertEqual((variable, fixed, total), (3790, 30, 3820))
 
     def test_fractions_of_cent_keep_declared_total(self):
         canon = compute_factdeta_canon('D', [line(1, 10, 1, interval=1, price=37.905), part_fixa(2, 0.305)], PART_FIXA)
-        self.assertTrue(balance_factdeta_amounts(canon))
+        round_factdeta_amounts(canon)
         detail = build_factdeta_detail_record(record('D', canon))
         variable, fixed, total = (int(detail[field]) for field in (VARIABLE_AMOUNT, FIXED_AMOUNT, TOTAL_AMOUNT))
         self.assertEqual(total, 3821)
         self.assertEqual(variable + fixed, total)
 
-    def test_balanced_amounts_are_not_changed(self):
-        canon = compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), part_fixa(2, 1.25)], PART_FIXA)
-        self.assertTrue(balance_factdeta_amounts(canon))
-        self.assertEqual((canon['variable_amount'], canon['fixed_amount']), (Decimal('5.0'), Decimal('1.25')))
 
-    def test_negative_amounts_are_detected(self):
-        refund = compute_factdeta_canon('D', [line(1, -10, 0.5, interval=1), part_fixa(2, -3.25)], PART_FIXA)
-        invoice = compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), part_fixa(2, 3.25)], PART_FIXA)
-        self.assertTrue(has_factdeta_negative_amounts(refund))
-        self.assertFalse(has_factdeta_negative_amounts(invoice))
+class TestFactdetaRefunds(SimpleTestCase):
+    """Els abonaments es declaren en negatiu, també els de factures d'altres anys."""
 
-
-class TestFactdetaNettedInvoices(SimpleTestCase):
-    """Factura anul·lada i abonament al mateix fitxer: si sumen zero no es declara cap de les dues."""
-
-    def setUp(self):
-        self.original = SimpleNamespace(id=1, token='F1')
-        self.refund = SimpleNamespace(id=2, token='R1')
-        self.context = SimpleNamespace(cancelled_by_refund_token={'R1': self.original})
-
-    def records(self, refund_price):
-        canon = lambda price: compute_factdeta_canon('D', [line(1, 10, 0.5, interval=1), part_fixa(2, price)], PART_FIXA)
-        refund = compute_factdeta_canon('D', [line(1, -10, 0.5, interval=1), part_fixa(2, refund_price)], PART_FIXA)
-        return {1: {'canon': canon(3.25)}, 2: {'canon': refund}}
-
-    def test_pair_adding_to_zero_is_netted(self):
-        netted = _netted_invoice_ids([self.original, self.refund], self.records(-3.25), self.context)
-        self.assertEqual(netted, {1, 2})
-
-    def test_pair_not_adding_to_zero_is_kept(self):
-        netted = _netted_invoice_ids([self.original, self.refund], self.records(-1), self.context)
-        self.assertEqual(netted, set())
-
-    def test_refund_of_invoice_outside_file_is_kept(self):
-        records = self.records(-3.25)
-        del records[1]
-        self.assertEqual(_netted_invoice_ids([self.refund], records, self.context), set())
+    def test_refund_keeps_negative_amounts_balanced(self):
+        lines = [
+            line(1, -33, 0.4936, interval=1, price=-16.29),
+            line(2, -19, 1.137, interval=2, price=-21.61),
+            part_fixa(3, -0.30),
+        ]
+        canon = compute_factdeta_canon('D', lines, PART_FIXA)
+        round_factdeta_amounts(canon)
+        detail = build_factdeta_detail_record(record('D', canon))
+        variable, fixed, total = (int(detail[field]) for field in (VARIABLE_AMOUNT, FIXED_AMOUNT, TOTAL_AMOUNT))
+        self.assertEqual(total, -3820)
+        self.assertEqual(variable + fixed, total)
+        self.assertLess(variable, 0)
+        self.assertLess(fixed, 0)
 
 
 class TestLatLonToUtm31(SimpleTestCase):
@@ -358,3 +355,44 @@ class TestFactdetaReportFilters(SimpleTestCase):
         generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
         exploitations, invoices = generate.call_args.args
         self.assertNotIn('exploitation_id', str(invoices.query).split(' WHERE ')[1])
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_date_range_takes_precedence_over_year(self, generate):
+        # La pàgina d'informes envia sempre l'any del selector (per defecte, l'anterior)
+        data = {'year': 2025, 'date_range': ['2026-01-01T00:00:00.000Z', '2026-10-31T00:00:00.000Z']}
+        generate_factdeta_report(SimpleNamespace(data=data))
+        exploitations, invoices = generate.call_args.args
+        where = str(invoices.query).split(' WHERE ')[1]
+        self.assertIn('BETWEEN 2026-01-01 AND 2026-10-31', where)
+        self.assertNotIn('2025', where)
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_year_out_of_range_is_rejected(self, generate):
+        response, _document_id, _ = generate_factdeta_report(SimpleNamespace(data={'year': 10000}))
+        self.assertEqual(response.status_code, 400)
+        generate.assert_not_called()
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_company_filter_of_reports_page(self, generate):
+        generate_factdeta_report(SimpleNamespace(data={'year': 2026, 'company_ids': '3,5'}))
+        exploitations, invoices = generate.call_args.args
+        self.assertIn('"company_id" IN (3, 5)', str(invoices.query).split(' WHERE ')[1])
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_malformed_or_inverted_date_range_is_rejected(self, generate):
+        for date_range in (['2026-01-01Tnot-a-time', '2026-10-31T00:00:00.000Z'],
+                           ['2026-10-31T00:00:00.000Z', '2026-01-01T00:00:00.000Z']):
+            response, _document_id, _ = generate_factdeta_report(SimpleNamespace(data={'date_range': date_range}))
+            self.assertEqual(response.status_code, 400, date_range)
+        generate.assert_not_called()
+
+    @mock.patch('statistics.utils.report_factdeta_service.save_report', return_value=1)
+    @mock.patch('statistics.utils.report_factdeta_service.read_factdeta', side_effect=RuntimeError)
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document')
+    def test_summary_failure_keeps_factdeta(self, generate, _read, _save):
+        generate.return_value = [{'year': 2026, 'file_name': 'FD2189_080000_2026.txt', 'content': b'x', 'warnings': []}]
+        response, document_id, _ = generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
+        self.assertEqual((response.status_code, document_id), (200, 1))
+        with zipfile.ZipFile(BytesIO(response.content)) as zip_file:
+            self.assertEqual(zip_file.namelist(), ['FD2189_080000_2026.txt'])
+
