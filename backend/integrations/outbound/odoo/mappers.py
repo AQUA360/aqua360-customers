@@ -83,6 +83,14 @@ def resolve_payment_mode(payment_type_token: str, payment_type_name: str = "") -
     }
 
 
+def _product_company(product) -> dict:
+    company = getattr(product, "company", None) if product else None
+    return {
+        "name": (company.name or "") if company else "",
+        "vat": (company.vat or "") if company else "",
+    }
+
+
 def map_line_item(line: InvoiceLineItem) -> dict:
     product = line.product
     # if not product or not product.token:
@@ -100,6 +108,7 @@ def map_line_item(line: InvoiceLineItem) -> dict:
         "product_id": {
             "aqua_id": product.token if product else "CUSTOM",
             "name": product.name or product.token if product else line.product_name,
+            "company": _product_company(product),
         },
         "name": line.name or line.description or line.product_name or product.name,
         "quantity": _to_float(line.units),
@@ -123,7 +132,7 @@ def map_invoice_to_odoo(invoice: Invoice) -> dict:
         raise OdooMappingError(f"La factura {invoice.token} no té totals finals.")
 
     lines = invoice.line_items.filter(is_active=True).select_related(
-        "product", "tax"
+        "product__company", "tax"
     )
     if not lines.exists():
         raise OdooMappingError(f"La factura {invoice.token} no té línies actives.")
