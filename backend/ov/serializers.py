@@ -1513,12 +1513,17 @@ class ConsumptionDownloadRequestSerializer(serializers.Serializer):
 class BillingPeriodItemSerializer(serializers.Serializer):
     """Elemento del listado de periodos de facturación disponibles para el
     contrato (`GET /ov/billing-periods/`). Los ciclos de facturación los define
-    el PA (trimestral, bimestral, etc.) y el frontal no puede hardcodearlos.
-    Corresponde al esquema `BillingPeriodItem` del documento OpenAPI."""
+    el facturador del contrato (`period_type` + `initial_month`) y el frontal
+    no puede hardcodearlos. Corresponde al esquema `BillingPeriodItem` del
+    documento OpenAPI."""
 
     year = serializers.IntegerField()
     period_code = serializers.CharField()
     months_label = serializers.CharField()
+    month_from = serializers.IntegerField()
+    year_from = serializers.IntegerField()
+    month_to = serializers.IntegerField()
+    year_to = serializers.IntegerField()
     is_current = serializers.BooleanField()
 
 

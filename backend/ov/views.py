@@ -12,6 +12,7 @@ import re
 import zipfile
 import logging
 from io import BytesIO, StringIO
+from billing.utils.biller_period_service import current_and_next_cycles
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
 from coredata.models import (
@@ -1088,20 +1089,26 @@ class ConsumptionsDownloadOVView(APIView):
         )
 
 
-MOCK_BILLING_PERIODS = [
-    {"year": 2026, "period_code": "1T", "months_label": "enero-marzo", "is_current": False},
-    {"year": 2026, "period_code": "2T", "months_label": "abril-junio", "is_current": True},
-]
+def _contract_biller(contract):
+    """Facturador del contrato (el de la ruta del seu punt de subministrament);
+    `None` si algun enllaç de la cadena no existeix."""
+    supply_point = contract.supply_point_default
+    prop = supply_point.property if supply_point else None
+    position = prop.route_position if prop else None
+    route = position.route if position else None
+    return route.biller if route else None
 
 
 class BillingPeriodsOVView(APIView):
     """GET /ov/billing-periods/?contract_token=<token>
 
     Devuelve los periodos de facturación disponibles para el contrato (ciclos
-    definidos por el PA), para el selector de «Primera domiciliación» del
-    frontal. Lista mock fija de 2 periodos mientras no se integre con el PA;
-    el contrato se valida igual que en el resto de endpoints (`404` si no
-    existe).
+    definidos por su facturador: `period_type` + `initial_month`), para el
+    selector de «Primera domiciliación» del frontal. Devuelve el ciclo en curso
+    (`is_current=true`, primero) y el siguiente, calculados a partir de la
+    fecha actual. Sin facturador en la ruta se aplican los valores por defecto
+    del modelo `Biller` (trimestral desde enero). El contrato se valida igual
+    que en el resto de endpoints (`404` si no existe).
     """
 
     permission_classes = [IsAuthenticated]
@@ -1114,13 +1121,21 @@ class BillingPeriodsOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contract = Contract.objects.filter(token=contract_token).first()
+        contract = (
+            Contract.objects.select_related(
+                "supply_point_default__property__route_position__route__biller"
+            )
+            .filter(token=contract_token)
+            .first()
+        )
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        serializer = BillingPeriodItemSerializer(MOCK_BILLING_PERIODS, many=True)
+        biller = _contract_biller(contract)
+        cycles = current_and_next_cycles(timezone.localdate(), biller)
+        serializer = BillingPeriodItemSerializer(cycles, many=True)
         return Response(serializer.data)
 
 
