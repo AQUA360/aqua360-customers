@@ -4,11 +4,10 @@ import { useRouter } from 'vue-router';
 import debounce from 'lodash.debounce';
 import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
-import { formatMoneyWithCurrency } from '~/utils/money';
+import { formatMoneyWithCurrency, parseAmountInput } from '~/utils/money';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import JoinedPaymentRegion from '~/components/organisms/JoinedPaymentRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
@@ -66,7 +65,13 @@ const pagination = ref({
     isFiltered: false
 });
 
-const getData = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, payment_type = null, payment_date = null, due_date = null, total = null) => {
+// Import escrit per l'usuari (p. ex. "12,50" o "1.234,50") en el format numèric
+// que espera el filtre `total_final`; si no és vàlid no s'envia.
+const normalizedTotal = () => parseAmountInput(searchInputTotalFinal.value);
+
+// Llegeix sempre l'estat actual de cerca, filtres i ordenació, de manera que
+// cap crida pugui perdre'n una part.
+const getData = async (page = pagination.value.page) => {
     if (!objectPermissions.value?.can_view) {
         toast.error(t('common.no_permissions'));
         return navigateTo('/');
@@ -75,8 +80,8 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
     error.value = null;
     try {
         const data = await $JoinedPaymentApiService.getAll(
-            searchQuery, filters, page, sort, desc,
-            payment_date, due_date, total, payment_type
+            searchInput.value, statuses.value, page, sortBy.value, sortDesc.value,
+            payment_date.value, due_date.value, normalizedTotal(), payment_types.value
         );
 
         items.value = data.results;
@@ -85,7 +90,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = null, de
             totalPages: Math.ceil(data.count / pagination.value.perPage),
             previous: data.previous,
             next: data.next,
-            isFiltered: String(searchQuery).trim() !== ''
+            isFiltered: String(searchInput.value).trim() !== ''
         });
 
         nextTick(() => {
@@ -115,27 +120,24 @@ const getFilterPaymentType = async () => {
     error.value = null;
     try {
         const data = await $ConfiglistApiService.getAll('contract/contract-payment-type');
-        //filter_payment_type.value = data.results;
         filter_payment_type.value = [
             {
-                id: null,
+                id: 'null',
                 token: '',
                 name: t('None'),
             },
-            ...(data.results || []), // Ensure data.results exists and is an array
+            ...(data.results || []),
         ];
     } catch (err) {
         error.value = err;
     }
 }
 
-const debouncedGetData = debounce((query, filters, sort, desc, payment_types, payment_date, due_date, total) => {
-    getData(query, filters, pagination.value.page, sort, desc, payment_types, payment_date, due_date, total);
-}, 300);
+const debouncedGetData = debounce(() => getData(1), 300);
 
 const handleSearch = () => {
     pagination.value.page = 1;
-    debouncedGetData(searchInput.value, statuses.value, sortBy.value, sortDesc.value, payment_types.value, payment_date.value, due_date.value, searchInputTotalFinal.value);
+    debouncedGetData();
 }
 
 const handleTotalFinalInput = (event) => {
@@ -155,63 +157,61 @@ const handleFiltersChange = (event) => {
     isFilterShown.value = [...isFilterShown.value, ...newFilters];
 }
 
+// Quan es treu un filtre addicional, en buida el valor i torna a carregar
+// mantenint la cerca, l'ordenació i la resta de filtres.
 const checkInAdvacedFilters = (newFilters) => {
-    if (isFilterShown.value.some(filter => filter.id === 'payment_type') && !newFilters.some(filter => filter.id === 'payment_type')) {
+    const removed = (id) => isFilterShown.value.some(filter => filter.id === id) && !newFilters.some(filter => filter.id === id);
+    let changed = false;
+    if (removed('payment_type')) {
         payment_types.value = [];
         selected_payment_types.value = [];
-        getData();
-    } else if (isFilterShown.value.some(filter => filter.id === 'status') && !newFilters.some(filter => filter.id === 'status')) {
+        changed = true;
+    }
+    if (removed('status')) {
         statuses.value = [];
         selectedFilters.value = [];
-        getData();
-    } else if (isFilterShown.value.some(filter => filter.id === 'payment_date') && !newFilters.some(filter => filter.id === 'payment_date')) {
-        payment_date.value = {};
+        changed = true;
+    }
+    if (removed('payment_date')) {
+        payment_date.value = null;
         selectedPaymentDate.value = [];
-        handleSearch();
-    } else if (isFilterShown.value.some(filter => filter.id === 'due_date') && !newFilters.some(filter => filter.id === 'due_date')) {
-        due_date.value = {};
+        changed = true;
+    }
+    if (removed('due_date')) {
+        due_date.value = null;
         selectedDueDate.value = [];
+        changed = true;
+    }
+    if (changed) {
         handleSearch();
     }
-
 }
 
 const handlePayTypeChange = (event) => {
     selected_payment_types.value = event;
-    payment_types.value = []
-    selected_payment_types.value.forEach(element => {
-        payment_types.value.push(element.id);
-    })
-
-    pagination.value.page = 1;
+    payment_types.value = selected_payment_types.value.map(element => element.id);
     handleSearch();
 }
 
 const handleStatusChange = (event) => {
     selectedFilters.value = event;
-    statuses.value = []
-    selectedFilters.value.forEach(element => {
-        statuses.value.push(element.id);
-    })
-    pagination.value.page = 1;
+    statuses.value = selectedFilters.value.map(element => element.id);
     handleSearch();
 }
 
 const handlePaymentDateChange = (event) => {
     payment_date.value = event;
-    pagination.value.page = 1;
     handleSearch();
 }
 
 const handleDueDateChange = (event) => {
     due_date.value = event;
-    pagination.value.page = 1;
     handleSearch();
 }
 
 const handlePageChange = (newPage) => {
     pagination.value.page = newPage;
-    getData(searchInput.value, statuses.value, newPage, sortBy.value, sortDesc.value, payment_types.value, payment_date.value, due_date.value, searchInputTotalFinal.value);
+    getData(newPage);
 }
 
 const handleSort = (key) => {
@@ -221,22 +221,28 @@ const handleSort = (key) => {
         sortBy.value = key;
         sortDesc.value = false;
     }
-    getData(searchInput.value, statuses.value, pagination.value.page, sortBy.value, sortDesc.value, payment_types.value, payment_date.value, due_date.value, searchInputTotalFinal.value);
+    pagination.value.page = 1;
+    getData(1);
 }
 
 const resetFilters = () => {
+    debouncedGetData.cancel();
     searchInput.value = '';
+    searchInputTotalFinal.value = '';
     sortBy.value = null;
+    sortDesc.value = false;
     selectedFilters.value = [];
     statuses.value = [];
     selected_payment_types.value = [];
+    payment_types.value = [];
     payment_date.value = null;
+    selectedPaymentDate.value = [];
     due_date.value = null;
-    searchInputTotalFinal.value = '';
+    selectedDueDate.value = [];
     isFilterShown.value = [];
     isFilterOpen.value = false;
     pagination.value.page = 1;
-    getData();
+    getData(1);
 };
 
 
@@ -259,8 +265,35 @@ const exportColumns = computed(() => [
 ]);
 const exportJoinedPayments = () => $JoinedPaymentApiService.exportData(
     searchInput.value, statuses.value, sortBy.value, sortDesc.value,
-    payment_date.value, due_date.value, searchInputTotalFinal.value, payment_types.value
+    payment_date.value, due_date.value, normalizedTotal(), payment_types.value
 );
+
+/**
+ * Columnes de la taula (vegeu `useTableColumns`). Les claus d'ordenació han de
+ * coincidir amb `ordering_fields` de `JoinedPaymentViewSet`.
+ */
+const tableColumns = computed(() => [
+    { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 90, min: 82, priority: 3 },
+    { key: 'token', label: t('common.identification'), sortKey: 'token', width: 130, min: 110, priority: 1, removable: false },
+    { key: 'customer', label: t('common.client'), sortKey: 'customer_final', width: 260, grow: 4, min: 160, priority: 1, removable: false },
+    { key: 'total_final', label: t('common.amount'), sortKey: 'total_final', width: 110, min: 90, priority: 1 },
+    {
+        key: 'status', label: t('common.status'), sortKey: 'status__position',
+        width: 130, min: 100, priority: 1, cellClass: 'inline-flex gap-1 items-center',
+    },
+    { key: 'payment_type', label: t('common.payment_method'), sortKey: 'payment_type_name', width: 180, grow: 2, min: 120, priority: 2 },
+    { key: 'payment_date', label: t('billing_block.payment'), sortKey: 'payment_date', width: 90, min: 82, priority: 3 },
+    { key: 'due_date', label: t('common.limit'), sortKey: 'due_date', width: 90, min: 82, priority: 3 },
+]);
+
+const customerLabel = (item) => [
+    item.customer_final,
+    item.customer_token_final ? `(${item.customer_token_final})` : '',
+].filter(Boolean).join(' ');
+
+const rowClass = (item) => ({
+    'bg-yellow-50': item.id === selectedItemId.value,
+});
 
 onMounted(async () => {
     objectPermissions.value = await checkPermission($PaymentApiService);
@@ -288,7 +321,7 @@ const checkRouteQuery = () => {
     }
 };
 
-watch([searchInput], (newValue) => {
+watch(searchInput, (newValue) => {
     pagination.value.page = 1;
     handleSearch();
     if (newValue) {
@@ -365,22 +398,22 @@ watch(() => route.query, () => {
 
             <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'payment_type')"
                 :options="filter_payment_type" :filters="selected_payment_types" :multiple="false"
-                :placeholder="t(`common.type`)" @update:modelValue="handlePayTypeChange($event)">
+                :placeholder="t(`common.payment_method`)" @update:modelValue="handlePayTypeChange($event)">
                 <template #icon>
                     <Icon name="fa6-solid:cube" class="text-slate-500 " />
                 </template>
             </FilterSelect>
 
             <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'payment_date')" :datePick="true"
-                :filters="selectedIssueDate" :placeholder="t(`billing_block.sel_payment_date`)"
-                @update:modelValue="handleIssueDateChange($event)">
+                :filters="selectedPaymentDate" :initialDateRange="payment_date" :placeholder="t(`billing_block.sel_payment_date`)"
+                @update:modelValue="handlePaymentDateChange($event)">
                 <template #icon>
                     <Icon name="fa6-solid:calendar" class="text-md ml-2 mr-1" size="10px" />
                 </template>
             </FilterSelect>
 
             <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'due_date')" :datePick="true"
-                :filters="selectedDueDate" :placeholder="t(`billing_block.sel_due_date`)"
+                :filters="selectedDueDate" :initialDateRange="due_date" :placeholder="t(`billing_block.sel_due_date`)"
                 @update:modelValue="handleDueDateChange($event)">
                 <template #icon>
                     <Icon name="fa6-solid:calendar-xmark" class="text-md ml-2 mr-1" size="10px" />
@@ -396,60 +429,44 @@ watch(() => route.query, () => {
 
         </div>
         <DataTable
-            grid-template="80px,100px,1fr,100px,80px,1fr,80px,80px"
+            table-key="joined-payments"
+            :columns="tableColumns"
+            :items="objectPermissions?.can_view ? items : []"
+            :row-class="rowClass"
+            :current-sort-by="sortBy"
+            :sort-desc="sortDesc"
             :pending="pending"
             :error="error"
             :is-empty="items.length === 0"
-            @retry="getData">
-            <template #header>
-                <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy"
-                    :sortDesc="sortDesc" @sort="handleSort" />
-                <TableHeader :label="$t('common.identification')" sortKey="number" :currentSortBy="sortBy"
-                    :sortDesc="sortDesc" @sort="handleSort" />
-                <TableHeader :label="$t('common.client')" :sotable="false" />
-                <TableHeader :label="$t('common.amount')" sortKey="total_final" :currentSortBy="sortBy"
-                    :sortDesc="sortDesc" @sort="handleSort" />
-                <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy"
-                    :sortDesc="sortDesc" @sort="handleSort" />
-                <TableHeader :label="$t('common.payment_method')" sortKey="payment_type_name"
-                    :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-                <TableHeader :label="$t('billing_block.payment')" sortKey="payment_date" :currentSortBy="sortBy"
-                    :sortDesc="sortDesc" @sort="handleSort" />
-                <TableHeader :label="$t('common.limit')" sortKey="due_date" :currentSortBy="sortBy"
-                    :sortDesc="sortDesc" @sort="handleSort" />
+            @sort="handleSort"
+            @retry="getData()">
+            <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+            <template #cell-token="{ item }">
+                <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+                    @click="showDetail(item.id);">
+                    <abbr :title="item.id" class="no-underline truncate">{{ item.token }}</abbr>
+                    <Icon name="fa6-solid:eye"
+                        class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+                </button>
             </template>
 
-            <template #default="{ gridStyle }">
-                <template v-if="objectPermissions?.can_view">
-                    <div v-for="item in items" :key="item.id"
-                        class="gap-3 text-base border-b items-center"
-                        :style="gridStyle"
-                        :class="{ 'bg-yellow-50': item.id === selectedItemId, }">
-                        <span class="p-1">{{ formatDate(item.created_at) }}</span>
-                        <span>
-                            <button
-                                class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-                                @click="showDetail(item.id);">
-                                <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-                                <Icon name="fa6-solid:eye"
-                                    class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-                            </button>
-                        </span>
-
-                        <span class="p-1">{{ item.customer_final }} ({{ item.customer_token_final }})</span>
-                        <span class="p-1">{{ formatMoneyWithCurrency(item.total_final) }}</span>
-                        <span class="p-1">
-                            <AtomsColorBadge :value="item.status_name" :color="item.status_color">
-                            </AtomsColorBadge>
-                        </span>
-                        <span class="p-1">
-                            {{ item.payment_type_name }}
-                        </span>
-                        <span class="p-1">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</span>
-                        <span> {{ item.due_date ? formatDate(item.due_date) : '-' }}</span>
-                    </div><!-- end for items -->
-                </template>
+            <template #cell-customer="{ item }">
+                <span class="truncate" :title="customerLabel(item)">{{ customerLabel(item) }}</span>
             </template>
+
+            <template #cell-total_final="{ item }">{{ formatMoneyWithCurrency(item.total_final) }}</template>
+
+            <template #cell-status="{ item }">
+                <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
+            </template>
+
+            <template #cell-payment_type="{ item }">
+                <span class="truncate" :title="item.payment_type_name">{{ item.payment_type_name || '-' }}</span>
+            </template>
+
+            <template #cell-payment_date="{ item }">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</template>
+            <template #cell-due_date="{ item }">{{ item.due_date ? formatDate(item.due_date) : '-' }}</template>
         </DataTable>
         <div id="list__footer">
             <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

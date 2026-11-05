@@ -21,6 +21,11 @@ ORDER_CONTRACT_TOKEN = BillingDocumentDownload.ORDER_CONTRACT_TOKEN
 ORDER_INVOICE_CODE = BillingDocumentDownload.ORDER_INVOICE_CODE
 ORDERINGS = {ORDER_CONTACT_ADDRESS, ORDER_CONTRACT_TOKEN, ORDER_INVOICE_CODE}
 
+PAGES_ALL = BillingDocumentDownload.PAGES_ALL
+PAGES_SINGLE = BillingDocumentDownload.PAGES_SINGLE
+PAGES_MULTIPLE = BillingDocumentDownload.PAGES_MULTIPLE
+PAGES_OPTIONS = {PAGES_ALL, PAGES_SINGLE, PAGES_MULTIPLE}
+
 BATCH_NONE = BillingDocumentDownload.BATCH_NONE
 BATCH_COUNT = BillingDocumentDownload.BATCH_COUNT
 BATCH_SIZE = BillingDocumentDownload.BATCH_SIZE
@@ -57,6 +62,10 @@ def parse_download_options(data):
     if ordering not in ORDERINGS:
         raise DownloadOptionsError('ordering')
 
+    pages = data.get('pages') or PAGES_ALL
+    if pages not in PAGES_OPTIONS:
+        raise DownloadOptionsError('pages')
+
     descending = data.get('descending', False)
     if isinstance(descending, str):
         descending = descending.strip().lower() in ('1', 'true', 'yes')
@@ -77,6 +86,7 @@ def parse_download_options(data):
         'delivery': delivery,
         'ordering': ordering,
         'descending': descending,
+        'pages': pages,
         'batch_mode': batch_mode,
         'batch_size': batch_size,
     }
@@ -173,8 +183,18 @@ def _sort_expression(ordering):
     )
 
 
+def _filter_invoice_pages(queryset, pages, prefix=''):
+    """Factures d'una pàgina o de més. Sense recompte (PDF antic) compta com d'una."""
+    lookup = f'{prefix}pdf_page_count__gt'
+    if pages == PAGES_MULTIPLE:
+        return queryset.filter(**{lookup: 1})
+    if pages == PAGES_SINGLE:
+        return queryset.exclude(**{lookup: 1})
+    return queryset
+
+
 def ordered_billing_invoices(billing_ids, *, payment_type_tokens=None,
-                             ordering=ORDER_CONTACT_ADDRESS, descending=False):
+                             ordering=ORDER_CONTACT_ADDRESS, descending=False, pages=PAGES_ALL):
     """Factures actives de les facturacions, sense filtre de canal."""
     if isinstance(billing_ids, int):
         billing_ids = [billing_ids]
@@ -185,6 +205,7 @@ def ordered_billing_invoices(billing_ids, *, payment_type_tokens=None,
     tokens = [token for token in (payment_type_tokens or []) if token]
     if tokens:
         queryset = queryset.filter(payment_type_token_final__in=tokens)
+    queryset = _filter_invoice_pages(queryset, pages)
 
     queryset = queryset.annotate(_download_sort=Lower(_sort_expression(ordering)))
     direction = (
@@ -238,6 +259,25 @@ def _payment_matches(comm_file, tokens):
         if sibling.invoice_id and sibling.invoice and sibling.invoice.payment_type_token_final in tokens:
             return True
     return False
+
+
+def _communication_is_multi_page(communication):
+    """La comunicació porta alguna factura de més d'una pàgina.
+
+    Es decideix per comunicació, no per fitxer, perquè tot el que va al mateix
+    sobre (carta i factures) surti al mateix paquet.
+    """
+    invoices = list(communication.invoices.all())
+    invoices.extend(comm_file.invoice for comm_file in communication.files.all() if comm_file.invoice is not None)
+    return any((invoice.pdf_page_count or 0) > 1 for invoice in invoices)
+
+
+def _pages_match(is_multi_page, pages):
+    if pages == PAGES_MULTIPLE:
+        return is_multi_page
+    if pages == PAGES_SINGLE:
+        return not is_multi_page
+    return True
 
 
 def _text(*values):
@@ -307,7 +347,7 @@ def _sort_key(comm_file, ordering, descending):
 
 
 def ordered_process_files(process_ids, *, payment_type_tokens=None, delivery=DELIVERY_ALL,
-                          ordering=ORDER_CONTACT_ADDRESS, descending=False):
+                          ordering=ORDER_CONTACT_ADDRESS, descending=False, pages=PAGES_ALL):
     """Documents dels processos, amb el mateix criteri de canal que el seu menú."""
     from communication.models import Communication, CommunicationFile
 
@@ -315,6 +355,8 @@ def ordered_process_files(process_ids, *, payment_type_tokens=None, delivery=DEL
         process_ids = [process_ids]
     if delivery not in DELIVERIES:
         raise DownloadOptionsError('delivery')
+    if pages not in PAGES_OPTIONS:
+        raise DownloadOptionsError('pages')
     postal_token, email_token = _channel_tokens()
     tokens = [token for token in (payment_type_tokens or []) if token]
 
@@ -332,11 +374,14 @@ def ordered_process_files(process_ids, *, payment_type_tokens=None, delivery=DEL
 
     selected = []
     for communication in communications:
+        is_multi_page = pages != PAGES_ALL and _communication_is_multi_page(communication)
         for comm_file in communication.files.all():
             comm_file.communication = communication
             if not _channel_included(comm_file, postal_token, email_token, delivery):
                 continue
             if not _payment_matches(comm_file, tokens):
+                continue
+            if not _pages_match(is_multi_page, pages):
                 continue
             selected.append(comm_file)
     selected.sort(key=lambda comm_file: _sort_key(comm_file, ordering, descending))

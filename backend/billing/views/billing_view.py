@@ -514,8 +514,6 @@ class BillingViewSet(viewsets.ModelViewSet):
               last_reading_ids_by_contract[reading.contract_id] = reading.id
 
           readings = Reading.objects.filter(id__in=last_reading_ids_by_contract.values())
-          for reading in readings:
-            print(reading.meter.code, 'meter', reading.id, reading.contract.token)
           readings.update(batch=new_reading_batch, billing=None)
         except Exception as e:
           print(e)

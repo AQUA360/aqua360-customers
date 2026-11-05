@@ -75,8 +75,6 @@ class BillingPreInvoicesSummaryViewSet(views.APIView):
             bonifications_counts = invoices.filter(
                 contract__bonifications__isnull=False
                 ).values('contract__bonifications__bonification_type__name').annotate(count=Count('id', distinct=True)).order_by()
-            for item in bonifications_counts:
-                print(item)
             bonifications_dict = {f"{item['contract__bonifications__bonification_type__name'] or OTHERS_LABEL}": f"{item['count']}" for item in bonifications_counts}
 
             variables_counts = invoices.filter(

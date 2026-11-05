@@ -79,6 +79,7 @@ class InvoiceFilter(filters.FilterSet):
     person = filters.CharFilter(field_name='person__id', lookup_expr='exact')
     line_item = filters.CharFilter(method='filter_line_item')
     invoice_kinds = filters.CharFilter(method='filter_invoice_kinds')
+    multi_page = filters.BooleanFilter(method='filter_multi_page')
     
     class Meta:
         model = Invoice
@@ -96,6 +97,7 @@ class InvoiceFilter(filters.FilterSet):
             'line_item',
             'person',
             'invoice_kinds',
+            'multi_page',
         ]
 
     def filter_search(self, queryset, name, value):
@@ -119,7 +121,7 @@ class InvoiceFilter(filters.FilterSet):
             )
             term_queries.append(term_query)
         final_query = reduce(and_, term_queries)
-        return queryset.filter(final_query).distinct()
+        return queryset.filter(final_query)
     
     def filter_line_item(self, queryset, name, value):
         if not value:
@@ -192,7 +194,7 @@ class InvoiceFilter(filters.FilterSet):
     def filter_payment_type_tokens(self, queryset, name, value):
         if value:
             payment_type_tokens = value.split(',')
-            return queryset.filter(payment_type_token_final__in=payment_type_tokens).distinct()
+            return queryset.filter(payment_type_token_final__in=payment_type_tokens)
         return queryset
     
     def filter_general_contract(self, queryset, name, value):
@@ -203,7 +205,7 @@ class InvoiceFilter(filters.FilterSet):
     def filter_status(self, queryset, name, value):
         if value:
             status_values = value.split(',')
-            return queryset.filter(status__id__in=status_values).distinct()
+            return queryset.filter(status__id__in=status_values)
         return queryset
     
     def filter_expired(self, queryset, name, value):
@@ -211,7 +213,7 @@ class InvoiceFilter(filters.FilterSet):
             status_expired = ConfigProject.objects.get(
                 token='invoice_status_expired_token'
             ).value
-            return queryset.filter(status__token=status_expired).distinct()
+            return queryset.filter(status__token=status_expired)
         return queryset
     
     def filter_is_invoice(self, queryset, name, value):
@@ -220,46 +222,54 @@ class InvoiceFilter(filters.FilterSet):
                 type__token=ConfigProject.objects.get(
                     token='invoice_type_invoice_token'
                 ).value
-            ).distinct()
+            )
         elif value is False:
             return queryset.filter(
                 type__token=ConfigProject.objects.get(
                     token='invoice_type_budget_token'
                 ).value
-            ).distinct()
+            )
         return queryset
     
     def filter_alert(self, queryset, name, value):
         if value == 'any':
-            return queryset.filter(warning__isnull=False).distinct()
+            return queryset.filter(warning__isnull=False)
         elif value == 'null':
-            return queryset.filter(warning__isnull=True).distinct()
+            return queryset.filter(warning__isnull=True)
         elif value == 'high_billing_amount':
             try:
                 high_amount_token = ConfigProject.objects.get(token='invoice_warning_high_amount').value
-                return queryset.filter(warning__token=high_amount_token).distinct()
+                return queryset.filter(warning__token=high_amount_token)
             except ConfigProject.DoesNotExist:
                 return queryset.none()
         elif value == 'warning_date_range':
-            return queryset.distinct()
+            return queryset
         else:
-            return queryset.filter(warning__name=value).distinct()
+            return queryset.filter(warning__name=value)
         
     def filter_serie(self, queryset, name, value):
         if value:
             values = value.split(',')
-            return queryset.filter(serie__id__in=values).distinct()
-        return queryset.distinct()
+            return queryset.filter(serie__id__in=values)
+        return queryset
     
     def filter_exploitation(self, queryset, name, value):
         if value:
             return queryset.filter(
                 Q(exploitation__id=value) |
                 Q(exploitation__isnull=True)
-                ).distinct()
-        return queryset.distinct()
+                )
+        return queryset
     
+    def filter_multi_page(self, queryset, name, value):
+        # Factures el PDF de les quals ocupa més d'una pàgina (o, amb false, la resta).
+        if value is True:
+            return queryset.filter(pdf_page_count__gt=1)
+        if value is False:
+            return queryset.exclude(pdf_page_count__gt=1)
+        return queryset
+
     def filter_contract_null(self, queryset, name, value):
         if value is True:
-            return queryset.filter(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True).distinct()
-        return queryset.distinct()
+            return queryset.filter(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True)
+        return queryset

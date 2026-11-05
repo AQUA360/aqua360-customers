@@ -4877,3 +4877,7 @@ msgstr "Cambio de nome"
 #: documentmanager/utils/export_registry.py
 msgid "Nova alta"
 msgstr "Nova alta"
+
+#: claimrequest/utils/claim_contract_export_service.py
+msgid "Comptador general"
+msgstr "Contador xeral"

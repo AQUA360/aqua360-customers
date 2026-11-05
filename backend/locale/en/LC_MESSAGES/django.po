@@ -4301,3 +4301,7 @@ msgstr "Change of name"
 #: documentmanager/utils/export_registry.py
 msgid "Nova alta"
 msgstr "New registration"
+
+#: claimrequest/utils/claim_contract_export_service.py
+msgid "Comptador general"
+msgstr "General meter"

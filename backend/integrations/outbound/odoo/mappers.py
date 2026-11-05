@@ -4,7 +4,10 @@ from decimal import Decimal
 from django.utils import timezone
 
 from billing.models import CommitmentDeposit, Invoice, InvoiceLineItem, PaymentMovement
+from coredata.models import ConfigProject
 from coredata.utils.other_utils import round_ceil
+from service.models import Company
+from service.utils.company_bank_service import get_company_bank
 
 from .exceptions import OdooMappingError
 
@@ -169,13 +172,7 @@ def map_invoice_to_odoo(invoice: Invoice) -> dict:
     return payload
 
 
-def resolve_payment_journal(movement: PaymentMovement) -> dict | None:
-    company_bank = None
-    if movement.payment_remittance and movement.payment_remittance.company_bank:
-        company_bank = movement.payment_remittance.company_bank
-    elif movement.payment and movement.payment.invoice:
-        company_bank = movement.payment.invoice.payment_company_bank
-
+def _company_bank_journal(company_bank) -> dict | None:
     if not company_bank or not company_bank.token:
         return None
 
@@ -187,6 +184,49 @@ def resolve_payment_journal(movement: PaymentMovement) -> dict | None:
         "aqua_id": company_bank.token,
         "name": bank_name,
     }
+
+
+def _default_main_company_bank():
+    """
+    Banc per defecte de l'empresa amb VAT = ConfigProject main_company_token.
+    """
+    config = ConfigProject.objects.filter(token="main_company_token").first()
+    if not config or not config.value:
+        return None
+    company = Company.objects.filter(vat=config.value).first()
+    if not company:
+        return None
+    return get_company_bank(company)
+
+
+def resolve_payment_journal(movement: PaymentMovement) -> dict:
+    """
+    Diari bancari Odoo del moviment: sempre amb CompanyBank.
+
+    Prioritat:
+      1. CompanyBank de la remesa.
+      2. payment_company_bank de la factura del pagament.
+      3. Banc per defecte de l'empresa principal (main_company_token).
+    """
+    company_bank = None
+    if movement.payment_remittance and movement.payment_remittance.company_bank:
+        company_bank = movement.payment_remittance.company_bank
+    elif movement.payment and movement.payment.invoice:
+        company_bank = movement.payment.invoice.payment_company_bank
+
+    journal = _company_bank_journal(company_bank)
+    if journal:
+        return journal
+
+    journal = _company_bank_journal(_default_main_company_bank())
+    if journal:
+        return journal
+
+    raise OdooMappingError(
+        f"El moviment {movement.token or movement.id} no té banc d'empresa "
+        "(ni remesa, ni factura, ni banc per defecte de la companyia "
+        "principal main_company_token)."
+    )
 
 
 def resolve_movement_invoice(movement: PaymentMovement) -> Invoice | None:
@@ -275,8 +315,9 @@ def map_payment_movement_to_odoo(movement: PaymentMovement) -> dict:
         payment_type.token if payment_type else payment.payment_type_token
     )
     payment_type_name = payment_type.name if payment_type else payment.payment_type
+    default_type = ConfigProject.objects.filter(token="CARD").first()
 
-    payload = {
+    return {
         "aqua_id": movement.token,
         "payment_type": "inbound",
         "partner_id": resolve_movement_partner(movement, invoice),
@@ -284,19 +325,14 @@ def map_payment_movement_to_odoo(movement: PaymentMovement) -> dict:
         "date": movement.movement_date.isoformat(),
         "memo": build_movement_memo(movement, invoice),
         "payment_mode_id": resolve_payment_mode(
-            payment_type_token or "",
-            payment_type_name or "",
+            payment_type_token if payment_type_token else default_type.token or "",
+            payment_type_name if payment_type_name else default_type.name or "",
         ),
+        "journal_id": resolve_payment_journal(movement),
         "reconcile": {
             "invoice_aqua_id": invoice.token if invoice and invoice.token else "",
         },
     }
-
-    journal = resolve_payment_journal(movement)
-    if journal:
-        payload["journal_id"] = journal
-
-    return payload
 
 
 def _commitment_date(deposit: CommitmentDeposit, override=None):
