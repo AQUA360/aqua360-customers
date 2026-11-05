@@ -1,5 +1,11 @@
 # Changelog Backend
 
+## [05-11-2026]
+### MODIFIED
+#### BILLING (`billing/filter/invoice_filter.py` — llista de factures més ràpida)
+    - Els filtres de la llista de factures ja no demanen `DISTINCT` quan no poden repetir cap factura (camps propis i claus foranes: tipus, estat, sèrie, cerca, etc.). Amb `DISTINCT`, la base comparava totes les factures abans de tornar-ne una pàgina: en una explotació de 34.000 factures, obrir la pantalla passava 2,5 s a la consulta; sense, 0,75 s. El mateix nombre de factures.
+    - Els filtres que sí poden repetir-ne (línies de factura i contractes generals) el mantenen. Tests a `billing/tests/test_invoice_list_filter_distinct.py`.
+
 ## [04-11-2026]
 ### FIX
 #### BILLING (`billing/views/payment_view.py` — segona devolució d'un rebut tornat a presentar el mateix dia de la primera)
