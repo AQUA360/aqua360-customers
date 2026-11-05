@@ -4881,3 +4881,15 @@ msgstr "Nova alta"
 #: claimrequest/utils/claim_contract_export_service.py
 msgid "Comptador general"
 msgstr "Contador xeral"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Saldo positiu"
+msgstr "Saldo positivo"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Deute"
+msgstr "Débeda"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Cal indicar una data de tall."
+msgstr "Hai que indicar unha data de corte."

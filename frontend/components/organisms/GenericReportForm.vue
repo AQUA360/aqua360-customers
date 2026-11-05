@@ -75,6 +75,7 @@ const getPaymentTypeName = (pay) => {
 
 const form = ref({
   date_range: null,
+  cutoff_date: null,
   exploitation_id: 'all',
   billing_id: null,
   remittance_id: null,
@@ -134,6 +135,8 @@ const showDateRange = computed(() => {
   // Les dates es recullen sempre del filtre genèric (global) de la pàgina
   return false;
 });
+// Informes que treballen amb una sola data (data de tall) en lloc del període global.
+const showCutoffDate = computed(() => hasField(['cutoff_date']));
 const showExploitation = computed(() => hasField(['exploitation_id', 'exploitation']));
 const showBilling = computed(() => hasField(['billing_id', 'billing']));
 const showRemittance = computed(() => hasField(['remittance_id', 'remittance']));
@@ -194,6 +197,21 @@ const onDownload = () => {
           :format="'dd-MM-yyyy'"
           class="custom-datepicker"
           placeholder="Selecciona les dates"
+        />
+      </div>
+
+      <!-- Cutoff date -->
+      <div v-if="showCutoffDate" class="flex flex-col">
+        <label class="text-sm font-semibold text-slate-700 mb-1">
+          {{ t('reports_block.cutoff_date') }}
+        </label>
+        <Datepicker
+          v-model="form.cutoff_date"
+          :enableTimePicker="false"
+          :format="'dd-MM-yyyy'"
+          auto-apply
+          class="custom-datepicker"
+          :placeholder="t('reports_block.cutoff_date_required')"
         />
       </div>
 

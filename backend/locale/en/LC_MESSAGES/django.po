@@ -4305,3 +4305,15 @@ msgstr "New registration"
 #: claimrequest/utils/claim_contract_export_service.py
 msgid "Comptador general"
 msgstr "General meter"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Saldo positiu"
+msgstr "Positive balance"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Deute"
+msgstr "Debt"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Cal indicar una data de tall."
+msgstr "A cutoff date is required."
