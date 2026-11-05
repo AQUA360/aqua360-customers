@@ -453,7 +453,8 @@ const saveCluster = async () => {
     usage_destination: clusterUsageDestination.value,
     address_extra: clusterAddressExtra.value,
     nb_nozzles: nozzles.value.length,
-    nozzles: nozzles.value,
+    // Les boquilles es desen una a una després de desar la bateria (vegeu el bucle de sota):
+    // no s'envien aquí perquè el backend no les apliqui amb les dades reduïdes dels punts
     report_file: clusterReportFile.value,
     is_active: true,
   };
@@ -925,6 +926,8 @@ const createNewLocalSupplyPoint = async () => {
 
   const spData = {
     connection_id: selected_connection.value?.id,
+    // El punt va a la finca de la bateria; sense això el backend en crearia una de nova
+    property_id: cluster.value?.property?.id || null,
     token: _.random(100000, 999999).toString(),
     type: type.value?.code || (types.value.length > 0 ? types.value[0].code : null),
     source: source.value?.code || (sources.value.length > 0 ? sources.value[0].code : null),
