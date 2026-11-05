@@ -335,7 +335,7 @@ def resolve_filter_labels(payload):
 
     cutoff_date = _format_date(payload.get('cutoff_date'))
     if cutoff_date:
-        add('Data de tall', cutoff_date)
+        add('Data', cutoff_date)
 
     exploitation_id = payload.get('exploitation_id')
     if exploitation_id:
