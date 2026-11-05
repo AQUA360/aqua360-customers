@@ -856,6 +856,11 @@ class Invoice(models.Model):
     class Meta:
         verbose_name = "Invoice"
         verbose_name_plural = "Invoices"
+        # L'ordre de la llista de factures (2026-11-05): sense índex, la base ordenava totes les
+        # factures per tornar-ne 50 (0,5 s amb 34.000 factures); amb, 0,04 s.
+        indexes = [
+            models.Index(fields=['-issue_date', '-created_at'], name='invoice_list_order_idx'),
+        ]
         
     def __str__(self):
         return f"Invoice {self.token} - {self.title_final if self.title_final else 'Unnamed'}"
