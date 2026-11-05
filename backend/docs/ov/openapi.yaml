@@ -1399,10 +1399,13 @@ paths:
       description: |
         Devuelve los periodos de facturación disponibles para el contrato.
         Los ciclos de facturación (trimestral, bimestral, etc.) los define el
-        sistema central (PA) y varían según el contrato, por lo que el frontal
-        no puede hardcodearlos: este endpoint los expone tal cual los genera el
-        PA para que el selector de «Primera domiciliación» del formulario de
-        medio de pago se rellene dinámicamente.
+        facturador (`Biller`: `period_type` + `initial_month`) de la ruta del
+        contrato y varían según el contrato, por lo que el frontal no puede
+        hardcodearlos. Devuelve el ciclo en curso (`is_current: true`, primero)
+        y el siguiente, calculados con la fecha actual, para que el selector de
+        «Primera domiciliación» del formulario de medio de pago se rellene
+        dinámicamente. Si la ruta no tiene facturador se aplican los valores
+        por defecto del modelo (trimestral desde enero).
       operationId: listBillingPeriods
       security:
         - tokenAuth: []
@@ -1419,13 +1422,21 @@ paths:
                   $ref: "#/components/schemas/BillingPeriodItem"
               example:
                 - year: 2026
+                  period_code: "4T"
+                  months_label: "octubre-diciembre"
+                  month_from: 10
+                  year_from: 2026
+                  month_to: 12
+                  year_to: 2026
+                  is_current: true
+                - year: 2027
                   period_code: "1T"
                   months_label: "enero-marzo"
+                  month_from: 1
+                  year_from: 2027
+                  month_to: 3
+                  year_to: 2027
                   is_current: false
-                - year: 2026
-                  period_code: "2T"
-                  months_label: "abril-junio"
-                  is_current: true
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -4241,24 +4252,47 @@ components:
     BillingPeriodItem:
       type: object
       description: |
-        Periodo de facturación disponible para el contrato, definido por el PA.
-        `period_code` es el código de periodo (p. ej. `3T`) y `months_label` los
-        meses naturales que incluye, para mostrarlos al usuario sin deducirlos
-        en el frontal.
+        Periodo de facturación del contrato, definido por su facturador.
+        `period_code` es una etiqueta (índice del ciclo + sufijo según la
+        periodicidad: `T` trimestral, `B` bimestral, `Q` cuatrimestral,
+        `S` semestral, `M` mensual, `A` anual; p. ej. `3T`) y `months_label`
+        los meses que incluye, para mostrarlos sin deducirlos en el frontal.
+        `month_from`/`year_from` y `month_to`/`year_to` delimitan el ciclo (puede
+        cruzar de año).
       required:
         - year
         - period_code
         - months_label
+        - month_from
+        - year_from
+        - month_to
+        - year_to
         - is_current
       properties:
         year:
           type: integer
-          description: Año del periodo de facturación
+          description: Año en que empieza el ciclo de facturación
           example: 2026
         period_code:
           type: string
-          description: Código del periodo según el PA (p. ej. `1T`, `2T`, `3T`, `4T`)
+          description: Etiqueta del periodo (p. ej. `1T`..`4T`, `1B`..`6B`, `1S`/`2S`)
           example: "3T"
+        month_from:
+          type: integer
+          description: Mes (1-12) en que empieza el ciclo
+          example: 7
+        year_from:
+          type: integer
+          description: Año en que empieza el ciclo
+          example: 2026
+        month_to:
+          type: integer
+          description: Mes (1-12) en que acaba el ciclo
+          example: 9
+        year_to:
+          type: integer
+          description: Año en que acaba el ciclo
+          example: 2026
         months_label:
           type: string
           description: Meses naturales incluidos en el periodo, legibles

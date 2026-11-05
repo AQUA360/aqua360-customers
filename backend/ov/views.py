@@ -12,6 +12,7 @@ import re
 import zipfile
 import logging
 from io import BytesIO, StringIO
+from billing.utils.biller_period_service import current_and_next_cycles
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
 from coredata.models import (
@@ -54,7 +55,7 @@ from billing.models import (
     Reading,
 )
 from documentmanager.utils.main_utils import download_document, upload_document
-from pricing.models import PriceRate
+from pricing.models import PriceRate, Product
 from service.models import Property, SupplyPoint
 from ov.serializers import (
     BillingDataOVSerializer,
@@ -773,8 +774,10 @@ class InvoiceDetailByTokenOVView(RetrieveAPIView):
     def get_queryset(self):
         cfg = ConfigProject.objects.filter(token="invoice_type_invoice_token").first()
         invoice_type_token = cfg.value if cfg and cfg.value else None
-        queryset = Invoice.objects.exclude(status__token="1").select_related(
-            "contract", "status"
+        queryset = (
+            Invoice.objects.exclude(status__token="1")
+            .select_related("contract", "status")
+            .prefetch_related("readings__previous_reading")
         )
         if invoice_type_token:
             queryset = queryset.filter(type_final=invoice_type_token)
@@ -1086,20 +1089,26 @@ class ConsumptionsDownloadOVView(APIView):
         )
 
 
-MOCK_BILLING_PERIODS = [
-    {"year": 2026, "period_code": "1T", "months_label": "enero-marzo", "is_current": False},
-    {"year": 2026, "period_code": "2T", "months_label": "abril-junio", "is_current": True},
-]
+def _contract_biller(contract):
+    """Facturador del contrato (el de la ruta del seu punt de subministrament);
+    `None` si algun enllaç de la cadena no existeix."""
+    supply_point = contract.supply_point_default
+    prop = supply_point.property if supply_point else None
+    position = prop.route_position if prop else None
+    route = position.route if position else None
+    return route.biller if route else None
 
 
 class BillingPeriodsOVView(APIView):
     """GET /ov/billing-periods/?contract_token=<token>
 
     Devuelve los periodos de facturación disponibles para el contrato (ciclos
-    definidos por el PA), para el selector de «Primera domiciliación» del
-    frontal. Lista mock fija de 2 periodos mientras no se integre con el PA;
-    el contrato se valida igual que en el resto de endpoints (`404` si no
-    existe).
+    definidos por su facturador: `period_type` + `initial_month`), para el
+    selector de «Primera domiciliación» del frontal. Devuelve el ciclo en curso
+    (`is_current=true`, primero) y el siguiente, calculados a partir de la
+    fecha actual. Sin facturador en la ruta se aplican los valores por defecto
+    del modelo `Biller` (trimestral desde enero). El contrato se valida igual
+    que en el resto de endpoints (`404` si no existe).
     """
 
     permission_classes = [IsAuthenticated]
@@ -1112,13 +1121,21 @@ class BillingPeriodsOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contract = Contract.objects.filter(token=contract_token).first()
+        contract = (
+            Contract.objects.select_related(
+                "supply_point_default__property__route_position__route__biller"
+            )
+            .filter(token=contract_token)
+            .first()
+        )
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        serializer = BillingPeriodItemSerializer(MOCK_BILLING_PERIODS, many=True)
+        biller = _contract_biller(contract)
+        cycles = current_and_next_cycles(timezone.localdate(), biller)
+        serializer = BillingPeriodItemSerializer(cycles, many=True)
         return Response(serializer.data)
 
 
@@ -1560,10 +1577,10 @@ class InvoiceStatusDictionaryOVView(APIView):
         )
 
 
-# Orígens de producte de tràmit/d'altes (drets d'alta, connexió, comptador,
-# pòlissa, dipòsit...). Exclou l'origen 1, de serveis periòdics recurrents
-# (aigua, brosses, canon, clavegueram...).
-PROCEDURE_TARIFF_ORIGIN_IDS = (2, 4, 5)
+# Tokens d'origen (`ProductOrigin.token`) dels productes de tràmit/d'altes
+# (drets d'alta, connexió, comptador, pòlissa, dipòsit...). Exclou els orígens
+# de serveis periòdics recurrents (`aigua`, `subministrament`).
+PROCEDURE_TARIFF_ORIGIN_TOKENS = ("contracte",)
 
 
 class ProcedureTariffDictionaryOVView(APIView):
@@ -1574,27 +1591,29 @@ class ProcedureTariffDictionaryOVView(APIView):
     (suma dels components fixos), `price_table` (taula de trams per calibre o
     consum) i `components` amb el desglossament complet. Ordenat per `name`.
 
-    Restringit a tarifes de productes de tràmit (`origin_id` 2, 4 o 5): no
-    inclou serveis periòdics recurrents (`origin_id = 1`) ni tarifes sense
-    producte associat.
+    La consulta parteix de `Product`, restringit als orígens de tràmit
+    (`contracte`, `escomesa`, `altres`), i recull les seves tarifes actives:
+    no inclou serveis periòdics recurrents (`aigua`, `subministrament`) ni
+    tarifes sense producte associat.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        tariffs = (
-            PriceRate.objects.filter(
-                is_active=True,
-                product__origin_id__in=PROCEDURE_TARIFF_ORIGIN_IDS,
-            )
-            .select_related("product", "billing_range_active")
-            .prefetch_related(
-                "billing_range_active__line_item_types__price_interval"
-                "__price_interval_stretches",
-                "billing_range_active__line_item_types__price_variable"
-                "__price_variable_interval_stretches",
-            )
-            .order_by("name")
+        active_rates = PriceRate.objects.filter(is_active=True).select_related(
+            "billing_range_active"
+        ).prefetch_related(
+            "billing_range_active__line_item_types__price_interval"
+            "__price_interval_stretches",
+            "billing_range_active__line_item_types__price_variable"
+            "__price_variable_interval_stretches",
+        )
+        products = Product.objects.filter(
+            origin__token__in=PROCEDURE_TARIFF_ORIGIN_TOKENS
+        ).prefetch_related(Prefetch("price_rates", queryset=active_rates))
+        tariffs = sorted(
+            (rate for product in products for rate in product.price_rates.all()),
+            key=lambda rate: rate.name or "",
         )
         return Response(
             ProcedureTariffDictionarySerializer(tariffs, many=True).data
