@@ -345,3 +345,60 @@ class TestChangePaymentMethodOfPaidInvoice(ReturnAfterPaymentMethodChangeBase):
         self.assertEqual(response.status_code, 400)
         self.payment.refresh_from_db()
         self.assertEqual(self.payment.payment_type_token, 'DIRECT_DEBIT')
+
+
+class TestSecondReturnAfterSameDayRepresentation(ReturnAfterPaymentMethodChangeBase):
+    """Rebut retornat, tornat a presentar el mateix dia de la devolució i retornat una segona vegada
+    pel mateix motiu."""
+
+    def setUp(self):
+        super().setUp()
+        # 1a devolució el 09/09 i represent per domiciliació el mateix 09/09
+        generate_payment_movement(
+            self.payment, self.payment_status['-2'], date(2026, 9, 9), 'DIRECT_DEBIT',
+            self.payment.payment_bank, self.user, self.motive)
+        self.payment.status = self.payment_status['-2']
+        self.payment.save()
+        generate_payment_movement(
+            self.payment, self.payment_status['0'], date(2026, 9, 9), 'DIRECT_DEBIT',
+            self.payment.payment_bank, self.user)
+        self.payment.status = self.payment_status['0']
+        self.payment.save()
+
+    def post_return(self, rjt_dt):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        rejection = {'id': self.payment.id, 'skip_return': False, 'rjt_dt': rjt_dt,
+                     'motive_id': self.motive.id, 'motive': self.motive.name}
+        data = {
+            'payments_to_return': json.dumps([rejection]),
+            # Sense factura de despeses ni reclamació: només es prova el retorn del rebut
+            'return_payments': json.dumps([]),
+            'claim_payments': json.dumps([]),
+            'return_date': rjt_dt,
+        }
+        return client.post(reverse('payment-manage-rejection-payments'), data, format='multipart')
+
+    def test_second_return_with_same_motive_is_applied(self):
+        response = self.post_return('2026-09-20')
+
+        self.assertEqual(response.status_code, 200)
+        self.payment.refresh_from_db()
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.payment.status.token, '-2')
+        self.assertNotEqual(self.invoice.status.token, 'PAID')
+        last = self.payment.movements.order_by('timestamp', 'id').last()
+        self.assertEqual(last.current_status.token, '-2')
+        self.assertEqual(last.movement_date, date(2026, 9, 20))
+        self.assertEqual(last.reject_motive, self.motive)
+
+    def test_reloading_the_second_return_does_not_duplicate_it(self):
+        self.post_return('2026-09-20')
+        # Es força el rebut a pagat (sense senyals, la vista els ha tornat a connectar) per provar
+        # només el control antiduplicats: el segon retorn ja hi és i no se n'ha de crear un altre
+        Payment.objects.filter(id=self.payment.id).update(status=self.payment_status['0'])
+        Invoice.objects.filter(id=self.invoice.id).update(status=self.invoice_status['PAID'])
+
+        self.post_return('2026-09-20')
+
+        self.assertEqual(self.payment.movements.filter(current_status__token='-2').count(), 2)

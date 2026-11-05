@@ -68,6 +68,7 @@ def claim_contracts_export_queryset():
         'status',
         'supply_point_default__status',
         'supply_point_default__meter',
+        'supply_point_default__placement',
         'supply_point_default__address__street__type',
         'supply_point_default__address__street_number__number_type',
         'supply_point_default__address__city',
@@ -89,6 +90,16 @@ def claim_contracts_export_columns(contract_ids):
         supply_point = contract.supply_point_default
         return supply_point.status.name or '' if supply_point and supply_point.status else ''
 
+    def meter_is_general(contract):
+        supply_point = contract.supply_point_default
+        if not supply_point or not supply_point.meter:
+            return ''
+        return _('Sí') if supply_point.meter.is_general else _('No')
+
+    def supply_point_placement(contract):
+        supply_point = contract.supply_point_default
+        return supply_point.placement.name or '' if supply_point and supply_point.placement else ''
+
     return [
         ('token', _('Contracte'), lambda c: c.token or ''),
         ('holder', _('Titular'), lambda c: _person_label(c.holder)),
@@ -97,6 +108,8 @@ def claim_contracts_export_columns(contract_ids):
         ('unpaid_invoices', _('Factures impagades'), lambda c: unpaid_by_contract.get(c.id, 0)),
         ('debt', _('Deute total'), lambda c: debt_by_contract.get(c.id, Decimal('0'))),
         ('meter', _('Comptador'), meter_code),
+        ('meter_general', _('Comptador general'), meter_is_general),
+        ('placement', _('Ubicació'), supply_point_placement),
         ('status', _('Estat contracte'), lambda c: c.status.name if c.status else ''),
         ('supply_point_status', _('Estat punt de subministrament'), supply_point_status),
         ('supply_cut_date', _('Data de tall'), _supply_cut_date),

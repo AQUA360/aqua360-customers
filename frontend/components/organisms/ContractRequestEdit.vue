@@ -566,6 +566,12 @@ const onOrderBillingChanged = (data) => {
   // save(); // no guardem a aquí, guardem al finalitzar el step
 }
 
+// El resum desa "Facturar lectura de tall" amb un PATCH propi: sincronitzar-ho aquí
+// perquè cap altre pas reenviï el valor antic.
+const onSummaryBillCutReadingChanged = (value) => {
+  if (request.value) request.value.bill_cut_reading = value;
+}
+
 const onSummaryChanged = (data) => {
   summaryData.value = data;
   save();
@@ -1279,7 +1285,8 @@ const save = async () => {
           </div>
 
           <!-- Contingut del pas 7 -->
-          <ContractRequestSummary :request=request @change="onSummaryChanged" />
+          <ContractRequestSummary :request=request @change="onSummaryChanged"
+            @bill-cut-reading-changed="onSummaryBillCutReadingChanged" />
         </div>
       </div>
 
