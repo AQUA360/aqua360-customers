@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import debounce from 'lodash.debounce';
 import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
-import { formatMoneyWithCurrency } from '~/utils/money';
+import { formatMoneyWithCurrency, parseAmountInput } from '~/utils/money';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import JoinedPaymentRegion from '~/components/organisms/JoinedPaymentRegion.vue';
@@ -65,17 +65,9 @@ const pagination = ref({
     isFiltered: false
 });
 
-// Converteix l'import escrit per l'usuari (p. ex. "12,50" o "1.234,50") al format
-// numèric que espera el filtre `total_final` del backend. Si no és un número vàlid
-// no s'envia, per evitar un error 400.
-const normalizedTotal = () => {
-    let value = String(searchInputTotalFinal.value || '').trim();
-    if (!value) return null;
-    if (value.includes(',')) {
-        value = value.replace(/\./g, '').replace(',', '.');
-    }
-    return /^\d+(\.\d+)?$/.test(value) ? value : null;
-}
+// Import escrit per l'usuari (p. ex. "12,50" o "1.234,50") en el format numèric
+// que espera el filtre `total_final`; si no és vàlid no s'envia.
+const normalizedTotal = () => parseAmountInput(searchInputTotalFinal.value);
 
 // Llegeix sempre l'estat actual de cerca, filtres i ordenació, de manera que
 // cap crida pugui perdre'n una part.
@@ -282,7 +274,7 @@ const exportJoinedPayments = () => $JoinedPaymentApiService.exportData(
  */
 const tableColumns = computed(() => [
     { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 90, min: 82, priority: 3 },
-    { key: 'token', label: t('common.identification'), sortKey: 'number', width: 130, min: 110, priority: 1, removable: false },
+    { key: 'token', label: t('common.identification'), sortKey: 'token', width: 130, min: 110, priority: 1, removable: false },
     { key: 'customer', label: t('common.client'), sortKey: 'customer_final', width: 260, grow: 4, min: 160, priority: 1, removable: false },
     { key: 'total_final', label: t('common.amount'), sortKey: 'total_final', width: 110, min: 90, priority: 1 },
     {
@@ -329,7 +321,7 @@ const checkRouteQuery = () => {
     }
 };
 
-watch([searchInput], (newValue) => {
+watch(searchInput, (newValue) => {
     pagination.value.page = 1;
     handleSearch();
     if (newValue) {
@@ -413,7 +405,7 @@ watch(() => route.query, () => {
             </FilterSelect>
 
             <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'payment_date')" :datePick="true"
-                :filters="selectedPaymentDate" :placeholder="t(`billing_block.sel_payment_date`)"
+                :filters="selectedPaymentDate" :initialDateRange="payment_date" :placeholder="t(`billing_block.sel_payment_date`)"
                 @update:modelValue="handlePaymentDateChange($event)">
                 <template #icon>
                     <Icon name="fa6-solid:calendar" class="text-md ml-2 mr-1" size="10px" />
@@ -421,7 +413,7 @@ watch(() => route.query, () => {
             </FilterSelect>
 
             <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'due_date')" :datePick="true"
-                :filters="selectedDueDate" :placeholder="t(`billing_block.sel_due_date`)"
+                :filters="selectedDueDate" :initialDateRange="due_date" :placeholder="t(`billing_block.sel_due_date`)"
                 @update:modelValue="handleDueDateChange($event)">
                 <template #icon>
                     <Icon name="fa6-solid:calendar-xmark" class="text-md ml-2 mr-1" size="10px" />
