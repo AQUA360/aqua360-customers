@@ -3282,6 +3282,8 @@ export default {
     global_filters: 'Filtros globales',
     report_type: 'Tipo de informe',
     select_dates: 'Selecciona las fechas',
+    cutoff_date: 'Fecha de corte',
+    cutoff_date_required: 'Selecciona la fecha de corte',
     global_filters_info: 'Los filtros globales de la derecha se actualizan automáticamente al configurar un informe para mantener la coherencia.',
     error_loading_reports: 'Error al cargar la lista de informes disponibles.',
     error_triggering_report: 'Error al lanzar la generación del informe.',

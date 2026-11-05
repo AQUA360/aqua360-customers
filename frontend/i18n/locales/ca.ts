@@ -3282,6 +3282,8 @@ export default {
     global_filters: 'Filtres globals',
     report_type: 'Tipus d\'informe',
     select_dates: 'Selecciona les dates',
+    cutoff_date: 'Data de tall',
+    cutoff_date_required: 'Selecciona la data de tall',
     global_filters_info: 'Els filtres globals de la dreta s\'actualitzen automàticament en configurar un informe per mantenir la coherència.',
     error_loading_reports: 'Error carregant la llista d\'informes disponibles.',
     error_triggering_report: 'Error al llançar la generació de l\'informe.',

@@ -333,6 +333,10 @@ def resolve_filter_labels(payload):
         if start_date or end_date:
             add('Període', f"{start_date or '...'} - {end_date or '...'}")
 
+    cutoff_date = _format_date(payload.get('cutoff_date'))
+    if cutoff_date:
+        add('Data de tall', cutoff_date)
+
     exploitation_id = payload.get('exploitation_id')
     if exploitation_id:
         exploitation = Exploitation.objects.filter(id=exploitation_id).first()
