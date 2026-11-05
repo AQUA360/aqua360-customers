@@ -54,6 +54,9 @@ def _build_invoice(**overrides):
     product = MagicMock()
     product.token = "CONS-AGUA-B1"
     product.name = "Consum aigua bloc 1"
+    product.company = MagicMock()
+    product.company.name = "Aigües Exemple"
+    product.company.vat = "B12345678"
 
     tax = MagicMock()
     tax.token = "IVA10"
@@ -150,6 +153,10 @@ class OdooMappersTest(TestCase):
         self.assertEqual(payload["journal_id"]["aqua_id"], "VENT-AGUA")
         self.assertEqual(payload["payment_mode_id"]["id"], "DIRECT_DEBIT")
         self.assertEqual(payload["invoice_line_ids"][0]["tax_ids"], ["IVA10"])
+        self.assertEqual(
+            payload["invoice_line_ids"][0]["product_id"]["company"],
+            {"name": "Aigües Exemple", "vat": "B12345678"},
+        )
         self.assertEqual(payload["amount_total"], 27.50)
         self.assertEqual(payload["partner_id"]["aqua_id"], "ABON-004521")
         self.assertEqual(payload["partner_id"]["name"], "Joan Puig Vidal")
