@@ -120,6 +120,8 @@ Carregar des de `customers/settings.py` amb `python-decouple`, com la resta d'in
 |-----------|-----------|-------|
 | `product_id.aqua_id` | `Product.token` | Via `line_item.product` |
 | `product_id.name` | `product_name` o `Product.name` | |
+| `product_id.company.name` | `Product.company.name` | Buit si el producte no té empresa |
+| `product_id.company.vat` | `Product.company.vat` | |
 | `name` | `name` / `description` | Descripció visible a Odoo |
 | `quantity` | `units` | |
 | `price_unit` | `price_unit` | |

@@ -21,7 +21,11 @@
     {
       "product_id": {
         "aqua_id": "CONS-AGUA-B1",
-        "name": "Consum aigua bloc 1"
+        "name": "Consum aigua bloc 1",
+        "company": {
+          "name": "Aigües Exemple",
+          "vat": "B12345678"
+        }
       },
       "name": "Consum aigua bloc 1 (0-10 m³)",
       "quantity": 10.0,
