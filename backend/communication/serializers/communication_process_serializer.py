@@ -36,6 +36,7 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
     has_letters = serializers.SerializerMethodField()
     has_email = serializers.SerializerMethodField()
     has_invoices = serializers.SerializerMethodField()
+    multi_page_communications = serializers.SerializerMethodField()
 
 
     class Meta:
@@ -59,6 +60,15 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
     def get_communications(self, obj):
         return obj.communications.values_list('id', flat=True)
     
+    def get_multi_page_communications(self, obj):
+        """Comunicacions amb alguna factura de més d'una pàgina, per imprimir-les a part.
+
+        Mateix àmbit que la descàrrega de documents del procés, perquè el número
+        coincideixi amb el que surt al paquet de 2 pàgines o més.
+        """
+        from communication.filters.communication_filter import multi_page_invoice_exists
+        return obj.communications.filter(multi_page_invoice_exists()).count()
+
     def get_has_invoices(self, obj):
         return obj.communications.filter(
             files__file__entity='FACTURES',

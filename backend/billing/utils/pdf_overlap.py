@@ -29,3 +29,14 @@ def client_info_overlaps_header(pdf_buffer):
     except Exception as e:
         print(f"Error en detectar overlap de contingut al PDF: {str(e)}")
         return False
+
+
+def count_pdf_pages(pdf_buffer):
+    """Nombre de pàgines del PDF, o None si no es pot llegir."""
+    try:
+        import fitz
+        with fitz.open(stream=pdf_buffer.getvalue(), filetype="pdf") as doc:
+            return doc.page_count
+    except Exception as e:
+        print(f"Error en comptar les pàgines del PDF: {str(e)}")
+        return None
