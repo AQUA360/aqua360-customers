@@ -4,6 +4,7 @@ from django.utils import timezone
 from datetime import timedelta 
 from rest_framework import serializers
 from django_filters import rest_framework as filters
+from django.db import transaction
 from django.db.models import Q, Max, Sum
 from billing.models import Payment, PaymentStatus, Reading, ReadingBatch, ReadingBatchStatus
 from billing.serializers.estimated_bag_serializer import EstimatedBagMinimalSerializer, EstimatedBagSerializer
@@ -12,7 +13,7 @@ from contract.models import ContractStatus
 from coredata.models import Address, City, ConfigProject, Country, PostalCode, Province, Street, StreetNumber, StreetNumberType, StreetType
 from coredata.serializers import AddressSerializer
 from auth.serializers import UserMinimalSerializer
-from coredata.utils.address_utils import address_extra_filter, normalize_address_extra
+from coredata.utils.address_utils import address_extra_filter, normalize_address_extra, resolve_street_number
 from coredata.utils.name_utils import generate_token, check_token_exists
 from fraud.models import Fraud
 from service.utils.supply_point_service import supply_point_change_address, supply_point_change_connection, supply_point_change_meter, supply_point_change_property
@@ -524,9 +525,15 @@ class SupplyPointSerializer(serializers.ModelSerializer):
 
         return representation
 
+    @transaction.atomic
     def create(self, validated_data):
         validated_data['token'] = generate_token(SupplyPoint)
         address_data = validated_data.pop('address_data') if 'address_data' in validated_data else None
+        # L'adreça pot arribar ja resolta (dict o id convertit a Address a to_internal_value)
+        address = validated_data.pop('address', None)
+        street = address.street if address else None
+        street_number = address.street_number if address else None
+        city = address.city if address else None
         connection_id = validated_data.pop('connection_id') if 'connection_id' in validated_data else None
         property_id = validated_data.pop('property_id') if 'property_id' in validated_data else None
         property_cadastral = validated_data.pop('property_cadastral', None)
@@ -628,7 +635,9 @@ class SupplyPointSerializer(serializers.ModelSerializer):
         
         route_position = None
         postal_code_value = address_data.get('postal_code') if address_data else None
-        resolved_postal_code = _resolve_postal_code(postal_code_value, city=city if address_data else None)
+        if postal_code_value is None and address:
+            postal_code_value = address.postal_code
+        resolved_postal_code = _resolve_postal_code(postal_code_value, city=city)
         if(validated_data.get('route')):
             route = Route.objects.get(id=validated_data.pop('route'))
             route_position = RoutePosition.objects.create(
@@ -637,7 +646,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 token=route.token + '/' + str(street) + '-' + str(street_number) + '-' + (postal_code_value or ''),
                 address_street=street,
                 address_street_number=street_number,
-                address_city=address.city,
+                address_city=city,
                 address_postal_code=resolved_postal_code,
                 latitude=None,
                 longitude=None,
@@ -657,7 +666,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
                 address_street = street,
                 address_street_number = street_number,
                 address_postal_code = resolved_postal_code,
-                address_city = address.city,
+                address_city = city,
                 latitude = None,
                 longitude = None,
                 is_active = True
@@ -700,6 +709,14 @@ class SupplyPointSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         
         user = self.context['request'].user
+        # En editar, el punt ja és a la seva boquilla: no s'ha de crear cap boquilla nova
+        validated_data.pop('cluster_id', None)
+        if 'address' in validated_data:
+            new_address = validated_data.pop('address')
+            if new_address and new_address != instance.address:
+                previous_address = instance.address
+                instance.address = new_address
+                supply_point_change_address(user, instance.id, previous_address, new_address)
         address_data = validated_data.pop('address_data', None)
         if address_data is not None:
             previous_address = instance.address
@@ -1198,10 +1215,8 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
             
             # Create or get Street
             if street_data.get('street_id'):
+                # Carrer existent: es reaprofita sense modificar-lo (és compartit per moltes adreces)
                 street = Street.objects.get(id=street_data['street_id'])
-                street.type = street_type
-                street.name = street_data.get('name', street.name)
-                street.save()
             else:
                 street, _ = Street.objects.get_or_create(
                     name=street_data.get('name', ''),
@@ -1219,26 +1234,13 @@ class SupplyPointSaveNozzleSerializer(serializers.ModelSerializer):
                     defaults={'description': number_type_data.get('description', '')}
                 )
             else:
-                street_number_type = number_type_data
+                street_number_type = StreetNumberType.objects.filter(id=number_type_data).first() if number_type_data else None
             
-            # Create or get StreetNumber
-            if street_number_data.get('street_number_id'):
-                street_number = StreetNumber.objects.get(id=street_number_data['street_number_id'])
-                street_number.street = street
-                street_number.number_type = street_number_type
-                street_number.number = street_number_data.get('number', street_number.number)
-                street_number.save()
-            else:
-                street_number, _ = StreetNumber.objects.get_or_create(
-                    street=street,
-                    number_type=street_number_type,
-                    number=street_number_data.get('number', ''),
-                    defaults={
-                        'number_end': street_number_data.get('number_end'),
-                        'number_suffix': street_number_data.get('number_suffix', ''),
-                        'number_end_suffix': street_number_data.get('number_end_suffix')
-                    }
-                )
+            # Número compartit entre adreces: mai no es modifica, es busca o es crea
+            street_number = resolve_street_number(
+                street, street_number_type, street_number_data,
+                street_number_id=street_number_data.get('street_number_id'),
+            )
         
         # Handle city, province, country
         city = None

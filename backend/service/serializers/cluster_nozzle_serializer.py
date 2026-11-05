@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django_filters import rest_framework as filters
 
 from coredata.models import Address, City, Province, Street, StreetNumber, StreetType, StreetNumberType, Country
-from coredata.utils.address_utils import address_extra_filter, normalize_address_extra
+from coredata.utils.address_utils import address_extra_filter, normalize_address_extra, resolve_street_number
 from coredata.utils.name_utils import generate_token
 from service.serializers.supply_point_serializer import SupplyPointSaveNozzleSerializer, SupplyPointSerializer
 from ..models import ( ClusterNozzle, Cluster, SupplyPoint, SupplyPointPlacement, SupplyPointStatus )
@@ -222,11 +222,8 @@ class ClusterNozzleSaveSerializer(serializers.ModelSerializer):
             
             # Create or get Street
             if street_data.get('street_id'):
+                # Carrer existent: es reaprofita sense modificar-lo (és compartit per moltes adreces)
                 street = Street.objects.get(id=street_data['street_id'])
-                street.type = street_type
-                street.name = street_data.get('name', street.name)
-                street.city = city
-                street.save()
             else:
                 street, _ = Street.objects.get_or_create(
                     name=street_data.get('name', ''),
@@ -245,26 +242,13 @@ class ClusterNozzleSaveSerializer(serializers.ModelSerializer):
                     defaults={'description': number_type_data.get('description', '')}
                 )
             else:
-                street_number_type = number_type_data
+                street_number_type = StreetNumberType.objects.filter(id=number_type_data).first() if number_type_data else None
             
-            # Create or get StreetNumber
-            if street_number_data.get('street_number_id'):
-                street_number = StreetNumber.objects.get(id=street_number_data['street_number_id'])
-                street_number.street = street
-                street_number.number_type = street_number_type
-                street_number.number = street_number_data.get('number', street_number.number)
-                street_number.save()
-            else:
-                street_number, _ = StreetNumber.objects.get_or_create(
-                    street=street,
-                    number_type=street_number_type,
-                    number=street_number_data.get('number', ''),
-                    defaults={
-                        'number_end': street_number_data.get('number_end'),
-                        'number_suffix': street_number_data.get('number_suffix', ''),
-                        'number_end_suffix': street_number_data.get('number_end_suffix')
-                    }
-                )
+            # Número compartit entre adreces: mai no es modifica, es busca o es crea
+            street_number = resolve_street_number(
+                street, street_number_type, street_number_data,
+                street_number_id=street_number_data.get('street_number_id'),
+            )
 
         # Create Address
         address_extra = normalize_address_extra(address_data.get('address_extra'))

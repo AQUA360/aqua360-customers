@@ -355,13 +355,15 @@ class ClusterSaveSerializer(serializers.ModelSerializer):
                         if nozzle_id:
                             try:
                                 nozzle_instance = ClusterNozzle.objects.get(id=nozzle_id, cluster=instance)
-                                if 'supply_points' in nozzle_data and isinstance(nozzle_data['supply_points'], list) and len(nozzle_data['supply_points']) > 0:
-                                    first_sp = nozzle_data['supply_points'][0]
-                                    nozzle_data_copy = dict(nozzle_data)
-                                    nozzle_data_copy['supplyPoint'] = first_sp
-                                    nozzle_data_copy['supply_point_id'] = first_sp.get('id')
-                                else:
-                                    nozzle_data_copy = nozzle_data
+                                # Només es vincula el punt per id. Les dades del punt que arriben aquí són
+                                # les de lectura (adreça reduïda, sense carrer ni número): si es passessin
+                                # com a `supplyPoint` sobreescriurien l'adreça i les dades del punt.
+                                nozzle_data_copy = dict(nozzle_data)
+                                supply_points = nozzle_data_copy.pop('supply_points', None)
+                                nozzle_data_copy.pop('supplyPoint', None)
+                                if isinstance(supply_points, list) and supply_points and isinstance(supply_points[0], dict) \
+                                        and supply_points[0].get('id'):
+                                    nozzle_data_copy['supply_point_id'] = supply_points[0]['id']
                                 
                                 nozzle_serializer = ClusterNozzleSaveSerializer(
                                     nozzle_instance,
