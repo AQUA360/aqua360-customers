@@ -350,17 +350,24 @@ const clickFinalize = async () => {
 
 const downloadSEPADocument = async (document_ids) => {
   try {
-    let save_data = {
-      doc_ids: document_ids
+    let blob;
+    let download_name;
+    if (document_ids.length === 1) {
+      // Una sola remesa: es descarrega el fitxer directament, sense zip
+      const document_file = await $DocumentManagerApiService.getDetail(document_ids[0]);
+      blob = await $DocumentManagerApiService.viewDocument(document_ids[0]);
+      download_name = document_file.document_name;
+    } else {
+      const file = await $DocumentManagerApiService.downloadDocuments({ doc_ids: document_ids });
+      blob = new Blob([file], { type: 'application/zip' });
+      download_name = `${paymentsType.value == 'return' ? 'TRF' : 'SEPA'} ${selectedSendDate.value.replace(/-/g, '')}.zip`;
     }
-    const file = await $DocumentManagerApiService.downloadDocuments(save_data);
-    const blob = new Blob([file], { type: 'application/zip' });
 
     const url = window.URL.createObjectURL(blob);
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${paymentsType.value == 'return' ? 'TRF' : 'SEPA'} ${selectedSendDate.value.replace(/-/g, '')}.zip`;
+    a.download = download_name;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
