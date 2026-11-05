@@ -1,20 +1,23 @@
-"""Registra l'informe de deute i saldo per contracte a una data de tall (secció de cobraments).
+"""Registra l'informe de deute i saldo per contracte a una data (secció de cobraments).
 
 Per a cada contracte retorna el saldo positiu de la guardiola i el deute pendent tal com
 estaven a la data indicada. No pisa cap AvailableReport existent: get_or_create per
-function_name.
+function_name. Els textos es desen en català i es tradueixen en llegir-los
+(AvailableReportSerializer); gettext_noop fa que makemessages els reculli.
 """
 
+from django.utils.translation import gettext_noop
+
 REPORT_DEFAULTS = {
-    'name': 'Deute i saldo per contracte a data',
-    'description': (
+    'name': gettext_noop('Deute i saldo per contracte a data'),
+    'description': gettext_noop(
         "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola i el "
         "deute pendent (pagaments pendents, processats, vençuts, retornats o en "
-        "morositat) a la data de tall indicada."
+        "morositat) a la data indicada."
     ),
     'is_active': True,
-    'download_button_name': 'Descarregar Excel',
-    'has_custom_config': False,
+    'download_button_name': gettext_noop('Descarregar Excel'),
+    'has_custom_config': True,
     'required_fields': ['cutoff_date', 'exploitation_id'],
 }
 

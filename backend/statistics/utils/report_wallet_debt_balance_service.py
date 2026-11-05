@@ -174,7 +174,7 @@ def generate_wallet_debt_balance_at_date_report(request, black_fill=None, white_
 
         cutoff_date = parse_cutoff_date(data.get('cutoff_date'))
         if cutoff_date is None:
-            return Response({"error": _("Cal indicar una data de tall.")}, status=status.HTTP_400_BAD_REQUEST), None, None
+            return Response({"error": _("Cal indicar una data.")}, status=status.HTTP_400_BAD_REQUEST), None, None
 
         debts = get_contract_debts_at(cutoff_date, get_debt_status_tokens())
         balances = get_contract_balances_at(cutoff_date)
