@@ -5,6 +5,7 @@ from django.utils.translation import gettext as _
 from auth.serializers import UserMinimalSerializer
 from billing.models import Reading
 from coredata.models import City, ConfigProject, PostalCode, Street, StreetNumber, StreetNumberType, StreetType
+from coredata.utils.address_utils import resolve_street_number
 from coredata.serializers import CityMinimalSerializer, StreetSerializer, StreetNumberSerializer, PostalCodeSerializer, CitySerializer
 from service.serializers.supply_point_serializer import SupplyPointSerializer
 from ..models import ( Meter, MeterCaliber, MeterLog, MeterStatus, SupplyPoint )
@@ -213,10 +214,9 @@ class MeterSerializer(serializers.ModelSerializer):
             )
 
             if street_data.get('street_id'):
+                # Carrer existent: es reaprofita tal qual. Modificar-ne el tipus o el nom
+                # canviaria l'adreça de tots els punts, persones i finques d'aquest carrer.
                 street = Street.objects.get(id=street_data.get('street_id'))
-                street.type = street_type
-                street.name = street_data['name']
-                street.save()
             else:
                 street, _ = Street.objects.get_or_create(
                     type=street_type,
@@ -240,25 +240,12 @@ class MeterSerializer(serializers.ModelSerializer):
                 type=number_type_type_data
             )
 
-            if street_number_data and 'street_number_id' in street_number_data and street_number_data.get('street_number_id'):
-                street_number = StreetNumber.objects.get(id=street_number_data.get('street_number_id'))
-                street_number.street = street
-                street_number.number_type = street_number_type
-                # Com a l'update: el número pot ser el de l'adreça d'un punt de subministrament,
-                # així que un camp que no ve al payload no s'ha de buidar.
-                for field in ('number', 'number_end', 'number_suffix', 'number_end_suffix'):
-                    if field in street_number_data:
-                        setattr(street_number, field, street_number_data.get(field))
-                street_number.save()
-            else:
-                street_number = StreetNumber.objects.create(
-                    street=street,
-                    number_type=street_number_type,
-                    number = street_number_data.get('number', None) if street_number_data and 'number' in street_number_data else None,
-                    number_end = street_number_data.get('number_end', None) if street_number_data and 'number_end' in street_number_data else None,
-                    number_suffix = street_number_data.get('number_suffix', None) if street_number_data and 'number_suffix' in street_number_data else None,
-                    number_end_suffix = street_number_data.get('number_end_suffix', None) if street_number_data and 'number_end_suffix' in street_number_data else None,
-                )
+            # El número pot ser compartit (p. ex. amb l'adreça d'un punt de subministrament):
+            # mai no es modifica, es busca o es crea el que correspon a les dades rebudes.
+            street_number = resolve_street_number(
+                street, street_number_type, street_number_data,
+                street_number_id=(street_number_data or {}).get('street_number_id'),
+            )
 
         meter = Meter.objects.create(
             address_street=street,
@@ -309,7 +296,6 @@ class MeterSerializer(serializers.ModelSerializer):
 
             if street_data.get('street_id'):
                 street = Street.objects.get(id=street_data.get('street_id'))
-                street.save()
             else:
                 street, _ = Street.objects.get_or_create(
                     type=street_type,
@@ -352,36 +338,16 @@ class MeterSerializer(serializers.ModelSerializer):
 
             street_number_type, _ = StreetNumberType.objects.get_or_create(type=number_type_type_data)
 
-            if street_number_data and 'street_number_id' in street_number_data and street_number_data.get('street_number_id'):
-                street_number = StreetNumber.objects.get(id=street_number_data.get('street_number_id'))
-                if street:
-                    street_number.street = street
-                street_number.number_type = street_number_type
-                # Only touch number fields explicitly present in the payload: this row can be
-                # shared with other entities (e.g. a SupplyPoint's Address), so a key that is
-                # simply absent from a partial update must not be treated as "clear it".
-                if 'number' in street_number_data:
-                    street_number.number = street_number_data.get('number')
-                if 'number_end' in street_number_data:
-                    street_number.number_end = street_number_data.get('number_end')
-                if 'number_suffix' in street_number_data:
-                    street_number.number_suffix = street_number_data.get('number_suffix')
-                if 'number_end_suffix' in street_number_data:
-                    street_number.number_end_suffix = street_number_data.get('number_end_suffix')
-                street_number.save()
-            else:
-                if not street:
-                    raise serializers.ValidationError(
-                        {"address_street": "Es requereix `address_street` per crear un nou número de carrer."}
-                    )
-                street_number = StreetNumber.objects.create(
-                    street=street,
-                    number_type=street_number_type,
-                    number = street_number_data.get('number', None) if street_number_data and 'number' in street_number_data else None,
-                    number_end = street_number_data.get('number_end', None) if street_number_data and 'number_end' in street_number_data else None,
-                    number_suffix = street_number_data.get('number_suffix', None) if street_number_data and 'number_suffix' in street_number_data else None,
-                    number_end_suffix = street_number_data.get('number_end_suffix', None) if street_number_data and 'number_end_suffix' in street_number_data else None,
+            street_number_id = street_number_data.get('street_number_id')
+            if not street and not street_number_id:
+                raise serializers.ValidationError(
+                    {"address_street": "Es requereix `address_street` per crear un nou número de carrer."}
                 )
+            # El número pot ser compartit (p. ex. amb l'adreça d'un punt de subministrament):
+            # mai no es modifica, es busca o es crea el que correspon a les dades rebudes.
+            street_number = resolve_street_number(
+                street, street_number_type, street_number_data, street_number_id=street_number_id,
+            )
             instance.address_street_number = street_number
 
         supply_points_data = validated_data.pop('supply_points', [])
