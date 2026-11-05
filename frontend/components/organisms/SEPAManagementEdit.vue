@@ -355,7 +355,7 @@ const downloadSEPADocument = async (document_ids) => {
     if (document_ids.length === 1) {
       // Una sola remesa: es descarrega el fitxer directament, sense zip
       const document_file = await $DocumentManagerApiService.getDetail(document_ids[0]);
-      blob = await $DocumentManagerApiService.viewDocument(document_ids[0]);
+      blob = new Blob([await $DocumentManagerApiService.viewDocument(document_ids[0])]);
       download_name = document_file.document_name;
     } else {
       const file = await $DocumentManagerApiService.downloadDocuments({ doc_ids: document_ids });
