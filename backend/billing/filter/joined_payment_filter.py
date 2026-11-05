@@ -1,8 +1,20 @@
 from django_filters import rest_framework as filters
+from rest_framework.filters import OrderingFilter
 from contract.models import PaymentType
 from coredata.models import ConfigProject
 from ..models import JoinedPayment
 from django.db.models import Q
+
+
+class JoinedPaymentOrderingFilter(OrderingFilter):
+    """Afegeix `-id` com a desempat perquè la paginació sigui estable
+    quan diversos pagaments agrupats comparteixen el valor ordenat."""
+
+    def get_ordering(self, request, queryset, view):
+        ordering = super().get_ordering(request, queryset, view)
+        if ordering and not any(term.lstrip('-') in ('id', 'pk') for term in ordering):
+            ordering = [*ordering, '-id']
+        return ordering
 
 
 class JoinedPaymentFilter(filters.FilterSet):
@@ -27,6 +39,12 @@ class JoinedPaymentFilter(filters.FilterSet):
 
     def filter_search(self, queryset, name, value):
         return queryset.filter(
+            Q(token__icontains=value) |
+            Q(number__icontains=value) |
+            Q(customer_final__icontains=value) |
+            Q(customer_token_final__icontains=value) |
+            Q(contract__token__icontains=value) |
+            Q(person__token__icontains=value) |
             Q(payments__invoice__token__icontains=value) |
             Q(payments__invoice__number__icontains=value) |
             Q(payments__invoice__contract__token__icontains=value) |
@@ -35,8 +53,7 @@ class JoinedPaymentFilter(filters.FilterSet):
             Q(payments__invoice__customer_final__icontains=value) |
             Q(payments__commitment_deposit__token__icontains=value) |
             Q(payments__commitment_deposit__contract__token__icontains=value) |
-            Q(payment_type_name__icontains=value) |
-            Q(token__icontains=value)
+            Q(payment_type_name__icontains=value)
         ).distinct()
         
     def filter_exploitation(self, queryset, name, value):
@@ -62,7 +79,16 @@ class JoinedPaymentFilter(filters.FilterSet):
         return queryset
     
     def filter_payment_type(self, queryset, name, value):
+        """Filtra per mètode de pagament; `null` selecciona els que no en tenen."""
         if value:
-            value_ids = value.split(',')
-            return queryset.filter(payment_type__id__in=value_ids)
+            value_ids = [v for v in value.split(',') if v]
+            include_null = 'null' in value_ids
+            value_ids = [v for v in value_ids if v != 'null']
+            query = Q()
+            if value_ids:
+                query |= Q(payment_type__id__in=value_ids)
+            if include_null:
+                query |= Q(payment_type__isnull=True)
+            if query:
+                return queryset.filter(query)
         return queryset
