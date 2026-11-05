@@ -48,8 +48,11 @@ def _as_float(value, negative = False):
     if value is None:
         return 0.00
     if isinstance(value, Decimal):
-        return round_ceil(float(value) * flip)
-    return round_ceil(float(value) * flip)
+        result = round_ceil(float(value) * flip)
+    else:
+        result = round_ceil(float(value) * flip)
+    # Keep plain 0.0 so formatting never emits "-0.000000".
+    return 0.00 if result == 0 else result
 
 
 def _iva_percent_key(percent):
@@ -119,6 +122,8 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     #   payment line's name and the same split (one have line per payment
     #   line). Commitment-deposit payments (no invoice) still get that have
     #   on the matched clients account via the commitment contract.
+    #   counterpart_accounting_pricing on the payment pricing redirects that
+    #   have to the selected pricing's account instead of the invoice match.
     #   Piggy-bank payments follow AccountingConfig (movement debt/have +
     #   sign, optional counter on a selected pricing). When
     #   include_piggy_status_payments is on, status payment_status_piggy_token
@@ -130,10 +135,12 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     #   payment pricing for that invoice_category, the movement falls back to
     #   a normal payment pricing. The paid amount is also undeclared from the
     #   matching endowment/irrecoverable invoice pricing (with additional
-    #   lines). If that pricing has undeclare_previous, the previous tier
-    #   (normal for endowment; endowment then normal for irrecoverable) is
-    #   restored for the paid amount, and the payment have lands on the
-    #   normal clients account.
+    #   lines). If that pricing has undeclare_previous and
+    #   restore_previous_on_payment, the previous tier (normal for endowment;
+    #   endowment then normal for irrecoverable) is restored for the paid
+    #   amount, and the payment have lands on that previous clients account.
+    #   With restore_previous_on_payment=False, only the endowment/irrecoverable
+    #   reversal (+ additional lines) and the bank payment line are emitted.
     #
     # OUTPUT ORDER: invoice -> undeclare -> payment-restore -> lineitem ->
     #   payment have -> payment.
@@ -228,6 +235,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     iva_accounting,
                     main_accounting,
                     require_values=True,
+                    return_category='payment',
                 ),
             ))
             for entry in payment_debt_amounts.get(accounting_pricing.id, ()):
@@ -266,11 +274,26 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     main_accounting,
                 ),
             ))
+            # Counterpart may target a payment pricing (e.g. bank 572), not only invoice.
+            for entry in payment_debt_amounts.get(accounting_pricing.id, ()):
+                debt_line = _get_payment_debt_line(
+                    accounting_pricing,
+                    entry.get('total'),
+                    main_accounting,
+                    line_name=entry.get('line_name'),
+                    movement_date=entry.get('movement_date'),
+                    declare_as=entry.get('declare_as') or 'have',
+                )
+                if debt_line:
+                    payment_debt_lines.extend(_expand_with_additional_lines(
+                        accounting_pricing,
+                        [debt_line],
+                    ))
 
-    # Piggy-bank counters may point at any accounting pricing (often clients).
-    emitted_counter_ids = {p.id for p in accounting_pricings}
+    # Piggy-bank counters / explicit counterparts may point at any pricing.
+    emitted_pricing_ids = {p.id for p in accounting_pricings}
     for pricing_id, entries in (payment_counter_amounts or {}).items():
-        if pricing_id in emitted_counter_ids:
+        if pricing_id in emitted_pricing_ids:
             continue
         counter_pricing = AccountingPricing.objects.filter(
             id=pricing_id,
@@ -282,10 +305,6 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
         ).first()
         if not counter_pricing or not counter_pricing.accounting_concept:
             continue
-        iva_accounting = iva_accountings.filter(
-            exploitation=counter_pricing.exploitation,
-            accounting_concept__type__add_subtotals=False,
-        ).first()
         main_accounting = iva_accountings.filter(
             exploitation=counter_pricing.exploitation,
             accounting_concept__type__add_subtotals=True,
@@ -325,6 +344,40 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 payment_debt_lines.extend(_expand_with_additional_lines(
                     accounting_pricing,
                     [counter_line],
+                ))
+
+    # Counterpart targets not covered above (e.g. lineitem pricing selected as counterpart).
+    for pricing_id, entries in (payment_debt_amounts or {}).items():
+        if pricing_id in emitted_pricing_ids:
+            continue
+        counterpart_pricing = AccountingPricing.objects.filter(
+            id=pricing_id,
+            is_active=True,
+        ).select_related(
+            'accounting_concept',
+            'accounting_concept__type',
+            'exploitation',
+        ).first()
+        if not counterpart_pricing or not counterpart_pricing.accounting_concept:
+            continue
+        main_accounting = iva_accountings.filter(
+            exploitation=counterpart_pricing.exploitation,
+            accounting_concept__type__add_subtotals=True,
+            is_default=True,
+        ).first()
+        for entry in entries:
+            debt_line = _get_payment_debt_line(
+                counterpart_pricing,
+                entry.get('total'),
+                main_accounting,
+                line_name=entry.get('line_name'),
+                movement_date=entry.get('movement_date'),
+                declare_as=entry.get('declare_as') or 'have',
+            )
+            if debt_line:
+                payment_debt_lines.extend(_expand_with_additional_lines(
+                    counterpart_pricing,
+                    [debt_line],
                 ))
 
     invoice_lines.sort(key=lambda line: 0 if line.get('is_invoice') else 1)
@@ -389,6 +442,17 @@ def _invoice_spec(accounting_pricing):
         'contract_type_ids': contract_type_ids,
         'category': _normalize_invoice_category(accounting_pricing.invoice_category),
         'undeclare_previous': bool(accounting_pricing.undeclare_previous),
+        'restore_previous_on_payment': bool(
+            getattr(accounting_pricing, 'restore_previous_on_payment', True)
+        ),
+        'undeclare_declare_as': _normalize_declare_as(
+            getattr(accounting_pricing, 'undeclare_declare_as', None),
+            fallback=_DECLARE_DEBT,
+        ),
+        'undeclare_sign': _normalize_sign(
+            getattr(accounting_pricing, 'undeclare_sign', None),
+            fallback=_SIGN_NEGATIVE,
+        ),
         'has_taxes_and_subtotals': add_taxes and add_subtotals,
         'separate_by_origin': bool(
             accounting_pricing.separate_by_origin and accounting_pricing.grouped_lines
@@ -490,11 +554,14 @@ def _invoice_group_key(spec, row):
     return None
 
 
-def _ensure_invoice_group(groups, group_key, origin_name=None):
+def _ensure_invoice_group(groups, group_key, origin_name=None, undeclare_settings=None):
     bucket = groups.get(group_key)
     if bucket is None:
         bucket = _empty_invoice_bucket()
         bucket['origin_name'] = origin_name
+        if undeclare_settings:
+            bucket['undeclare_declare_as'] = undeclare_settings.get('declare_as')
+            bucket['undeclare_sign'] = undeclare_settings.get('sign')
         groups[group_key] = bucket
     return bucket
 
@@ -509,19 +576,55 @@ def _declare_invoice(buckets, specs, row, tax_amounts, sign, origin_names):
     return matched
 
 
-def _undeclare_invoice(buckets, specs, row, tax_amounts, origin_names):
+def _undeclare_settings_from_sources(source_specs):
+    """Declare/sign for previous-account reversal, from the pricing that undeclares."""
+    for spec in source_specs or ():
+        if not spec.get('undeclare_previous'):
+            continue
+        return {
+            'declare_as': _normalize_declare_as(
+                spec.get('undeclare_declare_as'), fallback=_DECLARE_DEBT,
+            ),
+            'sign': _normalize_sign(
+                spec.get('undeclare_sign'), fallback=_SIGN_NEGATIVE,
+            ),
+        }
+    return {
+        'declare_as': _DECLARE_DEBT,
+        'sign': _SIGN_NEGATIVE,
+    }
+
+
+def _undeclare_invoice(buckets, specs, row, tax_amounts, origin_names, undeclare_settings=None):
     """Reverse the invoice only on original accounts that carry tax and subtotal.
 
     A matching account with only taxes or only the subtotal is left as it was.
     When that account separates by origin, the reversal is split the same way.
+    undeclare_settings (from the endowment/irrecoverable pricing) override how
+    the reversal is declared on the previous account.
     """
+    settings = undeclare_settings or {
+        'declare_as': _DECLARE_DEBT,
+        'sign': _SIGN_NEGATIVE,
+    }
     matched = _matching_specs(specs, row)
     for spec in matched:
         if not spec['has_taxes_and_subtotals']:
             continue
-        group_key = _invoice_group_key(spec, row)
-        origin_name = origin_names.get(group_key) if spec.get('separate_by_origin') else None
-        bucket = _ensure_invoice_group(buckets[spec['id']], group_key, origin_name)
+        base_key = _invoice_group_key(spec, row)
+        # Split by undeclare style so different source settings stay separate.
+        group_key = (
+            base_key,
+            settings.get('declare_as'),
+            settings.get('sign'),
+        )
+        origin_name = origin_names.get(base_key) if spec.get('separate_by_origin') else None
+        bucket = _ensure_invoice_group(
+            buckets[spec['id']],
+            group_key,
+            origin_name,
+            undeclare_settings=settings,
+        )
         _add_invoice_to_bucket(bucket, row, tax_amounts, -1)
     return matched
 
@@ -579,14 +682,36 @@ def _group_invoice_amounts(accounting_pricings, normal_invoices, endowment_invoi
     for row in endowment_rows:
         matched = _declare_invoice(buckets, endowment_specs, row, tax_amounts, 1, origin_names)
         if any(spec['undeclare_previous'] for spec in matched):
-            _undeclare_invoice(undeclare_buckets, normal_specs, row, tax_amounts, origin_names)
+            _undeclare_invoice(
+                undeclare_buckets,
+                normal_specs,
+                row,
+                tax_amounts,
+                origin_names,
+                undeclare_settings=_undeclare_settings_from_sources(matched),
+            )
 
     for row in irrecoverable_rows:
         matched = _declare_invoice(buckets, irrecoverable_specs, row, tax_amounts, 1, origin_names)
         if not any(spec['undeclare_previous'] for spec in matched):
             continue
-        if not _undeclare_invoice(undeclare_buckets, endowment_specs, row, tax_amounts, origin_names):
-            _undeclare_invoice(undeclare_buckets, normal_specs, row, tax_amounts, origin_names)
+        undeclare_settings = _undeclare_settings_from_sources(matched)
+        if not _undeclare_invoice(
+            undeclare_buckets,
+            endowment_specs,
+            row,
+            tax_amounts,
+            origin_names,
+            undeclare_settings=undeclare_settings,
+        ):
+            _undeclare_invoice(
+                undeclare_buckets,
+                normal_specs,
+                row,
+                tax_amounts,
+                origin_names,
+                undeclare_settings=undeclare_settings,
+            )
 
     return buckets, undeclare_buckets
 
@@ -597,11 +722,31 @@ def _optional_text(value):
     return str(value).strip()
 
 
-def _line_concept_token(accounting_pricing, total, undeclared=False):
-    """Negative lines and undeclarations use token_return instead of the concept token."""
+_TOKEN_RETURN_CATEGORY_FIELDS = {
+    'invoice': 'token_return_invoice',
+    'payment': 'token_return_payment',
+    'lineitem': 'token_return_lineitem',
+}
+
+
+def _resolve_token_return(accounting_pricing, return_category=None):
+    """Category-specific return token, falling back to token_return."""
+    field_name = _TOKEN_RETURN_CATEGORY_FIELDS.get(return_category)
+    if field_name:
+        specific = _optional_text(getattr(accounting_pricing, field_name, None))
+        if specific:
+            return specific
+    return _optional_text(getattr(accounting_pricing, 'token_return', None))
+
+
+def _line_concept_token(accounting_pricing, total, undeclared=False, return_category=None):
+    """Negative lines and undeclarations use token_return instead of the concept token.
+
+    return_category selects token_return_<category> when set, else token_return.
+    """
     concept = accounting_pricing.accounting_concept
     concept_token = concept.token if concept else ''
-    token_return = _optional_text(accounting_pricing.token_return)
+    token_return = _resolve_token_return(accounting_pricing, return_category)
     if token_return and (undeclared or _as_float(total) < 0):
         return token_return
     return concept_token
@@ -669,6 +814,11 @@ def _build_additional_line_from_parent(parent_line, additional_line):
         return None
 
     extra = dict(parent_line)
+    # Extra line uses its own declare_as / return_* settings, not the parent's
+    # column or undeclare_previous exception (those apply only to the main line).
+    extra.pop('declare_as', None)
+    extra.pop('undeclare_override_declare_as', None)
+    extra.pop('undeclare_override_sign', None)
     extra.update({
         'accounting_concept': _additional_line_concept_token(additional_line, total),
         'accounting_pricing': additional_line.token,
@@ -682,20 +832,172 @@ def _build_additional_line_from_parent(parent_line, additional_line):
     return extra
 
 
+_DECLARE_DEBT = 'debt'
+_DECLARE_HAVE = 'have'
+_SIGN_POSITIVE = 'positive'
+_SIGN_NEGATIVE = 'negative'
+
+_RETURN_DECLARE_CATEGORY_FIELDS = {
+    'invoice': 'return_declare_as_invoice',
+    'payment': 'return_declare_as_payment',
+    'lineitem': 'return_declare_as_lineitem',
+}
+_RETURN_SIGN_CATEGORY_FIELDS = {
+    'invoice': 'return_sign_invoice',
+    'payment': 'return_sign_payment',
+    'lineitem': 'return_sign_lineitem',
+}
+
+
+def _normalize_declare_as(value, fallback=_DECLARE_DEBT):
+    if value in (_DECLARE_DEBT, _DECLARE_HAVE):
+        return value
+    return fallback if fallback in (_DECLARE_DEBT, _DECLARE_HAVE) else _DECLARE_DEBT
+
+
+def _normalize_sign(value, fallback=_SIGN_POSITIVE):
+    if value in (_SIGN_POSITIVE, _SIGN_NEGATIVE):
+        return value
+    return fallback if fallback in (_SIGN_POSITIVE, _SIGN_NEGATIVE) else _SIGN_POSITIVE
+
+
+def _optional_declare_as(value):
+    if value in (None, ''):
+        return None
+    return _normalize_declare_as(value)
+
+
+def _optional_sign(value):
+    if value in (None, ''):
+        return None
+    return _normalize_sign(value)
+
+
+def _line_has_negative_amount(line):
+    if _as_float(line.get('total')) < 0 or _as_float(line.get('subtotal')) < 0:
+        return True
+    for amounts in (line.get('iva') or {}).values():
+        if _as_float(amounts.get('base')) < 0 or _as_float(amounts.get('tax')) < 0:
+            return True
+    return False
+
+
+def _default_declare_as_for_line(line):
+    if line.get('declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
+        return line['declare_as']
+    return _DECLARE_DEBT if line.get('is_invoice') else _DECLARE_HAVE
+
+
+def _resolve_return_declare_as(settings_source, return_category=None):
+    field_name = _RETURN_DECLARE_CATEGORY_FIELDS.get(return_category)
+    if field_name:
+        specific = getattr(settings_source, field_name, None)
+        if specific in (_DECLARE_DEBT, _DECLARE_HAVE):
+            return specific
+    return _normalize_declare_as(
+        getattr(settings_source, 'return_declare_as', None),
+        fallback=_DECLARE_DEBT,
+    )
+
+
+def _resolve_return_sign(settings_source, return_category=None):
+    field_name = _RETURN_SIGN_CATEGORY_FIELDS.get(return_category)
+    if field_name:
+        specific = getattr(settings_source, field_name, None)
+        if specific in (_SIGN_POSITIVE, _SIGN_NEGATIVE):
+            return specific
+    return _normalize_sign(
+        getattr(settings_source, 'return_sign', None),
+        fallback=_SIGN_NEGATIVE,
+    )
+
+
+def _signed_amount(value, sign):
+    amount = abs(_as_float(value))
+    # Avoid -0.0 so empty slots format as "0.000000", not "-0.000000".
+    if amount == 0:
+        return 0.0
+    return -amount if sign == _SIGN_NEGATIVE else amount
+
+
+def _apply_declare_settings(line, settings_source=None):
+    """Place the line on debt/have using normal or return declare/sign settings.
+
+    token_return is resolved before this runs, so return codes still apply.
+    Returns/undeclares (negative or undeclared) use return_* settings, with
+    optional per-category overrides on AccountingPricing.
+    """
+    if not line:
+        return line
+
+    is_return = bool(line.get('undeclared')) or _line_has_negative_amount(line)
+    return_category = line.get('return_category')
+
+    if settings_source is None:
+        declare_as = _default_declare_as_for_line(line)
+        sign = _SIGN_NEGATIVE if is_return else _SIGN_POSITIVE
+    elif is_return and line.get('undeclare_override_declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
+        # Exception from the pricing that triggered undeclare_previous.
+        declare_as = line['undeclare_override_declare_as']
+        sign = _normalize_sign(
+            line.get('undeclare_override_sign'),
+            fallback=_SIGN_NEGATIVE,
+        )
+    elif is_return:
+        declare_as = _resolve_return_declare_as(settings_source, return_category)
+        sign = _resolve_return_sign(settings_source, return_category)
+    else:
+        declare_as = _normalize_declare_as(
+            getattr(settings_source, 'declare_as', None),
+            fallback=_default_declare_as_for_line(line),
+        )
+        # Keep an explicit line declare_as (payment counterpart have, piggy rules).
+        if line.get('declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
+            declare_as = line['declare_as']
+        sign = _normalize_sign(
+            getattr(settings_source, 'declare_sign', None),
+            fallback=_SIGN_POSITIVE,
+        )
+
+    updated = dict(line)
+    updated['declare_as'] = declare_as
+    updated['total'] = _signed_amount(line.get('total'), sign)
+    updated['subtotal'] = _signed_amount(line.get('subtotal'), sign)
+    # Keep net per-rate IVA as accumulated (credit notes stay negative).
+    # Abs-then-reapply sign would turn mixed/return bases into a positive
+    # sum (e.g. 58.15) and break IR02, which must match the invoice total.
+    updated['iva'] = {
+        percent: {
+            'base': _as_float(amounts.get('base')),
+            'tax': _as_float(amounts.get('tax')),
+        }
+        for percent, amounts in (line.get('iva') or _empty_iva_values()).items()
+    }
+    return updated
+
+
 def _expand_with_additional_lines(accounting_pricing, lines):
-    """After each parent line, emit its active AccountingAdditionalLine clones."""
+    """After each parent line, emit its active AccountingAdditionalLine clones.
+
+    Extra lines use their own declare/return settings.
+    """
     parent_lines = list(lines or [])
-    extras = _active_additional_lines(accounting_pricing)
-    if not extras or not parent_lines:
+    if not parent_lines:
         return parent_lines
 
+    extras = _active_additional_lines(accounting_pricing)
     expanded = []
     for parent_line in parent_lines:
-        expanded.append(parent_line)
+        # Build extras from the signed parent first, then apply settings so
+        # is_negative still flips relative to the original signed amounts.
+        built_extras = []
         for additional_line in extras:
             extra = _build_additional_line_from_parent(parent_line, additional_line)
             if extra:
-                expanded.append(extra)
+                built_extras.append((additional_line, extra))
+        expanded.append(_apply_declare_settings(parent_line, accounting_pricing))
+        for additional_line, extra in built_extras:
+            expanded.append(_apply_declare_settings(extra, additional_line))
     return expanded
 
 
@@ -755,6 +1057,7 @@ def _get_invoice_category_lines(
     main_accounting=None,
     require_values=False,
     undeclared=False,
+    return_category='invoice',
 ):
     lines = []
     for origin_name, bucket in _sorted_invoice_groups(groups):
@@ -765,6 +1068,7 @@ def _get_invoice_category_lines(
             main_accounting,
             origin_name=origin_name,
             undeclared=undeclared,
+            return_category=return_category,
         )
         if not line:
             continue
@@ -774,7 +1078,15 @@ def _get_invoice_category_lines(
     return lines
 
 
-def _get_invoice_category_line(accounting_pricing, bucket, iva_accounting = None, main_accounting = None, origin_name = None, undeclared = False):
+def _get_invoice_category_line(
+    accounting_pricing,
+    bucket,
+    iva_accounting=None,
+    main_accounting=None,
+    origin_name=None,
+    undeclared=False,
+    return_category='invoice',
+):
     concept = accounting_pricing.accounting_concept
     accounting_type = concept.type
     add_subtotals = bool(accounting_type and accounting_type.add_subtotals)
@@ -795,7 +1107,12 @@ def _get_invoice_category_line(accounting_pricing, bucket, iva_accounting = None
         total = _sum_iva_values(iva_values, 'tax')
 
     line = {
-        'accounting_concept': _line_concept_token(accounting_pricing, total, undeclared=undeclared),
+        'accounting_concept': _line_concept_token(
+            accounting_pricing,
+            total,
+            undeclared=undeclared,
+            return_category=return_category,
+        ),
         'accounting_pricing': accounting_pricing.token,
         'accounting_pricing_name': _invoice_line_name(accounting_pricing, origin_name),
         'name': concept.name,
@@ -806,10 +1123,18 @@ def _get_invoice_category_line(accounting_pricing, bucket, iva_accounting = None
         'subtotal': _as_float(subtotal),
         'total': _as_float(total),
         "is_invoice": concept.category == 'invoice' and add_taxes and add_subtotals,
+        'undeclared': bool(undeclared),
+        'return_category': return_category,
         'iva_accounting': iva_accounting if concept.category == 'invoice' and add_taxes and not add_subtotals else None,
         'main_accounting': main_accounting,
         'cost_center_code': None,
     }
+    if undeclared and bucket.get('undeclare_declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
+        line['undeclare_override_declare_as'] = bucket['undeclare_declare_as']
+        line['undeclare_override_sign'] = _normalize_sign(
+            bucket.get('undeclare_sign'),
+            fallback=_SIGN_NEGATIVE,
+        )
     if not _invoice_line_has_values(line):
         return None
     return line
@@ -1000,10 +1325,15 @@ def _get_lineitem_category_line(accounting_pricing, bucket, iva_accounting = Non
         return None
 
     return {
-        'accounting_concept': _line_concept_token(accounting_pricing, total),
+        'accounting_concept': _line_concept_token(
+            accounting_pricing,
+            total,
+            return_category='lineitem',
+        ),
         'accounting_pricing': accounting_pricing.token,
         'accounting_pricing_name': _line_title(accounting_pricing),
         'name': concept.name,
+        'return_category': 'lineitem',
         'exploitation': accounting_pricing.exploitation,
         'category': concept.category,
         'iva': iva_values,
@@ -1101,6 +1431,12 @@ def _payment_spec(accounting_pricing):
         ),
         'category': _normalize_invoice_category(accounting_pricing.invoice_category),
         'name': _line_title(accounting_pricing),
+        # Optional override: payment have lands on this pricing instead of invoice.
+        'counterpart_pricing_id': (
+            accounting_pricing.counterpart_accounting_pricing_id
+            if getattr(accounting_pricing, 'counterpart_accounting_pricing_id', None)
+            else None
+        ),
     }
 
 
@@ -1561,14 +1897,18 @@ def _apply_payment_category_fallback_undeclare(
 
     When a positive payment on an endowment/irrecoverable invoice has no
     payment pricing for that category, reverse the paid amount on the
-    matching invoice pricing. If that pricing used undeclare_previous,
-    restore the previous tier for the same amount (mains only).
+    matching invoice pricing. If that pricing used undeclare_previous and
+    restore_previous_on_payment, also restore the previous tier (mains only).
+
+    Returns whether the payment counterpart should land on the previous
+    (normal) clients account. False means only the bank payment line is needed
+    alongside the endowment/irrecoverable reversal.
     """
     current_category = row.get('invoice_category')
     if current_category not in (_INVOICE_CATEGORY_ENDOWMENT, _INVOICE_CATEGORY_IRRECOVERABLE):
-        return
+        return True
     if not row.get('has_invoice') or _decimal_amount(amount) <= 0:
-        return
+        return True
 
     matched = _add_payment_amount_to_invoice_groups(
         undeclare_groups,
@@ -1579,8 +1919,17 @@ def _apply_payment_category_fallback_undeclare(
         origin_names,
         mains_only=False,
     )
-    if not matched or not any(spec.get('undeclare_previous') for spec in matched):
-        return
+    if not matched:
+        return True
+
+    restore_on_payment = any(
+        spec.get('restore_previous_on_payment', True) for spec in matched
+    )
+    if not restore_on_payment:
+        return False
+
+    if not any(spec.get('undeclare_previous') for spec in matched):
+        return True
 
     restore_specs = _previous_invoice_restore_specs(
         invoice_specs_by_category,
@@ -1589,7 +1938,7 @@ def _apply_payment_category_fallback_undeclare(
     )
     mains = [spec for spec in restore_specs if spec.get('has_taxes_and_subtotals')]
     if not mains:
-        return
+        return True
     _add_payment_amount_to_invoice_groups(
         restore_groups,
         mains,
@@ -1599,6 +1948,7 @@ def _apply_payment_category_fallback_undeclare(
         origin_names,
         mains_only=True,
     )
+    return True
 
 
 def _payment_type_detail(spec, row):
@@ -1668,14 +2018,17 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         )
         invoice_id = invoice_specs[0]['id'] if invoice_specs else None
         default_type_key, payment_type_name = _payment_type_detail(spec, row)
-        movement_declare_as = row.get('piggy_declare_as') or 'debt'
+        # Piggy-bank forces the column via AccountingConfig; otherwise the
+        # payment pricing's declare_as / return_* settings apply later.
+        movement_declare_as = row.get('piggy_declare_as') if row.get('is_piggybank') else None
         counter_declare_as = row.get('piggy_counter_declare_as')
         counter_pricing_id = row.get('piggy_counter_pricing_id')
         if row.get('is_piggybank'):
             invoice_id = None
 
+        restore_clients_counterpart = True
         if used_fallback:
-            _apply_payment_category_fallback_undeclare(
+            restore_clients_counterpart = _apply_payment_category_fallback_undeclare(
                 row,
                 amount,
                 invoice_specs_by_category,
@@ -1683,14 +2036,24 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 restore_groups,
                 origin_names,
             )
+            if not restore_clients_counterpart:
+                # Endowment/irrecoverable reversal replaces the normal-clients have.
+                invoice_id = None
+
+        # Explicit counterpart on the payment pricing overrides invoice matching.
+        counterpart_pricing_id = spec.get('counterpart_pricing_id')
+        if counterpart_pricing_id and not row.get('is_piggybank'):
+            invoice_id = counterpart_pricing_id
 
         if not spec['grouped_lines']:
-            buckets[spec['id']].append({
+            bucket_entry = {
                 'movement_date': row['movement_date'],
                 'total': amount,
                 'payment_type_name': payment_type_name,
-                'declare_as': movement_declare_as,
-            })
+            }
+            if movement_declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
+                bucket_entry['declare_as'] = movement_declare_as
+            buckets[spec['id']].append(bucket_entry)
             if invoice_id is not None:
                 debt_totals[(
                     spec['id'],
@@ -1772,12 +2135,14 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_name,
             declare_as,
         ), total in groups.items():
-            buckets[pricing_id].append({
+            bucket_entry = {
                 'movement_date': movement_date,
                 'total': total,
                 'payment_type_name': _payment_detail_name(payment_type_name, origin_name),
-                'declare_as': declare_as,
-            })
+            }
+            if declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
+                bucket_entry['declare_as'] = declare_as
+            buckets[pricing_id].append(bucket_entry)
 
     debt_entries = defaultdict(list)
     for (
@@ -1909,8 +2274,12 @@ def _get_payment_category_lines(accounting_pricing, bucket_entries, iva_accounti
         elif add_taxes:
             total = total_amount
 
-        lines.append({
-            'accounting_concept': _line_concept_token(accounting_pricing, total),
+        line = {
+            'accounting_concept': _line_concept_token(
+                accounting_pricing,
+                total,
+                return_category='payment',
+            ),
             'accounting_pricing': accounting_pricing.token,
             'accounting_pricing_name': _line_title(
                 accounting_pricing,
@@ -1925,11 +2294,15 @@ def _get_payment_category_lines(accounting_pricing, bucket_entries, iva_accounti
             'total': _as_float(total),
             'movement_date': entry.get('movement_date'),
             'is_invoice': False,
-            'declare_as': entry.get('declare_as') or 'debt',
+            'return_category': 'payment',
             'iva_accounting': iva_accounting if add_taxes and not add_subtotals else None,
             'main_accounting': main_accounting,
             'cost_center_code': cost_center_code,
-        })
+        }
+        # Piggy-bank rules may force a column; otherwise pricing.declare_as applies.
+        if entry.get('declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
+            line['declare_as'] = entry['declare_as']
+        lines.append(line)
     return lines
 
 
@@ -1951,7 +2324,11 @@ def _get_payment_debt_line(
     if not concept:
         return None
     line = {
-        'accounting_concept': _line_concept_token(accounting_pricing, total_amount),
+        'accounting_concept': _line_concept_token(
+            accounting_pricing,
+            total_amount,
+            return_category='payment',
+        ),
         'accounting_pricing': accounting_pricing.token,
         'accounting_pricing_name': line_name if line_name else _line_title(accounting_pricing),
         'name': concept.name,
@@ -1963,6 +2340,7 @@ def _get_payment_debt_line(
         'total': total_amount,
         'is_invoice': False,
         'declare_as': declare_as or 'have',
+        'return_category': 'payment',
         'iva_accounting': None,
         'main_accounting': main_accounting,
         'cost_center_code': None,
@@ -2008,10 +2386,10 @@ def generate_general_accounting(request):
         ).exclude(
             payment_type__token = 'BALANCE'
             ).distinct()
-    # print("total invoices: ", invoices.count())
-    # print("total endowment invoices: ", endowment_invoices.count())
-    # print("total irrecoverable invoices: ", irrecoverable_invoices.count())
-    # print("total movements: ", movements.count())
+    print("total invoices: ", invoices.count())
+    print("total endowment invoices: ", endowment_invoices.count())
+    print("total irrecoverable invoices: ", irrecoverable_invoices.count())
+    print("total movements: ", movements.count())
     if invoices.count() == 0 and endowment_invoices.count() == 0 and irrecoverable_invoices.count() == 0 and movements.count() == 0:
         return None
     
@@ -2070,7 +2448,7 @@ def generate_general_accounting(request):
         line_content += title
         line_content += repeat_to_at_least_length(' ', title_total-len(title))
 
-        # if total is negative it goes into the other line
+        # declare_as / amount sign already resolved in get_accounting_lines.
         declare_as = line.get('declare_as')
         if declare_as == 'have':
             debt = 0.00
@@ -2116,7 +2494,12 @@ def generate_general_accounting(request):
         # has_iva = line.get('iva_accounting')
         iva_base_total = _sum_iva_values(iva_values, 'base')
         iva_tax_total = _sum_iva_values(iva_values, 'tax')
-        has_iva = iva_base_total > 0 and line.get('category') == 'invoice' and line.get('subtotal') == 0
+        # Return invoices keep signed (negative) IVA bases; still emit IR02.
+        has_iva = (
+            iva_base_total != 0
+            and line.get('category') == 'invoice'
+            and line.get('subtotal') == 0
+        )
         if has_iva:
             line_content += 'IR'
             # line_accounting_token_len = 2 - len(line.get('iva_accounting').token)
@@ -2145,7 +2528,7 @@ def generate_general_accounting(request):
             # print(iva_value, iva_values[iva_value])
             iva_entry = iva_values[iva_value]
             iva_amount = float(iva_entry['base']) if has_iva else 0.00
-            iva = int(float(iva_value)) if iva_amount > 0 and has_iva else 0
+            iva = int(float(iva_value)) if iva_amount != 0 and has_iva else 0
             iva_total = float(iva_entry['tax']) if iva != 0 and has_iva else 0.00
             
             iva_value_str = f"{iva_amount:.6f}"
@@ -2154,7 +2537,10 @@ def generate_general_accounting(request):
             iva_str = f"{iva:.2f}"
             iva_extra_str = f"{empty_num_value:.2f}"
             
-            show_iva = (iva_amount > 0 or (int(float(iva_value)) == 0 and iva_base_total > 0)) and has_iva
+            show_iva = (
+                iva_amount != 0
+                or (int(float(iva_value)) == 0 and iva_base_total != 0)
+            ) and has_iva
             line_content += '1' if show_iva else ' '
             line_content += repeat_to_at_least_length(' ', len_iva_value-len(iva_value_str))
             line_content += iva_value_str
@@ -2326,9 +2712,40 @@ def bulk_save_accounting_pricing(data, user):
                 )
                 
                 undeclare_previous = item.get('undeclare_previous', False)
+                restore_previous_on_payment = item.get('restore_previous_on_payment', True)
+                undeclare_declare_as = _normalize_declare_as(
+                    item.get('undeclare_declare_as'), fallback=_DECLARE_DEBT,
+                )
+                undeclare_sign = _normalize_sign(
+                    item.get('undeclare_sign'), fallback=_SIGN_NEGATIVE,
+                )
+                counterpart_pricing_id = item.get('counterpart_accounting_pricing_id', None)
+                if category != 'payment':
+                    counterpart_pricing_id = None
+                counterpart_pricing = None
+                if counterpart_pricing_id:
+                    counterpart_pricing = AccountingPricing.objects.filter(
+                        id=counterpart_pricing_id,
+                        is_active=True,
+                    ).first()
                 invoice_category = item.get('invoice_category', None)
                 token_return = _optional_text(item.get('token_return')) or None
+                token_return_invoice = _optional_text(item.get('token_return_invoice')) or None
+                token_return_payment = _optional_text(item.get('token_return_payment')) or None
+                token_return_lineitem = _optional_text(item.get('token_return_lineitem')) or None
                 declared_as = _optional_text(item.get('declared_as')) or None
+                declare_as = _normalize_declare_as(item.get('declare_as'), fallback=_DECLARE_DEBT)
+                declare_sign = _normalize_sign(item.get('declare_sign'), fallback=_SIGN_POSITIVE)
+                return_declare_as = _normalize_declare_as(
+                    item.get('return_declare_as'), fallback=_DECLARE_DEBT,
+                )
+                return_sign = _normalize_sign(item.get('return_sign'), fallback=_SIGN_NEGATIVE)
+                return_declare_as_invoice = _optional_declare_as(item.get('return_declare_as_invoice'))
+                return_sign_invoice = _optional_sign(item.get('return_sign_invoice'))
+                return_declare_as_payment = _optional_declare_as(item.get('return_declare_as_payment'))
+                return_sign_payment = _optional_sign(item.get('return_sign_payment'))
+                return_declare_as_lineitem = _optional_declare_as(item.get('return_declare_as_lineitem'))
+                return_sign_lineitem = _optional_sign(item.get('return_sign_lineitem'))
                 origin_ids = item.get('origins', [])
                 contract_type_ids = item.get('contract_types', [])
 
@@ -2376,8 +2793,30 @@ def bulk_save_accounting_pricing(data, user):
                         accounting_pricing_saved = existing_pricing_accounting
                         if token_return:
                             accounting_pricing_saved.token_return = token_return
+                        accounting_pricing_saved.token_return_invoice = token_return_invoice
+                        accounting_pricing_saved.token_return_payment = token_return_payment
+                        accounting_pricing_saved.token_return_lineitem = token_return_lineitem
                         if declared_as:
                             accounting_pricing_saved.declared_as = declared_as
+                        accounting_pricing_saved.declare_as = declare_as
+                        accounting_pricing_saved.declare_sign = declare_sign
+                        accounting_pricing_saved.return_declare_as = return_declare_as
+                        accounting_pricing_saved.return_sign = return_sign
+                        accounting_pricing_saved.return_declare_as_invoice = return_declare_as_invoice
+                        accounting_pricing_saved.return_sign_invoice = return_sign_invoice
+                        accounting_pricing_saved.return_declare_as_payment = return_declare_as_payment
+                        accounting_pricing_saved.return_sign_payment = return_sign_payment
+                        accounting_pricing_saved.return_declare_as_lineitem = return_declare_as_lineitem
+                        accounting_pricing_saved.return_sign_lineitem = return_sign_lineitem
+                        accounting_pricing_saved.undeclare_previous = undeclare_previous
+                        accounting_pricing_saved.restore_previous_on_payment = restore_previous_on_payment
+                        accounting_pricing_saved.undeclare_declare_as = undeclare_declare_as
+                        accounting_pricing_saved.undeclare_sign = undeclare_sign
+                        accounting_pricing_saved.counterpart_accounting_pricing = (
+                            counterpart_pricing
+                            if counterpart_pricing and counterpart_pricing.id != accounting_pricing_saved.id
+                            else None
+                        )
                         accounting_pricing_saved.separate_by_origin = separate_by_origin
                         product_ids = _merge_related_ids(product_ids, accounting_pricing_saved.products)
                         price_rate_ids = _merge_related_ids(price_rate_ids, accounting_pricing_saved.price_rates)
@@ -2401,8 +2840,21 @@ def bulk_save_accounting_pricing(data, user):
                         accounting_pricing_saved = AccountingPricing.objects.create(
                             token=token,
                             token_return=token_return,
+                            token_return_invoice=token_return_invoice,
+                            token_return_payment=token_return_payment,
+                            token_return_lineitem=token_return_lineitem,
                             name=name,
                             declared_as=declared_as,
+                            declare_as=declare_as,
+                            declare_sign=declare_sign,
+                            return_declare_as=return_declare_as,
+                            return_sign=return_sign,
+                            return_declare_as_invoice=return_declare_as_invoice,
+                            return_sign_invoice=return_sign_invoice,
+                            return_declare_as_payment=return_declare_as_payment,
+                            return_sign_payment=return_sign_payment,
+                            return_declare_as_lineitem=return_declare_as_lineitem,
+                            return_sign_lineitem=return_sign_lineitem,
                             accounting_concept=accounting_concept,
                             accounting_cost_center=cost_center,
                             company=company,
@@ -2412,6 +2864,10 @@ def bulk_save_accounting_pricing(data, user):
                             created_by=user,
                             last_updated_by=user,
                             undeclare_previous=undeclare_previous,
+                            restore_previous_on_payment=restore_previous_on_payment,
+                            undeclare_declare_as=undeclare_declare_as,
+                            undeclare_sign=undeclare_sign,
+                            counterpart_accounting_pricing=counterpart_pricing,
                             invoice_category=invoice_category,
                             outgoing_payments=outgoing_payments,
                             incoming_payments=incoming_payments,
@@ -2427,8 +2883,21 @@ def bulk_save_accounting_pricing(data, user):
                     accounting_pricing_saved = AccountingPricing.objects.get(id=id)
                     accounting_pricing_saved.token = token
                     accounting_pricing_saved.token_return = token_return
+                    accounting_pricing_saved.token_return_invoice = token_return_invoice
+                    accounting_pricing_saved.token_return_payment = token_return_payment
+                    accounting_pricing_saved.token_return_lineitem = token_return_lineitem
                     accounting_pricing_saved.name = name
                     accounting_pricing_saved.declared_as = declared_as
+                    accounting_pricing_saved.declare_as = declare_as
+                    accounting_pricing_saved.declare_sign = declare_sign
+                    accounting_pricing_saved.return_declare_as = return_declare_as
+                    accounting_pricing_saved.return_sign = return_sign
+                    accounting_pricing_saved.return_declare_as_invoice = return_declare_as_invoice
+                    accounting_pricing_saved.return_sign_invoice = return_sign_invoice
+                    accounting_pricing_saved.return_declare_as_payment = return_declare_as_payment
+                    accounting_pricing_saved.return_sign_payment = return_sign_payment
+                    accounting_pricing_saved.return_declare_as_lineitem = return_declare_as_lineitem
+                    accounting_pricing_saved.return_sign_lineitem = return_sign_lineitem
                     accounting_pricing_saved.accounting_concept = accounting_concept
                     accounting_pricing_saved.company = company
                     accounting_pricing_saved.exploitation = exploitation
@@ -2437,6 +2906,14 @@ def bulk_save_accounting_pricing(data, user):
                     accounting_pricing_saved.last_updated_by = user
                     accounting_pricing_saved.accounting_cost_center = cost_center
                     accounting_pricing_saved.undeclare_previous = undeclare_previous
+                    accounting_pricing_saved.restore_previous_on_payment = restore_previous_on_payment
+                    accounting_pricing_saved.undeclare_declare_as = undeclare_declare_as
+                    accounting_pricing_saved.undeclare_sign = undeclare_sign
+                    accounting_pricing_saved.counterpart_accounting_pricing = (
+                        counterpart_pricing
+                        if counterpart_pricing and counterpart_pricing.id != accounting_pricing_saved.id
+                        else None
+                    )
                     accounting_pricing_saved.invoice_category = invoice_category
                     accounting_pricing_saved.outgoing_payments = outgoing_payments
                     accounting_pricing_saved.incoming_payments = incoming_payments

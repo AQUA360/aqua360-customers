@@ -1,8 +1,17 @@
 from django_filters import rest_framework as filters
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from functools import reduce
 from operator import and_
 from ..models import CANCELLED_STATUS_TOKEN, Communication
+
+def multi_page_invoice_exists():
+    """La comunicació porta alguna factura el PDF de la qual ocupa més d'una pàgina."""
+    from billing.models import Invoice
+    return Exists(Invoice.objects.filter(
+        Q(communications=OuterRef('pk')) | Q(files__communication=OuterRef('pk'), files__is_active=True),
+        pdf_page_count__gt=1,
+    ))
+
 
 class CommunicationFilter(filters.FilterSet):
     search = filters.CharFilter(method='filter_search')
@@ -16,10 +25,16 @@ class CommunicationFilter(filters.FilterSet):
     is_individual = filters.BooleanFilter(method='filter_is_individual')
     start_date = filters.DateFilter(field_name='created_at', lookup_expr='date__gte')
     end_date = filters.DateFilter(field_name='created_at', lookup_expr='date__lte')
+    multi_page = filters.BooleanFilter(method='filter_multi_page')
     
     class Meta:
         model = Communication
-        fields = ['search', 'process', 'status', 'person', 'is_individual', 'types', 'contract', 'exploitation', 'start_date', 'end_date']
+        fields = ['search', 'process', 'status', 'person', 'is_individual', 'types', 'contract', 'exploitation', 'start_date', 'end_date', 'multi_page']
+
+    def filter_multi_page(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.filter(multi_page_invoice_exists() if value else ~multi_page_invoice_exists())
    
     def filter_search(self, queryset, name, value):
         if not value:

@@ -56,6 +56,8 @@ def generate_daily_document(template, current_time, pending_status):
             }
             document = execute_available_report(template.available_report, report_data)
         except ReportNoData:
+            if not template.create_without_data:
+                return None
             document = None
             no_data_found = True
         except Exception as e:

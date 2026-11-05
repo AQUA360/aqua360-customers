@@ -27,6 +27,7 @@ from statistics.utils.report_filters import (
     get_billing_ids, get_multi_ids, has_serie_final_range, invoice_multi_filter_q,
     serie_final_range_period,
 )
+from statistics.utils.dated_use_type import resolve_dated_use_types
 from statistics.views.reports_views import filter_pending_invoices, save_report
 
 
@@ -309,7 +310,7 @@ def _tram_extension(invoice, contract):
     return ""
 
 
-def _invoice_row(invoice, contract, product_columns, product_ids, tarifa_social_token):
+def _invoice_row(invoice, contract, use_type, product_columns, product_ids, tarifa_social_token):
     estimated_used, reading_period_days, reading_estimated, reading_observation = _reading_flags(invoice)
     address = (
         get_address_complete_without_city(contract.supply_point_default.address)
@@ -327,7 +328,7 @@ def _invoice_row(invoice, contract, product_columns, product_ids, tarifa_social_
         invoice.serie.name if invoice.serie else "Factura Original",
         _sector_name(contract),
         invoice.payment_type_final or "",
-        contract.use_type.name if contract and contract.use_type else "",
+        (use_type.name or "") if use_type else "",
         contract.get_use_aca_display() if contract and contract.use_aca else "",
         reading_period_days,
         reading_estimated,
@@ -387,6 +388,10 @@ def _render_sheet(sheet, invoices, contracts_by_request, product_ids, tarifa_soc
         sheet.column_dimensions[get_column_letter(col_idx)].width = width
     sheet.append(titles)
 
+    contracts = {invoice.id: _resolve_contract(invoice, contracts_by_request) for invoice in invoices}
+    # Tipus d'ús que tenia el contracte quan es va generar cada factura (vegeu dated_use_type).
+    dated_use_types = resolve_dated_use_types((invoice, contracts[invoice.id]) for invoice in invoices)
+
     totals_by_column = {}
     for index, invoice in enumerate(invoices, start=1):
         if task and (progress_offset + index) % 200 == 0:
@@ -400,7 +405,8 @@ def _render_sheet(sheet, invoices, contracts_by_request, product_ids, tarifa_soc
             )
         row = _invoice_row(
             invoice,
-            _resolve_contract(invoice, contracts_by_request),
+            contracts[invoice.id],
+            dated_use_types.get(invoice.id),
             product_columns,
             product_ids,
             tarifa_social_token,

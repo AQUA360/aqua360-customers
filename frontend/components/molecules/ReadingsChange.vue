@@ -88,6 +88,77 @@ const isPendingBillingPreviousReading = (reading) => {
     return hasPendingBilling.value && !!previousToLastReading.value && previousToLastReading.value.id === reading?.id;
 };
 
+// Proposta de fuita: consum habitual a partir de l'historial (criteri configurable)
+const leakEstimates = ref({});
+const leakEstimateLoadingId = ref(null);
+
+const isLeakInputDisabled = (pair) => {
+    return readingsToDelete.value.includes(pair.modified.id) ||
+        pair.modified.is_initial ||
+        (pair.original && pair.original.is_control && pair.modified.is_control) ||
+        readingsToKeepEstimated.value.includes(pair.modified.id) ||
+        isPendingBillingLastReading(pair.modified);
+};
+
+const getLeakAvailableConsumption = (reading) => {
+    return (Number(reading.calculated_value) || 0) - (Number(reading.estimated_used) || 0);
+};
+
+const calculateLeakEstimate = async (reading) => {
+    const consumption = getLeakAvailableConsumption(reading);
+    if (!reading.reading_date || !(Number(reading.consumption_days) > 0) || consumption <= 0) {
+        toast.warning(t('warning_block.warning_leak_estimate_missing_data'));
+        return;
+    }
+    const request = {
+        contract_id: props.contract_id,
+        supply_point_id: reading.supply_point_id || props.supply_point_id,
+        reading_date: reading.reading_date,
+        consumption_days: Number(reading.consumption_days),
+        consumption,
+    };
+    const leakBefore = reading.leak_value;
+    leakEstimateLoadingId.value = reading.id;
+    try {
+        const estimate = await $ReadingApiService.leakEstimate(request);
+        // Si la lectura ha canviat mentre es calculava, la proposta ja no li correspon
+        if (reading.leak_value !== leakBefore ||
+            reading.reading_date !== request.reading_date ||
+            Number(reading.consumption_days) !== request.consumption_days ||
+            getLeakAvailableConsumption(reading) !== consumption) {
+            return;
+        }
+        leakEstimates.value[reading.id] = { ...estimate, reading_date: request.reading_date };
+        reading.leak_value = estimate.leak_value;
+        recalculateNewReadingsConsumption(true);
+    } catch (error) {
+        console.error(error);
+    } finally {
+        leakEstimateLoadingId.value = null;
+    }
+};
+
+// La proposta només es dona per aplicada si no s'han editat la fuita, el consum, la data ni els dies
+const isLeakEstimateApplied = (reading) => {
+    const estimate = leakEstimates.value[reading.id];
+    return !!estimate &&
+        Number(reading.leak_value || 0) === Number(estimate.leak_value) &&
+        getLeakAvailableConsumption(reading) === Number(estimate.consumption) &&
+        reading.reading_date === estimate.reading_date &&
+        Number(reading.consumption_days) === Number(estimate.consumption_days);
+};
+
+const formatLeakEstimate = (estimate) => {
+    return t('billing_block.leak_estimate_detail', {
+        statistic: t(`billing_block.leak_estimate_statistic_${estimate.statistic}`),
+        years: estimate.years,
+        daily: Number(estimate.daily_value).toFixed(3),
+        days: estimate.consumption_days,
+        habitual: estimate.habitual_consumption,
+        leak: estimate.leak_value,
+    });
+};
+
 const allowSave = computed(() => {
     let allow = true
     if (new_readings.value.some(r => r.leak_value && r.leak_value > (r.calculated_value - Number(r.estimated_used || 0)))) allow = false;
@@ -715,9 +786,6 @@ const recalculateNewReadingsConsumption = async (keep_calculated_value = false, 
                 }
             }
         }
-        if (r.estimated_used && r.estimated_used > r.calculated_value) {
-            r.estimated_used = r.calculated_value;
-        }
     });
     lastNewReadingReal.value = new_readings.value.filter(r => !r.is_estimated && !r.is_control && !r.is_close).sort((a, b) => b.reading_date.localeCompare(a.reading_date))[0]?.reading_date;
     if (!lastNewReadingReal.value || lastNewReadingReal.value == undefined) {
@@ -851,6 +919,10 @@ const changesLog = computed(() => {
                 changes.push(`${leakAction}: ${original.leak_value || 0} -> ${modified.leak_value || 0}`);
             }
 
+            if (isLeakEstimateApplied(modified)) {
+                changes.push(formatLeakEstimate(leakEstimates.value[modified.id]));
+            }
+
             if (changes.length > 0) {
                 logLines.push(`${t('reading')} ${modified.id} (${modified.reading_date}): ${changes.join(', ')}`);
             }
@@ -862,6 +934,9 @@ const changesLog = computed(() => {
             let details = `${t('reading')}: ${modified.reading_value}`;
             if (modified.leak_value) {
                 details += `, ${t('billing_block.leak')}: ${modified.leak_value}`;
+            }
+            if (isLeakEstimateApplied(modified)) {
+                details += `, ${formatLeakEstimate(leakEstimates.value[modified.id])}`;
             }
             logLines.push(`${t('billing_block.new_reading')} (${modified.reading_date}) [${typeStr}]: ${details}`);
         }
@@ -1830,13 +1905,25 @@ watch(() => props.estimated_bag, (newVal) => {
                                                         $t('billing_block.leak')
                                                         }}</span>
                                                 </span>
-                                                <input type="number" v-model="pair.modified.leak_value" class="input"
-                                                    :disabled="readingsToDelete.includes(pair.modified.id) ||
-                                                        pair.modified.is_initial ||
-                                                        (pair.original && pair.original.is_control && pair.modified.is_control) ||
-                                                        readingsToKeepEstimated.includes(pair.modified.id) ||
-                                                        isPendingBillingLastReading(pair.modified)"
-                                                    @input="recalculateNewReadingsConsumption(true)" />
+                                                <div class="flex items-center gap-1">
+                                                    <input type="number" v-model="pair.modified.leak_value" class="input"
+                                                        :disabled="isLeakInputDisabled(pair)"
+                                                        @input="recalculateNewReadingsConsumption(true)" />
+                                                    <button type="button"
+                                                        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        :title="$t('billing_block.leak_estimate_calculate')"
+                                                        :disabled="isLeakInputDisabled(pair) || leakEstimateLoadingId === pair.modified.id"
+                                                        @click="calculateLeakEstimate(pair.modified)">
+                                                        <Icon :name="leakEstimateLoadingId === pair.modified.id ? 'fa6-solid:spinner' : 'fa6-solid:calculator'"
+                                                            class="h-3.5 w-3.5"
+                                                            :class="{ 'animate-spin': leakEstimateLoadingId === pair.modified.id }" />
+                                                    </button>
+                                                </div>
+                                                <p v-if="leakEstimates[pair.modified.id]"
+                                                    class="pt-1 text-[11px] leading-snug"
+                                                    :class="isLeakEstimateApplied(pair.modified) ? 'text-sky-700' : 'text-slate-400 line-through'">
+                                                    {{ formatLeakEstimate(leakEstimates[pair.modified.id]) }}
+                                                </p>
                                             </div>
                                             <div>
                                                 <span
@@ -1923,7 +2010,7 @@ watch(() => props.estimated_bag, (newVal) => {
                                                     readingsToKeepEstimated.includes(pair.modified.id) ||
                                                     isPendingBillingLastReading(pair.modified) ||
                                                     pair.modified.block_estimate_correction"
-                                                    @input="recalculateNewReadingsConsumption(false)" />
+                                                    @input="recalculateNewReadingsConsumption(true)" />
                                             </div>
                                             <div class="mt-2">
                                                 <span
@@ -1937,7 +2024,7 @@ watch(() => props.estimated_bag, (newVal) => {
                                                     :disabled="readingsToDelete.includes(pair.modified.id) ||
                                                         pair.modified.is_initial ||
                                                         isPendingBillingLastReading(pair.modified)"
-                                                    @input="recalculateNewReadingsConsumption(false)" />
+                                                    @input="recalculateNewReadingsConsumption(true)" />
                                             </div>
 
                                             <div v-if="pair.modified.is_estimated"

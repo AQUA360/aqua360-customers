@@ -1409,6 +1409,115 @@ def get_contract_multiyear_daily_avg(contract, target_date, years_back=2):
 
   return total_value / Decimal(total_days)
 
+LEAK_ESTIMATE_STATISTIC_MEAN = 'mean'
+LEAK_ESTIMATE_STATISTIC_MAX = 'max'
+LEAK_ESTIMATE_STATISTIC_CHOICES = (LEAK_ESTIMATE_STATISTIC_MEAN, LEAK_ESTIMATE_STATISTIC_MAX)
+LEAK_ESTIMATE_DEFAULT_YEARS = 2
+LEAK_ESTIMATE_MAX_YEARS = 10
+
+def get_leak_estimate_config():
+  """
+  Criteri per defecte del càlcul de fuites (ConfigProject): anys enrere
+  ('leak_estimate_years') i estadístic ('leak_estimate_statistic': mean o max).
+  """
+  config = dict(
+    ConfigProject.objects.filter(token__in=('leak_estimate_years', 'leak_estimate_statistic'))
+    .values_list('token', 'value')
+  )
+  try:
+    years = int(config.get('leak_estimate_years') or LEAK_ESTIMATE_DEFAULT_YEARS)
+  except (TypeError, ValueError):
+    years = LEAK_ESTIMATE_DEFAULT_YEARS
+  if not 1 <= years <= LEAK_ESTIMATE_MAX_YEARS:
+    years = LEAK_ESTIMATE_DEFAULT_YEARS
+  statistic = config.get('leak_estimate_statistic') or LEAK_ESTIMATE_STATISTIC_MEAN
+  if statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
+    statistic = LEAK_ESTIMATE_STATISTIC_MEAN
+  return years, statistic
+
+def get_leak_estimate(contract, supply_point, reading_date, consumption_days, consumption,
+                      years_back=None, statistic=None):
+  """
+  Proposta de repartiment del consum d'una lectura amb fuita entre consum habitual
+  i consum de fuita (criteri ACA / ordenances municipals).
+
+  El consum habitual és el consum diari dels darrers `years_back` anys comptats des
+  de l'inici del període de la lectura (abans de la fuita) multiplicat pels dies de
+  consum de la lectura. El consum diari és la mitjana (total de m3 / total de dies)
+  o el màxim de les lectures del període. De cada lectura es fa servir el consum
+  net: sense les fuites ja declarades ni la correcció d'estimades. Una lectura que
+  comença abans de la finestra només hi compta pels dies que hi cauen.
+
+  La resta del consum de la lectura es proposa com a fuita. Retorna None si no hi
+  ha historial.
+  """
+  default_years, default_statistic = get_leak_estimate_config()
+  years_back = years_back or default_years
+  statistic = statistic or default_statistic
+  if statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
+    raise ValueError(f"Estadístic desconegut: {statistic}")
+  if not 1 <= years_back <= LEAK_ESTIMATE_MAX_YEARS:
+    raise ValueError(f"Anys fora de rang: {years_back}")
+
+  consumption_days = int(consumption_days or 0)
+  if consumption_days <= 0:
+    return None
+
+  period_start = reading_date - timedelta(days=consumption_days)
+  window_start = period_start - relativedelta(years=years_back)
+
+  readings = Reading.objects.filter(
+    contract=contract,
+    is_control=False,
+    is_active=True,
+    reading_date__gt=window_start,
+    reading_date__lte=period_start,
+    calculated_value__isnull=False,
+    consumption_days__gt=0,
+  )
+  if supply_point:
+    readings = readings.filter(supply_point=supply_point)
+
+  total_value = Decimal('0')
+  total_days = 0
+  dailies = []
+  for r in readings:
+    net = Decimal(str(r.calculated_value)) - Decimal(str(r.leak_value or 0)) - Decimal(str(r.estimated_used or 0))
+    if net < 0:
+      net = Decimal('0')
+    daily = net / Decimal(r.consumption_days)
+    days_in_window = min(r.consumption_days, (r.reading_date - window_start).days)
+    total_value += daily * Decimal(days_in_window)
+    total_days += days_in_window
+    dailies.append(daily)
+
+  if total_days <= 0:
+    return None
+
+  if statistic == LEAK_ESTIMATE_STATISTIC_MAX:
+    daily_value = max(dailies)
+  else:
+    daily_value = total_value / Decimal(total_days)
+
+  consumption = Decimal(str(consumption or 0)).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+  habitual = (daily_value * Decimal(consumption_days)).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+  habitual = max(Decimal('0'), min(habitual, consumption))
+
+  return {
+    'years': years_back,
+    'statistic': statistic,
+    'window_start': window_start,
+    'window_end': period_start,
+    'readings_count': len(dailies),
+    'history_days': total_days,
+    'history_consumption': int(total_value.quantize(Decimal('1'), rounding=ROUND_HALF_UP)),
+    'daily_value': float(daily_value.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)),
+    'consumption_days': consumption_days,
+    'consumption': int(consumption),
+    'habitual_consumption': int(habitual),
+    'leak_value': int(consumption - habitual),
+  }
+
 READING_ESTIMATE_PERIOD_LAST_READING = 'last_reading'
 READING_ESTIMATE_PERIOD_LAST_YEAR = 'last_year'
 READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR = 'same_period_previous_year'
@@ -2102,6 +2211,10 @@ def modify_existing_readings(readings_data, readings_to_update, readings_to_dele
     
     estimated_from_readings = 0
     current_meter_id = supply_point.meter.id if supply_point.meter else None
+    try:
+      estimated_bag = EstimatedBag.objects.get(supply_point=supply_point, contract__id=contract_id)
+    except:
+      estimated_bag = None
 
     for reading_item in sorted(readings_list, key=lambda x: (x['reading_date'], str(x.get('meter_id')) == str(current_meter_id))):
         # print("reading_item", reading_item)
@@ -2126,10 +2239,6 @@ def modify_existing_readings(readings_data, readings_to_update, readings_to_dele
         print("\n")
         print("reading_id", reading_id)
         print("calculated_value", calculated_value)
-        try:
-          estimated_bag = EstimatedBag.objects.get(supply_point=supply_point, contract__id=contract_id)
-        except:
-          estimated_bag = None
         try:
           batch = ReadingBatch.objects.get(id=reading_batch_id)
         except:

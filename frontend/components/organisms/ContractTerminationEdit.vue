@@ -20,6 +20,8 @@ import OrderRegion from './OrderRegion.vue';
 import AddInvoiceBudget from '../molecules/AddInvoiceBudget.vue';
 import InvoiceView from './InvoiceView.vue';
 import ReadingDetail from '../molecules/ReadingDetail.vue';
+import NewerControlReadingsNotice from '~/components/atoms/NewerControlReadingsNotice.vue';
+import { fetchLastReading } from '~/utils/last-reading';
 import WizardStatusNav from '../molecules/WizardStatusNav.vue';
 import WorkOrderTypeSelectorModal from '../molecules/WorkOrderTypeSelectorModal.vue';
 
@@ -119,6 +121,8 @@ const statusSelected = ref(null);
 const supply_points = ref([]);
 
 const previous_readings = ref({});
+// Lectures de control més recents que l'última lectura facturable, per punt de subministrament
+const newer_control_readings = ref({});
 
 const getDaysSinceLastReading = (dateString) => {
   if (!dateString) return null;
@@ -132,20 +136,25 @@ const getDaysSinceLastReading = (dateString) => {
   return `fa ${diff} dies`;
 }
 
+// Descarta les respostes d'una càrrega anterior si el watcher n'ha començat una de nova
+let previousReadingsRequestId = 0;
+
 const loadPreviousReadings = async () => {
   if (!supply_points.value || supply_points.value.length === 0) return;
+  const requestId = ++previousReadingsRequestId;
+  // A l'alta encara no hi ha props.request: el contracte de la baixa és a contract
+  const contract_ids = [contract.value?.id || props.request?.contract?.id].filter(Boolean);
   for (const sp of supply_points.value) {
     try {
-      const contract_ids = [props.request?.contract?.id] || [];
-      const response = await $ReadingApiService.getAll('', [], 1, null, false, contract_ids, sp.id);
-      if (response && response.results && response.results.length > 0) {
-        previous_readings.value[sp.id] = response.results[0];
-      } else {
-        previous_readings.value[sp.id] = null;
-      }
+      const { reading, newerControlReadings } = await fetchLastReading($ReadingApiService, { contractIds: contract_ids, supplyPointId: sp.id });
+      if (requestId !== previousReadingsRequestId) return;
+      previous_readings.value[sp.id] = reading;
+      newer_control_readings.value[sp.id] = newerControlReadings;
     } catch (error) {
+      if (requestId !== previousReadingsRequestId) return;
       console.error('Error loading previous reading for supply point:', sp.id, error);
       previous_readings.value[sp.id] = null;
+      newer_control_readings.value[sp.id] = [];
     }
   }
 }
@@ -759,8 +768,9 @@ watch(() => props.request, async () => {
                         </span>
                       </div>
                       <div v-else class="text-sm font-semibold text-slate-400">
-                        {{ t('common.no_records') }}
+                        {{ newer_control_readings[supply_point.id]?.length ? t('billing_block.no_billable_readings') : t('common.no_records') }}
                       </div>
+                      <NewerControlReadingsNotice :readings="newer_control_readings[supply_point.id]" />
                       <div v-if="previous_readings[supply_point.id]?.invoice" class="mt-1 flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-0.5 w-fit">
                         <Icon name="fa6-solid:triangle-exclamation" class="text-amber-500" />
                         {{ t('billing_block.last_reading_already_invoiced') || 'La última lectura ja està facturada' }}
@@ -902,7 +912,7 @@ watch(() => props.request, async () => {
         <PersonSearch v-if="editingPerson" @saved="fetchPerson" />
         <InvoiceView v-if="showRegionDetailComponent == 'InvoiceView'" :id="regionDetailId" />
         <ReadingDetail v-if="showRegionDetailComponent == 'ReadingDetail'" :supply_point_id="regionDetailId"
-          :isSubRegion="true" class="mt-10" />
+          :show-control="newer_control_readings[regionDetailId]?.length > 0" :isSubRegion="true" class="mt-10" />
         <OrderRegion v-if="showRegionDetailComponent === 'OrderRegion'" :id="regionDetailId"
           :isSubRegion="isSubRegionOpen" @show-subregion="handleSubRegionEvent" @changed="handleStatusChanged" />
         <AddInvoiceBudget v-if="showRegionDetailComponent == 'AddInvoiceContract'" :object_id="props.request?.id"

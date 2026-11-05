@@ -63,7 +63,7 @@ class BillingDocumentDownloadSerializer(serializers.ModelSerializer):
             'id', 'source', 'billing_ids', 'billing_tokens', 'communication_process',
             'communication_process_ids', 'communication_process_tokens',
             'communication_process_token', 'payment_type_tokens', 'delivery', 'ordering',
-            'descending', 'batch_mode', 'batch_size', 'batch_count', 'invoice_count',
+            'descending', 'pages', 'batch_mode', 'batch_size', 'batch_count', 'invoice_count',
             'status', 'error_message', 'document_id',
             'document_name', 'created_at', 'completed_at', 'requested_by_name',
         ]
@@ -205,6 +205,7 @@ class BillingDocumentDownloadView(views.APIView):
                     delivery=options['delivery'],
                     ordering=options['ordering'],
                     descending=options['descending'],
+                    pages=options['pages'],
                 ))
                 if not count:
                     return Response(
@@ -220,6 +221,7 @@ class BillingDocumentDownloadView(views.APIView):
                     payment_type_tokens=options['payment_type_tokens'],
                     ordering=options['ordering'],
                     descending=options['descending'],
+                    pages=options['pages'],
                 ).count()
                 if not count:
                     return Response(
@@ -240,6 +242,7 @@ class BillingDocumentDownloadView(views.APIView):
                 delivery=options['delivery'],
                 ordering=options['ordering'],
                 descending=options['descending'],
+                pages=options['pages'],
                 batch_mode=options['batch_mode'],
                 batch_size=options['batch_size'],
                 invoice_count=count,
@@ -262,6 +265,7 @@ class BillingDocumentDownloadView(views.APIView):
                     "delivery": options['delivery'],
                     "ordering": options['ordering'],
                     "descending": options['descending'],
+                    "pages": options['pages'],
                     "payment_type_tokens": options['payment_type_tokens'],
                     "batch_mode": options['batch_mode'],
                     "batch_size": options['batch_size'],
@@ -287,6 +291,7 @@ def _selection_count(options):
             delivery=options['delivery'],
             ordering=options['ordering'],
             descending=options['descending'],
+            pages=options['pages'],
         ))
     found = Billing.objects.filter(id__in=options['billing_ids']).count()
     if found != len(options['billing_ids']):
@@ -296,6 +301,7 @@ def _selection_count(options):
         payment_type_tokens=options['payment_type_tokens'],
         ordering=options['ordering'],
         descending=options['descending'],
+        pages=options['pages'],
     ).count()
 
 

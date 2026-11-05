@@ -176,9 +176,6 @@ class ManageCommitmentDepositRequestViewSet(APIView):
                     deposits = CommitmentDepositListSerializer(deposits_found, many=True).data
                 
             serialized_invoices = InvoiceFullSerializer(invoices, many=True).data
-            print("invoices")
-            print(invoices)
-            print(len(invoices))
                 
             return_data = {
                 "invoices": serialized_invoices,

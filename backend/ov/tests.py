@@ -20,6 +20,7 @@ from django.utils import translation
 from rest_framework.test import APIClient
 
 from billing.models import (
+    Biller,
     GeneralPayment,
     GeneralPaymentSepaDocument,
     Invoice,
@@ -69,7 +70,15 @@ from pricing.models import (
     Product,
     ProductOrigin,
 )
-from service.models import Company, Exploitation, Meter, Property, SupplyPoint
+from service.models import (
+    Company,
+    Exploitation,
+    Meter,
+    Property,
+    Route,
+    RoutePosition,
+    SupplyPoint,
+)
 from ov.throttles import (
     ContractProcedureThrottle,
     PaymentReceiptThrottle,
@@ -618,6 +627,58 @@ class InvoiceStatusObjectTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["invoice_status"], "Enviada")
         self.assertEqual(response.data["status"], {"token": "3", "name": "Enviada"})
+
+    def _billing_period(self, token):
+        response = self.client.get(
+            reverse("invoice-detail-by-token-ov", kwargs={"token": token})
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.data["billing_period"]
+
+    def test_billing_period_uses_issue_date_and_null_days_without_readings(self):
+        Invoice.objects.filter(pk=self.invoice.pk).update(
+            billing_period_year=2025, billing_period_month=10, billing_period_days=90
+        )
+
+        self.assertEqual(
+            self._billing_period("INV-001"),
+            {"year": 2026, "month": 1, "days": None},
+        )
+
+    def test_billing_period_days_sum_reading_segments(self):
+        first = Reading.objects.create(
+            contract=self.contract, reading_date=date(2025, 10, 1)
+        )
+        second = Reading.objects.create(
+            contract=self.contract,
+            reading_date=date(2025, 11, 1),
+            previous_reading=first,
+        )
+        third = Reading.objects.create(
+            contract=self.contract,
+            reading_date=date(2025, 12, 1),
+            previous_reading=second,
+        )
+        control = Reading.objects.create(
+            contract=self.contract,
+            reading_date=date(2025, 12, 15),
+            previous_reading=third,
+            is_control=True,
+        )
+        self.invoice.readings.add(second, third, control)
+
+        self.assertEqual(
+            self._billing_period("INV-001"),
+            {"year": 2026, "month": 1, "days": 31 + 30},
+        )
+
+    def test_billing_period_days_null_when_reading_has_no_previous(self):
+        reading = Reading.objects.create(
+            contract=self.contract, reading_date=date(2025, 12, 1)
+        )
+        self.invoice.readings.add(reading)
+
+        self.assertIsNone(self._billing_period("INV-001")["days"])
 
 
 class InvoiceFilterAlignmentTests(TestCase):
@@ -1446,7 +1507,7 @@ class DictionaryEndpointsTests(TestCase):
         cls.product_procedure = Product.objects.create(
             token="TASA-ACOMETIDA",
             name="DCHOS.ACOMETIDA",
-            origin=cls.origin_connection,
+            origin=cls.origin_meter,
         )
         cls.product_meter = Product.objects.create(
             token="TASA-CONTADOR",
@@ -1456,7 +1517,27 @@ class DictionaryEndpointsTests(TestCase):
         cls.product_admin = Product.objects.create(
             token="TASA-POLIZA",
             name="FORM.POLIZA ENGANCHE: EN 1ª CONTRATACION",
-            origin=cls.origin_admin,
+            origin=cls.origin_meter,
+        )
+        cls.product_connection = Product.objects.create(
+            token="TASA-ESCOMESA",
+            name="DCHOS.ESCOMESA",
+            origin=cls.origin_connection,
+        )
+        cls.product_other = Product.objects.create(
+            token="TASA-ALTRES", name="ALTRES TRAMITS", origin=cls.origin_admin
+        )
+        cls.tariff_connection = PriceRate.objects.create(
+            token="TR-CONN",
+            name="Tarifa escomesa",
+            is_active=True,
+            product=cls.product_connection,
+        )
+        cls.tariff_other = PriceRate.objects.create(
+            token="TR-OTHER",
+            name="Tarifa altres",
+            is_active=True,
+            product=cls.product_other,
         )
         cls.product_recurring = Product.objects.create(
             token="AIGUA-POTABLE", name="Aigua potable", origin=cls.origin_recurring
@@ -1544,6 +1625,18 @@ class DictionaryEndpointsTests(TestCase):
         )
         cls.tariff_no_product = PriceRate.objects.create(
             token="TR-NOPROD", name="Tarifa sense producte", is_active=True
+        )
+        cls.origin_supply = ProductOrigin.objects.create(
+            id=3, token="subministrament", name="Subministrament"
+        )
+        cls.product_supply = Product.objects.create(
+            token="BROSSES", name="Brosses", origin=cls.origin_supply
+        )
+        cls.tariff_supply = PriceRate.objects.create(
+            token="TR-SUPPLY",
+            name="Taxa periòdica brosses",
+            is_active=True,
+            product=cls.product_supply,
         )
 
     @classmethod
@@ -1696,6 +1789,21 @@ class DictionaryEndpointsTests(TestCase):
 
         self.assertIn("TR-FIXED", tariffs)
         self.assertNotIn("TR-REC", tariffs)
+
+    def test_supply_origin_product_excluded(self):
+        self.assertNotIn("TR-SUPPLY", self._tariffs_by_token())
+
+    def test_connection_and_other_origin_products_excluded(self):
+        tariffs = self._tariffs_by_token()
+
+        self.assertNotIn("TR-CONN", tariffs)
+        self.assertNotIn("TR-OTHER", tariffs)
+
+    def test_only_procedure_origin_rates_returned(self):
+        self.assertEqual(
+            set(self._tariffs_by_token()),
+            {"TR-EMPTY", "TR-GENERAL", "TR-VAR", "TR-FIXED", "TR-MIXED"},
+        )
 
     def test_tariff_without_product_excluded(self):
         self.assertNotIn("TR-NOPROD", self._tariffs_by_token())
@@ -4251,3 +4359,110 @@ class ContractRequestStatusOVTests(TestCase):
 
     def test_inactive_request_returns_404(self):
         self.assertEqual(self._get("CR-OFF").status_code, 404)
+
+
+class BillingPeriodsViewTests(TestCase):
+    """`GET /ov/billing-periods/`: cicles en curs i següent derivats del
+    facturador del contracte, no d'un calendari fix."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-billing-periods-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.holder = Person.objects.create(
+            token=HOLDER_TOKEN, name="Test", surname="Holder"
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _contract(self, token, biller=None):
+        supply_point = None
+        if biller is not None:
+            route = Route.objects.create(token=f"R-{token}", biller=biller)
+            position = RoutePosition.objects.create(route=route)
+            prop = Property.objects.create(route_position=position)
+            supply_point = SupplyPoint.objects.create(
+                token=f"SP-{token}", property=prop
+            )
+        return Contract.objects.create(
+            token=token, holder=self.holder, supply_point_default=supply_point
+        )
+
+    def _get(self, token, today):
+        with patch("ov.views.timezone.localdate", return_value=today):
+            return self.client.get(
+                reverse("billing-periods-ov"),
+                {"contract_token": token},
+                headers={"accept-language": "es"},
+            )
+
+    def test_requires_contract_token(self):
+        response = self.client.get(reverse("billing-periods-ov"))
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_unknown_contract_returns_404(self):
+        response = self._get("UNKNOWN", date(2026, 5, 1))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_no_biller_uses_model_defaults(self):
+        self._contract("BP-NO-BILLER")
+
+        response = self._get("BP-NO-BILLER", date(2026, 11, 5))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [(i["year"], i["period_code"], i["is_current"]) for i in response.data],
+            [(2026, "4T", True), (2027, "1T", False)],
+        )
+        self.assertEqual(response.data[0]["months_label"], "octubre-diciembre")
+        self.assertEqual(response.data[1]["year_to"], 2027)
+
+    def test_quarterly_with_custom_initial_month(self):
+        biller = Biller.objects.create(period_type="trimestral", initial_month="feb")
+        self._contract("BP-FEB", biller)
+
+        response = self._get("BP-FEB", date(2026, 1, 20))
+
+        first, second = response.data
+        self.assertEqual(
+            (
+                first["year_from"],
+                first["month_from"],
+                first["year_to"],
+                first["month_to"],
+            ),
+            (2025, 11, 2026, 1),
+        )
+        self.assertTrue(first["is_current"])
+        self.assertEqual(
+            (second["month_from"], second["month_to"], second["is_current"]),
+            (2, 4, False),
+        )
+
+    def test_bimonthly_and_semiannual_cycles(self):
+        self._contract("BP-BIM", Biller.objects.create(period_type="bimestral"))
+        self._contract("BP-SEM", Biller.objects.create(period_type="semestral"))
+
+        bimonthly = self._get("BP-BIM", date(2026, 5, 10)).data
+        semiannual = self._get("BP-SEM", date(2026, 5, 10)).data
+
+        self.assertEqual(
+            [(i["period_code"], i["month_from"], i["month_to"]) for i in bimonthly],
+            [("3B", 5, 6), ("4B", 7, 8)],
+        )
+        self.assertEqual(
+            [(i["period_code"], i["month_from"], i["month_to"]) for i in semiannual],
+            [("1S", 1, 6), ("2S", 7, 12)],
+        )

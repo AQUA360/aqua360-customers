@@ -81,6 +81,15 @@ watch(() => props.data, (newData) => {
 
   <div v-else-if="localData">
 
+    <div v-if="localData.multi_page_invoices?.length" role="alert"
+      class="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <Icon name="fa6-solid:circle-exclamation" class="mt-0.5 w-3.5 h-3.5 shrink-0 text-amber-500" />
+      <span>
+        {{ t('billing_block.multi_page_communication_alert') }}
+        <span class="font-semibold">{{ localData.multi_page_invoices.join(', ') }}</span>
+      </span>
+    </div>
+
     <div role="row" class="grid grid-cols-2">
       <FieldDetail :label='$t("common.identification")' :value=localData.token />
       

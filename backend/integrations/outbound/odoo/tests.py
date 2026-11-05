@@ -6,7 +6,14 @@ import requests
 from django.test import TestCase, override_settings
 
 from integrations.models import IntegrationRequestLog
-from integrations.outbound.odoo.client import INVOICES_ENDPOINT, OdooClient, PROVIDER
+from integrations.outbound.odoo.client import (
+    INVOICES_ENDPOINT,
+    JSON2_INVOICE_ENDPOINT,
+    JSON2_PAYMENT_ENDPOINT,
+    OdooClient,
+    PROVIDER,
+)
+from integrations.outbound.odoo.services import push_commitment_deposit_batch
 from integrations.outbound.odoo.exceptions import OdooApiError, OdooMappingError
 from integrations.outbound.odoo.mappers import (
     is_movement_pushable,
@@ -284,6 +291,7 @@ class OdooMappersTest(TestCase):
     ODOO_BASE_URL="https://odoo.example.com/aqua360/v1",
     ODOO_API_KEY="test-key",
     ODOO_TIMEOUT=10,
+    ODOO_TRANSPORT="fastapi",
 )
 class OdooClientTest(TestCase):
     @patch("integrations.outbound.odoo.client.requests.request")
@@ -375,3 +383,125 @@ class OdooClientTest(TestCase):
         log = IntegrationRequestLog.objects.get()
         self.assertEqual(log.endpoint, "/batch/invoices")
         self.assertTrue(log.success)
+
+
+@override_settings(
+    ODOO_BASE_URL="https://aquaoleiros-t1.odoo.com",
+    ODOO_API_KEY="saas-key",
+    ODOO_TIMEOUT=10,
+    ODOO_TRANSPORT="json2",
+)
+class OdooJson2ClientTest(TestCase):
+    def test_blank_or_default_transport_is_fastapi(self):
+        self.assertFalse(OdooClient(transport="").is_json2)
+        self.assertFalse(OdooClient(transport="fastapi").is_json2)
+
+    def test_unknown_transport_raises(self):
+        with self.assertRaises(OdooApiError):
+            OdooClient(transport="xmlrpc")
+
+    @patch("integrations.outbound.odoo.client.requests.request")
+    def test_push_invoice_wraps_contract_json(self, mock_request):
+        mock_response = MagicMock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json.return_value = [42]
+        mock_request.return_value = mock_response
+
+        payload = {"aqua_id": "000006", "move_type": "out_invoice", "name": "FA1"}
+        result = OdooClient().push_invoice(payload)
+
+        self.assertEqual(result, [42])
+        call_args = mock_request.call_args
+        self.assertEqual(call_args.args[0], "POST")
+        self.assertEqual(
+            call_args.args[1],
+            f"https://aquaoleiros-t1.odoo.com{JSON2_INVOICE_ENDPOINT}",
+        )
+        headers = call_args.kwargs["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer saas-key")
+        self.assertNotIn("Aqua360-Api-Key", headers)
+        self.assertEqual(
+            call_args.kwargs["json"],
+            {
+                "vals_list": [
+                    {
+                        "x_aqua_id": "000006",
+                        "x_aqua_json": payload,
+                    }
+                ]
+            },
+        )
+        log = IntegrationRequestLog.objects.get()
+        self.assertEqual(log.endpoint, JSON2_INVOICE_ENDPOINT)
+        self.assertEqual(log.object_id, "000006")
+        self.assertTrue(log.success)
+
+    @patch("integrations.outbound.odoo.client.requests.request")
+    def test_push_payment_uses_payment_model(self, mock_request):
+        mock_response = MagicMock()
+        mock_response.ok = True
+        mock_response.status_code = 200
+        mock_response.json.return_value = [7]
+        mock_request.return_value = mock_response
+
+        OdooClient().push_payment({"aqua_id": "MOV-1", "amount": 10})
+
+        self.assertEqual(
+            mock_request.call_args.args[1],
+            f"https://aquaoleiros-t1.odoo.com{JSON2_PAYMENT_ENDPOINT}",
+        )
+
+    @patch("integrations.outbound.odoo.client.requests.request")
+    def test_push_batch_one_call_per_item_and_keeps_going(self, mock_request):
+        ok = MagicMock()
+        ok.ok = True
+        ok.status_code = 200
+        ok.json.return_value = [11]
+        ok.text = "[11]"
+        bad = MagicMock()
+        bad.ok = False
+        bad.status_code = 400
+        bad.text = "falta diari"
+        bad.json.return_value = {"message": "falta diari"}
+        mock_request.side_effect = [ok, bad]
+
+        result = OdooClient().push_batch(
+            "/batch/invoices",
+            "FACT-1",
+            [{"aqua_id": "A", "name": "1"}, {"aqua_id": "B", "name": "2"}],
+            object_type="send_batch_invoices",
+        )
+
+        self.assertEqual(mock_request.call_count, 2)
+        self.assertEqual(result["status_code"], 200)
+        payload = result["payload"]
+        self.assertEqual(payload["batch_id"], "FACT-1")
+        self.assertEqual(payload["status"], "done")
+        self.assertEqual(payload["summary"]["total"], 2)
+        self.assertEqual(payload["summary"]["ok"], 1)
+        self.assertEqual(payload["summary"]["error"], 1)
+        self.assertEqual(payload["results"][0]["status"], "ok")
+        self.assertEqual(payload["results"][0]["odoo_id"], 11)
+        self.assertEqual(payload["results"][1]["status"], "error")
+        self.assertIn("falta diari", payload["results"][1]["message"])
+        self.assertEqual(IntegrationRequestLog.objects.count(), 2)
+
+    def test_push_batch_commitments_rejected(self):
+        with self.assertRaises(OdooApiError) as ctx:
+            OdooClient().push_batch(
+                "/batch/commitment/create",
+                "COM-1",
+                [{"aqua_id": "C"}],
+                object_type="send_batch_commitment_create",
+            )
+        self.assertIn("compromisos", str(ctx.exception))
+
+    def test_get_batch_status_rejected(self):
+        with self.assertRaises(OdooApiError):
+            OdooClient().get_batch_status("FACT-1")
+
+    def test_push_commitment_deposit_batch_rejected(self):
+        with self.assertRaises(OdooApiError) as ctx:
+            push_commitment_deposit_batch([1])
+        self.assertIn("compromisos", str(ctx.exception))

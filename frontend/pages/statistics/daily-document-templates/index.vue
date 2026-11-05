@@ -201,7 +201,7 @@ watch(() => route.query, () => {
       </span>
     </form>
 
-    <DataTable grid-template="80px,200px,300px,300px,80px,80px" :pending="pending" :loading="pending" :error="error"
+    <DataTable grid-template="80px,200px,280px,260px,120px,140px,80px" :pending="pending" :loading="pending" :error="error"
       :is-empty="items.length === 0" @retry="getData">
       <template #header>
         <TableHeader :label="$t('common.date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
@@ -212,6 +212,8 @@ watch(() => route.query, () => {
         <TableHeader :label="$t('common.report_detail')" :sortable="false" />
         <TableHeader :label="$t('common.expires_in')" sortKey="days_to_complete" :currentSortBy="sortBy"
           :sortDesc="sortDesc" @sort="handleSort" />
+        <TableHeader :label="t('statistics_block.create_without_data')" sortKey="create_without_data"
+          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
         <span></span>
       </template>
 
@@ -236,6 +238,7 @@ watch(() => route.query, () => {
           <span class="p-1">{{ item.days_to_complete > 0
             ? `${item.days_to_complete} ${t('common.days')} ${item.is_work_days ? t('common.work') : t('common.natural')}`
             : t('common.doe_not_expire') }}</span>
+          <span class="p-1">{{ item.create_without_data ? t('common.yes') : t('common.no') }}</span>
           <span class="p-1 font-bold text-slate-400">{{ item.is_active ? '' : t('common.inactive') }}</span>
         </div><!-- end for items -->
       </template>

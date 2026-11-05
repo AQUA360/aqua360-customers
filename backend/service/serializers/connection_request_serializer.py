@@ -147,9 +147,7 @@ class ConnectionRequestSaveSerializer(serializers.ModelSerializer):
             validated_data['company'] = None
         
         if payment:
-            gen_pay = None
             gen_pay = GeneralPayment.objects.get(id=payment)
-            print(gen_pay)
             validated_data['payment'] = gen_pay
         if payment_type and not payment:
             pay_type = PaymentType.objects.get(id=payment_type)

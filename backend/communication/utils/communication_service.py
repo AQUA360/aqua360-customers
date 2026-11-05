@@ -11,6 +11,7 @@ import fitz
 from rest_framework import status
 from rest_framework.response import Response
 from django.core.files.base import ContentFile
+from django.utils.html import escape
 from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.utils import timezone
@@ -34,7 +35,7 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 from documentmanager.utils.main_utils import upload_document
 from documentmanager.views import get_all_documents
 from logger.models import LogCommunicationStatusChange
-from service.models import CompanyConfig, SupplyPoint
+from service.models import Company, CompanyConfig, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
 from billing.utils.aca_company_service import use_multiple_companies
@@ -122,6 +123,29 @@ def get_communication_company(communication, company):
         if contract_company:
             return CompanySerializer(contract_company).data
     return company
+
+def get_communication_company_instance(communication):
+    """Empresa (model) de la comunicació: la del contracte amb `use_multiple_companies`; si no,
+    la de la configuració d'enviament o, en últim terme, la per defecte."""
+    contract_company = get_contract_company(communication.contracts.select_related('company').first())
+    if contract_company:
+        return contract_company
+    if communication.company_config_id:
+        config_company = communication.company_config.company_configs.first()
+        if config_company:
+            return config_company
+    return Company.objects.filter(is_default=True).first()
+
+def invoices_attached_to_email(communication, invoice_email_delivery=None):
+    """Si les factures de la comunicació viatgen adjuntes al correu.
+
+    `invoice_email_delivery` és el valor triat al procés; sense, mana el de l'empresa. Amb
+    l'enllaç a l'oficina virtual el PDF es continua vinculant i arxivant, però no s'adjunta.
+    """
+    if not invoice_email_delivery:
+        company = get_communication_company_instance(communication)
+        invoice_email_delivery = company.invoice_email_delivery if company else None
+    return invoice_email_delivery != Company.INVOICE_EMAIL_OV_LINK
 
 def validate_letter_contract_companies(communication):
     if use_multiple_companies():
@@ -261,6 +285,10 @@ def create_email_template(communication):
       com_values = get_com_values(person, communication, letter_company)
       
       subject = refactor_text(subject, com_values)
+      # Al cos del correu l'adreça de l'oficina virtual va com a enllaç clicable
+      ov_url = com_values.get('company.ov_url')
+      if ov_url:
+        com_values = {**com_values, 'company.ov_url': f'<a href="{escape(ov_url)}">{escape(ov_url)}</a>'}
       body = refactor_text(body, com_values)
       body = mark_safe(body.replace('\n', '<br>'))
       
@@ -475,6 +503,7 @@ def get_com_values(person, communication, company):
         'company.phone': company.get('phone') if company else '',
         'company.email': communication.company_config_email.mail_send_user if communication.company_config_email and communication.company_config_email.mail_send_user else company.get('contact_email') if company and company.get('contact_email') else '',
         'company.address_complete': company.get('address_complete') if company else '',
+        'company.ov_url': company.get('virtual_office_url') or '' if company else '',
         
         'contract.token': '\n'.join([contract.token for contract in communication.contracts.all()]) if communication.contracts.all() else [],
         'contract.supply_address': '\n'.join([str(contract.supply_point_default.address) for contract in communication.contracts.all()]) if communication.contracts.all() else [],

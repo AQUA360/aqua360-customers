@@ -220,3 +220,36 @@ class DailyDocumentListSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyDocument
         exclude = ('submission_response',)
+
+class CustomReportSerializer(serializers.ModelSerializer):
+    """Informe personalitzat (consulta SQL desada de django-sql-explorer)."""
+
+    created_by = serializers.SerializerMethodField()
+    params = serializers.SerializerMethodField()
+    run_count = serializers.IntegerField(read_only=True, default=0)
+    last_run_at = serializers.DateTimeField(read_only=True, default=None)
+
+    class Meta:
+        from explorer.models import Query
+
+        model = Query
+        fields = ['id', 'title', 'description', 'sql', 'created_by', 'created_at', 'params', 'run_count', 'last_run_at']
+        read_only_fields = ['id', 'created_by', 'created_at', 'params', 'run_count', 'last_run_at']
+
+    def get_created_by(self, instance):
+        user = instance.created_by_user
+        if not user:
+            return None
+        return user.get_full_name() or user.username
+
+    def get_params(self, instance):
+        from .utils.custom_report_service import get_params
+        return get_params(instance.sql)
+
+    def validate_sql(self, value):
+        from .utils.custom_report_service import CustomReportError, validate_sql
+        try:
+            validate_sql(value)
+        except CustomReportError as exc:
+            raise serializers.ValidationError(exc.public_message)
+        return value.strip()

@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
@@ -32,6 +33,9 @@ from billing.utils.reading_service import (
     get_reading_copy_group,
     get_estimated_reading_minimal_object,
     get_estimated_reading,
+    get_leak_estimate,
+    LEAK_ESTIMATE_MAX_YEARS,
+    LEAK_ESTIMATE_STATISTIC_CHOICES,
     READING_ESTIMATE_PERIOD_CHOICES,
     READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR,
     READING_ESTIMATE_STATISTIC_CHOICES,
@@ -690,6 +694,63 @@ class ReadingViewSet(viewsets.ModelViewSet):
       'updated_count': len(updated_readings),
       'status': 'ok'
     })
+
+  @action(detail=False, methods=['post'], url_path='leak-estimate')
+  def leak_estimate(self, request):
+    """
+    Proposta de consum habitual i de fuita per a una lectura, a partir del consum
+    dels darrers anys. No desa res: els valors es poden editar abans de guardar.
+    """
+    contract_id = request.data.get('contract_id')
+    supply_point_id = request.data.get('supply_point_id')
+    reading_date = request.data.get('reading_date')
+    consumption_days = request.data.get('consumption_days')
+    consumption = request.data.get('consumption')
+    statistic = request.data.get('statistic') or None
+    years = request.data.get('years') or None
+
+    try:
+      reading_date = datetime.datetime.strptime(str(reading_date)[:10], '%Y-%m-%d').date()
+      consumption_days = int(consumption_days)
+      consumption = Decimal(str(consumption))
+      years = int(years) if years is not None else None
+      contract_id = int(contract_id)
+      supply_point_id = int(supply_point_id) if supply_point_id else None
+    except (TypeError, ValueError, InvalidOperation):
+      return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
+
+    if (
+      not 0 < consumption_days <= LEAK_ESTIMATE_MAX_YEARS * 366
+      or not consumption.is_finite() or consumption <= 0
+      or (years is not None and not 1 <= years <= LEAK_ESTIMATE_MAX_YEARS)
+    ):
+      return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
+    if statistic and statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
+      return Response(
+        {'error': f'Estadistic invalid "{statistic}". Opcions: {", ".join(LEAK_ESTIMATE_STATISTIC_CHOICES)}'},
+        status=status.HTTP_400_BAD_REQUEST,
+      )
+
+    contract = Contract.objects.filter(id=contract_id).first()
+    if not contract:
+      return Response({'error': _('Contracte no trobat')}, status=status.HTTP_404_NOT_FOUND)
+    supply_point = None
+    if supply_point_id:
+      supply_point = SupplyPoint.objects.filter(id=supply_point_id).first()
+      if not supply_point:
+        return Response({'error': _('Punt de subministrament no trobat')}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+      estimate = get_leak_estimate(
+        contract, supply_point, reading_date, consumption_days, consumption,
+        years_back=years, statistic=statistic,
+      )
+    except (OverflowError, ValueError):
+      return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
+    if estimate is None:
+      return Response({'error': _("No hi ha prou historial de lectures per calcular el consum habitual")},
+                      status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+    return Response(estimate)
 
   @action(detail=False, methods=['post'], url_path='check-allow-period')
   def check_allow_ny_period(self, request):

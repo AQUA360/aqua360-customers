@@ -9,6 +9,7 @@ from django.core.files.base import ContentFile
 from coredata.serializers import AddressSerializer, PersonCardSerializer
 from documentmanager.utils.sign_certificate_service import sign_pdf
 from service.models import Exploitation
+from service.utils.exploitation_logo import exploitation_logo_source
 from django.conf import settings
 from django.core.files.storage import default_storage
 import uuid
@@ -66,6 +67,9 @@ def getTerminationDocument(instance, request=None):
     holder = PersonCardSerializer(instance.contract.holder, context=context).data if instance.contract.holder else None
     person = PersonCardSerializer(instance.person, context=context).data if instance.person else None
     supply_address = AddressSerializer(instance.contract.supply_point_default.address).data if instance.contract.supply_point_default.address else None
+    # Variable pròpia i no `exploitation_image`: algunes plantilles personalitzades
+    # ja la fan servir i no han de canviar.
+    exploitation_logo = exploitation_logo_source(exploitation)
     main_color = '#000000'
     try:
         main_color = ConfigProject.objects.get(token='invoice_main_color').value
@@ -89,6 +93,7 @@ def getTerminationDocument(instance, request=None):
     html_content = render_to_string('contract_termination_template.html', {
       'main_color': main_color, 'company': company, 'request': instance,
       'city': city, 'holder': holder, 'person': person, 'logo': logo, 'signed_image': signed_image,
+      'exploitation_logo': exploitation_logo,
       'last_readings': last_readings, 'supply_address': supply_address, 'today': today
       })
     pdf_buffer = BytesIO()
