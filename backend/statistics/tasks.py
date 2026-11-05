@@ -344,6 +344,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
     generate_wallet_unpaid_detailed_summary, generate_wallet_unpaid_summary, generate_wallet_all_unpaid_summary, generate_total_customers_debt_summary,
     generate_sgt_txt_report, generate_pending_invoices_values_report
   )
+  from statistics.utils.report_wallet_debt_balance_service import generate_wallet_debt_balance_at_date_report
   from statistics.utils.report_contract_export_service import generate_contracts_export_report
   from statistics.utils.report_contract_invoice_reading_summary_service import (
       generate_contract_invoice_reading_summary_report,
@@ -392,6 +393,7 @@ def execute_report(generator_func_name, report_data, task=None, skip_general_rep
     'wallet_unpaid_detailed_summary': generate_wallet_unpaid_detailed_summary,
     'wallet_unpaid_summary': generate_wallet_unpaid_summary,
     'wallet_all_unpaid_summary': generate_wallet_all_unpaid_summary,
+    'wallet_debt_balance_at_date_report': generate_wallet_debt_balance_at_date_report,
     'order_time_summary': generate_order_time_summary,
     'detailed_billing_summary': generate_detailed_billing_summary,
     'billing_summary_by_supply_type': generate_billing_summary_by_supply_type,

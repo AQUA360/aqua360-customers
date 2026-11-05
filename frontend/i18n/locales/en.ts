@@ -3156,6 +3156,8 @@ export default {
     global_filters: 'Global filters',
     report_type: 'Report type',
     select_dates: 'Select dates',
+    cutoff_date: 'Cutoff date',
+    cutoff_date_required: 'Select the cutoff date',
     global_filters_info: 'The global filters on the right are automatically updated when configuring a report to maintain consistency.',
     error_loading_reports: 'Error loading the list of available reports.',
     error_triggering_report: 'Error triggering report generation.',

@@ -481,7 +481,7 @@
     if (formData.model_347_year !== undefined) model347Year.value = formData.model_347_year;
 
     // 2. Validar que la selecció és correcta
-    if (!isValid()) return;
+    if (!isValid(report, formData)) return;
 
     // 3. Establir l'estat de descàrrega asíncrona
     downloading.value = report.id;
@@ -516,6 +516,7 @@
 
     const payload = {
       date_range: formData.date_range || dateRange.value || null,
+      cutoff_date: reportUsesCutoffDate(report) ? toLocalDateString(formData.cutoff_date) : null,
       start_date: (formData.date_range && formData.date_range[0])
         ? new Date(formData.date_range[0]).toISOString().split('T')[0]
         : (dateRange.value && dateRange.value[0] ? new Date(dateRange.value[0]).toISOString().split('T')[0] : null),
@@ -551,6 +552,13 @@
       account_type: account_type,
       accounting_type: account_type
     };
+
+    // Amb data de tall, el període global no aplica: no s'envia perquè no surti als filtres.
+    if (reportUsesCutoffDate(report)) {
+      payload.date_range = null;
+      payload.start_date = null;
+      payload.end_date = null;
+    }
 
     try {
       // 6. Cridar l'endpoint genèric de trigger del back-end passant el ID de l'informe!
@@ -659,7 +667,26 @@
     }
   }
   
-  const isValid = () => {
+  // Data local en format AAAA-MM-DD (toISOString passaria a UTC i podria canviar el dia).
+  const toLocalDateString = (value) => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  const reportUsesCutoffDate = (report) => (report?.required_fields || []).includes('cutoff_date');
+
+  const isValid = (report = null, formData = {}) => {
+    // Els informes a data de tall només necessiten la data del seu formulari.
+    if (reportUsesCutoffDate(report)) {
+      if (!formData.cutoff_date) {
+        toast.warning(t('reports_block.cutoff_date_required'))
+        return false
+      }
+      return true
+    }
     if (
       billingObjects.value.length == 0 &&
       dateRange.value == null &&

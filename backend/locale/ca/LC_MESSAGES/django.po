@@ -6279,3 +6279,15 @@ msgstr "Canvi de nom"
 #: documentmanager/utils/export_registry.py
 msgid "Nova alta"
 msgstr "Nova alta"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Saldo positiu"
+msgstr "Saldo positiu"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Deute"
+msgstr "Deute"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Cal indicar una data de tall."
+msgstr "Cal indicar una data de tall."
