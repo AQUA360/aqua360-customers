@@ -355,7 +355,9 @@ const downloadSEPADocument = async (document_ids) => {
     if (document_ids.length === 1) {
       // Una sola remesa: es descarrega el fitxer directament, sense zip
       const document_file = await $DocumentManagerApiService.getDetail(document_ids[0]);
-      blob = await $DocumentManagerApiService.viewDocument(document_ids[0]);
+      const file = await $DocumentManagerApiService.viewDocument(document_ids[0]);
+      // Segons el servei d'emmagatzematge, un XML pot arribar com a text i no com a Blob
+      blob = file instanceof Blob ? file : new Blob([file], { type: 'application/xml' });
       download_name = document_file.document_name;
     } else {
       const file = await $DocumentManagerApiService.downloadDocuments({ doc_ids: document_ids });
