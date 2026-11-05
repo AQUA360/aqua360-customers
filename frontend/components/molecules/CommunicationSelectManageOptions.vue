@@ -8,6 +8,8 @@ import BillingDetail from './BillingDetail.vue';
 import ClaimRequestDetail from './ClaimRequestDetail.vue';
 import SEPARemittanceDetailMinimal from './SEPARemittanceDetailMinimal.vue';
 import SEPARemittanceList from '../organisms/SEPARemittanceList.vue';
+import SEPARemittanceReturnDetailMinimal from './SEPARemittanceReturnDetailMinimal.vue';
+import SEPARemittanceReturnSelectList from '../organisms/SEPARemittanceReturnSelectList.vue';
 import SupplyCutDetail from './SupplyCutDetail.vue';
 import AddSupplyCut from './AddSupplyCut.vue';
 
@@ -28,12 +30,15 @@ const { $CommunicationApiService } = useNuxtApp();
 const manage_option = ref('billing');
 const selected_option_id = ref(null);
 const objects = ref([]);
+// Retorn SEPA: se'n poden triar diversos alhora; viatgen com a "id1,id2,..."
+const selected_return_ids = ref([]);
 
 const currentManageOption = computed({
   get: () => manage_option.value,
   set: (value) => {
     if (manage_option.value !== value) {
       selected_option_id.value = null;
+      selected_return_ids.value = [];
       objects.value = [];
     }
     manage_option.value = value;
@@ -63,6 +68,12 @@ const itemClicked = function (item) {
   selected_option_id.value = item.id;
   objects.value = [item];
   closeSubRegion();
+}
+
+const returnItemClicked = function (item) {
+  const ids = selected_return_ids.value;
+  selected_return_ids.value = ids.includes(item.id) ? ids.filter(id => id !== item.id) : [...ids, item.id];
+  selected_option_id.value = selected_return_ids.value.length ? selected_return_ids.value.join(',') : null;
 }
 
 const closeSubRegion = function () {
@@ -187,6 +198,31 @@ onMounted(() => {
         </div>
       </div>
       <hr />
+      <div class="my-2">
+        <div class="flex items-center gap-2 mb-2">
+          <input type="radio" v-model="currentManageOption" value="sepa_return" />
+          <abbr :title="t('informative_block.info_comm_sepa_return')">
+            <label class="font-medium text-slate-500">{{ t('billing_block.return_sepa') }}</label>
+          </abbr>
+        </div>
+        <ButtonSeleccio v-if="!selected_option_id || (currentManageOption != 'sepa_return' && selected_option_id)"
+          :disabled="currentManageOption != 'sepa_return'"
+          @click="showDetail('SEPAReturnForm', selected_option_id)" class="py-3 mx-2">
+          <Icon name="fa6-regular:hand-pointer" class="text-slate-500" />
+          {{ $t('reports_block.select_sepa_return') }}
+        </ButtonSeleccio>
+        <div v-else class="p-3 bg-green-50 m-2 group relative">
+          <div class="flex flex-col gap-2">
+            <SEPARemittanceReturnDetailMinimal v-for="returnId in selected_return_ids" :key="returnId"
+              :return_id="returnId" />
+          </div>
+          <button @click="showDetail('SEPAReturnForm', selected_option_id)"
+            class="absolute border border-slate-300 top-1 right-1 bg-white h-6 w-6 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-slate-200 transition-all duration-200 ease">
+            <Icon name="fa6-solid:pencil" class="text-slate-500" />
+          </button>
+        </div>
+      </div>
+      <hr />
       <div class="flex flex-row-reverse mt-4">
         <button
           @click="search"
@@ -216,6 +252,8 @@ onMounted(() => {
           @item-clicked="itemClicked" :multiple="false" />
         <SEPARemittanceList v-if="showRegionDetailComponent == 'SEPARemittanceForm'" :selected_item="selectedRemittance"
           @item-clicked="itemClicked" :allow_select="true" />
+        <SEPARemittanceReturnSelectList v-if="showRegionDetailComponent == 'SEPAReturnForm'"
+          :selected_ids="selected_return_ids" @item-clicked="returnItemClicked" />
       </div>
     </div>
   </div>

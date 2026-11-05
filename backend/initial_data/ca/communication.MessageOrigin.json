@@ -43,5 +43,14 @@
             "name": "Tall de subministrament",
             "position": 5
         }
+    },
+    {
+        "model": "communication.messageorigin",
+        "pk": 6,
+        "fields": {
+            "token": "sepa_return",
+            "name": "Retorn SEPA",
+            "position": 6
+        }
     }
 ]

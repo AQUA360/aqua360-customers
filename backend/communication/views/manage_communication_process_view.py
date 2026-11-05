@@ -12,6 +12,7 @@ from claimrequest.models import ClaimRequestPayment
 from celery.result import AsyncResult
 from communication.models import Communication, CommunicationProcess
 from communication.tasks import get_communication_process_data
+from communication.utils.sepa_return_service import get_sepa_return_pending_payments
 from communication.serializers.communication_serializer import CommunicationListSerializer, CommunicationMinimalSerializer
 from contract.models import Contract
 from coredata.models import Address, ConfigProject, Person, PersonAddress, PersonContact
@@ -1218,14 +1219,10 @@ def filter_by_claim_request(filter_data, group_same, excluded=None):
 
     return persons
 
-def filter_by_sepa_remittance(filter_data, group_same):
+def _sepa_payment_filters(filter_data):
+    """Filtres del pas 1 sobre els rebuts d'una remesa o d'una devolució SEPA."""
     filters = Q()
-    object_id = filter_data.get('id', None)
-    filters &= Q(remittances__id=object_id)
-    message_types = filter_data.get('message_types', [])
     statuses = filter_data.get('statuses', [])
-    commitment_statuses = filter_data.get('commitment_statuses', [])
-    payment_types = filter_data.get('payment_types', [])
     payment_types = filter_data.get('payment_types', [])
     issue_start_date = filter_data.get('issue_start_date', None)
     issue_end_date = filter_data.get('issue_end_date', None)
@@ -1233,49 +1230,33 @@ def filter_by_sepa_remittance(filter_data, group_same):
     expire_end_date = filter_data.get('expire_end_date', None)
     return_start_date = filter_data.get('return_start_date', None)
     return_end_date = filter_data.get('return_end_date', None)
-    
+
     if len(statuses) > 0:
-        filters &= Q(payment__invoice__status__id__in=statuses)
+        filters &= Q(invoice__status__id__in=statuses)
     if len(payment_types) > 0:
-        filters &= Q(payment__payment_type_token__in=payment_types)
+        filters &= Q(payment_type_token__in=payment_types)
     if issue_start_date:
-        issue_date_filter = Q()
-        issue_date_filter |= Q(payment__invoice__sent_at__gte=issue_start_date)
-        filters &= issue_date_filter
-        
+        filters &= Q(invoice__sent_at__gte=issue_start_date)
     if issue_end_date:
-        issue_date_filter = Q()
-        issue_date_filter |= Q(payment__invoice__sent_at__lte=issue_end_date)
-        filters &= issue_date_filter
+        filters &= Q(invoice__sent_at__lte=issue_end_date)
     if expire_start_date:
-        expire_date_filter = Q()
-        expire_date_filter |= Q(payment__invoice__due_date__gte=expire_start_date)
-        filters &= expire_date_filter
-    
+        filters &= Q(invoice__due_date__gte=expire_start_date)
     if expire_end_date:
-        expire_date_filter = Q()
-        expire_date_filter |= Q(payment__invoice__due_date__lte=expire_end_date)
-        expire_date_filter |= Q(payment__commitment_deposit__due_date__lte=expire_end_date)
-        filters &= expire_date_filter
-    
+        filters &= Q(invoice__due_date__lte=expire_end_date) | Q(commitment_deposit__due_date__lte=expire_end_date)
     if return_start_date:
-        return_date_filter = Q()
-        return_date_filter |= Q(payment__invoice__return_date__gte=return_start_date)
-        filters &= return_date_filter
-    
+        filters &= Q(reject_date__gte=return_start_date)
     if return_end_date:
-        return_date_filter = Q()
-        return_date_filter |= Q(payment__invoice__return_date__lte=return_end_date)
-        filters &= return_date_filter
-    
-    # Get all payments belonging to the specified remittance and filters
-    payments = Payment.objects.filter(filters).select_related(
+        filters &= Q(reject_date__lte=return_end_date)
+    return filters
+
+
+def _persons_from_payments(payments, filter_data, group_same):
+    """Titulars dels contractes dels rebuts (directe, per factura o per compromís)."""
+    payments = payments.select_related(
         'contract',
         'invoice__contract',
         'commitment_deposit__contract',
     )
-
-    # Collect related contracts from different paths (direct, invoice, commitment)
     contract_ids = set()
     for payment in payments:
         if payment.contract_id:
@@ -1285,19 +1266,31 @@ def filter_by_sepa_remittance(filter_data, group_same):
         if payment.commitment_deposit and payment.commitment_deposit.contract_id:
             contract_ids.add(payment.commitment_deposit.contract_id)
 
-    contracts = Contract.objects.filter(id__in=contract_ids)
-    persons = []
-    if len(contracts) > 0:
-        filter_contract_data = {
-            'company': filter_data.get('company'),
-            'message_types': message_types,
-            'contracts': [{'id': contract.id} for contract in contracts],
-            'person_type': ['holder'],
-            'address_type': 'contract'
-        }
-        persons = filter_by_contract(filter_contract_data, group_same)
-    
-    return persons
+    if not contract_ids:
+        return []
+    filter_contract_data = {
+        'company': filter_data.get('company'),
+        'message_types': filter_data.get('message_types', []),
+        'contracts': [{'id': contract_id} for contract_id in contract_ids],
+        'person_type': ['holder'],
+        'address_type': 'contract'
+    }
+    return filter_by_contract(filter_contract_data, group_same)
+
+
+def filter_by_sepa_remittance(filter_data, group_same):
+    payments = Payment.objects.filter(
+        Q(remittances__id=filter_data.get('id', None)) & _sepa_payment_filters(filter_data)
+    )
+    return _persons_from_payments(payments, filter_data, group_same)
+
+
+def filter_by_sepa_return(filter_data, group_same):
+    """Titulars amb rebuts pendents d'una o diverses devolucions SEPA."""
+    payments = get_sepa_return_pending_payments(filter_data.get('id', None)).filter(
+        _sepa_payment_filters(filter_data)
+    )
+    return _persons_from_payments(payments, filter_data, group_same)
 
 # Motius pels quals un canal triat al pas 1 no pot arribar al destinatari. Es
 # retornen al wizard i es desen al procés (CommunicationProcessExclusion) perquè
