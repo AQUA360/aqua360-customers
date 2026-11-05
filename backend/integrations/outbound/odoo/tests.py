@@ -26,6 +26,17 @@ from integrations.outbound.odoo.mappers import (
 )
 
 
+def _build_company_bank(**overrides):
+    bank = MagicMock()
+    bank.name = "Banc Sabadell"
+    company_bank = MagicMock()
+    company_bank.token = "BANC-SABADELL"
+    company_bank.bank = bank
+    for key, value in overrides.items():
+        setattr(company_bank, key, value)
+    return company_bank
+
+
 def _build_invoice(**overrides):
     invoice = MagicMock()
     invoice.token = "2026Q3-000123"
@@ -45,6 +56,7 @@ def _build_invoice(**overrides):
     invoice.contract = None
     invoice.contract_request = None
     invoice.contract_termination = None
+    invoice.payment_company_bank = _build_company_bank()
 
     serie = MagicMock()
     serie.token = "VENT-AGUA"
@@ -54,6 +66,9 @@ def _build_invoice(**overrides):
     product = MagicMock()
     product.token = "CONS-AGUA-B1"
     product.name = "Consum aigua bloc 1"
+    product.company = MagicMock()
+    product.company.name = "Aigües Exemple"
+    product.company.vat = "B12345678"
 
     tax = MagicMock()
     tax.token = "IVA10"
@@ -150,6 +165,10 @@ class OdooMappersTest(TestCase):
         self.assertEqual(payload["journal_id"]["aqua_id"], "VENT-AGUA")
         self.assertEqual(payload["payment_mode_id"]["id"], "DIRECT_DEBIT")
         self.assertEqual(payload["invoice_line_ids"][0]["tax_ids"], ["IVA10"])
+        self.assertEqual(
+            payload["invoice_line_ids"][0]["product_id"]["company"],
+            {"name": "Aigües Exemple", "vat": "B12345678"},
+        )
         self.assertEqual(payload["amount_total"], 27.50)
         self.assertEqual(payload["partner_id"]["aqua_id"], "ABON-004521")
         self.assertEqual(payload["partner_id"]["name"], "Joan Puig Vidal")
@@ -213,6 +232,8 @@ class OdooMappersTest(TestCase):
         self.assertEqual(payload["aqua_id"], "MOV-0007-000123")
         self.assertEqual(payload["payment_type"], "inbound")
         self.assertEqual(payload["reconcile"]["invoice_aqua_id"], "2026Q3-000123")
+        self.assertEqual(payload["journal_id"]["aqua_id"], "BANC-SABADELL")
+        self.assertEqual(payload["journal_id"]["name"], "Banc Sabadell")
         self.assertEqual(payload["amount"], 27.50)
 
     def test_map_commitment_deposit_create_to_odoo(self):
@@ -259,7 +280,11 @@ class OdooMappersTest(TestCase):
         self.assertEqual(payload["reconcile"]["invoice_aqua_id"], "2026Q3-000123")
         self.assertEqual(payload["memo"], "Cobrament rebut FA2026/000123")
 
-    def test_map_payment_movement_without_invoice(self):
+    @patch(
+        "integrations.outbound.odoo.mappers._default_main_company_bank",
+        return_value=_build_company_bank(token="BANC-DEFAULT"),
+    )
+    def test_map_payment_movement_without_invoice(self, _mock_default_bank):
         movement = _build_movement()
         movement.payoff_invoice = None
         movement.payment.invoice = None
@@ -276,6 +301,35 @@ class OdooMappersTest(TestCase):
         self.assertEqual(payload["partner_id"]["vat"], "12345678Z")
         self.assertEqual(payload["amount"], 27.50)
         self.assertEqual(payload["memo"], "Cobrament rebut")
+        self.assertEqual(payload["journal_id"]["aqua_id"], "BANC-DEFAULT")
+
+    def test_map_payment_movement_falls_back_to_main_company_bank(self):
+        movement = _build_movement()
+        movement.payment_remittance = None
+        movement.payment.invoice.payment_company_bank = None
+        default_bank = _build_company_bank(token="BANC-MAIN")
+        default_bank.bank.name = "Banc principal"
+
+        with patch(
+            "integrations.outbound.odoo.mappers._default_main_company_bank",
+            return_value=default_bank,
+        ):
+            payload = map_payment_movement_to_odoo(movement)
+
+        self.assertEqual(payload["journal_id"]["aqua_id"], "BANC-MAIN")
+        self.assertEqual(payload["journal_id"]["name"], "Banc principal")
+
+    def test_map_payment_movement_missing_company_bank_raises(self):
+        movement = _build_movement()
+        movement.payment_remittance = None
+        movement.payment.invoice.payment_company_bank = None
+
+        with patch(
+            "integrations.outbound.odoo.mappers._default_main_company_bank",
+            return_value=None,
+        ):
+            with self.assertRaises(OdooMappingError):
+                map_payment_movement_to_odoo(movement)
 
     def test_is_movement_pushable_false_when_sign_unknown(self):
         movement = _build_movement(is_positive=None)

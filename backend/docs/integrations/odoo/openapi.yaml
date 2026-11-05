@@ -474,6 +474,20 @@ components:
         product_id:
           allOf:
             - $ref: "#/components/schemas/AquaRef"
+            - type: object
+              properties:
+                company:
+                  type: object
+                  description: |
+                    Empresa del producto en Aqua360 (`Product.company`).
+                    No se crea al vuelo.
+                  properties:
+                    name:
+                      type: string
+                      example: Aigües Exemple
+                    vat:
+                      type: string
+                      example: B12345678
           description: Producto. `get_or_create` por `aqua_id`.
         name:
           type: string

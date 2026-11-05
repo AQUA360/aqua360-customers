@@ -469,22 +469,24 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             svc = get_send_batch_service(batch)
         except SendBatchProviderError:
+            logger.exception(
+                "Failed to resolve send batch service for payload preview, batch id=%s",
+                batch.id,
+            )
             return Response(
                 {"detail": "No s'ha pogut inicialitzar el servei d'enviament."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-            logger.exception("Failed to build send payload preview for batch id=%s", batch.id)
+        try:
+            payload = svc.build_send_payload_preview(batch, aqua_ids)
+        except svc.api_error:
+            logger.exception(
+                "Failed to build send payload preview for batch id=%s", batch.id
+            )
             return Response(
                 {"detail": "No s'ha pogut generar la previsualització del payload."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-            payload = svc.build_send_payload_preview(batch, aqua_ids)
-        except svc.api_error as exc:
-            logger.exception("Failed to build send payload preview for batch id=%s", batch.id)
-            return Response(
-                 {"detail": "No s'ha pogut generar la previsualització del payload."},
-                 status=status.HTTP_400_BAD_REQUEST,
-             )
         return Response(payload, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="resend-errors")
@@ -515,15 +517,6 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
                         f"relacionat: {blocked_selected}"
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-            logger.exception(
-                "Failed to resolve send batch service for batch_id=%s",
-                batch.id,
-                exc_info=exc,
-            )
-            return Response(
-                {"detail": "No s'ha pogut preparar el reenviament."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:

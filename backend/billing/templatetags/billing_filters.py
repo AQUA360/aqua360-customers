@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from django import template
 from django.utils import formats
@@ -282,18 +282,36 @@ BILLER_INITIAL_MONTH = {
 }
 
 
-def _invoice_period_anchor(invoice):
-    """(any, mes) que situa la factura dins d'un cicle del facturador."""
+def _invoice_period_anchor(invoice, interval_months):
+    """(any, mes) que situa la factura dins d'un cicle del facturador.
+
+    Mana el període de les lectures, no el mes d'emissió: una factura emesa
+    a l'octubre amb lectures de juny a setembre és del tercer trimestre. Es
+    pren el punt mig entre la lectura anterior i l'última, perquè una lectura
+    presa els primers dies del cicle següent no hi faci saltar la factura.
+    La lectura anterior es limita a un cicle enrere: si fa anys que no es
+    llegia, el punt mig cauria en un cicle antic.
+    Sense lectures es fa servir billing_period_year/month.
+    """
+    readings = [r for r in invoice.readings.all() if getattr(r, 'reading_date', None)]
+    if readings:
+        end = max(r.reading_date for r in readings)
+        previous_dates = [
+            r.previous_reading.reading_date for r in readings
+            if r.previous_reading_id and r.previous_reading
+            and r.previous_reading.reading_date
+            and r.previous_reading.reading_date < end
+        ]
+        anchor = end
+        if previous_dates:
+            cycle_start = end - timedelta(days=round(interval_months * 365 / 12))
+            start = max(min(previous_dates), cycle_start)
+            anchor = start + (end - start) / 2
+        return anchor.year, anchor.month
     year = getattr(invoice, 'billing_period_year', None)
     month = getattr(invoice, 'billing_period_month', None)
     if year and month and 1 <= int(month) <= 12:
         return int(year), int(month)
-    reading_dates = [
-        r.reading_date for r in invoice.readings.all() if getattr(r, 'reading_date', None)
-    ]
-    if reading_dates:
-        last = max(reading_dates)
-        return last.year, last.month
     return None
 
 
@@ -333,8 +351,8 @@ def _format_period_bounds(start_month, start_year, end_month, end_year):
 def invoice_biller_period(invoice):
     """Període del facturador, en format Abril-Juny/2026.
 
-    Surt de period_type i initial_month. El mes de la factura només indica
-    quin cicle és. Sense facturador al lot la fila no es pinta. No
+    Surt de period_type i initial_month. Les lectures de la factura només
+    indiquen quin cicle és. Sense facturador al lot la fila no es pinta. No
     substitueix la variable de context `billing_period`.
     """
     if invoice is None:
@@ -346,7 +364,10 @@ def invoice_biller_period(invoice):
         biller = getattr(getattr(invoice, 'billing', None), 'biller', None)
         if biller is None:
             return ""
-        anchor = _invoice_period_anchor(invoice)
+        interval = PERIOD_TYPE_MONTHS.get(getattr(biller, 'period_type', None))
+        if not interval:
+            return ""
+        anchor = _invoice_period_anchor(invoice, interval)
         if not anchor:
             return ""
         bounds = _cycle_bounds_from_biller(anchor[0], anchor[1], biller)

@@ -19,7 +19,7 @@ Autenticación en `json2`: cabecera `Authorization: Bearer <ODOO_API_KEY>`. La c
 
 ## Llamadas
 
-Una factura o un pago por petición (`vals_list` de un solo elemento). La rectificativa usa el mismo modelo que la factura; `move_type` (`out_invoice` / `out_refund`) va dentro del JSON.
+Una factura o un pago por petición (`vals_list` de un solo elemento). La rectificativa usa el mismo modelo que la factura; `move_type` (`out_invoice` / `out_refund`) va dentro del JSON. En cada línea, `product_id.company` lleva el `name` y el `vat` de la empresa del producto (`Product.company`).
 
 - `POST /json/2/x_aqua_invoice/create`
 - `POST /json/2/x_aqua_payment/create`
