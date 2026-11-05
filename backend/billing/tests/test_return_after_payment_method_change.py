@@ -349,7 +349,7 @@ class TestChangePaymentMethodOfPaidInvoice(ReturnAfterPaymentMethodChangeBase):
 
 class TestSecondReturnAfterSameDayRepresentation(ReturnAfterPaymentMethodChangeBase):
     """Rebut retornat, tornat a presentar el mateix dia de la devolució i retornat una segona vegada
-    pel mateix motiu (Sant Guim de la Plana, FC/3826/0039)."""
+    pel mateix motiu."""
 
     def setUp(self):
         super().setUp()
