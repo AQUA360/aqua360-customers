@@ -3855,6 +3855,7 @@ export default {
     confirm_generate_batch: 'Segur que vols generar aquest lot de facturació?',
     confirm_generate_reading_batch: 'Segur que vols generar aquest lot de lectures?',
     confirm_revert_reading_batch: 'Segur que vols tornar a la gestió de lectures? El lot tornarà a l\'estat de processament per poder corregir-lo i tornar a carregar-lo.',
+    confirm_return_reading_batch_to_pending: 'Segur que vols tornar a la configuració? El lot deixarà d\'estar pendent de processar i tornarà a estar pendent.',
     confirm_validate_batch: 'Segur que vols validar aquest lot de factures?',
     confirm_recalculate_smart: 'Segur que vols recalcular aquesta factura de forma intel·ligent? Es tindran en compte les modificacions de lectures de control.',
     confirm_validate_readings_batch: 'Segur que vols validar aquestes lectures?',

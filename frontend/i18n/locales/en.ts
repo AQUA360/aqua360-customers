@@ -3719,6 +3719,7 @@ export default {
     confirm_generate_batch: 'Are you sure you want to generate this billing batch?',
     confirm_generate_reading_batch: 'Are you sure you want to generate this reading batch?',
     confirm_revert_reading_batch: 'Are you sure you want to go back to readings management? The batch will return to processing status so it can be corrected and reloaded.',
+    confirm_return_reading_batch_to_pending: 'Are you sure you want to go back to setup? The batch will leave pending processing and return to pending.',
     confirm_validate_batch: 'Are you sure you want to validate this invoice batch?',
     confirm_recalculate_smart: 'Are you sure you want to smart-recalculate this invoice? Control reading modifications will be taken into account.',
     confirm_validate_readings_batch: 'Are you sure you want to validate these readings?',

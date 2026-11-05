@@ -3856,6 +3856,7 @@ supply_cut_actions:   {
     confirm_generate_batch: '¿Seguro que quieres generar este lote de facturación?',
     confirm_generate_reading_batch: '¿Seguro que quieres generar este lote de lecturas?',
     confirm_revert_reading_batch: '¿Seguro que quieres volver a la gestión de lecturas? El lote volverá al estado de procesamiento para poder corregirlo y volver a cargarlo.',
+    confirm_return_reading_batch_to_pending: '¿Seguro que quieres volver a la configuración? El lote dejará de estar pendiente de procesar y volverá a estar pendiente.',
     confirm_validate_batch: '¿Seguro que quieres validar este lote de facturas?',
     confirm_recalculate_smart: '¿Estás seguro de que quieres recalcular esta factura de forma inteligente? Se tendrán en cuenta las modificaciones de lecturas de control.',
     confirm_validate_readings_batch: '¿Seguro que quieres validar estas lecturas?',

@@ -15,6 +15,7 @@ from billing.permissions import ReadingPermission
 from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint
 from billing.utils.reading_filters import PENDING_READING_FILTER, BILLED_READING_FILTER
+from billing.utils.reading_batch_return import ReturnToPendingError, return_reading_batch_to_pending
 from billing.utils.reading_batch_service import get_batch_supply_counts, get_setup_filter_supply_point_ids
 import logging
 
@@ -345,8 +346,20 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
         reading_batch.save(update_fields=['assign_readings_task_id'])
         
         return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
-        
-        
+
+    @action(detail=True, methods=['post'], url_path='return-to-pending')
+    def return_to_pending(self, request, pk=None):
+        """Pas 3 sense lectures: torna el lot a «Pendent» perquè es pugui reconfigurar."""
+        try:
+            reading_batch = return_reading_batch_to_pending(pk)
+        except ReturnToPendingError as exc:
+            return Response({"error": exc.message}, status=exc.status_code)
+
+        return Response(
+            {"status": ReadingBatchStatusSerializer(reading_batch.status).data},
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=['put'], url_path='update-force-manual')
     def update_force_manual_readings(self, request, pk=None):
         reading_batch = ReadingBatch.objects.get(id=pk)
