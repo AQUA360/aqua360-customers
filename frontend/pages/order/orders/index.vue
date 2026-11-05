@@ -499,7 +499,7 @@ const checkRouteQuery = () => {
   const rawId = route.query?.id;
   if (rawId === undefined || rawId === null || rawId === '') return;
   const id = Number(rawId);
-  if (!Number.isInteger(id)) return;
+  if (!Number.isSafeInteger(id) || id <= 0) return;
   showDetail(id);
 }
 
