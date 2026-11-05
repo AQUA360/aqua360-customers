@@ -110,7 +110,7 @@ onMounted(getData);
         <div v-else-if="error">
             <p>Error: {{ error.message }}</p>
         </div>
-        <div v-else>
+        <div v-else class="overflow-y-auto" style="max-height: calc(100vh - 240px);">
             <button v-for="item in items" :key="item.id" type="button"
                 class="grid gap-3 w-full text-left text-base border-b items-center hover:bg-slate-100"
                 :class="{ 'bg-yellow-50': selected_ids.includes(item.id) }"

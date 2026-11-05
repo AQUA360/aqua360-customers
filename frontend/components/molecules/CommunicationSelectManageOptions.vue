@@ -40,6 +40,8 @@ const currentManageOption = computed({
       selected_option_id.value = null;
       selected_return_ids.value = [];
       objects.value = [];
+      // El selector obert és el de l'opció anterior: un clic hi assignaria un id d'una altra entitat
+      if (SubRegion.value) closeSubRegion();
     }
     manage_option.value = value;
   }

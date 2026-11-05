@@ -14,7 +14,7 @@ from communication.models import Communication, CommunicationProcess
 from communication.tasks import get_communication_process_data
 from communication.utils.sepa_return_service import get_sepa_return_pending_payments
 from communication.serializers.communication_serializer import CommunicationListSerializer, CommunicationMinimalSerializer
-from contract.models import Contract
+from contract.models import Contract, PaymentType
 from coredata.models import Address, ConfigProject, Person, PersonAddress, PersonContact
 from coredata.utils.phone_utils import is_mobile_phone
 from service.models import SupplyCut, SupplyPoint
@@ -1234,13 +1234,15 @@ def _sepa_payment_filters(filter_data):
     if len(statuses) > 0:
         filters &= Q(invoice__status__id__in=statuses)
     if len(payment_types) > 0:
-        filters &= Q(payment_type_token__in=payment_types)
+        # El wizard envia ids de PaymentType; el rebut en desa el token
+        payment_type_tokens = PaymentType.objects.filter(id__in=payment_types).values_list('token', flat=True)
+        filters &= Q(payment_type_token__in=list(payment_type_tokens))
     if issue_start_date:
-        filters &= Q(invoice__sent_at__gte=issue_start_date)
+        filters &= Q(invoice__issue_date__gte=issue_start_date)
     if issue_end_date:
-        filters &= Q(invoice__sent_at__lte=issue_end_date)
+        filters &= Q(invoice__issue_date__lte=issue_end_date)
     if expire_start_date:
-        filters &= Q(invoice__due_date__gte=expire_start_date)
+        filters &= Q(invoice__due_date__gte=expire_start_date) | Q(commitment_deposit__due_date__gte=expire_start_date)
     if expire_end_date:
         filters &= Q(invoice__due_date__lte=expire_end_date) | Q(commitment_deposit__due_date__lte=expire_end_date)
     if return_start_date:
@@ -1250,7 +1252,7 @@ def _sepa_payment_filters(filter_data):
     return filters
 
 
-def _persons_from_payments(payments, filter_data, group_same):
+def _persons_from_payments(payments, filter_data, group_same, excluded=None):
     """Titulars dels contractes dels rebuts (directe, per factura o per compromís)."""
     payments = payments.select_related(
         'contract',
@@ -1275,22 +1277,22 @@ def _persons_from_payments(payments, filter_data, group_same):
         'person_type': ['holder'],
         'address_type': 'contract'
     }
-    return filter_by_contract(filter_contract_data, group_same)
+    return filter_by_contract(filter_contract_data, group_same, excluded=excluded)
 
 
-def filter_by_sepa_remittance(filter_data, group_same):
+def filter_by_sepa_remittance(filter_data, group_same, excluded=None):
     payments = Payment.objects.filter(
         Q(remittances__id=filter_data.get('id', None)) & _sepa_payment_filters(filter_data)
     )
-    return _persons_from_payments(payments, filter_data, group_same)
+    return _persons_from_payments(payments, filter_data, group_same, excluded=excluded)
 
 
-def filter_by_sepa_return(filter_data, group_same):
+def filter_by_sepa_return(filter_data, group_same, excluded=None):
     """Titulars amb rebuts pendents d'una o diverses devolucions SEPA."""
     payments = get_sepa_return_pending_payments(filter_data.get('id', None)).filter(
         _sepa_payment_filters(filter_data)
     )
-    return _persons_from_payments(payments, filter_data, group_same)
+    return _persons_from_payments(payments, filter_data, group_same, excluded=excluded)
 
 # Motius pels quals un canal triat al pas 1 no pot arribar al destinatari. Es
 # retornen al wizard i es desen al procés (CommunicationProcessExclusion) perquè

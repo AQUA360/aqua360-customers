@@ -479,15 +479,17 @@ def _create_sepa_payment_files(communications, payment_ids, include_payment_slip
                 print(f"No SEPA payments found for contract {contract.id}")
             for payment in contract_payments:
                 invoice = payment.invoice
-                if invoice and invoice.invoice_file and invoice.id not in attached_invoice_ids:
+                if invoice and invoice.id not in attached_invoice_ids:
+                    # Vinculada encara que no tingui PDF: el missatge en fa servir les dades
                     comm.invoices.add(invoice)
                     attached_invoice_ids.add(invoice.id)
-                    com_files.append(CommunicationFile(
-                        token=generate_token(CommunicationFile, offset=counter),
-                        communication=comm,
-                        file=invoice.invoice_file,
-                    ))
-                    counter += 1
+                    if invoice.invoice_file:
+                        com_files.append(CommunicationFile(
+                            token=generate_token(CommunicationFile, offset=counter),
+                            communication=comm,
+                            file=invoice.invoice_file,
+                        ))
+                        counter += 1
                 if include_payment_slip:
                     try:
                         payment_file, _unused = generate_report_payment_pdf(payment, None, limit_date=limit_date)
@@ -950,7 +952,7 @@ def get_communication_process_data(request_data):
         fixed_filter = fixed_filters.get(entity, None)
         if fixed_filter is None:
             raise ValueError(f"Unknown fixed_data entity: {entity!r}")
-        if fixed_filter in (filter_by_supply_cut, filter_by_claim_request):
+        if fixed_filter in (filter_by_supply_cut, filter_by_claim_request, filter_by_sepa_remittance, filter_by_sepa_return):
             persons = fixed_filter(filter_data, group_same, excluded=excluded)
         else:
             persons = fixed_filter(filter_data, group_same)

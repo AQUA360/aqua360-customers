@@ -28,9 +28,11 @@ def get_sepa_return_pending_payments(sepa_return_ids):
     Els que ja s'han tornat a cobrar (o s'han anul·lat) des de la devolució no
     s'han d'avisar: queden fora tant dels destinataris com dels adjunts.
     """
-    settled_status_tokens = list(ConfigProject.objects.filter(
-        token__in=['payment_status_paid_token', 'payment_status_cancelled_token']
-    ).values_list('value', flat=True))
+    # Sense aquesta configuració s'avisarien rebuts ja cobrats: millor que falli
+    settled_status_tokens = [
+        ConfigProject.objects.get(token=token).value
+        for token in ('payment_status_paid_token', 'payment_status_cancelled_token')
+    ]
     return Payment.objects.filter(
         remittances_returns__id__in=parse_sepa_return_ids(sepa_return_ids),
         is_active=True,
