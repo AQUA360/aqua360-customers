@@ -111,3 +111,33 @@ class ContractProcedureThrottle(DniEnumerationThrottle):
 
     scope = "ov_procedures_contract"
     rate = "35/min"
+
+
+class ContractTerminationProcedureThrottle(DniEnumerationThrottle):
+    """
+    Rate limit for `POST /ov/procedures/contract-termination/`.
+
+    Termination requests are write operations that land in the
+    customer-service queue, and the endpoint answers differently depending on
+    whether a contract token and holder DNI match, so it must not be usable to
+    flood the queue or to probe contract/holder pairs. It has its own scope and
+    the same 35/min rate as the other OV procedure endpoints.
+    """
+
+    scope = "ov_procedures_contract_termination"
+    rate = "35/min"
+
+
+class ContractChangeProcedureThrottle(DniEnumerationThrottle):
+    """
+    Rate limit for `POST /ov/procedures/contract-change/`.
+
+    A change of name creates a termination request, a contract request and
+    payment records in one go, and answers differently depending on whether a
+    contract token and holder DNI match. It must not be usable to flood the
+    customer-service queue or to probe contract/holder pairs. It has its own
+    scope and the same 35/min rate as the other OV procedure endpoints.
+    """
+
+    scope = "ov_procedures_contract_change"
+    rate = "35/min"
