@@ -29,8 +29,10 @@ def return_reading_batch_to_pending(batch_id):
         # Bloqueig de fila: serialitza amb l'inici d'una assignació o estimació
         # (que també bloquegen el lot abans de desar-ne el task_id).
         try:
+            # of=('self',): status és nullable i select_related fa un LEFT JOIN.
+            # PostgreSQL no admet FOR UPDATE sobre el costat nul d'un outer join.
             reading_batch = (
-                ReadingBatch.objects.select_for_update()
+                ReadingBatch.objects.select_for_update(of=('self',))
                 .select_related('status')
                 .get(id=batch_id)
             )
