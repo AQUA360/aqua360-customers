@@ -39,3 +39,4 @@ schwifty==2026.3.0
 django-msgraphbackend==1.0.0
 pgeocode==0.5.0
 django-sql-explorer==5.3.1
+xlrd==2.0.1

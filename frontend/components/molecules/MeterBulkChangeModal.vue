@@ -13,6 +13,7 @@ const emit = defineEmits(['done']);
 const fileInputRef = ref(null);
 const selectedFile = ref(null);
 const preview = ref(null);
+const confirmed = ref(false);
 const loadingPreview = ref(false);
 const loadingConfirm = ref(false);
 const showNotFound = ref(true);
@@ -20,7 +21,7 @@ const showErrors = ref(true);
 const showDuplicates = ref(true);
 
 const hasPreview = computed(() => !!preview.value);
-const canConfirm = computed(() => (preview.value?.stats?.to_change ?? 0) > 0);
+const canConfirm = computed(() => !confirmed.value && (preview.value?.stats?.to_change ?? 0) > 0);
 const duplicateCodes = computed(() => preview.value?.duplicate_codes_in_file ?? []);
 const duplicateCount = computed(() => preview.value?.stats?.duplicate_codes_in_file ?? duplicateCodes.value.length);
 
@@ -35,6 +36,7 @@ const downloadTemplate = () => {
 
 const resetState = () => {
   selectedFile.value = null;
+  confirmed.value = false;
   preview.value = null;
   loadingPreview.value = false;
   loadingConfirm.value = false;
@@ -60,6 +62,7 @@ const handleFileChange = (event) => {
 
 const handleClearFile = () => {
   selectedFile.value = null;
+  confirmed.value = false;
   preview.value = null;
   if (fileInputRef.value) fileInputRef.value.value = '';
 };
@@ -68,9 +71,11 @@ const formatDate = (iso) => (iso ? iso.split('-').reverse().join('/') : '—');
 
 const handlePreview = async () => {
   if (!selectedFile.value || loadingPreview.value) return;
+  const file = selectedFile.value;
   loadingPreview.value = true;
   try {
-    preview.value = await $MeterApiService.bulkChangePreview(selectedFile.value);
+    const result = await $MeterApiService.bulkChangePreview(file);
+    if (selectedFile.value === file) preview.value = result;
   } catch (err) {
     console.error(err);
     preview.value = null;
@@ -85,16 +90,21 @@ const handleConfirm = async () => {
   try {
     const result = await $MeterApiService.bulkChangeConfirm(selectedFile.value);
     const changed = result?.stats?.changed ?? 0;
-    const failed = result?.stats?.failed ?? 0;
+    const failed = Math.max(0, (result?.stats?.total_rows ?? 0) - changed);
     const created = result?.stats?.created ?? 0;
     if (failed > 0) {
       toast.warning(t('service_block.meter_bulk_change_partial_result', { changed, failed }));
+      preview.value = result;
+      showErrors.value = true;
+      showNotFound.value = true;
+      showDuplicates.value = true;
+      confirmed.value = true;
     } else {
       toast.success(created > 0
         ? t('service_block.meter_bulk_change_success_with_created', { count: changed, created })
         : t('service_block.meter_bulk_change_success', { count: changed }));
+      open.value = false;
     }
-    open.value = false;
     emit('done', result);
   } catch (err) {
     console.error(err);
@@ -104,6 +114,7 @@ const handleConfirm = async () => {
 };
 
 const handleBackToUpload = () => {
+  confirmed.value = false;
   preview.value = null;
 };
 </script>
@@ -202,13 +213,13 @@ const handleBackToUpload = () => {
               class="text-xs text-amber-700 mb-3">
               {{ t('service_block.meter_bulk_change_partial_warning') }}
             </p>
-            <p v-else-if="!canConfirm" class="text-xs text-slate-600 mb-3">
+            <p v-else-if="!canConfirm && !confirmed" class="text-xs text-slate-600 mb-3">
               {{ t('service_block.meter_bulk_change_nothing_to_apply') }}
             </p>
 
             <div class="overflow-y-auto flex-1 min-h-0 space-y-4 pr-1">
               <!-- Changes table -->
-              <section v-if="preview.changes?.length">
+              <section v-if="!confirmed && preview.changes?.length">
                 <h3 class="text-sm font-semibold text-slate-700 mb-2">
                   {{ t('service_block.meter_bulk_change_section_changes') }}
                 </h3>

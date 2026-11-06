@@ -26,6 +26,7 @@ from service.utils.meter_bulk_update_service import (
 )
 from service.utils.meter_bulk_change_service import (
     MeterBulkChangeError,
+    MeterBulkChangeValidationError,
     apply_changes,
     build_preview as build_change_preview,
 )
@@ -353,6 +354,8 @@ class MeterViewSet(viewsets.ModelViewSet):
                 apply_changes(uploaded, request.user) if apply
                 else build_change_preview(uploaded)
             )
+        except MeterBulkChangeValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except MeterBulkChangeError as exc:
             logger.exception("Bulk change processing failed: %s", exc)
             return Response(

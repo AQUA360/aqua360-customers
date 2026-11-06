@@ -28,6 +28,7 @@ Decisions:
   - Camps opcionals amb valor que s'ignoren (el comptador ja existeix) => avís.
 """
 import datetime
+import io
 import logging
 import re
 from collections import Counter, defaultdict
@@ -35,6 +36,7 @@ from collections import Counter, defaultdict
 import pandas as pd
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from rest_framework.exceptions import PermissionDenied
 
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
@@ -58,6 +60,10 @@ class MeterBulkChangeError(Exception):
     """Error que impedeix processar el fitxer sencer (format, columnes...)."""
 
 
+class MeterBulkChangeValidationError(MeterBulkChangeError):
+    """Validació del fitxer amb un diagnòstic segur per a l’API."""
+
+
 # --------------------------------------------------------------------------- #
 # Lectura del fitxer i parsers de cel·les
 # --------------------------------------------------------------------------- #
@@ -65,12 +71,12 @@ def _read_file(uploaded):
     name = (getattr(uploaded, 'name', '') or '').lower()
     try:
         if name.endswith('.csv'):
-            df = pd.read_csv(uploaded, sep=None, engine='python', dtype=str,
+            df = pd.read_csv(io.BytesIO(uploaded.read()), sep=None, engine='python', dtype=str,
                              encoding='utf-8-sig', keep_default_na=False)
         elif name.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(uploaded, dtype=str, keep_default_na=False)
         else:
-            raise MeterBulkChangeError("Format no admès. Useu .csv, .xlsx o .xls.")
+            raise MeterBulkChangeValidationError("Format no admès. Useu .csv, .xlsx o .xls.")
     except MeterBulkChangeError:
         raise
     except Exception as exc:
@@ -79,7 +85,7 @@ def _read_file(uploaded):
     df.columns = [str(c).strip().lower() for c in df.columns]
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
-        raise MeterBulkChangeError(f"Falten columnes obligatòries: {', '.join(missing)}.")
+        raise MeterBulkChangeValidationError(f"Falten columnes obligatòries: {', '.join(missing)}.")
     return df
 
 
@@ -225,7 +231,7 @@ def _analyse(uploaded):
         data['row'] = idx + 2  # +1 capçalera, +1 perquè Excel compta des d'1
         rows.append(data)
     if not rows:
-        raise MeterBulkChangeError("El fitxer no conté cap fila amb dades.")
+        raise MeterBulkChangeValidationError("El fitxer no conté cap fila amb dades.")
 
     # Codis repetits (vell o nou, en qualsevol fila)
     counter = Counter()
@@ -235,6 +241,8 @@ def _analyse(uploaded):
     duplicate_set = set(duplicate_codes)
 
     # Consultes en bloc
+    existing_codes = set(Meter.objects.filter(
+        code__in=set(counter.keys())).values_list('code', flat=True))
     meters_by_code = defaultdict(list)
     for meter in Meter.objects.filter(code__in=set(counter.keys()), is_active=True):
         meters_by_code[meter.code].append(meter)
@@ -292,7 +300,7 @@ def _analyse(uploaded):
         has_meter_data = any(r[c] for c in ('caliber', 'has_remote_reading', 'comm_technology'))
 
         if create_flag:
-            if new_meter:
+            if new_code in existing_codes:
                 error(r, f"El comptador {new_code} ja existeix; poseu create_new_meter = no "
                          f"(o deixeu-lo buit) per fer-lo servir.")
                 continue
@@ -409,11 +417,22 @@ def apply_changes(uploaded, user):
     transacció: crea el comptador nou (si cal) i fa el canvi.
     """
     analysis = _analyse(uploaded)
+    if any(item['create_meter'] is not None for item in analysis['ready']):
+        if not user.has_perm('service.add_meter'):
+            raise PermissionDenied()
     changed, created, failed = 0, 0, []
 
     for item in analysis['ready']:
         try:
             with transaction.atomic():
+                supply_point = SupplyPoint.objects.select_for_update().get(
+                    pk=item['supply_point_id'])
+                if supply_point.meter_id != item['old_meter_id']:
+                    failed.append({
+                        'row': item['row'], 'code': item['code'],
+                        'message': 'El comptador actual del punt de subministrament ha canviat.',
+                    })
+                    continue
                 new_meter_id = item['new_meter_id']
                 if item['create_meter'] is not None:
                     new_meter = Meter.objects.create(
@@ -446,9 +465,9 @@ def apply_changes(uploaded, user):
             changed += 1
             if item['create_meter'] is not None:
                 created += 1
-        except Exception as exc:
+        except Exception:
             logger.exception("Canvi massiu de comptador fallit (fila %s)", item['row'])
-            failed.append({'row': item['row'], 'code': item['code'], 'message': str(exc)})
+            failed.append({'row': item['row'], 'code': item['code'], 'message': "No s'ha pogut aplicar el canvi de comptador."})
 
     result = _serialize(analysis)
     result['errors'] = result['errors'] + failed

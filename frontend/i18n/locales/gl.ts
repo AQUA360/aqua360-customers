@@ -1553,7 +1553,7 @@ export default {
     meter_bulk_change_template_help: 'Descarga o modelo, enche unha fila por cada cambio de contador e volve cargalo.',
     meter_bulk_change_download_template: 'Descargar modelo',
     meter_bulk_change_file_label: 'Ficheiro',
-    meter_bulk_change_file_hint: 'Formatos aceptados: .csv, .xlsx, .xls. Obrigatorios: code, new_code, final_reading, initial_reading. Opcionais: create_new_meter (si/non), change_date, supply_point, caliber, has_remote_reading, comm_technology.',
+    meter_bulk_change_file_hint: 'Formatos aceptados: .csv, .xlsx, .xls. Obrigatorios: code, new_code, final_reading, initial_reading. Opcionais: create_new_meter (si/no), change_date, supply_point, caliber, has_remote_reading, comm_technology.',
     meter_bulk_change_stat_total: '{count} filas',
     meter_bulk_change_stat_to_change: '{count} por cambiar',
     meter_bulk_change_stat_to_create: '{count} contadores por crear',
