@@ -23,6 +23,28 @@ def closed_termination_tokens():
     )
 
 
+def claimable_invoice_status_q(prefix=''):
+    """Factures amb deute reclamable: les vençudes i les confirmades amb el rebut
+    retornat. En processar una devolució amb el venciment encara futur, la factura
+    torna a Confirmada i no passa a Vençuda fins que arriba el venciment, però el
+    deute ja es pot reclamar. `prefix` és el camí fins a la factura (p. ex.
+    'invoices__' des de Contract; buit des d'Invoice)."""
+    tokens = dict(ConfigProject.objects.filter(token__in=[
+        'invoice_status_expired_token',
+        'invoice_status_confirmed_token',
+        'payment_status_returned_token',
+    ]).values_list('token', 'value'))
+    q = Q(**{f'{prefix}status__token': tokens.get('invoice_status_expired_token')})
+    confirmed = tokens.get('invoice_status_confirmed_token')
+    returned = tokens.get('payment_status_returned_token')
+    if confirmed and returned:
+        q |= Q(**{
+            f'{prefix}status__token': confirmed,
+            f'{prefix}payments__status__token': returned,
+        })
+    return q
+
+
 def claim_letter_address(contract):
     """Adreça postal de les cartes de reclamació: la de contacte del contracte,
     després la de facturació i, si no n'hi ha cap, una adreça activa del titular.

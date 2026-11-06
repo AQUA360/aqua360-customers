@@ -57,6 +57,16 @@ class ClaimRequestReadingBatchTemplateFilterTests(TestCase):
         filters, *_ = _build_claim_request_filters({})
         self.assertFalse(any('reading_batch_template' in lookup for lookup, _ in q_lookups(filters)))
 
+    def test_confirmed_invoices_with_returned_payments_are_claimable_without_sepa_return(self):
+        ConfigProject.objects.update_or_create(
+            token='invoice_status_confirmed_token', defaults={'value': 'CONFIRMED'}
+        )
+        _, _, annotation_filters, *_ = _build_claim_request_filters({})
+        lookups = q_lookups(annotation_filters)
+        self.assertIn(('invoices__status__token', 'EXPIRED'), lookups)
+        self.assertIn(('invoices__status__token', 'CONFIRMED'), lookups)
+        self.assertIn(('invoices__payments__status__token', 'PAYMENT_STATUS_RETURNED_TOKEN'), lookups)
+
     def test_closed_termination_invoices_stay_eligible_by_positive_id(self):
         ConfigProject.objects.update_or_create(
             token='contract_termination_cancelled_token', defaults={'value': 'cancelled'}
