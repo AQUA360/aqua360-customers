@@ -35,6 +35,8 @@ from service.views.connection_observation_view import ConnectionObservationViewS
 from service.views.connection_request_view import ConnectionRequestViewSet
 from service.views.connection_request_status_view import ConnectionRequestStatusViewSet
 from service.views.connection_request_observation_view import ConnectionRequestObservationViewSet
+from service.views.connection_request_building_type_view import ConnectionRequestBuildingTypeViewSet
+from service.views.connection_request_representative_type_view import ConnectionRequestRepresentativeTypeViewSet
 from service.views.cluster_view import ClusterViewSet
 from service.views.cluster_nozzle_view import ClusterNozzleViewSet
 from service.views.cluster_observation_view import ClusterObservationViewSet
@@ -95,6 +97,8 @@ router.register(r'cluster-documentation-type', ClusterDocumentationTypeViewSet)
 router.register(r'connection-request', ConnectionRequestViewSet)
 router.register(r'connection-request-status', ConnectionRequestStatusViewSet)
 router.register(r'connection-request-observation', ConnectionRequestObservationViewSet)
+router.register(r'connection-request-building-type', ConnectionRequestBuildingTypeViewSet)
+router.register(r'connection-request-representative-type', ConnectionRequestRepresentativeTypeViewSet)
 
 router.register(r'cluster', ClusterViewSet)
 router.register(r'cluster-nozzle', ClusterNozzleViewSet, basename='clusternozzle')
