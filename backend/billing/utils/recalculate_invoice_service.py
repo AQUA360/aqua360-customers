@@ -20,6 +20,40 @@ PERIOD_MONTHS_MAP = {
 }
 
 
+def _invoice_is_budget(invoice):
+    budget_token = (
+        ConfigProject.objects.filter(token='invoice_type_budget_token')
+        .values_list('value', flat=True)
+        .first()
+    )
+    if not budget_token:
+        return False
+    type_token = invoice.type.token if invoice.type_id and invoice.type else None
+    return type_token == budget_token or invoice.type_final == budget_token
+
+
+def _keep_budget_identity(new_invoice, original):
+    """Un pressupost recalculat ha de continuar sent pressupost, amb la mateixa sèrie."""
+    update_fields = []
+    if original.type_id and new_invoice.type_id != original.type_id:
+        new_invoice.type_id = original.type_id
+        update_fields.append('type')
+    if original.type_final != new_invoice.type_final:
+        new_invoice.type_final = original.type_final
+        update_fields.append('type_final')
+    if original.serie_id and new_invoice.serie_id != original.serie_id:
+        new_invoice.serie_id = original.serie_id
+        update_fields.append('serie')
+    if original.serie_token_final != new_invoice.serie_token_final:
+        new_invoice.serie_token_final = original.serie_token_final
+        update_fields.append('serie_token_final')
+    if original.serie_final and new_invoice.serie_final != original.serie_final:
+        new_invoice.serie_final = original.serie_final
+        update_fields.append('serie_final')
+    if update_fields:
+        new_invoice.save(update_fields=update_fields)
+
+
 def _assert_invoice_is_recalculable(invoice):
     """
     Bloqueja el recàlcul d'una factura ja finalitzada per via externa (confirmada,
@@ -85,11 +119,12 @@ def _get_invoice_warning(invoice, contracts):
 def delete_and_recalculate_invoice(invoice_id):
     with transaction.atomic():
         original_invoice = (
-            Invoice.objects.select_related("billing", "billing__biller", "contract")
+            Invoice.objects.select_related("billing", "billing__biller", "contract", "type", "serie")
             .prefetch_related("readings", "readings__contract")
             .get(id=invoice_id)
         )
         _assert_invoice_is_recalculable(original_invoice)
+        is_budget = _invoice_is_budget(original_invoice)
 
         readings = list(original_invoice.readings.all())
         if not readings:
@@ -126,6 +161,7 @@ def delete_and_recalculate_invoice(invoice_id):
             title,
             billing=billing,
             period_months=period_months,
+            is_budget=is_budget,
             recalculation_strategy="original",
             effective_persons=effective_persons,
             price_rates_by_supply_point=price_rates_by_supply_point,
@@ -133,6 +169,9 @@ def delete_and_recalculate_invoice(invoice_id):
 
         if not new_invoice:
             raise ValueError(f"Invoice {invoice_id} recalculation did not generate a new invoice")
+
+        if is_budget:
+            _keep_budget_identity(new_invoice, original_invoice)
 
         warning = _get_invoice_warning(new_invoice, contracts)
         if warning:
@@ -144,11 +183,12 @@ def delete_and_recalculate_invoice(invoice_id):
 def recalculate_invoice_smart(invoice_id):
     with transaction.atomic():
         original_invoice = (
-            Invoice.objects.select_related("billing", "billing__biller", "contract")
+            Invoice.objects.select_related("billing", "billing__biller", "contract", "type", "serie")
             .prefetch_related("readings", "readings__contract", "readings__modified_readings")
             .get(id=invoice_id)
         )
         _assert_invoice_is_recalculable(original_invoice)
+        is_budget = _invoice_is_budget(original_invoice)
 
         original_readings = list(original_invoice.readings.all())
         if not original_readings:
@@ -198,6 +238,7 @@ def recalculate_invoice_smart(invoice_id):
             title,
             billing=billing,
             period_months=period_months,
+            is_budget=is_budget,
             recalculation_strategy="original",
             effective_persons=effective_persons,
             price_rates_by_supply_point=price_rates_by_supply_point,
@@ -205,6 +246,9 @@ def recalculate_invoice_smart(invoice_id):
 
         if not new_invoice:
             raise ValueError(f"Invoice {invoice_id} recalculation did not generate a new invoice")
+
+        if is_budget:
+            _keep_budget_identity(new_invoice, original_invoice)
 
         warning = _get_invoice_warning(new_invoice, [contract])
         new_invoice.warning = warning
