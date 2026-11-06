@@ -2066,6 +2066,20 @@ def import_smart_metering_document_task(self, reading_document_id, preview=None)
 
 @shared_task(bind=True)
 def estimate_readings_task(self, reading_batch_id, payload=None):
+  """Persist completion independently of Celery's expiring results."""
+  ReadingBatch.objects.filter(
+    id=reading_batch_id, estimating_task_id=self.request.id,
+  ).update(estimating_task_status='RUNNING')
+  try:
+    return _run_estimate_readings(self, reading_batch_id, payload)
+  finally:
+    # Compare the ID so an older worker cannot finish a newer estimation.
+    ReadingBatch.objects.filter(
+      id=reading_batch_id, estimating_task_id=self.request.id,
+    ).update(estimating_task_id=None, estimating_task_status='FINISHED')
+
+
+def _run_estimate_readings(self, reading_batch_id, payload=None):
   payload = payload or {}
   progress_recorder = ProgressRecorder(self)
 
@@ -2303,10 +2317,9 @@ def estimate_readings_task(self, reading_batch_id, payload=None):
     progress_recorder.set_progress(total_supplypoints, total_supplypoints)
     return result
   finally:
-    reading_batch.estimating_task_id = None
     reading_batch.last_task_status = 'partial' if task_errors else 'ok'
     reading_batch.last_task_errors = task_errors
-    reading_batch.save(update_fields=['estimating_task_id', 'last_task_status', 'last_task_errors'])
+    reading_batch.save(update_fields=['last_task_status', 'last_task_errors'])
 
 @shared_task(bind=True)
 @billing_run_cache_scope()
@@ -2710,7 +2723,8 @@ def create_billings():
             routes = biller.routes.all()
             billing.routes.set(routes)
           else:
-            routes = Route.objects.filter(is_active = True).all()
+            from billing.utils.exploitation_scope import routes_for_exploitation
+            routes = routes_for_exploitation(biller.exploitation_id)
             billing.routes.set(routes)
           billing.save()
           
@@ -4041,6 +4055,7 @@ def process_selected_contracts_task(billing_id, contract_ids):
                 billing_missing=billing,
                 missing_start=start_date,
                 missing_end=end_date,
+                exploitation=biller.exploitation if biller else None,
             )
 
     first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])

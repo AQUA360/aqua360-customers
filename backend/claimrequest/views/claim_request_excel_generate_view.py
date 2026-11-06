@@ -28,11 +28,14 @@ class ClaimRequestExcelGenerateViewSet(APIView):
         claim_request = get_object_or_404(ClaimRequest, id=id)
         file_name = f"{claim_request.token}.csv"
         
-        domestic_use_token = ConfigProject.objects.get(token="contract_domestic_use_type_token").value
+        domestic_use_value = ConfigProject.objects.get(token="contract_domestic_use_type_token").value or ""
+        # Admet diversos tokens d'ús domèstic separats per "|"
+        domestic_use_tokens = [t.strip() for t in domestic_use_value.split("|") if t.strip()]
         paid_payment_token = ConfigProject.objects.get(token="payment_status_paid_token").value
         claim_payments = ClaimRequestPayment.objects.filter(
-            claim_request=claim_request, 
-            contract__use_type__token=domestic_use_token,
+            claim_request=claim_request,
+            is_excluded=False,
+            contract__use_type__token__in=domestic_use_tokens,
             )
         contracts = list({cp.contract_id: cp.contract for cp in claim_payments if cp.contract_id}.values())
         
@@ -40,7 +43,7 @@ class ClaimRequestExcelGenerateViewSet(APIView):
         with override(settings.LANGUAGE_CODE):
             for contract in contracts:
                 supply_point = contract.supply_point_default
-                contract_claim_payments = claim_payments.filter(contract=contract).exclude(payment__status__token=paid_payment_token).distinct()
+                contract_claim_payments = claim_payments.filter(contract=contract, payment__isnull=False).exclude(payment__status__token=paid_payment_token).distinct()
                 last_vulnerability_request = VulnerabilityRequest.objects.filter(contract=contract).order_by('-created_at').first()
                 person = contract.tenant if contract.tenant and contract.holder.is_juridic else contract.holder
                 person = {

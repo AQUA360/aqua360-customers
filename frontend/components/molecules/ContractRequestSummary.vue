@@ -30,7 +30,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['change', 'show-subregion']);
+const emit = defineEmits(['change', 'show-subregion', 'bill-cut-reading-changed']);
 
 const showRegion = ref(false);
 const showRegionComponent = ref(null);
@@ -54,6 +54,7 @@ const { fetchFinalInvoiceTokens, isInvoice, findFinalInvoice } = useFinalInvoice
 
 const invoicePermissions = ref(null);
 const billCutReading = ref(false);
+const savingBillCutReading = ref(false);
 
 // Policy number (token) regeneration flow
 const policyToken = ref(null);
@@ -210,47 +211,58 @@ onMounted(async () => {
 // Observa canvis en la sol·licitud per recarregar les dades si cal
 watch(() => props.request, (newVal) => {
   if (newVal) {
-    billCutReading.value = newVal.bill_cut_reading || false;
+    // No sobreescriure el valor local mentre s'està desant un canvi del commutador
+    if (!savingBillCutReading.value) {
+      billCutReading.value = newVal.bill_cut_reading || false;
+    }
     loadData();
   }
 }, { immediate: true, deep: true });
 
-watch(billCutReading, async (newVal, oldVal) => {
-  if (props.request?.id && newVal !== props.request.bill_cut_reading) {
-    try {
-      await $ContractRequestApiService.patch({
-        id: props.request.id,
-        bill_cut_reading: newVal
-      });
+/**
+ * Commuta "Facturar lectura de tall" i el desa al backend.
+ *
+ * Es compara amb el valor real desat (no amb `props.request`, que el pare no actualitza després
+ * del PATCH): si no, el segon canvi (desmarcar després d'haver marcat) no s'enviava mai.
+ * En desmarcar amb factures/pressupostos de tall ja generats, es demana confirmació abans de desar.
+ */
+const toggleBillCutReading = async () => {
+  if (!props.request?.id || savingBillCutReading.value) return;
+  const newVal = !billCutReading.value;
 
-      if (newVal === false && oldVal === true) {
-        // L'usuari ha deshabilitat l'opció. Eliminem factures de tancament generades.
-        const hasInvoices = Object.values(terminationInvoices.value).some(list => list.length > 0);
-        if (hasInvoices && confirm(t('confirmation_text_block.confirm_delete_bill_cut_invoices') || 'Es deshabilitarà la lectura de tall i s\'eliminaran els pressupostos/factures associats. Vols continuar?')) {
-          for (const tid in terminationInvoices.value) {
-            for (const invoice of terminationInvoices.value[tid]) {
-              try {
-                await $InvoiceApiService.deleteInvoiceBudget(invoice.id);
-              } catch (err) {
-                console.error("Error deleting invoice", invoice.id, err);
-              }
-            }
+  const hasInvoices = !newVal && Object.values(terminationInvoices.value).some(list => list.length > 0);
+  if (hasInvoices && !confirm(t('confirmation_text_block.confirm_delete_bill_cut_invoices'))) {
+    return;
+  }
+
+  savingBillCutReading.value = true;
+  try {
+    await $ContractRequestApiService.patch({
+      id: props.request.id,
+      bill_cut_reading: newVal
+    });
+    billCutReading.value = newVal;
+    // Mantenir sincronitzada la sol·licitud del pare perquè els passos anteriors no reenviïn el valor antic
+    emit('bill-cut-reading-changed', newVal);
+
+    if (hasInvoices) {
+      for (const tid in terminationInvoices.value) {
+        for (const invoice of terminationInvoices.value[tid]) {
+          try {
+            await $InvoiceApiService.deleteInvoiceBudget(invoice.id);
+          } catch (err) {
+            console.error("Error deleting invoice", invoice.id, err);
           }
-          await fetchInvoiceData();
-        } else if (hasInvoices) {
-          // Si no confirma, revertim el canvi local i el del back
-          billCutReading.value = true;
-          await $ContractRequestApiService.patch({
-            id: props.request.id,
-            bill_cut_reading: true
-          });
         }
       }
-    } catch (e) {
-      console.error("Error saving bill_cut_reading", e);
+      await fetchInvoiceData();
     }
+  } catch (e) {
+    console.error("Error saving bill_cut_reading", e);
+  } finally {
+    savingBillCutReading.value = false;
   }
-});
+};
 
 const generateContract = async () => {
   const contract = await $ContractApiService.getDocument(props.request.id);
@@ -521,7 +533,7 @@ const denyPolicyToken = () => {
                   <label class="text-sm font-medium text-gray-700 whitespace-nowrap">
                     {{ $t('common.bill_cut_reading') }}:
                   </label>
-                  <button type="button" @click="billCutReading = !billCutReading"
+                  <button type="button" @click="toggleBillCutReading" :disabled="savingBillCutReading"
                     class="relative inline-flex h-6 w-11 items-center rounded-full focus:outline-none"
                     :class="billCutReading ? 'bg-sky-500' : 'bg-gray-300'" role="switch" :aria-checked="billCutReading">
                     <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"

@@ -45,6 +45,12 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    // Rang de dates ja aplicat ({ start_date, end_date }), perquè el selector
+    // el mostri quan es torna a muntar (p. ex. en reobrir la barra de filtres).
+    initialDateRange: {
+        type: Object,
+        default: null,
+    },
 });
 
 const { te, t } = useI18n();
@@ -55,7 +61,7 @@ const selectedElements = ref([...props.filters]);
 
 const textInputValue = ref(props.initialValue);
 
-const selectedDateRange = ref(null);
+const selectedDateRange = ref(props.initialDateRange);
 
 const toggleDropdown = () => {
     isDropdownVisible.value = !isDropdownVisible.value;

@@ -157,6 +157,18 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  const saveFile = async (data) => {
+    const apiUrl = `${apiHost}${entity}${data.id}/save-file/`;
+    const formData = new FormData();
+    formData.append('file', data.file);
+    formData.append('doc_type', data.doc_type || '');
+    const response = await $apiManager.fetch(apiUrl, 'PUT', formData);
+    if (!response) {
+      throw new Error('Error no trobat');
+    }
+    return response;
+  }
+
   const getPermissions = async () => {
     const apiUrl = `${apiHost}${entity}permissions/`;
     try {
@@ -179,6 +191,7 @@ export default defineNuxtPlugin(nuxtApp => {
     get,
     save,
     closeRequest,
+    saveFile,
     getPermissions
   };
 

@@ -162,7 +162,7 @@ class BillingViewSet(viewsets.ModelViewSet):
         'anual': 12,
       }
       interval = PERIOD_TYPE_INTERVAL.get(biller.period_type, 3)
-      today = timezone.now().date()
+      today = timezone.localdate()
 
       # El token/name de `create_billings` (billing/tasks.py) porta el mes/any en que
       # es va CREAR el lot (`current_month`/`current_year` del moment d'execucio), no
@@ -494,6 +494,7 @@ class BillingViewSet(viewsets.ModelViewSet):
           billing_missing=billing,
           missing_start=start_date,
           missing_end=end_date,
+          exploitation=billing.biller.exploitation if billing.biller_id else None,
         )
         new_reading_batch.fix_meters.set(meters)
         
@@ -667,6 +668,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -752,6 +754,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -950,13 +953,7 @@ class BillingBadgesView(views.APIView):
       # Validar les dades rebudes
       response = []
       exploitation_id = request.query_params.get('exploitation')
-      try:
-        exploitation = Exploitation.objects.get(id=exploitation_id)
-      except Exception as e:
-        print(e)
-        pass
-        
-      
+
       default_status = BillingStatus.objects.get(is_default=True)
       processed_status_token = ConfigProject.objects.get(token='billing_batch_processed').value
       processed_status = BillingStatus.objects.get(token=processed_status_token)
@@ -966,19 +963,9 @@ class BillingBadgesView(views.APIView):
       
       
       
-      # Filter by exploitation if provided
       if exploitation_id:
-          default_billings = default_billings.filter(
-              Q(invoices__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__isnull=True)
-          ).distinct()
-          
-          active_billings = active_billings.filter(
-              Q(invoices__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__isnull=True)
-          ).distinct()
+          default_billings = default_billings.filter(biller__exploitation_id=exploitation_id)
+          active_billings = active_billings.filter(biller__exploitation_id=exploitation_id)
       
       if active_billings:
         total = 0
@@ -1115,7 +1102,8 @@ class StartBillingView(views.APIView):
         routes = biller.routes.all()
         billing.routes.set(routes)
       else:
-        routes = Route.objects.filter(is_active = True).all()
+        from billing.utils.exploitation_scope import routes_for_exploitation
+        routes = routes_for_exploitation(biller.exploitation_id)
         billing.routes.set(routes)
       billing.save()
 

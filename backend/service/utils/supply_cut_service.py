@@ -266,7 +266,7 @@ def close_supply_cut(supply_cut, user=None, observation=None):
 
 def supply_cuts_due_to_activate(as_of=None):
     """Cuts that should already be active: Giswater by `exec_start`, manual ones by `date_start`."""
-    as_of = as_of or timezone.now().date()
+    as_of = as_of or timezone.localdate()
     closed_tokens = closed_status_tokens()
     active_token = ConfigProject.objects.get(token='supply_cut_status_active_token').value
     return (
@@ -282,7 +282,7 @@ def supply_cuts_due_to_activate(as_of=None):
 
 def supply_cuts_due_to_deactivate(as_of=None):
     """Cuts that should already be closed: Giswater by `exec_end`, manual ones by `date_end`."""
-    as_of = as_of or timezone.now().date()
+    as_of = as_of or timezone.localdate()
     closed_tokens = closed_status_tokens()
     return (
         SupplyCut.objects

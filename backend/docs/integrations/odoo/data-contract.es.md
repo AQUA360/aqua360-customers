@@ -86,7 +86,11 @@ Estructura única. Lo único que varía es `move_type` (`out_invoice` / `out_ref
     {
       "product_id": {
         "aqua_id": "CONS-AGUA-B1",
-        "name": "Consumo agua bloque 1"
+        "name": "Consumo agua bloque 1",
+        "company": {
+          "name": "Aigües Exemple",
+          "vat": "B12345678"
+        }
       },
       "name": "Consumo agua bloque 1 (0-10 m³)",
       "quantity": 10.0,
@@ -100,7 +104,11 @@ Estructura única. Lo único que varía es `move_type` (`out_invoice` / `out_ref
     {
       "product_id": {
         "aqua_id": "CUOTA-SERV",
-        "name": "Cuota de servicio"
+        "name": "Cuota de servicio",
+        "company": {
+          "name": "Aigües Exemple",
+          "vat": "B12345678"
+        }
       },
       "name": "Cuota de servicio trimestral",
       "quantity": 1.0,
@@ -196,7 +204,7 @@ Mismo JSON que v1. Solo cambian estos casos:
 | `journal_id` | `journal_id` | `account.move` | `get_or_create` por `aqua_id` |
 | `payment_mode_id` | `payment_mode_id` | `account.move` | OCA `account_payment_mode`; preexiste, se resuelve por `id` |
 | `invoice_line_ids` | `invoice_line_ids` | `account.move` | |
-| `product_id` | `product_id` | `account.move.line` | `get_or_create` por `aqua_id` |
+| `product_id` | `product_id` | `account.move.line` | `get_or_create` por `aqua_id`. `company.name` y `company.vat` vienen de `Product.company` |
 | `name` (línea) | `name` | `account.move.line` | Descripción |
 | `quantity` | `quantity` | `account.move.line` | |
 | `price_unit` | `price_unit` | `account.move.line` | |
