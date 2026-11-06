@@ -355,7 +355,11 @@ class MeterViewSet(viewsets.ModelViewSet):
                 else build_change_preview(uploaded)
             )
         except MeterBulkChangeValidationError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.warning("Bulk change validation failed: %s", exc)
+            return Response(
+                {"error": "El fitxer no és vàlid o conté errors de validació."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except MeterBulkChangeError as exc:
             logger.exception("Bulk change processing failed: %s", exc)
             return Response(
