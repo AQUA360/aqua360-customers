@@ -341,23 +341,49 @@ class TestFactdetaReportActivation(TestCase):
         self.assertFalse(report.is_active)
 
 
-class TestFactdetaReportFilters(SimpleTestCase):
-    """Amb una explotació demanada, el generador només rep les factures d'aquella explotació."""
+CONFIG_VALUES = {
+    'invoice_type_invoice_token': 'F',
+    'invoice_status_cancelled_token': '-6',
+    'invoice_status_pending_token': '1',
+}
+
+
+def _config_get(token=None, **_kwargs):
+    return SimpleNamespace(value=CONFIG_VALUES[token])
+
+
+@mock.patch('coredata.models.ConfigProject.objects.get', side_effect=_config_get)
+class TestFactdetaReportFilters(TestCase):
+    """Amb una explotació demanada, el generador només rep les factures d'aquella explotació.
+    Amb BD: la selecció consulta els mesos de la Declaració ACA ja presentats."""
 
     @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
-    def test_exploitation_filters_invoices(self, generate):
+    def test_exploitation_filters_invoices(self, generate, *_config):
         generate_factdeta_report(SimpleNamespace(data={'year': 2026, 'exploitation_id': 7}))
         exploitations, invoices = generate.call_args.args
         self.assertIn('"exploitation_id" = 7', str(invoices.query).split(' WHERE ')[1])
 
     @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
-    def test_without_exploitation_keeps_all_invoices(self, generate):
+    def test_without_exploitation_keeps_all_invoices(self, generate, *_config):
         generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
         exploitations, invoices = generate.call_args.args
-        self.assertNotIn('exploitation_id', str(invoices.query).split(' WHERE ')[1])
+        self.assertNotIn('"exploitation_id" =', str(invoices.query).split(' WHERE ')[1])
 
     @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
-    def test_date_range_takes_precedence_over_year(self, generate):
+    def test_same_invoices_as_aca_declaration(self, generate, *_config):
+        # Les mateixes factures que l'A1 per dates: amb pagament actiu, sense les anul·lades sense
+        # abonament ni les excloses o pendents, i també les desactivades (l'A1 no les filtra)
+        generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
+        exploitations, invoices = generate.call_args.args
+        where = str(invoices.query).split(' WHERE ')[1]
+        self.assertIn('"billing_payment"."is_active"', where)
+        self.assertIn('"exploitation_id" IS NOT NULL', where)
+        self.assertIn('"return_token" IS NULL', where)
+        self.assertIn('"is_excluded"', where)
+        self.assertNotIn('"billing_invoice"."is_active"', where)
+
+    @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
+    def test_date_range_takes_precedence_over_year(self, generate, *_config):
         # La pàgina d'informes envia sempre l'any del selector (per defecte, l'anterior)
         data = {'year': 2025, 'date_range': ['2026-01-01T00:00:00.000Z', '2026-10-31T00:00:00.000Z']}
         generate_factdeta_report(SimpleNamespace(data=data))
@@ -367,19 +393,19 @@ class TestFactdetaReportFilters(SimpleTestCase):
         self.assertNotIn('2025', where)
 
     @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
-    def test_year_out_of_range_is_rejected(self, generate):
+    def test_year_out_of_range_is_rejected(self, generate, *_config):
         response, _document_id, _ = generate_factdeta_report(SimpleNamespace(data={'year': 10000}))
         self.assertEqual(response.status_code, 400)
         generate.assert_not_called()
 
     @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
-    def test_company_filter_of_reports_page(self, generate):
+    def test_company_filter_of_reports_page(self, generate, *_config):
         generate_factdeta_report(SimpleNamespace(data={'year': 2026, 'company_ids': '3,5'}))
         exploitations, invoices = generate.call_args.args
         self.assertIn('"company_id" IN (3, 5)', str(invoices.query).split(' WHERE ')[1])
 
     @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[])
-    def test_malformed_or_inverted_date_range_is_rejected(self, generate):
+    def test_malformed_or_inverted_date_range_is_rejected(self, generate, *_config):
         for date_range in (['2026-01-01Tnot-a-time', '2026-10-31T00:00:00.000Z'],
                            ['2026-10-31T00:00:00.000Z', '2026-01-01T00:00:00.000Z']):
             response, _document_id, _ = generate_factdeta_report(SimpleNamespace(data={'date_range': date_range}))
@@ -389,7 +415,7 @@ class TestFactdetaReportFilters(SimpleTestCase):
     @mock.patch('statistics.utils.report_factdeta_service.save_report', return_value=1)
     @mock.patch('statistics.utils.report_factdeta_service.read_factdeta', side_effect=RuntimeError)
     @mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document')
-    def test_summary_failure_keeps_factdeta(self, generate, _read, _save):
+    def test_summary_failure_keeps_factdeta(self, generate, _read, _save, *_config):
         generate.return_value = [{'year': 2026, 'file_name': 'FD2189_080000_2026.txt', 'content': b'x', 'warnings': []}]
         response, document_id, _ = generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
         self.assertEqual((response.status_code, document_id), (200, 1))
