@@ -143,6 +143,7 @@ class TerminationUsedAcaWatchdogTests(TestCase):
         from contract.models import ContractTerminationRequest
 
         ConfigProject.objects.update_or_create(token="invoice_type_budget_token", defaults={"value": "P"})
+        ConfigProject.objects.update_or_create(token="invoice_type_invoice_token", defaults={"value": "F"})
         ConfigProject.objects.update_or_create(token="contract_terminated_status", defaults={"value": "-1"})
         for token in ("invoice_status_cancelled_token", "payment_status_cancelled_token"):
             ConfigProject.objects.update_or_create(token=token, defaults={"value": "-1"})
@@ -180,12 +181,16 @@ class TerminationUsedAcaWatchdogTests(TestCase):
         pending, _ = self._termination_invoice("I", "D", self.budget_type)
         invoiced_budget, termination = self._termination_invoice("I", "D", self.budget_type)
         self._termination_invoice("I", "D", self.invoice_type, termination=termination)
+        untyped_sibling, untyped_termination = self._termination_invoice("I", "D", self.budget_type)
+        self._termination_invoice("I", None, None, termination=untyped_termination)
 
         issues = DataIntegrityService().check_termination_invoices_used_aca()
         pending_line = next(issue for issue in issues if f"Factura ID {pending.id} " in issue)
         invoiced_line = next(issue for issue in issues if f"Factura ID {invoiced_budget.id} " in issue)
         self.assertIn("PENDENT DE FACTURAR", pending_line)
         self.assertNotIn("PENDENT DE FACTURAR", invoiced_line)
+        untyped_line = next(issue for issue in issues if f"Factura ID {untyped_sibling.id} " in issue)
+        self.assertIn("PENDENT DE FACTURAR", untyped_line)
 
     def test_fix_command_sets_terminated_contract_use_aca(self):
         wrong, _ = self._termination_invoice("I", "D", self.invoice_type)
@@ -203,3 +208,20 @@ class TerminationUsedAcaWatchdogTests(TestCase):
         self.assertIsNone(without_use.used_aca)
         self.assertEqual(other.used_aca, "D")
         self.assertEqual(DataIntegrityService().check_termination_invoices_used_aca()[0].split(" (")[0], f"Factura ID {other.id}")
+
+    def test_fix_command_requires_explicit_selection(self):
+        from django.core.management.base import CommandError
+
+        wrong, _ = self._termination_invoice("I", "D", self.invoice_type)
+        with self.assertRaisesMessage(CommandError, "--ids"):
+            call_command("watchdog_fix_termination_used_aca", stdout=StringIO())
+        with self.assertRaisesMessage(CommandError, "'abc'"):
+            call_command("watchdog_fix_termination_used_aca", "--ids=abc", stdout=StringIO())
+
+        output = StringIO()
+        call_command("watchdog_fix_termination_used_aca", "--ids=999999", stdout=output)
+        self.assertIn("seleccionades", output.getvalue())
+
+        call_command("watchdog_fix_termination_used_aca", "--all", stdout=StringIO())
+        wrong.refresh_from_db()
+        self.assertEqual(wrong.used_aca, "I")

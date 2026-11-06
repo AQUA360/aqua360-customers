@@ -20,14 +20,15 @@ TERMINATION_USED_ACA_CHECK_NAME = "Factures de baixa amb used_aca erroni"
 
 WATCHDOG_FIX_TERMINATION_USED_ACA_COMMANDS = (
     "python manage.py watchdog_fix_termination_used_aca --dry-run",
-    "python manage.py watchdog_fix_termination_used_aca",
+    "python manage.py watchdog_fix_termination_used_aca --ids=ID1,ID2  (o --all un cop revisat el llistat)",
 )
 
 MAX_LISTED_ISSUES = 200
 
 
-def _budget_type_token():
-    config = ConfigProject.objects.filter(token='invoice_type_budget_token').first()
+def _config_value(token):
+    """Valor d'un ConfigProject, o None si no existeix."""
+    config = ConfigProject.objects.filter(token=token).first()
     return config.value if config else None
 
 
@@ -49,14 +50,17 @@ def get_termination_used_aca_mismatches():
 
 
 def _with_pending_budget_flag(queryset):
-    budget_token = _budget_type_token()
-    invoiced = Invoice.objects.filter(contract_termination=OuterRef('contract_termination')).exclude(
-        type__token=budget_token,
+    """Anota si la baixa ja té una factura; un pressupost sense factura encara es pot passar a factura."""
+    budget_token = _config_value('invoice_type_budget_token')
+    invoiced = Invoice.objects.filter(
+        contract_termination=OuterRef('contract_termination'),
+        type__token=_config_value('invoice_type_invoice_token'),
     )
     return queryset.annotate(termination_invoiced=Exists(invoiced)), budget_token
 
 
 def check_termination_used_aca_issues():
+    """Incidències del watchdog: una línia per factura o pressupost de baixa amb used_aca erroni."""
     queryset, budget_token = _with_pending_budget_flag(get_termination_used_aca_mismatches())
     rows = list(
         queryset.order_by('created_at', 'id').values(
