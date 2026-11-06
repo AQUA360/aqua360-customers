@@ -22,6 +22,13 @@ class BillerViewSet(viewsets.ModelViewSet):
   # filterset_class = InvoiceFilter
   search_fields = ['token','name']
   ordering_fields = ['token','name']
+
+  def get_queryset(self):
+    qs = Biller.objects.all()
+    exploitation_id = self.request.query_params.get('exploitation')
+    if exploitation_id:
+      qs = qs.filter(exploitation_id=exploitation_id)
+    return qs
   
   def get_serializer_class(self):
     

@@ -2723,7 +2723,8 @@ def create_billings():
             routes = biller.routes.all()
             billing.routes.set(routes)
           else:
-            routes = Route.objects.filter(is_active = True).all()
+            from billing.utils.exploitation_scope import routes_for_exploitation
+            routes = routes_for_exploitation(biller.exploitation_id)
             billing.routes.set(routes)
           billing.save()
           
@@ -4054,6 +4055,7 @@ def process_selected_contracts_task(billing_id, contract_ids):
                 billing_missing=billing,
                 missing_start=start_date,
                 missing_end=end_date,
+                exploitation=biller.exploitation if biller else None,
             )
 
     first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
