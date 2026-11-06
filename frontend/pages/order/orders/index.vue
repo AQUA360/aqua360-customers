@@ -613,7 +613,7 @@ watch(() => route.query, () => {
     </div>
     <form id="form_filter" role="search"
       class="mb-3 text-base border-b border-gray-400 flex flex-col md:flex-row flex-start gap-2 md:gap-4 justify-start items-start md:items-center"
-      :class="{ 'pointer-events-none': blockSearch }"
+      :class="{ 'pointer-events-none': blockSearch }" :inert="blockSearch || undefined"
       @submit.prevent="handleSearch">
 
       <span class="input-group flex flex-start items-center gap-2 w-full md:w-80">
@@ -672,7 +672,7 @@ watch(() => route.query, () => {
     </form>
 
     <div class="px-2 text-base flex flex-start gap-2 justify-start items-center flex-wrap"
-      :class="{ 'pointer-events-none': blockSearch }" v-if="isFilterOpen">
+      :class="{ 'pointer-events-none': blockSearch }" :inert="blockSearch || undefined" v-if="isFilterOpen">
 
       <span v-if="showAddressSearch" class="flex items-center gap-2">
         <AtomsInputAddressSearch :value="searchByAddress" @change="handleAddressChange" />
