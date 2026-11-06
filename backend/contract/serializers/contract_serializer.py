@@ -1305,14 +1305,16 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         return representation
     
     def get_expired_invoices(self, obj):
-        expired_status = InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_expired_token').value)
+        from claimrequest.utils.claim_request_service import claimable_invoice_status_q
+
         invoice_filters = Q(contract=obj)
 
         extra_invoice_ids = (self.context.get('extra_invoices_by_contract') or {}).get(obj.id)
         if extra_invoice_ids:
             invoice_filters |= Q(id__in=extra_invoice_ids)
 
-        invoices = Invoice.objects.filter(invoice_filters, status=expired_status)
+        # Mateix criteri que la cerca: vençudes i confirmades amb el rebut retornat
+        invoices = Invoice.objects.filter(invoice_filters).filter(claimable_invoice_status_q()).distinct()
 
         return_fee_invoice_ids = self.context.get('exclude_return_fee_invoice_ids')
         if return_fee_invoice_ids:
