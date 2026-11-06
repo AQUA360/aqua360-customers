@@ -43,8 +43,9 @@ const searchAllAddressInput = ref('');
 const searchByAddress = ref('');
 const filter_status = ref([]);
 const selectedFilters = ref([]);
-const sortBy = ref(null);
-const sortDesc = ref(false);
+const DEFAULT_SORT_BY = 'created_at';
+const sortBy = ref(DEFAULT_SORT_BY);
+const sortDesc = ref(true);
 
 const isFilterOpen = ref(false);
 const showAddressSearch = ref(false);
@@ -63,7 +64,8 @@ const filter_city = ref([]);
 const selected_cities = ref([]);
 const cities = ref([]);
 const statuses = ref([]);
-const isInitialLoad = ref(true);
+// Com a contractes: mentre és cert, els watchers no han de rellançar la cerca ni tornar a la pàgina 1.
+const blockSearch = ref(true);
 
 const pagination = ref({
   page: 1,
@@ -85,13 +87,21 @@ const getPermissions = async () => {
   }
 }
 
-const getData = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, searchAllAddress = '', searchByAddressQuery = '') => {
+const getData = async () => {
   if (!permissions.value?.can_view) {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
   }
   pending.value = true;
   error.value = null;
+
+  const searchQuery = searchInput.value;
+  const filters = statuses.value;
+  const page = pagination.value.page;
+  const sort = sortBy.value;
+  const desc = sortDesc.value;
+  const searchAllAddress = searchAllAddressInput.value;
+  const searchByAddressQuery = searchByAddress.value;
 
   try {
     const data = await $OrderApiService.getAll(searchQuery, filters, page, sort, desc, null, types.value, null, null, null, null, searchAllAddress, searchByAddressQuery, related_contract_token.value, creators.value, cities.value);
@@ -176,25 +186,27 @@ const handleFiltersSelectChange = (event) => {
 }
 
 const checkInAdvacedFilters = (newFilters) => {
+  let changed = false;
   if (isFilterShown.value.some(filter => filter.id === 'type') && !newFilters.some(filter => filter.id === 'type')) {
     types.value = [];
     selected_types.value = [];
-    getData();
+    changed = true;
   }
   if (isFilterShown.value.some(filter => filter.id === 'contract_filter') && !newFilters.some(filter => filter.id === 'contract_filter')) {
     related_contract_token.value = '';
-    getData();
+    changed = true;
   }
   if (isFilterShown.value.some(filter => filter.id === 'creator') && !newFilters.some(filter => filter.id === 'creator')) {
     creators.value = [];
     selected_creators.value = [];
-    getData();
+    changed = true;
   }
   if (isFilterShown.value.some(filter => filter.id === 'municipality') && !newFilters.some(filter => filter.id === 'municipality')) {
     cities.value = [];
     selected_cities.value = [];
-    getData();
+    changed = true;
   }
+  if (changed) handleSearch();
 }
 
 const handleFilterTypeChange = (event) => {
@@ -245,19 +257,20 @@ const fetchConnectionAddress = async (connectionId) => {
   }
 }
 
-const debouncedGetData = debounce((query, filters, sort, desc, searchAllAddress = '', searchByAddressQuery = '') => {
-  getData(query, filters, pagination.value.page, sort, desc, searchAllAddress, searchByAddressQuery);
+const debouncedGetData = debounce(() => {
+  getData();
 }, 300);
 
 const handleSearch = () => {
+  if (blockSearch.value) return;
   pagination.value.page = 1;
-  debouncedGetData(searchInput.value, statuses.value, sortBy.value, sortDesc.value, searchAllAddressInput.value, searchByAddress.value);
+  debouncedGetData();
 }
 
 const handleAddressChange = (addressString) => {
   searchByAddress.value = addressString;
   pagination.value.page = 1;
-  debouncedGetData(searchInput.value, statuses.value, sortBy.value, sortDesc.value, searchAllAddressInput.value, addressString);
+  debouncedGetData();
 }
 
 const toggleAddressFilter = () => {
@@ -292,7 +305,7 @@ const handleStatusChange = (event) => {
 
 const handlePageChange = (newPage) => {
   pagination.value.page = newPage;
-  getData(searchInput.value, statuses.value, newPage, sortBy.value, sortDesc.value, searchAllAddressInput.value, searchByAddress.value);
+  getData();
 }
 
 const handleSort = (key) => {
@@ -302,7 +315,7 @@ const handleSort = (key) => {
     sortBy.value = key;
     sortDesc.value = false;
   }
-  getData(searchInput.value, statuses.value, pagination.value.page, sortBy.value, sortDesc.value, searchAllAddressInput.value, searchByAddress.value);
+  getData();
 }
 
 const exportColumns = computed(() => [
@@ -327,11 +340,13 @@ const exportOrders = (columns) => $OrderApiService.exportData(
   undefined, columns,
 );
 
-const resetFilters = () => {
+const resetFilters = async () => {
+  blockSearch.value = true;
   searchInput.value = '';
   searchAllAddressInput.value = '';
   searchByAddress.value = '';
   selectedFilters.value = [];
+  statuses.value = [];
   pagination.value.page = 1;
   selected_types.value = [];
   types.value = [];
@@ -343,11 +358,13 @@ const resetFilters = () => {
   creators.value = [];
   selected_cities.value = [];
   cities.value = [];
-  getData();
+  await getData();
+  await nextTick();
+  blockSearch.value = false;
 };
 
-const onChangeRegion = (event) => {
-  getData(searchInput.value, statuses.value, pagination.value.page, sortBy.value, sortDesc.value, searchAllAddressInput.value, searchByAddress.value);
+const onChangeRegion = () => {
+  getData();
 }
 
 const updateFilterCities = () => {
@@ -359,6 +376,22 @@ const updateFilterCities = () => {
       filter_city.value.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }
   });
+};
+
+const selectionIds = (selection) => {
+  if (!Array.isArray(selection)) return [];
+  return selection
+    .map((item) => (item && typeof item === 'object' ? item.id : item))
+    .filter((id) => id !== undefined && id !== null && id !== '');
+};
+
+// La UI desa els objectes seleccionats i la petició els ids. En tornar, es reconstrueixen
+// perquè el llistat apliqui exactament els filtres que es veuen.
+const syncFilterIdsFromSelection = () => {
+  statuses.value = selectionIds(selectedFilters.value);
+  types.value = selectionIds(selected_types.value);
+  creators.value = selectionIds(selected_creators.value);
+  cities.value = selectionIds(selected_cities.value);
 };
 
 const STORAGE_KEY = 'ordersSearchState';
@@ -414,13 +447,17 @@ const loadSearchState = () => {
 
       if (parsed.related_contract_token !== undefined) related_contract_token.value = parsed.related_contract_token;
 
-      if (parsed.sortBy !== undefined) sortBy.value = parsed.sortBy;
-      if (parsed.sortDesc !== undefined) sortDesc.value = parsed.sortDesc;
+      // Un estat antic sense ordenació (null) ha de quedar en el defecte: data de creació descendent.
+      if (parsed.sortBy) {
+        sortBy.value = parsed.sortBy;
+        if (typeof parsed.sortDesc === 'boolean') sortDesc.value = parsed.sortDesc;
+      }
       if (parsed.isFilterOpen !== undefined) isFilterOpen.value = parsed.isFilterOpen;
       if (parsed.showAddressSearch !== undefined) showAddressSearch.value = parsed.showAddressSearch;
       if (parsed.isFilterShown !== undefined) isFilterShown.value = parsed.isFilterShown;
 
       if (parsed.page !== undefined) pagination.value.page = parsed.page;
+      syncFilterIdsFromSelection();
     } catch (e) {
       console.error('Error parsing search state', e);
     }
@@ -447,39 +484,23 @@ onMounted(async () => {
     getFilterCity()
   ]);
 
-  // 1. Fetch unfiltered orders first to populate the list of municipalities (cities)
-  await getData('', [], 1, sortBy.value, sortDesc.value, '', '');
-
-  // 2. Load the saved search state
+  // Mateix ordre que contractes: primer l'estat desat (filtres, ordre, pàgina i panells),
+  // després una sola petició amb tot això. Els watchers esperen que blockSearch passi a false.
   loadSearchState();
-
-  // 3. If there are any active filters/searches in the saved state, load the filtered data
-  const hasActiveFilters =
-    searchInput.value !== '' ||
-    searchAllAddressInput.value !== '' ||
-    searchByAddress.value !== '' ||
-    selectedFilters.value.length > 0 ||
-    types.value.length > 0 ||
-    creators.value.length > 0 ||
-    cities.value.length > 0 ||
-    related_contract_token.value !== '' ||
-    pagination.value.page !== 1;
-
-  if (hasActiveFilters) {
-    await getData(searchInput.value, statuses.value, pagination.value.page, sortBy.value, sortDesc.value, searchAllAddressInput.value, searchByAddress.value);
-  }
+  await getData();
 
   checkRouteQuery();
 
-  // 4. Wait for nextTick to flush all watch updates before marking initial load as finished
   await nextTick();
-  isInitialLoad.value = false;
+  blockSearch.value = false;
 });
 
 const checkRouteQuery = () => {
-  if (route.query?.id) {
-    showDetail(route.query.id)
-  }
+  const rawId = route.query?.id;
+  if (rawId === undefined || rawId === null || rawId === '') return;
+  const id = Number(rawId);
+  if (!Number.isSafeInteger(id) || id <= 0) return;
+  showDetail(id);
 }
 
 const showDetail = async (id) => {
@@ -490,8 +511,8 @@ const showDetail = async (id) => {
 }
 
 // Watch for changes in searchInput and selectedFilters and reset pagination to 1
-watch([searchInput, selectedFilters, searchAllAddressInput, related_contract_token, creators, cities], () => {
-  if (isInitialLoad.value) return;
+watch([searchInput, selectedFilters, searchAllAddressInput, searchByAddress, related_contract_token, creators, cities, types], () => {
+  if (blockSearch.value) return;
   pagination.value.page = 1;
   handleSearch();
 });
@@ -592,13 +613,14 @@ watch(() => route.query, () => {
     </div>
     <form id="form_filter" role="search"
       class="mb-3 text-base border-b border-gray-400 flex flex-col md:flex-row flex-start gap-2 md:gap-4 justify-start items-start md:items-center"
+      :class="{ 'pointer-events-none': blockSearch }" :inert="blockSearch || undefined"
       @submit.prevent="handleSearch">
 
       <span class="input-group flex flex-start items-center gap-2 w-full md:w-80">
         <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
         <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
-          autocomplete="off" />
+          autocomplete="off" :disabled="blockSearch" />
       </span>
 
       <div class="hidden md:block h-8 w-px bg-gray-300"></div>
@@ -607,7 +629,8 @@ watch(() => route.query, () => {
         <Icon name="fa6-solid:house" class="text-slate-500" />
         <input v-model="searchAllAddressInput" @input="handleSearch" id="searchAllAddressInput" type="text"
           name="search" :placeholder="$t('contract_block.search_address_info')"
-          class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off" />
+          class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off"
+          :disabled="blockSearch" />
       </span>
 
       <div class="hidden md:block h-8 w-px bg-gray-300"></div>
@@ -629,26 +652,27 @@ watch(() => route.query, () => {
 
       <span class="flex gap-2">
         <button id="filterShow" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
-          @click="isFilterOpen = !isFilterOpen" title="show">
+          @click="isFilterOpen = !isFilterOpen" title="show" :disabled="blockSearch">
           <Icon name="fa:filter" class="text-slate-500" />
         </button>
 
         <button id="filterAddress" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
           :class="{ 'bg-slate-300': showAddressSearch }" @click="toggleAddressFilter"
-          :title="$t('address_block.address')">
+          :title="$t('address_block.address')" :disabled="blockSearch">
           <span class="text-slate-500">
             <Icon name="fa6-solid:house" />+
           </span>
         </button>
 
         <button id="filterReset" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
-          @click="resetFilters" title="reset">
+          @click="resetFilters" title="reset" :disabled="blockSearch">
           <Icon name="fa6-solid:rotate-right" class="text-slate-500" />
         </button>
       </span>
     </form>
 
-    <div class="px-2 text-base flex flex-start gap-2 justify-start items-center flex-wrap" v-if="isFilterOpen">
+    <div class="px-2 text-base flex flex-start gap-2 justify-start items-center flex-wrap"
+      :class="{ 'pointer-events-none': blockSearch }" :inert="blockSearch || undefined" v-if="isFilterOpen">
 
       <span v-if="showAddressSearch" class="flex items-center gap-2">
         <AtomsInputAddressSearch :value="searchByAddress" @change="handleAddressChange" />
@@ -693,7 +717,7 @@ watch(() => route.query, () => {
           <Icon name="fa6-solid:file-contract" class="text-slate-500" />
           <input v-model="related_contract_token" @input="handleContractTokenChange" type="text"
             :placeholder="t('contract') + ' / ' + t('contract_block.short_contract_request')"
-            class="w-full focus:outline-none bg-transparent" />
+            class="w-full focus:outline-none bg-transparent" :disabled="blockSearch" />
           <button v-if="related_contract_token" @click="related_contract_token = ''; handleSearch()"
             class="text-slate-400 hover:text-red-500">
             <Icon name="fa6-solid:xmark" size="12px" />

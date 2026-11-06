@@ -5757,8 +5757,6 @@ msgstr "Total Pendent"
 #~ msgid "Volum i estadístiques de gestions"
 #~ msgstr "Volum i estadístiques de gestions"
 
-#~ msgid "Descarregar Excel"
-#~ msgstr "Descarregar Excel"
 
 #~ msgid "Generar Cànon ACA"
 #~ msgstr "Generar Cànon ACA"
@@ -6289,5 +6287,17 @@ msgid "Deute"
 msgstr "Deute"
 
 #: statistics/utils/report_wallet_debt_balance_service.py
-msgid "Cal indicar una data de tall."
-msgstr "Cal indicar una data de tall."
+msgid "Cal indicar una data."
+msgstr "Cal indicar una data."
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Deute i saldo per contracte a data"
+msgstr "Deute i saldo per contracte a data"
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola i el deute pendent (pagaments pendents, processats, vençuts, retornats o en morositat) a la data indicada."
+msgstr "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola i el deute pendent (pagaments pendents, processats, vençuts, retornats o en morositat) a la data indicada."
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Descarregar Excel"
+msgstr "Descarregar Excel"

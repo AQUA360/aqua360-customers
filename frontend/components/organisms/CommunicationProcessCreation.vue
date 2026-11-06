@@ -170,6 +170,7 @@ const contextToken = computed(() => {
   if (objectSearchData.value?.entity === 'billing') return 'billing'
   if (objectSearchData.value?.entity === 'claimrequest') return 'claim'
   if (objectSearchData.value?.entity === 'supplycut') return 'supplycut'
+  if (objectSearchData.value?.entity === 'sepa_return') return 'sepa_return'
   if (setupType.value === 'BILLING') return 'billing'
   if (setupType.value === 'SUPPLYCUT') return 'supplycut'
   return null

@@ -464,57 +464,73 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
         print(f"Error generating claim document PDF: {str(e)}")
         return {"status": "error", "message": str(e)} 
 
+def _create_sepa_payment_files(communications, payment_ids, include_payment_slip, progress_recorder=None, progress_start=70, progress_end=90):
+    """Adjunta a cada comunicació les factures dels rebuts SEPA dels seus contractes
+    i, amb `include_payment_slip`, el full de pagament amb codi de barres de cada rebut.
+    """
+    from billing.utils.joined_payment_service import get_contract_payments
+
+    email_token = ConfigProject.objects.get(token='message_type_email_token').value
+    # Mateix termini que el full de pagament de les gestions d'impagats
+    limit_date = timezone.now() + timedelta(days=60)
+    com_files = []
+    counter = 0
+    total_contracts = sum(comm.contracts.count() for comm in communications)
+    processed_contracts = 0
+    for comm in communications:
+        attached_invoice_ids = set()
+        for contract in comm.contracts.all():
+            contract_payments = get_contract_payments(contract.id).filter(
+                id__in=payment_ids
+            ).select_related('invoice').distinct()
+            if not contract_payments.exists():
+                print(f"No SEPA payments found for contract {contract.id}")
+            for payment in contract_payments:
+                invoice = payment.invoice
+                if invoice and invoice.id not in attached_invoice_ids:
+                    # Vinculada encara que no tingui PDF: el missatge en fa servir les dades
+                    comm.invoices.add(invoice)
+                    attached_invoice_ids.add(invoice.id)
+                    if invoice.invoice_file:
+                        com_files.append(CommunicationFile(
+                            token=generate_token(CommunicationFile, offset=counter),
+                            communication=comm,
+                            file=invoice.invoice_file,
+                        ))
+                        counter += 1
+                if include_payment_slip:
+                    try:
+                        payment_file, _unused = generate_report_payment_pdf(payment, None, limit_date=limit_date)
+                        com_files.append(CommunicationFile(
+                            token=generate_token(CommunicationFile, offset=counter),
+                            communication=comm,
+                            file=payment_file,
+                        ))
+                        counter += 1
+                    except Exception as e:
+                        print(f"Error generating payment PDF for payment {payment.id}: {str(e)}")
+            processed_contracts += 1
+            if progress_recorder and total_contracts > 0:
+                percent = progress_start + int((processed_contracts / total_contracts) * (progress_end - progress_start))
+                progress_recorder.set_progress(
+                    percent,
+                    100,
+                    description=f"Generant documents de devolució ({processed_contracts}/{total_contracts})"
+                )
+        # El correu es va generar abans d'adjuntar les factures: cal refer-lo perquè resolgui `%invoice.*`
+        if attached_invoice_ids and email_token in (comm.type_tokens or '').split(',') and comm.messages.filter(type__token=email_token).exists():
+            create_email_template(comm)
+    return CommunicationFile.objects.bulk_create(com_files)
+
 @shared_task
 def generate_sepa_payments_document_pdf_task(communication_ids, process_id, progress_recorder=None, progress_start=70, progress_end=90, sepa_remittance_id = None):
     try:
-        service = settings.DOCUMENT_MANAGER_SERVICES.get("communication")
-        sepa_com_files = []
-        counter = 0
-        
         communications = Communication.objects.filter(id__in=communication_ids)
-        sepa_remittance = PaymentRemittance.objects.get(id=sepa_remittance_id) if sepa_remittance_id else None
-        
-        # Count total contracts to process
-        total_contracts = sum(comm.contracts.count() for comm in communications)
-        processed_contracts = 0
-        print(f"Total contracts: {total_contracts}")
-        for comm in communications:
-            print(f"Communication: {comm.id}")
-            for contract in comm.contracts.all():
-                # Collect all invoices for this claim_request/contract pair
-                contract_payments = sepa_remittance.payments.filter(contract=contract).select_related("payment__invoice")
-
-                if not contract_payments.exists():
-                    print(f"No ClaimRequestPayment found for contract {contract.id}")
-                else:
-                    for c_payment in contract_payments:
-                        invoice = getattr(getattr(c_payment, "payment", None), "invoice", None)
-                        if invoice and getattr(invoice, "invoice_file", None):
-                            print(f"Invoice found: {invoice.id} for contract {contract.id}")
-                            comm.invoices.add(invoice)
-                            sepa_com_files.append(
-                                CommunicationFile(
-                                    token=generate_token(CommunicationFile, offset=counter),
-                                    communication=comm,
-                                    file=invoice.invoice_file,
-                                )
-                            )
-                            counter += 1
-                        else:
-                            print(f"NO INVOICE FILE FOUND for ContractPayment {c_payment.id}")
-                processed_contracts += 1
-                
-                # Update progress
-                if progress_recorder and total_contracts > 0:
-                    percent = progress_start + int((processed_contracts / total_contracts) * (progress_end - progress_start))
-                    progress_recorder.set_progress(
-                        percent, 
-                        100, 
-                        description=f"Generant documents de reclamació ({processed_contracts}/{total_contracts})"
-                    )
-        print(f"Sepa com files: {sepa_com_files}")
-        created_sepa_files = CommunicationFile.objects.bulk_create(sepa_com_files)
-        print(f"Created sepa files: {created_sepa_files}")
+        sepa_remittance = PaymentRemittance.objects.get(id=sepa_remittance_id)
+        payment_ids = list(sepa_remittance.payments.values_list('id', flat=True))
+        created_sepa_files = _create_sepa_payment_files(
+            communications, payment_ids, False, progress_recorder, progress_start, progress_end
+        )
         return {
             "status": "success",
             "total_files": len(created_sepa_files),
@@ -523,6 +539,28 @@ def generate_sepa_payments_document_pdf_task(communication_ids, process_id, prog
     except Exception as e:
         print(f"Error generating sepa document PDF: {str(e)}")
         return {"status": "error", "message": str(e)} 
+
+@shared_task
+def generate_sepa_return_documents_task(communication_ids, progress_recorder=None, progress_start=70, progress_end=90, sepa_return_id=None):
+    """Factura i full de pagament de cada rebut pendent de les devolucions SEPA.
+
+    sepa_return_id pot ser un id o diversos separats per comes.
+    """
+    from communication.utils.sepa_return_service import get_sepa_return_pending_payments
+    try:
+        communications = Communication.objects.filter(id__in=communication_ids)
+        payment_ids = list(get_sepa_return_pending_payments(sepa_return_id).values_list('id', flat=True))
+        created_files = _create_sepa_payment_files(
+            communications, payment_ids, True, progress_recorder, progress_start, progress_end
+        )
+        return {
+            "status": "success",
+            "total_files": len(created_files),
+            "message": "Sepa return documents generated"
+        }
+    except Exception as e:
+        print(f"Error generating sepa return documents: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 @shared_task
 def generate_communication_invoice_documents_task(communication_ids):
@@ -714,6 +752,14 @@ def process_communication_creation_task(self, process_id, user_id, persons, comp
                         claim_id=fixed_data_id,
                         attach_claim_documents=attach_claim_documents
                     )
+                elif fixed_data and fixed_data == 'sepa_return':
+                    generate_sepa_return_documents_task(
+                        communication_ids,
+                        progress_recorder=progress_recorder,
+                        progress_start=70,
+                        progress_end=90,
+                        sepa_return_id=fixed_data_id,
+                    )
                 elif fixed_data and fixed_data == 'sepa_payments':
                     print(f"sepa_payments found:")
                     # Generate sepa_payments documents (70-90%)
@@ -865,6 +911,7 @@ def get_communication_process_data(request_data):
         filter_by_fixed_billing,
         filter_by_person,
         filter_by_sepa_remittance,
+        filter_by_sepa_return,
         filter_by_supply_cut,
         filter_by_supply_point,
     )
@@ -906,13 +953,14 @@ def get_communication_process_data(request_data):
             'billing': filter_by_fixed_billing,
             'claimrequest': filter_by_claim_request,
             'sepa_payments': filter_by_sepa_remittance,
+            'sepa_return': filter_by_sepa_return,
             'supplycut': filter_by_supply_cut,
         }
         entity = (filter_data or {}).get('entity', None)
         fixed_filter = fixed_filters.get(entity, None)
         if fixed_filter is None:
             raise ValueError(f"Unknown fixed_data entity: {entity!r}")
-        if fixed_filter in (filter_by_supply_cut, filter_by_claim_request):
+        if fixed_filter in (filter_by_supply_cut, filter_by_claim_request, filter_by_sepa_remittance, filter_by_sepa_return):
             persons = fixed_filter(filter_data, group_same, excluded=excluded)
         else:
             persons = fixed_filter(filter_data, group_same)
