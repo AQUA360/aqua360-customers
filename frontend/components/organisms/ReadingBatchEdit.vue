@@ -496,14 +496,23 @@ const backToSetup = async () => {
   previousStepLoading.value = true;
   try {
     await $ReadingBatchApiService.returnToPending(batch_id.value);
-    await refresh();
-    currentStep.value = 1;
-    maxStep.value = 1;
-    setUrlStep();
   } catch (error) {
     console.error(error);
     const data = error?.response?._data;
     toast.error(data?.error || error?.message || t('common.error'));
+    previousStepLoading.value = false;
+    return;
+  }
+  // El lot ja és «Pendent»: es mou al pas 2 encara que el refresc falli,
+  // perquè un nou intent no torni a cridar la mutació (que respondria 409).
+  currentStep.value = 1;
+  maxStep.value = 1;
+  setUrlStep();
+  try {
+    await refresh();
+  } catch (error) {
+    console.error(error);
+    toast.error(error?.message || t('common.error'));
   } finally {
     previousStepLoading.value = false;
   }

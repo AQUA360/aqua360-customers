@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import action
@@ -53,18 +54,6 @@ class ReadingBatchEstimateViewSet(viewsets.ViewSet):
 
             supply_points_param = request.data.get('supply_points')
             if supply_points_param == 'all':
-                existing_task_id = reading_batch.estimating_task_id
-                if existing_task_id:
-                    task_result = AsyncResult(existing_task_id)
-                    if task_result.state in ['PENDING', 'STARTED', 'PROGRESS']:
-                        return Response(
-                            {
-                                "task_id": existing_task_id,
-                                "detail": "Estimate readings task already in progress."
-                            },
-                            status=status.HTTP_409_CONFLICT
-                        )
-
                 payload = {
                     "extra_filter": request.data.get('extra_filter'),
                     "reading_date": request.data.get('reading_date'),
@@ -73,9 +62,25 @@ class ReadingBatchEstimateViewSet(viewsets.ViewSet):
                     "period": period,
                     "statistic": statistic,
                 }
-                task = estimate_readings_task.delay(reading_batch.id, payload)
-                reading_batch.estimating_task_id = task.id
-                reading_batch.save(update_fields=['estimating_task_id'])
+
+                # Bloqueig de fila: serialitza amb return_reading_batch_to_pending.
+                with transaction.atomic():
+                    locked_batch = ReadingBatch.objects.select_for_update().get(id=reading_batch.id)
+                    existing_task_id = locked_batch.estimating_task_id
+                    if existing_task_id:
+                        task_result = AsyncResult(existing_task_id)
+                        if task_result.state in ['PENDING', 'STARTED', 'PROGRESS']:
+                            return Response(
+                                {
+                                    "task_id": existing_task_id,
+                                    "detail": "Estimate readings task already in progress."
+                                },
+                                status=status.HTTP_409_CONFLICT
+                            )
+
+                    task = estimate_readings_task.delay(locked_batch.id, payload)
+                    locked_batch.estimating_task_id = task.id
+                    locked_batch.save(update_fields=['estimating_task_id'])
 
                 return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
             else:

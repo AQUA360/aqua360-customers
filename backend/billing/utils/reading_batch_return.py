@@ -6,6 +6,9 @@ from billing.utils.reading_filters import PENDING_READING_FILTER
 from coredata.models import ConfigProject
 
 
+IN_PROGRESS_TASK_STATES = ('PENDING', 'STARTED', 'PROGRESS')
+
+
 class ReturnToPendingError(Exception):
     def __init__(self, message, status_code):
         super().__init__(message)
@@ -18,32 +21,38 @@ def return_reading_batch_to_pending(batch_id):
     Torna un lot del pas de lectures (Pendent de processar) al pas de
     configuració (Pendent) quan no hi ha cap lectura pendent assignada.
     """
-    try:
-        reading_batch = ReadingBatch.objects.select_related('status').get(id=batch_id)
-    except ReadingBatch.DoesNotExist:
-        raise ReturnToPendingError("Reading batch not found", 404)
-
     pending_processing_token = ConfigProject.objects.get(token='reading_batch_pending_processing_token').value
     pending_token = ConfigProject.objects.get(token='reading_batch_pending_token').value
+    pending_status = ReadingBatchStatus.objects.get(token=pending_token)
 
-    if not reading_batch.status or reading_batch.status.token != pending_processing_token:
-        raise ReturnToPendingError("El lot no està pendent de processar.", 409)
+    with transaction.atomic():
+        # Bloqueig de fila: serialitza amb l'inici d'una assignació o estimació
+        # (que també bloquegen el lot abans de desar-ne el task_id).
+        try:
+            reading_batch = (
+                ReadingBatch.objects.select_for_update()
+                .select_related('status')
+                .get(id=batch_id)
+            )
+        except ReadingBatch.DoesNotExist:
+            raise ReturnToPendingError("Reading batch not found", 404)
 
-    existing_task_id = reading_batch.assign_readings_task_id
-    if existing_task_id:
-        task_result = AsyncResult(existing_task_id)
-        if task_result.state in ['PENDING', 'STARTED', 'PROGRESS']:
+        if not reading_batch.status or reading_batch.status.token != pending_processing_token:
+            raise ReturnToPendingError("El lot no està pendent de processar.", 409)
+
+        if _task_in_progress(reading_batch.assign_readings_task_id):
             raise ReturnToPendingError("Encara s'estan assignant lectures a aquest lot.", 409)
 
-    assigned_readings = Reading.objects.filter(
-        batch=reading_batch,
-        is_control=False,
-    ).filter(PENDING_READING_FILTER).distinct().count()
-    if assigned_readings > 0:
-        raise ReturnToPendingError("No es pot tornar enrere: el lot ja té lectures assignades.", 409)
+        if _task_in_progress(reading_batch.estimating_task_id):
+            raise ReturnToPendingError("Encara s'estan estimant lectures en aquest lot.", 409)
 
-    pending_status = ReadingBatchStatus.objects.get(token=pending_token)
-    with transaction.atomic():
+        assigned_readings = Reading.objects.filter(
+            batch=reading_batch,
+            is_control=False,
+        ).filter(PENDING_READING_FILTER).distinct().count()
+        if assigned_readings > 0:
+            raise ReturnToPendingError("No es pot tornar enrere: el lot ja té lectures assignades.", 409)
+
         reading_batch.status = pending_status
         reading_batch.assign_readings_task_id = None
         reading_batch.save(update_fields=['status', 'assign_readings_task_id'])
@@ -53,3 +62,9 @@ def return_reading_batch_to_pending(batch_id):
 
     reading_batch.refresh_from_db()
     return reading_batch
+
+
+def _task_in_progress(task_id):
+    if not task_id:
+        return False
+    return AsyncResult(task_id).state in IN_PROGRESS_TASK_STATES

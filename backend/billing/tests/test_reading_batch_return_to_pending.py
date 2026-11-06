@@ -1,9 +1,14 @@
 from datetime import date
+from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from billing.models import Reading, ReadingBatch, ReadingBatchStatus, ReadingDocument
 from billing.utils.reading_batch_return import ReturnToPendingError, return_reading_batch_to_pending
+from billing.views.reading_batch_generate_view import ReadingBatchSummaryView
 from coredata.models import ConfigProject
 
 
@@ -62,5 +67,47 @@ class ReadingBatchReturnToPendingTests(TestCase):
             return_reading_batch_to_pending(self.batch.id)
 
         self.assertEqual(caught.exception.status_code, 409)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.status_id, self.pending.id)
+
+    @patch('billing.utils.reading_batch_return.AsyncResult')
+    def test_amb_estimacio_en_curs_no_canvia_l_estat(self, async_result):
+        async_result.return_value.state = 'STARTED'
+        self.batch.estimating_task_id = 'estimate-task'
+        self.batch.save(update_fields=['estimating_task_id'])
+
+        with self.assertRaises(ReturnToPendingError) as caught:
+            return_reading_batch_to_pending(self.batch.id)
+
+        self.assertEqual(caught.exception.status_code, 409)
+        async_result.assert_called_with('estimate-task')
+        self.batch.refresh_from_db()
+        self.document.refresh_from_db()
+        self.assertEqual(self.batch.status_id, self.pending_processing.id)
+        self.assertEqual(self.document.batch_id, self.batch.id)
+
+    def _post_return_to_pending(self, *codenames):
+        user = get_user_model().objects.create_user(username='lector', password='x')
+        user.user_permissions.add(
+            *Permission.objects.filter(content_type__app_label='billing', codename__in=codenames)
+        )
+        request = APIRequestFactory().post(
+            f'/billing/reading-batch-summary/{self.batch.id}/return-to-pending/'
+        )
+        force_authenticate(request, user=user)
+        view = ReadingBatchSummaryView.as_view({'post': 'return_to_pending'})
+        return view(request, pk=self.batch.id)
+
+    def test_sense_permis_de_canvi_retorna_403(self):
+        response = self._post_return_to_pending('add_reading')
+
+        self.assertEqual(response.status_code, 403)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.status_id, self.pending_processing.id)
+
+    def test_amb_permis_de_canvi_torna_a_pendent(self):
+        response = self._post_return_to_pending('add_reading', 'change_reading')
+
+        self.assertEqual(response.status_code, 200)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.status_id, self.pending.id)
