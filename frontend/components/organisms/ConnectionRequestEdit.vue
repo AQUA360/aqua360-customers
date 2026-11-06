@@ -134,6 +134,14 @@ const getRequestPersonData = () => {
     longitude: requestPerson.value?.longitude || null,
     blueprint: requestPerson.value?.blueprint || null,
   }
+  const extraFields = [
+    'requester_type', 'property_condition', 'representative', 'representative_type',
+    'address_building', 'address_stair', 'address_floor', 'address_door',
+    'cadastral', 'scope', 'polygon', 'parcel', 'building_type', 'clear_fields',
+  ];
+  for (const key of extraFields) {
+    data[key] = requestPerson.value?.[key] || null;
+  }
   if (requestPerson.value?.blueprint_delete) {
     data.blueprint = null;
     data.blueprint_delete = true;

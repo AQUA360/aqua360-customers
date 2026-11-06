@@ -1,0 +1,93 @@
+[
+    {
+        "model": "service.connectionrequestrepresentativetype",
+        "pk": 1,
+        "fields": {
+            "token": "developer",
+            "name": "Promotor/a",
+            "position": 0,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestrepresentativetype",
+        "pk": 2,
+        "fields": {
+            "token": "builder",
+            "name": "Constructor/a",
+            "position": 1,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestrepresentativetype",
+        "pk": 3,
+        "fields": {
+            "token": "installer",
+            "name": "Instal·lador/a",
+            "position": 2,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestrepresentativetype",
+        "pk": 4,
+        "fields": {
+            "token": "technician",
+            "name": "Tècnic/a",
+            "position": 3,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestrepresentativetype",
+        "pk": 5,
+        "fields": {
+            "token": "property_manager",
+            "name": "Administrador/a de finques",
+            "position": 4,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestrepresentativetype",
+        "pk": 6,
+        "fields": {
+            "token": "agent",
+            "name": "Gestor/a",
+            "position": 5,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestrepresentativetype",
+        "pk": 7,
+        "fields": {
+            "token": "other",
+            "name": "Altres",
+            "position": 6,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    }
+]
