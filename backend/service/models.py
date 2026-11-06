@@ -991,6 +991,10 @@ class SupplyPoint(models.Model):
     installation_at = models.DateField(null=True, blank=True)
     cadastral = models.CharField(max_length=255, null=True, blank=True)
     property = models.ForeignKey(Property, related_name='supply_points', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Property")
+    # Posició de ruta pròpia del punt. Si és buida, el punt segueix la ruta de
+    # la finca (property.route_position). Permet que dos punts d'una mateixa
+    # finca vagin en rutes diferents (p. ex. un mensual i un trimestral).
+    route_position = models.ForeignKey(RoutePosition, related_name='supply_points', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="RoutePosition")
     type = models.ForeignKey(SupplyPointType, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="SupplyPoint Type")
     status = models.ForeignKey(SupplyPointStatus, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="SupplyPoint Status")
     source = models.ForeignKey(SupplyPointSource, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="SupplyPoint Source")

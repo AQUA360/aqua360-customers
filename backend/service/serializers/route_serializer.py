@@ -4,20 +4,37 @@ from coredata.serializers import CitySerializer, PostalCodeSerializer, StreetNum
 from service.utils.route_positions_service import route_count_total_readings, route_position_change, regenerate_route_position_token
 from service.utils.property_route_service import sync_property_tokens_with_route_position
 from ..models import ( Property, RouteZone, RoutePosition, Route, SupplyPoint )
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
+from service.utils.route_scope import position_supply_points_q, route_supply_points_q
 
 
 def _serialize_properties(route_position):
-    """Retorna una llista lleugera de propietats amb adreça i supply points."""
+    """Retorna una llista lleugera de propietats amb adreça i supply points.
+
+    Inclou les finques de la posició i les dels punts que hi tenen la posició
+    pròpia, però només amb els punts que pertanyen efectivament a la posició.
+    """
     result = []
-    for prop in route_position.properties.all():
+    position_supply_points = (
+        SupplyPoint.objects.filter(position_supply_points_q(route_position))
+        .order_by('id')
+        .values('id', 'token', 'name', 'property_id', 'route_position_id')
+    )
+    supply_points_by_property = {}
+    for sp in position_supply_points:
+        supply_points_by_property.setdefault(sp['property_id'], []).append(sp)
+    properties = Property.objects.filter(
+        Q(route_position=route_position) | Q(id__in=[pid for pid in supply_points_by_property if pid])
+    ).select_related('address_street', 'address_street_number', 'address_city', 'address_postal_code').order_by('id')
+    for prop in properties:
         supply_points = [
             {
-                'id': sp.id,
-                'token': sp.token,
-                'name': sp.name,
+                'id': sp['id'],
+                'token': sp['token'],
+                'name': sp['name'],
+                'own_route_position': sp['route_position_id'] is not None,
             }
-            for sp in prop.supply_points.all()
+            for sp in supply_points_by_property.get(prop.id, [])
         ]
         result.append({
             'id': prop.id,
@@ -30,6 +47,22 @@ def _serialize_properties(route_position):
             'supply_points': supply_points,
         })
     return result
+
+
+def _assign_own_supply_points(route_position, property_ids, supply_points_ids, unassign_missing=False):
+    """Els punts seleccionats que no pertanyen a cap de les finques de la
+    posició hi queden assignats amb ruta pròpia. Amb `unassign_missing`, els
+    punts amb ruta pròpia en aquesta posició que ja no hi són seleccionats
+    tornen a seguir la ruta de la seva finca."""
+    supply_points_ids = supply_points_ids or []
+    property_ids = set(property_ids or [])
+    if unassign_missing:
+        route_position.supply_points.exclude(id__in=supply_points_ids).update(route_position=None)
+    if not supply_points_ids:
+        return
+    selected = SupplyPoint.objects.filter(id__in=supply_points_ids)
+    selected.filter(property_id__in=property_ids).update(route_position=None)
+    selected.exclude(property_id__in=property_ids).update(route_position=route_position)
 
 
 class RouteZoneSerializer(serializers.ModelSerializer):
@@ -130,13 +163,9 @@ class RoutePositionSerializer(serializers.ModelSerializer):
                     prop.route_position = route_position
                     prop.save()
 
-                    if supply_points_ids:
-                        for supply_id in supply_points_ids:
-                            supply_point = SupplyPoint.objects.filter(id=supply_id).first()
-                            if supply_point:
-                                supply_point.property = prop
-                                supply_point.save()
+        _assign_own_supply_points(route_position, property_ids or [], supply_points_ids)
 
+        if property_ids or supply_points_ids:
             sync_property_tokens_with_route_position(route_position)
 
         return route_position
@@ -191,16 +220,12 @@ class RoutePositionSerializer(serializers.ModelSerializer):
                     prop.route_position = instance
                     prop.save()
 
-                    if supply_points_ids is not None:
-                        # 3. Desvinculem punts de subministrament que ja no estiguin a la llista per aquesta finca
-                        prop.supply_points.exclude(id__in=supply_points_ids).update(property=None)
-                        
-                        # 4. Vinculem els que sí que hi són
-                        for supply_id in supply_points_ids:
-                            supply_point = SupplyPoint.objects.filter(id=supply_id).first()
-                            if supply_point:
-                                supply_point.property = prop
-                                supply_point.save()
+        # 3. Punts seleccionats d'altres finques: van a aquesta posició com a
+        # ruta pròpia. Desmarcar un punt el treu de la ruta, no de la finca.
+        if supply_points_ids is not None:
+            property_ids_for_sp = property_ids if property_ids is not None else list(
+                instance.properties.values_list('id', flat=True))
+            _assign_own_supply_points(instance, property_ids_for_sp, supply_points_ids, unassign_missing=True)
 
         sync_property_tokens_with_route_position(instance)
 
@@ -336,18 +361,12 @@ class RouteListSerializer(serializers.ModelSerializer):
         ]
 
     def get_num_total_readings(self, obj):
-        return (
-            obj.positions
-            .filter(properties__isnull=False)
-            .annotate(num_supplypoints=Count('properties__supply_points'))
-            .aggregate(total=Sum('num_supplypoints'))['total'] or 0
-        )
+        return SupplyPoint.objects.filter(route_supply_points_q(obj)).count()
 
     def get_num_telecontrol_readings(self, obj):
         return (
-            obj.positions
-            .filter(properties__isnull=False)
-            .filter(properties__supply_points__meter__isnull=False)
-            .filter(properties__supply_points__meter__has_remote_reading=True, properties__supply_points__meter__force_manual_reading=False)
-            .aggregate(total_telecontrol=Count('properties__supply_points', distinct=True))['total_telecontrol'] or 0
+            SupplyPoint.objects.filter(route_supply_points_q(obj))
+            .filter(meter__isnull=False, meter__has_remote_reading=True, meter__force_manual_reading=False)
+            .distinct()
+            .count()
         )

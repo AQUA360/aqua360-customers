@@ -6,6 +6,7 @@ from django.db.models import Prefetch, Q, Count
 
 from billing.models import ReadingBatch, Reading
 from service.models import SupplyPoint
+from service.utils.route_scope import effective_route_position, effective_route_select_related, routes_supply_points_q
 from coredata.models import ConfigProject
 from .serializers import RouteAppDetailSerializer, MeterAppSerializer
 
@@ -67,7 +68,10 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
             
             # Prefetch fix_meters with related data (no sub_meters)
             fix_meters = reading_batch.fix_meters.prefetch_related(
-                'supply_points__property__route_position',
+                Prefetch(
+                    'supply_points',
+                    queryset=SupplyPoint.objects.select_related(*effective_route_select_related()),
+                ),
                 Prefetch(
                     'supply_points__property__supply_points',
                     queryset=SupplyPoint.objects.filter(status__token=activate_token).select_related(
@@ -116,20 +120,23 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
             # Track meters per property: {property_id: [meter1, meter2, ...]}
             property_meters = {}
             
-            # First pass: collect meters per property (only main meters, no sub_meters)
+            # First pass: collect meters per property (only main meters, no sub_meters).
+            # Clau (posició efectiva, finca): una finca pot tenir punts a posicions diferents.
             for meter in fix_meters:
                 sp = meter.supply_points.first()
                 if not sp or not sp.property:
                     continue
                 
                 property_obj = sp.property
-                if property_obj.id not in property_meters:
-                    property_meters[property_obj.id] = []
+                position = effective_route_position(sp)
+                property_key = (position.id if position else None, property_obj.id)
+                if property_key not in property_meters:
+                    property_meters[property_key] = []
                 
                 # Add main meter if status is valid (ignore sub_meters)
                 if meter.status and meter.status.token not in [token_meter_status_no_meter, '-1']:
                     if meter_included_for_batch(meter, include_telecontrol, include_manual):
-                        property_meters[property_obj.id].append(meter)
+                        property_meters[property_key].append(meter)
             
             # Second pass: build positions and properties with only fix_meters
             for meter in fix_meters:
@@ -138,7 +145,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
                     continue
                 
                 property_obj = sp.property
-                position = property_obj.route_position
+                position = effective_route_position(sp)
                 
                 if not position:
                     continue
@@ -160,7 +167,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
                 
                 if not existing_property:
                     # Get meters for this property (only from fix_meters)
-                    meters_for_property = property_meters.get(property_obj.id, [])
+                    meters_for_property = property_meters.get((position.id, property_obj.id), [])
                     
                     # Build property data manually
                     property_data = {
@@ -222,49 +229,28 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
         # Optimize queries with prefetch_related and select_related (only active supply points)
         
         # REMOVED FILTER BY ACTIVE STATUS
-        routes = routes.prefetch_related(
-            'route_zone',
-            Prefetch(
-                'positions__properties__supply_points',
-                queryset=SupplyPoint.objects.all().select_related(
-                    'meter', 'status', 'address', 'placement', 'cluster_nozzle__cluster'
-                ).prefetch_related(
-                    'meter__sub_meters',
-                    'contracts',
-                    'meter__supply_points__contracts__holder',
-                    'meter__supply_points__address',
-                    'meter__supply_points__placement',
-                    'meter__supply_points__cluster_nozzle',
-                    'meter__supply_points__cluster_nozzle__cluster',
-                )
-            ),
-        ).select_related(
-            'route_zone'
-        )
+        routes = routes.select_related('route_zone')
         
         progress_recorder.set_progress(20, 100, "Preparing data context...")
         
-        # Build a global distinct set of meters to avoid double-counting across routes/positions
+        # Build a global distinct set of meters to avoid double-counting across routes/positions.
+        # Punts amb ruta efectiva a les rutes del lot (posició pròpia o, si no en té, la de la finca)
+        route_supply_points = SupplyPoint.objects.filter(
+            routes_supply_points_q(routes), meter__isnull=False
+        ).select_related('meter__status').prefetch_related('meter__sub_meters__status')
         distinct_meter_ids = set()
         
-        for route in routes:
-            # Use prefetched positions -> properties -> supply_points -> meter (+ sub_meters)
-            for position in route.positions.all():
-                for prop in position.properties.all():
-                    for sp in prop.supply_points.all():
-                        meter = getattr(sp, 'meter', None)
-                        if not meter:
-                            continue
-                        # Main meter filters
-                        if getattr(meter, 'status', None) and getattr(meter.status, 'token', None) != '-1' and getattr(meter.status, 'token', None) != token_meter_status_no_meter:
-                            if meter_included_for_batch(meter, include_telecontrol, include_manual):
-                                distinct_meter_ids.add(meter.id)
-                        # Sub-meters
-                        if hasattr(meter, 'sub_meters'):
-                            for sub_meter in meter.sub_meters.all():
-                                if getattr(sub_meter, 'status', None) and getattr(sub_meter.status, 'token', None) != '-1' and getattr(sub_meter.status, 'token', None) != token_meter_status_no_meter:
-                                    if meter_included_for_batch(sub_meter, include_telecontrol, include_manual):
-                                        distinct_meter_ids.add(sub_meter.id)
+        for sp in route_supply_points:
+            meter = sp.meter
+            # Main meter filters
+            if getattr(meter, 'status', None) and getattr(meter.status, 'token', None) != '-1' and getattr(meter.status, 'token', None) != token_meter_status_no_meter:
+                if meter_included_for_batch(meter, include_telecontrol, include_manual):
+                    distinct_meter_ids.add(meter.id)
+            # Sub-meters
+            for sub_meter in meter.sub_meters.all():
+                if getattr(sub_meter, 'status', None) and getattr(sub_meter.status, 'token', None) != '-1' and getattr(sub_meter.status, 'token', None) != token_meter_status_no_meter:
+                    if meter_included_for_batch(sub_meter, include_telecontrol, include_manual):
+                        distinct_meter_ids.add(sub_meter.id)
         
         total_meters = len(distinct_meter_ids)
         print("total_meters: ", total_meters)

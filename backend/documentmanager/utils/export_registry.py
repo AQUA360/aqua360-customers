@@ -169,9 +169,10 @@ def _supply_point_config():
     from service.models import SupplyPoint
     from service.filters.supply_point_filter import SupplyPointFilter
     from documentmanager.utils.export_permissions import export_permission_class
+    from service.utils.route_scope import effective_route_position, effective_route_select_related
 
     def _route_position(sp):
-        rp = sp.property.route_position if sp.property else None
+        rp = effective_route_position(sp)
         if not rp:
             return ""
         return f"{rp.route.token if rp.route else ''} - {rp.position if rp.position is not None else ''}".strip(" -")
@@ -201,7 +202,7 @@ def _supply_point_config():
             "address__street_number", "address__street_number__number_type",
             "type", "status", "meter",
             "cluster_nozzle", "connection", "connection__exploitation",
-            "property", "property__route_position", "property__route_position__route",
+            "property", *effective_route_select_related(),
         ),
         filterset_class=SupplyPointFilter,
         permission_classes=[IsAuthenticated, export_permission_class('service', 'supplypoint')],
@@ -274,10 +275,11 @@ def _biller_config():
 
     class BillerFilter(filters.FilterSet):
         search = filters.CharFilter(method='filter_search')
+        exploitation = filters.NumberFilter(field_name='exploitation_id')
 
         class Meta:
             model = Biller
-            fields = ['search']
+            fields = ['search', 'exploitation']
 
         def filter_search(self, queryset, name, value):
             from django.db.models import Q

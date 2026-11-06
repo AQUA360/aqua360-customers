@@ -441,7 +441,8 @@ const showMap = () => {
       <div v-if="data" id="item_data" :data-rel=id>
 
         <SupplyPointDetail :id="props.id" :isSubRegion="props.isSubRegion" :isSubRegionOpen="props.isSubRegionOpen"
-          :data="data" @show-detail="showDetail" @activar="activar" @show-map="showMap()" />
+          :data="data" :canChange="!!objectPermissions?.can_change" @show-detail="showDetail" @activar="activar"
+          @show-map="showMap()" />
 
         <AtomsTabs>
           <li class="me-2">

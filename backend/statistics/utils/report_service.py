@@ -30,6 +30,7 @@ from logger.models import LogCommitmentDepositMovement, LogPaymentStatusChange
 from order.models import Operator, Order, OrderReport
 from pricing.models import Adjustment, BillingRange, Product, Tax
 from service.models import Company, Exploitation, Meter
+from service.utils.route_scope import effective_route
 from statistics.utils.incasol import resolve_incasol_num, resolve_municipi
 from statistics.utils.dated_use_type import annotate_dated_use_type, resolve_dated_use_types
 from statistics.utils.report_progress import report_progress
@@ -798,10 +799,12 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
         'contract', 'contract__holder', 'contract__address_billing__address',
         'contract__supply_point_default__address',
         'contract__supply_point_default__connection__dma',
+        'contract__supply_point_default__route_position__route__route_zone',
         'contract__supply_point_default__property__route_position__route__route_zone',
         'contract_termination', 'contract_termination__contract',
         'contract_termination__contract__supply_point_default__address',
         'contract_termination__contract__supply_point_default__connection__dma',
+        'contract_termination__contract__supply_point_default__route_position__route__route_zone',
         'contract_termination__contract__supply_point_default__property__route_position__route__route_zone',
         'contract_termination__contract__address_contact__address',
         'contract_termination__contract__use_type',
@@ -843,6 +846,7 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
                 'address_contact__address',
                 'supply_point_default__address',
                 'supply_point_default__connection__dma',
+                'supply_point_default__route_position__route__route_zone',
                 'supply_point_default__property__route_position__route__route_zone',
                 *_address_display_relations('address_contact__address'),
                 *_address_display_relations('supply_point_default__address'),
@@ -1462,7 +1466,8 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
                         reading.supply_point.supply_type.name if reading.supply_point and reading.supply_point.supply_type else "",
                     ])
                 else:
-                    i_data.extend([
+                    contract_route = effective_route(contract.supply_point_default) if contract else None
+            i_data.extend([
                         "", "", "", "", "",
                     ])
         
@@ -1471,8 +1476,8 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
                 f"{str(contract.address_contact.address.street)}, {str(contract.address_contact.address.street_number)}{get_address_extra_suffix(contract.address_contact.address)}" if contract and contract.address_contact and contract.address_contact.address and different_address else "",
                 contract.address_contact.address.postal_code if contract and contract.address_contact and contract.address_contact.address and different_address else "",
                 contract.address_contact.attention_to if contract and contract.address_contact and different_address else "",
-                contract.supply_point_default.property.route_position.route.token if contract and contract.supply_point_default and contract.supply_point_default.property and contract.supply_point_default.property.route_position and contract.supply_point_default.property.route_position.route else "",
-                contract.supply_point_default.property.route_position.route.route_zone.name if contract and contract.supply_point_default and contract.supply_point_default.property and contract.supply_point_default.property.route_position and contract.supply_point_default.property.route_position.route and contract.supply_point_default.property.route_position.route.route_zone else "",
+                contract_route.token if contract_route else "",
+                contract_route.route_zone.name if contract_route and contract_route.route_zone else "",
             ])
         
             contract_variables_by_name = {}

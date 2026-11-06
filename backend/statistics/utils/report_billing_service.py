@@ -34,6 +34,7 @@ from statistics.utils.report_filters import (get_billing_ids, get_multi_ids, has
                                              payment_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
 from statistics.utils.dated_use_type import annotate_dated_use_type
 from statistics.utils.report_progress import report_progress
+from statistics.utils.aca_declaration_service import aca_declaration_selection
 import logging
 
 logger = logging.getLogger(__name__)
@@ -168,10 +169,13 @@ def _product_token_matches_aca(prod_token, aca_product_token):
     return any(token in prod_token for token in _split_aca_product_tokens(aca_product_token))
 
 
-def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
+def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token, line_items_q=None):
     """
     Helper to obtain common ACA invoice aggregation data reused across reports.
+    `line_items_q` tria les línies de cànon (per defecte, les actives; amb mesos presentats, les congelades).
     """
+    if line_items_q is None:
+        line_items_q = Q(is_active=True)
     # Filter invoices that have ACA products (using distinct to avoid duplicates from JOIN)
     invoices_with_aca = invoices.filter(
         _aca_product_token_q('line_items__product__token', aca_product_token)
@@ -203,8 +207,8 @@ def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
 
     line_items_totals_by_exploitation = InvoiceLineItem.objects.filter(
         _aca_product_token_q('product__token', aca_product_token),
+        line_items_q,
         invoice__id__in=aca_invoice_ids,
-        is_active=True,
     ).values('invoice__exploitation__name').annotate(
         total_sum=Sum('price'),
     )
@@ -224,8 +228,8 @@ def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
     # Base queryset for ACA line items
     aca_line_items_qs = InvoiceLineItem.objects.filter(
         _aca_product_token_q('product__token', aca_product_token),
+        line_items_q,
         invoice__in=invoices.exclude(status__token__in=[pre_invoice_token]),
-        is_active=True,
     ).select_related(
         'invoice',
         'invoice__status',
@@ -841,6 +845,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         end_date = None
         
         exploitation = None
+        aca_line_items_q = None
         if exploitation_id:
             exploitation = Exploitation.objects.get(id=exploitation_id)
         
@@ -851,20 +856,10 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         elif date_range:
             start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
             end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
-            invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
-            status_cancelled_token = ConfigProject.objects.get(token="invoice_status_cancelled_token").value
-            # Excloure les anul·lades NOMÉS si no tenen una refactura/abonament lligat (return_token).
-            # Les anul·lades amb return_token es mantenen (mateix criteri que el detall de facturació).
-            invoices = Invoice.objects.filter(
-                issue_date__range=(start_date.date(), end_date.date()),
-                type_final=invoice_type,
-                payments__is_active=True,
-                exploitation__isnull=False,
-            ).exclude(
-                Q(status__token__in=[status_cancelled_token])
-                & (Q(return_token__isnull=True) | Q(return_token__exact=""))
-            ).distinct()
-            invoices = filter_pending_invoices(invoices, request)
+            # Amb els mesos ja presentats congelats (veure aca_declaration_service)
+            aca_selection = aca_declaration_selection(start_date.date(), end_date.date(), request)
+            invoices = aca_selection.invoices
+            aca_line_items_q = aca_selection.line_items_q
         elif has_serie_range:
             # Seleccio nomes pel rang de numero de factura: el rang ja identifica les
             # factures, sense lot ni periode. filter_pending_invoices hi aplica el rang
@@ -910,7 +905,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         first_invoice = invoices.first()
         billing_date = end_date if end_date else first_invoice.issue_date if (first_invoice and id and billing) else datetime.datetime.now()
         _aca_invoice_ids, _invoices_by_exploitation, _totals_dict, aca_line_items_qs = _get_aca_invoices_data(
-            invoices, aca_product_token, pre_invoice_token
+            invoices, aca_product_token, pre_invoice_token, aca_line_items_q
         )
         # Amb múltiples empreses el codi és el de l'empresa de les factures (totes la mateixa);
         # si no, el de l'empresa de cada explotació.

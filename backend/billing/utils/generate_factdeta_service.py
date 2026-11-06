@@ -44,13 +44,13 @@ def _load_factdeta_config():
     )
 
 
-def generate_factdeta_document(exploitations, invoices, is_alta = False):
+def generate_factdeta_document(exploitations, invoices, is_alta = False, line_items_q=None):
     config = _load_factdeta_config()
     company = Company.objects.get(vat=config.main_company_token)
     if is_alta:
         files = generate_factdeta_alta_document(exploitations, invoices, config, company)
     else:
-        files = generate_factdeta_normal_document(exploitations, invoices, config, company)
+        files = generate_factdeta_normal_document(exploitations, invoices, config, company, line_items_q)
     return files
 
 def generate_factdeta_alta_document(exploitations, invoices, config, company):
@@ -1000,13 +1000,16 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     }
 
 
-def generate_factdeta_normal_document(exploitations, invoices, config, company):
+def generate_factdeta_normal_document(exploitations, invoices, config, company, line_items_q=None):
     """Un fitxer FDCCCC_MMMMMM_AAAA.txt per municipi (explotació) i any de facturació, amb un
-    registre de detall per factura amb cànon, inclosos els usos exempts i els abonaments."""
+    registre de detall per factura amb cànon, inclosos els usos exempts i els abonaments.
+    `line_items_q` tria les línies de cànon: per defecte les actives; amb els mesos de la Declaració
+    ACA ja presentats, les que s'hi van declarar."""
+    if line_items_q is None:
+        line_items_q = Q(is_active=True)
     files = []
     aca_invoices = invoices.filter(
-        _aca_lines_q(config.aca_product_token, 'line_items__product__token'),
-        line_items__is_active=True,
+        id__in=InvoiceLineItem.objects.filter(_aca_lines_q(config.aca_product_token), line_items_q).values('invoice_id'),
         type_final=config.invoice_type,
     ).exclude(
         status__token=config.invoice_token_pending,
@@ -1068,8 +1071,8 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
             lines_by_invoice = defaultdict(list)
             for line in InvoiceLineItem.objects.filter(
                 _aca_lines_q(config.aca_product_token),
+                line_items_q,
                 invoice_id__in=[invoice.id for invoice in year_invoices],
-                is_active=True,
             ).select_related(
                 'line_item_type__article', 'line_item_type__quantity',
             ).prefetch_related('adjustments__adjustment__conditions').distinct():

@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from contract.models import Contract
 from service.models import SupplyPoint
+from service.utils.route_scope import effective_route, effective_route_position, has_own_route_position
 
 
 class RouteSupplyPointTabContractSerializer(serializers.ModelSerializer):
@@ -29,6 +30,7 @@ class RouteSupplyPointTabContractSerializer(serializers.ModelSerializer):
 class RouteSupplyPointTabSerializer(serializers.ModelSerializer):
     route = serializers.SerializerMethodField()
     route_position = serializers.SerializerMethodField()
+    own_route_position = serializers.SerializerMethodField()
     property = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     meter = serializers.SerializerMethodField()
@@ -42,6 +44,7 @@ class RouteSupplyPointTabSerializer(serializers.ModelSerializer):
             'id',
             'route',
             'route_position',
+            'own_route_position',
             'property',
             'token',
             'status',
@@ -52,22 +55,23 @@ class RouteSupplyPointTabSerializer(serializers.ModelSerializer):
         )
 
     def get_route(self, obj):
-        prop = obj.property
-        route_position = prop.route_position if prop else None
-        route = route_position.route if route_position else None
+        route = effective_route(obj)
         if not route:
             return None
         return {'token': route.token, 'name': route.name}
 
     def get_route_position(self, obj):
-        prop = obj.property
-        route_position = prop.route_position if prop else None
+        route_position = effective_route_position(obj)
         if not route_position:
             return None
         return {
             'token': route_position.token,
             'position': route_position.position,
         }
+
+    def get_own_route_position(self, obj):
+        # True si el punt té posició de ruta pròpia (no heretada de la finca)
+        return has_own_route_position(obj)
 
     def get_property(self, obj):
         prop = obj.property
