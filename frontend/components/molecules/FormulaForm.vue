@@ -33,7 +33,7 @@ const getData = async () => {
       products.value.push({
         value: item.id,
         token: item.token,
-        label: `${item.name} (${item.exploitation.name})`
+        label: item.exploitation?.name ? `${item.name} (${item.exploitation.name})` : item.name
       });
     });
   } catch (error) {

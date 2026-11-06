@@ -153,7 +153,7 @@ def activate_supply_cut():
     (forecast). Giswater ones are activated by `exec_start` (real execution),
     not by the forecast: a mincut with forecast and no execution does not cut.
     """
-    now = timezone.now().date()
+    now = timezone.localdate()
     status_cut_token = ConfigProject.objects.get(token='supply_cut_status_active_token').value
     status_instance = SupplyCutStatus.objects.get(token=status_cut_token)
 
@@ -189,7 +189,7 @@ def deactivate_supply_cut():
     Manual: `date_end`. Giswater: `exec_end`. A mincut without finished
     execution is not closed even if the forecast has already expired.
     """
-    now = timezone.now().date()
+    now = timezone.localdate()
     status_instance = SupplyCutStatus.objects.get(
         token=supply_cut_service.closed_status_token()
     )

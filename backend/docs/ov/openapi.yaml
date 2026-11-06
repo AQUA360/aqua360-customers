@@ -37,12 +37,15 @@ info:
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
     | `/ov/procedures/contract/` | POST | Solicitar el alta de un contrato (crea una solicitud; no crea contrato) |
     | `/ov/procedures/contract/{contract_request_token}/` | GET | Consultar el estado de una solicitud de alta de contrato |
+    | `/ov/procedures/contract-termination/` | POST | Solicitar la baja de un contrato (crea una solicitud de baja; no da de baja el contrato) |
+    | `/ov/procedures/contract-change/` | POST | Solicitar un cambio de nombre (crea la baja del contrato actual y la solicitud de alta del nuevo titular, enlazadas) |
     | `/ov/procedures/{contract_token}/upload-sepa-signed/` | POST | Subir y archivar el mandato SEPA firmado del contrato |
     | `/ov/procedures/{contract_token}/sepa-signed/` | GET | Descargar el mandato SEPA firmado archivado |
     | `/ov/procedures/{contract_token}/cancel-direct-debit/` | POST | Cancelar la domiciliación (revocación del mandato SEPA) y cambiar el tipo de pago |
     | `/ov/dictionary/contract-statuses/` | GET | Diccionario de estados de contrato (`token`, `name`) |
     | `/ov/dictionary/payment-types/` | GET | Diccionario de formas de pago (`token`, `name`) |
     | `/ov/dictionary/invoice-statuses/` | GET | Diccionario de estados de factura (`token`, `name`) |
+    | `/ov/dictionary/contract-request-types/` | GET | Diccionario de tipos de solicitud de contrato activos (`token`, `name`) |
     | `/ov/dictionary/procedure-tariffs/` | GET | Diccionario de tarifas activas de trámites con precio fijo o tabla por calibre/consumo |
     | `/ov/properties/` | GET | Autocompletado de propiedades por dirección (resultados paginados) |
 
@@ -1399,10 +1402,13 @@ paths:
       description: |
         Devuelve los periodos de facturación disponibles para el contrato.
         Los ciclos de facturación (trimestral, bimestral, etc.) los define el
-        sistema central (PA) y varían según el contrato, por lo que el frontal
-        no puede hardcodearlos: este endpoint los expone tal cual los genera el
-        PA para que el selector de «Primera domiciliación» del formulario de
-        medio de pago se rellene dinámicamente.
+        facturador (`Biller`: `period_type` + `initial_month`) de la ruta del
+        contrato y varían según el contrato, por lo que el frontal no puede
+        hardcodearlos. Devuelve el ciclo en curso (`is_current: true`, primero)
+        y el siguiente, calculados con la fecha actual, para que el selector de
+        «Primera domiciliación» del formulario de medio de pago se rellene
+        dinámicamente. Si la ruta no tiene facturador se aplican los valores
+        por defecto del modelo (trimestral desde enero).
       operationId: listBillingPeriods
       security:
         - tokenAuth: []
@@ -1419,13 +1425,21 @@ paths:
                   $ref: "#/components/schemas/BillingPeriodItem"
               example:
                 - year: 2026
+                  period_code: "4T"
+                  months_label: "octubre-diciembre"
+                  month_from: 10
+                  year_from: 2026
+                  month_to: 12
+                  year_to: 2026
+                  is_current: true
+                - year: 2027
                   period_code: "1T"
                   months_label: "enero-marzo"
+                  month_from: 1
+                  year_from: 2027
+                  month_to: 3
+                  year_to: 2027
                   is_current: false
-                - year: 2026
-                  period_code: "2T"
-                  months_label: "abril-junio"
-                  is_current: true
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -2040,6 +2054,274 @@ paths:
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
+  /ov/procedures/contract-termination/:
+    post:
+      tags:
+        - Trámites
+      summary: Solicitar la baja de un contrato
+      description: |
+        Registra una **solicitud** de baja del contrato indicado; no da de baja
+        el contrato. Atención al cliente valida la solicitud, organiza la
+        lectura de corte en campo y la finaliza desde la plataforma de gestión.
+
+        - Solo el titular puede solicitarla: el contrato debe estar activo y
+          `holder_dni` debe coincidir con el documento del titular (se ignoran
+          espacios, puntos y guiones, y mayúsculas/minúsculas). Contrato
+          inexistente, inactivo, sin titular o de otro titular devuelven el
+          mismo `404`.
+        - La solicitud se crea con el estado por defecto (borrador). El tipo de
+          baja (el "Motivo" de la plataforma de gestión) es el indicado en
+          `reason_token`, sin restricción por tipo (también admite los de
+          cambio de nombre); si se omite, se usa el tipo por defecto
+          (petición del cliente). La fecha de solicitud es la de recepción.
+        - **No** se recogen lecturas, fotos, estimaciones, fechas ni datos de
+          contacto: la lectura de corte la registra el personal de campo.
+          Cualquier campo adicional del cuerpo se ignora.
+        - **No** se bloquea por facturas pendientes ni genera factura de
+          cierre: la facturación y la deuda siguen su propio ciclo.
+        - El texto libre `observation` se guarda como observación de la solicitud.
+        - Las solicitudes simultáneas sobre el mismo contrato se serializan:
+          solo una puede crear la solicitud; el resto reciben `409`.
+      operationId: requestContractTermination
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractTerminationProcedureRequest"
+            example:
+              contract_token: "00012345"
+              holder_dni: "12345678Z"
+              reason_token: "1"
+              observation: Cambio de domicilio
+      responses:
+        "201":
+          description: Solicitud de baja creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractTerminationProcedureResponse"
+              example:
+                contract_termination_token: "261105001"
+                contract_token: "00012345"
+                status:
+                  token: "1"
+                  name: Borrador
+                type:
+                  token: "1"
+                  name: Petición del cliente
+                created_at: "2026-11-05T10:15:00+01:00"
+        "400":
+          description: |
+            Campos obligatorios ausentes, vacíos o demasiado largos, `reason_token`
+            que no corresponde a ningún tipo de baja, o `holder_dni` sin
+            caracteres válidos (`{"error": "DNI is required"}`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrors"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: |
+            Contrato inexistente, inactivo, sin titular o cuyo titular no
+            coincide con `holder_dni`. Siempre la misma respuesta.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Contract not found
+        "409":
+          description: |
+            El contrato ya está dado de baja, o ya tiene una solicitud de baja
+            abierta (ni finalizada ni cancelada); en ese caso se devuelve su
+            token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractTerminationProcedureConflictResponse"
+              examples:
+                alreadyTerminated:
+                  value:
+                    error: Contract already terminated
+                openTermination:
+                  value:
+                    error: Contract termination already exists
+                    contract_termination_token: "261105001"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: No se ha podido crear la solicitud (estado o tipo de baja por defecto no configurado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Contract termination could not be created
+
+  /ov/procedures/contract-change/:
+    post:
+      tags:
+        - Trámites
+      summary: Solicitar un cambio de nombre (subrogación)
+      description: |
+        Registra un cambio de nombre del contrato indicado. En **una sola
+        transacción** crea, en el estado por defecto (borrador):
+
+        - una **solicitud de baja** del contrato actual (titular saliente), con
+          el tipo de baja indicado en `outgoing.reason_token` o, si se omite,
+          el tipo de baja de cambio de nombre;
+        - una **solicitud de alta** del nuevo titular marcada como cambio de
+          nombre (`is_change_of_name`), en el mismo punto de suministro y
+          enlazada a la solicitud de baja.
+
+        Ni el contrato ni sus datos cambian: atención al cliente valida las
+        solicitudes y las finaliza desde la plataforma de gestión; al crear el
+        nuevo contrato se tramita la baja del actual.
+
+        - Solo el titular actual puede solicitarlo: el contrato debe estar
+          activo y `outgoing.holder_dni` debe coincidir con su titular (se
+          ignoran espacios, puntos, guiones y mayúsculas). Contrato
+          inexistente, inactivo, sin titular o de otro titular devuelven el
+          mismo `404`.
+        - El nuevo titular (`incoming.holder_dni`) debe existir y ser distinto
+          del actual.
+        - **No** se eligen tarifas: la solicitud hereda las tarifas periódicas
+          activas del contrato actual; los derechos de alta y los tipos de
+          orden son los de cambio de nombre del tipo de trámite. También se
+          copian las variables traspasables del contrato actual.
+        - **No** se recogen lecturas ni se bloquea por deuda pendiente.
+        - Los datos bancarios de `incoming` solo son obligatorios si la forma
+          de pago es domiciliación (`DIRECT_DEBIT`).
+        - Los errores de validación se devuelven anidados por bloque
+          (`outgoing` / `incoming`).
+        - Cualquier error deshace todos los registros; las peticiones
+          simultáneas sobre el mismo contrato se serializan y solo una puede
+          crear las solicitudes.
+      operationId: requestContractChange
+      security:
+        - tokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContractChangeProcedureRequest"
+            example:
+              outgoing:
+                contract_token: "00012345"
+                holder_dni: "12345678Z"
+                reason_token: "4"
+                observation: Venta de la vivienda
+              incoming:
+                holder_dni: "87654321Y"
+                procedure_type_token: domestic
+                payment_type_token: DIRECT_DEBIT
+                iban: ES0000000000000000000000
+                iban_holder_name: Nombre Apellido
+                iban_holder_dni: "87654321Y"
+                iban_holder_swift: XXXXESXXXXX
+                language: es
+                observation: Nuevo titular
+      responses:
+        "201":
+          description: Solicitudes de baja y de alta (cambio de nombre) creadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractChangeProcedureResponse"
+              example:
+                contract_request_token: "261106001"
+                contract_termination_token: "261106001"
+                contract_token: "00012345"
+                contract_request_status:
+                  token: "1"
+                  name: Borrador
+                contract_termination_status:
+                  token: "1"
+                  name: Borrador
+                procedure_type:
+                  token: domestic
+                  name: Doméstico
+                termination_type:
+                  token: "4"
+                  name: Baja por cambio de titular
+                created_at: "2026-11-06T10:15:00+01:00"
+        "400":
+          description: |
+            Errores de validación anidados por bloque: campos ausentes o
+            vacíos, `reason_token`, `procedure_type_token` (inexistente o
+            inactivo) o `payment_type_token` desconocidos, datos bancarios
+            incompletos para domiciliación, o mismo titular saliente y
+            entrante.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrors"
+              example:
+                outgoing:
+                  reason_token:
+                    - Unknown termination reason.
+                incoming:
+                  iban:
+                    - This field is required for direct debit.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: |
+            El contrato no existe, está inactivo, no tiene titular o su
+            titular no coincide con `outgoing.holder_dni`; o no existe la
+            persona de `incoming.holder_dni`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              examples:
+                contract:
+                  value: {error: Contract not found}
+                person:
+                  value: {error: Person not found}
+        "409":
+          description: |
+            El contrato no admite un cambio de nombre: ya está dado de baja,
+            tiene una solicitud de baja abierta, ya hay una solicitud de alta
+            abierta en su punto de suministro o no tiene punto de suministro.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractChangeProcedureConflictResponse"
+              examples:
+                alreadyTerminated:
+                  value:
+                    error: Contract already terminated
+                openTermination:
+                  value:
+                    error: Contract termination already exists
+                    contract_termination_token: "261106001"
+                openContractRequest:
+                  value:
+                    error: Contract request already exists
+                    contract_request_token: "261106001"
+                noSupplyPoint:
+                  value:
+                    error: Contract has no supply point
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: |
+            No se han podido crear las solicitudes: estados por defecto no
+            configurados, o `reason_token` omitido sin ningún tipo de baja de
+            cambio de nombre configurado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Contract change could not be created
+
   /ov/procedures/{contract_token}/upload-sepa-signed/:
     post:
       tags:
@@ -2364,6 +2646,50 @@ paths:
                   name: Pagada
                 - token: "-1"
                   name: Vencida
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/dictionary/contract-request-types/:
+    get:
+      tags:
+        - Diccionarios
+      summary: Tipos de solicitud de contrato activos con sus tarifas
+      description: |
+        Devuelve los tipos de solicitud de contrato activos (por ejemplo,
+        doméstico, comercial o industrial), ordenados alfabéticamente por
+        `name`. Cada tipo incluye si requiere ocupantes (`has_persons`) y las
+        tarifas **activas** asociadas, como pares `token`/`name`:
+        `registration_tariffs` (alta/contratación), `water_tariffs`
+        (consumo de agua) y `change_of_name_tariffs` (cambio de nombre).
+        Si un tipo no tiene tarifas en alguna relación, esa lista es `[]`.
+        El `name` de cada tarifa es el de la tarifa, salvo que sea genérico
+        (`GENERAL`), vacío o solo espacios: entonces se devuelve el nombre del
+        producto asociado.
+        El `token` es el que debe enviarse como `procedure_type_token` al
+        solicitar un trámite.
+      operationId: listContractRequestTypesDictionary
+      security:
+        - tokenAuth: []
+      responses:
+        "200":
+          description: Tipos de solicitud activos ordenados por `name`
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContractRequestTypeItem"
+              example:
+                - token: domestic
+                  name: Doméstico
+                  has_persons: true
+                  registration_tariffs:
+                    - token: registration-domestic
+                      name: Alta doméstica
+                  water_tariffs:
+                    - token: water-domestic
+                      name: Agua doméstica
+                  change_of_name_tariffs: []
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -3537,6 +3863,221 @@ components:
           nullable: true
           description: Token de la solicitud abierta existente
 
+    ContractTerminationProcedureRequest:
+      type: object
+      required:
+        - contract_token
+        - holder_dni
+        - reason_token
+      properties:
+        contract_token:
+          type: string
+          maxLength: 255
+          description: Token del contrato a dar de baja
+          example: "00012345"
+        holder_dni:
+          type: string
+          maxLength: 255
+          description: Documento del titular del contrato (se normaliza)
+          example: "12345678Z"
+        observation:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: Texto libre sobre la baja (se guarda como observación de la solicitud)
+          example: Cambio de domicilio
+        reason_token:
+          type: string
+          maxLength: 255
+          description: Token del tipo de baja (el "Motivo" de la plataforma de gestión).
+          example: "1"
+
+    ContractTerminationProcedureResponse:
+      type: object
+      required:
+        - contract_termination_token
+        - contract_token
+        - status
+        - type
+        - created_at
+      properties:
+        contract_termination_token:
+          type: string
+          description: Token de la solicitud de baja creada
+          example: "261105001"
+        contract_token:
+          type: string
+          example: "00012345"
+        status:
+          $ref: "#/components/schemas/DictionaryItem"
+        type:
+          $ref: "#/components/schemas/DictionaryItem"
+        created_at:
+          type: string
+          format: date-time
+
+    ContractTerminationProcedureConflictResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - Contract already terminated
+            - Contract termination already exists
+        contract_termination_token:
+          type: string
+          description: Token de la solicitud de baja abierta existente (solo en `Contract termination already exists`)
+
+    ContractChangeOutgoing:
+      type: object
+      description: Contrato actual y titular saliente
+      required:
+        - contract_token
+        - holder_dni
+      properties:
+        contract_token:
+          type: string
+          maxLength: 255
+          example: "00012345"
+        holder_dni:
+          type: string
+          maxLength: 255
+          description: Documento del titular actual (se normaliza)
+          example: "12345678Z"
+        reason_token:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Token del tipo de baja (cualquier tipo existente). Opcional: si se
+            omite, es nulo o está vacío se usa el tipo de baja de cambio de
+            nombre. Un token inexistente devuelve `400`.
+          example: "4"
+        observation:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: Observación de la solicitud de baja
+
+    ContractChangeIncoming:
+      type: object
+      description: Nuevo titular, tipo de trámite y forma de pago
+      required:
+        - holder_dni
+        - procedure_type_token
+        - payment_type_token
+      properties:
+        holder_dni:
+          type: string
+          maxLength: 255
+          description: Documento del nuevo titular (debe existir y ser distinto del actual)
+          example: "87654321Y"
+        procedure_type_token:
+          type: string
+          maxLength: 255
+          description: Token de un tipo de solicitud activo (`/ov/dictionary/contract-request-types/`)
+          example: domestic
+        payment_type_token:
+          type: string
+          maxLength: 255
+          description: Token de la forma de pago (`/ov/dictionary/payment-types/`)
+          example: DIRECT_DEBIT
+        iban:
+          type: string
+          nullable: true
+          maxLength: 34
+          description: Obligatorio si la forma de pago es `DIRECT_DEBIT`
+        iban_holder_name:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: Obligatorio si la forma de pago es `DIRECT_DEBIT`
+        iban_holder_dni:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: Obligatorio si la forma de pago es `DIRECT_DEBIT`
+        iban_holder_swift:
+          type: string
+          nullable: true
+          maxLength: 11
+          description: Obligatorio si la forma de pago es `DIRECT_DEBIT`
+        language:
+          type: string
+          nullable: true
+          maxLength: 2
+          description: Idioma del nuevo contrato (por defecto el del sistema)
+          example: es
+        observation:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: Observación de la solicitud de alta
+
+    ContractChangeProcedureRequest:
+      type: object
+      required:
+        - outgoing
+        - incoming
+      properties:
+        outgoing:
+          $ref: "#/components/schemas/ContractChangeOutgoing"
+        incoming:
+          $ref: "#/components/schemas/ContractChangeIncoming"
+
+    ContractChangeProcedureResponse:
+      type: object
+      required:
+        - contract_request_token
+        - contract_termination_token
+        - contract_token
+        - contract_request_status
+        - contract_termination_status
+        - procedure_type
+        - termination_type
+        - created_at
+      properties:
+        contract_request_token:
+          type: string
+          description: Token de la solicitud de alta (cambio de nombre); consultable en `/ov/procedures/contract/{contract_request_token}/`
+        contract_termination_token:
+          type: string
+          description: Token de la solicitud de baja del contrato actual
+        contract_token:
+          type: string
+        contract_request_status:
+          $ref: "#/components/schemas/DictionaryItem"
+        contract_termination_status:
+          $ref: "#/components/schemas/DictionaryItem"
+        procedure_type:
+          $ref: "#/components/schemas/DictionaryItem"
+        termination_type:
+          $ref: "#/components/schemas/DictionaryItem"
+        created_at:
+          type: string
+          format: date-time
+
+    ContractChangeProcedureConflictResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - Contract already terminated
+            - Contract termination already exists
+            - Contract request already exists
+            - Contract has no supply point
+        contract_termination_token:
+          type: string
+          description: Solo en `Contract termination already exists`
+        contract_request_token:
+          type: string
+          description: Solo en `Contract request already exists`
+
     BilledConsumption:
       type: object
       properties:
@@ -4241,24 +4782,47 @@ components:
     BillingPeriodItem:
       type: object
       description: |
-        Periodo de facturación disponible para el contrato, definido por el PA.
-        `period_code` es el código de periodo (p. ej. `3T`) y `months_label` los
-        meses naturales que incluye, para mostrarlos al usuario sin deducirlos
-        en el frontal.
+        Periodo de facturación del contrato, definido por su facturador.
+        `period_code` es una etiqueta (índice del ciclo + sufijo según la
+        periodicidad: `T` trimestral, `B` bimestral, `Q` cuatrimestral,
+        `S` semestral, `M` mensual, `A` anual; p. ej. `3T`) y `months_label`
+        los meses que incluye, para mostrarlos sin deducirlos en el frontal.
+        `month_from`/`year_from` y `month_to`/`year_to` delimitan el ciclo (puede
+        cruzar de año).
       required:
         - year
         - period_code
         - months_label
+        - month_from
+        - year_from
+        - month_to
+        - year_to
         - is_current
       properties:
         year:
           type: integer
-          description: Año del periodo de facturación
+          description: Año en que empieza el ciclo de facturación
           example: 2026
         period_code:
           type: string
-          description: Código del periodo según el PA (p. ej. `1T`, `2T`, `3T`, `4T`)
+          description: Etiqueta del periodo (p. ej. `1T`..`4T`, `1B`..`6B`, `1S`/`2S`)
           example: "3T"
+        month_from:
+          type: integer
+          description: Mes (1-12) en que empieza el ciclo
+          example: 7
+        year_from:
+          type: integer
+          description: Año en que empieza el ciclo
+          example: 2026
+        month_to:
+          type: integer
+          description: Mes (1-12) en que acaba el ciclo
+          example: 9
+        year_to:
+          type: integer
+          description: Año en que acaba el ciclo
+          example: 2026
         months_label:
           type: string
           description: Meses naturales incluidos en el periodo, legibles
@@ -4329,6 +4893,44 @@ components:
             tenía el tipo de pago objetivo (respuesta idempotente, sin
             escrituras).
           example: Direct debit cancelled successfully.
+
+    ContractRequestTypeItem:
+      type: object
+      required:
+        - token
+        - name
+        - has_persons
+        - registration_tariffs
+        - water_tariffs
+        - change_of_name_tariffs
+      properties:
+        token:
+          type: string
+          description: Identificador estable del tipo (valor de `procedure_type_token`)
+          example: domestic
+        name:
+          type: string
+          description: Etiqueta legible para mostrar al usuario
+          example: Doméstico
+        has_persons:
+          type: boolean
+          description: Indica si el tipo requiere informar ocupantes/residentes
+          example: true
+        registration_tariffs:
+          type: array
+          description: Tarifas activas de alta/contratación asociadas; `[]` si no hay
+          items:
+            $ref: "#/components/schemas/DictionaryItem"
+        water_tariffs:
+          type: array
+          description: Tarifas activas de consumo de agua asociadas; `[]` si no hay
+          items:
+            $ref: "#/components/schemas/DictionaryItem"
+        change_of_name_tariffs:
+          type: array
+          description: Tarifas activas de cambio de nombre asociadas; `[]` si no hay
+          items:
+            $ref: "#/components/schemas/DictionaryItem"
 
     DictionaryItem:
       type: object

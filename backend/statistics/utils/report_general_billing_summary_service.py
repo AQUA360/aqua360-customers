@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from billing.models import Invoice, InvoiceLineItem
 from billing.utils.invoice_range_utils import filter_invoices_by_serie_final_range, split_serie_final
 from coredata.models import ConfigProject
+from statistics.utils.dated_use_type import annotate_dated_use_type
 from statistics.utils.report_billing_service import _payoff_signed_sum
 from statistics.utils.report_filters import get_multi_ids, invoice_multi_filter_q
 from statistics.views.reports_views import add_row, adjust_column_widths, jump_row, save_report
@@ -88,11 +89,14 @@ def generate_general_billing_summary_report(request, black_fill, white_bold_font
 
         payoff_status_token = ConfigProject.objects.get(token="invoice_status_payoff_token").value
 
-        active_line_items = InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True)
+        # Tipus d'ús del contracte quan es va generar la factura (vegeu dated_use_type).
+        active_line_items = annotate_dated_use_type(
+            InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True), name=True,
+        )
 
         use_counts = {
             item['use_type_id']: item['count']
-            for item in active_line_items.values(use_type_id=F('invoice__contract__use_type_id'))
+            for item in active_line_items.values(use_type_id=F('dated_use_type_id'))
             .annotate(count=Count('invoice', distinct=True))
         }
 
@@ -100,8 +104,8 @@ def generate_general_billing_summary_report(request, black_fill, white_bold_font
             active_line_items.values(
                 'name',
                 'product_name',
-                use_type_id=F('invoice__contract__use_type_id'),
-                use_type_name=F('invoice__contract__use_type__name'),
+                use_type_id=F('dated_use_type_id'),
+                use_type_name=F('dated_use_type_name'),
                 product_position=F('product__position'),
             )
             .annotate(

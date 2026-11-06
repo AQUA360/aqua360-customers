@@ -509,7 +509,6 @@ def create_from_lineitemtype(
     applied_adjustments = []
     description=""
     has_correction = False
-    print(" - "+line_item_type_name)
     # To detect new contracts, we check if consumption days are 10 days less than expected
     if reading:
         is_first_invoice = (

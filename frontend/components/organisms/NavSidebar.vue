@@ -13,7 +13,7 @@ const { t, locale } = useI18n();
 const sideBarStore = useSidebarStore();
 const configStore = useConfigStore();
 const exploitationStore = useExploitationStore();
-const { ovEnabled: ovLogsEnabled, documentSignEnabled } = storeToRefs(configStore);
+const { ovEnabled: ovLogsEnabled, documentSignEnabled, sendBatchEnabled } = storeToRefs(configStore);
 const { permissions, loading } = usePermissions();
 const config = useRuntimeConfig();
 const env = config.public.env;
@@ -67,6 +67,7 @@ onMounted(loadTasksSummary);
 // Initialize config fetch
 configStore.fetchOvEnabled();
 configStore.fetchDocumentSignEnabled();
+configStore.fetchSendBatchEnabled();
 
 // Environment-based highlight class as a simple ref
 const highlightClass = ref('bg-slate-200');
@@ -543,6 +544,15 @@ onUnmounted(() => {
             <span v-show="!isCollapsed" class="truncate">Verifactu</span>
           </div>
         </NuxtLink>
+        <NuxtLink v-if="sendBatchEnabled" to="/integrations/batches/"
+          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
+          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/integrations/batches/') != -1, 'justify-center': isCollapsed }]"
+          :title="isCollapsed ? $t('send_batch_block.batches') : undefined">
+          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
+            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-invoice-dollar" class="text-slate-500" /></span>
+            <span v-show="!isCollapsed" class="truncate">{{ $t('send_batch_block.batches') }}</span>
+          </div>
+        </NuxtLink>
       </div>
 
       <div v-if="permissions?.permissions?.view_customer_service" id="nav-documents" class="mb-2">
@@ -554,6 +564,15 @@ onUnmounted(() => {
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
             <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-list" class="text-slate-500" /></span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.reports') }}</span>
+          </div>
+        </NuxtLink>
+        <NuxtLink v-if="permissions?.permissions?.view_custom_report || permissions?.permissions?.change_custom_report" to="/statistics/custom-reports/"
+          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
+          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/statistics/custom-reports') != -1, 'justify-center': isCollapsed }]"
+          :title="isCollapsed ? $t('custom_report_block.title') : undefined">
+          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
+            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-cells" class="text-slate-500" /></span>
+            <span v-show="!isCollapsed" class="truncate">{{ $t('custom_report_block.title') }}</span>
           </div>
         </NuxtLink>
         <NuxtLink to="/statistics/daily-documents/"

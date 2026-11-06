@@ -81,6 +81,19 @@ const selectedContractTypes = ref([]);
 const loadingContractTypes = ref(false);
 /** When endowment/irrecuperable: subtract previously declared normal invoices into this pricing. */
 const undeclarePrevious = ref(false);
+/** How that previous-account reversal is declared (exception to the previous pricing return settings). */
+const undeclareDeclareAs = ref('debt');
+const undeclareSign = ref('negative');
+/**
+ * On collection without a matching payment pricing: also restore the previous
+ * clients account and put the payment counterpart there. Off = only reverse
+ * this pricing (+ additionals) and the bank payment line.
+ */
+const restorePreviousOnPayment = ref(true);
+/** Payment category: optional have counterpart pricing (instead of matched invoice account). */
+const selectedCounterpartPricing = ref(null);
+const counterpartPricingOptions = ref([]);
+const loadingCounterpartPricings = ref(false);
 
 /** IBAN nationality and movement direction only apply to these payment methods. */
 const IBAN_PAYMENT_TYPE_TOKENS = ['DIRECT_DEBIT', 'BANK_TRANSFER'];
@@ -94,8 +107,98 @@ const PAYMENT_ORIGIN_OPTIONS = [
 /** Form-level defaults applied to every saved object (overridable per assignment row). */
 const token = ref('');
 const tokenReturn = ref('');
+const tokenReturnInvoice = ref('');
+const tokenReturnPayment = ref('');
+const tokenReturnLineitem = ref('');
 const name = ref('');
 const declaredAs = ref('');
+/** Normal amounts: debt/have column + normal/negative sign. */
+const declareAs = ref('debt');
+const declareSign = ref('positive');
+/** Returns/undeclares: debt/have column + normal/negative sign (defaults + optional category overrides). */
+const returnDeclareAs = ref('debt');
+const returnSign = ref('negative');
+const returnDeclareAsInvoice = ref(null);
+const returnSignInvoice = ref(null);
+const returnDeclareAsPayment = ref(null);
+const returnSignPayment = ref(null);
+const returnDeclareAsLineitem = ref(null);
+const returnSignLineitem = ref(null);
+const declareAsOptions = computed(() => [
+    { token: 'debt', name: t('pricing_block.accounting_declare_debt') },
+    { token: 'have', name: t('pricing_block.accounting_declare_have') },
+]);
+const signOptions = computed(() => [
+    { token: 'positive', name: t('pricing_block.accounting_sign_normal') },
+    { token: 'negative', name: t('pricing_block.accounting_sign_negative') },
+]);
+const optionalDeclareAsOptions = computed(() => [
+    { token: null, name: t('pricing_block.accounting_pricing_use_default') },
+    ...declareAsOptions.value,
+]);
+const optionalSignOptions = computed(() => [
+    { token: null, name: t('pricing_block.accounting_pricing_use_default') },
+    ...signOptions.value,
+]);
+
+const declareAsLabel = (value) =>
+    value === 'have'
+        ? t('pricing_block.accounting_declare_have')
+        : t('pricing_block.accounting_declare_debt');
+const signLabel = (value) =>
+    value === 'negative'
+        ? t('pricing_block.accounting_sign_negative')
+        : t('pricing_block.accounting_sign_normal');
+
+const declareSettingsSummaryChips = computed(() => [
+    {
+        key: 'value',
+        label: t('pricing_block.accounting_pricing_value_declare_as'),
+        value: `${declareAsLabel(declareAs.value)} · ${signLabel(declareSign.value)}`,
+    },
+    {
+        key: 'return',
+        label: t('pricing_block.accounting_pricing_return_declare_as'),
+        value: `${declareAsLabel(returnDeclareAs.value)} · ${signLabel(returnSign.value)}`,
+    },
+]);
+
+const returnCategoryOverrideCount = computed(() =>
+    [
+        returnDeclareAsInvoice.value,
+        returnSignInvoice.value,
+        returnDeclareAsPayment.value,
+        returnSignPayment.value,
+        returnDeclareAsLineitem.value,
+        returnSignLineitem.value,
+    ].filter((value) => value != null).length,
+);
+
+const tokenReturnSummaryChips = computed(() => {
+    const chips = [];
+    if (tokenReturn.value?.trim()) {
+        chips.push({
+            key: 'default',
+            label: t('pricing_block.accounting_pricing_token_return_default'),
+            value: tokenReturn.value.trim(),
+        });
+    }
+    if (tokenReturnInvoice.value?.trim()) {
+        chips.push({ key: 'invoice', label: t('invoice'), value: tokenReturnInvoice.value.trim() });
+    }
+    if (tokenReturnPayment.value?.trim()) {
+        chips.push({ key: 'payment', label: t('payments'), value: tokenReturnPayment.value.trim() });
+    }
+    if (tokenReturnLineitem.value?.trim()) {
+        chips.push({
+            key: 'lineitem',
+            label: t('pricing_block.line_items'),
+            value: tokenReturnLineitem.value.trim(),
+        });
+    }
+    return chips;
+});
+
 /** Default for group_values; when true, matching rows merge into one record on save. */
 const groupValues = ref(true);
 /** Payment only. Backend splits generated lines by each available payment type. */
@@ -151,7 +254,20 @@ const additionalLineForm = ref({
     declaredAs: '',
     accountingConcept: null,
     isNegative: false,
+    declareAs: 'debt',
+    declareSign: 'positive',
+    returnDeclareAs: 'debt',
+    returnSign: 'negative',
 });
+
+const normalizeDeclareAs = (value, fallback = 'debt') =>
+    value === 'have' || value === 'debt' ? value : fallback;
+const normalizeSign = (value, fallback = 'positive') =>
+    value === 'negative' || value === 'positive' ? value : fallback;
+const optionalDeclareAs = (value) =>
+    value === 'have' || value === 'debt' ? value : null;
+const optionalSign = (value) =>
+    value === 'negative' || value === 'positive' ? value : null;
 
 const showExploitation = computed(() => exploitations.value.length > 1);
 const isEditing = computed(() => !!props.id);
@@ -244,6 +360,10 @@ const resetAdditionalLineForm = () => {
         declaredAs: '',
         accountingConcept: null,
         isNegative: false,
+        declareAs: 'debt',
+        declareSign: 'positive',
+        returnDeclareAs: 'debt',
+        returnSign: 'negative',
     };
     additionalLineAttemptedSave.value = false;
 };
@@ -304,6 +424,10 @@ const openAdditionalLinePanel = async (line = null) => {
             declaredAs: line.declared_as || '',
             accountingConcept: mapAdditionalLineConceptOption(line.accounting_concept),
             isNegative: !!line.is_negative,
+            declareAs: normalizeDeclareAs(line.declare_as),
+            declareSign: normalizeSign(line.declare_sign),
+            returnDeclareAs: normalizeDeclareAs(line.return_declare_as),
+            returnSign: normalizeSign(line.return_sign, 'negative'),
         };
     } else {
         resetAdditionalLineForm();
@@ -342,6 +466,10 @@ const saveAdditionalLine = async () => {
             name: (form.name || '').trim(),
             declared_as: optionalText(form.declaredAs),
             is_negative: !!form.isNegative,
+            declare_as: normalizeDeclareAs(form.declareAs),
+            declare_sign: normalizeSign(form.declareSign),
+            return_declare_as: normalizeDeclareAs(form.returnDeclareAs),
+            return_sign: normalizeSign(form.returnSign, 'negative'),
             is_active: true,
         });
         closeAdditionalLinePanel();
@@ -766,6 +894,9 @@ const resetInvoiceScope = () => {
     selectedOrigins.value = [];
     selectedContractTypes.value = [];
     undeclarePrevious.value = false;
+    undeclareDeclareAs.value = 'debt';
+    undeclareSign.value = 'negative';
+    restorePreviousOnPayment.value = true;
     separateByOrigin.value = false;
 };
 
@@ -774,6 +905,67 @@ const resetPaymentScope = () => {
     separateByType.value = false;
     selectedPaymentOrigin.value = null;
     separateByPaymentOrigin.value = false;
+    selectedCounterpartPricing.value = null;
+};
+
+const counterpartPricingOptionLabel = (item) => {
+    if (!item) return '';
+    const concept = item.accounting_concept?.token || item.accounting_concept?.name || '';
+    const token = item.token || '';
+    const name = item.declared_as || item.name || '';
+    return [concept, token, name].filter(Boolean).join(' · ') || String(item.id);
+};
+
+const toCounterpartPricingOption = (item) => ({
+    ...item,
+    code: item.id,
+    label: counterpartPricingOptionLabel(item),
+});
+
+const counterpartPricingSelectOptions = computed(() =>
+    counterpartPricingOptions.value.filter(
+        (item) => !props.id || String(item.id) !== String(props.id),
+    ),
+);
+
+const hydrateCounterpartPricing = (saved) => {
+    if (!saved) {
+        selectedCounterpartPricing.value = null;
+        return;
+    }
+    const savedId = typeof saved === 'object' ? saved.id : saved;
+    if (!savedId) {
+        selectedCounterpartPricing.value = null;
+        return;
+    }
+    const found = counterpartPricingOptions.value.find(
+        (item) => String(item.id) === String(savedId),
+    );
+    if (found) {
+        selectedCounterpartPricing.value = found;
+        return;
+    }
+    const option = toCounterpartPricingOption(
+        typeof saved === 'object' ? saved : { id: savedId },
+    );
+    counterpartPricingOptions.value = [...counterpartPricingOptions.value, option];
+    selectedCounterpartPricing.value = option;
+};
+
+const loadCounterpartPricingOptions = async () => {
+    loadingCounterpartPricings.value = true;
+    try {
+        const response = await $AccountingPricingApiService.getAll(
+            '', 1, null, false, false, null, null, null, null, 200,
+        );
+        const list = Array.isArray(response?.results) ? response.results : [];
+        counterpartPricingOptions.value = list.map(toCounterpartPricingOption);
+    } catch (error) {
+        console.error(error);
+        counterpartPricingOptions.value = [];
+    } finally {
+        loadingCounterpartPricings.value = false;
+    }
 };
 
 const selectInvoiceCategory = (token) => {
@@ -782,6 +974,9 @@ const selectInvoiceCategory = (token) => {
     selectedInvoiceCategory.value = token;
     if (token === 'normal') {
         undeclarePrevious.value = false;
+        undeclareDeclareAs.value = 'debt';
+        undeclareSign.value = 'negative';
+        restorePreviousOnPayment.value = true;
     } else {
         selectedOrigins.value = [];
         selectedContractTypes.value = [];
@@ -799,14 +994,27 @@ const invoiceScopePayload = () => {
         return {
             invoice_category: null,
             undeclare_previous: false,
+            undeclare_declare_as: 'debt',
+            undeclare_sign: 'negative',
+            restore_previous_on_payment: true,
         };
     }
     const category = selectedInvoiceCategory.value || 'normal';
+    const isProvision =
+        category === 'endowment' || category === 'irrecuperable';
+    const undeclare = isProvision && undeclarePrevious.value;
     return {
         invoice_category: category,
-        undeclare_previous:
-            (category === 'endowment' || category === 'irrecuperable') &&
-            undeclarePrevious.value,
+        undeclare_previous: undeclare,
+        undeclare_declare_as: undeclare
+            ? normalizeDeclareAs(undeclareDeclareAs.value)
+            : 'debt',
+        undeclare_sign: undeclare
+            ? normalizeSign(undeclareSign.value, 'negative')
+            : 'negative',
+        restore_previous_on_payment: isProvision
+            ? restorePreviousOnPayment.value !== false
+            : true,
     };
 };
 
@@ -819,6 +1027,9 @@ const applyInvoiceScope = (response) => {
         (selectedInvoiceCategory.value === 'endowment' ||
             selectedInvoiceCategory.value === 'irrecuperable') &&
         response?.undeclare_previous === true;
+    undeclareDeclareAs.value = normalizeDeclareAs(response?.undeclare_declare_as);
+    undeclareSign.value = normalizeSign(response?.undeclare_sign, 'negative');
+    restorePreviousOnPayment.value = response?.restore_previous_on_payment !== false;
     separateByOrigin.value = response?.separate_by_origin === true;
 };
 
@@ -847,11 +1058,12 @@ const selectPaymentCategory = (token) => {
 
 /**
  * Payment category is an exclusive choice, same tokens as invoice.
- * Sent only as an extra field; the rest of the payment payload stays unchanged.
+ * Only spreads invoice_category for payment; otherwise leave invoice scope alone
+ * (do not null it out after invoiceScopePayload).
  */
 const paymentScopePayload = () => {
     if (selectedCategory.value !== 'payment') {
-        return { invoice_category: null };
+        return {};
     }
     return {
         invoice_category: selectedPaymentCategory.value || 'normal',
@@ -872,6 +1084,11 @@ const applyPaymentScope = (response) => {
     if (!bankPaymentOriginExclusive.value) {
         selectedPaymentOrigin.value = null;
     }
+    hydrateCounterpartPricing(
+        response?.counterpart_accounting_pricing
+        ?? response?.counterpart_accounting_pricing_id
+        ?? null,
+    );
 };
 
 const ibanScopeHint = computed(() => {
@@ -1754,10 +1971,25 @@ const getAccountingPricingData = async () => {
     loadedHasProductChildren.value = false;
     try {
         const response = await $AccountingPricingApiService.getDetail(props.id);
+        console.log("invoice_category", response.id);
+        console.log("invoice_category", response.invoice_category);
         token.value = response.token || '';
         tokenReturn.value = response.token_return || '';
+        tokenReturnInvoice.value = response.token_return_invoice || '';
+        tokenReturnPayment.value = response.token_return_payment || '';
+        tokenReturnLineitem.value = response.token_return_lineitem || '';
         name.value = response.name || '';
         declaredAs.value = response.declared_as || '';
+        declareAs.value = normalizeDeclareAs(response.declare_as);
+        declareSign.value = normalizeSign(response.declare_sign);
+        returnDeclareAs.value = normalizeDeclareAs(response.return_declare_as);
+        returnSign.value = normalizeSign(response.return_sign, 'negative');
+        returnDeclareAsInvoice.value = optionalDeclareAs(response.return_declare_as_invoice);
+        returnSignInvoice.value = optionalSign(response.return_sign_invoice);
+        returnDeclareAsPayment.value = optionalDeclareAs(response.return_declare_as_payment);
+        returnSignPayment.value = optionalSign(response.return_sign_payment);
+        returnDeclareAsLineitem.value = optionalDeclareAs(response.return_declare_as_lineitem);
+        returnSignLineitem.value = optionalSign(response.return_sign_lineitem);
         is_default.value = !!response.is_default;
         is_active.value = response.is_active !== false;
         groupValues.value = response.grouped_lines !== false;
@@ -1931,6 +2163,7 @@ const getData = async () => {
         await getPaymentTypes();
         await loadBanks();
         await loadCostCenters();
+        await loadCounterpartPricingOptions();
         await getProducts();
         await loadOrigins();
         await loadContractTypes();
@@ -1965,8 +2198,21 @@ const buildBasePayload = () => ({
     id: props.id || null,
     token: (token.value || '').trim(),
     token_return: optionalText(tokenReturn.value),
+    token_return_invoice: optionalText(tokenReturnInvoice.value),
+    token_return_payment: optionalText(tokenReturnPayment.value),
+    token_return_lineitem: optionalText(tokenReturnLineitem.value),
     name: (name.value || '').trim(),
     declared_as: optionalText(declaredAs.value),
+    declare_as: normalizeDeclareAs(declareAs.value),
+    declare_sign: normalizeSign(declareSign.value),
+    return_declare_as: normalizeDeclareAs(returnDeclareAs.value),
+    return_sign: normalizeSign(returnSign.value, 'negative'),
+    return_declare_as_invoice: returnDeclareAsInvoice.value,
+    return_sign_invoice: returnSignInvoice.value,
+    return_declare_as_payment: returnDeclareAsPayment.value,
+    return_sign_payment: returnSignPayment.value,
+    return_declare_as_lineitem: returnDeclareAsLineitem.value,
+    return_sign_lineitem: returnSignLineitem.value,
     is_default: is_default.value,
     is_active: is_active.value,
     group_values: groupValues.value,
@@ -1983,6 +2229,12 @@ const buildBasePayload = () => ({
         : null,
     ...invoiceScopePayload(),
     ...paymentScopePayload(),
+    counterpart_accounting_pricing_id:
+        selectedCategory.value === 'payment'
+            ? (selectedCounterpartPricing.value?.id
+                ?? selectedCounterpartPricing.value?.code
+                ?? null)
+            : null,
 });
 
 /** Full selection payload (edit / invoice / no per-value rows). */
@@ -2590,7 +2842,7 @@ onMounted(async () => {
                             <span class="font-mono text-[10px] font-bold tracking-[0.14em]"
                                 style="color: var(--accent-soft)">02</span>
                             <h3 class="text-[13px] font-bold text-sky-950">
-                                {{ t('pricing_block.accounting_pricing_invoice_category') }}
+                                {{ t('pricing_block.accounting_pricing_invoice_category') }} {{ selectedInvoiceCategory }}
                             </h3>
                         </div>
 
@@ -2676,6 +2928,38 @@ onMounted(async () => {
                             </label>
                             <p class="mt-1.5 text-[11px] leading-snug text-slate-500">
                                 {{ undeclarePreviousHint }}
+                            </p>
+                            <div v-if="undeclarePrevious" class="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2"
+                                style="border-color: color-mix(in srgb, var(--accent-soft) 55%, transparent)">
+                                <div>
+                                    <label
+                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        {{ t('pricing_block.accounting_pricing_undeclare_declare_as') }}
+                                    </label>
+                                    <v-select v-model="undeclareDeclareAs" :options="declareAsOptions"
+                                        :reduce="(option) => option.token" label="name" class="block w-full"
+                                        :clearable="false" append-to-body />
+                                </div>
+                                <div>
+                                    <label
+                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        {{ t('pricing_block.accounting_pricing_undeclare_sign') }}
+                                    </label>
+                                    <v-select v-model="undeclareSign" :options="signOptions"
+                                        :reduce="(option) => option.token" label="name" class="block w-full"
+                                        :clearable="false" append-to-body />
+                                </div>
+                                <p class="sm:col-span-2 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_undeclare_declare_hint') }}
+                                </p>
+                            </div>
+                            <label class="mt-3 inline-flex cursor-pointer items-center gap-2 border-t pt-3 text-[13px] text-sky-950"
+                                style="border-color: color-mix(in srgb, var(--accent-soft) 55%, transparent)">
+                                <input v-model="restorePreviousOnPayment" type="checkbox" class="checkbox" />
+                                <span>{{ t('pricing_block.accounting_pricing_restore_previous_on_payment') }}</span>
+                            </label>
+                            <p class="mt-1.5 text-[11px] leading-snug text-slate-500">
+                                {{ t('pricing_block.accounting_pricing_restore_previous_on_payment_hint') }}
                             </p>
                         </div>
                     </section>
@@ -2808,6 +3092,25 @@ onMounted(async () => {
                             </div>
                             <p class="mt-1.5 text-[11px] leading-snug text-slate-500">
                                 {{ paymentOriginHint }}
+                            </p>
+                        </div>
+
+                        <div class="mt-4">
+                            <label
+                                class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                {{ t('pricing_block.accounting_pricing_counterpart') }}
+                                <span class="font-normal normal-case tracking-normal">({{ t('common.optional') }})</span>
+                            </label>
+                            <v-select v-model="selectedCounterpartPricing"
+                                :options="counterpartPricingSelectOptions" label="label" class="block w-full"
+                                :loading="loadingCounterpartPricings" :clearable="true"
+                                :disabled="loadingCounterpartPricings" append-to-body>
+                                <template #no-options>
+                                    {{ t('common.no_records') }}
+                                </template>
+                            </v-select>
+                            <p class="mt-1.5 text-[11px] leading-snug text-slate-500">
+                                {{ t('pricing_block.accounting_pricing_counterpart_hint') }}
                             </p>
                         </div>
                     </section>
@@ -3055,20 +3358,6 @@ onMounted(async () => {
                             <div>
                                 <label
                                     class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    {{ t('pricing_block.accounting_pricing_token_return') }}
-                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
-                                        }})</span>
-                                </label>
-                                <input v-model="tokenReturn" type="text" class="input" :disabled="!!existingSelection"
-                                    :placeholder="t('pricing_block.accounting_pricing_token_return')" />
-                                <!-- <p class="mt-1 text-[11px] leading-snug text-slate-500">
-                                    {{ t('pricing_block.accounting_pricing_token_return_hint') }}
-                                </p> -->
-                            </div>
-
-                            <div>
-                                <label
-                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                     {{ t('common.name') }} *
                                 </label>
                                 <input v-model="name" type="text" class="input" :disabled="!!existingSelection"
@@ -3088,6 +3377,283 @@ onMounted(async () => {
                                     {{ t('pricing_block.accounting_pricing_declared_as_hint') }}
                                 </p>
                             </div>
+
+                            <details class="group/declare sm:col-span-2 overflow-hidden rounded-md border bg-white"
+                                style="border-color: var(--accent-soft)">
+                                <summary
+                                    class="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-2.5 outline-none transition-colors hover:bg-sky-50/70 [&::-webkit-details-marker]:hidden"
+                                    style="background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span
+                                                class="inline-flex size-5 items-center justify-center rounded bg-[var(--accent)]/10 font-mono text-[10px] font-bold text-[var(--accent)]">
+                                                ±
+                                            </span>
+                                            <span class="text-[12px] font-bold uppercase tracking-[0.1em] text-sky-950">
+                                                {{ t('pricing_block.accounting_pricing_declare_settings') }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap gap-1.5">
+                                            <span v-for="chip in declareSettingsSummaryChips" :key="chip.key"
+                                                class="inline-flex max-w-full items-center gap-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-sky-900 ring-1 ring-[var(--accent-soft)]">
+                                                <span class="text-slate-400">{{ chip.label }}</span>
+                                                <span class="truncate font-mono normal-case tracking-normal text-[var(--accent)]">{{ chip.value }}</span>
+                                            </span>
+                                            <span v-if="returnCategoryOverrideCount"
+                                                class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-amber-800 ring-1 ring-amber-200">
+                                                {{ t('pricing_block.accounting_pricing_return_overrides_count', {
+                                                    count: returnCategoryOverrideCount,
+                                                }) }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <Icon name="fa6-solid:chevron-down"
+                                        class="mt-0.5 size-3.5 shrink-0 text-slate-400 transition-transform duration-200 group-open/declare:rotate-180" />
+                                </summary>
+
+                                <div class="space-y-4 border-t px-3 py-3"
+                                    style="border-color: color-mix(in srgb, var(--accent-soft) 55%, transparent)">
+                                    <p class="text-[11px] leading-snug text-slate-500">
+                                        {{ t('pricing_block.accounting_pricing_declare_settings_hint') }}
+                                    </p>
+
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <div class="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                                            <p class="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                                {{ t('pricing_block.accounting_pricing_value_section') }}
+                                            </p>
+                                            <div class="space-y-2.5">
+                                                <div>
+                                                    <label
+                                                        class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('pricing_block.accounting_pricing_value_declare_as') }}
+                                                    </label>
+                                                    <v-select v-model="declareAs" :options="declareAsOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('pricing_block.accounting_pricing_value_sign') }}
+                                                    </label>
+                                                    <v-select v-model="declareSign" :options="signOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                                            <p class="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                                {{ t('pricing_block.accounting_pricing_return_section') }}
+                                            </p>
+                                            <div class="space-y-2.5">
+                                                <div>
+                                                    <label
+                                                        class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('pricing_block.accounting_pricing_return_declare_as') }}
+                                                    </label>
+                                                    <v-select v-model="returnDeclareAs" :options="declareAsOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('pricing_block.accounting_pricing_return_sign') }}
+                                                    </label>
+                                                    <v-select v-model="returnSign" :options="signOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <details class="group/cat overflow-hidden rounded-md border border-slate-200 bg-white">
+                                        <summary
+                                            class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 outline-none transition-colors hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                                            <div class="min-w-0">
+                                                <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                                    {{ t('pricing_block.accounting_pricing_return_by_category') }}
+                                                </p>
+                                                <p class="mt-0.5 text-[11px] leading-snug text-slate-400">
+                                                    {{
+                                                        returnCategoryOverrideCount
+                                                            ? t('pricing_block.accounting_pricing_return_overrides_count', {
+                                                                count: returnCategoryOverrideCount,
+                                                            })
+                                                            : t('pricing_block.accounting_pricing_return_by_category_hint')
+                                                    }}
+                                                </p>
+                                            </div>
+                                            <Icon name="fa6-solid:chevron-down"
+                                                class="size-3 shrink-0 text-slate-400 transition-transform duration-200 group-open/cat:rotate-180" />
+                                        </summary>
+                                        <div class="space-y-3 border-t border-slate-100 px-3 py-3">
+                                            <div class="grid gap-3 sm:grid-cols-2">
+                                                <div>
+                                                    <label
+                                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('invoice') }} · {{ t('pricing_block.movement_declare_as') }}
+                                                    </label>
+                                                    <v-select v-model="returnDeclareAsInvoice"
+                                                        :options="optionalDeclareAsOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('invoice') }} · {{ t('pricing_block.movement_sign') }}
+                                                    </label>
+                                                    <v-select v-model="returnSignInvoice" :options="optionalSignOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                            </div>
+                                            <div class="grid gap-3 sm:grid-cols-2">
+                                                <div>
+                                                    <label
+                                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('payments') }} · {{ t('pricing_block.movement_declare_as') }}
+                                                    </label>
+                                                    <v-select v-model="returnDeclareAsPayment"
+                                                        :options="optionalDeclareAsOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('payments') }} · {{ t('pricing_block.movement_sign') }}
+                                                    </label>
+                                                    <v-select v-model="returnSignPayment" :options="optionalSignOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                            </div>
+                                            <div class="grid gap-3 sm:grid-cols-2">
+                                                <div>
+                                                    <label
+                                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('pricing_block.line_items') }} ·
+                                                        {{ t('pricing_block.movement_declare_as') }}
+                                                    </label>
+                                                    <v-select v-model="returnDeclareAsLineitem"
+                                                        :options="optionalDeclareAsOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        {{ t('pricing_block.line_items') }} ·
+                                                        {{ t('pricing_block.movement_sign') }}
+                                                    </label>
+                                                    <v-select v-model="returnSignLineitem" :options="optionalSignOptions"
+                                                        :reduce="(option) => option.token" label="name"
+                                                        class="block w-full" :clearable="false" append-to-body
+                                                        :disabled="!!existingSelection" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </details>
+                                </div>
+                            </details>
+
+                            <details class="group/token sm:col-span-2 overflow-hidden rounded-md border bg-white"
+                                style="border-color: var(--accent-soft)">
+                                <summary
+                                    class="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-2.5 outline-none transition-colors hover:bg-sky-50/70 [&::-webkit-details-marker]:hidden"
+                                    style="background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span
+                                                class="inline-flex size-5 items-center justify-center rounded bg-[var(--accent)]/10 font-mono text-[10px] font-bold text-[var(--accent)]">
+                                                #
+                                            </span>
+                                            <span class="text-[12px] font-bold uppercase tracking-[0.1em] text-sky-950">
+                                                {{ t('pricing_block.accounting_pricing_token_return') }}
+                                            </span>
+                                            <span
+                                                class="rounded-md bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-500 ring-1 ring-slate-200">
+                                                {{ t('common.optional') }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap gap-1.5">
+                                            <template v-if="tokenReturnSummaryChips.length">
+                                                <span v-for="chip in tokenReturnSummaryChips" :key="chip.key"
+                                                    class="inline-flex max-w-full items-center gap-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-sky-900 ring-1 ring-[var(--accent-soft)]">
+                                                    <span class="text-slate-400">{{ chip.label }}</span>
+                                                    <span class="truncate font-mono normal-case tracking-normal text-[var(--accent)]">{{ chip.value }}</span>
+                                                </span>
+                                            </template>
+                                            <span v-else
+                                                class="rounded-md bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-400 ring-1 ring-slate-200">
+                                                {{ t('pricing_block.accounting_pricing_token_return_empty') }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <Icon name="fa6-solid:chevron-down"
+                                        class="mt-0.5 size-3.5 shrink-0 text-slate-400 transition-transform duration-200 group-open/token:rotate-180" />
+                                </summary>
+
+                                <div class="space-y-3 border-t px-3 py-3"
+                                    style="border-color: color-mix(in srgb, var(--accent-soft) 55%, transparent)">
+                                    <p class="text-[11px] leading-snug text-slate-500">
+                                        {{ t('pricing_block.accounting_pricing_token_return_by_category_hint') }}
+                                    </p>
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <label
+                                                class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                {{ t('pricing_block.accounting_pricing_token_return_default') }}
+                                            </label>
+                                            <input v-model="tokenReturn" type="text" class="input"
+                                                :disabled="!!existingSelection"
+                                                :placeholder="t('pricing_block.accounting_pricing_token_return_default')" />
+                                        </div>
+                                        <div>
+                                            <label
+                                                class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                {{ t('invoice') }}
+                                            </label>
+                                            <input v-model="tokenReturnInvoice" type="text" class="input"
+                                                :disabled="!!existingSelection"
+                                                :placeholder="tokenReturn || t('pricing_block.accounting_pricing_token_return_default')" />
+                                        </div>
+                                        <div>
+                                            <label
+                                                class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                {{ t('payments') }}
+                                            </label>
+                                            <input v-model="tokenReturnPayment" type="text" class="input"
+                                                :disabled="!!existingSelection"
+                                                :placeholder="tokenReturn || t('pricing_block.accounting_pricing_token_return_default')" />
+                                        </div>
+                                        <div>
+                                            <label
+                                                class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                {{ t('pricing_block.line_items') }}
+                                            </label>
+                                            <input v-model="tokenReturnLineitem" type="text" class="input"
+                                                :disabled="!!existingSelection"
+                                                :placeholder="tokenReturn || t('pricing_block.accounting_pricing_token_return_default')" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
 
                             <div class="sm:col-span-2 rounded-md border px-3 py-2.5"
                                 style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
@@ -3279,12 +3845,48 @@ onMounted(async () => {
 
                             <div v-if="showsUndeclarePrevious" class="sm:col-span-2 rounded-md border px-3 py-2.5"
                                 style="border-color: var(--accent-soft); background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
-                                <label class="inline-flex cursor-pointer items-center gap-2 text-[12px] text-sky-950">
-                                    <input v-model="undeclarePrevious" type="checkbox" class="checkbox" />
+                                <label class="inline-flex cursor-pointer items-center gap-2 text-[12px] text-sky-950"
+                                    :class="existingSelection ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'">
+                                    <input v-model="undeclarePrevious" type="checkbox" class="checkbox"
+                                        :disabled="!!existingSelection" />
                                     <span>{{ t('pricing_block.accounting_pricing_undeclare_previous') }}</span>
                                 </label>
                                 <p class="mt-1 text-[11px] leading-snug text-slate-500">
                                     {{ undeclarePreviousHint }}
+                                </p>
+                                <div v-if="undeclarePrevious" class="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2"
+                                    style="border-color: color-mix(in srgb, var(--accent-soft) 55%, transparent)">
+                                    <div>
+                                        <label
+                                            class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                            {{ t('pricing_block.accounting_pricing_undeclare_declare_as') }}
+                                        </label>
+                                        <v-select v-model="undeclareDeclareAs" :options="declareAsOptions"
+                                            :reduce="(option) => option.token" label="name" class="block w-full"
+                                            :clearable="false" append-to-body :disabled="!!existingSelection" />
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                            {{ t('pricing_block.accounting_pricing_undeclare_sign') }}
+                                        </label>
+                                        <v-select v-model="undeclareSign" :options="signOptions"
+                                            :reduce="(option) => option.token" label="name" class="block w-full"
+                                            :clearable="false" append-to-body :disabled="!!existingSelection" />
+                                    </div>
+                                    <p class="sm:col-span-2 text-[11px] leading-snug text-slate-500">
+                                        {{ t('pricing_block.accounting_pricing_undeclare_declare_hint') }}
+                                    </p>
+                                </div>
+                                <label class="mt-3 inline-flex items-center gap-2 border-t pt-3 text-[12px] text-sky-950"
+                                    :class="existingSelection ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
+                                    style="border-color: color-mix(in srgb, var(--accent-soft) 55%, transparent)">
+                                    <input v-model="restorePreviousOnPayment" type="checkbox" class="checkbox"
+                                        :disabled="!!existingSelection" />
+                                    <span>{{ t('pricing_block.accounting_pricing_restore_previous_on_payment') }}</span>
+                                </label>
+                                <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_restore_previous_on_payment_hint') }}
                                 </p>
                             </div>
 
@@ -3309,6 +3911,25 @@ onMounted(async () => {
                                         {{ t('common.no_records') }}
                                     </template>
                                 </v-select>
+                            </div>
+
+                            <div v-if="selectedCategory === 'payment'" class="sm:col-span-2">
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_pricing_counterpart') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional') }})</span>
+                                </label>
+                                <v-select v-model="selectedCounterpartPricing"
+                                    :options="counterpartPricingSelectOptions" label="label" class="block w-full"
+                                    :loading="loadingCounterpartPricings" :clearable="true"
+                                    :disabled="loadingCounterpartPricings || !!existingSelection" append-to-body>
+                                    <template #no-options>
+                                        {{ t('common.no_records') }}
+                                    </template>
+                                </v-select>
+                                <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_counterpart_hint') }}
+                                </p>
                             </div>
                         </div>
                     </section>
@@ -3562,8 +4183,22 @@ onMounted(async () => {
                                         </template>
                                     </p>
                                     <span v-if="line.is_negative"
-                                        class="mt-1 inline-block rounded-md bg-orange-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-orange-700">
+                                        class="mt-1 mr-1 inline-block rounded-md bg-orange-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-orange-700">
                                         {{ t('pricing_block.accounting_pricing_additional_line_is_negative') }}
+                                    </span>
+                                    <span
+                                        class="mt-1 inline-block rounded-md bg-sky-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-sky-800">
+                                        {{
+                                            (line.declare_as === 'have'
+                                                ? t('pricing_block.accounting_declare_have')
+                                                : t('pricing_block.accounting_declare_debt'))
+                                        }}
+                                        /
+                                        {{
+                                            (line.return_declare_as === 'have'
+                                                ? t('pricing_block.accounting_declare_have')
+                                                : t('pricing_block.accounting_declare_debt'))
+                                        }}
                                     </span>
                                 </button>
                                 <button type="button"
@@ -3688,6 +4323,44 @@ onMounted(async () => {
                                 <p class="mt-1 text-[11px] leading-snug text-slate-500">
                                     {{ t('pricing_block.accounting_pricing_additional_line_is_negative_hint') }}
                                 </p>
+                            </div>
+                            <div class="sm:col-span-2 grid gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label
+                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        {{ t('pricing_block.accounting_pricing_value_declare_as') }}
+                                    </label>
+                                    <v-select v-model="additionalLineForm.declareAs" :options="declareAsOptions"
+                                        :reduce="(option) => option.token" label="name" class="block w-full"
+                                        :clearable="false" append-to-body />
+                                </div>
+                                <div>
+                                    <label
+                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        {{ t('pricing_block.accounting_pricing_value_sign') }}
+                                    </label>
+                                    <v-select v-model="additionalLineForm.declareSign" :options="signOptions"
+                                        :reduce="(option) => option.token" label="name" class="block w-full"
+                                        :clearable="false" append-to-body />
+                                </div>
+                                <div>
+                                    <label
+                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        {{ t('pricing_block.accounting_pricing_return_declare_as') }}
+                                    </label>
+                                    <v-select v-model="additionalLineForm.returnDeclareAs" :options="declareAsOptions"
+                                        :reduce="(option) => option.token" label="name" class="block w-full"
+                                        :clearable="false" append-to-body />
+                                </div>
+                                <div>
+                                    <label
+                                        class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        {{ t('pricing_block.accounting_pricing_return_sign') }}
+                                    </label>
+                                    <v-select v-model="additionalLineForm.returnSign" :options="signOptions"
+                                        :reduce="(option) => option.token" label="name" class="block w-full"
+                                        :clearable="false" append-to-body />
+                                </div>
                             </div>
                         </div>
                     </div>

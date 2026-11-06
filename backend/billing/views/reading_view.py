@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
@@ -32,6 +33,9 @@ from billing.utils.reading_service import (
     get_reading_copy_group,
     get_estimated_reading_minimal_object,
     get_estimated_reading,
+    get_leak_estimate,
+    LEAK_ESTIMATE_MAX_YEARS,
+    LEAK_ESTIMATE_STATISTIC_CHOICES,
     READING_ESTIMATE_PERIOD_CHOICES,
     READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR,
     READING_ESTIMATE_STATISTIC_CHOICES,
@@ -43,6 +47,7 @@ from contract.models import Contract, ContractRequest, ContractTerminationReques
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
 from service.serializers.meter_serializer import MeterListSerializer
+from service.utils.route_scope import effective_route, effective_route_field_expr, effective_route_select_related
 from billing.tasks import export_batch_readings_task, export_readings_task
 from documentmanager.utils.export_jobs import enqueue_export, export_job_response
 from documentmanager.utils.export_permissions import export_permission_class
@@ -71,11 +76,11 @@ class ReadingViewSet(viewsets.ModelViewSet):
 
     if 'routeposition_position' in ordering_fields:
       qs = qs.annotate(
-          routeposition_position=F('supply_point__property__route_position__position')
+          routeposition_position=effective_route_field_expr('position', prefix='supply_point__')
       )
     if 'routeposition_code' in ordering_fields:
       qs = qs.annotate(
-          routeposition_code=F('supply_point__property__route_position__token')
+          routeposition_code=effective_route_field_expr('token', prefix='supply_point__')
       )
     return qs
 
@@ -253,7 +258,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
     queryset = self.filter_queryset(
         self.get_queryset()
         .filter(batch_id=batch_id, is_close=False, is_control=False)
-        .select_related('supply_point__property__route_position')
+        .select_related(*effective_route_select_related('supply_point__'))
         .order_by('-reading_date')
     )
 
@@ -308,7 +313,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
     today = datetime.datetime.now().date()
     for supply_point in supply_points:
         try:
-          biller = supply_point.property.route_position.route.biller
+          biller = effective_route(supply_point).biller
           period_days = PERIOD_MONTHS_MAP[biller.period_type] if biller else 90
         except Exception as e:
           biller = None
@@ -556,7 +561,9 @@ class ReadingViewSet(viewsets.ModelViewSet):
       ).distinct()
     serialized_meters = MeterListSerializer(meters, many=True).data
     batches = ReadingBatch.objects.filter(
-      routes__id__in=readings.values_list('supply_point__property__route_position__route__id', flat=True),
+      routes__id__in=readings.annotate(
+        effective_route_id=effective_route_field_expr('route', prefix='supply_point__')
+      ).values_list('effective_route_id', flat=True),
     ).order_by('-created_at').distinct()[:5]
     
     if mod_supply_point.meter:
@@ -598,7 +605,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
     }
     
     try:
-      biller = mod_contract.supply_point_default.property.route_position.route.biller
+      biller = effective_route(mod_contract.supply_point_default).biller
     except Exception as e:
       biller = None
     
@@ -690,6 +697,63 @@ class ReadingViewSet(viewsets.ModelViewSet):
       'updated_count': len(updated_readings),
       'status': 'ok'
     })
+
+  @action(detail=False, methods=['post'], url_path='leak-estimate')
+  def leak_estimate(self, request):
+    """
+    Proposta de consum habitual i de fuita per a una lectura, a partir del consum
+    dels darrers anys. No desa res: els valors es poden editar abans de guardar.
+    """
+    contract_id = request.data.get('contract_id')
+    supply_point_id = request.data.get('supply_point_id')
+    reading_date = request.data.get('reading_date')
+    consumption_days = request.data.get('consumption_days')
+    consumption = request.data.get('consumption')
+    statistic = request.data.get('statistic') or None
+    years = request.data.get('years') or None
+
+    try:
+      reading_date = datetime.datetime.strptime(str(reading_date)[:10], '%Y-%m-%d').date()
+      consumption_days = int(consumption_days)
+      consumption = Decimal(str(consumption))
+      years = int(years) if years is not None else None
+      contract_id = int(contract_id)
+      supply_point_id = int(supply_point_id) if supply_point_id else None
+    except (TypeError, ValueError, InvalidOperation):
+      return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
+
+    if (
+      not 0 < consumption_days <= LEAK_ESTIMATE_MAX_YEARS * 366
+      or not consumption.is_finite() or consumption <= 0
+      or (years is not None and not 1 <= years <= LEAK_ESTIMATE_MAX_YEARS)
+    ):
+      return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
+    if statistic and statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
+      return Response(
+        {'error': f'Estadistic invalid "{statistic}". Opcions: {", ".join(LEAK_ESTIMATE_STATISTIC_CHOICES)}'},
+        status=status.HTTP_400_BAD_REQUEST,
+      )
+
+    contract = Contract.objects.filter(id=contract_id).first()
+    if not contract:
+      return Response({'error': _('Contracte no trobat')}, status=status.HTTP_404_NOT_FOUND)
+    supply_point = None
+    if supply_point_id:
+      supply_point = SupplyPoint.objects.filter(id=supply_point_id).first()
+      if not supply_point:
+        return Response({'error': _('Punt de subministrament no trobat')}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+      estimate = get_leak_estimate(
+        contract, supply_point, reading_date, consumption_days, consumption,
+        years_back=years, statistic=statistic,
+      )
+    except (OverflowError, ValueError):
+      return Response({'error': _('Dades de la lectura no vàlides')}, status=status.HTTP_400_BAD_REQUEST)
+    if estimate is None:
+      return Response({'error': _("No hi ha prou historial de lectures per calcular el consum habitual")},
+                      status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+    return Response(estimate)
 
   @action(detail=False, methods=['post'], url_path='check-allow-period')
   def check_allow_ny_period(self, request):

@@ -15,7 +15,7 @@ from django.template import Template, Context
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from billing.utils.invoice_service import get_totals, reading_has_blocking_invoices
 from billing.utils.message_service import invoice_add_messages
-from billing.utils.pdf_overlap import client_info_overlaps_header
+from billing.utils.pdf_overlap import client_info_overlaps_header, count_pdf_pages
 from contract.models import Contract, ContractRequest, Variable
 from coredata.models import City
 from coredata.serializers import AddressSerializer, PersonCardSerializer
@@ -734,6 +734,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
             pdf_filename = prepare_invoice_pdf_filename(invoice)
             document_file = upload_document(ContentFile(signed_pdf_buffer.getvalue()), 'FACTURES', 'FACTURA', invoice.id, invoice.customer_token_final, '', service, pdf_filename)
             invoice.invoice_file = document_file
+            invoice.pdf_page_count = count_pdf_pages(signed_pdf_buffer)
             invoice._skip_signal = True
             invoice.save()
             document_id = document_file.id
@@ -743,6 +744,7 @@ def generate_report_invoice_pdf(invoice, request = None, context = None, save_pd
         if source_invoice is not None and source_invoice is not invoice:
             source_invoice.invoice_file_template = invoice.invoice_file_template.name
             source_invoice.invoice_file = invoice.invoice_file
+            source_invoice.pdf_page_count = invoice.pdf_page_count
 
         file_url = None
         if request and invoice.invoice_file_id:

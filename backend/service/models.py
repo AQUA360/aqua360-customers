@@ -125,6 +125,34 @@ class ConnectionRequestStatus(models.Model):
     def __str__(self):
         return self.name if self.name else "ConnectionRequestStatus ID {}".format(self.token)
 
+
+class ConnectionRequestBuildingType(models.Model):
+    """Tipologia d'edificació de l'emplaçament d'una sol·licitud d'escomesa."""
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    token = models.CharField(max_length=255, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    position = models.IntegerField(null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name if self.name else f"ConnectionRequestBuildingType {self.id}"
+
+
+class ConnectionRequestRepresentativeType(models.Model):
+    """En qualitat de què actua el representant del sol·licitant d'una escomesa."""
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    token = models.CharField(max_length=255, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    position = models.IntegerField(null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name if self.name else f"ConnectionRequestRepresentativeType {self.id}"
+
 class ClusterStatus(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
@@ -325,6 +353,22 @@ class Company(models.Model):
     show_breakdown_schedule = models.BooleanField(default=True)
     breakdown_schedule = models.CharField(max_length=255, null=True, blank=True)
     website = models.URLField(null=True, blank=True)
+    # Adreça de l'oficina virtual: la variable `%company.ov_url` dels missatges.
+    virtual_office_url = models.URLField(null=True, blank=True)
+    # Com arriben les factures per correu a les comunicacions de facturació:
+    # adjuntes, només amb l'enllaç a l'oficina virtual (el PDF es continua arxivant
+    # i enviant per carta) o de les dues maneres.
+    INVOICE_EMAIL_ATTACHMENT = 'attachment'
+    INVOICE_EMAIL_OV_LINK = 'ov_link'
+    INVOICE_EMAIL_BOTH = 'both'
+    INVOICE_EMAIL_DELIVERY_CHOICES = [
+        (INVOICE_EMAIL_ATTACHMENT, 'Attachment'),
+        (INVOICE_EMAIL_OV_LINK, 'Virtual office link'),
+        (INVOICE_EMAIL_BOTH, 'Attachment and virtual office link'),
+    ]
+    invoice_email_delivery = models.CharField(
+        max_length=20, choices=INVOICE_EMAIL_DELIVERY_CHOICES, default=INVOICE_EMAIL_ATTACHMENT
+    )
     email =  models.EmailField(null=True, blank=True)
     contact_name = models.CharField(max_length=255, null=True, blank=True)
     contact_phone = models.CharField(max_length=255, null=True, blank=True)
@@ -664,6 +708,21 @@ def blueprint_upload_to(instance, filename):
     return f'uploads/blueprints/{instance.connection.id if instance.connection else "0" }/{filename}'
 
 class ConnectionRequest(models.Model):
+    REQUESTER_TYPE_CHOICES = [
+        ('natural_person', 'Persona física'),
+        ('legal_person', 'Persona jurídica'),
+        ('owners_community', 'Comunitat de propietaris'),
+        ('joint_ownership', 'Comunitat de béns'),
+    ]
+    PROPERTY_CONDITION_CHOICES = [
+        ('owner', 'Propietari/ària'),
+        ('right_of_use', "Titular d'un dret d'ús"),
+    ]
+    SCOPE_CHOICES = [
+        ('urban', 'Urbà'),
+        ('rural', 'Rural'),
+    ]
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     token = models.CharField(max_length=255, unique=True)
@@ -680,7 +739,21 @@ class ConnectionRequest(models.Model):
     exploitation = models.ForeignKey(Exploitation, on_delete=models.CASCADE, null=True, blank=True)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
-    
+    address_building = models.CharField(max_length=50, null=True, blank=True)
+    address_stair = models.CharField(max_length=50, null=True, blank=True)
+    address_floor = models.CharField(max_length=50, null=True, blank=True)
+    address_door = models.CharField(max_length=50, null=True, blank=True)
+    cadastral = models.CharField(max_length=255, null=True, blank=True)
+    scope = models.CharField(max_length=20, choices=SCOPE_CHOICES, null=True, blank=True)
+    polygon = models.CharField(max_length=50, null=True, blank=True)
+    parcel = models.CharField(max_length=50, null=True, blank=True)
+    building_type = models.ForeignKey(ConnectionRequestBuildingType, on_delete=models.SET_NULL, null=True, blank=True)
+
+    requester_type = models.CharField(max_length=30, choices=REQUESTER_TYPE_CHOICES, null=True, blank=True)
+    property_condition = models.CharField(max_length=30, choices=PROPERTY_CONDITION_CHOICES, null=True, blank=True)
+    representative = models.ForeignKey(Person, on_delete=models.SET_NULL, related_name='connection_requests_represented', null=True, blank=True)
+    representative_type = models.ForeignKey(ConnectionRequestRepresentativeType, on_delete=models.SET_NULL, null=True, blank=True)
+
     code_gis = models.CharField(max_length=255, null=True, blank=True)
     flow_rate = models.CharField(max_length=255, null=True, blank=True, help_text="Cabal nominal (m3/h)")
     type = models.ForeignKey(ConnectionType, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Connection Type")
@@ -918,6 +991,10 @@ class SupplyPoint(models.Model):
     installation_at = models.DateField(null=True, blank=True)
     cadastral = models.CharField(max_length=255, null=True, blank=True)
     property = models.ForeignKey(Property, related_name='supply_points', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Property")
+    # Posició de ruta pròpia del punt. Si és buida, el punt segueix la ruta de
+    # la finca (property.route_position). Permet que dos punts d'una mateixa
+    # finca vagin en rutes diferents (p. ex. un mensual i un trimestral).
+    route_position = models.ForeignKey(RoutePosition, related_name='supply_points', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="RoutePosition")
     type = models.ForeignKey(SupplyPointType, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="SupplyPoint Type")
     status = models.ForeignKey(SupplyPointStatus, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="SupplyPoint Status")
     source = models.ForeignKey(SupplyPointSource, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="SupplyPoint Source")
@@ -1057,6 +1134,18 @@ class SupplyCut(models.Model):
     mincut_cause_token = models.CharField(
         max_length=255, null=True, blank=True,
         help_text="Token del catàleg de motiu del PA assignat al sincronitzar.",
+    )
+    # Customers té prioritat sobre Giswater: els camps que un usuari ha
+    # modificat aquí ja no els sobreescriu la sincronització.
+    customers_locked_fields = models.JSONField(
+        default=list, blank=True,
+        help_text="Camps modificats a Customers que la sincronització amb Giswater no sobreescriu "
+                  "(status, cause, date_start, date_end, exec_start, exec_end, supply_points).",
+    )
+    giswater_connec_ids = models.JSONField(
+        null=True, blank=True, default=None,
+        help_text="Connexions (connec_id) que Giswater va enviar a l'última sincronització "
+                  "(buit si encara no se n'ha llegit cap resposta vàlida).",
     )
     
     class Meta:
@@ -1238,3 +1327,15 @@ class ConnectionDocumentationFile(models.Model):
 
     def __str__(self):
         return f"DocumentationFile for connection {self.connection.token if self.connection else self.id}"
+
+
+class ConnectionRequestDocumentationFile(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    connection_request = models.ForeignKey(ConnectionRequest, on_delete=models.CASCADE, related_name='documentation_files', null=True, blank=True)
+    file = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True)
+    type = models.ForeignKey(ConnectionDocumentationType, on_delete=models.SET_NULL, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"DocumentationFile for connection request {self.connection_request.token if self.connection_request else self.id}"

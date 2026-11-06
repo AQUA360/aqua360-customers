@@ -139,11 +139,14 @@ const updateReadings = (new_readings, reading_ids, total_estimated_bag, deleted_
 
     readingsToDelete.value.push(...deleted_ids);
     readingsToDelete.value = readingsToDelete.value.filter((id, index, self) => self.indexOf(id) === index && !reading_ids.includes(id));
+
+    const originalBag = contract.value?.estimated_bags?.find(e => e.supply_point.id == readings_sp)?.total_consumption;
+    const bagChanged = Number(total_estimated_bag) !== Number(originalBag || 0);
     
     if (readingsToCreate.value.some(r => r.supply_point_id == readings_sp)) {
         readingsToCreate.value.find(r => r.supply_point_id == readings_sp).readings = new_readings
         readingsToCreate.value.find(r => r.supply_point_id == readings_sp).bag_to_maintain = total_estimated_bag
-    } else if (new_readings.length > 0) {
+    } else if (new_readings.length > 0 || bagChanged) {
         readingsToCreate.value.push({
             'contract_id': contract.value.id,
             'supply_point_id': readings_sp,
@@ -152,7 +155,7 @@ const updateReadings = (new_readings, reading_ids, total_estimated_bag, deleted_
         })
     }
 
-    if (new_readings.length === 0) {
+    if (new_readings.length === 0 && !bagChanged) {
         readingsToCreate.value = readingsToCreate.value.filter(r => r.supply_point_id !== readings_sp);
     }
 }

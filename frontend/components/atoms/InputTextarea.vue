@@ -136,6 +136,8 @@ const emitChange = () => {
   }
 }
 
+defineExpose({ emitChange });
+
 // Call resizeTextarea once the component is mounted
 onMounted(() => {
   nextTick(() => {

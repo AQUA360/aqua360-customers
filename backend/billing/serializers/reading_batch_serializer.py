@@ -4,11 +4,14 @@ import hashlib
 
 from billing.serializers.reading_serializer import ReadingMinimalSerializer, ReadingSerializer
 from billing.tasks import fix_readings_batch
+from billing.utils.exploitation_scope import routes_for_exploitation
 from billing.utils.reading_service import get_existing_reading
+from billing.utils.reading_batch_service import count_supply_point_contracts, count_supply_point_meters
 from coredata.models import ConfigProject
-from service.models import Meter, Route, SupplyPoint
+from service.models import Exploitation, Meter, Route, SupplyPoint
 from service.serializers.route_serializer import RouteListSerializer
 from service.utils.route_positions_service import route_count_total_readings
+from service.utils.route_scope import routes_supply_points_q, reading_batch_supply_points_q
 from django.core.cache import cache
 from django.db.models import Count, Sum, Q
 
@@ -108,6 +111,7 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
     num_contracts = serializers.SerializerMethodField()
     num_read_contracts = serializers.SerializerMethodField()
     num_supplies = serializers.SerializerMethodField()
+    metrics_frozen_at = serializers.SerializerMethodField()
 
     class Meta:
         model = ReadingBatch
@@ -125,6 +129,7 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
             "num_contracts",
             "num_read_contracts",
             "num_supplies",
+            "metrics_frozen_at",
         ]
 
     def _tokens(self):
@@ -167,111 +172,41 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
     def _compute_route_graph_metrics(self, route_ids, include_manual, include_telecontrol, tokens):
         active_contract = tokens["active_contract"]
         no_meter_token = tokens["no_meter"]
-        routes_qs = Route.objects.filter(id__in=route_ids)
+        route_supply_points = SupplyPoint.objects.filter(routes_supply_points_q(route_ids))
 
+        # Filtres relatius a Meter (comptadors dels punts de les rutes)
         meter_filter = Q()
-        contract_meter_filter = Q(
-            positions__properties__supply_points__contracts__status__token=active_contract,
-            positions__properties__supply_points__contracts__is_active=True,
-        )
+        manual_q = Q(has_remote_reading=False) | Q(force_manual_reading=True)
+        tele_q = Q(has_remote_reading=True, force_manual_reading=False)
+        contract_supply_points = route_supply_points
         if include_manual and not include_telecontrol:
-            meter_filter = Q(
-                positions__properties__supply_points__meter__has_remote_reading=False
-            ) | Q(
-                positions__properties__supply_points__meter__force_manual_reading=True
-            )
-            contract_meter_filter &= Q(
-                positions__properties__supply_points__meter__has_remote_reading=False
-            ) | Q(
-                positions__properties__supply_points__meter__force_manual_reading=True
+            meter_filter = manual_q
+            contract_supply_points = route_supply_points.filter(
+                Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)
             )
         elif include_telecontrol and not include_manual:
-            meter_filter = Q(
-                positions__properties__supply_points__meter__has_remote_reading=True,
-                positions__properties__supply_points__meter__force_manual_reading=False
-            )
-            contract_meter_filter &= Q(
-                positions__properties__supply_points__meter__has_remote_reading=True,
-                positions__properties__supply_points__meter__force_manual_reading=False
+            meter_filter = tele_q
+            contract_supply_points = route_supply_points.filter(
+                meter__has_remote_reading=True, meter__force_manual_reading=False
             )
 
-        agg_kwargs = {
-            "num_supplies": Count(
-                "positions__properties__supply_points__meter",
-                filter=meter_filter,
-                distinct=True,
-            ),
-            "num_contracts": Count(
-                "positions__properties__supply_points__contracts__id",
-                filter=contract_meter_filter,
-                distinct=True,
+        def count_meters(meter_q):
+            return count_supply_point_meters(route_supply_points, meter_q, with_sub_meters=False)
+
+        listable_q = Q(status__token__isnull=False) & ~Q(status__token__in=[no_meter_token, "-1"])
+        data = {
+            "num_supplies": count_meters(meter_filter),
+            "num_contracts": count_supply_point_contracts(
+                contract_supply_points, Q(status__token=active_contract, is_active=True)
             ),
         }
         if include_telecontrol:
-            agg_kwargs["no_meter_tele"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=Q(
-                    positions__properties__supply_points__meter__has_remote_reading=True,
-                    positions__properties__supply_points__meter__force_manual_reading=False,
-                    positions__properties__supply_points__meter__status__token=no_meter_token,
-                ),
-                distinct=True,
-            )
-            agg_kwargs["total_tele"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=(
-                    Q(
-                        positions__properties__supply_points__meter__status__token__isnull=False
-                    )
-                    & Q(
-                        positions__properties__supply_points__meter__has_remote_reading=True,
-                        positions__properties__supply_points__meter__force_manual_reading=False
-                    )
-                    & ~Q(
-                        positions__properties__supply_points__meter__status__token__in=[
-                            no_meter_token,
-                            "-1",
-                        ]
-                    )
-                ),
-                distinct=True,
-            )
+            data["no_meter_tele"] = count_meters(tele_q & Q(status__token=no_meter_token))
+            data["total_tele"] = count_meters(listable_q & tele_q)
         if include_manual:
-            agg_kwargs["no_meter_manual"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=Q(
-                    positions__properties__supply_points__meter__has_remote_reading=False,
-                    positions__properties__supply_points__meter__status__token=no_meter_token,
-                ) | Q(
-                    positions__properties__supply_points__meter__force_manual_reading=True,
-                    positions__properties__supply_points__meter__status__token=no_meter_token,
-                ),
-                distinct=True,
-            )
-            agg_kwargs["total_manual"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=(
-                    Q(
-                        positions__properties__supply_points__meter__status__token__isnull=False
-                    )
-                    & (
-                        Q(
-                            positions__properties__supply_points__meter__has_remote_reading=False
-                        ) | Q(
-                            positions__properties__supply_points__meter__force_manual_reading=True
-                        )
-                    )
-                    & ~Q(
-                        positions__properties__supply_points__meter__status__token__in=[
-                            no_meter_token,
-                            "-1",
-                        ]
-                    )
-                ),
-                distinct=True,
-            )
+            data["no_meter_manual"] = count_meters(manual_q & Q(status__token=no_meter_token))
+            data["total_manual"] = count_meters(listable_q & manual_q)
 
-        data = routes_qs.aggregate(**agg_kwargs)
         return {
             "num_supplies": data.get("num_supplies") or 0,
             "num_contracts": data.get("num_contracts") or 0,
@@ -328,8 +263,8 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
             "num_total_readings": 0,
         }
 
-    def _graph_metrics(self, obj):
-        tokens = self._tokens()
+    def _graph_scope(self, obj, tokens):
+        """(memo_key, compute) de l'àmbit del lot: rutes, comptadors fixos o tots els PS."""
         include_manual = obj.include_manual
         include_telecontrol = obj.include_telecontrol
 
@@ -343,14 +278,8 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
                 tokens["active_contract"],
                 tokens["no_meter"],
             )
-            hit = self._memo_get(memo_key)
-            if hit is not None:
-                return hit
-            return self._memo_set(
-                memo_key,
-                self._compute_route_graph_metrics(
-                    route_ids, include_manual, include_telecontrol, tokens
-                ),
+            return memo_key, lambda: self._compute_route_graph_metrics(
+                route_ids, include_manual, include_telecontrol, tokens
             )
 
         if self._has_fix_meters(obj):
@@ -360,13 +289,7 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
                 meter_ids,
                 tokens["active_contract"],
             )
-            hit = self._memo_get(memo_key)
-            if hit is not None:
-                return hit
-            return self._memo_set(
-                memo_key,
-                self._compute_fix_meter_graph_metrics(meter_ids, tokens),
-            )
+            return memo_key, lambda: self._compute_fix_meter_graph_metrics(meter_ids, tokens)
 
         memo_key = (
             "all_sp",
@@ -375,15 +298,25 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
             tokens["active_contract"],
             tokens["activate_sp"],
         )
+        return memo_key, lambda: self._compute_all_sp_graph_metrics(
+            include_manual, include_telecontrol, tokens
+        )
+
+    def compute_graph_metrics(self, obj):
+        """Càlcul en viu, sense cache (per fixar els comptadors en tancar el lot)."""
+        _memo_key, compute = self._graph_scope(obj, self._tokens())
+        return compute()
+
+    def _graph_metrics(self, obj):
+        # Lot tancat: comptadors fixats en el moment del tancament.
+        if obj.metrics_snapshot:
+            return obj.metrics_snapshot
+
+        memo_key, compute = self._graph_scope(obj, self._tokens())
         hit = self._memo_get(memo_key)
         if hit is not None:
             return hit
-        return self._memo_set(
-            memo_key,
-            self._compute_all_sp_graph_metrics(
-                include_manual, include_telecontrol, tokens
-            ),
-        )
+        return self._memo_set(memo_key, compute())
 
     def _get_all_metrics(self, obj):
         """Reading stats (per batch) + graph metrics (shared by route/meter set)."""
@@ -458,6 +391,9 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
     def get_num_total_readings(self, obj):
         return self._get_all_metrics(obj)["num_total_readings"]
 
+    def get_metrics_frozen_at(self, obj):
+        return (obj.metrics_snapshot or {}).get("frozen_at")
+
 
 class ReadingBatchSaveSerializer(serializers.ModelSerializer):
     status_token = serializers.IntegerField(write_only=True, required=False, allow_null=True)
@@ -471,6 +407,7 @@ class ReadingBatchSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReadingBatch
         fields = '__all__'
+        read_only_fields = ['metrics_snapshot']
         
     def create(self, validated_data):
         routes_data = validated_data.pop('route_ids', [])  # Extract routes
@@ -483,9 +420,18 @@ class ReadingBatchSaveSerializer(serializers.ModelSerializer):
         if fileMeters and len(fileMeters) > 0 and fileReadings and len(fileReadings) > 0:
             meters = Meter.objects.filter(code__in=fileMeters)
             fix_readings_batch.delay(fileReadings)
+
+        if not validated_data.get('exploitation'):
+            request = self.context.get('request')
+            raw = None
+            if request is not None:
+                raw = request.data.get('exploitation') or request.query_params.get('exploitation')
+            if raw:
+                validated_data['exploitation'] = Exploitation.objects.filter(pk=raw).first()
         
         if not routes_data and (not meters or len(meters) == 0) and not reading_ids:
-            routes_data = Route.objects.filter(is_active=True).all()
+            exploitation = validated_data.get('exploitation')
+            routes_data = routes_for_exploitation(exploitation.id if exploitation else None)
         
         # Ensure token is set if not provided, using name as fallback
         if not validated_data.get('token') and validated_data.get('name'):
@@ -573,6 +519,7 @@ class ReadingBatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReadingBatch
         fields = '__all__'
+        read_only_fields = ['metrics_snapshot']
     
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -593,40 +540,35 @@ class ReadingBatchSerializer(serializers.ModelSerializer):
         metrics = ReadingBatchMinimalSerializer()._get_metrics(instance)
         representation['num_routes'] = instance.routes.count()
         representation['num_supplies'] = metrics['num_supplies']
-        representation['num_active_supplies'] = self._count_active_supplies(instance)
+        snapshot = instance.metrics_snapshot or {}
+        representation['num_active_supplies'] = (
+            snapshot['num_active_supplies'] if 'num_active_supplies' in snapshot
+            else self._count_active_supplies(instance)
+        )
+        representation['metrics_frozen_at'] = snapshot.get('frozen_at')
         representation['num_readings'] = instance.readings.count()
 
         return representation
 
-    def _count_active_supplies(self, obj):
+    @staticmethod
+    def _count_active_supplies(obj):
         """Mateix àmbit que num_supplies (rutes / tele·manual), només SupplyPoints actius."""
         activate_token = ConfigProject.objects.get(token='supply_point_status_activate_token').value
         include_manual = obj.include_manual
         include_telecontrol = obj.include_telecontrol
 
         if obj.routes.exists():
-            active_filter = Q(
-                positions__properties__supply_points__is_active=True,
-                positions__properties__supply_points__status__token=activate_token,
+            route_supply_points = SupplyPoint.objects.filter(
+                reading_batch_supply_points_q(obj),
+                is_active=True,
+                status__token=activate_token,
             )
+            meter_filter = Q()
             if include_manual and not include_telecontrol:
-                active_filter &= Q(
-                    positions__properties__supply_points__meter__has_remote_reading=False
-                ) | Q(
-                    positions__properties__supply_points__meter__force_manual_reading=True
-                )
+                meter_filter = Q(has_remote_reading=False) | Q(force_manual_reading=True)
             elif include_telecontrol and not include_manual:
-                active_filter &= Q(
-                    positions__properties__supply_points__meter__has_remote_reading=True,
-                    positions__properties__supply_points__meter__force_manual_reading=False
-                )
-            return obj.routes.aggregate(
-                total=Count(
-                    'positions__properties__supply_points__meter',
-                    filter=active_filter,
-                    distinct=True,
-                )
-            )['total'] or 0
+                meter_filter = Q(has_remote_reading=True, force_manual_reading=False)
+            return count_supply_point_meters(route_supply_points, meter_filter, with_sub_meters=False)
 
         if obj.fix_meters.exists():
             return obj.fix_meters.aggregate(

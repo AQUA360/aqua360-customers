@@ -4,13 +4,12 @@ from django.http import JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.db.models import Prefetch, F, CharField, Value
 from django.db.models.functions import Concat
 
-from billing.filter.joined_payment_filter import JoinedPaymentFilter
+from billing.filter.joined_payment_filter import JoinedPaymentFilter, JoinedPaymentOrderingFilter
 from billing.models import JoinedPayment
 from billing.permissions import PaymentPermission
 from billing.serializers.joined_payment_serializer import JoinedPaymentListSerializer, JoinedPaymentSerializer, JoinedPaymentSaveSerializer
@@ -23,15 +22,18 @@ class JoinedPaymentViewSet(viewsets.ModelViewSet):
   """
   API endpoint that allows reading batches to be viewed or edited.
   """
-  queryset = JoinedPayment.objects.filter(is_active=True).order_by('-created_at')
+  queryset = JoinedPayment.objects.filter(is_active=True).select_related('status').order_by('-created_at', '-id')
   permission_classes = [IsAuthenticated, PaymentPermission]
-  filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+  # La cerca la fa `JoinedPaymentFilter.filter_search`: un `SearchFilter` amb el
+  # mateix paràmetre `search` hi faria un AND i amagaria les cerques per client.
+  filter_backends = [DjangoFilterBackend, JoinedPaymentOrderingFilter]
   filterset_class = JoinedPaymentFilter
-  search_fields = ['token','contract__token','person__token']
   ordering_fields = [
-    'token','contract__token','person__token',
-    'total_final','status__position','payment_type',
-    'payment_date', 'due_date', 'created_at'
+    'token', 'number', 'contract__token', 'person__token',
+    'customer_final', 'customer_token_final',
+    'total_final', 'status__position', 'status__name',
+    'payment_type', 'payment_type_name',
+    'payment_date', 'due_date', 'created_at',
     ]
   
   def get_serializer_class(self):

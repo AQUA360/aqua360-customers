@@ -453,7 +453,8 @@ const saveCluster = async () => {
     usage_destination: clusterUsageDestination.value,
     address_extra: clusterAddressExtra.value,
     nb_nozzles: nozzles.value.length,
-    nozzles: nozzles.value,
+    // Les boquilles es desen una a una després de desar la bateria (vegeu el bucle de sota):
+    // no s'envien aquí perquè el backend no les apliqui amb les dades reduïdes dels punts
     report_file: clusterReportFile.value,
     is_active: true,
   };
@@ -590,15 +591,19 @@ const saveCluster = async () => {
 
       // Si la boquilla encara no té cap punt de subministrament vinculat, el creem
       // automàticament amb l'adreça de la bateria/boquilla que acabem de calcular.
+      // Les dades que no venen de la boquilla s'agafen dels altres punts de la bateria
+      // i, si no n'hi ha, del valor per defecte de la bateria.
       if (!nozzle.supplyPoint.id) {
         try {
           const spData = {
             connection_id: selected_connection.value?.id,
+            property_id: response.property?.id,
+            is_potable: clusterIsPotable.value,
             token: _.random(100000, 999999).toString(),
-            type: nozzle.supplyPoint.type || type.value?.code || (types.value.length > 0 ? types.value[0].code : null),
-            source: nozzle.supplyPoint.source || source.value?.code || (sources.value.length > 0 ? sources.value[0].code : null),
-            placement_id: nozzle.supplyPoint.placement || placement.value?.code || (placements.value.length > 0 ? placements.value[0].code : null),
-            supply_type: nozzle.supplyPoint.supply_type || supply_type.value?.code || (supply_types.value.length > 0 ? supply_types.value[0].code : null),
+            type: nozzle.supplyPoint.type || siblingSupplyPointValue('type') || type.value?.code || (types.value.length > 0 ? types.value[0].code : null),
+            source: nozzle.supplyPoint.source || siblingSupplyPointValue('source') || source.value?.code || (sources.value.length > 0 ? sources.value[0].code : null),
+            placement_id: nozzle.supplyPoint.placement || siblingSupplyPointValue('placement') || placement.value?.code || (placements.value.length > 0 ? placements.value[0].code : null),
+            supply_type: nozzle.supplyPoint.supply_type || siblingSupplyPointValue('supply_type') || supply_type.value?.code || (supply_types.value.length > 0 ? supply_types.value[0].code : null),
             address_data: nozzle.supplyPoint.address,
             is_active: true,
           };
@@ -636,16 +641,14 @@ const saveCluster = async () => {
       await $ClusterNozzleApiService.save(data);
     } // end for nozzles
 
-    // Eliminem els nozzles (si sobren) després de restructurar (editar)
-    if (nozzlesBD.value.length > nozzles.value.length) {
-      console.log("8. nozzlesBD.value.length > nozzles.value.length",nozzlesBD.value.length, nozzles.value.length)
-      for (let i = nozzles.value.length; i < nozzlesBD.value.length; i++) {
-        $ClusterNozzleApiService.doDelete(nozzlesBD.value[i]);
-      }
-
-      // reduim l'array per igualar amb el nou nombre de nozzles
-      nozzlesBD.value.splice(nozzles.value.length);
+    // Eliminem les boquilles de la BD que s'han tret de la llista (per id, no per índex,
+    // perquè en treure'n una del mig la resta es renumeren i es desen a sobre)
+    const keptIds = new Set(nozzles.value.map(n => n.id).filter(id => id));
+    const removedNozzles = nozzlesBD.value.filter(n => n.id && !keptIds.has(n.id));
+    for (const removed of removedNozzles) {
+      await $ClusterNozzleApiService.doDelete(removed);
     }
+    nozzlesBD.value = nozzlesBD.value.filter(n => !removedNozzles.includes(n));
     console.log("9. nozzlesBD.value",nozzlesBD.value)
 
     emits('saved', response);
@@ -923,6 +926,8 @@ const createNewLocalSupplyPoint = async () => {
 
   const spData = {
     connection_id: selected_connection.value?.id,
+    // El punt va a la finca de la bateria; sense això el backend en crearia una de nova
+    property_id: cluster.value?.property?.id || null,
     token: _.random(100000, 999999).toString(),
     type: type.value?.code || (types.value.length > 0 ? types.value[0].code : null),
     source: source.value?.code || (sources.value.length > 0 ? sources.value[0].code : null),
@@ -1103,8 +1108,27 @@ const generateNozzles = () => {
 }
 
 const handleDeleteNozzle = (nozzle) => {
-  nozzles.value = nozzles.value.filter(n => n.position != nozzle.position);
+  // Per referència i no per posició: si dues boquilles comparteixen número, només es treu la triada
+  nozzles.value = nozzles.value.filter(n => n !== nozzle);
+  // El watcher de clusterNbNozzles no fa res perquè ja coincideix amb la llista
+  clusterNbNozzles.value = nozzles.value.length;
   onDraggableEnd();
+}
+
+// Valor més repetit d'un camp entre els punts de subministrament ja existents de la bateria
+const siblingSupplyPointValue = (field) => {
+  const counts = new Map();
+  for (const n of nozzlesBD.value) {
+    for (const sp of n.supply_points || []) {
+      const value = sp[field];
+      if (value) counts.set(value, (counts.get(value) || 0) + 1);
+    }
+  }
+  let best = null;
+  for (const [value, count] of counts) {
+    if (best === null || count > counts.get(best)) best = value;
+  }
+  return best;
 }
 
 const openDialog = () => {
@@ -1138,10 +1162,10 @@ const newNozzle = (floor, door) => {
         stair: defaultNozzleValues.value?.stair || null,
         building: defaultNozzleValues.value?.building || null,
       },
-      type: defaultNozzleValues.value?.type || types.value[0]?.code,
-      supply_type: defaultNozzleValues.value?.supply_type || supply_types.value[0]?.code,
-      source: defaultNozzleValues.value?.source || sources.value[0]?.code,
-      placement: defaultNozzleValues.value?.placement || placements.value[0]?.code,
+      type: defaultNozzleValues.value?.type || siblingSupplyPointValue('type') || types.value[0]?.code,
+      supply_type: defaultNozzleValues.value?.supply_type || siblingSupplyPointValue('supply_type') || supply_types.value[0]?.code,
+      source: defaultNozzleValues.value?.source || siblingSupplyPointValue('source') || sources.value[0]?.code,
+      placement: defaultNozzleValues.value?.placement || siblingSupplyPointValue('placement') || placements.value[0]?.code,
       token: _.random(100000, 999999)
     }
   });

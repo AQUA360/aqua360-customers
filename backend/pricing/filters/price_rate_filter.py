@@ -27,8 +27,11 @@ class PriceRateFilter(filters.FilterSet):
         return queryset
     
     def filter_exploitation(self, queryset, name, value):
-        # L'explotació d'una tarifa ve del producte: les que no en tenen surten a totes
-        return queryset.filter(Q(product__exploitation__id=value) | Q(product__isnull=True))
+        # L'explotació d'una tarifa ve del producte. Les tarifes sense producte,
+        # i les d'un producte sense explotació, surten a totes les explotacions.
+        return queryset.filter(
+            Q(product__exploitation__id=value) | Q(product__exploitation__isnull=True)
+        )
 
     def filter_origin(self, queryset, name, value):
         if value:

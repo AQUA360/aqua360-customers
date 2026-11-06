@@ -2,12 +2,14 @@ import csv
 import io
 
 from openpyxl import load_workbook
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from billing.models import Reading
 from billing.utils.reading_filters import PENDING_READING_FILTER
+from contract.models import Contract
 from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint
+from service.utils.route_scope import reading_batch_supply_points_q, effective_route_select_related
 
 
 def get_batch_supply_point_ids(reading_batch):
@@ -17,7 +19,7 @@ def get_batch_supply_point_ids(reading_batch):
     que s'inclouen sempre.
     """
     sp_query = SupplyPoint.objects.filter(
-        property__route_position__route__reading_batches=reading_batch
+        reading_batch_supply_points_q(reading_batch)
     )
 
     if not reading_batch.include_telecontrol:
@@ -36,6 +38,85 @@ def get_batch_supply_point_ids(reading_batch):
         ).values_list('id', flat=True)
     )
     return supply_point_ids
+
+
+def count_supply_point_meters(supply_points, meter_q=None, with_sub_meters=True):
+    """
+    Comptadors diferents dels punts `supply_points` (més els seus subcomptadors)
+    que compleixen `meter_q` (Q relatiu a Meter). Es compta per subconsulta per
+    no duplicar files quan l'àmbit dels punts combina diversos camins de join.
+    """
+    meter_q = meter_q if meter_q is not None else Q()
+    meter_ids = supply_points.values('meter')
+    total = Meter.objects.filter(meter_q, id__in=meter_ids).count()
+    if with_sub_meters:
+        total += Meter.objects.filter(meter_q, meter_general__in=meter_ids).count()
+    return total
+
+
+def count_supply_point_contracts(supply_points, contract_q):
+    """Contractes diferents dels punts `supply_points` que compleixen `contract_q`."""
+    return Contract.objects.filter(contract_q, supply_points__in=supply_points).distinct().count()
+
+
+def get_batch_supply_counts(batch, active_contract):
+    """
+    PS, contractes actius i comptadors sense comptador de l'àmbit del lot
+    (rutes filtrades per telecontrol/manual + comptadors fixos), en viu.
+    """
+    include_telecontrol = batch.include_telecontrol
+    include_manual = batch.include_manual
+
+    # Build filters dynamically based on include flags (relatius a Meter)
+    meter_filter = Q()
+    if include_manual and not include_telecontrol:
+        meter_filter = Q(has_remote_reading=False) | Q(force_manual_reading=True)
+    elif include_telecontrol and not include_manual:
+        meter_filter = Q(has_remote_reading=True, force_manual_reading=False)
+    # If both are True or both are False, no additional filters are needed
+
+    token_meter_status_no_meter = ConfigProject.objects.get(token='token_meter_status_no_meter').value
+    route_supply_points = SupplyPoint.objects.filter(reading_batch_supply_points_q(batch))
+    contract_supply_points = route_supply_points
+    if include_manual and not include_telecontrol:
+        contract_supply_points = route_supply_points.filter(
+            Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)
+        )
+    elif include_telecontrol and not include_manual:
+        contract_supply_points = route_supply_points.filter(
+            meter__has_remote_reading=True, meter__force_manual_reading=False
+        )
+    supplies_contracts_data = {
+        'num_supplies': count_supply_point_meters(route_supply_points, meter_filter),
+        'num_contracts': count_supply_point_contracts(
+            contract_supply_points, Q(status__token=active_contract, is_active=True)
+        ),
+        'num_no_meter': count_supply_point_meters(
+            route_supply_points, Q(status__token=token_meter_status_no_meter)
+        ),
+    }
+    fix_supplies_contracts_data = batch.fix_meters.aggregate(
+        num_supplies=Count('supply_points__id', distinct=True),
+        num_contracts=Count(
+            'supply_points__contracts__id',
+            filter=Q(
+                supply_points__contracts__status__token=active_contract,
+                supply_points__contracts__is_active=True
+            ),
+            distinct=True
+        ),
+        num_no_meter=(
+            Count('supply_points__meter', filter=Q(supply_points__meter__status__token=token_meter_status_no_meter), distinct=True) +
+            Count('supply_points__meter__sub_meters', filter=Q(supply_points__meter__sub_meters__status__token=token_meter_status_no_meter), distinct=True)
+        )
+    )
+
+
+    return {
+        'num_supplies': (supplies_contracts_data['num_supplies'] or 0) + (fix_supplies_contracts_data['num_supplies'] or 0),
+        'num_contracts': (supplies_contracts_data['num_contracts'] or 0) + (fix_supplies_contracts_data['num_contracts'] or 0),
+        'num_no_meter': (supplies_contracts_data['num_no_meter'] or 0) + (fix_supplies_contracts_data['num_no_meter'] or 0),
+    }
 
 
 def get_missing_supply_points_queryset(reading_batch, active_contract_token=None):
@@ -59,7 +140,7 @@ def get_missing_supply_points_queryset(reading_batch, active_contract_token=None
         return SupplyPoint.objects.none()
 
     return SupplyPoint.objects.select_related(
-        'type', 'status', 'property__route_position__route'
+        'type', 'status', *effective_route_select_related()
     ).filter(
         id__in=missing_supply_point_ids,
         contracts__status__token=active_contract_token,

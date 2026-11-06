@@ -121,6 +121,7 @@ class ReadingBatchViewSet(viewsets.ModelViewSet):
           include_telecontrol=source_batch.include_telecontrol,
           include_manual=source_batch.include_manual,
           status=ReadingBatchStatus.objects.filter(is_default=True).first(),
+          exploitation=source_batch.exploitation,
       )
       new_batch.fix_meters.set(Meter.objects.filter(id__in=meter_ids))
 

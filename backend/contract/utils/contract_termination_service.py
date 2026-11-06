@@ -9,6 +9,7 @@ from django.core.files.base import ContentFile
 from coredata.serializers import AddressSerializer, PersonCardSerializer
 from documentmanager.utils.sign_certificate_service import sign_pdf
 from service.models import Exploitation
+from service.utils.exploitation_logo import exploitation_logo_source
 from django.conf import settings
 from django.core.files.storage import default_storage
 import uuid
@@ -66,6 +67,9 @@ def getTerminationDocument(instance, request=None):
     holder = PersonCardSerializer(instance.contract.holder, context=context).data if instance.contract.holder else None
     person = PersonCardSerializer(instance.person, context=context).data if instance.person else None
     supply_address = AddressSerializer(instance.contract.supply_point_default.address).data if instance.contract.supply_point_default.address else None
+    # Variable pròpia i no `exploitation_image`: algunes plantilles personalitzades
+    # ja la fan servir i no han de canviar.
+    exploitation_logo = exploitation_logo_source(exploitation)
     main_color = '#000000'
     try:
         main_color = ConfigProject.objects.get(token='invoice_main_color').value
@@ -89,6 +93,7 @@ def getTerminationDocument(instance, request=None):
     html_content = render_to_string('contract_termination_template.html', {
       'main_color': main_color, 'company': company, 'request': instance,
       'city': city, 'holder': holder, 'person': person, 'logo': logo, 'signed_image': signed_image,
+      'exploitation_logo': exploitation_logo,
       'last_readings': last_readings, 'supply_address': supply_address, 'today': today
       })
     pdf_buffer = BytesIO()
@@ -126,4 +131,45 @@ def getTerminationDocument(instance, request=None):
         return file_url
     else:
         return signed_pdf_buffer.getvalue()
-    
+
+
+def cancel_contract_termination(instance, user):
+    from contract.models import ContractStatus, ContractTerminationStatus
+
+    cancel_status = ContractTerminationStatus.objects.get(
+        token=ConfigProject.objects.get(token='contract_termination_cancelled_token').value
+    )
+    instance.status = cancel_status
+    instance.save()
+    readings = instance.readings.all()
+    readings.update(is_control=True)
+    contract = instance.contract
+    contract.status = ContractStatus.objects.get(token=ConfigProject.objects.get(token='contract_active_token').value)
+    contract.termination_date = None
+    contract.save()
+
+    # reset bails status back to "No Retornat" if the termination is cancelled
+    from contract.models import Bail, BailStatus
+    from logger.models import LogBailStatus
+    from django.utils import timezone
+
+    pending_bail_token = ConfigProject.objects.get(token='bail_status_pending_token').value
+    unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
+    unreturned_status = BailStatus.objects.get(token=unreturned_bail_token)
+
+    bails = Bail.objects.filter(contract=contract, status__token=pending_bail_token)
+    for bail in bails:
+        prev_status = bail.status
+        bail.status = unreturned_status
+        bail.return_date = None
+        bail.invoice = None
+        bail.save()
+
+        LogBailStatus.objects.create(
+            object=bail,
+            previous_status=prev_status,
+            current_status=unreturned_status,
+            user=user,
+            timestamp=timezone.now(),
+            observation="Baixa de contracte cancel·lada, fiança restablerta a No Retornat"
+        )

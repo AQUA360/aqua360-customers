@@ -23,6 +23,7 @@ from contract.models import Contract, ContractStatus
 from coredata.models import ConfigProject
 from coredata.utils.fire_usage_utils import get_fire_usage_tokens
 from service.models import Meter, SupplyPointStatus, SupplyPoint
+from service.utils.route_scope import effective_route
 from statistics.models import ContractConsumption
 from statistics.views.reports_views import add_row, adjust_column_widths
 from order.models import Order, OrderPriority, OrderReason, OrderStatus, OrderType
@@ -655,6 +656,116 @@ def get_reading_document_target_contract(supply_point, active_contract_status_to
     .order_by('-id')
     .first()
   )
+
+
+def get_contract_valid_at_date_q(reading_date):
+  """
+  Contracts whose validity window covers a date: registration_date <= date
+  (or open) and termination_date >= date (or open).
+  """
+  return (
+    Q(registration_date__isnull=True) | Q(registration_date__lte=reading_date)
+  ) & (
+    Q(termination_date__isnull=True) | Q(termination_date__gte=reading_date)
+  )
+
+
+def resolve_reading_document_target_contract(supply_point, reading_date, active_contract_status_token=None):
+  """
+  Contract valid at the row's reading date for importing a reading document.
+
+  Candidates: contracts linked to the supply point (via supply_point_default
+  or the contracts M2M) with an active or terminated status and a validity
+  window (registration_date / termination_date) covering the reading date.
+  A terminated contract that still covers the date (recent change of
+  ownership) is selected instead of an unrelated newer active contract, so
+  the reading lands on the contract that was really in force.
+
+  Preference: supply_point_default match, active status, latest
+  registration_date, latest id. Returns None when no contract covers the
+  reading date -- the row is then reported as no_contracts instead of being
+  attached to the wrong contract.
+  """
+  if supply_point is None or reading_date is None:
+    return None
+
+  if active_contract_status_token is None:
+    try:
+      active_contract_status_token = ConfigProject.objects.get(token='contract_active_token').value
+    except ConfigProject.DoesNotExist:
+      return None
+  try:
+    terminated_contract_token = ConfigProject.objects.get(token='contract_terminated_status').value
+  except ConfigProject.DoesNotExist:
+    terminated_contract_token = None
+
+  status_q = Q(status__token=active_contract_status_token)
+  if terminated_contract_token:
+    status_q = status_q | Q(status__token=terminated_contract_token)
+
+  candidates = (
+    Contract.objects.filter(get_contract_valid_at_date_q(reading_date))
+    .filter(Q(supply_point_default=supply_point) | Q(supply_points=supply_point))
+    .filter(status_q, is_active=True)
+    .select_related('status')
+    .distinct()
+  )
+
+  def _candidate_rank(contract):
+    return (
+      contract.supply_point_default_id != supply_point.id,
+      contract.status is None or contract.status.token != active_contract_status_token,
+      contract.registration_date is None,
+      contract.registration_date or reading_date,
+      -contract.id,
+    )
+
+  return min(candidates, key=_candidate_rank, default=None)
+
+
+def resolve_reading_document_previous_reading(supply_point, meter, contract, reading_date, exclude_reading=None):
+  """
+  Previous reading for a reading document row, in two progressive tiers:
+
+  1. Same supply point, meter and contract: the previous cycle of the
+     contract receiving the row.
+  2. Same supply point and meter, any contract: when the row is attached to
+     a new contract (change of ownership), the only previous reading
+     usually belongs to the contract that preceded it.
+
+  Control and soft-deleted readings never chain. Returns
+  (previous_reading, tier) with tier in (1, 2, None).
+  """
+  def _first(queryset):
+    if exclude_reading is not None:
+      queryset = queryset.exclude(id=exclude_reading.id)
+    return queryset.order_by('-reading_date', '-reading_value').first()
+
+  if contract is not None:
+    tier_one = Reading.objects.filter(
+      supply_point=supply_point,
+      meter=meter,
+      contract=contract,
+      reading_date__lt=reading_date,
+      is_control=False,
+      is_active=True,
+    )
+    previous = _first(tier_one)
+    if previous is not None:
+      return previous, 1
+
+  tier_two = Reading.objects.filter(
+    supply_point=supply_point,
+    meter=meter,
+    reading_date__lt=reading_date,
+    is_control=False,
+    is_active=True,
+  )
+  previous = _first(tier_two)
+  if previous is not None:
+    return previous, 2
+
+  return None, None
 
 
 def _get_billable_contract_for_supply_point(supply_point, contract_active_token):
@@ -1299,6 +1410,115 @@ def get_contract_multiyear_daily_avg(contract, target_date, years_back=2):
 
   return total_value / Decimal(total_days)
 
+LEAK_ESTIMATE_STATISTIC_MEAN = 'mean'
+LEAK_ESTIMATE_STATISTIC_MAX = 'max'
+LEAK_ESTIMATE_STATISTIC_CHOICES = (LEAK_ESTIMATE_STATISTIC_MEAN, LEAK_ESTIMATE_STATISTIC_MAX)
+LEAK_ESTIMATE_DEFAULT_YEARS = 2
+LEAK_ESTIMATE_MAX_YEARS = 10
+
+def get_leak_estimate_config():
+  """
+  Criteri per defecte del càlcul de fuites (ConfigProject): anys enrere
+  ('leak_estimate_years') i estadístic ('leak_estimate_statistic': mean o max).
+  """
+  config = dict(
+    ConfigProject.objects.filter(token__in=('leak_estimate_years', 'leak_estimate_statistic'))
+    .values_list('token', 'value')
+  )
+  try:
+    years = int(config.get('leak_estimate_years') or LEAK_ESTIMATE_DEFAULT_YEARS)
+  except (TypeError, ValueError):
+    years = LEAK_ESTIMATE_DEFAULT_YEARS
+  if not 1 <= years <= LEAK_ESTIMATE_MAX_YEARS:
+    years = LEAK_ESTIMATE_DEFAULT_YEARS
+  statistic = config.get('leak_estimate_statistic') or LEAK_ESTIMATE_STATISTIC_MEAN
+  if statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
+    statistic = LEAK_ESTIMATE_STATISTIC_MEAN
+  return years, statistic
+
+def get_leak_estimate(contract, supply_point, reading_date, consumption_days, consumption,
+                      years_back=None, statistic=None):
+  """
+  Proposta de repartiment del consum d'una lectura amb fuita entre consum habitual
+  i consum de fuita (criteri ACA / ordenances municipals).
+
+  El consum habitual és el consum diari dels darrers `years_back` anys comptats des
+  de l'inici del període de la lectura (abans de la fuita) multiplicat pels dies de
+  consum de la lectura. El consum diari és la mitjana (total de m3 / total de dies)
+  o el màxim de les lectures del període. De cada lectura es fa servir el consum
+  net: sense les fuites ja declarades ni la correcció d'estimades. Una lectura que
+  comença abans de la finestra només hi compta pels dies que hi cauen.
+
+  La resta del consum de la lectura es proposa com a fuita. Retorna None si no hi
+  ha historial.
+  """
+  default_years, default_statistic = get_leak_estimate_config()
+  years_back = years_back or default_years
+  statistic = statistic or default_statistic
+  if statistic not in LEAK_ESTIMATE_STATISTIC_CHOICES:
+    raise ValueError(f"Estadístic desconegut: {statistic}")
+  if not 1 <= years_back <= LEAK_ESTIMATE_MAX_YEARS:
+    raise ValueError(f"Anys fora de rang: {years_back}")
+
+  consumption_days = int(consumption_days or 0)
+  if consumption_days <= 0:
+    return None
+
+  period_start = reading_date - timedelta(days=consumption_days)
+  window_start = period_start - relativedelta(years=years_back)
+
+  readings = Reading.objects.filter(
+    contract=contract,
+    is_control=False,
+    is_active=True,
+    reading_date__gt=window_start,
+    reading_date__lte=period_start,
+    calculated_value__isnull=False,
+    consumption_days__gt=0,
+  )
+  if supply_point:
+    readings = readings.filter(supply_point=supply_point)
+
+  total_value = Decimal('0')
+  total_days = 0
+  dailies = []
+  for r in readings:
+    net = Decimal(str(r.calculated_value)) - Decimal(str(r.leak_value or 0)) - Decimal(str(r.estimated_used or 0))
+    if net < 0:
+      net = Decimal('0')
+    daily = net / Decimal(r.consumption_days)
+    days_in_window = min(r.consumption_days, (r.reading_date - window_start).days)
+    total_value += daily * Decimal(days_in_window)
+    total_days += days_in_window
+    dailies.append(daily)
+
+  if total_days <= 0:
+    return None
+
+  if statistic == LEAK_ESTIMATE_STATISTIC_MAX:
+    daily_value = max(dailies)
+  else:
+    daily_value = total_value / Decimal(total_days)
+
+  consumption = Decimal(str(consumption or 0)).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+  habitual = (daily_value * Decimal(consumption_days)).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+  habitual = max(Decimal('0'), min(habitual, consumption))
+
+  return {
+    'years': years_back,
+    'statistic': statistic,
+    'window_start': window_start,
+    'window_end': period_start,
+    'readings_count': len(dailies),
+    'history_days': total_days,
+    'history_consumption': int(total_value.quantize(Decimal('1'), rounding=ROUND_HALF_UP)),
+    'daily_value': float(daily_value.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)),
+    'consumption_days': consumption_days,
+    'consumption': int(consumption),
+    'habitual_consumption': int(habitual),
+    'leak_value': int(consumption - habitual),
+  }
+
 READING_ESTIMATE_PERIOD_LAST_READING = 'last_reading'
 READING_ESTIMATE_PERIOD_LAST_YEAR = 'last_year'
 READING_ESTIMATE_PERIOD_SAME_PERIOD_PREVIOUS_YEAR = 'same_period_previous_year'
@@ -1714,6 +1934,7 @@ def recalculate_estimated_readings(reading_ids):
     'supply_point', 'contract', 'meter', 'previous_reading',
     'supply_point__meter', 'supply_point__meter__status',
     'contract__use_type', 'supply_point__connection', 'supply_point__connection__use_type',
+    'supply_point__route_position__route__biller',
     'supply_point__property__route_position__route__biller',
   )
 
@@ -1727,7 +1948,7 @@ def recalculate_estimated_readings(reading_ids):
       continue
 
     try:
-      biller = supply_point.property.route_position.route.biller
+      biller = effective_route(supply_point).biller
       offset_days = PERIOD_MONTHS_MAP.get(biller.period_type, 90) if biller else 90
     except Exception:
       offset_days = 90
@@ -1992,6 +2213,10 @@ def modify_existing_readings(readings_data, readings_to_update, readings_to_dele
     
     estimated_from_readings = 0
     current_meter_id = supply_point.meter.id if supply_point.meter else None
+    try:
+      estimated_bag = EstimatedBag.objects.get(supply_point=supply_point, contract__id=contract_id)
+    except:
+      estimated_bag = None
 
     for reading_item in sorted(readings_list, key=lambda x: (x['reading_date'], str(x.get('meter_id')) == str(current_meter_id))):
         # print("reading_item", reading_item)
@@ -2016,10 +2241,6 @@ def modify_existing_readings(readings_data, readings_to_update, readings_to_dele
         print("\n")
         print("reading_id", reading_id)
         print("calculated_value", calculated_value)
-        try:
-          estimated_bag = EstimatedBag.objects.get(supply_point=supply_point, contract__id=contract_id)
-        except:
-          estimated_bag = None
         try:
           batch = ReadingBatch.objects.get(id=reading_batch_id)
         except:
@@ -2299,7 +2520,7 @@ def check_billing_period(reading_date, supply_point, meter, contract, previous_r
   #   print("readings do not have period")
   #   return True
   
-  biller = supply_point.property.route_position.route.biller
+  biller = effective_route(supply_point).biller
   billing_period_days = PERIOD_MONTHS_MAP[biller.period_type] if biller else 90
   
   reading_date = reading_date

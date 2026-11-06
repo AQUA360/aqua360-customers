@@ -942,7 +942,7 @@
             "created_at": "2025-01-27T13:51:11.717Z",
             "updated_at": "2025-01-28T08:46:33.381Z",
             "token": "contract_domestic_use_type_token",
-            "name": "Token Contract Domestic Use Type",
+            "name": "Token Contract Domestic Use Type (multiple values separated by |)",
             "value": "9",
             "file": null
         }
@@ -3092,6 +3092,30 @@
             "token": "contract_min_persons",
             "name": "Mínimo de personas de un contrato (persons_min en las fórmulas y valor cuando el contrato no tiene)",
             "value": "3",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 261,
+        "fields": {
+            "created_at": "2026-10-29T00:00:00.000Z",
+            "updated_at": "2026-10-29T00:00:00.000Z",
+            "token": "ODOO_ENABLED",
+            "name": "Integración Odoo habilitada",
+            "value": "false",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 262,
+        "fields": {
+            "created_at": "2026-11-02T00:00:00.000Z",
+            "updated_at": "2026-11-02T00:00:00.000Z",
+            "token": "giswater_supply_cut_sync_enabled",
+            "name": "Mostrar el botón «Sincronizar con GIS Water» en la lista de cortes de suministro",
+            "value": "false",
             "file": null
         }
     }

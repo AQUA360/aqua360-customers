@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.db import transaction
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Q, Subquery
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
@@ -297,7 +297,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 return_motive = rejection_motive if rejection_motive else reject
                 previous_returns = payment.movements.filter(is_active=True, current_status=payment_returned_status)
                 if direct_debit_movement:
-                    previous_returns = previous_returns.filter(movement_date__gte=direct_debit_movement.movement_date)
+                    # Només els retorns POSTERIORS al cobrament: un retorn anterior del mateix dia (rebut
+                    # tornat a presentar el dia de la devolució) és d'un cobrament anterior i no el bloqueja
+                    previous_returns = previous_returns.filter(
+                        Q(movement_date__gt=direct_debit_movement.movement_date)
+                        | Q(movement_date=direct_debit_movement.movement_date, timestamp__gt=direct_debit_movement.timestamp)
+                    )
                 if return_motive:
                     previous_returns = previous_returns.filter(reject_motive=return_motive)
                 else:

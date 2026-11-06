@@ -5,12 +5,12 @@ from auth.serializers import UserMinimalSerializer
 from billing.models import GeneralPayment
 from contract.models import PaymentType
 from coredata.models import ConfigProject, PersonBank, Street, StreetNumber, StreetNumberType
-from coredata.serializers import PersonAddressSerializer, PersonMinimalSerializer, PersonSerializer, PersonMinimalAddressSerializer,StreetSerializer, StreetNumberSerializer, PostalCodeSerializer, CitySerializer
+from coredata.serializers import PersonAddressSerializer, PersonContactSerializer, PersonMinimalSerializer, PersonSerializer, PersonMinimalAddressSerializer,StreetSerializer, StreetNumberSerializer, PostalCodeSerializer, CitySerializer
 from service.serializers.DMA_serializer import DMASerializer
 from service.serializers.company_serializer import CompanySerializer
 from service.serializers.tank_serializer import TankSerializer
 from ..models import ( CompanyBank, ConnectionRequest, ConnectionRequestObservation, ConnectionRequestStatus )
-from .value_objects_serializer import ConnectionDiameterSerializer, ConnectionInstallationTypeSerializer, ConnectionMaterialSerializer, ConnectionRequestStatusSerializer, ConnectionTypeSerializer, ConnectionUseTypeSerializer, ConnectionValveTypeSerializer
+from .value_objects_serializer import ConnectionRequestBuildingTypeSerializer, ConnectionRequestDocumentationFileSerializer, ConnectionRequestRepresentativeTypeSerializer, ConnectionDiameterSerializer, ConnectionInstallationTypeSerializer, ConnectionMaterialSerializer, ConnectionRequestStatusSerializer, ConnectionTypeSerializer, ConnectionUseTypeSerializer, ConnectionValveTypeSerializer
 from .connection_serializer import ConnectionSerializer
 
 from urllib.parse import quote
@@ -27,9 +27,25 @@ class ConnectionRequestObservationSerializer(serializers.ModelSerializer):
         model = ConnectionRequestObservation
         fields = '__all__'
 
+class ConnectionRequestPersonSerializer(PersonMinimalAddressSerializer):
+    """Persona de la sol·licitud amb els contactes actius (telèfons, correus)."""
+    contacts = serializers.SerializerMethodField()
+
+    class Meta(PersonMinimalAddressSerializer.Meta):
+        fields = PersonMinimalAddressSerializer.Meta.fields + ['contacts']
+
+    def get_contacts(self, obj):
+        contacts = obj.contacts.filter(is_active=True).order_by('-is_default', 'id')
+        return PersonContactSerializer(contacts, many=True).data
+
+
 class ConnectionRequestSerializer(serializers.ModelSerializer):
     connection = ConnectionSerializer(read_only=True, required=False, allow_null=True)
-    person = PersonMinimalAddressSerializer(read_only=True, required=False, allow_null=True)
+    person = ConnectionRequestPersonSerializer(read_only=True, required=False, allow_null=True)
+    representative = ConnectionRequestPersonSerializer(read_only=True, required=False, allow_null=True)
+    representative_type = ConnectionRequestRepresentativeTypeSerializer(read_only=True, required=False, allow_null=True)
+    building_type = ConnectionRequestBuildingTypeSerializer(read_only=True, required=False, allow_null=True)
+    documentation_files = serializers.SerializerMethodField()
     company = CompanySerializer(read_only=True, required=False, allow_null=True)
     status = ConnectionRequestStatusSerializer(read_only=True, required=False, allow_null=True)
     address_street = StreetSerializer(read_only=True, required=False, allow_null=True)
@@ -52,6 +68,10 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConnectionRequest
         fields = '__all__'
+
+    def get_documentation_files(self, obj):
+        files = obj.documentation_files.filter(is_active=True, file__isnull=False).select_related('file', 'type')
+        return ConnectionRequestDocumentationFileSerializer(files, many=True).data
 
     def get_invoices(self, obj):
         from billing.models import Invoice
@@ -112,12 +132,28 @@ class ConnectionRequestSaveSerializer(serializers.ModelSerializer):
     observation = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
     payment = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     payment_type = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    # El client no envia els camps buits: aquí es llisten (separats per comes) els que s'han de buidar.
+    clear_fields = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+    CLEARABLE_FIELDS = (
+        'address_building', 'address_stair', 'address_floor', 'address_door',
+        'cadastral', 'scope', 'polygon', 'parcel', 'building_type',
+        'requester_type', 'property_condition', 'representative', 'representative_type',
+    )
 
     class Meta:
         model = ConnectionRequest
         fields = '__all__'
 
+    def pop_clear_fields(self, validated_data):
+        raw = validated_data.pop('clear_fields', '') or ''
+        requested = {name.strip() for name in raw.split(',') if name.strip()}
+        for name in requested & set(self.CLEARABLE_FIELDS):
+            if validated_data.get(name) in (None, ''):
+                validated_data[name] = None
+
     def create(self, validated_data):
+        self.pop_clear_fields(validated_data)
         # validated_data = self.parse_data(validated_data)
         # print(validated_data)
         
@@ -133,6 +169,7 @@ class ConnectionRequestSaveSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         print("UPDATING CONNECTION REQUEST")
+        self.pop_clear_fields(validated_data)
         previous_status = instance.status
         company = validated_data.pop('company', None)
         person = validated_data.pop('person', None)
@@ -147,9 +184,7 @@ class ConnectionRequestSaveSerializer(serializers.ModelSerializer):
             validated_data['company'] = None
         
         if payment:
-            gen_pay = None
             gen_pay = GeneralPayment.objects.get(id=payment)
-            print(gen_pay)
             validated_data['payment'] = gen_pay
         if payment_type and not payment:
             pay_type = PaymentType.objects.get(id=payment_type)
@@ -244,4 +279,4 @@ class ConnectionRequestListSerializer(serializers.ModelSerializer):
                 'alias': obj.company.alias,
                 'vat': obj.company.vat
             }
-        return None
+        return None

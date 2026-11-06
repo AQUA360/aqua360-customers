@@ -264,10 +264,11 @@ const openSendModal = (invoice) => {
     return;
   }
 
+  sentInvoiceIds.value = [];
   invoiceToSend.value = invoice;
   currentSendIndex.value = 0;
   sendModalOpen.value = true;
-};
+  };
 
 // ---------------------------------------------------------
 // GROUPED SEND
@@ -279,12 +280,13 @@ const openGroupedSendModal = () => {
     return;
   }
 
-  currentSendIndex.value = 0;
+    sentInvoiceIds.value = [];
+    currentSendIndex.value = 0;
 
-  invoiceToSend.value =
-    selectedInvoices.value[0];
+    invoiceToSend.value =
+      selectedInvoices.value[0];
 
-  sendModalOpen.value = true;
+    sendModalOpen.value = true;
 };
 
 // ---------------------------------------------------------
@@ -320,12 +322,60 @@ const nextInvoice = () => {
 };
 
 const closeSendModal = () => {
-
   sendModalOpen.value = false;
-
   invoiceToSend.value = null;
-
   currentSendIndex.value = 0;
+  sentInvoiceIds.value = [];
+};
+
+// Factures ja enviades en aquesta sessió del modal
+const sentInvoiceIds = ref([]);
+
+const onInvoiceSent = (invoiceId) => {
+  if (!sentInvoiceIds.value.includes(invoiceId)) {
+    sentInvoiceIds.value.push(invoiceId);
+  }
+
+  const list = selectedInvoices.value;
+  const total = list.length;
+
+  // Anem a la següent pendent (donant la volta si cal)
+  for (let step = 1; step <= total; step++) {
+    const idx = (currentSendIndex.value + step) % total;
+
+    if (!sentInvoiceIds.value.includes(list[idx].id)) {
+      currentSendIndex.value = idx;
+      invoiceToSend.value = list[idx];
+      return;
+    }
+  }
+
+  // Totes enviades (o enviament individual): tanquem i netegem
+  selectedInvoiceIds.value = [];
+  closeSendModal();
+};
+
+// «Enviar totes»: marquem les enviades i, si no en queda cap, tanquem
+const onInvoicesSent = (invoiceIds) => {
+  invoiceIds.forEach((id) => {
+    if (!sentInvoiceIds.value.includes(id)) {
+      sentInvoiceIds.value.push(id);
+    }
+  });
+
+  const pending = selectedInvoices.value.filter(
+    (inv) => !sentInvoiceIds.value.includes(inv.id)
+  );
+
+  if (pending.length) {
+    // Algun enviament ha fallat: ens quedem a la primera pendent
+    currentSendIndex.value = selectedInvoices.value.indexOf(pending[0]);
+    invoiceToSend.value = pending[0];
+    return;
+  }
+
+  selectedInvoiceIds.value = [];
+  closeSendModal();
 };
 
 // ---------------------------------------------------------
@@ -441,12 +491,10 @@ watch(
     if (!enabled) {
 
       selectedInvoiceIds.value = [];
-
       sendModalOpen.value = false;
-
       invoiceToSend.value = null;
-
       currentSendIndex.value = 0;
+      sentInvoiceIds.value = [];
     }
 
   }
@@ -868,7 +916,6 @@ watch(
 
   </div>
 
-  <!-- Send invoice modal -->
   <SendInvoiceModal
     :show="sendModalOpen"
     :invoice="invoiceToSend"
@@ -876,8 +923,12 @@ watch(
     :show-navigation="hasMultipleSelectedInvoices"
     :can-go-previous="canGoPrevious"
     :can-go-next="canGoNext"
+    :invoices="selectedInvoices"        
+    :sent-ids="sentInvoiceIds"          
     @previous="previousInvoice"
     @next="nextInvoice"
+    @sent="onInvoiceSent"               
+    @sent-all="onInvoicesSent"          
     @close="closeSendModal"
   />
 

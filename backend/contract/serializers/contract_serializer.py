@@ -38,6 +38,7 @@ from billing.models import CommitmentDepositStatus, GeneralPaymentMandateLog, In
 from logger.models import LogContractTotalMembers
 from contract.utils.contract_service import get_contract_housing_units, log_contract_phones_change
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
+from service.utils.route_scope import effective_route
 
 class ContractObservationSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(required=False, allow_null=True)
@@ -203,7 +204,7 @@ class ContractSerializer(serializers.ModelSerializer):
         try:
             period_type = ['mensual','bimestral','trimestral','semestral','anual']
             period_jumps = [1,2,3,6,12]
-            biller_period = obj.supply_point_default.property.route_position.route.biller.period_type
+            biller_period = effective_route(obj.supply_point_default).biller.period_type
             return period_jumps[period_type.index(biller_period)] * 30
         except:
             return None
@@ -1304,14 +1305,16 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         return representation
     
     def get_expired_invoices(self, obj):
-        expired_status = InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_expired_token').value)
+        from claimrequest.utils.claim_request_service import claimable_invoice_status_q
+
         invoice_filters = Q(contract=obj)
 
         extra_invoice_ids = (self.context.get('extra_invoices_by_contract') or {}).get(obj.id)
         if extra_invoice_ids:
             invoice_filters |= Q(id__in=extra_invoice_ids)
 
-        invoices = Invoice.objects.filter(invoice_filters, status=expired_status)
+        # Mateix criteri que la cerca: vençudes i confirmades amb el rebut retornat
+        invoices = Invoice.objects.filter(invoice_filters).filter(claimable_invoice_status_q()).distinct()
 
         return_fee_invoice_ids = self.context.get('exclude_return_fee_invoice_ids')
         if return_fee_invoice_ids:

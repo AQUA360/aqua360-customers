@@ -737,7 +737,7 @@ const groupedPriceRates = computed(() => {
           <li class="me-2">
             <a href="#tab_invoice_generals" @click.prevent="setInvoiceActiveTab('invoice_generals')"
               :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_generals', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_generals' }">
-              {{ $t("billing_block.general_invoices") }} ({{ general_invoices ? general_invoices.filter(invoice => invoice.type_final === invoiceTypeToken).length : 0 }})
+              {{ $t("billing_block.general_invoices") }} ({{ generalInvoiceRuns.length }})
             </a>
           </li>
         </AtomsTabs>

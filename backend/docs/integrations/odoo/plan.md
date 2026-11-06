@@ -74,6 +74,7 @@ Seguir la mateixa convenció que `integrations/outbound/giswater/`: el `client.p
 ## Configuració (`.env`)
 
 ```env
+ODOO_TRANSPORT=fastapi
 ODOO_BASE_URL=https://odoo.exemple.cat/aqua360/v1
 ODOO_API_KEY=
 ODOO_TIMEOUT=30
@@ -85,6 +86,8 @@ ODOO_PUSH_PAYMENTS=True
 ```
 
 Carregar des de `customers/settings.py` amb `python-decouple`, com la resta d'integracions.
+
+`ODOO_TRANSPORT=json2` no canvia el JSON del contracte: l'embolcalla i l'envia a l'API nativa d'Odoo Enterprise SaaS. Vegeu [`perfil-saas.es.md`](perfil-saas.es.md).
 
 ---
 
@@ -117,6 +120,8 @@ Carregar des de `customers/settings.py` amb `python-decouple`, com la resta d'in
 |-----------|-----------|-------|
 | `product_id.aqua_id` | `Product.token` | Via `line_item.product` |
 | `product_id.name` | `product_name` o `Product.name` | |
+| `product_id.company.name` | `Product.company.name` | Buit si el producte no té empresa |
+| `product_id.company.vat` | `Product.company.vat` | |
 | `name` | `name` / `description` | Descripció visible a Odoo |
 | `quantity` | `units` | |
 | `price_unit` | `price_unit` | |

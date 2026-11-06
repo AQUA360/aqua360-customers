@@ -11,6 +11,7 @@ from billing.models import Billing, Invoice, Reading
 from contract.models import Contract, ContractTerminationRequest
 from coredata.models import ConfigProject
 from service.models import Exploitation
+from service.utils.route_scope import effective_route, effective_route_q
 from statistics.views.reports_views import add_row, adjust_column_widths
 
 PERIOD_TYPE_INTERVAL = {
@@ -59,7 +60,7 @@ def get_billing_period_range(billing):
 
 
 def get_billing_scope_reading_filter(billing):
-    scope_filter = Q(supply_point__property__route_position__route__biller=billing.biller)
+    scope_filter = effective_route_q('route__biller', billing.biller, prefix='supply_point__')
 
     exploitations = list(billing.invoices.values_list('exploitation__id', flat=True).distinct())
     if len(exploitations) == 1 and exploitations[0] and Exploitation.objects.count() > 1:
@@ -119,14 +120,13 @@ def generate_billing_missing_contracts_report(contracts_data, billing, first_sta
         reading = readings.filter(contract__id=item['contract_id']).order_by('-reading_date').first()
         prev_reading = previous_readings.filter(contract__id=item['contract_id']).order_by('-reading_date').first()
         contract = contracts.get(id=item['contract_id'])
-        print(contract.token)
         termination = contract_termination_requests.filter(contract__id=item['contract_id']).order_by('-created_at').first()
         line_row = [
             contract.token, contract.created_at.strftime('%d/%m/%Y'), 
             contract.status.name.upper(), termination.approved_at.strftime('%d/%m/%Y') if termination else '',
             contract.holder.token, f"{contract.holder.name}{' ' + contract.holder.surname if contract.holder.surname else ''}",
             "No" if contract.block_billing else "", no_price_rates_text if 'block_billing' in item['missing_reasons'] else '',
-            contract.supply_point_default.connection.exploitation.name, contract.supply_point_default.property.route_position.route.name,
+            contract.supply_point_default.connection.exploitation.name, effective_route(contract.supply_point_default).name,
             
             no_reading_text if 'no_reading' in item['missing_reasons'] else reading.reading_date.strftime('%d/%m/%Y') if reading else '', 
             no_reading_text if 'no_reading' in item['missing_reasons'] else reading.reading_value if reading else '',

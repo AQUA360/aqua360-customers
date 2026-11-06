@@ -392,6 +392,12 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Ruta pròpia del punt: { route_id, position } o { route_id: null } per tornar a la ruta de la finca
+  const setRoute = async (id, data) => {
+    const apiUrl = `${apiHost}${entity}${id}/set-route/`;
+    return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(data), { 'Content-Type': 'application/json' });
+  }
+
   const apiService = {
     getData,
     getList,
@@ -410,7 +416,8 @@ export default defineNuxtPlugin(nuxtApp => {
     updateMeter,
     saveMeterChange,
     getPermissions,
-    bulkUpdateProperty
+    bulkUpdateProperty,
+    setRoute
   };
 
   nuxtApp.provide(provideName, apiService);

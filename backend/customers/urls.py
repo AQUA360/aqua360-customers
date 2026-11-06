@@ -36,6 +36,10 @@ app_urls = [
     path('signing/', include('integrations.urls')),
     path('giswater/v1/', include('integrations.inbound.giswater.urls')),
     path('smartmetering/v1/', include('integrations.inbound.smartmetering.urls')),
+    path('odoo/v1/', include('integrations.inbound.odoo.urls')),
+    path('gmao/v1/', include('integrations.inbound.gmao.urls')),
+    # API interna genèrica de lots d'enviament (Odoo avui; altres integracions demà).
+    path('send-batch/', include('integrations.urls_send_batch')),
 ]
 
 # Apps locals (LOCAL_OWN_APPS al .env, p. ex. `importexport`): es munten a `/<app>/` si tenen urls.py.

@@ -2,6 +2,8 @@
 
 Contrato de datos **push** desde Aqua360 (Aventec) hacia **Odoo 19 Community**.
 
+El JSON de este contrato es el cuerpo de datos. Con el conector FastAPI (`ODOO_TRANSPORT=fastapi`, por defecto) se envía tal cual. Con Odoo Enterprise SaaS (`ODOO_TRANSPORT=json2`) el mismo JSON viaja dentro de `x_aqua_json`. Véase [`perfil-saas.es.md`](perfil-saas.es.md).
+
 Aqua360 empuja facturas, rectificativas y movimientos (pagos). Odoo actúa como receptor: no renumera, no genera Verifactu propio (vive en Aqua360) y no origina pagos ni remesas. La resolución del JSON custom se hace con OCA fastapi (`rest-framework`), con `get_or_create` por `aqua_id` en cada modelo relacionado.
 
 **OpenAPI (para integradores):** [`openapi.yaml`](openapi.yaml) — importable en [Swagger Editor](https://editor.swagger.io), Postman o Redoc. Especificación OpenAPI 3.0, con las descripciones en castellano.
@@ -84,7 +86,11 @@ Estructura única. Lo único que varía es `move_type` (`out_invoice` / `out_ref
     {
       "product_id": {
         "aqua_id": "CONS-AGUA-B1",
-        "name": "Consumo agua bloque 1"
+        "name": "Consumo agua bloque 1",
+        "company": {
+          "name": "Aigües Exemple",
+          "vat": "B12345678"
+        }
       },
       "name": "Consumo agua bloque 1 (0-10 m³)",
       "quantity": 10.0,
@@ -98,7 +104,11 @@ Estructura única. Lo único que varía es `move_type` (`out_invoice` / `out_ref
     {
       "product_id": {
         "aqua_id": "CUOTA-SERV",
-        "name": "Cuota de servicio"
+        "name": "Cuota de servicio",
+        "company": {
+          "name": "Aigües Exemple",
+          "vat": "B12345678"
+        }
       },
       "name": "Cuota de servicio trimestral",
       "quantity": 1.0,
@@ -194,7 +204,7 @@ Mismo JSON que v1. Solo cambian estos casos:
 | `journal_id` | `journal_id` | `account.move` | `get_or_create` por `aqua_id` |
 | `payment_mode_id` | `payment_mode_id` | `account.move` | OCA `account_payment_mode`; preexiste, se resuelve por `id` |
 | `invoice_line_ids` | `invoice_line_ids` | `account.move` | |
-| `product_id` | `product_id` | `account.move.line` | `get_or_create` por `aqua_id` |
+| `product_id` | `product_id` | `account.move.line` | `get_or_create` por `aqua_id`. `company.name` y `company.vat` vienen de `Product.company` |
 | `name` (línea) | `name` | `account.move.line` | Descripción |
 | `quantity` | `quantity` | `account.move.line` | |
 | `price_unit` | `price_unit` | `account.move.line` | |
@@ -214,17 +224,29 @@ Mismo JSON que v1. Solo cambian estos casos:
 
 ---
 
-## 4 · Implementación (lado Odoo)
+## 4 · Lotes (bulk)
+
+Documentación completa: [`batch-sending-v1.0.pdf`](batch-sending-v1.0.pdf).
+
+Envío: `{ "batch_id": "...", "items": [ <mismo JSON individual> ] }` a
+`POST /batch/invoices|payments|commitment/create|commitment/cancel` (máx. 1000).
+
+Resultado final: Odoo hace `POST` a Aqua360 (`/odoo/v1/batch-results/`) con
+`Authorization: Bearer` y el mismo JSON que `GET /aqua360/batch/{batch_id}`
+(`status: done`, `summary`, `results[]` con `aqua_id` / `status` / `message`).
+
+---
+
+## 5 · Implementación (lado Odoo)
 
 La nota para el desarrollador (PoC con FastAPI/OCA: stack, módulo `aqua360_connector`, schemas, resolución de relacionados y conciliación) consta en un **documento propio**, separado de este contrato.
 
 ---
 
-## 5 · Pendientes v2
+## 6 · Pendientes v2
 
 | Funcionalidad | Descripción |
 |---------------|-------------|
-| Compromiso | Crear un compromiso y conciliar contra él |
 | Conciliación múltiple | Un pago contra varias facturas (remesas agrupadas) |
-| Acuse / estado de vuelta | Si Aqua360 necesita saber qué documentos ha aceptado o rechazado Odoo para reintentar |
 | Devoluciones / impagados | R-transactions SEPA: deshacer la conciliación y devolver la factura a pendiente |
+| Reenvío selectivo UI | Seleccionar errores de un lote y crear un lote nuevo con `related_batch` |

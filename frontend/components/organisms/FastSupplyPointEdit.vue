@@ -76,7 +76,7 @@ const loadFromDetail = async (data) => {
     : null;
 
   placement.value = data.placement
-    ? (placements.value.find(p => p.code === data.placement) ?? null)
+    ? (placements.value.find(p => p.code === (data.placement?.id ?? data.placement)) ?? null)
     : null;
 }
 
@@ -182,7 +182,10 @@ const saveSupplyPoint = async () => {
   // Afegir dades de la finca a l'adreça
   address.property_cadastral = selected_property.value.cadastral;
 
+  // Si el formulari s'ha obert sobre un punt existent (p. ex. des de la bateria), l'actualitzem:
+  // sense id es crearia un punt nou i una boquilla nova a la bateria
   const data = {
+    id: props.supply_point?.id || null,
     connection_id: selected_connection.value.id,
     token: token.value,
     type: type.value.code,
@@ -288,7 +291,13 @@ onMounted(async () => {
   await getSelectData('supply-point-source', sources, source);
   await getSelectData('supply-point-placement', placements, placement);
   // Si tenim un cluster, carreguem les dades
-  if (props.supply_point) {
+  if (props.supply_point?.id) {
+    // Des de la bateria arriba una versió reduïda del punt (sense carrer, escomesa ni finca):
+    // carreguem el detall complet perquè el formulari no perdi l'adreça en desar
+    const detail = await $SupplyPointApiService.getDetail(props.supply_point.id);
+    loadFromDetail(detail || props.supply_point);
+  }
+  else if (props.supply_point) {
     loadFromDetail(props.supply_point);
   }
   else {

@@ -22,7 +22,7 @@ from billing.utils.aca_company_service import ACACompanyError, get_records_compa
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
-from contract.models import Contract, ContractLog, ContractUseType
+from contract.models import Contract, ContractUseType
 from coredata.models import ConfigProject, Person
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.other_utils import round_ceil
@@ -32,7 +32,9 @@ from service.models import Company, Exploitation, SupplyPointType
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, save_report, jump_row
 from statistics.utils.report_filters import (get_billing_ids, get_multi_ids, has_serie_final_range, invoice_multi_filter_q,
                                              payment_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
+from statistics.utils.dated_use_type import annotate_dated_use_type
 from statistics.utils.report_progress import report_progress
+from statistics.utils.aca_declaration_service import aca_declaration_selection
 import logging
 
 logger = logging.getLogger(__name__)
@@ -167,10 +169,13 @@ def _product_token_matches_aca(prod_token, aca_product_token):
     return any(token in prod_token for token in _split_aca_product_tokens(aca_product_token))
 
 
-def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
+def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token, line_items_q=None):
     """
     Helper to obtain common ACA invoice aggregation data reused across reports.
+    `line_items_q` tria les línies de cànon (per defecte, les actives; amb mesos presentats, les congelades).
     """
+    if line_items_q is None:
+        line_items_q = Q(is_active=True)
     # Filter invoices that have ACA products (using distinct to avoid duplicates from JOIN)
     invoices_with_aca = invoices.filter(
         _aca_product_token_q('line_items__product__token', aca_product_token)
@@ -199,13 +204,11 @@ def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
     ).distinct()
 
     print(f"invoices_by_exploitation from query: {len(invoices_by_exploitation)} exploitations")
-    for invoice in invoices_by_exploitation:
-        print(f"  - {invoice['exploitation__name']}: {invoice['count']} invoices, sum: {invoice['sum']}")
 
     line_items_totals_by_exploitation = InvoiceLineItem.objects.filter(
         _aca_product_token_q('product__token', aca_product_token),
+        line_items_q,
         invoice__id__in=aca_invoice_ids,
-        is_active=True,
     ).values('invoice__exploitation__name').annotate(
         total_sum=Sum('price'),
     )
@@ -221,13 +224,12 @@ def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token):
 
     for item in invoices_by_exploitation:
         item['line_items_total_final'] = totals_dict.get(item['exploitation__name'], 0)
-        print(f"{item['exploitation__name']}: {item['count']} invoices, total: {item['line_items_total_final']}")
 
     # Base queryset for ACA line items
     aca_line_items_qs = InvoiceLineItem.objects.filter(
         _aca_product_token_q('product__token', aca_product_token),
+        line_items_q,
         invoice__in=invoices.exclude(status__token__in=[pre_invoice_token]),
-        is_active=True,
     ).select_related(
         'invoice',
         'invoice__status',
@@ -533,41 +535,13 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
             type__token__in=aca_tram_members_variable_tokens(),
         ).exclude(value__isnull=True).exclude(value__in=['', '0'])
 
-        # Tipus d'ús del contracte quan es va generar la factura, segons l'historial
-        # (ContractLog desa el nom del tipus d'ús): el valor nou de l'últim canvi anterior
-        # o, si no n'hi ha, el valor antic del primer canvi posterior. Sense canvis, el
-        # tipus d'ús actual del contracte.
-        use_type_logs = ContractLog.objects.filter(contract=OuterRef('invoice__contract'), field_name='use_type')
-        use_type_log_before = use_type_logs.filter(created_at__lte=OuterRef('invoice__created_at')).order_by('-created_at', '-id')
-        use_type_log_after = use_type_logs.filter(created_at__gt=OuterRef('invoice__created_at')).order_by('created_at', 'id')
-
-        active_line_items = InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True).annotate(
-            has_use_type_log_before=Exists(use_type_log_before),
-            has_use_type_log_after=Exists(use_type_log_after),
-        ).annotate(
-            use_type_log_name=Case(
-                When(has_use_type_log_before=True, then=Subquery(use_type_log_before.values('new_value')[:1])),
-                When(has_use_type_log_after=True, then=Subquery(use_type_log_after.values('old_value')[:1])),
-                default=Value(None),
-                output_field=CharField(),
-            ),
+        # Tipus d'ús del contracte quan es va generar la factura (vegeu dated_use_type).
+        active_line_items = annotate_dated_use_type(
+            InvoiceLineItem.objects.filter(invoice__in=invoices, is_active=True),
         ).annotate(
             concept_name=Coalesce('line_item_type__name', 'name'),
             is_social=Exists(social_adjustments),
-            use_type_id=Case(
-                When(
-                    Q(has_use_type_log_before=True) | Q(has_use_type_log_after=True),
-                    # Si el nom ja no existeix (tipus d'ús reanomenat), el tipus d'ús actual.
-                    then=Case(
-                        When(use_type_log_name__isnull=True, then=Value(None)),
-                        default=Coalesce(
-                            Subquery(ContractUseType.objects.filter(name=OuterRef('use_type_log_name')).order_by('id').values('id')[:1]),
-                            F('invoice__contract__use_type_id'),
-                        ),
-                    ),
-                ),
-                default=F('invoice__contract__use_type_id'),
-            ),
+            use_type_id=F('dated_use_type_id'),
             configured_end_stretch=configured_end_stretch,
             has_members_variable=Exists(members_variables),
             # Preu unitari aplicat (en valor absolut: els abonaments el desen en negatiu).
@@ -871,6 +845,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         end_date = None
         
         exploitation = None
+        aca_line_items_q = None
         if exploitation_id:
             exploitation = Exploitation.objects.get(id=exploitation_id)
         
@@ -881,20 +856,10 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         elif date_range:
             start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
             end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
-            invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
-            status_cancelled_token = ConfigProject.objects.get(token="invoice_status_cancelled_token").value
-            # Excloure les anul·lades NOMÉS si no tenen una refactura/abonament lligat (return_token).
-            # Les anul·lades amb return_token es mantenen (mateix criteri que el detall de facturació).
-            invoices = Invoice.objects.filter(
-                issue_date__range=(start_date.date(), end_date.date()),
-                type_final=invoice_type,
-                payments__is_active=True,
-                exploitation__isnull=False,
-            ).exclude(
-                Q(status__token__in=[status_cancelled_token])
-                & (Q(return_token__isnull=True) | Q(return_token__exact=""))
-            ).distinct()
-            invoices = filter_pending_invoices(invoices, request)
+            # Amb els mesos ja presentats congelats (veure aca_declaration_service)
+            aca_selection = aca_declaration_selection(start_date.date(), end_date.date(), request)
+            invoices = aca_selection.invoices
+            aca_line_items_q = aca_selection.line_items_q
         elif has_serie_range:
             # Seleccio nomes pel rang de numero de factura: el rang ja identifica les
             # factures, sense lot ni periode. filter_pending_invoices hi aplica el rang
@@ -940,7 +905,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         first_invoice = invoices.first()
         billing_date = end_date if end_date else first_invoice.issue_date if (first_invoice and id and billing) else datetime.datetime.now()
         _aca_invoice_ids, _invoices_by_exploitation, _totals_dict, aca_line_items_qs = _get_aca_invoices_data(
-            invoices, aca_product_token, pre_invoice_token
+            invoices, aca_product_token, pre_invoice_token, aca_line_items_q
         )
         # Amb múltiples empreses el codi és el de l'empresa de les factures (totes la mateixa);
         # si no, el de l'empresa de cada explotació.

@@ -1,9 +1,11 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from django import template
 from django.utils import formats
 from django.utils.translation import gettext as _
 import re
+
+from service.utils.route_scope import effective_route
 
 register = template.Library()
 
@@ -113,9 +115,9 @@ def _invoice_period_months(invoice):
     biller = getattr(getattr(invoice, 'billing', None), 'biller', None)
     if biller is None:
         # Factures fora d'un lot: la periodicitat penja de la ruta del punt de
-        # subministrament (mateix camí que billing/tasks.py::fill_invoice_periods).
+        # subministrament (ruta efectiva: la pròpia del punt o la de la finca).
         try:
-            biller = invoice.contract.supply_point_default.property.route_position.route.biller
+            biller = effective_route(invoice.contract.supply_point_default).biller
         except Exception:
             biller = None
     months = PERIOD_TYPE_MONTHS.get(getattr(biller, 'period_type', None), DEFAULT_PERIOD_MONTHS)
@@ -282,18 +284,36 @@ BILLER_INITIAL_MONTH = {
 }
 
 
-def _invoice_period_anchor(invoice):
-    """(any, mes) que situa la factura dins d'un cicle del facturador."""
+def _invoice_period_anchor(invoice, interval_months):
+    """(any, mes) que situa la factura dins d'un cicle del facturador.
+
+    Mana el període de les lectures, no el mes d'emissió: una factura emesa
+    a l'octubre amb lectures de juny a setembre és del tercer trimestre. Es
+    pren el punt mig entre la lectura anterior i l'última, perquè una lectura
+    presa els primers dies del cicle següent no hi faci saltar la factura.
+    La lectura anterior es limita a un cicle enrere: si fa anys que no es
+    llegia, el punt mig cauria en un cicle antic.
+    Sense lectures es fa servir billing_period_year/month.
+    """
+    readings = [r for r in invoice.readings.all() if getattr(r, 'reading_date', None)]
+    if readings:
+        end = max(r.reading_date for r in readings)
+        previous_dates = [
+            r.previous_reading.reading_date for r in readings
+            if r.previous_reading_id and r.previous_reading
+            and r.previous_reading.reading_date
+            and r.previous_reading.reading_date < end
+        ]
+        anchor = end
+        if previous_dates:
+            cycle_start = end - timedelta(days=round(interval_months * 365 / 12))
+            start = max(min(previous_dates), cycle_start)
+            anchor = start + (end - start) / 2
+        return anchor.year, anchor.month
     year = getattr(invoice, 'billing_period_year', None)
     month = getattr(invoice, 'billing_period_month', None)
     if year and month and 1 <= int(month) <= 12:
         return int(year), int(month)
-    reading_dates = [
-        r.reading_date for r in invoice.readings.all() if getattr(r, 'reading_date', None)
-    ]
-    if reading_dates:
-        last = max(reading_dates)
-        return last.year, last.month
     return None
 
 
@@ -333,8 +353,8 @@ def _format_period_bounds(start_month, start_year, end_month, end_year):
 def invoice_biller_period(invoice):
     """Període del facturador, en format Abril-Juny/2026.
 
-    Surt de period_type i initial_month. El mes de la factura només indica
-    quin cicle és. Sense facturador al lot la fila no es pinta. No
+    Surt de period_type i initial_month. Les lectures de la factura només
+    indiquen quin cicle és. Sense facturador al lot la fila no es pinta. No
     substitueix la variable de context `billing_period`.
     """
     if invoice is None:
@@ -346,7 +366,10 @@ def invoice_biller_period(invoice):
         biller = getattr(getattr(invoice, 'billing', None), 'biller', None)
         if biller is None:
             return ""
-        anchor = _invoice_period_anchor(invoice)
+        interval = PERIOD_TYPE_MONTHS.get(getattr(biller, 'period_type', None))
+        if not interval:
+            return ""
+        anchor = _invoice_period_anchor(invoice, interval)
         if not anchor:
             return ""
         bounds = _cycle_bounds_from_biller(anchor[0], anchor[1], biller)
@@ -637,7 +660,12 @@ def group_by_order_priority(line_items, arg=None):
             val = x.get('product_order')
         else:
             val = getattr(x, 'product_order', 4000000)
-        return val if val is not None else 4000000
+        # product_order pot ser "" (línia sense custom_order ni order_priority):
+        # forcem un enter perquè l'ordenació no barregi int i str.
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return 4000000
 
     def get_product_name(x):
         if isinstance(x, dict):

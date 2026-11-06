@@ -14,6 +14,7 @@ import { remoteTypeOptions } from '~/utils/service';
 import DataTable from '~/components/organisms/DataTable.vue';
 import MeterLookupModal from '~/components/molecules/MeterLookupModal.vue';
 import MeterBulkUpdateModal from '~/components/molecules/MeterBulkUpdateModal.vue';
+import MeterBulkChangeModal from '~/components/molecules/MeterBulkChangeModal.vue';
 
 const LOOKUP_CODES_KEY = 'meter_lookup_codes';
 
@@ -438,6 +439,7 @@ watch(() => route.query, () => {
 const showLookupModal = ref(false);
 const lookupModalRef = ref(null);
 const showBulkUpdateModal = ref(false);
+const showBulkChangeModal = ref(false)
 
 const handleLookupSearch = (codesList) => {
   if (!codesList?.length) return;
@@ -469,6 +471,10 @@ const handleBulkUpdateDone = () => {
         <button v-if="permissions?.can_change" class="button-default flex items-center gap-1.5"
           @click="showBulkUpdateModal = true" :title="$t('service_block.meter_bulk_update_title')">
           <Icon name="fa6-solid:file-import" class="text-slate-500" />
+        </button>
+        <button v-if="permissions?.can_change" class="button-default flex items-center gap-1.5"
+          @click="showBulkChangeModal = true" :title="$t('service_block.meter_bulk_change_title')">
+          <Icon name="fa6-solid:right-left" class="text-slate-500" />
         </button>
         <button class="button-default flex items-center gap-1.5" @click="showLookupModal = true"
           :title="$t('service_block.meter_lookup_title')">
@@ -670,5 +676,6 @@ const handleBulkUpdateDone = () => {
 
   <MeterLookupModal ref="lookupModalRef" v-model:open="showLookupModal" @search="handleLookupSearch" />
   <MeterBulkUpdateModal v-model:open="showBulkUpdateModal" @done="handleBulkUpdateDone" />
+  <MeterBulkChangeModal v-model:open="showBulkChangeModal" @done="handleBulkUpdateDone" />
 
 </template>

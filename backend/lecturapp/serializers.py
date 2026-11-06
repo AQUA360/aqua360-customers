@@ -7,8 +7,14 @@ from billing.serializers.reading_batch_serializer import ReadingBatchStatusSeria
 from billing.serializers.reading_serializer import ReaderAlertSerializer
 from billing.utils.reading_service import get_average_consumption
 from coredata.models import ConfigProject
-from service.models import Meter, Property, Route, RoutePosition
+from service.models import Meter, Property, Route, RoutePosition, SupplyPoint
 from service.serializers.route_serializer import RouteZoneSerializer
+from service.utils.route_scope import (
+    effective_route_position_expr,
+    position_supply_points_q,
+    route_supply_points_q,
+    routes_supply_points_q,
+)
 from statistics.models import ContractConsumption
 from .models import ReadingOperator
 
@@ -19,13 +25,28 @@ def _reading_mode_flags(context):
     return include_telecontrol, bool(include_manual)
 
 
-def _meter_included_for_reading_mode(meter, include_telecontrol, include_manual):
-    is_telecontrol = bool(getattr(meter, 'has_remote_reading', False)) and not bool(getattr(meter, 'force_manual_reading', False))
-    if not include_telecontrol:
-        return not is_telecontrol
-    if not include_manual:
-        return is_telecontrol
-    return True
+def _position_properties(position, supply_point_filter=Q()):
+    """Finques amb algun punt que pertany efectivament a la posició, més les
+    finques de la posició que encara no tenen cap punt.
+
+    Inclou les finques d'altres posicions si tenen un punt amb aquesta posició
+    pròpia, i exclou les finques de la posició si tots els seus punts són en
+    una altra ruta.
+    """
+    supply_points = SupplyPoint.objects.filter(position_supply_points_q(position)).filter(supply_point_filter)
+    return Property.objects.filter(
+        Q(supply_points__in=supply_points) | Q(route_position=position, supply_points__isnull=True)
+    ).distinct()
+
+
+def _property_supply_points(instance, context):
+    """Punts de la finca; si el context porta `route_position`, només els que
+    pertanyen efectivament a aquesta posició."""
+    supply_points = instance.supply_points.all()
+    route_position = context.get('route_position')
+    if route_position is not None:
+        supply_points = supply_points.filter(position_supply_points_q(route_position))
+    return supply_points
 
 
 # App users and authentication
@@ -122,26 +143,28 @@ class ReadingBatchAppSerializer(serializers.ModelSerializer):
         
         if obj.include_telecontrol and not obj.include_manual:
             main_filter = (
-                Q(positions__properties__supply_points__meter__status__token__isnull=False) &
-                Q(positions__properties__supply_points__meter__has_remote_reading=True, positions__properties__supply_points__meter__force_manual_reading=False) & 
-                ~Q(positions__properties__supply_points__meter__status__token__in=excluded_tokens)
+                Q(meter__status__token__isnull=False) &
+                Q(meter__has_remote_reading=True, meter__force_manual_reading=False) & 
+                ~Q(meter__status__token__in=excluded_tokens)
             )
         elif obj.include_manual and not obj.include_telecontrol:
             main_filter = (
-                Q(positions__properties__supply_points__meter__status__token__isnull=False) &
-                ~Q(positions__properties__supply_points__meter__status__token__in=excluded_tokens) &
-                ( Q(positions__properties__supply_points__meter__has_remote_reading=False) |
-                    Q(positions__properties__supply_points__meter__force_manual_reading=True))
+                Q(meter__status__token__isnull=False) &
+                ~Q(meter__status__token__in=excluded_tokens) &
+                ( Q(meter__has_remote_reading=False) |
+                    Q(meter__force_manual_reading=True))
             )
         else:
             main_filter = (
-                Q(positions__properties__supply_points__meter__status__token__isnull=False) &
-                ~Q(positions__properties__supply_points__meter__status__token__in=excluded_tokens)
+                Q(meter__status__token__isnull=False) &
+                ~Q(meter__status__token__in=excluded_tokens)
             )
 
-        return obj.routes.aggregate(
+        # Punts amb ruta efectiva a les rutes del lot (propis o heretats de la finca)
+        batch_supply_points = SupplyPoint.objects.filter(routes_supply_points_q(obj.routes.all()))
+        return batch_supply_points.aggregate(
             total=Count(
-                'positions__properties',
+                'property',
                 filter=main_filter,
                 distinct=True,
             )
@@ -153,27 +176,28 @@ class ReadingBatchAppSerializer(serializers.ModelSerializer):
         if obj.fix_meters.count() > 0:
             return obj.fix_meters.count()
         else:
+            batch_supply_points = SupplyPoint.objects.filter(routes_supply_points_q(obj.routes.all()))
             if obj.include_telecontrol and not obj.include_manual:
-                main_meters = obj.routes.aggregate(
-                    total=Count('positions__properties__supply_points__meter',
-                            filter=(Q(positions__properties__supply_points__meter__status__token__isnull=False) & 
-                                  Q(positions__properties__supply_points__meter__has_remote_reading=True, positions__properties__supply_points__meter__force_manual_reading=False) & 
-                                    ~Q(positions__properties__supply_points__meter__status__token__in=[token_meter_status_no_meter, '-1'])),
+                main_meters = batch_supply_points.aggregate(
+                    total=Count('meter',
+                            filter=(Q(meter__status__token__isnull=False) & 
+                                  Q(meter__has_remote_reading=True, meter__force_manual_reading=False) & 
+                                    ~Q(meter__status__token__in=[token_meter_status_no_meter, '-1'])),
                             distinct=True)
                 )['total'] or 0
             elif obj.include_manual and not obj.include_telecontrol:
-                main_meters = obj.routes.aggregate(
-                    total=Count('positions__properties__supply_points__meter',
-                            filter=(Q(positions__properties__supply_points__meter__status__token__isnull=False) & 
-                                    ~Q(positions__properties__supply_points__meter__status__token__in=[token_meter_status_no_meter, '-1']) &
-                                    (Q(positions__properties__supply_points__meter__has_remote_reading=False) | Q(positions__properties__supply_points__meter__force_manual_reading=True))),
+                main_meters = batch_supply_points.aggregate(
+                    total=Count('meter',
+                            filter=(Q(meter__status__token__isnull=False) & 
+                                    ~Q(meter__status__token__in=[token_meter_status_no_meter, '-1']) &
+                                    (Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True))),
                             distinct=True)
                 )['total'] or 0
             else:
-                main_meters = obj.routes.aggregate(
-                    total=Count('positions__properties__supply_points__meter',
-                            filter=(Q(positions__properties__supply_points__meter__status__token__isnull=False) &
-                                    ~Q(positions__properties__supply_points__meter__status__token__in=[token_meter_status_no_meter, '-1'])),
+                main_meters = batch_supply_points.aggregate(
+                    total=Count('meter',
+                            filter=(Q(meter__status__token__isnull=False) &
+                                    ~Q(meter__status__token__in=[token_meter_status_no_meter, '-1'])),
                             distinct=True)
                 )['total'] or 0
             return main_meters
@@ -196,11 +220,12 @@ class RoutePositionAppSerializer(serializers.ModelSerializer):
         
         exclude_telecontrol = not self.context.get('include_telecontrol', False)
         if exclude_telecontrol:
-            properties = obj.properties.filter(Q(supply_points__meter__has_remote_reading=False) | Q(supply_points__meter__force_manual_reading=True)).distinct()
+            properties = _position_properties(obj, Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True))
         else:
-            properties = obj.properties.all()
+            properties = _position_properties(obj)
         
-        return PropertyAppSerializer(properties, many=True, context=self.context).data
+        context = {**self.context, 'route_position': obj}
+        return PropertyAppSerializer(properties, many=True, context=context).data
 
 class RoutePositionAppDetailedSerializer(serializers.ModelSerializer):
     # read
@@ -211,7 +236,8 @@ class RoutePositionAppDetailedSerializer(serializers.ModelSerializer):
         fields = '__all__'
     
     def get_properties(self, obj):
-        return PropertyAppDetailedSerializer(obj.properties.all(), many=True, context=self.context).data
+        context = {**self.context, 'route_position': obj}
+        return PropertyAppDetailedSerializer(_position_properties(obj), many=True, context=context).data
     
 # ROUTES
 
@@ -228,18 +254,18 @@ class RouteAppSerializer(serializers.ModelSerializer):
         excluded_tokens = [token_meter_status_no_meter, '-1']
         if not exclude_telecontrol:
             main_filter = (
-                Q(properties__supply_points__meter__status__token__isnull=False) &
-                Q(properties__supply_points__meter__has_remote_reading=True, properties__supply_points__meter__force_manual_reading=False) & 
-                ~Q(properties__supply_points__meter__status__token__in=excluded_tokens)
+                Q(meter__status__token__isnull=False) &
+                Q(meter__has_remote_reading=True, meter__force_manual_reading=False) & 
+                ~Q(meter__status__token__in=excluded_tokens)
             )
         else:
             main_filter = (
-                Q(properties__supply_points__meter__status__token__isnull=False) &
-                ~Q(properties__supply_points__meter__status__token__in=excluded_tokens) &
-                (Q(properties__supply_points__meter__has_remote_reading=False) | Q(properties__supply_points__meter__force_manual_reading=True))
+                Q(meter__status__token__isnull=False) &
+                ~Q(meter__status__token__in=excluded_tokens) &
+                (Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True))
             )
-        return obj.positions.aggregate(
-            count=Count('properties',
+        return SupplyPoint.objects.filter(route_supply_points_q(obj)).aggregate(
+            count=Count('property',
                         filter=main_filter,
                         distinct=True)
         )['count'] or 0
@@ -250,15 +276,15 @@ class RouteAppSerializer(serializers.ModelSerializer):
         exclude_telecontrol = not self.context.get('include_telecontrol', False)
         token_meter_status_no_meter = ConfigProject.objects.get(token='token_meter_status_no_meter').value
         # Build the filter for main meters
-        main_meter_filter = Q(properties__supply_points__meter__status__token__isnull=False) & ~Q(properties__supply_points__meter__status__token__in=[token_meter_status_no_meter,'-1'])
+        main_meter_filter = Q(meter__status__token__isnull=False) & ~Q(meter__status__token__in=[token_meter_status_no_meter,'-1'])
         if exclude_telecontrol:
-            main_meter_filter &= (Q(properties__supply_points__meter__has_remote_reading=False) | Q(properties__supply_points__meter__force_manual_reading=True)) & ~Q(properties__supply_points__meter__status__token__in=[token_meter_status_no_meter,'-1'])
+            main_meter_filter &= (Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)) & ~Q(meter__status__token__in=[token_meter_status_no_meter,'-1'])
         else:
-            main_meter_filter &= Q(properties__supply_points__meter__has_remote_reading=True, properties__supply_points__meter__force_manual_reading=False) & ~Q(properties__supply_points__meter__status__token__in=[token_meter_status_no_meter,'-1'])
+            main_meter_filter &= Q(meter__has_remote_reading=True, meter__force_manual_reading=False) & ~Q(meter__status__token__in=[token_meter_status_no_meter,'-1'])
         
         # Count main meters
-        main_meters_count = obj.positions.aggregate(
-            count=Count('properties__supply_points__meter', 
+        main_meters_count = SupplyPoint.objects.filter(route_supply_points_q(obj)).aggregate(
+            count=Count('meter', 
                        filter=main_meter_filter, 
                        distinct=True)
         )['count'] or 0
@@ -292,34 +318,19 @@ class RouteAppDetailSerializer(serializers.ModelSerializer):
         # Pass context down to RoutePositionAppSerializer
         include_telecontrol, include_manual = _reading_mode_flags(self.context)
         token_meter_status_no_meter = ConfigProject.objects.get(token='token_meter_status_no_meter').value
+        # Posicions amb algun comptador vàlid entre els punts que hi pertanyen
+        # efectivament (posició pròpia del punt o, si no en té, la de la finca)
+        supply_points = SupplyPoint.objects.filter(
+            route_supply_points_q(obj), meter__status__isnull=False,
+        ).exclude(meter__status__token__in=[token_meter_status_no_meter, '-1'])
         if not include_telecontrol:
-            positions = obj.positions.filter(Q(properties__supply_points__meter__has_remote_reading=False) | Q(properties__supply_points__meter__force_manual_reading=True)).distinct()
+            supply_points = supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True))
         elif not include_manual:
-            positions = obj.positions.filter(
-                properties__supply_points__meter__has_remote_reading=True,
-                properties__supply_points__meter__force_manual_reading=False,
-            ).distinct()
-        else:
-            positions = obj.positions.distinct()
-
-        # Prefetch to avoid N+1 when checking meter status
-        positions = positions.prefetch_related(
-            'properties__supply_points__meter__status'
-        )
-        positions_list = list(positions)
-
-        def position_has_valid_meter(position):
-            """True if at least one included meter is neither no_meter (aforament) nor inactive (-1)."""
-            for prop in position.properties.all():
-                for sp in prop.supply_points.all():
-                    meter = sp.meter
-                    if not meter or not meter.status or meter.status.token in [token_meter_status_no_meter, '-1']:
-                        continue
-                    if _meter_included_for_reading_mode(meter, include_telecontrol, include_manual):
-                        return True
-            return False
-
-        positions_filtered = [p for p in positions_list if position_has_valid_meter(p)]
+            supply_points = supply_points.filter(meter__has_remote_reading=True, meter__force_manual_reading=False)
+        position_ids = supply_points.annotate(
+            effective_position=effective_route_position_expr()
+        ).values('effective_position')
+        positions_filtered = list(obj.positions.filter(id__in=position_ids))
         return RoutePositionAppDetailedSerializer(positions_filtered, many=True, context=self.context).data
     
 # PROPERTIES
@@ -340,14 +351,15 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
         # Build a set of meter IDs from the instance (excluding meters with status token_meter_status_no_meter)
         meter_ids = set()
         include_telecontrol, include_manual = _reading_mode_flags(self.context)
+        supply_points = _property_supply_points(instance, self.context)
         if not include_telecontrol:
-            supply_points = instance.supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
+            supply_points = supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
         elif not include_manual:
-            supply_points = instance.supply_points.filter(
+            supply_points = supply_points.filter(
                 meter__has_remote_reading=True, meter__force_manual_reading=False
             ).distinct()
         else:
-            supply_points = instance.supply_points.distinct()
+            supply_points = supply_points.distinct()
         
         for supply_point in supply_points:
             if supply_point.meter:
@@ -379,14 +391,15 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
         include_telecontrol, include_manual = _reading_mode_flags(self.context)
         token_meter_status_no_meter = ConfigProject.objects.get(token='token_meter_status_no_meter').value
         
+        supply_points = _property_supply_points(obj, self.context)
         if not include_telecontrol:
-            supply_points = obj.supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
+            supply_points = supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
         elif not include_manual:
-            supply_points = obj.supply_points.filter(
+            supply_points = supply_points.filter(
                 meter__has_remote_reading=True, meter__force_manual_reading=False
             ).distinct()
         else:
-            supply_points = obj.supply_points.distinct()
+            supply_points = supply_points.distinct()
         
         for supply_point in supply_points:
             if supply_point.meter:
@@ -416,10 +429,11 @@ class PropertyAppSerializer(serializers.ModelSerializer):
         num_readings = 0
         num_meters = 0
         
+        supply_points = _property_supply_points(instance, self.context)
         if exclude_telecontrol:
-            supply_points = instance.supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
+            supply_points = supply_points.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
         else:
-            supply_points = instance.supply_points.distinct()
+            supply_points = supply_points.distinct()
         
         # Count supply points and readings using pre-fetched data (excluding meters with status token '-1')
         for supply_point in supply_points:

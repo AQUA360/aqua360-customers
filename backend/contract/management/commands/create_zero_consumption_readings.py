@@ -6,6 +6,7 @@ from django.db import transaction
 from contract.models import Contract
 from billing.models import Reading
 from service.models import Route
+from service.utils.route_scope import effective_route, effective_route_select_related, routes_supply_points_q
 from coredata.utils.name_utils import generate_token
 
 
@@ -72,10 +73,10 @@ class Command(BaseCommand):
             return
 
         contracts_qs = Contract.objects.filter(
-            supply_point_default__property__route_position__route__in=routes
+            routes_supply_points_q(routes, prefix="supply_point_default__")
         ).select_related(
             "supply_point_default__meter",
-            "supply_point_default__property__route_position__route",
+            *effective_route_select_related("supply_point_default__"),
         )
 
         if not include_inactive:
@@ -112,7 +113,7 @@ class Command(BaseCommand):
                 continue
 
             supply_point = contract.supply_point_default
-            route_token = supply_point.property.route_position.route.token
+            route_token = effective_route(supply_point).token
 
             # Last reading of the contract on its default supply point: its value is kept so consumption is 0
             last_reading = Reading.objects.filter(

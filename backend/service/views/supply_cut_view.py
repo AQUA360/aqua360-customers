@@ -1,7 +1,8 @@
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from django.db.models import Prefetch, Q
+from django.db import transaction
+from django.db.models import Case, IntegerField, Prefetch, Q, Value, When
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
@@ -73,17 +74,30 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             )
         )
         # filter_queryset already applies the `ordering` param. Only fall
-        # back to the module default when no explicit ordering is requested,
-        # otherwise `order_by('-date_end')` would silently override the
-        # column the user asked to sort by (e.g. the ID column).
+        # back to the default when no explicit ordering is requested,
+        # otherwise it would silently override the column the user asked
+        # to sort by (e.g. the ID column).
         queryset = self.filter_queryset(qs)
         if 'ordering' not in request.query_params:
-            queryset = queryset.order_by('-date_end')
+            queryset = self._order_open_first(queryset)
         paginator = PageNumberPagination()
         paginator.page_size = 50
         result_page = paginator.paginate_queryset(queryset, request)
         serializer = SupplyCutMinimalSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+    @staticmethod
+    def _order_open_first(queryset):
+        """Ordre per defecte: talls oberts (planificats, actius, en conflicte)
+        primer i, dins de cada grup, l'identificador més nou primer."""
+        closed_tokens = supply_cut_service.closed_status_tokens()
+        return queryset.annotate(
+            closed_order=Case(
+                When(Q(is_active=False) | Q(status__token__in=closed_tokens), then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        ).order_by('closed_order', '-id')
 
     @staticmethod
     def _enforce_vulnerability_rules(data):
@@ -162,10 +176,18 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(read_serializer.data)
         return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    def _get_object_for_update(self):
+        """`get_object` (permisos i 404) i la fila bloquejada fins al final de la
+        transacció, perquè la sincronització amb Giswater no la llegeixi a mitges
+        (canvi desat però camps encara no protegits)."""
+        supply_cut = self.get_object()
+        return SupplyCut.objects.select_for_update().get(pk=supply_cut.pk)
+
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         """Validate cause changes, update the cut, and return its full representation."""
         partial = kwargs.pop('partial', False)
-        instance = self.get_object()
+        instance = self._get_object_for_update()
         blocked = self._enforce_cause_flip_rules(instance, request.data)
         if blocked is not None:
             return blocked
@@ -212,13 +234,14 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         )
     
     @action(detail=True, methods=['post'], url_path='resolve-review')
+    @transaction.atomic
     def resolve_review(self, request, pk=None):
         """Resol una quarantena (requires_review): assigna l'estat real
         (0..3, mai Conflicte) i esborra la marca, propagant-ho als PP amb la
         mateixa màquina d'estats (un tall que queda Actiu i és indefinit es
         talla; un que tanca restaura). `cause_raw`/`state_raw` es conserven
         com a traça de la revisió."""
-        supply_cut = self.get_object()
+        supply_cut = self._get_object_for_update()
         if not supply_cut.requires_review:
             return Response(
                 {'status': 'error', 'message': 'El tall no requereix revisió.'},
@@ -234,6 +257,8 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         target_status = SupplyCutStatus.objects.get(token=status_token)
         previous_status = supply_cut.status
         observation = request.data.get('observation')
+        date_fields = ('date_start', 'date_end', 'exec_start', 'exec_end')
+        before = {field: getattr(supply_cut, field) for field in ('cause_id', *date_fields)}
 
         if 'cause' in request.data:
             try:
@@ -245,10 +270,18 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
                 )
         supply_cut.status = target_status
         supply_cut.requires_review = False
-        for field in ('date_start', 'date_end', 'exec_start', 'exec_end'):
+        for field in date_fields:
             if field in request.data:
                 setattr(supply_cut, field, request.data[field])
         supply_cut.save()
+        supply_cut.refresh_from_db()
+        # L'estat és la decisió de la revisió: sempre queda protegit. El motiu i
+        # les dates, només si la revisió els ha canviat.
+        changed = [
+            field.removesuffix('_id') for field, value in before.items()
+            if getattr(supply_cut, field) != value
+        ]
+        supply_cut_service.lock_fields(supply_cut, 'status', *changed)
 
         supply_cut_service.sync_supply_points_status(
             supply_cut,
@@ -273,13 +306,14 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=['post'], url_path='remove-supply-point')
+    @transaction.atomic
     def remove_supply_point(self, request, pk=None):
         """Removes one or more supply points from the cut and restores them.
 
         This is how a cut stops affecting a specific contract without closing
         the whole cut. If the cut ends up with no points, it is closed.
         """
-        supply_cut = self.get_object()
+        supply_cut = self._get_object_for_update()
 
         supply_point_ids = request.data.get('supply_points')
         if not supply_point_ids:
@@ -294,9 +328,12 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             )
 
         observation = request.data.get('observation')
+        removes_points = supply_cut.supply_points.filter(id__in=supply_point_ids).exists()
         restored = supply_cut_service.remove_supply_points_from_cut(
             supply_cut, supply_point_ids, user=request.user, observation=observation
         )
+        if removes_points:
+            supply_cut_service.lock_fields(supply_cut, 'supply_points')
 
         # A cut with no points no longer affects anyone: it is closed so that it
         # does not stay open forever nor get reactivated by the scheduled tasks.
@@ -305,7 +342,10 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             closed_status = SupplyCutStatus.objects.get(token=supply_cut_service.closed_status_token())
             supply_cut.status = closed_status
             supply_cut.save(update_fields=['status', 'updated_at'])
+            # El tancament omple les dates de final buides: també queden protegides.
+            filled_dates = [f for f in ('date_end', 'exec_end') if not getattr(supply_cut, f)]
             supply_cut_service.close_supply_cut(supply_cut, user=request.user, observation=observation)
+            supply_cut_service.lock_fields(supply_cut, 'status', *filled_dates)
             LogSupplyCutStatus.objects.create(
                 object=supply_cut,
                 previous_status=previous_status,
@@ -328,6 +368,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=['post'], url_path='start-cut')
+    @transaction.atomic
     def start_cut(self, request, pk=None):
         """Inicia un tall PLANIFICAT: passa a Actiu, stampa exec_start i, si és
         indefinit, talla els punts. Un accident/previst temporal s'activa sense
@@ -339,10 +380,12 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         sense via d'evitació; un temporal demana `override_vulnerable` (409
         mentres no es confirmi).
         """
-        supply_cut = self.get_object()
+        supply_cut = self._get_object_for_update()
         previous_status = supply_cut.status
         observation = request.data.get('observation')
         override_vulnerable = bool(request.data.get('override_vulnerable'))
+        # exec_start només s'estampa si és buit: llavors també es protegeix.
+        stamped = [] if supply_cut.exec_start else ['exec_start']
         try:
             started = supply_cut_service.start_cut(
                 supply_cut, user=request.user, observation=observation,
@@ -350,11 +393,12 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             )
         except supply_cut_service.SupplyCutActivationError as exc:
             return Response(exc.detail, status=exc.status_code)
-        except ValueError as exc:
+        except supply_cut_service.SupplyCutStateError as exc:
             return Response(
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        supply_cut_service.lock_fields(started, 'status', *stamped)
         LogSupplyCutStatus.objects.create(
             object=started,
             previous_status=previous_status,
@@ -372,21 +416,26 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=['post'], url_path='finish-cut')
+    @transaction.atomic
     def finish_cut(self, request, pk=None):
         """Finalitza un tall ACTIU: passa a Acabat, stampa exec_end i restaura
         els punts. Un tall mai Actiu no pot acabar: es cancel·la."""
-        supply_cut = self.get_object()
+        supply_cut = self._get_object_for_update()
         previous_status = supply_cut.status
         observation = request.data.get('observation')
+        # El tancament només omple les dates de final buides: aquestes també
+        # queden protegides.
+        filled_dates = [f for f in ('date_end', 'exec_end') if not getattr(supply_cut, f)]
         try:
             finished = supply_cut_service.finish_cut(
                 supply_cut, user=request.user, observation=observation
             )
-        except ValueError as exc:
+        except supply_cut_service.SupplyCutStateError as exc:
             return Response(
                 {'status': 'error', 'message': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        supply_cut_service.lock_fields(finished, 'status', *filled_dates)
         LogSupplyCutStatus.objects.create(
             object=finished,
             previous_status=previous_status,
@@ -532,6 +581,24 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
             day = timezone.now().strftime('%Y%m%d')
         return '{}-{}'.format(random.randint(10000, 99999), day)
 
+    @action(detail=False, methods=['post'], url_path='sync-giswater')
+    def sync_giswater(self, request):
+        """Llança en segon pla la sincronització dels talls amb GIS Water.
+
+        Només si el projecte ho té activat (`giswater_supply_cut_sync_enabled`).
+        Retorna el `task_id` perquè el frontend en pugui seguir l'estat.
+        """
+        from integrations.outbound.giswater.sync import is_supply_cut_manual_sync_enabled
+        from integrations.outbound.giswater.tasks import sync_giswater_suply_cuts_task
+
+        if not is_supply_cut_manual_sync_enabled():
+            return Response(
+                {'error': 'La sincronització amb GIS Water no està activada.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        task = sync_giswater_suply_cuts_task.delay()
+        return Response({'task_id': task.id}, status=status.HTTP_202_ACCEPTED)
+
     @action(detail=False, methods=['get'], url_path='permissions')
     def permissions(self, request):
         pk = request.query_params.get('id')
@@ -551,7 +618,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
-        if self.action in ('bulk_plan_preview', 'bulk_plan'):
+        if self.action in ('bulk_plan_preview', 'bulk_plan', 'sync_giswater'):
             # Custom POSTs: DjangoModelPermissions would demand add_supplycut
             # on the preview too; both are gated explicitly in check_permissions.
             return [IsAuthenticated()]
@@ -559,10 +626,10 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         super().check_permissions(request)
-        if self.action == 'bulk_plan' and not request.user.has_perm('service.add_supplycut'):
+        if self.action in ('bulk_plan', 'sync_giswater') and not request.user.has_perm('service.add_supplycut'):
             self.permission_denied(request)
         if self.action == 'bulk_plan_preview' and not (
             request.user.has_perm('service.add_supplycut')
             or request.user.has_perm('service.change_supplycut')
         ):
-            self.permission_denied(request)
+            self.permission_denied(request)
