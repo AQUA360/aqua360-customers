@@ -315,6 +315,12 @@ export default defineNuxtPlugin(nuxtApp => {
     return await $apiManager.fetch(apiUrl, 'POST', null, { 'Content-Type': 'application/json' }, true);
   }
 
+  const returnToPending = async (id) => {
+    const apiUrl = apiHost + '/billing/reading-batch-summary/' + id + '/return-to-pending/';
+    // suppressToast: the caller handles 409 messages explicitly
+    return await $apiManager.fetch(apiUrl, 'POST', null, { 'Content-Type': 'application/json' }, true);
+  }
+
   const getPermissions = async () => {
     const apiUrl = `${apiHost}${entity}permissions/`;
     try {
@@ -387,6 +393,7 @@ export default defineNuxtPlugin(nuxtApp => {
     getNoRouteSupplyPoints,
     estimateReadings,
     revert,
+    returnToPending,
     getPermissions,
     exportCsv,
     exportSupplyPointsCsv,
