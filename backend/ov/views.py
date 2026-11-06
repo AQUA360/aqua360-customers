@@ -2557,7 +2557,6 @@ class ContractProcedureOVView(APIView):
 
         existing_request = (
             ContractRequest.objects.filter(
-                person=holder,
                 supply_point_default=supply_point,
                 is_active=True,
             )
@@ -3073,9 +3072,18 @@ class ContractChangeProcedureOVView(APIView):
             # Tarifes periòdiques actives heretades del contracte actual; les
             # d'alta i els tipus d'ordre, els de canvi de nom del tipus de tràmit.
             contract_request.price_rates.set(
-                contract.price_rates.filter(
-                    is_active=True, price_rate__is_active=True
-                )
+                [
+                    ContractPriceRate.objects.create(
+                        token=rate.token,
+                        supply_point=rate.supply_point,
+                        price_rate=rate.price_rate,
+                        is_active=rate.is_active,
+                        is_bop_reference=rate.is_bop_reference,
+                    )
+                    for rate in contract.price_rates.filter(
+                        is_active=True, price_rate__is_active=True
+                    )
+                ]
             )
             contract_request.registration_price_rates.set(
                 procedure_type.get_registration_price_rates(is_change_of_name=True)
@@ -3159,7 +3167,8 @@ class ContractChangeProcedureOVView(APIView):
 
         open_request = (
             ContractRequest.objects.filter(
-                supply_point_default=contract.supply_point_default,
+                Q(supply_point_default=contract.supply_point_default)
+                | Q(supply_points=contract.supply_point_default),
                 is_active=True,
             )
             .exclude(status__token__in=CONTRACT_PROCEDURE_CLOSED_STATUS_TOKENS)

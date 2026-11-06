@@ -4037,6 +4037,7 @@ class ContractProcedureOVTests(TestCase):
         )
 
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
@@ -4241,6 +4242,15 @@ class ContractProcedureOVTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_other_holder_open_request_blocks(self):
+        existing = ContractRequest.objects.create(
+            token="OTHER-HOLDER", supply_point_default=self.supply_point,
+            status=self.default_status, is_active=True,
+        )
+        response = self._post()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["contract_request_token"], existing.token)
 
     def test_cancelled_request_does_not_block(self):
         ContractRequest.objects.create(
@@ -5396,9 +5406,49 @@ class ContractChangeProcedureOVTests(TestCase):
         contract_request = ContractRequest.objects.get(
             token=response.data["contract_request_token"]
         )
-        self.assertEqual(
-            list(contract_request.price_rates.all()), [self.active_cpr]
+        inherited = contract_request.price_rates.get()
+        self.assertNotEqual(inherited.pk, self.active_cpr.pk)
+        self.assertEqual(inherited.price_rate, self.active_cpr.price_rate)
+        self.assertEqual(inherited.supply_point, self.active_cpr.supply_point)
+        inherited.is_bop_reference = True
+        inherited.save()
+        self.active_cpr.refresh_from_db()
+        self.assertFalse(self.active_cpr.is_bop_reference)
+
+    def test_editing_inherited_rates_preserves_contract_bop(self):
+        from contract.serializers.contract_request_serializer import ContractRequestSaveSerializer
+        from contract.utils.contract_service import get_contract_tarifa_bop
+        from pricing.models import BillingRange, Publication
+
+        publication = Publication.objects.create(boe_number="BOP-ORIGINAL")
+        billing_range = BillingRange.objects.create(publication=publication)
+        rate = self.active_cpr.price_rate
+        rate.billing_range_active = billing_range
+        rate.save()
+        self.active_cpr.is_bop_reference = True
+        self.active_cpr.save()
+        response = self._post()
+        request_obj = ContractRequest.objects.get(token=response.data["contract_request_token"])
+        serializer = ContractRequestSaveSerializer(request_obj, data={
+            "price_rates_ids": [{"price_rate": {"id": rate.pk}, "supply_point": {"id": self.supply_point.pk}}],
+        }, partial=True, context={"request": type("Request", (), {"user": self.user})()})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        inherited = request_obj.price_rates.get()
+        self.assertNotEqual(inherited.pk, self.active_cpr.pk)
+        self.assertTrue(inherited.is_bop_reference)
+        self.assertEqual(get_contract_tarifa_bop(self.contract), "BOP-ORIGINAL")
+        self.assertEqual(get_contract_tarifa_bop(request_obj), "BOP-ORIGINAL")
+        replacement_publication = Publication.objects.create(boe_number="BOP-NEW")
+        replacement_range = BillingRange.objects.create(publication=replacement_publication)
+        inherited.price_rate = PriceRate.objects.create(
+            token="NEW-BOP-RATE", billing_range_active=replacement_range,
         )
+        inherited.save()
+        self.assertEqual(get_contract_tarifa_bop(self.contract), "BOP-ORIGINAL")
+        self.assertEqual(get_contract_tarifa_bop(request_obj), "BOP-NEW")
+        self.active_cpr.refresh_from_db()
+        self.assertTrue(self.active_cpr.is_bop_reference)
 
     def test_uses_change_of_name_registration_rates_and_order_types(self):
         response = self._post()
@@ -5666,6 +5716,82 @@ class ContractChangeProcedureOVTests(TestCase):
             },
         )
         self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_secondary_supply_point_open_request_blocks(self):
+        existing = ContractRequest.objects.create(
+            token="CR-SECONDARY", status=self.request_draft, is_active=True,
+        )
+        existing.supply_points.add(self.supply_point)
+        response = self._post()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["contract_request_token"], existing.token)
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_cancelling_request_cancels_linked_termination(self):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from contract.views.contract_request_view import ContractRequestViewSet
+        from contract.models import BailStatus
+
+        response = self._post()
+        request_obj = ContractRequest.objects.get(token=response.data["contract_request_token"])
+        for token, value in (
+            ("contract_request_cancel_token", "-1"),
+            ("bail_status_pending_token", "PENDING"),
+            ("bail_status_unreturned_token", "UNRETURNED"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+        BailStatus.objects.get_or_create(token="UNRETURNED")
+        request = APIRequestFactory().patch("/", {"status": self.request_cancelled.pk}, format="json")
+        force_authenticate(request, user=self.user)
+        with patch("contract.views.contract_request_view.ContractRequestSerializer") as read_serializer:
+            read_serializer.return_value.data = {}
+            result = ContractRequestViewSet.as_view(
+                {"patch": "partial_update"}, permission_classes=[]
+            )(request, pk=request_obj.pk)
+        self.assertEqual(result.status_code, 200)
+        termination = request_obj.contract_termination_requests.get()
+        self.assertEqual(termination.status, self.termination_cancelled)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.status, self.active_status)
+
+    def test_cancelling_request_without_linked_termination(self):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from contract.views.contract_request_view import ContractRequestViewSet
+
+        request_obj = ContractRequest.objects.create(
+            token="CR-NO-TERMINATION", status=self.request_draft,
+        )
+        request = APIRequestFactory().patch("/", {"status": self.request_cancelled.pk}, format="json")
+        force_authenticate(request, user=self.user)
+        with patch("contract.views.contract_request_view.ContractRequestSerializer") as read_serializer:
+            read_serializer.return_value.data = {}
+            result = ContractRequestViewSet.as_view(
+                {"patch": "partial_update"}, permission_classes=[]
+            )(request, pk=request_obj.pk)
+        self.assertEqual(result.status_code, 200)
+        request_obj.refresh_from_db()
+        self.assertEqual(request_obj.status, self.request_cancelled)
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_linked_termination_processed_without_outgoing_supply_points(self):
+        from contract.utils.contract_service import check_contract_terminations
+
+        self.contract.supply_points.clear()
+        response = self._post()
+        self.assertEqual(response.status_code, 201)
+        request_obj = ContractRequest.objects.get(token=response.data["contract_request_token"])
+        new_contract = Contract.objects.create(token="NEW-CONTRACT")
+        new_contract.supply_points.add(self.supply_point)
+        for token, value in (
+            ("contract_termination_pending_status", "2"),
+            ("contract_termination_draft", "1"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+        check_contract_terminations(new_contract, request_obj)
+        self.contract.refresh_from_db()
+        termination = request_obj.contract_termination_requests.get()
+        self.assertEqual(termination.status, self.termination_pending)
+        self.assertEqual(self.contract.status, self.terminated_status)
 
     def test_closed_requests_and_terminations_do_not_block(self):
         ContractRequest.objects.create(
