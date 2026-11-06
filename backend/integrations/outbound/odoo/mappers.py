@@ -315,24 +315,30 @@ def map_payment_movement_to_odoo(movement: PaymentMovement) -> dict:
         payment_type.token if payment_type else payment.payment_type_token
     )
     payment_type_name = payment_type.name if payment_type else payment.payment_type
-    default_type = ConfigProject.objects.filter(token="CARD").first()
+    # default_type = ConfigProject.objects.filter(token="CARD").first()
 
-    return {
+    payload = {
         "aqua_id": movement.token,
         "payment_type": "inbound",
         "partner_id": resolve_movement_partner(movement, invoice),
         "amount": movement_signed_amount(movement),
         "date": movement.movement_date.isoformat(),
         "memo": build_movement_memo(movement, invoice),
-        "payment_mode_id": resolve_payment_mode(
-            payment_type_token if payment_type_token else default_type.token or "",
-            payment_type_name if payment_type_name else default_type.name or "",
-        ),
-        "journal_id": resolve_payment_journal(movement),
         "reconcile": {
             "invoice_aqua_id": invoice.token if invoice and invoice.token else "",
         },
     }
+
+    if payment_type_token:
+        payload["payment_mode_id"] = resolve_payment_mode(
+            payment_type_token,
+            payment_type_name if payment_type_name else "",
+        )
+
+    if payment_type_token and payment_type_token != "CASH":
+        payload["journal_id"] = resolve_payment_journal(movement)
+
+    return payload
 
 
 def _commitment_date(deposit: CommitmentDeposit, override=None):
