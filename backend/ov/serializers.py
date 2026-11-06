@@ -1653,6 +1653,8 @@ class PriceRateDictionarySerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
 
     def get_name(self, instance):
+        """Return the tariff name, falling back to its product name for blank or
+        case-insensitive "GENERAL" names; retain the original if no product exists."""
         return ProcedureTariffDictionarySerializer._resolved_name(instance)
 
     class Meta:
@@ -2175,6 +2177,12 @@ class ContractTerminationProcedureRequestSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        """Add the resolved termination type to attrs and return it.
+
+        Raise ValidationError on reason_token if a nonblank token is unknown.
+        A blank or absent token yields None when this method is called directly;
+        normal field validation requires a nonblank reason_token.
+        """
         reason_token = (attrs.get("reason_token") or "").strip()
         termination_type = None
         if reason_token:
@@ -2229,6 +2237,12 @@ class ContractChangeOutgoingSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        """Return attrs with termination_type resolved from reason_token.
+
+        Missing, null, or blank tokens yield None for the view's fallback.
+        Any existing termination type is accepted, including change-of-name
+        types. Raise ValidationError on reason_token for an unknown token.
+        """
         reason_token = (attrs.get("reason_token") or "").strip()
         termination_type = None
         if reason_token:
@@ -2276,17 +2290,28 @@ class ContractChangeIncomingSerializer(serializers.Serializer):
     )
 
     def validate_language(self, value):
+        """Return the language unchanged, allowing blank or null values.
+
+        Raise ValidationError for a nonempty code absent from settings.LANGUAGES.
+        """
         if value and value not in dict(settings.LANGUAGES):
             raise serializers.ValidationError("Unsupported language.")
         return value
 
     def validate_iban(self, value):
+        """Remove ASCII spaces and uppercase the IBAN; return "" for null values."""
         return (value or "").replace(" ", "").upper()
 
     def validate_iban_holder_dni(self, value):
+        """Uppercase the bank account holder's DNI; return "" for null values."""
         return (value or "").upper()
 
     def validate(self, attrs):
+        """Return attrs with the active procedure type and payment type resolved.
+
+        Require all four bank fields for DIRECT_DEBIT. Raise ValidationError
+        with field-specific errors for unknown types or missing bank fields.
+        """
         errors = {}
         procedure_type = ContractRequestType.objects.filter(
             token=attrs["procedure_type_token"], is_active=True
