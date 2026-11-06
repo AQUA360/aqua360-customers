@@ -275,8 +275,9 @@ def _analyse(uploaded):
             initial_reading = _parse_reading(r['initial_reading'], 'initial_reading')
             change_date = _parse_date(r['change_date'])
             create_flag = bool(_parse_bool(r['create_new_meter'], 'create_new_meter'))
-        except ValueError as exc:
-            error(r, str(exc))
+        except ValueError:
+            logger.exception("Bulk change validation error while parsing row %s.", r.get('row'))
+            error(r, "Valor invàlid en un o més camps de la fila.")
             continue
 
         old_candidates = meters_by_code.get(code, [])
@@ -309,8 +310,9 @@ def _analyse(uploaded):
                 if active_status is None:
                     active_status = _get_active_status()
                 _validate_new_meter(new_code, meter_data, active_status)
-            except ValueError as exc:
-                error(r, str(exc))
+            except ValueError:
+                logger.exception("Bulk change validation error while building new meter data for row %s.", r.get('row'))
+                error(r, "Valor invàlid en les dades del nou comptador.")
                 continue
         else:
             if not new_meter:
