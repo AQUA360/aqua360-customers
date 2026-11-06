@@ -2,12 +2,13 @@
 from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.db import connection
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from coredata.models import Address
-from service.models import Meter, MeterStatus
+from service.models import Meter, MeterStatus, SupplyPoint
 
 
 class TestMeterLog(TestCase):
