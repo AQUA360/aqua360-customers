@@ -82,10 +82,40 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   };
 
+  const create = async ({ token, name, value, file = 'General' }) => {
+    const apiUrl = apiHost + entity;
+    const response = await $apiManager.fetch(
+      apiUrl,
+      'POST',
+      JSON.stringify({ token, name, value, file }),
+      { 'Content-Type': 'application/json' },
+    );
+    if (token != null) {
+      localStorage.setItem(`config_${token}`, JSON.stringify(value));
+    }
+    return response;
+  };
+
+  const updateByToken = async (token, payload) => {
+    const apiUrl = `${apiHost}${entity}${token}/`;
+    const response = await $apiManager.fetch(
+      apiUrl,
+      'PATCH',
+      JSON.stringify(payload),
+      { 'Content-Type': 'application/json' },
+    );
+    if (payload && Object.prototype.hasOwnProperty.call(payload, 'value')) {
+      localStorage.setItem(`config_${token}`, JSON.stringify(payload.value));
+    }
+    return response;
+  };
+
   const apiService = {
     getAll,
     get,
     bulkUpdateValues,
+    create,
+    updateByToken,
   };
 
   nuxtApp.provide(provideName, apiService);
