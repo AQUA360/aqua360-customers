@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
@@ -17,6 +17,7 @@ import DropdownOption from '~/components/atoms/DropdownOption.vue';
 import { formatDate } from '~/utils/date';
 import Time from '~/components/atoms/Time.vue';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
+import ConnectionRequestDocumentsData from '~/components/molecules/ConnectionRequestDocumentsData.vue';
 
 const props = defineProps({
   id: Number, // ID de l'element
@@ -134,6 +135,20 @@ const downloadInvoice = async (invoice) => {
   }
 
 }
+
+const formKey = (key) => `service_block.connection_request_form.${key}`;
+const choiceLabel = (group, value) => value ? t(formKey(`${group}.${value}`)) : null;
+const activeAddresses = (person) => (person?.addresses || []).filter(a => a.is_active !== false).sort((a, b) => Number(b.is_billing) - Number(a.is_billing));
+const contactText = (c) => [c.phone, c.email].filter(Boolean).join(' · ');
+const locationDetail = computed(() => {
+  if (!data.value) return '';
+  return [
+    ['building', data.value.address_building],
+    ['stair', data.value.address_stair],
+    ['floor', data.value.address_floor],
+    ['door', data.value.address_door],
+  ].filter(([, v]) => v).map(([k, v]) => `${t(formKey(k))}: ${v}`).join(', ');
+});
 
 const showDetail = (component, id) => {
   emits('show-detail', component, id);
@@ -294,11 +309,44 @@ watch(() => props.id, () => {
             {{ data.person?.name || '' }} {{ data.person?.surname || '' }}
           </p>
           <p>{{ data.person?.token || '' }}</p>
+          <div class="text-sm mt-2">
+            <AtomsFieldDetail v-if="data.requester_type" :label="t(formKey('requester_type'))" :value="choiceLabel('requester_types', data.requester_type)" wrapLabel />
+            <AtomsFieldDetail v-if="data.property_condition" :label="t(formKey('property_condition'))" :value="choiceLabel('property_conditions', data.property_condition)" wrapLabel />
+            <AtomsFieldDetail :label="t(formKey('notification_address'))" wrapLabel>
+              <span>
+                <span v-for="a in activeAddresses(data.person)" :key="a.id" class="block">{{ a.address_complete }}</span>
+                <span v-if="!activeAddresses(data.person).length">-</span>
+              </span>
+            </AtomsFieldDetail>
+            <AtomsFieldDetail :label="t(formKey('contacts'))" wrapLabel>
+              <span>
+                <span v-for="c in data.person.contacts" :key="c.id" class="block">
+                  <span v-if="c.role" class="text-slate-500">{{ c.role }}: </span>{{ contactText(c) }}
+                </span>
+                <span v-if="!data.person.contacts?.length">-</span>
+              </span>
+            </AtomsFieldDetail>
+          </div>
         </template>
         <template v-else-if="data.company">
           <p>{{ data.company?.name || '' }}</p>
           <p>{{ data.company?.vat || '' }}</p>
         </template>
+      </fieldset>
+      <fieldset id="representant__box" v-if="data.representative" class="mb-3 border px-3 py-2 bg-sky-50">
+        <legend class="px-3 font-semibold bg-white shadow">
+          {{ t(formKey('representative')) }}
+        </legend>
+        <p>{{ data.representative.name || '' }} {{ data.representative.surname || '' }}</p>
+        <p>{{ data.representative.token || '' }}</p>
+        <div class="text-sm mt-2">
+          <AtomsFieldDetail v-if="data.representative_type" :label="t(formKey('representative_type'))" :value="data.representative_type.name" wrapLabel />
+          <AtomsFieldDetail v-if="data.representative.contacts?.length" :label="t(formKey('contacts'))" wrapLabel>
+            <span>
+              <span v-for="c in data.representative.contacts" :key="c.id" class="block">{{ contactText(c) }}</span>
+            </span>
+          </AtomsFieldDetail>
+        </div>
       </fieldset>
       <fieldset id="facturacio__box" v-if="data.person || data.company" class="mb-3 border px-3 py-2 bg-sky-50">
         <legend class="px-3 font-semibold bg-white shadow">
@@ -359,9 +407,23 @@ watch(() => props.id, () => {
 
         <p class="font-semibold">{{ t("address_block.location") }}:</p>
         <div class="px-3 mb-3">
-          {{ data.address_complete }}<br />
+          {{ data.address_complete }}<span v-if="locationDetail">, {{ locationDetail }}</span><br />
           {{ data.address_postal_code?.code || "" }} - {{ data.address_city?.name || "" }}
+          <div class="text-sm mt-2">
+            <AtomsFieldDetail v-if="data.cadastral" :label="t(formKey('cadastral'))" :value="data.cadastral" wrapLabel />
+            <AtomsFieldDetail v-if="data.scope" :label="t(formKey('scope'))" :value="choiceLabel('scopes', data.scope)" wrapLabel />
+            <AtomsFieldDetail v-if="data.polygon || data.parcel" :label="`${t(formKey('polygon'))} / ${t(formKey('parcel'))}`"
+              :value="`${data.polygon || '-'} / ${data.parcel || '-'}`" wrapLabel />
+            <AtomsFieldDetail v-if="data.building_type" :label="t(formKey('building_type'))" :value="data.building_type.name" wrapLabel />
+          </div>
         </div>
+
+        <template v-if="data.documentation_files?.length">
+          <p class="font-semibold">{{ t(formKey('documents')) }}:</p>
+          <div class="px-3 mb-3">
+            <ConnectionRequestDocumentsData :request="data" readonly />
+          </div>
+        </template>
 
         <p class="font-semibold">{{ t("connection") }}:</p>
         <div class="px-3 mb-3">
