@@ -27,9 +27,12 @@ from .views import (
     CancelDirectDebitView,
     ContractProcedureOVView,
     ContractRequestStatusOVView,
+    ContractTerminationProcedureOVView,
+    ContractChangeProcedureOVView,
     ContactDataOVView,
     PersonDataOVView,
     BatchInvoiceDownloadView,
+    ContractRequestTypeDictionaryOVView,
     ContractStatusDictionaryOVView,
     PaymentTypeDictionaryOVView,
     InvoiceStatusDictionaryOVView,
@@ -159,6 +162,22 @@ urlpatterns = [
         ContractRequestStatusOVView.as_view(),
         name="contract-request-status-ov",
     ),
+    # /ov/procedures/contract-termination/  POST body: baixa de contracte
+    # (ContractTerminationRequest). Dos segments literals: no entra en
+    # conflicte amb procedures/<contract_token>/<accio>/ (quatre segments).
+    path(
+        "procedures/contract-termination/",
+        ContractTerminationProcedureOVView.as_view(),
+        name="contract-termination-procedure-ov",
+    ),
+    # /ov/procedures/contract-change/  POST body: canvi de nom (baixa +
+    # sol·licitud d'alta enllaçades). Dos segments literals: no entra en
+    # conflicte amb procedures/<contract_token>/<accio>/ (quatre segments).
+    path(
+        "procedures/contract-change/",
+        ContractChangeProcedureOVView.as_view(),
+        name="contract-change-procedure-ov",
+    ),
     # /ov/procedures/<contract_token>/upload-sepa-signed/
     path(
         "procedures/<str:contract_token>/upload-sepa-signed/",
@@ -206,6 +225,12 @@ urlpatterns = [
         "dictionary/procedure-tariffs/",
         ProcedureTariffDictionaryOVView.as_view(),
         name="procedure-tariffs-dictionary-ov",
+    ),
+    # /ov/dictionary/contract-request-types/
+    path(
+        "dictionary/contract-request-types/",
+        ContractRequestTypeDictionaryOVView.as_view(),
+        name="contract-request-types-dictionary-ov",
     ),
     # /ov/properties/?search=<text>
     path("properties/", PropertiesOVView.as_view(), name="properties-ov"),

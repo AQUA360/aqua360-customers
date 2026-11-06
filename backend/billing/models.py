@@ -491,6 +491,8 @@ class ReadingBatch(models.Model):
     task_id = models.CharField(max_length=255, null=True, blank=True)
     assign_readings_task_id = models.CharField(max_length=255, null=True, blank=True)
     estimating_task_id = models.CharField(max_length=255, null=True, blank=True)
+    # NULL denotes a legacy task whose lifecycle was not recorded.
+    estimating_task_status = models.CharField(max_length=16, null=True, blank=True)
 
     last_task_status = models.CharField(max_length=255, null=True, blank=True)
     last_task_errors = models.JSONField(null=True, blank=True)

@@ -49,6 +49,8 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
         
         claim_step = ClaimRequestStep.objects.get(id=step_id)
         document_type = claim_step.document_type
+        if not document_type:
+            return {"status": "error", "message": "Claim step has no document type"}
         now_date = datetime.now().date()
         # Objecte date, no string: les plantilles hi apliquen |date:"j F Y" i el
         # filtre `date` de Django sobre un string retorna cadena buida, de manera
@@ -151,7 +153,7 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             try:
                 joined_payment_status_cancelled_token = ConfigProject.objects.get(token='joined_payment_status_cancelled_token').value
                 joined_payment = JoinedPayment.objects.get(id=joined_payment_id)
-                if joined_payment.status.token == joined_payment_status_cancelled_token:
+                if joined_payment.status and joined_payment.status.token == joined_payment_status_cancelled_token:
                     joined_payment = None
                 else:
                     original_payments = joined_payment.payments.filter(claim_requests__claim_step__isnull=True).distinct()

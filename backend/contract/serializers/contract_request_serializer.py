@@ -305,6 +305,10 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
             instance.bail_types.set(bail_type_ids)
         
         if price_rates_ids is not None:
+            own_rates = {
+                (rate.price_rate_id, rate.supply_point_id): rate
+                for rate in instance.price_rates.all()
+            }
             instance.price_rates.clear()
             use_general_price_rates = validated_data.get('use_general_price_rates', instance.use_general_price_rates)
             print("use_general_price_rates", use_general_price_rates)
@@ -312,16 +316,24 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
                 supply_point_id = price_rate.get('supply_point').get('id')
                 price_rate_instance = PriceRate.objects.get(id=price_rate.get('price_rate').get('id'))
                 supply_point_instance = SupplyPoint.objects.get(id=supply_point_id)
-                try:
-                    contract_price_rate, _ = ContractPriceRate.objects.get_or_create(
-                        price_rate=price_rate_instance, 
-                        supply_point=supply_point_instance
+                if instance.is_change_of_name:
+                    previous_rate = own_rates.get((price_rate_instance.pk, supply_point_instance.pk))
+                    contract_price_rate = ContractPriceRate.objects.create(
+                        price_rate=price_rate_instance,
+                        supply_point=supply_point_instance,
+                        is_bop_reference=previous_rate.is_bop_reference if previous_rate else False,
                     )
-                except:
-                    contract_price_rate = ContractPriceRate.objects.filter(
-                        price_rate=price_rate_instance, 
-                        supply_point=supply_point_instance
-                    ).first()
+                else:
+                    try:
+                        contract_price_rate, _ = ContractPriceRate.objects.get_or_create(
+                            price_rate=price_rate_instance,
+                            supply_point=supply_point_instance
+                        )
+                    except:
+                        contract_price_rate = ContractPriceRate.objects.filter(
+                            price_rate=price_rate_instance,
+                            supply_point=supply_point_instance
+                        ).first()
                 if use_general_price_rates:
                     if instance.supply_point_default_id == supply_point_id:
                         instance.price_rates.add(contract_price_rate)
