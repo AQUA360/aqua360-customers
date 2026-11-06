@@ -23,6 +23,7 @@ from billing.utils.reading_service import (
 from coredata.models import ConfigProject
 from contract.models import ContractStatus
 from service.models import SupplyPoint
+from service.utils.route_scope import effective_route
 from billing.permissions import ReadingPermission
 from billing.tasks import estimate_readings_task
 class ReadingBatchEstimateViewSet(viewsets.ViewSet):
@@ -32,9 +33,7 @@ class ReadingBatchEstimateViewSet(viewsets.ViewSet):
     queryset = ReadingBatch.objects.all().order_by('-created_at')
     def estimate_readings(self, request, id=None):
         try:
-            reading_batch = ReadingBatch.objects.select_related('status').prefetch_related(
-                'routes__positions__properties__supply_points'
-            ).get(id=id)
+            reading_batch = ReadingBatch.objects.select_related('status').get(id=id)
             active_contract = ConfigProject.objects.get(token='contract_active_token').value
             active_contract_id = ContractStatus.objects.get(token=active_contract).id
 
@@ -138,7 +137,8 @@ class ReadingBatchEstimateViewSet(viewsets.ViewSet):
             for supply_point in supply_points:
                 try:
                     offset_days = 90
-                    biller = supply_point.property.route_position.route.biller if supply_point.property.route_position.route and supply_point.property.route_position and supply_point.property else None
+                    route = effective_route(supply_point)
+                    biller = route.biller if route else None
                     if biller:
                         try:
                             offset_days = PERIOD_MONTHS_MAP[biller.period_type]

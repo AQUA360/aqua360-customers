@@ -1,7 +1,11 @@
 from documentmanager.utils.csv_safety import SafeCsvWriter
 from io import StringIO
 
+from django.db.models import Q
 from django.utils.translation import gettext as _
+
+from service.models import Property, SupplyPoint
+from service.utils.route_scope import position_supply_points_q
 
 
 def _property_label(prop):
@@ -22,12 +26,23 @@ def build_route_export_headers():
 
 
 def route_position_row_values(route_position):
-    properties = list(route_position.properties.filter(is_active=True))
+    # Punts que pertanyen efectivament a la posició (propis o heretats de la
+    # finca) i les seves finques; també les finques de la posició sense punts.
+    supply_points = list(
+        SupplyPoint.objects.filter(position_supply_points_q(route_position)).order_by('id')
+    )
+    property_ids = {sp.property_id for sp in supply_points if sp.property_id}
+    properties = list(
+        Property.objects.filter(is_active=True).filter(
+            Q(id__in=property_ids) | Q(route_position=route_position, supply_points__isnull=True)
+        ).distinct()
+    )
     farm_labels = [_property_label(prop) for prop in properties]
     supply_point_labels = []
     for prop in properties:
-        for supply_point in prop.supply_points.filter(is_active=True):
-            supply_point_labels.append(_supply_point_label(supply_point))
+        for supply_point in supply_points:
+            if supply_point.property_id == prop.id and supply_point.is_active:
+                supply_point_labels.append(_supply_point_label(supply_point))
 
     return [
         route_position.position if route_position.position is not None else '',
@@ -48,7 +63,7 @@ def build_route_export_csv_bytes(route):
     writer = SafeCsvWriter(buffer, delimiter=';')
     writer.writerow(build_route_export_headers())
 
-    positions = route.positions.all().order_by('position').prefetch_related('properties__supply_points')
+    positions = route.positions.all().order_by('position')
     for route_position in positions.iterator(chunk_size=500):
         writer.writerow(route_position_row_values(route_position))
 

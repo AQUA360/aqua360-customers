@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import AppLoading from '~/components/atoms/AppLoading.vue';
@@ -13,6 +13,7 @@ import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
 import { usePermissions } from '~/middleware/permission';
 import PropertyRegion from '~/components/organisms/PropertyRegion.vue';
+import SupplyPointRouteModal from '~/components/molecules/SupplyPointRouteModal.vue';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -120,6 +121,34 @@ const ensureSupplyPointFilterCatalogs = async () => {
     }
   }
 }
+
+// Moure un punt de la llista a una altra ruta (ruta pròpia) o tornar-lo a la de la finca
+const moveSupplyPoint = ref(null);
+const showMoveSupplyPointModal = ref(false);
+const moveSupplyPointEffectiveRoute = computed(() => {
+  const item = moveSupplyPoint.value;
+  if (!item || !data.value) return null;
+  return {
+    route_id: data.value.id,
+    route_token: data.value.token,
+    route_name: data.value.name,
+    position: item.route_position?.position ?? null,
+    position_token: item.route_position?.token ?? null,
+    inherited: !item.own_route_position
+  };
+});
+
+const openMoveSupplyPoint = (item) => {
+  moveSupplyPoint.value = item;
+  showMoveSupplyPointModal.value = true;
+};
+
+const onSupplyPointMoved = async () => {
+  await Promise.all([
+    getRouteSupplyPoints(supplyPointsPagination.value.page),
+    getRoutePositions(props.id, pagination.value.page, sortBy.value, sortDesc.value)
+  ]);
+};
 
 const getSupplyPointsOrdering = () => {
   if (!supplyPointsSortBy.value) return null;
@@ -605,7 +634,7 @@ onUnmounted(() => {
             </div>
             <div v-else>
               <div class="max-h-[55vh] overflow-y-auto relative z-0">
-                <div class="grid grid-cols-[70px,1fr,1fr,1.2fr,1fr,80px,1.5fr] gap-2 text-sm border-b items-center font-semibold text-gray-700 py-2 sticky top-0 bg-white z-[1]">
+                <div class="grid grid-cols-[70px,1fr,1fr,1.2fr,1fr,80px,1.5fr,32px] gap-2 text-sm border-b items-center font-semibold text-gray-700 py-2 sticky top-0 bg-white z-[1]">
                   <span>{{ $t('order') }}</span>
                   <TableHeader
                     :label="$t('common.properties')"
@@ -633,18 +662,26 @@ onUnmounted(() => {
                     :currentSortBy="supplyPointsSortBy"
                     :sortDesc="supplyPointsSortDesc"
                     @sort="handleSupplyPointsSort" />
+                  <span></span>
                 </div>
 
                 <div
                   v-for="item in supplyPoints"
                   :key="item.id"
-                  class="grid grid-cols-[70px,1fr,1fr,1.2fr,1fr,80px,1.5fr] gap-2 text-sm p-1 border-b hover:bg-gray-50 transition-colors duration-200 items-start">
+                  class="grid grid-cols-[70px,1fr,1fr,1.2fr,1fr,80px,1.5fr,32px] gap-2 text-sm p-1 border-b hover:bg-gray-50 transition-colors duration-200 items-start">
                   <span class="text-slate-600">
                     {{ item.route_position?.position ?? '—' }}
                     <span v-if="item.route_position?.token" class="block text-xs text-slate-400">{{ item.route_position.token }}</span>
                   </span>
                   <span class="truncate" :title="item.property?.token">{{ item.property?.token || '—' }}</span>
-                  <span class="truncate font-medium" :title="item.token">{{ item.token || '—' }}</span>
+                  <span class="min-w-0 flex items-center gap-1">
+                    <span class="truncate font-medium" :title="item.token">{{ item.token || '—' }}</span>
+                    <span v-if="item.own_route_position"
+                      class="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-800"
+                      :title="t('service_block.route_own_supply_point_help')">
+                      {{ t('service_block.route_own_badge_short') }}
+                    </span>
+                  </span>
                   <span>
                     <AtomsColorBadge
                       v-if="item.status"
@@ -666,6 +703,14 @@ onUnmounted(() => {
                       </div>
                     </template>
                     <span v-else class="text-slate-400">—</span>
+                  </span>
+                  <span class="text-right">
+                    <button v-if="objectPermissions?.can_change" type="button"
+                      class="px-1 text-sky-500 hover:text-sky-700"
+                      :title="t('service_block.supply_point_route_change')"
+                      @click="openMoveSupplyPoint(item)">
+                      <Icon name="fa6-solid:route" />
+                    </button>
                   </span>
                 </div>
                 <div v-if="supplyPoints.length === 0" class="py-4 text-sm text-slate-500">
@@ -695,5 +740,9 @@ onUnmounted(() => {
           :isSubRegion="true" />
       </div>
     </div>
+
+    <SupplyPointRouteModal v-if="moveSupplyPoint" v-model:open="showMoveSupplyPointModal"
+      :supply-point-id="moveSupplyPoint.id" :effective-route="moveSupplyPointEffectiveRoute"
+      @saved="onSupplyPointMoved" />
   </div>
 </template>

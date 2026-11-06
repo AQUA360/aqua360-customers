@@ -47,6 +47,7 @@ from contract.models import Contract, ContractRequest, ContractTerminationReques
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
 from service.serializers.meter_serializer import MeterListSerializer
+from service.utils.route_scope import effective_route, effective_route_field_expr, effective_route_select_related
 from billing.tasks import export_batch_readings_task, export_readings_task
 from documentmanager.utils.export_jobs import enqueue_export, export_job_response
 from documentmanager.utils.export_permissions import export_permission_class
@@ -75,11 +76,11 @@ class ReadingViewSet(viewsets.ModelViewSet):
 
     if 'routeposition_position' in ordering_fields:
       qs = qs.annotate(
-          routeposition_position=F('supply_point__property__route_position__position')
+          routeposition_position=effective_route_field_expr('position', prefix='supply_point__')
       )
     if 'routeposition_code' in ordering_fields:
       qs = qs.annotate(
-          routeposition_code=F('supply_point__property__route_position__token')
+          routeposition_code=effective_route_field_expr('token', prefix='supply_point__')
       )
     return qs
 
@@ -257,7 +258,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
     queryset = self.filter_queryset(
         self.get_queryset()
         .filter(batch_id=batch_id, is_close=False, is_control=False)
-        .select_related('supply_point__property__route_position')
+        .select_related(*effective_route_select_related('supply_point__'))
         .order_by('-reading_date')
     )
 
@@ -312,7 +313,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
     today = datetime.datetime.now().date()
     for supply_point in supply_points:
         try:
-          biller = supply_point.property.route_position.route.biller
+          biller = effective_route(supply_point).biller
           period_days = PERIOD_MONTHS_MAP[biller.period_type] if biller else 90
         except Exception as e:
           biller = None
@@ -560,7 +561,9 @@ class ReadingViewSet(viewsets.ModelViewSet):
       ).distinct()
     serialized_meters = MeterListSerializer(meters, many=True).data
     batches = ReadingBatch.objects.filter(
-      routes__id__in=readings.values_list('supply_point__property__route_position__route__id', flat=True),
+      routes__id__in=readings.annotate(
+        effective_route_id=effective_route_field_expr('route', prefix='supply_point__')
+      ).values_list('effective_route_id', flat=True),
     ).order_by('-created_at').distinct()[:5]
     
     if mod_supply_point.meter:
@@ -602,7 +605,7 @@ class ReadingViewSet(viewsets.ModelViewSet):
     }
     
     try:
-      biller = mod_contract.supply_point_default.property.route_position.route.biller
+      biller = effective_route(mod_contract.supply_point_default).biller
     except Exception as e:
       biller = None
     

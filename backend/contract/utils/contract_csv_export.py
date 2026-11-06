@@ -10,6 +10,7 @@ from django.utils.translation import gettext as _
 
 from contract.models import Contract, Variable
 from coredata.models import ConfigProject
+from service.utils.route_scope import effective_route_position, effective_route_select_related
 
 
 def _person_label(person):
@@ -48,16 +49,13 @@ def _supply_point_address(supply_point):
 
 def _route_and_route_position_from_supply_point(supply_point):
     """
-    Route / RoutePosition via Property del SupplyPoint:
-    supply_point.property.route_position → route / position.
+    Route / RoutePosition efectiva del SupplyPoint: la seva posició pròpia o,
+    si no en té, supply_point.property.route_position → route / position.
     Retorna (route_label, route_position_label).
     """
     if not supply_point:
         return '', ''
-    prop = getattr(supply_point, 'property', None)
-    if not prop:
-        return '', ''
-    rp = getattr(prop, 'route_position', None)
+    rp = effective_route_position(supply_point)
     if not rp:
         return '', ''
     route = getattr(rp, 'route', None)
@@ -172,7 +170,7 @@ def prepare_contract_export_queryset(filtered_contract_qs):
         'supply_point_default__address__city',
         'supply_point_default__address__country',
         'supply_point_default__connection__exploitation',
-        'supply_point_default__property__route_position__route',
+        *effective_route_select_related('supply_point_default__'),
         'address_billing__address__street__type',
         'address_billing__address__street_number__number_type',
         'address_billing__address__city',

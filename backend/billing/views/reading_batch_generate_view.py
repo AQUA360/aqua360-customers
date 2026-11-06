@@ -17,7 +17,12 @@ from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint
 from billing.utils.reading_filters import PENDING_READING_FILTER, BILLED_READING_FILTER
 from billing.utils.reading_batch_return import ReturnToPendingError, return_reading_batch_to_pending
-from billing.utils.reading_batch_service import get_batch_supply_counts, get_setup_filter_supply_point_ids
+from billing.utils.reading_batch_service import (
+    count_supply_point_meters, get_batch_supply_counts, get_setup_filter_supply_point_ids,
+)
+from service.utils.route_scope import (
+    effective_route_select_related, reading_batch_supply_points_q, without_route_q,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,7 +62,6 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             
             # Optimize the initial query with prefetch_related to avoid N+1 queries
             batch = ReadingBatch.objects.select_related('status').prefetch_related(
-                'routes__positions__properties__supply_points__contracts__status',
                 'fix_meters__supply_points__contracts__status',
                 'readings__alert',
                 'documents__readings'
@@ -88,7 +92,7 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
                     contracts__status__token=active_contract,
                     contracts__is_active=True
                 ).filter(
-                    Q(property__route_position__isnull=True) | Q(property__isnull=True)
+                    without_route_q()
                 ).filter(
                     Q(property__address_city__exploitations__id__in=exploitation_ids) |
                     Q(address__city__exploitations__id__in=exploitation_ids)
@@ -100,102 +104,25 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
             telecontrol_supplypoints_contracts = 0
             fix_supplypoints = 0
             fix_supplypoints_contracts = 0
+            route_supply_points = SupplyPoint.objects.filter(reading_batch_supply_points_q(batch))
+            route_supply_points_contracts = route_supply_points.filter(
+                contracts__status__token=active_contract,
+                contracts__is_active=True,
+            )
             if include_telecontrol:
                 # Telecontrol: count active meters (including sub-meters), not contracts
-                telecontrol_supplypoints = batch.routes.aggregate(
-                    total=Count(
-                        'positions__properties__supply_points__meter',
-                        filter=Q(
-                            positions__properties__supply_points__meter__has_remote_reading=True,
-                            positions__properties__supply_points__meter__force_manual_reading=False,
-                            positions__properties__supply_points__meter__is_active=True,
-                        ),
-                        distinct=True,
-                    )
-                    + Count(
-                        'positions__properties__supply_points__meter__sub_meters',
-                        filter=Q(
-                            positions__properties__supply_points__meter__sub_meters__has_remote_reading=True,
-                            positions__properties__supply_points__meter__sub_meters__force_manual_reading=False,
-                            positions__properties__supply_points__meter__sub_meters__is_active=True,
-                        ),
-                        distinct=True,
-                    )
-                )['total'] or 0
-                telecontrol_supplypoints_contracts = batch.routes.aggregate(
-                    total=Count(
-                        'positions__properties__supply_points__meter',
-                        filter=Q(
-                            positions__properties__supply_points__meter__has_remote_reading=True,
-                            positions__properties__supply_points__meter__force_manual_reading=False,
-                            positions__properties__supply_points__meter__is_active=True,
-                            positions__properties__supply_points__contracts__status__token=active_contract,
-                            positions__properties__supply_points__contracts__is_active=True,
-                        ),
-                        distinct=True,
-                    )
-                    + Count(
-                        'positions__properties__supply_points__meter__sub_meters',
-                        filter=Q(
-                            positions__properties__supply_points__meter__sub_meters__has_remote_reading=True,
-                            positions__properties__supply_points__meter__sub_meters__force_manual_reading=False,
-                            positions__properties__supply_points__meter__sub_meters__is_active=True,
-                            positions__properties__supply_points__contracts__status__token=active_contract,
-                            positions__properties__supply_points__contracts__is_active=True,
-                        ),
-                        distinct=True,
-                    )
-                )['total'] or 0
+                telecontrol_meter_q = Q(has_remote_reading=True, force_manual_reading=False, is_active=True)
+                telecontrol_supplypoints = count_supply_point_meters(route_supply_points, telecontrol_meter_q)
+                telecontrol_supplypoints_contracts = count_supply_point_meters(
+                    route_supply_points_contracts, telecontrol_meter_q
+                )
             if include_manual:
                 # Manual: count active meters (including sub-meters), not contracts
-                manual_supplypoints = batch.routes.aggregate(
-                    total=Count(
-                        'positions__properties__supply_points__meter',
-                        filter=Q(
-                            positions__properties__supply_points__meter__is_active=True,
-                        ) & (
-                            Q(positions__properties__supply_points__meter__has_remote_reading=False)
-                            | Q(positions__properties__supply_points__meter__force_manual_reading=True)
-                        ),
-                        distinct=True,
-                    )
-                    + Count(
-                        'positions__properties__supply_points__meter__sub_meters',
-                        filter=Q(
-                            positions__properties__supply_points__meter__sub_meters__is_active=True,
-                        ) & (
-                            Q(positions__properties__supply_points__meter__sub_meters__has_remote_reading=False)
-                            | Q(positions__properties__supply_points__meter__sub_meters__force_manual_reading=True)
-                        ),
-                        distinct=True,
-                    )
-                )['total'] or 0
-                manual_supplypoints_contracts = batch.routes.aggregate(
-                    total=Count(
-                        'positions__properties__supply_points__meter',
-                        filter=Q(
-                            positions__properties__supply_points__meter__is_active=True,
-                            positions__properties__supply_points__contracts__status__token=active_contract,
-                            positions__properties__supply_points__contracts__is_active=True,
-                        ) & (
-                            Q(positions__properties__supply_points__meter__has_remote_reading=False)
-                            | Q(positions__properties__supply_points__meter__force_manual_reading=True)
-                        ),
-                        distinct=True,
-                    )
-                    + Count(
-                        'positions__properties__supply_points__meter__sub_meters',
-                        filter=Q(
-                            positions__properties__supply_points__meter__sub_meters__is_active=True,
-                            positions__properties__supply_points__contracts__status__token=active_contract,
-                            positions__properties__supply_points__contracts__is_active=True,
-                        ) & (
-                            Q(positions__properties__supply_points__meter__sub_meters__has_remote_reading=False)
-                            | Q(positions__properties__supply_points__meter__sub_meters__force_manual_reading=True)
-                        ),
-                        distinct=True,
-                    )
-                )['total'] or 0
+                manual_meter_q = Q(is_active=True) & (Q(has_remote_reading=False) | Q(force_manual_reading=True))
+                manual_supplypoints = count_supply_point_meters(route_supply_points, manual_meter_q)
+                manual_supplypoints_contracts = count_supply_point_meters(
+                    route_supply_points_contracts, manual_meter_q
+                )
             if batch.fix_meters.exists() and batch.fix_meters.count() > 0:
                 fix_supplypoints = batch.fix_meters.aggregate(
                     total=Count('supply_points__id', distinct=True)
@@ -375,7 +302,7 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
         active_contract = ConfigProject.objects.get(token='contract_active_token').value
         
         sp_query = SupplyPoint.objects.filter(
-            property__route_position__route__reading_batches=reading_batch
+            reading_batch_supply_points_q(reading_batch)
         )
         if not reading_batch.include_telecontrol:
             sp_query = sp_query.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True))
@@ -388,7 +315,7 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
 
         if missing_supply_points:
             missing_supply_points_objects = SupplyPoint.objects.select_related(
-                'type', 'status', 'property__route_position__route'
+                'type', 'status', *effective_route_select_related()
             ).filter(id__in=missing_supply_points).order_by('id')
 
             missing_supply_points_objects = missing_supply_points_objects.filter(contracts__status__token=active_contract).distinct()
@@ -430,7 +357,7 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
                     contracts__status__token=active_contract,
                     contracts__is_active=True
                 ).filter(
-                    Q(property__route_position__isnull=True) | Q(property__isnull=True)
+                    without_route_q()
                 ).filter(
                     Q(property__address_city__exploitations__id__in=exploitation_ids) |
                     Q(address__city__exploitations__id__in=exploitation_ids)

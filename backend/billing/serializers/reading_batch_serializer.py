@@ -6,10 +6,12 @@ from billing.serializers.reading_serializer import ReadingMinimalSerializer, Rea
 from billing.tasks import fix_readings_batch
 from billing.utils.exploitation_scope import routes_for_exploitation
 from billing.utils.reading_service import get_existing_reading
+from billing.utils.reading_batch_service import count_supply_point_contracts, count_supply_point_meters
 from coredata.models import ConfigProject
 from service.models import Exploitation, Meter, Route, SupplyPoint
 from service.serializers.route_serializer import RouteListSerializer
 from service.utils.route_positions_service import route_count_total_readings
+from service.utils.route_scope import routes_supply_points_q, reading_batch_supply_points_q
 from django.core.cache import cache
 from django.db.models import Count, Sum, Q
 
@@ -170,111 +172,41 @@ class ReadingBatchMinimalSerializer(serializers.ModelSerializer):
     def _compute_route_graph_metrics(self, route_ids, include_manual, include_telecontrol, tokens):
         active_contract = tokens["active_contract"]
         no_meter_token = tokens["no_meter"]
-        routes_qs = Route.objects.filter(id__in=route_ids)
+        route_supply_points = SupplyPoint.objects.filter(routes_supply_points_q(route_ids))
 
+        # Filtres relatius a Meter (comptadors dels punts de les rutes)
         meter_filter = Q()
-        contract_meter_filter = Q(
-            positions__properties__supply_points__contracts__status__token=active_contract,
-            positions__properties__supply_points__contracts__is_active=True,
-        )
+        manual_q = Q(has_remote_reading=False) | Q(force_manual_reading=True)
+        tele_q = Q(has_remote_reading=True, force_manual_reading=False)
+        contract_supply_points = route_supply_points
         if include_manual and not include_telecontrol:
-            meter_filter = Q(
-                positions__properties__supply_points__meter__has_remote_reading=False
-            ) | Q(
-                positions__properties__supply_points__meter__force_manual_reading=True
-            )
-            contract_meter_filter &= Q(
-                positions__properties__supply_points__meter__has_remote_reading=False
-            ) | Q(
-                positions__properties__supply_points__meter__force_manual_reading=True
+            meter_filter = manual_q
+            contract_supply_points = route_supply_points.filter(
+                Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)
             )
         elif include_telecontrol and not include_manual:
-            meter_filter = Q(
-                positions__properties__supply_points__meter__has_remote_reading=True,
-                positions__properties__supply_points__meter__force_manual_reading=False
-            )
-            contract_meter_filter &= Q(
-                positions__properties__supply_points__meter__has_remote_reading=True,
-                positions__properties__supply_points__meter__force_manual_reading=False
+            meter_filter = tele_q
+            contract_supply_points = route_supply_points.filter(
+                meter__has_remote_reading=True, meter__force_manual_reading=False
             )
 
-        agg_kwargs = {
-            "num_supplies": Count(
-                "positions__properties__supply_points__meter",
-                filter=meter_filter,
-                distinct=True,
-            ),
-            "num_contracts": Count(
-                "positions__properties__supply_points__contracts__id",
-                filter=contract_meter_filter,
-                distinct=True,
+        def count_meters(meter_q):
+            return count_supply_point_meters(route_supply_points, meter_q, with_sub_meters=False)
+
+        listable_q = Q(status__token__isnull=False) & ~Q(status__token__in=[no_meter_token, "-1"])
+        data = {
+            "num_supplies": count_meters(meter_filter),
+            "num_contracts": count_supply_point_contracts(
+                contract_supply_points, Q(status__token=active_contract, is_active=True)
             ),
         }
         if include_telecontrol:
-            agg_kwargs["no_meter_tele"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=Q(
-                    positions__properties__supply_points__meter__has_remote_reading=True,
-                    positions__properties__supply_points__meter__force_manual_reading=False,
-                    positions__properties__supply_points__meter__status__token=no_meter_token,
-                ),
-                distinct=True,
-            )
-            agg_kwargs["total_tele"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=(
-                    Q(
-                        positions__properties__supply_points__meter__status__token__isnull=False
-                    )
-                    & Q(
-                        positions__properties__supply_points__meter__has_remote_reading=True,
-                        positions__properties__supply_points__meter__force_manual_reading=False
-                    )
-                    & ~Q(
-                        positions__properties__supply_points__meter__status__token__in=[
-                            no_meter_token,
-                            "-1",
-                        ]
-                    )
-                ),
-                distinct=True,
-            )
+            data["no_meter_tele"] = count_meters(tele_q & Q(status__token=no_meter_token))
+            data["total_tele"] = count_meters(listable_q & tele_q)
         if include_manual:
-            agg_kwargs["no_meter_manual"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=Q(
-                    positions__properties__supply_points__meter__has_remote_reading=False,
-                    positions__properties__supply_points__meter__status__token=no_meter_token,
-                ) | Q(
-                    positions__properties__supply_points__meter__force_manual_reading=True,
-                    positions__properties__supply_points__meter__status__token=no_meter_token,
-                ),
-                distinct=True,
-            )
-            agg_kwargs["total_manual"] = Count(
-                "positions__properties__supply_points__meter",
-                filter=(
-                    Q(
-                        positions__properties__supply_points__meter__status__token__isnull=False
-                    )
-                    & (
-                        Q(
-                            positions__properties__supply_points__meter__has_remote_reading=False
-                        ) | Q(
-                            positions__properties__supply_points__meter__force_manual_reading=True
-                        )
-                    )
-                    & ~Q(
-                        positions__properties__supply_points__meter__status__token__in=[
-                            no_meter_token,
-                            "-1",
-                        ]
-                    )
-                ),
-                distinct=True,
-            )
+            data["no_meter_manual"] = count_meters(manual_q & Q(status__token=no_meter_token))
+            data["total_manual"] = count_meters(listable_q & manual_q)
 
-        data = routes_qs.aggregate(**agg_kwargs)
         return {
             "num_supplies": data.get("num_supplies") or 0,
             "num_contracts": data.get("num_contracts") or 0,
@@ -626,28 +558,17 @@ class ReadingBatchSerializer(serializers.ModelSerializer):
         include_telecontrol = obj.include_telecontrol
 
         if obj.routes.exists():
-            active_filter = Q(
-                positions__properties__supply_points__is_active=True,
-                positions__properties__supply_points__status__token=activate_token,
+            route_supply_points = SupplyPoint.objects.filter(
+                reading_batch_supply_points_q(obj),
+                is_active=True,
+                status__token=activate_token,
             )
+            meter_filter = Q()
             if include_manual and not include_telecontrol:
-                active_filter &= Q(
-                    positions__properties__supply_points__meter__has_remote_reading=False
-                ) | Q(
-                    positions__properties__supply_points__meter__force_manual_reading=True
-                )
+                meter_filter = Q(has_remote_reading=False) | Q(force_manual_reading=True)
             elif include_telecontrol and not include_manual:
-                active_filter &= Q(
-                    positions__properties__supply_points__meter__has_remote_reading=True,
-                    positions__properties__supply_points__meter__force_manual_reading=False
-                )
-            return obj.routes.aggregate(
-                total=Count(
-                    'positions__properties__supply_points__meter',
-                    filter=active_filter,
-                    distinct=True,
-                )
-            )['total'] or 0
+                meter_filter = Q(has_remote_reading=True, force_manual_reading=False)
+            return count_supply_point_meters(route_supply_points, meter_filter, with_sub_meters=False)
 
         if obj.fix_meters.exists():
             return obj.fix_meters.aggregate(

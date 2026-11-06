@@ -61,6 +61,7 @@ from billing.models import (
 from documentmanager.utils.main_utils import download_document, upload_document
 from pricing.models import PriceRate, Product
 from service.models import Property, SupplyPoint
+from service.utils.route_scope import effective_route
 from ov.serializers import (
     BillingDataOVSerializer,
     BillingContractInvoicesOVSerializer,
@@ -1103,10 +1104,7 @@ class ConsumptionsDownloadOVView(APIView):
 def _contract_biller(contract):
     """Facturador del contrato (el de la ruta del seu punt de subministrament);
     `None` si algun enllaç de la cadena no existeix."""
-    supply_point = contract.supply_point_default
-    prop = supply_point.property if supply_point else None
-    position = prop.route_position if prop else None
-    route = position.route if position else None
+    route = effective_route(contract.supply_point_default)
     return route.biller if route else None
 
 
@@ -1134,7 +1132,8 @@ class BillingPeriodsOVView(APIView):
 
         contract = (
             Contract.objects.select_related(
-                "supply_point_default__property__route_position__route__biller"
+                "supply_point_default__route_position__route__biller",
+                "supply_point_default__property__route_position__route__biller",
             )
             .filter(token=contract_token)
             .first()
