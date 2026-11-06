@@ -5759,8 +5759,6 @@ msgstr "Total Pendiente"
 #~ msgid "Volum i estadístiques de gestions"
 #~ msgstr "Volumen y estadísticas de gestiones"
 
-#~ msgid "Descarregar Excel"
-#~ msgstr "Descargar Excel"
 
 #~ msgid "Generar Cànon ACA"
 #~ msgstr "Generar Canon ACA"
@@ -6323,3 +6321,27 @@ msgstr "Nueva alta"
 #: claimrequest/utils/claim_contract_export_service.py
 msgid "Comptador general"
 msgstr "Contador general"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Saldo positiu"
+msgstr "Saldo positivo"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Deute"
+msgstr "Deuda"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Cal indicar una data."
+msgstr "Hay que indicar una fecha."
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Deute i saldo per contracte a data"
+msgstr "Deuda y saldo por contrato a fecha"
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola i el deute pendent (pagaments pendents, processats, vençuts, retornats o en morositat) a la data indicada."
+msgstr "Para cada contrato con saldo o deuda, el saldo positivo de la hucha y la deuda pendiente (pagos pendientes, procesados, vencidos, devueltos o en morosidad) en la fecha indicada."
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Descarregar Excel"
+msgstr "Descargar Excel"

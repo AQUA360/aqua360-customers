@@ -91,3 +91,55 @@ def get_address_destination(address):
 
     result = ' '.join(parts).strip()
     return result or None
+
+STREET_NUMBER_FIELDS = ('number', 'number_end', 'number_suffix', 'number_end_suffix')
+_STREET_NUMBER_INT_FIELDS = ('number', 'number_end')
+
+
+def _clean_street_number_value(field, value):
+    if value is None or (isinstance(value, str) and value.strip() == ''):
+        return None
+    if field in _STREET_NUMBER_INT_FIELDS:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    return str(value).strip()
+
+
+def resolve_street_number(street, number_type, data=None, street_number_id=None):
+    """Retorna el número de carrer que correspon a les dades rebudes sense modificar-ne cap d'existent.
+
+    Els números (`StreetNumber`) es comparteixen entre adreces de punts, persones, finques,
+    comptadors i bateries: editar-ne un canviaria l'adreça de tots. Si `street_number_id`
+    ja correspon a aquestes dades es reaprofita; si no, se'n busca un d'igual o se'n crea un.
+    Els camps que no arriben a `data` es mantenen com els del número de `street_number_id`.
+    """
+    from coredata.models import StreetNumber
+
+    data = data or {}
+    current = StreetNumber.objects.filter(id=street_number_id).first() if street_number_id else None
+    if street is None:
+        street = current.street if current else None
+    if number_type is None and current:
+        number_type = current.number_type
+
+    values = {}
+    for field in STREET_NUMBER_FIELDS:
+        raw = data.get(field) if field in data else (getattr(current, field) if current else None)
+        values[field] = _clean_street_number_value(field, raw)
+
+    if current and current.street_id == street.id and current.number_type_id == (number_type.id if number_type else None) \
+            and all(_clean_street_number_value(f, getattr(current, f)) == values[f] for f in STREET_NUMBER_FIELDS):
+        return current
+
+    filters = Q(street=street, number_type=number_type)
+    for field, value in values.items():
+        if value is None:
+            filters &= Q(**{f'{field}__isnull': True}) | (Q(**{field: ''}) if field not in _STREET_NUMBER_INT_FIELDS else Q(pk__in=[]))
+        else:
+            filters &= Q(**{field: value})
+    existing = StreetNumber.objects.filter(filters).order_by('id').first()
+    if existing:
+        return existing
+    return StreetNumber.objects.create(street=street, number_type=number_type, **values)

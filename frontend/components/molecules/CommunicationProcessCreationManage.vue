@@ -3,6 +3,7 @@ import { useDebounceFn } from '@vueuse/core'
 import BillingDetail from './BillingDetail.vue';
 import ClaimRequestDetail from './ClaimRequestDetail.vue';
 import SEPARemittanceDetailMinimal from './SEPARemittanceDetailMinimal.vue';
+import SEPARemittanceReturnDetailMinimal from './SEPARemittanceReturnDetailMinimal.vue';
 import SupplyCutDetail from './SupplyCutDetail.vue';
 import OptionSelectorGroup from '../atoms/OptionSelectorGroup.vue';
 
@@ -311,6 +312,19 @@ watch(() => props.search, async (newVal, oldVal) => {
                         </legend>
                         <div class="p-2">
                             <SEPARemittanceDetailMinimal :remittance_id="data.id" :isSubRegion="true" />
+                        </div>
+                    </fieldset>
+                </div>
+
+                <div v-else-if="data.entity === 'sepa_return'">
+                    <fieldset class="mb-5 border border-slate-300 rounded-lg">
+                        <legend class="text-lg font-bold text-slate-600 ml-5">{{ t('billing_block.return_sepa') }}
+                        </legend>
+                        <div class="p-2">
+                            <div class="flex flex-col gap-2">
+                                <SEPARemittanceReturnDetailMinimal v-for="returnId in String(data.id).split(',')"
+                                    :key="returnId" :return_id="returnId" />
+                            </div>
                         </div>
                     </fieldset>
                 </div>

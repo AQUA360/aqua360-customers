@@ -253,6 +253,14 @@ getConfigProject();
             @click="showConfigList((t('common.connection_requests') + ': ' + t('common.statuses')), 'service/connection-request-status', true, false, false, true)"
             class="text-sky-500 underline hover:no-underline">{{ t('common.connection_requests') }}: {{
               t('common.statuses') }}</button></li>
+        <li class="mb-1"><button
+            @click="showConfigList((t('common.connection_requests') + ': ' + t('service_block.connection_request_form.building_type')), 'service/connection-request-building-type', false, false, false)"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.connection_requests') }}: {{
+              t('service_block.connection_request_form.building_type') }}</button></li>
+        <li class="mb-1"><button
+            @click="showConfigList((t('common.connection_requests') + ': ' + t('service_block.connection_request_form.representative_type')), 'service/connection-request-representative-type', false, false, false)"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.connection_requests') }}: {{
+              t('service_block.connection_request_form.representative_type') }}</button></li>
 
         <li class="mb-1"><button
             @click="showConfigList((t('common.supply_cuts') + ': ' + t('common.statuses')), 'service/supply-cut-status', true, false, false, true)"

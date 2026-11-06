@@ -619,7 +619,7 @@ def create_comm_from_persons(user, persons, process, company_config, msg_name, m
                 # A impagats i devolucions SEPA les factures s'adjunten al pas seguent i el
                 # cos de la carta les necessita per resoldre els `%invoice.*`: la carta es
                 # deixa sense document i la renderitza `render_pending_letter_files()`.
-                if fixed_data not in ('claimrequest', 'sepa_payments'):
+                if fixed_data not in ('claimrequest', 'sepa_payments', 'sepa_return'):
                     for cr_comm_file in [cf for cf in created_files if getattr(cf, 'is_letter', False) and getattr(cf, 'file', None) is None]:
                         cr_comm_file.file = get_communication_file(cr_comm_file.id)
                         cr_comm_file.save()

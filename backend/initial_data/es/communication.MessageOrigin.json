@@ -43,5 +43,14 @@
             "name": "Corte de suministro",
             "position": 5
         }
+    },
+    {
+        "model": "communication.messageorigin",
+        "pk": 6,
+        "fields": {
+            "token": "sepa_return",
+            "name": "Devolución SEPA",
+            "position": 6
+        }
     }
 ]

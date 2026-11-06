@@ -469,6 +469,8 @@ const save = async () => {
       
       if (props.incident_id) {
         emit('changed');
+      } else if (!props.id && item.value?.id) {
+        return navigateTo({ path: '/order/orders/', query: { id: item.value.id } });
       } else {
         return navigateTo('/order/orders/')
       }

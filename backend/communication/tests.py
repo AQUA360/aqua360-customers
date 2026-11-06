@@ -776,6 +776,148 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
         self.assertEqual(self.comm.invoices.count(), 2)
 
 
+class SepaReturnDocumentsTests(TestCase):
+    """Comunicacions d'un retorn SEPA: cada rebut pendent hi va amb la factura i el
+    full de pagament; els que ja s'han tornat a cobrar no s'avisen."""
+
+    def setUp(self):
+        from billing.models import Invoice, Payment, PaymentRemittance, PaymentRemittanceReturn, PaymentStatus
+        from documentmanager.models import Document
+
+        ConfigProject.objects.update_or_create(token='message_type_email_token', defaults={'value': 'email'})
+        ConfigProject.objects.update_or_create(token='payment_status_paid_token', defaults={'value': '1'})
+        ConfigProject.objects.update_or_create(token='payment_status_cancelled_token', defaults={'value': '0'})
+        for token in ('contract_terminated_status', 'invoice_status_cancelled_token'):
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': '-1'})
+        returned = PaymentStatus.objects.create(token='-3', name='Retornat')
+        paid = PaymentStatus.objects.create(token='1', name='Pagat')
+        self.returned_status, self.paid_status = returned, paid
+
+        self.process = CommunicationProcess.objects.create(token='PROC-SEPA-RETURN')
+        self.contract = Contract.objects.create(token='SEPA-CT')
+        self.comm = Communication.objects.create(process=self.process, type_tokens='letter')
+        self.comm.contracts.add(self.contract)
+
+        self.invoice_docs = []
+        payments = []
+        for i in range(2):
+            doc = Document.objects.create(entity_id=1, service='hdd', document_name=f'factura-{i}')
+            invoice = Invoice.objects.create(invoice_file=doc)
+            payments.append(Payment.objects.create(invoice=invoice))
+            self.invoice_docs.append(doc)
+        # Sense senyals: el contracte i l'estat no han de disparar la lògica de cobrament
+        Invoice.objects.filter(payments__in=payments).update(contract=self.contract)
+        Payment.objects.filter(id=payments[0].id).update(status=returned)
+        Payment.objects.filter(id=payments[1].id).update(status=paid)
+        self.pending_payment, self.paid_payment = payments
+
+        self.sepa_return = PaymentRemittanceReturn.objects.create(token='RET-1')
+        self.sepa_return.payments.set(payments)
+        self.remittance = PaymentRemittance.objects.create(token='REM-1')
+        self.remittance.payments.set(payments)
+        self.slip_doc = Document.objects.create(entity_id=1, service='hdd', document_name='full-pagament')
+
+    def test_pending_payments_exclude_already_paid(self):
+        from communication.utils.sepa_return_service import get_sepa_return_pending_payments
+
+        self.assertEqual(list(get_sepa_return_pending_payments(self.sepa_return.id)), [self.pending_payment])
+
+    def test_return_attaches_invoice_and_payment_slip_of_pending_payments(self):
+        from unittest.mock import patch
+
+        from communication.tasks import generate_sepa_return_documents_task
+
+        with patch('communication.tasks.generate_report_payment_pdf', return_value=(self.slip_doc, None)) as payment_pdf:
+            result = generate_sepa_return_documents_task([self.comm.id], sepa_return_id=self.sepa_return.id)
+
+        self.assertEqual(result['status'], 'success')
+        payment_pdf.assert_called_once()
+        self.assertEqual(payment_pdf.call_args.args[0], self.pending_payment)
+        files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
+        self.assertEqual(files, [self.invoice_docs[0].id, self.slip_doc.id])
+        self.assertEqual(list(self.comm.invoices.all()), [self.pending_payment.invoice])
+
+    def test_remittance_attaches_only_invoices(self):
+        from unittest.mock import patch
+
+        from communication.tasks import generate_sepa_payments_document_pdf_task
+
+        with patch('communication.tasks.generate_report_payment_pdf') as payment_pdf:
+            result = generate_sepa_payments_document_pdf_task(
+                [self.comm.id], self.process.id, sepa_remittance_id=self.remittance.id
+            )
+
+        self.assertEqual(result['status'], 'success')
+        payment_pdf.assert_not_called()
+        files = set(self.comm.files.values_list('file_id', flat=True))
+        self.assertEqual(files, {doc.id for doc in self.invoice_docs})
+
+    def test_recipients_are_holders_of_pending_payments(self):
+        from unittest.mock import patch
+
+        from communication.views.manage_communication_process_view import filter_by_sepa_return
+
+        with patch(
+            'communication.views.manage_communication_process_view.filter_by_contract', return_value=[{'id': 1}]
+        ) as by_contract:
+            persons = filter_by_sepa_return({'id': self.sepa_return.id, 'message_types': ['letter']}, [])
+
+        self.assertEqual(persons, [{'id': 1}])
+        self.assertEqual(by_contract.call_args.args[0]['contracts'], [{'id': self.contract.id}])
+        self.assertEqual(by_contract.call_args.args[0]['person_type'], ['holder'])
+        self.assertEqual(by_contract.call_args.args[0]['address_type'], 'contract')
+
+    def test_recipients_empty_when_every_payment_is_paid(self):
+        from billing.models import Payment
+        from communication.views.manage_communication_process_view import filter_by_sepa_return
+
+        from unittest.mock import patch
+
+        Payment.objects.filter(id=self.pending_payment.id).update(status=self.paid_status)
+        with patch(
+            'communication.views.manage_communication_process_view.filter_by_contract', return_value=[{'id': 1}]
+        ) as by_contract:
+            persons = filter_by_sepa_return({'id': self.sepa_return.id, 'message_types': ['letter']}, [])
+
+        self.assertEqual(persons, [])
+        by_contract.assert_not_called()
+
+    def test_step_one_filters_on_payments(self):
+        from billing.models import Invoice, Payment
+        from contract.models import PaymentType
+        from communication.views.manage_communication_process_view import _sepa_payment_filters
+
+        direct_debit, _created = PaymentType.objects.get_or_create(token='DIRECT_DEBIT', defaults={'name': 'Domiciliació'})
+        Payment.objects.filter(id=self.pending_payment.id).update(payment_type_token='DIRECT_DEBIT')
+        Invoice.objects.filter(id=self.pending_payment.invoice_id).update(issue_date='2026-01-10')
+        Payment.objects.filter(id=self.pending_payment.id).update(reject_date='2026-02-01')
+        payments = Payment.objects.filter(id__in=[self.pending_payment.id, self.paid_payment.id])
+
+        def matching(filter_data):
+            return list(payments.filter(_sepa_payment_filters(filter_data)))
+
+        self.assertEqual(matching({'payment_types': [direct_debit.id]}), [self.pending_payment])
+        self.assertEqual(matching({'issue_start_date': '2026-01-01', 'issue_end_date': '2026-01-31'}), [self.pending_payment])
+        self.assertEqual(matching({'return_start_date': '2026-02-01', 'return_end_date': '2026-02-01'}), [self.pending_payment])
+
+    def test_several_returns_at_once(self):
+        from billing.models import Invoice, Payment, PaymentRemittanceReturn
+        from communication.utils.sepa_return_service import (
+            get_sepa_return_pending_payments, parse_sepa_return_ids,
+        )
+
+        self.assertEqual(parse_sepa_return_ids('3, 1,3,x'), [3, 1])
+        self.assertEqual(parse_sepa_return_ids(None), [])
+        other_payment = Payment.objects.create(invoice=Invoice.objects.create())
+        Payment.objects.filter(id=other_payment.id).update(status=self.returned_status)
+        other_return = PaymentRemittanceReturn.objects.create(token='RET-2')
+        other_return.payments.set([other_payment, self.pending_payment])
+
+        pending = get_sepa_return_pending_payments(f'{self.sepa_return.id},{other_return.id}')
+        self.assertEqual(set(pending), {self.pending_payment, other_payment})
+        self.assertEqual(pending.count(), 2)
+
+
 class SupplyCutRecipientChannelTests(TestCase):
     """Destinataris d'un tall segons els canals triats.
 
@@ -1192,6 +1334,43 @@ class ClaimDocumentsAttachMigrationTests(TestCase):
         self.run_migration()  # sense config
         self.assertTrue(MessageTemplate.objects.get().attach_claim_documents)
         self.assertFalse(ConfigProject.objects.filter(token='ATTACH_CLAIM_DOCUMENTS_ENABLED').exists())
+
+
+class SepaReturnOriginMigrationTests(TestCase):
+    """La migració 0039 crea l'origen de retorn SEPA i hi passa els avisos de devolució d'impagats."""
+
+    def run_migration(self):
+        from importlib import import_module
+        from django.apps import apps
+        migration = import_module('communication.migrations.0039_sepa_return_origin')
+        migration.create_sepa_return_origin(apps, None)
+
+    def test_creates_origin_and_moves_claim_return_templates(self):
+        from communication.models import MessageOrigin
+
+        claim = MessageOrigin.objects.create(token='claim', name='Impagats', position=2)
+        billing = MessageOrigin.objects.create(token='billing', name='Facturació', position=3)
+        claim_return = MessageTemplate.objects.create(name='Avís DEVOLUCIÓ bancària', origin=claim)
+        claim_notice = MessageTemplate.objects.create(name="Avís d'impagament", origin=claim)
+        billing_return = MessageTemplate.objects.create(name='Devolución de factura', origin=billing)
+
+        self.run_migration()
+        self.run_migration()  # idempotent
+
+        origin = MessageOrigin.objects.get(token='sepa_return')
+        self.assertEqual(origin.position, 4)
+        claim_return.refresh_from_db()
+        claim_notice.refresh_from_db()
+        billing_return.refresh_from_db()
+        self.assertEqual(claim_return.origin, origin)
+        self.assertEqual(claim_notice.origin, claim)
+        self.assertEqual(billing_return.origin, billing)
+
+    def test_empty_database_is_left_to_initial_data(self):
+        from communication.models import MessageOrigin
+
+        self.run_migration()
+        self.assertFalse(MessageOrigin.objects.exists())
 
 
 class ValidateEmailListTests(SimpleTestCase):
