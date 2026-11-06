@@ -6,12 +6,16 @@ class ProductFilter(filters.FilterSet):
     search = filters.CharFilter(method='filter_search')
     price_rates = filters.CharFilter(method='filter_price_rates')
     product_related = filters.CharFilter(method='filter_product_relation')
-    exploitation = filters.NumberFilter(field_name='exploitation__id', lookup_expr='exact')
+    exploitation = filters.NumberFilter(method='filter_exploitation')
     exclude_origin_token = filters.CharFilter(method='filter_exclude_origin_token')
     
     class Meta:
         model = Product
         fields = ['search', 'price_rates', 'exclude_origin_token', 'exploitation']
+
+    def filter_exploitation(self, queryset, name, value):
+        # Els productes sense explotació són transversals: surten a totes
+        return queryset.filter(Q(exploitation__id=value) | Q(exploitation__isnull=True))
     
     def filter_product_relation(self, queryset, name, value):
         return queryset.filter(product_relation=value)
