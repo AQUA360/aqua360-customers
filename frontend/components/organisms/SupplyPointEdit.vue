@@ -62,7 +62,7 @@ const loadFromDetail = async (data) => {
     : null;
 
   placement.value = data.placement
-    ? (placements.value.find(p => p.code === data.placement) ?? null)
+    ? (placements.value.find(p => p.code === (data.placement?.id ?? data.placement)) ?? null)
     : null;
 }
 
@@ -108,42 +108,50 @@ const updateSelected = (e) => {
 
 // Funció per guardar el supplypoint
 const saveSupplyPoint = async () => {
-  
-  const address = {
-    street: {
-      ...selected_connection.value.address_street,
-      street_id: selected_connection.value.address_street.id,
-      type_name: selected_connection.value.address_street.type.name,
-    },
-    street_number: {
-      ...selected_connection.value.address_street_number,
-      street_number_id: selected_connection.value.address_street_number?.id,
-    },
-    city: selected_connection.value.address_city.id,
-    province: selected_connection.value.address_city.province.id,
-    country: selected_connection.value.address_city.province.country.id,
-    postal_code: selected_connection.value.address_postal_code?.code
-  }
-  if(selected_connection.value.address_street.type_name.length==0) {
-    address.street.type_name = '-';
-  }
-  if(selected_property.value) {
-    address.property_cadastral = selected_property.value;
-  }
+  const isEditing = !!props.supply_point?.id;
+
   const data = {
     id: props.supply_point?.id || null,
     connection_id: selected_connection.value?.id,
     cadastral: spCadastral.value,
-    token: clusterToken.value,
+    token: token.value,
     type: type.value.code,
     source: source.value?.code,
     placement_id: placement.value?.code,
     supply_type: supply_type.value.code,
-    address_data: address,
     property_id: selected_property?.value?.id,
     property_cadastral: spCadastral?.value,
     is_active: true
   };
+
+  // L'adreça de l'escomesa només serveix d'adreça inicial en crear el punt.
+  // En editar no s'envia: una escomesa pot donar servei a diversos números i
+  // sobreescriuria el número, l'escala, el pis, la porta i l'ampliació del punt.
+  // L'adreça d'un punt existent es modifica des del seu detall (editar adreça).
+  if (!isEditing) {
+    const address = {
+      street: {
+        ...selected_connection.value.address_street,
+        street_id: selected_connection.value.address_street.id,
+        type_name: selected_connection.value.address_street.type.name,
+      },
+      street_number: {
+        ...selected_connection.value.address_street_number,
+        street_number_id: selected_connection.value.address_street_number?.id,
+      },
+      city: selected_connection.value.address_city.id,
+      province: selected_connection.value.address_city.province.id,
+      country: selected_connection.value.address_city.province.country.id,
+      postal_code: selected_connection.value.address_postal_code?.code
+    }
+    if(selected_connection.value.address_street.type_name.length==0) {
+      address.street.type_name = '-';
+    }
+    if(selected_property.value) {
+      address.property_cadastral = selected_property.value;
+    }
+    data.address_data = address;
+  }
 
   try {
     const response = await $SupplyPointApiService.save(data);

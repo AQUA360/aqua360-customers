@@ -4305,3 +4305,23 @@ msgstr "New registration"
 #: claimrequest/utils/claim_contract_export_service.py
 msgid "Comptador general"
 msgstr "General meter"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Saldo positiu"
+msgstr "Positive balance"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Deute"
+msgstr "Debt"
+
+#: statistics/utils/report_wallet_debt_balance_service.py
+msgid "Cal indicar una data."
+msgstr "A date is required."
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Deute i saldo per contracte a data"
+msgstr "Debt and balance per contract at a date"
+
+#: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
+msgid "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola i el deute pendent (pagaments pendents, processats, vençuts, retornats o en morositat) a la data indicada."
+msgstr "For each contract with a balance or debt, the positive wallet balance and the outstanding debt (pending, processed, overdue, returned or defaulted payments) on the given date."
