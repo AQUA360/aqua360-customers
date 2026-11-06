@@ -34,6 +34,7 @@ from contract.models import Contract
 from contract.serializers.contract_serializer import ContractWithPaymentsSerializer
 from notification.models import Notification
 from service.models import Exploitation, Company
+from service.utils.route_scope import effective_route_q
 from django.template.loader import render_to_string
 from xhtml2pdf import pisa
 from service.serializers.company_serializer import CompanySerializer
@@ -375,9 +376,9 @@ def _build_claim_request_filters(payload):
     if client_types:
         contract_filters &= Q(client_type__id__in=client_types)
     if zones:
-        contract_filters &= Q(supply_point_default__property__route_position__route__route_zone__id__in=zones)
+        contract_filters &= effective_route_q('route__route_zone__id__in', zones, prefix='supply_point_default__')
     if reading_batch_templates:
-        contract_filters &= Q(supply_point_default__property__route_position__route__reading_batch_template__id__in=reading_batch_templates)
+        contract_filters &= effective_route_q('route__reading_batch_template__id__in', reading_batch_templates, prefix='supply_point_default__')
     if contract_statuses:
         # Es poden triar les baixes expressament per consultar-ne el deute. Crear-hi
         # una gestió, en canvi, no: ho talla el serializer de l'alta.

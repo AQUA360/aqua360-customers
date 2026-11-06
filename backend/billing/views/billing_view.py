@@ -20,6 +20,7 @@ from coredata.models import ConfigProject
 from service.models import Exploitation, Meter, Route, SupplyPoint
 from service.serializers.route_serializer import RouteListSerializer
 from service.utils.route_positions_service import route_count_total_readings
+from service.utils.route_scope import effective_route, effective_route_q, effective_route_select_related
 from django.contrib.auth.models import Group
 from billing.tasks import create_billings
 from pricing.models import ProductOrigin
@@ -162,7 +163,7 @@ class BillingViewSet(viewsets.ModelViewSet):
         'anual': 12,
       }
       interval = PERIOD_TYPE_INTERVAL.get(biller.period_type, 3)
-      today = timezone.now().date()
+      today = timezone.localdate()
 
       # El token/name de `create_billings` (billing/tasks.py) porta el mes/any en que
       # es va CREAR el lot (`current_month`/`current_year` del moment d'execucio), no
@@ -224,7 +225,7 @@ class BillingViewSet(viewsets.ModelViewSet):
       # no només l'actual), ja sigui per lectures dins del rang o, si no en té, per
       # data d'emissió dins del rang.
       route_contracts = Contract.objects.filter(
-        supply_points__property__route_position__route__biller=biller,
+        effective_route_q('route__biller', biller, prefix='supply_points__'),
         created_at__date__lte=last_end_reading,
       ).filter(billable_status_filter).distinct()
 
@@ -276,7 +277,9 @@ class BillingViewSet(viewsets.ModelViewSet):
         else all_missing_contracts
       ).select_related(
         'status',
-        'supply_point_default__property__route_position__route__biller'
+        *effective_route_select_related('supply_point_default__'),
+        'supply_point_default__route_position__route__biller',
+        'supply_point_default__property__route_position__route__biller',
       )
 
       filtered_contract_ids = list(filtered_contracts.values_list('id', flat=True))
@@ -322,9 +325,15 @@ class BillingViewSet(viewsets.ModelViewSet):
       ).exclude(
         supply_points__isnull=True
       ).filter(
-        Q(supply_points__property__isnull=True) |
-        Q(supply_points__property__route_position__isnull=True) |
-        Q(supply_points__property__route_position__route__isnull=True)
+        # Algun punt sense ruta efectiva (ni pròpia ni de la finca)
+        Q(supply_points__route_position__isnull=False, supply_points__route_position__route__isnull=True) |
+        (
+          Q(supply_points__route_position__isnull=True) & (
+            Q(supply_points__property__isnull=True) |
+            Q(supply_points__property__route_position__isnull=True) |
+            Q(supply_points__property__route_position__route__isnull=True)
+          )
+        )
       ).values_list('id', flat=True).distinct())
 
       contract_ids_with_price_rates = set(Contract.objects.filter(
@@ -454,8 +463,9 @@ class BillingViewSet(viewsets.ModelViewSet):
               missing_reasons.append('unprocessed_invoice')
     if contract.id in no_route_contract_ids:
       missing_reasons.append('no_route')
-    if contract.supply_point_default and contract.supply_point_default.property and contract.supply_point_default.property.route_position and contract.supply_point_default.property.route_position.route and contract.supply_point_default.property.route_position.route.biller and contract.supply_point_default.property.route_position.route.biller != billing.biller:
-      missing_reasons.append({'current_route': contract.supply_point_default.property.route_position.route.biller.name})
+    current_route = effective_route(contract.supply_point_default)
+    if current_route and current_route.biller and current_route.biller != billing.biller:
+      missing_reasons.append({'current_route': current_route.biller.name})
     if contract.id not in contract_ids_with_price_rates:
       missing_reasons.append('no_price_rate')
     if contract.id not in contract_ids_with_meters:
@@ -494,6 +504,7 @@ class BillingViewSet(viewsets.ModelViewSet):
           billing_missing=billing,
           missing_start=start_date,
           missing_end=end_date,
+          exploitation=billing.biller.exploitation if billing.biller_id else None,
         )
         new_reading_batch.fix_meters.set(meters)
         
@@ -667,6 +678,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -752,6 +764,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -950,13 +963,7 @@ class BillingBadgesView(views.APIView):
       # Validar les dades rebudes
       response = []
       exploitation_id = request.query_params.get('exploitation')
-      try:
-        exploitation = Exploitation.objects.get(id=exploitation_id)
-      except Exception as e:
-        print(e)
-        pass
-        
-      
+
       default_status = BillingStatus.objects.get(is_default=True)
       processed_status_token = ConfigProject.objects.get(token='billing_batch_processed').value
       processed_status = BillingStatus.objects.get(token=processed_status_token)
@@ -966,19 +973,9 @@ class BillingBadgesView(views.APIView):
       
       
       
-      # Filter by exploitation if provided
       if exploitation_id:
-          default_billings = default_billings.filter(
-              Q(invoices__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__isnull=True)
-          ).distinct()
-          
-          active_billings = active_billings.filter(
-              Q(invoices__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__isnull=True)
-          ).distinct()
+          default_billings = default_billings.filter(biller__exploitation_id=exploitation_id)
+          active_billings = active_billings.filter(biller__exploitation_id=exploitation_id)
       
       if active_billings:
         total = 0
@@ -1115,7 +1112,8 @@ class StartBillingView(views.APIView):
         routes = biller.routes.all()
         billing.routes.set(routes)
       else:
-        routes = Route.objects.filter(is_active = True).all()
+        from billing.utils.exploitation_scope import routes_for_exploitation
+        routes = routes_for_exploitation(biller.exploitation_id)
         billing.routes.set(routes)
       billing.save()
 

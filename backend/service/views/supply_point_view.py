@@ -7,11 +7,13 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db.models import Prefetch, F, CharField, Value, Exists, OuterRef, Q
-from django.db.models.functions import Concat
+from django.db.models.functions import Coalesce, Concat
 
 from auth.permissions import PermissionManager
 from billing.models import EstimatedBagMovement, Reading
-from service.models import Meter, MeterStatus, SupplyCut, SupplyPoint, SupplyPointObservation, Property
+from service.models import Meter, MeterStatus, Route, SupplyCut, SupplyPoint, SupplyPointObservation, Property
+from service.utils.route_bulk_service import set_supply_point_route
+from service.utils.route_scope import serialize_effective_route
 from service.serializers.supply_point_serializer import SupplyPointListSerializer, SupplyPointSerializer
 from service.filters.supply_point_filter import SupplyPointFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -96,6 +98,7 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
             'type',
             'status',
             'property__route_position',
+            'route_position',
             'meter',
             'cluster_nozzle',
             'connection__exploitation',
@@ -139,7 +142,7 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
             meter_code=F('meter__code'),
             connection_token=F('connection__token'),
             connection_exploitation_name=F('connection__exploitation__name'),
-            property_route_position_token=F('property__route_position__token'),
+            property_route_position_token=Coalesce(F('route_position__token'), F('property__route_position__token')),
             address_complete=F('address__address_search'),
             address_city=F('address__city__name'),
             placement_name=F('placement__name'),
@@ -329,6 +332,41 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         serializer = SupplyPointSerializer(supply_point, context={'request': request})
         return Response(serializer.data)
     
+    @action(detail=True, methods=['post'], url_path='set-route')
+    def set_route(self, request, pk=None):
+        """Assigna al punt una ruta pròpia, diferent de la de la finca.
+
+        Body: { "route_id": <int|null>, "position": <int|null> }. Amb
+        route_id null, el punt torna a seguir la ruta de la finca.
+        """
+        supplypoint_permissions = PermissionManager.get_model_permissions(request.user, 'supplypoint', 'service')
+        if not supplypoint_permissions['can_change']:
+            return Response({"error": "Insufficient permissions to update supply points"}, status=status.HTTP_403_FORBIDDEN)
+
+        supply_point = SupplyPoint.objects.select_related(
+            'property__route_position', 'route_position').filter(pk=pk).first()
+        if not supply_point:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        route = None
+        route_id = request.data.get('route_id')
+        if route_id:
+            route = Route.objects.filter(id=route_id, is_active=True).first()
+            if not route:
+                return Response({'detail': 'La ruta no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
+        position = request.data.get('position')
+        try:
+            position = int(position) if position not in (None, '') else None
+        except (TypeError, ValueError):
+            return Response({'detail': 'La posició ha de ser un enter.'}, status=status.HTTP_400_BAD_REQUEST)
+        if position is not None and position < 1:
+            return Response({'detail': 'La posició ha de ser 1 o més.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        set_supply_point_route(supply_point, route, position)
+        supply_point = SupplyPoint.objects.select_related(
+            'route_position__route__route_zone', 'property__route_position__route__route_zone').get(pk=supply_point.pk)
+        return Response({'effective_route': serialize_effective_route(supply_point)})
+
     @action(detail=False, methods=['post'], url_path='bulk-update-property')
     def bulk_update_property(self, request):
         supplypoint_permissions = PermissionManager.get_model_permissions(request.user, 'supplypoint', 'service')
@@ -398,6 +436,9 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         elif self.action == 'update_meter':
             return [IsAuthenticated()]
         elif self.action == 'bulk_update_property':
+            return [IsAuthenticated()]
+        elif self.action == 'set_route':
+            # La vista comprova el permís de modificar punts (no el d'afegir).
             return [IsAuthenticated()]
         return super().get_permissions()
 

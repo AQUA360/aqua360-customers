@@ -12,6 +12,7 @@ from django.utils.translation import gettext as _
 from billing.models import Invoice, Reading
 from contract.models import Contract
 from coredata.models import ConfigProject
+from service.utils.route_scope import effective_route_position
 
 
 def _active_contract_status_token():
@@ -179,6 +180,7 @@ def build_invoice_reading_summary_csv_bytes(progress_callback=None):
             'client_type',
             'category',
             'supply_point_default__connection__exploitation',
+            'supply_point_default__route_position__route__route_zone',
             'supply_point_default__property__route_position__route__route_zone',
             'supply_point_default__meter__meter_general',
         )
@@ -199,8 +201,7 @@ def build_invoice_reading_summary_csv_bytes(progress_callback=None):
         if progress_callback:
             progress_callback(idx, total)
         sp = c.supply_point_default
-        prop = sp.property if sp else None
-        rp = prop.route_position if prop else None
+        rp = effective_route_position(sp)
         route = rp.route if rp else None
         rz = route.route_zone if route else None
         conn = sp.connection if sp else None

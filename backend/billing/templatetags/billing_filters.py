@@ -5,6 +5,8 @@ from django.utils import formats
 from django.utils.translation import gettext as _
 import re
 
+from service.utils.route_scope import effective_route
+
 register = template.Library()
 
 @register.filter
@@ -113,9 +115,9 @@ def _invoice_period_months(invoice):
     biller = getattr(getattr(invoice, 'billing', None), 'biller', None)
     if biller is None:
         # Factures fora d'un lot: la periodicitat penja de la ruta del punt de
-        # subministrament (mateix camí que billing/tasks.py::fill_invoice_periods).
+        # subministrament (ruta efectiva: la pròpia del punt o la de la finca).
         try:
-            biller = invoice.contract.supply_point_default.property.route_position.route.biller
+            biller = effective_route(invoice.contract.supply_point_default).biller
         except Exception:
             biller = None
     months = PERIOD_TYPE_MONTHS.get(getattr(biller, 'period_type', None), DEFAULT_PERIOD_MONTHS)

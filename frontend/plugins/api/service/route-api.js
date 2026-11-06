@@ -373,6 +373,60 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Afegir un carrer sencer a la ruta: previsualització i confirmació amb el mateix cos
+  // { street_id, number_from, number_to, parity, order, group_by, insert_at, assigned }
+  const addStreetPreview = async (routeId, data) => {
+    const apiUrl = `${apiHost}${entity}${routeId}/add-street/preview/`;
+    return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(data), { 'Content-Type': 'application/json' });
+  }
+
+  const addStreet = async (routeId, data) => {
+    const apiUrl = `${apiHost}${entity}${routeId}/add-street/`;
+    return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(data), { 'Content-Type': 'application/json' });
+  }
+
+  // Importació de rutes des d'Excel/CSV
+  const downloadImportTemplate = async () => {
+    const apiUrl = `${apiHost}${entity}import/template/`;
+    const authToken = localStorage.getItem('auth_token') || '';
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: { 'Authorization': `Token ${authToken}` }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.detail || 'Error descarregant la plantilla');
+    }
+
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = 'route_import_template.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 250);
+  }
+
+  const buildImportFormData = (file, mode) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', mode);
+    return formData;
+  }
+
+  const importPreview = async (file, mode = 'append') => {
+    const apiUrl = `${apiHost}${entity}import/preview/`;
+    return await $apiManager.fetch(apiUrl, 'POST', buildImportFormData(file, mode));
+  }
+
+  const importConfirm = async (file, mode = 'append') => {
+    const apiUrl = `${apiHost}${entity}import/confirm/`;
+    return await $apiManager.fetch(apiUrl, 'POST', buildImportFormData(file, mode));
+  }
+
   const apiService = {
     getData,
     getDetail,
@@ -395,7 +449,12 @@ export default defineNuxtPlugin(nuxtApp => {
     getRouteZones,
     createZone,
     updateZone,
-    getPermissions
+    getPermissions,
+    addStreetPreview,
+    addStreet,
+    downloadImportTemplate,
+    importPreview,
+    importConfirm
   }
 
   nuxtApp.provide(provideName, apiService);

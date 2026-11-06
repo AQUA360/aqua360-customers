@@ -33,6 +33,7 @@ class PropertySerializer(serializers.ModelSerializer):
 
 
     supply_points = serializers.SerializerMethodField()
+    supply_points_other_routes = serializers.SerializerMethodField()
     class Meta:
         model = Property
         fields = '__all__'
@@ -257,6 +258,22 @@ class PropertySerializer(serializers.ModelSerializer):
                 'route': obj.route_position.route
             }
         return None
+    def get_supply_points_other_routes(self, obj):
+        # Punts de la finca amb posició de ruta pròpia diferent de la de la finca
+        supply_points = obj.supply_points.filter(route_position__isnull=False)
+        if obj.route_position_id:
+            supply_points = supply_points.exclude(route_position_id=obj.route_position_id)
+        supply_points = supply_points.select_related('route_position__route').order_by('id')
+        return [
+            {
+                'id': sp.id,
+                'token': sp.token,
+                'route_token': sp.route_position.route.token if sp.route_position.route_id else None,
+                'position_token': sp.route_position.token,
+            }
+            for sp in supply_points
+        ]
+
     def get_supply_points(self, obj):
         from .supply_point_serializer import SupplyPointListSerializer  # Local import to avoid circular import
         supply_points = obj.supply_points.all()

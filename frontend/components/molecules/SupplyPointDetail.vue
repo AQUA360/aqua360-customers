@@ -5,6 +5,7 @@ import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { formatDate } from '~/utils/date';
 import Date from '~/components/atoms/Date.vue';
 import ButtonOutline from '../atoms/ButtonOutline.vue';
+import SupplyPointRouteModal from '~/components/molecules/SupplyPointRouteModal.vue';
 import { useToast } from 'vue-toastification';
 
 const { $AddressHelper, $SupplyPointApiService, $ConfigProjectApiService } = useNuxtApp();
@@ -28,6 +29,11 @@ const props = defineProps({
     required: false
   },
   reduced: {
+    type: Boolean,
+    default: false
+  },
+  // Permís de canvi sobre el punt (p. ex. objectPermissions.can_change del SupplyPointRegion)
+  canChange: {
     type: Boolean,
     default: false
   }
@@ -145,6 +151,38 @@ watch(() => props.data, (newValue) => {
 
 const showMap = () => {
   emit('show-map');
+}
+
+// Ruta efectiva del punt: la pròpia (inherited=false) o la de la finca (inherited=true)
+const showRouteModal = ref(false);
+const effectiveRoute = computed(() => {
+  if (!localData.value) return null;
+  if ('effective_route' in localData.value) return localData.value.effective_route || null;
+  // Compatibilitat amb respostes sense `effective_route`: es mostra la ruta de la finca
+  const routePosition = localData.value.property?.route_position;
+  if (!routePosition) return null;
+  return {
+    route_id: routePosition.route?.id,
+    route_token: routePosition.route?.token,
+    route_name: routePosition.route?.name,
+    route_zone_name: routePosition.route?.route_zone?.name || routePosition.route?.route_zone?.token,
+    position_id: routePosition.id,
+    position: routePosition.position,
+    position_token: routePosition.token,
+    inherited: true
+  };
+});
+// També als subpanells (p. ex. des de la finca): el modal es teleporta al body.
+const canChangeRoute = computed(() => props.canChange && !props.reduced);
+
+const onRouteSaved = async (newEffectiveRoute) => {
+  if (localData.value) {
+    localData.value.effective_route = newEffectiveRoute;
+  }
+  // Es refresca el detall per tenir la resta de dades de ruta coherents
+  if (!props.data) {
+    await fetchData();
+  }
 }
 </script>
 
@@ -354,16 +392,27 @@ const showMap = () => {
         </div>
       </FieldDetail>
       <FieldDetail :label="$t('route')">
-        <span v-if="isSubRegion && localData.property && localData.property.route_position">{{
-          localData.property.route_position.token }}</span>
-        <button v-else-if="localData.property && localData.property.route_position"
-          @click="showDetail('RouteRegion', localData.property.route_position.route.id)"
-          class="text-start text-sky-500 underline">{{ localData.property?.route_position?.token }}</button>
-        <span v-else>-</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <template v-if="effectiveRoute">
+            <span v-if="isSubRegion">{{ effectiveRoute.position_token || effectiveRoute.route_token }}</span>
+            <button v-else @click="showDetail('RouteRegion', effectiveRoute.route_id)"
+              class="text-start text-sky-500 underline">{{ effectiveRoute.position_token || effectiveRoute.route_token }}</button>
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
+              :class="effectiveRoute.inherited === false ? 'bg-violet-100 text-violet-800' : 'bg-slate-100 text-slate-600'">
+              {{ effectiveRoute.inherited === false ? $t('service_block.route_own_badge') : $t('service_block.route_property_badge') }}
+            </span>
+          </template>
+          <span v-else>-</span>
+          <button v-if="canChangeRoute" type="button" @click="showRouteModal = true"
+            class="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-medium px-2 py-0.5 rounded hover:bg-sky-50"
+            :title="$t('service_block.supply_point_route_change')">
+            <Icon name="fa6-solid:route" class="text-[10px]" />
+            {{ $t('service_block.supply_point_route_change') }}
+          </button>
+        </div>
       </FieldDetail>
       <FieldDetail :label="$t('service_block.zone')">
-        <span v-if="localData.property && localData.property?.route_position?.route?.route_zone">
-          {{ localData.property?.route_position?.route?.route_zone?.token }}</span>
+        <span v-if="effectiveRoute?.route_zone_name">{{ effectiveRoute.route_zone_name }}</span>
         <span v-else>-</span>
       </FieldDetail>
     </div>
@@ -437,6 +486,9 @@ const showMap = () => {
       <ButtonOutline @click="activar">{{ $t('common.activate') }} {{ $t('supply_point') }}</ButtonOutline>
     </div>
     <hr v-if="!reduced" class="my-2" />
+
+    <SupplyPointRouteModal v-if="canChangeRoute" v-model:open="showRouteModal" :supply-point-id="localData.id"
+      :effective-route="effectiveRoute" @saved="onRouteSaved" />
   </div>
 </template>
 

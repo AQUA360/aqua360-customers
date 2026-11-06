@@ -622,6 +622,11 @@ getConfigProject();
             :class="{ 'bg-slate-200': $route.path.indexOf('/settings/smart_metering/') != -1 }">{{
               t('settings_block.smart_metering_config') }}</NuxtLink>
         </li>
+        <li class="mb-1">
+          <NuxtLink to="/settings/send-batch/" class="text-sky-500 underline hover:no-underline"
+            :class="{ 'bg-slate-200': $route.path.indexOf('/settings/send-batch/') != -1 }">{{
+              t('settings_block.send_batch_config') }}</NuxtLink>
+        </li>
       </ul>
 
       <details v-if="permissions?.permissions?.view_user" class="text-base  pl-6">

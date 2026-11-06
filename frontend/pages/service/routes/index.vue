@@ -131,6 +131,12 @@ onMounted(async () => {
 const detail = ref(null);
 const selectedItemId = ref(null);
 
+// Importació de rutes des d'Excel/CSV
+const showImport = ref(false);
+const onImportDone = () => {
+  getData(searchInput.value, pagination.value.page, sortBy.value, sortDesc.value);
+};
+
 const showDetail = async (id) => {
   await toggleRegion(false);
   detail.value = id;
@@ -149,7 +155,13 @@ watch(searchInput, () => {
   <div id="wrapper" class="text-base">
     <div class="flex justify-between items-center mb-2">
       <H1 class="mb-2">{{ t('common.routes') }}</H1>
-      <NuxtLink v-if="permissions?.can_add" to="/service/routes/add" class="button-primary">{{ $t('service_block.new_route') }}</NuxtLink>
+      <div class="flex items-center gap-2">
+        <button v-if="permissions?.can_add" type="button" class="button-default flex items-center gap-2"
+          @click="showImport = true">
+          <Icon name="fa6-solid:file-import" /> {{ t('service_block.route_import_button') }}
+        </button>
+        <NuxtLink v-if="permissions?.can_add" to="/service/routes/add" class="button-primary">{{ $t('service_block.new_route') }}</NuxtLink>
+      </div>
     </div>
 
     <form id="form_filter" role="search"
@@ -223,4 +235,6 @@ watch(searchInput, () => {
         @show-subregion="handleSubRegionEvent" @close-subregion="toggleRegion(false)"></RouteRegion>
     </div>
   </div>
+
+  <MoleculesRouteImportModal v-if="permissions?.can_add" v-model:open="showImport" @done="onImportDone" />
 </template>

@@ -4,6 +4,10 @@ from watchdog.persons_without_contact import (
     ZOMBIE_PERSONS_CHECK_NAME,
 )
 from watchdog.services import DataIntegrityService
+from watchdog.termination_used_aca import (
+    TERMINATION_USED_ACA_CHECK_NAME,
+    WATCHDOG_FIX_TERMINATION_USED_ACA_COMMANDS,
+)
 import json
 import time
 import sys
@@ -190,6 +194,13 @@ class Command(BaseCommand):
                             f.write(
                                 "  python manage.py fix_aca_lineitemtype_articles\n"
                             )
+                            f.write("\n")
+                        if check_name == TERMINATION_USED_ACA_CHECK_NAME:
+                            f.write(
+                                "\n💡 Per arreglar aquests errors, pots usar:\n"
+                            )
+                            for fix_command in WATCHDOG_FIX_TERMINATION_USED_ACA_COMMANDS:
+                                f.write(f"  {fix_command}\n")
                             f.write("\n")
                         if check_name == "ConfigProject JSON carregat correctament":
                             f.write(
@@ -497,6 +508,16 @@ class Command(BaseCommand):
                             self.stdout.write(
                                 "  python manage.py watchdog_fix_config_project"
                             )
+                            self.stdout.write("")
+                        if check_name == TERMINATION_USED_ACA_CHECK_NAME:
+                            self.stdout.write("")
+                            self.stdout.write(
+                                self.style.WARNING(
+                                    "💡 Per arreglar aquests errors, pots usar:"
+                                )
+                            )
+                            for fix_command in WATCHDOG_FIX_TERMINATION_USED_ACA_COMMANDS:
+                                self.stdout.write(f"  {fix_command}")
                             self.stdout.write("")
                         if check_name == "Adreces Orfes":
                             self.stdout.write("")

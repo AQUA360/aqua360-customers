@@ -10,8 +10,7 @@ from contract.filters import ContractTerminationRequestFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 from django.http import JsonResponse
-from coredata.models import ConfigProject
-from contract.models import (ContractTerminationRequest, ContractTerminationStatus, ContractStatus)
+from contract.models import ContractTerminationRequest
 from contract.serializers.contract_termination_request_serializer import (ContractTerminationRequestSerializer, ContractTerminationRequestSaveSerializer, ContractTerminationRequestListSerializer)
 from contract.permissions import ContractTerminationRequestPermission
 from contract.utils.contract_termination_service import getTerminationDocument
@@ -79,42 +78,9 @@ class ContractTerminationRequestViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['put'], url_path='cancel')
     def cancel_termination(self, request, pk=None):
         instance = self.get_object()
-        cancel_status = ContractTerminationStatus.objects.get(token=ConfigProject.objects.get(token='contract_termination_cancelled_token').value)
         try:
-            instance.status = cancel_status
-            instance.save()
-            readings = instance.readings.all()
-            readings.update(is_control=True)
-            contract = instance.contract
-            contract.status = ContractStatus.objects.get(token=ConfigProject.objects.get(token='contract_active_token').value)
-            contract.termination_date = None
-            contract.save()
-
-            # reset bails status back to "No Retornat" if the termination is cancelled
-            from contract.models import Bail, BailStatus
-            from logger.models import LogBailStatus
-            from django.utils import timezone
-            
-            pending_bail_token = ConfigProject.objects.get(token='bail_status_pending_token').value
-            unreturned_bail_token = ConfigProject.objects.get(token='bail_status_unreturned_token').value
-            unreturned_status = BailStatus.objects.get(token=unreturned_bail_token)
-            
-            bails = Bail.objects.filter(contract=contract, status__token=pending_bail_token)
-            for bail in bails:
-                prev_status = bail.status
-                bail.status = unreturned_status
-                bail.return_date = None
-                bail.invoice = None
-                bail.save()
-                
-                LogBailStatus.objects.create(
-                    object=bail,
-                    previous_status=prev_status,
-                    current_status=unreturned_status,
-                    user=request.user,
-                    timestamp=timezone.now(),
-                    observation="Baixa de contracte cancel·lada, fiança restablerta a No Retornat"
-                )
+            from contract.utils.contract_termination_service import cancel_contract_termination
+            cancel_contract_termination(instance, request.user)
         except Exception as e:
             logger.exception("Error inesperat")
             return JsonResponse({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)

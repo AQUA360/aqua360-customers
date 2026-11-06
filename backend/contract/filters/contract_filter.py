@@ -9,6 +9,7 @@ from functools import reduce
 from operator import and_
 from urllib.parse import unquote
 import re
+from service.utils.route_scope import effective_route_q
 
 
 class ContractFilter(filters.FilterSet):
@@ -200,7 +201,9 @@ class ContractFilter(filters.FilterSet):
     def filter_zone(self, queryset, name, value):
         if value:
             value_ids = value.split(',')
-            return queryset.filter(supply_point_default__property__route_position__route__route_zone__id__in=value_ids)
+            return queryset.filter(
+                effective_route_q('route__route_zone__id__in', value_ids, prefix='supply_point_default__')
+            )
         return queryset
     
     def filter_holder(self, queryset, name, value):

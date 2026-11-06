@@ -347,6 +347,30 @@ const newZone = async (new_zone) => {
 
 const reordering = ref(false);
 
+// Afegir un carrer sencer (només amb la ruta ja desada)
+const showAddStreet = ref(false);
+
+const reloadPositions = async () => {
+  currentPage.value = 1;
+  hasMorePositions.value = true;
+  allPositions.value = [];
+  await getPositions(1, false);
+};
+
+// El carrer s'afegeix directament al backend: si hi ha canvis locals pendents de desar,
+// les posicions poden quedar desplaçades respecte del que es veu
+const openAddStreet = () => {
+  const hasLocalChanges = newPositions.value.length > 0
+    || editedPositions.value.length > 0
+    || selected_positions_to_remove.value.length > 0;
+  if (hasLocalChanges && !confirm(t('service_block.route_add_street_unsaved_warning'))) return;
+  showAddStreet.value = true;
+};
+
+const onStreetAdded = async () => {
+  await reloadPositions();
+};
+
 // Arrossegar una posició reordena la llista. La nova posició "objectiu" que
 // enviem al backend és la del veí adjacent en l'ordre resultant (el que ja
 // no s'ha mogut): l'endpoint /move/ ja s'encarrega de desplaçar en cadena
@@ -1007,11 +1031,14 @@ onUnmounted(() => {
               </div>
             </div>
             
-            <div class="footering">
+            <div class="footering flex">
               <button @click="openRegion('position')"
                 :class="{ 'invalid': attemptedSave && allPositions.length == 0 }"
                 class="display-block block w-full px-1 py-1 text-base text-slate-400 border-b hover:bg-slate-200 text-left active:bg-slate-300">
                 <Icon name="fa6-solid:plus" class="text-slate-400" /> {{ $t('common.new_register') }}</button>
+              <button v-if="props.route?.id" type="button" @click="openAddStreet"
+                class="shrink-0 whitespace-nowrap px-3 py-1 text-base text-sky-600 border-b border-l hover:bg-slate-200 active:bg-slate-300 flex items-center gap-1">
+                <Icon name="fa6-solid:road" /> {{ t('service_block.route_add_street') }}</button>
             </div>
           </div>
         </div>
@@ -1045,6 +1072,8 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    <MoleculesRouteAddStreetModal v-if="props.route?.id" v-model:open="showAddStreet" :route-id="props.route.id"
+      @done="onStreetAdded" />
   </div>
 </template>
 
