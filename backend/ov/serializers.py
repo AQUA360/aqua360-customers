@@ -25,6 +25,7 @@ from billing.models import (
 from billing.utils.payment_service import get_status_map
 from decouple import config
 from coredata.models import ConfigProject, Person, PersonAddress, PersonBank, PersonContact, Country
+from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from django.utils import timezone
 from django.db import transaction
 from django.utils.dateparse import parse_date
@@ -749,6 +750,17 @@ class InvoicePDFSerializer(serializers.ModelSerializer):
 
     def get_due_date_formatted(self, obj):
         return obj.due_date.strftime("%d/%m/%Y") if obj.due_date else ""
+
+
+def _validated_procedure_iban(value):
+    """Normalitza l'IBAN d'un tràmit (sense espais, en majúscules) i, si no és
+    buit, en valida el format i el dígit de control (mòdul 97 i, per a `ES`,
+    els dígits de control interns) amb el validador comú del PA. Un IBAN buit
+    es deixa passar: l'obligatorietat per a domiciliació es comprova a part."""
+    iban = (value or "").replace(" ", "").upper()
+    if iban and not is_valid_iban(iban):
+        raise serializers.ValidationError("Invalid IBAN.")
+    return iban
 
 
 def mask_iban(iban):
@@ -1653,6 +1665,8 @@ class PriceRateDictionarySerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
 
     def get_name(self, instance):
+        """Return the tariff name, falling back to its product name for blank or
+        case-insensitive "GENERAL" names; retain the original if no product exists."""
         return ProcedureTariffDictionarySerializer._resolved_name(instance)
 
     class Meta:
@@ -2135,7 +2149,7 @@ class ContractProcedureRequestSerializer(serializers.Serializer):
         return value
 
     def validate_iban(self, value):
-        return (value or "").replace(" ", "").upper()
+        return _validated_procedure_iban(value)
 
     def validate_iban_holder_dni(self, value):
         return (value or "").upper()
@@ -2175,6 +2189,12 @@ class ContractTerminationProcedureRequestSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        """Add the resolved termination type to attrs and return it.
+
+        Raise ValidationError on reason_token if a nonblank token is unknown.
+        A blank or absent token yields None when this method is called directly;
+        normal field validation requires a nonblank reason_token.
+        """
         reason_token = (attrs.get("reason_token") or "").strip()
         termination_type = None
         if reason_token:
@@ -2229,6 +2249,12 @@ class ContractChangeOutgoingSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        """Return attrs with termination_type resolved from reason_token.
+
+        Missing, null, or blank tokens yield None for the view's fallback.
+        Any existing termination type is accepted, including change-of-name
+        types. Raise ValidationError on reason_token for an unknown token.
+        """
         reason_token = (attrs.get("reason_token") or "").strip()
         termination_type = None
         if reason_token:
@@ -2276,17 +2302,31 @@ class ContractChangeIncomingSerializer(serializers.Serializer):
     )
 
     def validate_language(self, value):
+        """Return the language unchanged, allowing blank or null values.
+
+        Raise ValidationError for a nonempty code absent from settings.LANGUAGES.
+        """
         if value and value not in dict(settings.LANGUAGES):
             raise serializers.ValidationError("Unsupported language.")
         return value
 
     def validate_iban(self, value):
-        return (value or "").replace(" ", "").upper()
+        """Remove ASCII spaces and uppercase the IBAN; return "" for null values.
+
+        Raise ValidationError if a nonempty IBAN fails the format/checksum check.
+        """
+        return _validated_procedure_iban(value)
 
     def validate_iban_holder_dni(self, value):
+        """Uppercase the bank account holder's DNI; return "" for null values."""
         return (value or "").upper()
 
     def validate(self, attrs):
+        """Return attrs with the active procedure type and payment type resolved.
+
+        Require all four bank fields for DIRECT_DEBIT. Raise ValidationError
+        with field-specific errors for unknown types or missing bank fields.
+        """
         errors = {}
         procedure_type = ContractRequestType.objects.filter(
             token=attrs["procedure_type_token"], is_active=True

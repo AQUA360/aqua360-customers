@@ -1605,6 +1605,11 @@ class ContractRequestTypeDictionaryOVView(APIView):
         # Mateixa resolució que `PriceRateDictionarySerializer.get_name`:
         # nom genèric ("GENERAL") o buit -> nom del producte; així l'ordre
         # coincideix amb el nom que es mostra.
+        """Return active request types ordered by name and ID, with active tariffs.
+
+        Each tariff list is ordered by its display name and ID and is empty
+        when no active tariffs are associated with that request type.
+        """
         resolved_rate_name = Case(
             When(
                 Q(name__isnull=True)
@@ -1616,6 +1621,8 @@ class ContractRequestTypeDictionaryOVView(APIView):
         )
 
         def active_rates(relation, to_attr):
+            """Prefetch active tariffs from relation into the list named by to_attr,
+            ordered by display name and ID."""
             return Prefetch(
                 relation,
                 queryset=PriceRate.objects.filter(is_active=True)
@@ -2397,11 +2404,10 @@ def _resolve_contract_procedure_person(dni):
 
 
 def _generate_contract_request_token(is_change_of_name=False):
-    """Genera el token d'una ContractRequest com ho fa el PA.
+    """Return a contract request token using the back office generation rules.
 
-    Es replica la lògica de `ContractRequestViewSet.create` perquè les
-    sol·licituds creades des de l'OV tinguin el mateix format que les creades
-    manualment, també en desplegaments amb `name_utils_personalized`.
+    is_change_of_name is passed to the personalized generator when installed;
+    otherwise it has no effect on the standard token generation service.
     """
     using_personalized = getattr(
         name_utils_module.generate_token, "__module__", ""
@@ -2468,6 +2474,15 @@ class ContractProcedureOVView(APIView):
     throttle_classes = [ContractProcedureThrottle]
 
     def post(self, request):
+        """Create a request in the default status with payment and tariff records.
+
+        Return 201 with request details and a masked IBAN. Invalid input or an
+        ambiguous supply point returns 400; missing people, properties, supply
+        points, or dictionary entries return 404. An existing open request for
+        the supply point returns 409; a missing default status
+        returns 500. Exceptions during creation propagate and roll back the
+        transaction's writes.
+        """
         serializer = ContractProcedureRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
@@ -2732,6 +2747,8 @@ CONTRACT_TERMINATION_CLOSED_STATUS_FALLBACKS = {
 
 
 def _config_project_value(token, default=None):
+    """Return the first matching configuration value, or default if absent,
+    null, or empty. Whitespace-only values are returned unchanged."""
     value = (
         ConfigProject.objects.filter(token=token)
         .values_list("value", flat=True)
@@ -2779,6 +2796,14 @@ class ContractTerminationProcedureOVView(APIView):
     throttle_classes = [ContractTerminationProcedureThrottle]
 
     def post(self, request):
+        """Create a termination request and optional observation in the default status.
+
+        Return 201 with the request token, contract token, status, type, and
+        creation time. Invalid input returns 400; an unavailable contract or
+        holder DNI mismatch returns 404. A terminated contract or an existing
+        open termination returns 409. Missing default configuration returns
+        500. Exceptions during creation propagate and roll back its writes.
+        """
         serializer = ContractTerminationProcedureRequestSerializer(
             data=request.data
         )
@@ -2929,6 +2954,17 @@ class ContractChangeProcedureOVView(APIView):
     throttle_classes = [ContractChangeProcedureThrottle]
 
     def post(self, request):
+        """Create linked termination and incoming holder requests atomically.
+
+        Copy the contract's active tariffs and transferable variables, and
+        create payment records and a status log. An omitted termination reason
+        uses the change-of-name type ordered first by position (nulls last),
+        then ID. Return 201 with both request tokens and their status details.
+        Invalid input returns 400, missing people or a contract/holder mismatch
+        returns 404, conflicts return 409, and missing default statuses or a
+        fallback termination type returns 500. Exceptions during creation
+        propagate and roll back the transaction's writes.
+        """
         serializer = ContractChangeProcedureRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -3071,19 +3107,25 @@ class ContractChangeProcedureOVView(APIView):
             )
             # Tarifes periòdiques actives heretades del contracte actual; les
             # d'alta i els tipus d'ordre, els de canvi de nom del tipus de tràmit.
+            # Còpies pròpies (no les mateixes files) de les tarifes actives del
+            # contracte actual: així canviar-les a la sol·licitud o al nou
+            # contracte (p. ex. la referència BOP) no altera l'historial del
+            # contracte anterior.
             contract_request.price_rates.set(
-                [
-                    ContractPriceRate.objects.create(
-                        token=rate.token,
-                        supply_point=rate.supply_point,
-                        price_rate=rate.price_rate,
-                        is_active=rate.is_active,
-                        is_bop_reference=rate.is_bop_reference,
-                    )
-                    for rate in contract.price_rates.filter(
-                        is_active=True, price_rate__is_active=True
-                    )
-                ]
+                ContractPriceRate.objects.bulk_create(
+                    [
+                        ContractPriceRate(
+                            token=source.token,
+                            supply_point=source.supply_point,
+                            price_rate=source.price_rate,
+                            is_bop_reference=source.is_bop_reference,
+                            is_active=True,
+                        )
+                        for source in contract.price_rates.filter(
+                            is_active=True, price_rate__is_active=True
+                        ).order_by("id")
+                    ]
+                )
             )
             contract_request.registration_price_rates.set(
                 procedure_type.get_registration_price_rates(is_change_of_name=True)
