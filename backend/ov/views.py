@@ -1,7 +1,7 @@
 from django.http import FileResponse
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q, Value
+from django.db.models import Case, Count, F, Prefetch, Q, Value, When
 from django.db.models.functions import Replace, Upper
 from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
@@ -43,6 +43,10 @@ from contract.models import (
     ContractRequestStatus,
     ContractRequestType,
     ContractStatus,
+    ContractTerminationRequest,
+    ContractTerminationRequestObservation,
+    ContractTerminationStatus,
+    ContractTerminationType,
     PaymentType,
 )
 from billing.models import (
@@ -77,6 +81,7 @@ from ov.serializers import (
     CancelDirectDebitSerializer,
     ContactDataOVSerializer,
     BatchInvoiceDownloadSerializer,
+    ContractRequestTypeDictionarySerializer,
     ContractStatusDictionarySerializer,
     PaymentTypeDictionarySerializer,
     InvoiceStatusDictionarySerializer,
@@ -91,10 +96,16 @@ from ov.serializers import (
     ContractProcedureResponseSerializer,
     mask_iban,
     ContractRequestStatusSerializer,
+    ContractTerminationProcedureRequestSerializer,
+    ContractChangeProcedureRequestSerializer,
+    ContractChangeProcedureResponseSerializer,
+    ContractTerminationProcedureResponseSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
 from ov.throttles import (
     ContractProcedureThrottle,
+    ContractTerminationProcedureThrottle,
+    ContractChangeProcedureThrottle,
     DniEnumerationThrottle,
     PaymentReceiptThrottle,
     PersonDataThrottle,
@@ -1577,6 +1588,64 @@ class InvoiceStatusDictionaryOVView(APIView):
         )
 
 
+class ContractRequestTypeDictionaryOVView(APIView):
+    """GET /ov/dictionary/contract-request-types/
+
+    Diccionari de tipus de sol·licitud de contracte: només els actius,
+    ordenats alfabèticament per `name`. Per cada tipus retorna `token`,
+    `name`, `has_persons` i les tarifes actives associades
+    (`registration_tariffs`, `water_tariffs`, `change_of_name_tariffs`, cada
+    una amb `token` i `name`; `[]` si no n'hi ha). El `token` és el que cal
+    enviar com a `procedure_type_token` en sol·licitar un tràmit.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Mateixa resolució que `PriceRateDictionarySerializer.get_name`:
+        # nom genèric ("GENERAL") o buit -> nom del producte; així l'ordre
+        # coincideix amb el nom que es mostra.
+        resolved_rate_name = Case(
+            When(
+                Q(name__isnull=True)
+                | Q(name__regex=r"^\s*$")
+                | Q(name__iregex=r"^\s*general\s*$"),
+                then=F("product__name"),
+            ),
+            default=F("name"),
+        )
+
+        def active_rates(relation, to_attr):
+            return Prefetch(
+                relation,
+                queryset=PriceRate.objects.filter(is_active=True)
+                .select_related("product")
+                .annotate(display_name=resolved_rate_name)
+                .order_by("display_name", "id"),
+                to_attr=to_attr,
+            )
+
+        request_types = (
+            ContractRequestType.objects.filter(is_active=True)
+            .order_by("name", "id")
+            .prefetch_related(
+                active_rates(
+                    "registration_price_rates", "active_registration_tariffs"
+                ),
+                active_rates("price_rates", "active_water_tariffs"),
+                active_rates(
+                    "change_of_name_registration_price_rates",
+                    "active_change_of_name_tariffs",
+                ),
+            )
+        )
+        return Response(
+            ContractRequestTypeDictionarySerializer(
+                request_types, many=True
+            ).data
+        )
+
+
 # Tokens d'origen (`ProductOrigin.token`) dels productes de tràmit/d'altes
 # (drets d'alta, connexió, comptador, pòlissa, dipòsit...). Exclou els orígens
 # de serveis periòdics recurrents (`aigua`, `subministrament`).
@@ -2327,7 +2396,7 @@ def _resolve_contract_procedure_person(dni):
     return Person.objects.filter(pk=person_id).first()
 
 
-def _generate_contract_request_token():
+def _generate_contract_request_token(is_change_of_name=False):
     """Genera el token d'una ContractRequest com ho fa el PA.
 
     Es replica la lògica de `ContractRequestViewSet.create` perquè les
@@ -2344,11 +2413,36 @@ def _generate_contract_request_token():
                 use_type_id=None,
                 client_type_id=None,
                 company_id=None,
-                is_change_of_name=False,
+                is_change_of_name=is_change_of_name,
             ),
             ContractRequest,
         )
     return generate_contract_request_token()
+
+
+def _create_procedure_payment(holder, payment_type, bank_fields):
+    """Crea la forma de pagament d'un tràmit d'alta: `PersonBank` (només si
+    s'han informat dades bancàries) i `GeneralPayment`. S'ha de cridar dins la
+    transacció del tràmit. Retorna `(person_bank, general_payment)`."""
+    person_bank = None
+    if any(bank_fields.values()):
+        person_bank = PersonBank.objects.create(
+            token=check_token_exists(generate_token(PersonBank), PersonBank),
+            person=holder,
+            iban=bank_fields["iban"] or None,
+            swift=bank_fields["iban_holder_swift"] or None,
+            name=bank_fields["iban_holder_name"] or None,
+            dni=bank_fields["iban_holder_dni"] or None,
+            is_default=True,
+            is_active=True,
+        )
+    general_payment = GeneralPayment.objects.create(
+        token=check_token_exists(generate_token(GeneralPayment), GeneralPayment),
+        type=payment_type,
+        IBAN=person_bank,
+        is_active=True,
+    )
+    return person_bank, general_payment
 
 
 class ContractProcedureOVView(APIView):
@@ -2497,31 +2591,10 @@ class ContractProcedureOVView(APIView):
             field: data.get(field)
             for field in CONTRACT_PROCEDURE_REQUIRED_PAYMENT_FIELDS
         }
-        has_bank_data = any(bank_fields.values())
 
         with transaction.atomic():
-            person_bank = None
-            if has_bank_data:
-                person_bank = PersonBank.objects.create(
-                    token=check_token_exists(
-                        generate_token(PersonBank), PersonBank
-                    ),
-                    person=holder,
-                    iban=bank_fields["iban"] or None,
-                    swift=bank_fields["iban_holder_swift"] or None,
-                    name=bank_fields["iban_holder_name"] or None,
-                    dni=bank_fields["iban_holder_dni"] or None,
-                    is_default=True,
-                    is_active=True,
-                )
-
-            general_payment = GeneralPayment.objects.create(
-                token=check_token_exists(
-                    generate_token(GeneralPayment), GeneralPayment
-                ),
-                type=payment_type,
-                IBAN=person_bank,
-                is_active=True,
+            person_bank, general_payment = _create_procedure_payment(
+                holder, payment_type, bank_fields
             )
 
             contract_request = ContractRequest.objects.create(
@@ -2649,3 +2722,453 @@ class ContractRequestStatusOVView(APIView):
             ),
         }
         return Response(ContractRequestStatusSerializer(payload).data)
+
+
+# Fallbacks dels tokens d'estat de baixa tancada (finalitzada / cancel·lada)
+# si el ConfigProject no els té definits: són els valors de les dades inicials.
+CONTRACT_TERMINATION_CLOSED_STATUS_FALLBACKS = {
+    "contract_termination_completed_token": "3",
+    "contract_termination_cancelled_token": "-1",
+}
+
+
+def _config_project_value(token, default=None):
+    value = (
+        ConfigProject.objects.filter(token=token)
+        .values_list("value", flat=True)
+        .first()
+    )
+    return value if value not in (None, "") else default
+
+
+def _closed_contract_termination_status_tokens():
+    """Tokens d'estat que donen una baixa per tancada (finalitzada i
+    cancel·lada), llegits del ConfigProject amb fallback als valors inicials.
+    Qualsevol altre estat (esborrany, pendent o sense estat) és una baixa
+    oberta."""
+    return [
+        _config_project_value(token, default)
+        for token, default in CONTRACT_TERMINATION_CLOSED_STATUS_FALLBACKS.items()
+    ]
+
+
+class ContractTerminationProcedureOVView(APIView):
+    """POST /ov/procedures/contract-termination/
+
+    Sol·licitud de baixa d'un contracte des de l'OV. Només crea una
+    `ContractTerminationRequest` en l'estat per defecte (esborrany). El tipus
+    (el "Motiu" del PA) és el `reason_token` si s'indica i, si no, el tipus
+    per defecte de petició del client. El text lliure (`observation`) es desa
+    com a observació de la baixa. Atenció al client la valida,
+    organitza la lectura de tall i la finalitza des del PA. Per això:
+
+    - no toca l'estat ni la data de baixa del contracte;
+    - no recull lectures, fotos ni estimacions;
+    - no es bloqueja per deute pendent ni emet factura de tancament.
+
+    Només el titular pot demanar la baixa: el contracte ha d'estar actiu i el
+    `holder_dni` ha de coincidir (normalitzat) amb el token del titular. Si no,
+    es respon el mateix 404 que quan el contracte no existeix, perquè l'endpoint
+    no serveixi per esbrinar quines combinacions són vàlides.
+
+    El contracte es bloqueja (`select_for_update`) abans de comprovar si ja hi
+    ha una baixa oberta, de manera que dues peticions simultànies no en poden
+    crear dues.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ContractTerminationProcedureThrottle]
+
+    def post(self, request):
+        serializer = ContractTerminationProcedureRequestSerializer(
+            data=request.data
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+
+        dni = _normalize_person_dni(data["holder_dni"])
+        if not dni:
+            return Response(
+                {"error": "DNI is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        default_status = ContractTerminationStatus.objects.filter(
+            is_default=True
+        ).first()
+        # Tipus triat pel caller (`reason_token`, sense restringir per
+        # `is_change_of_name`); si no n'hi ha, el tipus per defecte de petició
+        # del client (mai el de canvi de nom).
+        termination_type = data["termination_type"]
+        if termination_type is None:
+            termination_type = ContractTerminationType.objects.filter(
+                is_default=True, is_change_of_name=False
+            ).first()
+        if default_status is None or termination_type is None:
+            logger.error(
+                "OV contract termination: missing default %s",
+                "status" if default_status is None else "type",
+            )
+            return Response(
+                {"error": "Contract termination could not be created"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        terminated_status_token = _config_project_value(
+            "contract_terminated_status"
+        )
+        closed_tokens = _closed_contract_termination_status_tokens()
+        not_found = Response(
+            {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+        with transaction.atomic():
+            # `of=("self",)`: només es bloqueja la fila del contracte (els joins
+            # opcionals de titular i estat no admeten FOR UPDATE a PostgreSQL).
+            contract = (
+                Contract.objects.select_for_update(of=("self",))
+                .select_related("holder", "status")
+                .filter(token=data["contract_token"], is_active=True)
+                .first()
+            )
+            if (
+                contract is None
+                or contract.holder is None
+                or _normalize_person_dni(contract.holder.token) != dni
+            ):
+                return not_found
+
+            if (
+                terminated_status_token
+                and contract.status is not None
+                and contract.status.token == terminated_status_token
+            ):
+                return Response(
+                    {"error": "Contract already terminated"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            existing = (
+                ContractTerminationRequest.objects.filter(
+                    contract=contract, is_active=True
+                )
+                .exclude(status__token__in=closed_tokens)
+                .order_by("-id")
+                .first()
+            )
+            if existing is not None:
+                return Response(
+                    {
+                        "error": "Contract termination already exists",
+                        "contract_termination_token": existing.token,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            termination = ContractTerminationRequest.objects.create(
+                token=check_token_exists(
+                    generate_token(ContractTerminationRequest),
+                    ContractTerminationRequest,
+                ),
+                contract=contract,
+                person=contract.holder,
+                type=termination_type,
+                status=default_status,
+                requested_at=timezone.now(),
+                is_active=True,
+            )
+            observation_text = (data.get("observation") or "").strip()
+            if observation_text:
+                ContractTerminationRequestObservation.objects.create(
+                    contract_termination=termination,
+                    observation=observation_text,
+                    status_name=default_status.name,
+                    user=request.user,
+                )
+
+        logger.info(
+            "OV contract termination request %s created", termination.token
+        )
+        payload = {
+            "contract_termination_token": termination.token,
+            "contract_token": contract.token,
+            "status": {"token": default_status.token, "name": default_status.name},
+            "type": {"token": termination_type.token, "name": termination_type.name},
+            "created_at": termination.created_at,
+        }
+        return Response(
+            ContractTerminationProcedureResponseSerializer(payload).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ContractChangeProcedureOVView(APIView):
+    """POST /ov/procedures/contract-change/
+
+    Canvi de nom (subrogació) des de l'OV. En una sola transacció crea, en
+    estat per defecte (esborrany):
+
+    - una `ContractTerminationRequest` del contracte actual (titular sortint),
+      amb el tipus indicat a `outgoing.reason_token`;
+    - una `ContractRequest` del nou titular amb `is_change_of_name=True` i
+      `keep_same_code=False`, al mateix punt de subministrament, enllaçada a la
+      baixa (`contract_termination_requests`).
+
+    Com al PA, la sol·licitud hereta les tarifes periòdiques actives del
+    contracte actual, rep les tarifes d'alta i tipus d'ordre de canvi de nom del
+    tipus de tràmit i copia les variables traspassables. Atenció al client la
+    valida i la finalitza; en crear el nou contracte, la baixa s'activa i el
+    contracte actual es dona de baixa (`check_contract_terminations`).
+
+    Només el titular actual la pot demanar: contracte inexistent, inactiu,
+    sense titular o d'un altre titular retornen el mateix 404. El contracte es
+    bloqueja abans de comprovar conflictes; qualsevol error desfà tots els
+    registres creats.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ContractChangeProcedureThrottle]
+
+    def post(self, request):
+        serializer = ContractChangeProcedureRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        outgoing = serializer.validated_data["outgoing"]
+        incoming = serializer.validated_data["incoming"]
+
+        outgoing_dni = _normalize_person_dni(outgoing["holder_dni"])
+        incoming_dni = _normalize_person_dni(incoming["holder_dni"])
+        dni_errors = {}
+        if not outgoing_dni:
+            dni_errors["outgoing"] = {"holder_dni": ["DNI is required."]}
+        if not incoming_dni:
+            dni_errors["incoming"] = {"holder_dni": ["DNI is required."]}
+        if not dni_errors and outgoing_dni == incoming_dni:
+            dni_errors["incoming"] = {
+                "holder_dni": [
+                    "The incoming holder must be different from the current holder."
+                ]
+            }
+        if dni_errors:
+            return Response(dni_errors, status=status.HTTP_400_BAD_REQUEST)
+
+        incoming_holder = _resolve_contract_procedure_person(incoming_dni)
+        if incoming_holder is None:
+            return Response(
+                {"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        request_status = ContractRequestStatus.objects.filter(
+            is_default=True
+        ).first()
+        termination_status = ContractTerminationStatus.objects.filter(
+            is_default=True
+        ).first()
+        # Sense `reason_token`, el tipus de baixa és el de canvi de nom.
+        # (`ContractTerminationType` no té `is_active`: qualsevol tipus marcat
+        # com a canvi de nom és vàlid; si n'hi ha més d'un, el de menor
+        # `position` i `id`.)
+        termination_type = outgoing["termination_type"]
+        if termination_type is None:
+            termination_type = (
+                ContractTerminationType.objects.filter(is_change_of_name=True)
+                .order_by(F("position").asc(nulls_last=True), "id")
+                .first()
+            )
+        if (
+            request_status is None
+            or termination_status is None
+            or termination_type is None
+        ):
+            if request_status is None:
+                missing = "default contract request status"
+            elif termination_status is None:
+                missing = "default termination status"
+            else:
+                missing = "change-of-name termination type"
+            logger.error("OV contract change: missing %s", missing)
+            return Response(
+                {"error": "Contract change could not be created"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        terminated_status_token = _config_project_value(
+            "contract_terminated_status"
+        )
+        closed_termination_tokens = _closed_contract_termination_status_tokens()
+        procedure_type = incoming["procedure_type"]
+
+        with transaction.atomic():
+            contract = (
+                Contract.objects.select_for_update(of=("self",))
+                .select_related("holder", "status", "supply_point_default")
+                .filter(token=outgoing["contract_token"], is_active=True)
+                .first()
+            )
+            if (
+                contract is None
+                or contract.holder is None
+                or _normalize_person_dni(contract.holder.token) != outgoing_dni
+            ):
+                return Response(
+                    {"error": "Contract not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            conflict = self._conflict(
+                contract, terminated_status_token, closed_termination_tokens
+            )
+            if conflict is not None:
+                return Response(conflict, status=status.HTTP_409_CONFLICT)
+
+            now = timezone.now()
+            termination = ContractTerminationRequest.objects.create(
+                token=check_token_exists(
+                    generate_token(ContractTerminationRequest),
+                    ContractTerminationRequest,
+                ),
+                contract=contract,
+                person=contract.holder,
+                type=termination_type,
+                status=termination_status,
+                requested_at=now,
+                is_active=True,
+            )
+            if outgoing.get("observation"):
+                ContractTerminationRequestObservation.objects.create(
+                    contract_termination=termination,
+                    observation=outgoing["observation"],
+                    status_name=termination_status.name,
+                    user=request.user,
+                )
+
+            _, general_payment = _create_procedure_payment(
+                incoming_holder,
+                incoming["payment_type"],
+                {
+                    field: incoming.get(field)
+                    for field in CONTRACT_PROCEDURE_REQUIRED_PAYMENT_FIELDS
+                },
+            )
+
+            supply_point = contract.supply_point_default
+            contract_request = ContractRequest.objects.create(
+                token=_generate_contract_request_token(is_change_of_name=True),
+                language=incoming.get("language") or settings.LANGUAGE,
+                supply_point_default=supply_point,
+                person=incoming_holder,
+                holder=incoming_holder,
+                type=procedure_type,
+                payment=general_payment,
+                status=request_status,
+                requested_at=now,
+                is_change_of_name=True,
+                keep_same_code=False,
+                use_general_price_rates=contract.use_general_price_rates,
+                is_active=True,
+            )
+            contract_request.supply_points.set(
+                list(contract.supply_points.all()) or [supply_point]
+            )
+            # Tarifes periòdiques actives heretades del contracte actual; les
+            # d'alta i els tipus d'ordre, els de canvi de nom del tipus de tràmit.
+            contract_request.price_rates.set(
+                contract.price_rates.filter(
+                    is_active=True, price_rate__is_active=True
+                )
+            )
+            contract_request.registration_price_rates.set(
+                procedure_type.get_registration_price_rates(is_change_of_name=True)
+            )
+            contract_request.order_types.set(
+                procedure_type.get_order_types(is_change_of_name=True)
+            )
+            from contract.utils.contract_service import (
+                copy_change_of_name_variables,
+            )
+
+            copy_change_of_name_variables(contract_request)
+            contract_request.contract_termination_requests.add(termination)
+
+            LogContractRequestStatus.objects.create(
+                object=contract_request,
+                previous_status=None,
+                current_status=request_status,
+                observation=incoming.get("observation") or None,
+                user=request.user,
+            )
+
+        logger.info(
+            "OV contract change requested: contract request %s, termination %s",
+            contract_request.token,
+            termination.token,
+        )
+        payload = {
+            "contract_request_token": contract_request.token,
+            "contract_termination_token": termination.token,
+            "contract_token": contract.token,
+            "contract_request_status": {
+                "token": request_status.token,
+                "name": request_status.name,
+            },
+            "contract_termination_status": {
+                "token": termination_status.token,
+                "name": termination_status.name,
+            },
+            "procedure_type": {
+                "token": procedure_type.token,
+                "name": procedure_type.name,
+            },
+            "termination_type": {
+                "token": termination_type.token,
+                "name": termination_type.name,
+            },
+            "created_at": contract_request.created_at,
+        }
+        return Response(
+            ContractChangeProcedureResponseSerializer(payload).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _conflict(contract, terminated_status_token, closed_termination_tokens):
+        """Cos del 409 si el contracte no admet un canvi de nom; si no, `None`."""
+        if (
+            terminated_status_token
+            and contract.status is not None
+            and contract.status.token == terminated_status_token
+        ):
+            return {"error": "Contract already terminated"}
+
+        open_termination = (
+            ContractTerminationRequest.objects.filter(
+                contract=contract, is_active=True
+            )
+            .exclude(status__token__in=closed_termination_tokens)
+            .order_by("-id")
+            .first()
+        )
+        if open_termination is not None:
+            return {
+                "error": "Contract termination already exists",
+                "contract_termination_token": open_termination.token,
+            }
+
+        if contract.supply_point_default is None:
+            return {"error": "Contract has no supply point"}
+
+        open_request = (
+            ContractRequest.objects.filter(
+                supply_point_default=contract.supply_point_default,
+                is_active=True,
+            )
+            .exclude(status__token__in=CONTRACT_PROCEDURE_CLOSED_STATUS_TOKENS)
+            .order_by("-id")
+            .first()
+        )
+        if open_request is not None:
+            return {
+                "error": "Contract request already exists",
+                "contract_request_token": open_request.token,
+            }
+        return None

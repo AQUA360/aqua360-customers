@@ -5,8 +5,10 @@ from contract.models import (
     ContractDataChange,
     ContractLog,
     ContractObservation,
+    ContractRequestType,
     ContractStatus,
     ContractTerminationRequest,
+    ContractTerminationType,
     PaymentType,
 )
 from pricing.models import PriceRate
@@ -1639,6 +1641,55 @@ class InvoiceStatusDictionarySerializer(serializers.ModelSerializer):
         fields = ("token", "name")
 
 
+class PriceRateDictionarySerializer(serializers.ModelSerializer):
+    """Entrada de tarifa dins el diccionari de tipus de sol·licitud
+    (`token`, `name`).
+
+    `name` es resol igual que als tràmits: si el de la tarifa és genèric
+    ("GENERAL") o buit, s'usa el del producte associat. La vista ha de fer
+    `select_related("product")` per evitar consultes per tarifa.
+    """
+
+    name = serializers.SerializerMethodField()
+
+    def get_name(self, instance):
+        return ProcedureTariffDictionarySerializer._resolved_name(instance)
+
+    class Meta:
+        model = PriceRate
+        fields = ("token", "name")
+
+
+class ContractRequestTypeDictionarySerializer(serializers.ModelSerializer):
+    """Entrada del diccionari de tipus de sol·licitud de contracte.
+
+    Les llistes de tarifes llegeixen els atributs `active_*` que la vista
+    precarrega amb `Prefetch(to_attr=...)` (només tarifes actives), de manera
+    que no hi ha consultes addicionals per tipus.
+    """
+
+    registration_tariffs = PriceRateDictionarySerializer(
+        source="active_registration_tariffs", many=True, read_only=True
+    )
+    water_tariffs = PriceRateDictionarySerializer(
+        source="active_water_tariffs", many=True, read_only=True
+    )
+    change_of_name_tariffs = PriceRateDictionarySerializer(
+        source="active_change_of_name_tariffs", many=True, read_only=True
+    )
+
+    class Meta:
+        model = ContractRequestType
+        fields = (
+            "token",
+            "name",
+            "has_persons",
+            "registration_tariffs",
+            "water_tariffs",
+            "change_of_name_tariffs",
+        )
+
+
 class ProcedureTariffDictionarySerializer(serializers.Serializer):
     """Tarifa de tràmit amb el seu cost (fix o variable per calibre).
 
@@ -1723,12 +1774,12 @@ class ProcedureTariffDictionarySerializer(serializers.Serializer):
 
     @staticmethod
     def _resolved_name(instance):
-        """`name` del tràmit: si el de la tarifa és genènic ("GENERAL") o
-        buit, es resol el del producte associat (p. ex.
+        """`name` del tràmit: si el de la tarifa és genènic ("GENERAL"),
+        buit o només espais, es resol el del producte associat (p. ex.
         "DCHOS.ACOMETIDA...", "CONTADOR - ALTA PUNTO SUMINISTRO"); si no, es
         manté el de la tarifa."""
         name = instance.name
-        if name and name.strip().upper() != "GENERAL":
+        if name and name.strip() and name.strip().upper() != "GENERAL":
             return name
         product = instance.product
         return product.name if product else name
@@ -2099,6 +2150,186 @@ class ContractProcedureResponseSerializer(serializers.Serializer):
     person = serializers.DictField()
     supply_point = serializers.DictField()
     payment = serializers.DictField()
+    created_at = serializers.DateTimeField()
+
+
+class ContractTerminationProcedureRequestSerializer(serializers.Serializer):
+    """Petició de baixa de contracte des de l'OV.
+
+    Camps: `contract_token`, `holder_dni`, `observation` (text lliure, es
+    desa com a observació de la baixa) i `reason_token` opcional (token del
+    `ContractTerminationType`, el "Motiu" del PA; si falta s'usa el tipus per
+    defecte). No s'accepten lectures, fotos, dates ni dades de contacte (la
+    lectura de tall la registra el personal de camp i la data de sol·licitud
+    és la de recepció). Qualsevol altra clau s'ignora.
+
+    El tipus triat es resol sense restringir per `is_change_of_name` i es
+    deixa a `validated_data["termination_type"]` (o `None` si no s'ha indicat).
+    """
+
+    contract_token = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(max_length=255)
+    observation = serializers.CharField(max_length=1000, required=False, allow_blank=True, allow_null=True)
+    reason_token = serializers.CharField(
+        max_length=255
+    )
+
+    def validate(self, attrs):
+        reason_token = (attrs.get("reason_token") or "").strip()
+        termination_type = None
+        if reason_token:
+            termination_type = (
+                ContractTerminationType.objects.filter(token=reason_token)
+                .order_by("id")
+                .first()
+            )
+            if termination_type is None:
+                raise serializers.ValidationError(
+                    {"reason_token": ["Unknown termination reason."]}
+                )
+        attrs["termination_type"] = termination_type
+        return attrs
+
+
+class ContractTerminationProcedureResponseSerializer(serializers.Serializer):
+    """Sol·licitud de baixa de contracte creada (estat per defecte)."""
+
+    contract_termination_token = serializers.CharField()
+    contract_token = serializers.CharField()
+    status = serializers.DictField()
+    type = serializers.DictField()
+    created_at = serializers.DateTimeField()
+
+
+CONTRACT_CHANGE_BANK_FIELDS = (
+    "iban",
+    "iban_holder_name",
+    "iban_holder_dni",
+    "iban_holder_swift",
+)
+
+
+class ContractChangeOutgoingSerializer(serializers.Serializer):
+    """Bloc `outgoing` del canvi de nom: contracte actual i el seu titular.
+
+    `reason_token` és opcional: si s'indica, és el `ContractTerminationType`
+    de la baixa (qualsevol tipus existent, sense restringir per
+    `is_change_of_name`) i es deixa a `validated_data["termination_type"]`.
+    Si s'omet, és nul o buit, `termination_type` és `None` i la vista usa el
+    tipus de baixa de canvi de nom.
+    """
+
+    contract_token = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(max_length=255)
+    reason_token = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    observation = serializers.CharField(
+        max_length=1000, required=False, allow_blank=True, allow_null=True
+    )
+
+    def validate(self, attrs):
+        reason_token = (attrs.get("reason_token") or "").strip()
+        termination_type = None
+        if reason_token:
+            termination_type = (
+                ContractTerminationType.objects.filter(token=reason_token)
+                .order_by("id")
+                .first()
+            )
+            if termination_type is None:
+                raise serializers.ValidationError(
+                    {"reason_token": ["Unknown termination reason."]}
+                )
+        attrs["termination_type"] = termination_type
+        return attrs
+
+
+class ContractChangeIncomingSerializer(serializers.Serializer):
+    """Bloc `incoming` del canvi de nom: nou titular, tipus de tràmit i forma
+    de pagament. Les dades bancàries només són obligatòries per a
+    domiciliació. No hi ha camps de tarifa: s'hereten del contracte actual.
+
+    Deixa resolts a `validated_data` `procedure_type` i `payment_type`.
+    """
+
+    holder_dni = serializers.CharField(max_length=255)
+    procedure_type_token = serializers.CharField(max_length=255)
+    payment_type_token = serializers.CharField(max_length=255)
+    iban = serializers.CharField(
+        max_length=34, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_dni = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_swift = serializers.CharField(
+        max_length=11, required=False, allow_blank=True, allow_null=True
+    )
+    language = serializers.CharField(
+        max_length=2, required=False, allow_blank=True, allow_null=True
+    )
+    observation = serializers.CharField(
+        max_length=1000, required=False, allow_blank=True, allow_null=True
+    )
+
+    def validate_language(self, value):
+        if value and value not in dict(settings.LANGUAGES):
+            raise serializers.ValidationError("Unsupported language.")
+        return value
+
+    def validate_iban(self, value):
+        return (value or "").replace(" ", "").upper()
+
+    def validate_iban_holder_dni(self, value):
+        return (value or "").upper()
+
+    def validate(self, attrs):
+        errors = {}
+        procedure_type = ContractRequestType.objects.filter(
+            token=attrs["procedure_type_token"], is_active=True
+        ).first()
+        if procedure_type is None:
+            errors["procedure_type_token"] = ["Procedure type not found."]
+        payment_type = PaymentType.objects.filter(
+            token=attrs["payment_type_token"]
+        ).first()
+        if payment_type is None:
+            errors["payment_type_token"] = ["Payment type not found."]
+        elif payment_type.token == "DIRECT_DEBIT":
+            for field in CONTRACT_CHANGE_BANK_FIELDS:
+                if not attrs.get(field):
+                    errors[field] = ["This field is required for direct debit."]
+        if errors:
+            raise serializers.ValidationError(errors)
+        attrs["procedure_type"] = procedure_type
+        attrs["payment_type"] = payment_type
+        return attrs
+
+
+class ContractChangeProcedureRequestSerializer(serializers.Serializer):
+    """Petició de canvi de nom des de l'OV, en dos blocs: `outgoing`
+    (contracte i titular actuals, motiu de la baixa) i `incoming` (nou
+    titular). Els errors de validació surten niats per bloc (p. ex.
+    `{"incoming": {"iban": [...]}}`)."""
+
+    outgoing = ContractChangeOutgoingSerializer()
+    incoming = ContractChangeIncomingSerializer()
+
+
+class ContractChangeProcedureResponseSerializer(serializers.Serializer):
+    """Sol·licituds creades per un canvi de nom: la baixa del contracte actual
+    i l'alta (canvi de nom) del nou titular, enllaçades entre si."""
+
+    contract_request_token = serializers.CharField()
+    contract_termination_token = serializers.CharField()
+    contract_token = serializers.CharField()
+    contract_request_status = serializers.DictField()
+    contract_termination_status = serializers.DictField()
+    procedure_type = serializers.DictField()
+    termination_type = serializers.DictField()
     created_at = serializers.DateTimeField()
 
 
