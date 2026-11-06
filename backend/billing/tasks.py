@@ -2066,6 +2066,25 @@ def import_smart_metering_document_task(self, reading_document_id, preview=None)
 
 @shared_task(bind=True)
 def estimate_readings_task(self, reading_batch_id, payload=None):
+  """
+  Embolcall de la tasca d'estimació. Si falla abans del try/finally intern
+  (p. ex. en llegir ConfigProject o en preparar els punts de subministrament),
+  allibera estimating_task_id perquè el lot no quedi bloquejat per un
+  identificador orfe que Celery acabaria reportant com a PENDING.
+  """
+  try:
+    return _run_estimate_readings(self, reading_batch_id, payload)
+  except Exception:
+    # Només si el lot encara apunta a aquesta tasca: no trepitja una
+    # estimació llançada després.
+    ReadingBatch.objects.filter(
+      id=reading_batch_id,
+      estimating_task_id=self.request.id,
+    ).update(estimating_task_id=None)
+    raise
+
+
+def _run_estimate_readings(self, reading_batch_id, payload=None):
   payload = payload or {}
   progress_recorder = ProgressRecorder(self)
 
