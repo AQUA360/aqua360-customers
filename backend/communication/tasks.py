@@ -293,6 +293,9 @@ def _create_claim_step_communication_file(
     invoice and payment slip (created separately) are unaffected by
     `attach_claim_documents`.
     """
+    if not claim_request.current_step.document_type_id:
+        # Pas sense tipus de document (p. ex. només genera ordre): no hi ha document de pas a adjuntar
+        return None
     pdf_args = [claim_request.id, contract.id, claim_request.current_step.id]
     if joined_payment_id is not None:
         pdf_args.append(joined_payment_id)
@@ -418,8 +421,9 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
 
                 joined_payment_ids = joined_payments if add_joined_payments else [None]
                 for joined_payment_id in joined_payment_ids:
-                    claim_com_files.append(
-                        _create_claim_step_communication_file(
+                    # Un error en un contracte no ha d'impedir desar els documents de la resta
+                    try:
+                        claim_file = _create_claim_step_communication_file(
                             claim_request,
                             contract,
                             comm,
@@ -428,7 +432,11 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                             attach_claim_documents,
                             joined_payment_id,
                         )
-                    )
+                    except Exception as e:
+                        print(f"Error generating claim step document for contract {contract.id}: {str(e)}")
+                        claim_file = None
+                    if claim_file:
+                        claim_com_files.append(claim_file)
                     counter += 1
                 processed_contracts += 1
                 
