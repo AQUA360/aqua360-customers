@@ -20,6 +20,7 @@ from contract.models import (ContractRequest, ContractDocumentationType, Contrac
 from contract.serializers.contract_request_serializer import (ContractRequestSerializer, ContractRequestSaveSerializer, ContractRequestListSerializer)
 from contract.utils.contract_service import contract_create
 from contract.utils.contract_token_service import generate_contract_request_token
+from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token, check_token_exists
 from coredata.utils import name_utils as name_utils_module
 from documentmanager.utils.main_utils import upload_document
@@ -115,6 +116,7 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
         file = request.data.pop('contract_file', None)
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        previous_status_id = instance.status_id
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         if file:
@@ -122,7 +124,16 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
             document = upload_document(file[0], 'CONTRACT', 'CONTRACT', instance.id, instance.token, '', service, file[0].name, instance.created_at)
             validated_data = serializer.validated_data
             validated_data['contract_file'] = document
-        self.perform_update(serializer)
+        from django.db import transaction
+        from contract.utils.contract_termination_service import cancel_contract_termination
+
+        with transaction.atomic():
+            self.perform_update(serializer)
+            if previous_status_id != instance.status_id and instance.contract_termination_requests.exists():
+                cancel_token = ConfigProject.objects.get(token='contract_request_cancel_token').value
+                if instance.status and instance.status.token == cancel_token:
+                    for termination in instance.contract_termination_requests.all():
+                        cancel_contract_termination(termination, request.user)
         instance = serializer.instance
         read_serializer = ContractRequestSerializer(instance, context=self.get_serializer_context())
         return Response(read_serializer.data, status=status.HTTP_200_OK, content_type='application/json')
