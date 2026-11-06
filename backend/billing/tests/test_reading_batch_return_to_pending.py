@@ -4,6 +4,8 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from billing.models import Reading, ReadingBatch, ReadingBatchStatus, ReadingDocument
@@ -111,3 +113,73 @@ class ReadingBatchReturnToPendingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.status_id, self.pending.id)
+
+    @patch('billing.utils.reading_batch_return.AsyncResult')
+    def test_unknown_pending_still_blocks(self, result):
+        result.return_value.state = 'PENDING'
+        self.batch.estimating_task_id = 'legacy'
+        self.batch.save()
+        with self.assertRaises(ReturnToPendingError):
+            return_reading_batch_to_pending(self.batch.id)
+
+    @patch('billing.utils.reading_batch_return.AsyncResult')
+    def test_persistent_active_states_block_even_without_backend_result(self, result):
+        result.return_value.state = 'PENDING'
+        for state in ('QUEUED', 'RUNNING'):
+            with self.subTest(state=state):
+                self.batch.estimating_task_id = 'task'
+                self.batch.estimating_task_status = state
+                self.batch.save()
+                with self.assertRaises(ReturnToPendingError):
+                    return_reading_batch_to_pending(self.batch.id)
+        result.assert_not_called()
+
+    @patch('billing.management.commands.reconcile_finished_estimation.AsyncResult')
+    def test_confirmed_legacy_completion_allows_return_after_expiry(self, result):
+        result.return_value.state = 'PENDING'
+        self.batch.estimating_task_id = 'legacy'
+        self.batch.save()
+        call_command('reconcile_finished_estimation', self.batch.id, 'legacy', confirmed_finished=True)
+        returned = return_reading_batch_to_pending(self.batch.id)
+        self.assertEqual(returned.status_id, self.pending.id)
+
+    @patch('billing.management.commands.reconcile_finished_estimation.AsyncResult')
+    def test_reconciliation_requires_evidence_and_matching_inactive_legacy_id(self, result):
+        self.batch.estimating_task_id = 'legacy'
+        self.batch.save()
+        with self.assertRaises(CommandError):
+            call_command('reconcile_finished_estimation', self.batch.id, 'legacy')
+        with self.assertRaises(CommandError):
+            call_command('reconcile_finished_estimation', self.batch.id, 'older', confirmed_finished=True)
+        for state in ('STARTED', 'PROGRESS', 'RETRY', 'RECEIVED'):
+            result.return_value.state = state
+            with self.assertRaises(CommandError):
+                call_command('reconcile_finished_estimation', self.batch.id, 'legacy', confirmed_finished=True)
+        self.batch.estimating_task_status = 'QUEUED'
+        self.batch.save()
+        with self.assertRaises(CommandError):
+            call_command('reconcile_finished_estimation', self.batch.id, 'legacy', confirmed_finished=True)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.estimating_task_id, 'legacy')
+
+    @patch('billing.views.reading_batch_estimate_view.estimate_readings_task.apply_async')
+    @patch('billing.views.reading_batch_estimate_view.ContractStatus.objects.get')
+    def test_estimation_is_persisted_before_publish_and_prevents_overlap(self, contract_status, publish):
+        from types import SimpleNamespace
+        from billing.views.reading_batch_estimate_view import ReadingBatchEstimateViewSet
+
+        config_value('contract_active_token', 'active')
+        contract_status.return_value.id = 1
+        request = SimpleNamespace(data={'supply_points': 'all'})
+        view = ReadingBatchEstimateViewSet()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = view.estimate_readings(request, id=self.batch.id)
+            self.assertEqual(response.status_code, 202)
+            self.batch.refresh_from_db()
+            self.assertEqual(self.batch.estimating_task_status, 'QUEUED')
+            self.assertEqual(self.batch.estimating_task_id, response.data['task_id'])
+            publish.assert_not_called()
+            duplicate = view.estimate_readings(request, id=self.batch.id)
+            self.assertEqual(duplicate.status_code, 409)
+        publish.assert_called_once()
+        self.assertEqual(publish.call_args.kwargs['task_id'], self.batch.estimating_task_id)

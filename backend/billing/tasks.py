@@ -2066,22 +2066,17 @@ def import_smart_metering_document_task(self, reading_document_id, preview=None)
 
 @shared_task(bind=True)
 def estimate_readings_task(self, reading_batch_id, payload=None):
-  """
-  Embolcall de la tasca d'estimació. Si falla abans del try/finally intern
-  (p. ex. en llegir ConfigProject o en preparar els punts de subministrament),
-  allibera estimating_task_id perquè el lot no quedi bloquejat per un
-  identificador orfe que Celery acabaria reportant com a PENDING.
-  """
+  """Persist completion independently of Celery's expiring results."""
+  ReadingBatch.objects.filter(
+    id=reading_batch_id, estimating_task_id=self.request.id,
+  ).update(estimating_task_status='RUNNING')
   try:
     return _run_estimate_readings(self, reading_batch_id, payload)
-  except Exception:
-    # Només si el lot encara apunta a aquesta tasca: no trepitja una
-    # estimació llançada després.
+  finally:
+    # Compare the ID so an older worker cannot finish a newer estimation.
     ReadingBatch.objects.filter(
-      id=reading_batch_id,
-      estimating_task_id=self.request.id,
-    ).update(estimating_task_id=None)
-    raise
+      id=reading_batch_id, estimating_task_id=self.request.id,
+    ).update(estimating_task_id=None, estimating_task_status='FINISHED')
 
 
 def _run_estimate_readings(self, reading_batch_id, payload=None):
@@ -2322,10 +2317,9 @@ def _run_estimate_readings(self, reading_batch_id, payload=None):
     progress_recorder.set_progress(total_supplypoints, total_supplypoints)
     return result
   finally:
-    reading_batch.estimating_task_id = None
     reading_batch.last_task_status = 'partial' if task_errors else 'ok'
     reading_batch.last_task_errors = task_errors
-    reading_batch.save(update_fields=['estimating_task_id', 'last_task_status', 'last_task_errors'])
+    reading_batch.save(update_fields=['last_task_status', 'last_task_errors'])
 
 @shared_task(bind=True)
 @billing_run_cache_scope()

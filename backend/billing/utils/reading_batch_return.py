@@ -6,7 +6,7 @@ from billing.utils.reading_filters import PENDING_READING_FILTER
 from coredata.models import ConfigProject
 
 
-IN_PROGRESS_TASK_STATES = ('PENDING', 'STARTED', 'PROGRESS')
+IN_PROGRESS_TASK_STATES = ('PENDING', 'RECEIVED', 'STARTED', 'PROGRESS', 'RETRY')
 
 
 class ReturnToPendingError(Exception):
@@ -45,7 +45,7 @@ def return_reading_batch_to_pending(batch_id):
         if _task_in_progress(reading_batch.assign_readings_task_id):
             raise ReturnToPendingError("Encara s'estan assignant lectures a aquest lot.", 409)
 
-        if _task_in_progress(reading_batch.estimating_task_id):
+        if estimation_in_progress(reading_batch):
             raise ReturnToPendingError("Encara s'estan estimant lectures en aquest lot.", 409)
 
         assigned_readings = Reading.objects.filter(
@@ -57,7 +57,11 @@ def return_reading_batch_to_pending(batch_id):
 
         reading_batch.status = pending_status
         reading_batch.assign_readings_task_id = None
-        reading_batch.save(update_fields=['status', 'assign_readings_task_id'])
+        reading_batch.estimating_task_id = None
+        reading_batch.estimating_task_status = None
+        reading_batch.save(update_fields=[
+            'status', 'assign_readings_task_id', 'estimating_task_id', 'estimating_task_status',
+        ])
         # L'assignació buida deixa els documents lligats al lot; es desvinculen
         # perquè es puguin tornar a fer servir en tornar a configurar-lo.
         ReadingDocument.objects.filter(batch=reading_batch).update(batch=None)
@@ -70,3 +74,16 @@ def _task_in_progress(task_id):
     if not task_id:
         return False
     return AsyncResult(task_id).state in IN_PROGRESS_TASK_STATES
+
+
+def estimation_in_progress(batch):
+    if not batch.estimating_task_id:
+        return False
+    # This evidence survives Celery result expiry. Unknown legacy PENDING IDs
+    # must be reconciled explicitly; age or an empty worker inspection is not
+    # proof that a task cannot still run.
+    if batch.estimating_task_status == 'FINISHED':
+        return False
+    if batch.estimating_task_status in ('QUEUED', 'RUNNING'):
+        return True
+    return _task_in_progress(batch.estimating_task_id)

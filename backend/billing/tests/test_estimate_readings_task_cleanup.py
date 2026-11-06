@@ -19,6 +19,7 @@ class EstimateReadingsTaskCleanupTests(TestCase):
         self.assertTrue(result.failed())
         self.batch.refresh_from_db()
         self.assertIsNone(self.batch.estimating_task_id)
+        self.assertEqual(self.batch.estimating_task_status, 'FINISHED')
 
     @patch('billing.tasks._run_estimate_readings', side_effect=RuntimeError('boom'))
     def test_no_toca_una_estimacio_posterior(self, _run):
@@ -29,3 +30,10 @@ class EstimateReadingsTaskCleanupTests(TestCase):
 
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.estimating_task_id, 'task-2')
+
+    @patch('billing.tasks._run_estimate_readings', return_value={'status': 'ok'})
+    def test_success_records_completion_and_clears_id(self, _run):
+        estimate_readings_task.apply(args=[self.batch.id], task_id='task-1', throw=True)
+        self.batch.refresh_from_db()
+        self.assertIsNone(self.batch.estimating_task_id)
+        self.assertEqual(self.batch.estimating_task_status, 'FINISHED')

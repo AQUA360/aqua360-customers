@@ -6,7 +6,8 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
 import datetime
-from celery.result import AsyncResult
+from uuid import uuid4
+from billing.utils.reading_batch_return import estimation_in_progress
 from billing.models import Reading, ReadingBatch
 from billing.serializers.reading_serializer import ReadingMinimalSerializer
 from billing.utils.reading_service import (
@@ -67,22 +68,30 @@ class ReadingBatchEstimateViewSet(viewsets.ViewSet):
                 with transaction.atomic():
                     locked_batch = ReadingBatch.objects.select_for_update().get(id=reading_batch.id)
                     existing_task_id = locked_batch.estimating_task_id
-                    if existing_task_id:
-                        task_result = AsyncResult(existing_task_id)
-                        if task_result.state in ['PENDING', 'STARTED', 'PROGRESS']:
-                            return Response(
-                                {
-                                    "task_id": existing_task_id,
-                                    "detail": "Estimate readings task already in progress."
-                                },
-                                status=status.HTTP_409_CONFLICT
-                            )
+                    if estimation_in_progress(locked_batch):
+                        return Response(
+                            {
+                                "task_id": existing_task_id,
+                                "detail": "Estimate readings task already in progress."
+                            },
+                            status=status.HTTP_409_CONFLICT
+                        )
 
-                    task = estimate_readings_task.delay(locked_batch.id, payload)
-                    locked_batch.estimating_task_id = task.id
-                    locked_batch.save(update_fields=['estimating_task_id'])
+                    task_id = str(uuid4())
+                    locked_batch.estimating_task_id = task_id
+                    locked_batch.estimating_task_status = 'QUEUED'
+                    locked_batch.save(update_fields=['estimating_task_id', 'estimating_task_status'])
+                    # Publish after the ID is visible to the worker.
+                    def publish_estimation():
+                        # Keep QUEUED on uncertain delivery failures; they do
+                        # not prove that the broker did not accept the task.
+                        estimate_readings_task.apply_async(
+                            args=[locked_batch.id, payload], task_id=task_id,
+                        )
 
-                return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
+                    transaction.on_commit(publish_estimation)
+
+                return Response({"task_id": task_id}, status=status.HTTP_202_ACCEPTED)
             else:
                 supply_points = SupplyPoint.objects.filter(id__in=request.data.get('supply_points'))
             print(len(supply_points), 'supply_points')
