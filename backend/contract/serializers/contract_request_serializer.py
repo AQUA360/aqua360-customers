@@ -84,6 +84,8 @@ class ContractRequestSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContractRequest
         fields = '__all__'
+        read_only_fields = ['is_active']
+
     
     @transaction.atomic
     def create(self, validated_data):

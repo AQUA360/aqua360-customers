@@ -117,6 +117,10 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         previous_status_id = instance.status_id
+        # File-only / sparse multipart PUTs omit booleans; without partial,
+        # DRF treats missing BooleanFields as False (e.g. is_active -> soft-delete).
+        if file:
+            partial = True
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         if file:
