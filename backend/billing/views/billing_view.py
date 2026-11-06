@@ -162,7 +162,7 @@ class BillingViewSet(viewsets.ModelViewSet):
         'anual': 12,
       }
       interval = PERIOD_TYPE_INTERVAL.get(biller.period_type, 3)
-      today = timezone.now().date()
+      today = timezone.localdate()
 
       # El token/name de `create_billings` (billing/tasks.py) porta el mes/any en que
       # es va CREAR el lot (`current_month`/`current_year` del moment d'execucio), no

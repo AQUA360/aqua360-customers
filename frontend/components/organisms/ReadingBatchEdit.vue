@@ -125,6 +125,14 @@ const hasSetupReadings = computed(() => {
   return Object.entries(counters).some(([key, value]) => key !== 'missing_readings' && Number(value) > 0);
 });
 
+/** Pas 3 sense lectures: el lot queda bloquejat a «Pendent de processar» si no es pot tornar al pas 2. */
+const canReturnToSetup = computed(() => {
+  if (currentStep.value !== 2) return false;
+  if (!readingBatchStatus.value || pendingProcessingStatusToken.value == null) return false;
+  if (String(readingBatchStatus.value.token) !== String(pendingProcessingStatusToken.value)) return false;
+  return Number(countersSetup.value?.assigned_readings ?? -1) === 0;
+});
+
 const showEstimateAllDialog = ref(false);
 const estimatingAllReadings = ref(false);
 
@@ -479,6 +487,37 @@ const showBlockedRevertModal = ref(false);
 const blockedRevertReadingIds = ref([]);
 const blockedRevertMessage = ref('');
 
+/** Pas 3 amb 0 lectures assignades: torna al pas 2 i deixa el lot en «Pendent». */
+const backToSetup = async () => {
+  if (!canReturnToSetup.value) return;
+  if (!confirm(t('confirmation_text_block.confirm_return_reading_batch_to_pending'))) {
+    return;
+  }
+  previousStepLoading.value = true;
+  try {
+    await $ReadingBatchApiService.returnToPending(batch_id.value);
+  } catch (error) {
+    console.error(error);
+    const data = error?.response?._data;
+    toast.error(data?.error || error?.message || t('common.error'));
+    previousStepLoading.value = false;
+    return;
+  }
+  // El lot ja és «Pendent»: es mou al pas 2 encara que el refresc falli,
+  // perquè un nou intent no torni a cridar la mutació (que respondria 409).
+  currentStep.value = 1;
+  maxStep.value = 1;
+  setUrlStep();
+  try {
+    await refresh();
+  } catch (error) {
+    console.error(error);
+    toast.error(error?.message || t('common.error'));
+  } finally {
+    previousStepLoading.value = false;
+  }
+};
+
 /** Only allowed from step 4 (anomaly review): revert batch status so readings can be reloaded/fixed. */
 const previousStep = async () => {
   if (currentStep.value !== 3) return;
@@ -601,6 +640,12 @@ watch(() => props.activeStatus, (newVal) => {
       <!-- Botons de navegació -->
       <div class="flex justify-between mt-4">
         <div>
+          <button v-if="canReturnToSetup" @click="backToSetup" :disabled="previousStepLoading || nextStepLoading"
+            class="px-4 py-2 bg-white text-slate-600 border border-gray-300 rounded enabled:hover:bg-slate-100 disabled:opacity-70 disabled:cursor-not-allowed flex items-center">
+            <Icon v-if="previousStepLoading" name="fa6-solid:spinner" class="animate-spin mr-2" />
+            <Icon v-else name="fa6-solid:arrow-left" class="mr-2" />
+            {{ previousStepLoading ? $t('common.processing') : $t('common.previous') }}
+          </button>
           <button v-if="currentStep === 3 && !revertTaskId" @click="previousStep" :disabled="previousStepLoading"
             class="px-4 py-2 bg-white text-slate-600 border border-gray-300 rounded enabled:hover:bg-slate-100 disabled:opacity-70 disabled:cursor-not-allowed flex items-center">
             <Icon v-if="previousStepLoading" name="fa6-solid:spinner" class="animate-spin mr-2" />
@@ -626,7 +671,7 @@ watch(() => props.activeStatus, (newVal) => {
             {{ t('billing_block.estimate_readings') }}
           </button>
           <button v-if="currentStep !== steps.length - 1" @click="nextStep"
-            :disabled="nextStepLoading || nextStepAllowed || isAssigningReadings"
+            :disabled="nextStepLoading || nextStepAllowed || isAssigningReadings || previousStepLoading"
             class="px-4 py-2 bg-green-500 text-white rounded enabled:hover:bg-green-600 disabled:opacity-70 disabled:cursor-not-allowed flex items-center">
             <Icon v-if="nextStepLoading" name="fa6-solid:spinner" class="animate-spin mr-2" />
             {{ nextStepLoading ? $t('common.processing') : $t('common.next') }} &nbsp;&rarr;
