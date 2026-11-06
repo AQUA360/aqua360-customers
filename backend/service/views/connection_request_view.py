@@ -11,7 +11,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Prefetch, F, CharField, Value
 from django.db.models.functions import Concat
 
-from service.models import ConnectionRequest, ConnectionRequestObservation
+from django.conf import settings
+from rest_framework.exceptions import ValidationError
+
+from documentmanager.utils.main_utils import upload_document
+from service.models import ConnectionRequest, ConnectionRequestObservation, ConnectionDocumentationType, ConnectionRequestDocumentationFile
 from service.serializers.connection_request_serializer import ConnectionRequestSerializer, ConnectionRequestSaveSerializer, ConnectionRequestListSerializer
 from service.filters.connection_request_filter import ConnectionRequestFilter
 
@@ -72,6 +76,35 @@ class ConnectionRequestViewSet(viewsets.ModelViewSet):
         read_serializer = ConnectionRequestSerializer(instance, context=self.get_serializer_context())
         return Response(read_serializer.data)
     
+    @action(detail=True, methods=['put'], url_path='save-file')
+    def save_file(self, request, pk=None):
+        instance = self.get_object()
+        file = request.data.get('file', None)
+        if not file:
+            raise ValidationError("File is required")
+
+        doc_type = ConnectionDocumentationType.objects.filter(id=request.data.get('doc_type') or None).first()
+
+        document = upload_document(
+            file,
+            'CONNECTION_REQUEST',
+            'CONNECTION_REQUEST',
+            instance.id,
+            instance.token,
+            '',
+            settings.DOCUMENT_MANAGER_SERVICES.get("connection"),
+            file.name.replace(' ', '_').replace('/', '_'),
+            instance.created_at
+        )
+        ConnectionRequestDocumentationFile.objects.create(
+            connection_request=instance,
+            file=document,
+            type=doc_type
+        )
+
+        serializer = ConnectionRequestSerializer(instance, context=self.get_serializer_context())
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'], url_path='permissions')
     def permissions(self, request):
         pk = request.query_params.get('id')

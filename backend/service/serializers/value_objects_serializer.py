@@ -301,6 +301,27 @@ class ConnectionDocumentationFileSerializer(serializers.ModelSerializer):
         fields = ['id', 'file', 'type', 'is_active']
 
 
+class ConnectionRequestDocumentationFileSerializer(serializers.ModelSerializer):
+    file = DocumentSerializer(read_only=True, required=False, allow_null=True)
+    type = ConnectionDocumentationTypeSerializer(read_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = ConnectionRequestDocumentationFile
+        fields = ['id', 'file', 'type', 'is_active']
+
+
+class ConnectionRequestBuildingTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConnectionRequestBuildingType
+        fields = '__all__'
+
+
+class ConnectionRequestRepresentativeTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConnectionRequestRepresentativeType
+        fields = '__all__'
+
+
 class ClusterDocumentationTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClusterDocumentationType
