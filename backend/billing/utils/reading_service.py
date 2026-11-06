@@ -23,6 +23,7 @@ from contract.models import Contract, ContractStatus
 from coredata.models import ConfigProject
 from coredata.utils.fire_usage_utils import get_fire_usage_tokens
 from service.models import Meter, SupplyPointStatus, SupplyPoint
+from service.utils.route_scope import effective_route
 from statistics.models import ContractConsumption
 from statistics.views.reports_views import add_row, adjust_column_widths
 from order.models import Order, OrderPriority, OrderReason, OrderStatus, OrderType
@@ -1933,6 +1934,7 @@ def recalculate_estimated_readings(reading_ids):
     'supply_point', 'contract', 'meter', 'previous_reading',
     'supply_point__meter', 'supply_point__meter__status',
     'contract__use_type', 'supply_point__connection', 'supply_point__connection__use_type',
+    'supply_point__route_position__route__biller',
     'supply_point__property__route_position__route__biller',
   )
 
@@ -1946,7 +1948,7 @@ def recalculate_estimated_readings(reading_ids):
       continue
 
     try:
-      biller = supply_point.property.route_position.route.biller
+      biller = effective_route(supply_point).biller
       offset_days = PERIOD_MONTHS_MAP.get(biller.period_type, 90) if biller else 90
     except Exception:
       offset_days = 90
@@ -2518,7 +2520,7 @@ def check_billing_period(reading_date, supply_point, meter, contract, previous_r
   #   print("readings do not have period")
   #   return True
   
-  biller = supply_point.property.route_position.route.biller
+  biller = effective_route(supply_point).biller
   billing_period_days = PERIOD_MONTHS_MAP[biller.period_type] if biller else 90
   
   reading_date = reading_date

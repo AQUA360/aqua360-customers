@@ -9,6 +9,13 @@ from django.db.models import Prefetch
 
 from contract.models import Contract
 from service.models import Route, SupplyPoint
+from service.utils.route_scope import (
+    effective_route_field_expr,
+    effective_route_position,
+    effective_route_select_related,
+    reading_batch_supply_points_q,
+    route_supply_points_q,
+)
 
 
 def _status_label(status):
@@ -36,14 +43,11 @@ def _format_decimal(value):
 
 
 def _route_position_from_supply_point(supply_point):
-    prop = getattr(supply_point, 'property', None)
-    if not prop:
-        return None
-    return getattr(prop, 'route_position', None)
+    return effective_route_position(supply_point)
 
 
 def _route_location_values(supply_point):
-    """Route / RoutePosition / Property des de property.route_position."""
+    """Route / RoutePosition / Property des de la posició de ruta efectiva del punt."""
     prop = getattr(supply_point, 'property', None)
     route_position = _route_position_from_supply_point(supply_point)
     route = getattr(route_position, 'route', None) if route_position else None
@@ -118,8 +122,7 @@ def _prefetch_supply_points_qs(qs):
             'status',
             'meter',
             'property',
-            'property__route_position',
-            'property__route_position__route',
+            *effective_route_select_related(),
         )
         .prefetch_related(
             Prefetch(
@@ -127,10 +130,14 @@ def _prefetch_supply_points_qs(qs):
                 queryset=Contract.objects.select_related('status').order_by('token', 'id'),
             )
         )
+        .annotate(
+            export_route_token=effective_route_field_expr('route__token'),
+            export_position=effective_route_field_expr('position'),
+        )
         .distinct()
         .order_by(
-            'property__route_position__route__token',
-            'property__route_position__position',
+            'export_route_token',
+            'export_position',
             'token',
             'id',
         )
@@ -140,8 +147,8 @@ def _prefetch_supply_points_qs(qs):
 def get_supply_points_for_route(route):
     """SupplyPoints actius de la Route (totes les posicions / finques)."""
     qs = SupplyPoint.objects.filter(
+        route_supply_points_q(route),
         is_active=True,
-        property__route_position__route=route,
     )
     return _prefetch_supply_points_qs(qs)
 
@@ -152,8 +159,8 @@ def get_supply_points_for_reading_batch(reading_batch):
     que ReadingBatchSetupViewSet.
     """
     qs = SupplyPoint.objects.filter(
+        reading_batch_supply_points_q(reading_batch),
         is_active=True,
-        property__route_position__route__reading_batches=reading_batch,
     )
 
     if not reading_batch.include_telecontrol:

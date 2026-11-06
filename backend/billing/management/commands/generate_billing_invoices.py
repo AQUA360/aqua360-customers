@@ -28,6 +28,8 @@ from billing.utils.payment_service import (
 )
 from coredata.models import ConfigProject
 from billing.utils.reading_filters import PENDING_READING_FILTER
+from service.models import SupplyPoint
+from service.utils.route_scope import routes_supply_points_q
 
 
 class Command(BaseCommand):
@@ -339,10 +341,9 @@ class Command(BaseCommand):
             return 0
 
         billing_supply_point_ids = set(
-            billing.routes.values_list(
-                'positions__properties__supply_points__id',
-                flat=True,
-            ).distinct()
+            SupplyPoint.objects.filter(
+                routes_supply_points_q(billing.routes.all())
+            ).values_list('id', flat=True)
         )
         billing_supply_point_ids.discard(None)
 

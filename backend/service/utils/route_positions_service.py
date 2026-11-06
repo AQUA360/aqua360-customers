@@ -1,7 +1,8 @@
-from ..models import Route, RoutePosition
+from ..models import Route, RoutePosition, SupplyPoint
 from coredata.models import ConfigProject
 from django.db.models import Count, Sum
 from .property_route_service import sync_property_tokens_with_route_position
+from .route_scope import route_supply_points_q
 
 
 def build_route_position_token(route_position):
@@ -40,8 +41,4 @@ def route_position_change(route_id, current_position, exclude_id=None):
     return route
 
 def route_count_total_readings(route):
-    num_total_readings = 0
-    for position in route.positions.all():
-        if position.properties.count() > 0:
-            num_total_readings += position.properties.annotate(num_supplypoints=Count('supply_points')).aggregate(total=Sum('num_supplypoints'))['total']
-    return num_total_readings
+    return SupplyPoint.objects.filter(route_supply_points_q(route)).count()

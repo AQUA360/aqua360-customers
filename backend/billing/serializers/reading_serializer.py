@@ -7,6 +7,7 @@ from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint
 from service.serializers.meter_serializer import MeterMinimalSerializer
 from service.serializers.supply_point_serializer import SupplyPointAppSerializer, SupplyPointMinimalSerializer
+from service.utils.route_scope import effective_route_position
 from contract.serializers.contract_minimal_serializer import ContractMinimalNoSuppliesSerializer, ContractMinimalSerializer
 from billing.utils.reading_service import calculate_estimated_bag, check_billing_period, copy_new_reading_to_all, get_existing_reading, get_reading_alerts_config, get_reading_minimal_object, get_reading_copy_group
 from billing.utils.reading_filters import BILLED_READING_FILTER
@@ -351,18 +352,9 @@ class ReadingByBatchMinimalSerializer(serializers.ModelSerializer):
     contract = serializers.CharField(read_only=True, source='contract.token', required=False, allow_null=True)
     meter_code = serializers.CharField(read_only=True, source='meter.code', required=False, allow_null=True)
     meter_is_general = serializers.BooleanField(read_only=True, source='meter.is_general', required=False, allow_null=True)
-    routeposition_code = serializers.CharField(
-        read_only=True,
-        source='supply_point.property.route_position.token',
-        required=False,
-        allow_null=True,
-    )
-    routeposition_position = serializers.IntegerField(
-        read_only=True,
-        source='supply_point.property.route_position.position',
-        required=False,
-        allow_null=True,
-    )
+    # Posició de ruta efectiva del punt (pròpia o la de la finca)
+    routeposition_code = serializers.SerializerMethodField()
+    routeposition_position = serializers.SerializerMethodField()
     
     remote_alert_name = serializers.CharField(read_only=True, source='remote_alert.name', required=False, allow_null=True)
     reader_alert_name = serializers.CharField(read_only=True, source='reader_alert.name', required=False, allow_null=True)
@@ -370,6 +362,14 @@ class ReadingByBatchMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reading
         fields = '__all__'
+
+    def get_routeposition_code(self, instance):
+        route_position = effective_route_position(instance.supply_point)
+        return str(route_position.token) if route_position and route_position.token is not None else None
+
+    def get_routeposition_position(self, instance):
+        route_position = effective_route_position(instance.supply_point)
+        return route_position.position if route_position else None
         
     def to_representation(self, instance):
         representation = super().to_representation(instance)

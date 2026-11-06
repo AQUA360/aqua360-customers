@@ -20,6 +20,7 @@ from service.utils.supply_point_service import supply_point_change_address, supp
 from service.utils.supply_cut_service import is_temporary_cause as supply_cut_is_temporary
 from service.utils.supply_cut_service import planned_cut_is_stale
 from service.utils.property_route_service import auto_assign_route_to_property
+from service.utils.route_scope import effective_route_position, serialize_effective_route
 from ..models import ( Cluster, ClusterNozzleStatus, ClusterNozzleType, Route, RoutePosition, SupplyPointObservation, SupplyPoint, SupplyPointPlacement, SupplyPointType, SupplyPointStatus, SupplyPointSource, SupplyPointSupplyType, ClusterNozzle, Connection, Meter, Property )
 from .value_objects_serializer import SupplyPointPlacementSerializer, SupplyPointTypeSerializer, SupplyPointStatusSerializer, SupplyPointSourceSerializer, SupplyPointSupplyTypeSerializer, MeterStatusSerializer
 from .connection_serializer import ConnectionSerializer
@@ -99,7 +100,7 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
     status_token = serializers.CharField(source='status.token', read_only=True)
     status_name = serializers.CharField(source='status.name', read_only=True)
     status_color = serializers.CharField(source='status.color', read_only=True)
-    property_route_position_token = serializers.CharField(source='property.route_position.token', read_only=True)
+    property_route_position_token = serializers.SerializerMethodField()
     meter_code = serializers.CharField(source='meter.code', read_only=True)
     cluster_nozzle_token = serializers.CharField(source='cluster_nozzle.token', read_only=True)
     connection_token = serializers.CharField(source='connection.token', read_only=True)
@@ -120,6 +121,11 @@ class SupplyPointListSerializer(serializers.ModelSerializer):
     property_id = serializers.IntegerField(source='property.id', read_only=True)
     property_token = serializers.CharField(source='property.token', read_only=True)
     property_name = serializers.CharField(source='property.name', read_only=True)
+
+    def get_property_route_position_token(self, obj):
+        # Ruta efectiva: la pròpia del punt o, si no en té, la de la finca.
+        route_position = effective_route_position(obj)
+        return route_position.token if route_position else None
 
     class Meta:
         model = SupplyPoint
@@ -277,6 +283,9 @@ class SupplyPointSerializer(serializers.ModelSerializer):
     dismiss_frauds = serializers.BooleanField(write_only=True, required=False, allow_null=True)
     cluster_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     route = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    # La ruta pròpia es canvia amb l'acció set-route, no amb l'update genèric.
+    route_position = serializers.PrimaryKeyRelatedField(read_only=True)
+    effective_route = serializers.SerializerMethodField()
     
     last_reading = serializers.SerializerMethodField()
     
@@ -293,6 +302,9 @@ class SupplyPointSerializer(serializers.ModelSerializer):
     
     def get_supply_cut_alert(self, obj):
         return _supply_cut_alert(obj)
+
+    def get_effective_route(self, obj):
+        return serialize_effective_route(obj)
     
     def get_contract_debt(self, obj):
         config_tokens = ConfigProject.objects.filter(token__in=[

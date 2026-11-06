@@ -38,6 +38,7 @@ from billing.models import CommitmentDepositStatus, GeneralPaymentMandateLog, In
 from logger.models import LogContractTotalMembers
 from contract.utils.contract_service import get_contract_housing_units, log_contract_phones_change
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
+from service.utils.route_scope import effective_route
 
 class ContractObservationSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(required=False, allow_null=True)
@@ -203,7 +204,7 @@ class ContractSerializer(serializers.ModelSerializer):
         try:
             period_type = ['mensual','bimestral','trimestral','semestral','anual']
             period_jumps = [1,2,3,6,12]
-            biller_period = obj.supply_point_default.property.route_position.route.biller.period_type
+            biller_period = effective_route(obj.supply_point_default).biller.period_type
             return period_jumps[period_type.index(biller_period)] * 30
         except:
             return None

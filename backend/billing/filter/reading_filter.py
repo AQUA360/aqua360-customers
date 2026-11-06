@@ -4,6 +4,7 @@ from django.db.models import Q
 from functools import reduce
 from operator import and_
 from billing.utils.reading_filters import PENDING_READING_FILTER
+from service.utils.route_scope import route_supply_points_q
 
 
 class ReadingFilter(filters.FilterSet):
@@ -88,7 +89,7 @@ class ReadingFilter(filters.FilterSet):
     def filter_route(self, queryset, name, value):
         if value and value != 'undefined':
             return queryset.filter(
-                Q(supply_point__property__route_position__route__id=value)
+                route_supply_points_q(value, prefix='supply_point__')
             )
         return queryset
     

@@ -58,6 +58,11 @@ from logger.models import LogInvoiceChangeStatus
 from notification.models import Notification
 from service.models import CompanyBank, Exploitation, Meter, Route, SupplyPoint
 from service.serializers.company_serializer import CompanySerializer
+from service.utils.route_scope import (
+    effective_route, effective_route_position, effective_route_position_expr, effective_route_q,
+    effective_route_select_related,
+    position_supply_points_q, reading_batch_supply_points_q, route_supply_points_q,
+)
 from verifactu.utils.save_verifactu_info import notify_verifactu_unsent_batches
 from .models import ( Biller, Billing, BillingBatch, BillingBatchStatus, BillingStatus, EstimatedBagMovement, Invoice, InvoiceStatus, InvoiceWarning, JoinedPayment, Payment, PaymentStatus, ReadingAlert, ReadingBatch, Reading, ReadingBatchStatus, ReadingDocument, ReadingDocumentNotFound, RemoteReadingAlert, EstimatedBag,)
 from statistics.models import BillingConsumption, ReadingBatchExportColumn
@@ -212,18 +217,11 @@ def _primary_contact_for_contract(contract):
 
 
 def _route_model_from_supply_point(supply_point):
-    if not supply_point or not supply_point.property_id or not supply_point.property:
-        return None
-    rp = supply_point.property.route_position
-    if not rp or not rp.route_id:
-        return None
-    return rp.route
+    return effective_route(supply_point)
 
 
 def _route_position_from_supply_point(supply_point):
-    if not supply_point or not supply_point.property_id or not supply_point.property:
-        return None
-    return supply_point.property.route_position
+    return effective_route_position(supply_point)
 
 
 def _reading_batch_export_context_dict(
@@ -260,10 +258,8 @@ def _supply_point_address_str(supply_point):
 
 
 def _route_position_labels_from_sp(supply_point):
-    """Route/position from property.route_position (not necessarily same as batch route)."""
-    if not supply_point or not supply_point.property_id or not supply_point.property:
-        return "", ""
-    rp = supply_point.property.route_position
+    """Route/position from the effective route position (not necessarily same as batch route)."""
+    rp = effective_route_position(supply_point)
     if not rp:
         return "", ""
     route_label = ""
@@ -293,27 +289,25 @@ def _meter_matches_reading_batch_filters(reading_batch, meter):
     return True
 
 
-def _positions_qs_for_reading_batch_route(route, reading_batch):
+def _supply_points_qs_for_reading_batch_route(route, reading_batch):
+    """Supply points of the route (effective route position), with the tele/manual flags of the batch."""
+    qs = SupplyPoint.objects.filter(route_supply_points_q(route))
     if not reading_batch.include_telecontrol:
-        qs = route.positions.filter(
-            Q(properties__supply_points__meter__has_remote_reading=False) | Q(properties__supply_points__meter__force_manual_reading=True)
-        ).distinct()
+        qs = qs.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True))
     elif not reading_batch.include_manual:
-        qs = route.positions.filter(
-            Q(properties__supply_points__meter__has_remote_reading=True, properties__supply_points__meter__force_manual_reading=False)
-        ).distinct()
+        qs = qs.filter(meter__has_remote_reading=True, meter__force_manual_reading=False)
+    return qs
+
+
+def _positions_qs_for_reading_batch_route(route, reading_batch):
+    if not reading_batch.include_telecontrol or not reading_batch.include_manual:
+        effective_position_ids = _supply_points_qs_for_reading_batch_route(route, reading_batch).annotate(
+            effective_position_id=effective_route_position_expr()
+        ).values("effective_position_id")
+        qs = route.positions.filter(id__in=effective_position_ids)
     else:
         qs = route.positions.all()
     return qs.order_by("position", "id")
-
-
-def _supply_points_qs_for_reading_batch_property(prop, reading_batch):
-    qs = prop.supply_points.select_related("cluster_nozzle")
-    if not reading_batch.include_telecontrol:
-        qs = qs.filter(Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)).distinct()
-    elif not reading_batch.include_manual:
-        qs = qs.filter(meter__has_remote_reading=True, meter__force_manual_reading=False).distinct()
-    return qs.order_by(F("cluster_nozzle__position").asc(nulls_first=True), "id")
 
 
 def _sortable_int(value, nulls_last=True):
@@ -325,7 +319,7 @@ def _sortable_int(value, nulls_last=True):
 
 def _reading_batch_export_context_sort_key(ctx):
     """
-    Walk order: route, then supply.property.route_position.position,
+    Walk order: route, then the effective route position (own or the property's),
     then cluster_nozzle.position (supplies without a nozzle first).
     """
     route = ctx.get("route")
@@ -348,8 +342,8 @@ def _reading_batch_export_row_contexts(reading_batch):
     Supply points/meters respect include_telecontrol / include_manual like ReadingBatchSetupViewSet.
     Each context has supply_point, meter, supply_address, route_label, position_label,
     contract_token, contract, route (Route model when available), route_position (RoutePosition),
-    contact (primary PersonContact). Rows are ordered by route, then
-    supply.property.route_position.position, then cluster_nozzle.position.
+    contact (primary PersonContact). Rows are ordered by route, then the effective
+    route position of the supply point, then cluster_nozzle.position.
     """
     active_contract_token = ConfigProject.objects.get(token="contract_active_token").value
     token_meter_status_no_meter = ConfigProject.objects.get(token="token_meter_status_no_meter").value
@@ -358,59 +352,52 @@ def _reading_batch_export_row_contexts(reading_batch):
     contexts = []
 
     if reading_batch.routes.exists():
-        routes = (
-            reading_batch.routes.all()
-            .prefetch_related(
-                Prefetch(
-                    "positions__properties__supply_points",
-                    queryset=SupplyPoint.objects.all()
-                    .select_related(
-                        "meter",
-                        "meter__status",
-                        "address",
-                        "address__street",
-                        "address__street_number",
-                        "address__city",
-                        "cluster_nozzle",
-                        "property__route_position",
-                        "property__route_position__route",
-                    )
-                    .prefetch_related(
-                        "contracts",
-                        "contracts__status",
-                        "contracts__contacts",
-                        "contracts__contacts__person",
-                    ),
-                ),
-            )
-            .select_related("route_zone")
-        )
+        routes = reading_batch.routes.all().select_related("route_zone")
 
-        def _position_has_any_listable_meter(position):
-            """At least one supply point meter listable for export (status + tele/manual flags)."""
-            for prop in position.properties.all():
-                for sp in _supply_points_qs_for_reading_batch_property(prop, reading_batch):
-                    if not sp.meter or not sp.meter.status:
-                        continue
-                    if sp.meter.status.token == token_meter_status_no_meter:
-                        continue
-                    if _meter_matches_reading_batch_filters(reading_batch, sp.meter):
-                        return True
-            return False
+        def _route_supply_points_by_position(route):
+            """Supply points of the route grouped by effective position (property, then nozzle order)."""
+            sps = (
+                _supply_points_qs_for_reading_batch_route(route, reading_batch)
+                .select_related(
+                    "meter",
+                    "meter__status",
+                    "address",
+                    "address__street",
+                    "address__street_number",
+                    "address__city",
+                    "cluster_nozzle",
+                    *effective_route_select_related(),
+                )
+                .prefetch_related(
+                    "contracts",
+                    "contracts__status",
+                    "contracts__contacts",
+                    "contracts__contacts__person",
+                )
+                .order_by("property_id", F("cluster_nozzle__position").asc(nulls_first=True), "id")
+            )
+            by_position = {}
+            for sp in sps:
+                rp = effective_route_position(sp)
+                by_position.setdefault(rp.id if rp else None, []).append(sp)
+            return by_position
+
+        def _is_listable(sp):
+            """Supply point meter listable for export (status + tele/manual flags)."""
+            return bool(
+                sp.meter
+                and sp.meter.status
+                and sp.meter.status.token != token_meter_status_no_meter
+                and _meter_matches_reading_batch_filters(reading_batch, sp.meter)
+            )
 
         for route in routes:
             route_label = (route.token or route.name or str(route.id)).strip()
-            positions_qs = _positions_qs_for_reading_batch_route(route, reading_batch)
-            positions_list = list(
-                positions_qs.prefetch_related(
-                    "properties__supply_points",
-                    "properties__supply_points__meter",
-                    "properties__supply_points__meter__status",
-                    "properties__supply_points__cluster_nozzle",
-                )
-            )
+            positions_list = list(_positions_qs_for_reading_batch_route(route, reading_batch))
+            supply_points_by_position = _route_supply_points_by_position(route)
             for position in positions_list:
-                if not _position_has_any_listable_meter(position):
+                position_sps = supply_points_by_position.get(position.id, [])
+                if not any(_is_listable(sp) for sp in position_sps):
                     continue
                 if position.position is not None:
                     position_label = str(position.position)
@@ -418,29 +405,22 @@ def _reading_batch_export_row_contexts(reading_batch):
                     position_label = str(position.token).strip()
                 else:
                     position_label = ""
-                for prop in position.properties.all():
-                    sps = _supply_points_qs_for_reading_batch_property(prop, reading_batch)
-                    for sp in sps:
-                        if (
-                            not sp.meter
-                            or not sp.meter.status
-                            or sp.meter.status.token == token_meter_status_no_meter
-                            or not _meter_matches_reading_batch_filters(reading_batch, sp.meter)
-                        ):
-                            continue
-                        supply_address = _supply_point_address_str(sp)
-                        contexts.append(
-                            _reading_batch_export_context_dict(
-                                sp,
-                                sp.meter,
-                                supply_address,
-                                route_label,
-                                position_label,
-                                route,
-                                position,
-                                active_contract_token,
-                            )
+                for sp in position_sps:
+                    if not _is_listable(sp):
+                        continue
+                    supply_address = _supply_point_address_str(sp)
+                    contexts.append(
+                        _reading_batch_export_context_dict(
+                            sp,
+                            sp.meter,
+                            supply_address,
+                            route_label,
+                            position_label,
+                            route,
+                            position,
+                            active_contract_token,
                         )
+                    )
 
     elif reading_batch.fix_meters.exists():
         fix_meters = reading_batch.fix_meters.prefetch_related(
@@ -453,8 +433,7 @@ def _reading_batch_export_row_contexts(reading_batch):
                     "address__street_number",
                     "address__city",
                     "cluster_nozzle",
-                    "property__route_position",
-                    "property__route_position__route",
+                    *effective_route_select_related(),
                     "meter",
                     "meter__status",
                 )
@@ -502,8 +481,7 @@ def _reading_batch_export_row_contexts(reading_batch):
                 "address__street_number",
                 "address__city",
                 "cluster_nozzle",
-                "property__route_position",
-                "property__route_position__route",
+                *effective_route_select_related(),
             )
             .prefetch_related(
                 "contracts",
@@ -752,8 +730,8 @@ def _batch_reading_export_columns():
     return [
         ("contract", _("Contracte"), lambda r: r.contract.token if r.contract else ""),
         ("address", _("Adreça"), lambda r: str(r.supply_point.address) if r.supply_point and r.supply_point.address else ""),
-        ("route_position", _("Posició de ruta"), lambda r: r.supply_point.property.route_position.token
-            if r.supply_point and r.supply_point.property and r.supply_point.property.route_position else ""),
+        ("route_position", _("Posició de ruta"), lambda r: effective_route_position(r.supply_point).token
+            if effective_route_position(r.supply_point) else ""),
         ("meter", _("Comptador"), lambda r: r.meter.code if r.meter else ""),
         ("origin", _("Tipus"), lambda r: r.origin or ""),
         ("previous_leak", _("Fuita anterior"), lambda r: prev(r).leak_value if prev(r) else None),
@@ -819,7 +797,7 @@ def export_batch_readings_task(reading_ids):
     try:
         queryset = Reading.objects.select_related(
             "contract", "meter", "alert", "reader_alert", "remote_alert", "previous_reading",
-            "supply_point__address", "supply_point__property__route_position",
+            "supply_point__address", *effective_route_select_related("supply_point__"),
         )
         file_bytes = build_export_xlsx_bytes_from_objects(
             iter_objects_by_ids(queryset, reading_ids or []), _batch_reading_export_columns(),
@@ -1551,7 +1529,7 @@ def process_reading_batch(self, reading_batch_id):
   reading_files = []
   readings = []
   
-  total_supplypoints = batch.routes.annotate(num_supplypoints=Count('positions__properties__supply_points')).aggregate(total=Sum('num_supplypoints'))['total']
+  total_supplypoints = SupplyPoint.objects.filter(reading_batch_supply_points_q(batch)).values('id').distinct().count()
   print("PROCESSING BATCH: "+str(reading_batch_id))
   print("TOTAL SUPPLYPOINTS: "+str(total_supplypoints))
 
@@ -1615,7 +1593,7 @@ def process_reading_batch(self, reading_batch_id):
   
   if batch.include_manual:
     meters = Meter.objects.filter(
-      supply_points__property__route_position__route__reading_batches=batch
+      supply_points__in=SupplyPoint.objects.filter(reading_batch_supply_points_q(batch))
     ).filter(force_manual_reading=True)
     meters.update(force_manual_reading=False)
   
@@ -1668,23 +1646,21 @@ def assign_readings_task(self, reading_batch_id, payload=None):
     start_date = date_obj - timedelta(days=5)
     end_date = date_obj + timedelta(days=5)
  
-  total_contracts_routes = reading_batch.routes.aggregate(
-      num_contracts=Count(
-          'positions__properties__supply_points__contracts__id',
-          filter=(
-              Q(positions__properties__supply_points__contracts__status__token=active_contract_token) |
+  batch_route_supply_points = SupplyPoint.objects.filter(reading_batch_supply_points_q(reading_batch))
+  total_contracts_routes = {
+      'num_contracts': Contract.objects.filter(
+          Q(status__token=active_contract_token) |
+          (
+              Q(status__token=terminated_contract_token) &
+              Q(contractterminationrequest__status__token=contract_termination_completed_token) &
               (
-                  Q(positions__properties__supply_points__contracts__status__token=terminated_contract_token) &
-                  Q(positions__properties__supply_points__contracts__contractterminationrequest__status__token=contract_termination_completed_token) &
-                  (
-                      Q(positions__properties__supply_points__contracts__contractterminationrequest__approved_at__date__gte=date_obj.date() if date_obj else timezone.now().date()) |
-                      Q(positions__properties__supply_points__contracts__contractterminationrequest__approved_at__isnull=True, positions__properties__supply_points__contracts__contractterminationrequest__created_at__date__gte=date_obj.date() if date_obj else timezone.now().date())
-                  )
+                  Q(contractterminationrequest__approved_at__date__gte=date_obj.date() if date_obj else timezone.now().date()) |
+                  Q(contractterminationrequest__approved_at__isnull=True, contractterminationrequest__created_at__date__gte=date_obj.date() if date_obj else timezone.now().date())
               )
           ),
-          distinct=True
-      )
-  )
+          supply_points__in=batch_route_supply_points,
+      ).distinct().count()
+  }
   fix_supplies_contracts_data = reading_batch.fix_meters.aggregate(
       num_contracts=Count(
           'supply_points__contracts__id',
@@ -1704,9 +1680,7 @@ def assign_readings_task(self, reading_batch_id, payload=None):
   )
   total_contracts = (total_contracts_routes['num_contracts'] or 0) + (fix_supplies_contracts_data['num_contracts'] or 0)
  
-  total_route_supplypoints = reading_batch.routes.aggregate(
-      total=Count('positions__properties__supply_points__id', distinct=True)
-  )['total'] or 0
+  total_route_supplypoints = batch_route_supply_points.values('id').distinct().count()
   total_fix_supplypoints = reading_batch.fix_meters.aggregate(
       total=Count('supply_points__id', distinct=True)
   )['total'] or 0
@@ -1740,17 +1714,19 @@ def assign_readings_task(self, reading_batch_id, payload=None):
         total_supplypoints
     )
  
-  def get_supply_points(property_obj):
+  def get_supply_points(position):
+    # Punts de la posició segons la ruta efectiva (pròpia del punt o de la finca)
+    position_supply_points = SupplyPoint.objects.filter(position_supply_points_q(position)).order_by('property_id', 'id')
     if exclude_telecontrol:
-      return property_obj.supply_points.filter(
+      return position_supply_points.filter(
           Q(meter__has_remote_reading=False) | Q(meter__sub_meters__has_remote_reading=False)
       | Q(meter__force_manual_reading=True) | Q(meter__sub_meters__force_manual_reading=True)
       ).distinct()
     if exclude_manual:
-      return property_obj.supply_points.filter(
+      return position_supply_points.filter(
           Q(meter__has_remote_reading=True, meter__force_manual_reading=False) | Q(meter__sub_meters__has_remote_reading=True, meter__sub_meters__force_manual_reading=False)
       ).distinct()
-    return property_obj.supply_points.all()
+    return position_supply_points
 
   def resolve_general_meter_canonical(meter, for_reading_date=False, for_not_billed=False, reading_file=None):
     """Fallback: physical general-meter reading (often contract/SP null) before billing fan-out."""
@@ -1806,96 +1782,95 @@ def assign_readings_task(self, reading_batch_id, payload=None):
   if filters_present:
     for route in reading_batch.routes.all():
       for position in route.positions.all():
-        for property_obj in position.properties.all():
-          supply_points = get_supply_points(property_obj)
-          for supply_point in supply_points:
-            processed_supplypoints += 1
-            update_progress()
-            try:
-              contracts = supply_point.contracts.filter(
-                  Q(status__token=active_contract_token) |
-                  (
-                      Q(status__token=terminated_contract_token) &
-                      Q(contractterminationrequest__status__token=contract_termination_completed_token) &
-                      (
-                          Q(contractterminationrequest__approved_at__date__gte=date_obj.date() if date_obj else (minimum_date if minimum_date else timezone.now().date())) |
-                          Q(contractterminationrequest__approved_at__isnull=True, contractterminationrequest__created_at__date__gte=date_obj.date() if date_obj else (minimum_date if minimum_date else timezone.now().date()))
-                      )
-                  )
-              ).distinct()
-              if reading_files_present:
-                for reading_file in reading_files:
-                  for contract in contracts:
-                    reading_db = reading_file.readings.filter(supply_point=supply_point, contract=contract, is_control=False, is_close=False, is_initial=False).first()
-                    if reading_file.readings.filter(supply_point=supply_point, contract=contract, invoices__type_final='F', is_close=False, is_initial=False).exists():
-                      total_billed_readings += 1
-                    if not reading_db:
-                      reading_db = resolve_general_meter_canonical(supply_point.meter, reading_file=reading_file)
-                    try_add_reading(contract, supply_point.meter, reading_db)
-              elif reading_date:
+        supply_points = get_supply_points(position)
+        for supply_point in supply_points:
+          processed_supplypoints += 1
+          update_progress()
+          try:
+            contracts = supply_point.contracts.filter(
+                Q(status__token=active_contract_token) |
+                (
+                    Q(status__token=terminated_contract_token) &
+                    Q(contractterminationrequest__status__token=contract_termination_completed_token) &
+                    (
+                        Q(contractterminationrequest__approved_at__date__gte=date_obj.date() if date_obj else (minimum_date if minimum_date else timezone.now().date())) |
+                        Q(contractterminationrequest__approved_at__isnull=True, contractterminationrequest__created_at__date__gte=date_obj.date() if date_obj else (minimum_date if minimum_date else timezone.now().date()))
+                    )
+                )
+            ).distinct()
+            if reading_files_present:
+              for reading_file in reading_files:
                 for contract in contracts:
-                  reading_db = Reading.objects.filter(
-                      reading_date__range=(start_date, end_date),
-                      supply_point=supply_point,
-                      contract=contract,
-                      is_control=False,
-                      is_initial=False,
-                      is_close=False,
-                      is_active=True,
-                  ).filter(
-                      Q(previous_reading__is_close=False) |
-                      Q(previous_reading__isnull=True)
-                    ).annotate(
-                      date_diff=ExpressionWrapper(
-                          F('reading_date') - date_obj.date(),
-                          output_field=fields.DurationField()
-                      )
-                  ).order_by('date_diff').first()
-                  if Reading.objects.filter(
-                      reading_date__range=(start_date, end_date),
-                      supply_point=supply_point,
-                      contract=contract,
-                      invoices__type_final='F',
-                      is_initial=False,
-                      is_close=False,
-                      is_active=True,
-                  ).filter(
-                      Q(previous_reading__is_close=False) |
-                      Q(previous_reading__isnull=True)
-                    ).exists():
+                  reading_db = reading_file.readings.filter(supply_point=supply_point, contract=contract, is_control=False, is_close=False, is_initial=False).first()
+                  if reading_file.readings.filter(supply_point=supply_point, contract=contract, invoices__type_final='F', is_close=False, is_initial=False).exists():
                     total_billed_readings += 1
                   if not reading_db:
-                    reading_db = resolve_general_meter_canonical(supply_point.meter, for_reading_date=True)
+                    reading_db = resolve_general_meter_canonical(supply_point.meter, reading_file=reading_file)
                   try_add_reading(contract, supply_point.meter, reading_db)
-              elif not_billed:
-                for contract in contracts:
-                  reading_db = Reading.objects.filter(
-                      supply_point=supply_point,
-                      contract=contract,
-                      is_control=False,
-                      is_initial=False,
-                      is_close=False,
-                      reading_date__gte=minimum_date,
-                      is_active=True,
+            elif reading_date:
+              for contract in contracts:
+                reading_db = Reading.objects.filter(
+                    reading_date__range=(start_date, end_date),
+                    supply_point=supply_point,
+                    contract=contract,
+                    is_control=False,
+                    is_initial=False,
+                    is_close=False,
+                    is_active=True,
+                ).filter(
+                    Q(previous_reading__is_close=False) |
+                    Q(previous_reading__isnull=True)
+                  ).annotate(
+                    date_diff=ExpressionWrapper(
+                        F('reading_date') - date_obj.date(),
+                        output_field=fields.DurationField()
+                    )
+                ).order_by('date_diff').first()
+                if Reading.objects.filter(
+                    reading_date__range=(start_date, end_date),
+                    supply_point=supply_point,
+                    contract=contract,
+                    invoices__type_final='F',
+                    is_initial=False,
+                    is_close=False,
+                    is_active=True,
+                ).filter(
+                    Q(previous_reading__is_close=False) |
+                    Q(previous_reading__isnull=True)
+                  ).exists():
+                  total_billed_readings += 1
+                if not reading_db:
+                  reading_db = resolve_general_meter_canonical(supply_point.meter, for_reading_date=True)
+                try_add_reading(contract, supply_point.meter, reading_db)
+            elif not_billed:
+              for contract in contracts:
+                reading_db = Reading.objects.filter(
+                    supply_point=supply_point,
+                    contract=contract,
+                    is_control=False,
+                    is_initial=False,
+                    is_close=False,
+                    reading_date__gte=minimum_date,
+                    is_active=True,
+                ).filter(
+                    Q(previous_reading__is_close=False) |
+                    Q(previous_reading__isnull=True)
                   ).filter(
-                      Q(previous_reading__is_close=False) |
-                      Q(previous_reading__isnull=True)
-                    ).filter(
-                      PENDING_READING_FILTER
-                      ).distinct().order_by('-reading_date').first()
-                  if not reading_db:
-                    reading_db = resolve_general_meter_canonical(supply_point.meter, for_not_billed=True)
-                  try_add_reading(contract, supply_point.meter, reading_db)
-            except Exception as e:
-              print(f'Error processing supply_point={supply_point.id}: {type(e).__name__}: {str(e)}')
-              classification = classify_reading_processing_error(e)
-              task_errors.append({
-                  'supply_point_id': supply_point.id,
-                  'error': str(e),
-                  'type': type(e).__name__,
-                  **classification,
-              })
-              continue
+                    PENDING_READING_FILTER
+                    ).distinct().order_by('-reading_date').first()
+                if not reading_db:
+                  reading_db = resolve_general_meter_canonical(supply_point.meter, for_not_billed=True)
+                try_add_reading(contract, supply_point.meter, reading_db)
+          except Exception as e:
+            print(f'Error processing supply_point={supply_point.id}: {type(e).__name__}: {str(e)}')
+            classification = classify_reading_processing_error(e)
+            task_errors.append({
+                'supply_point_id': supply_point.id,
+                'error': str(e),
+                'type': type(e).__name__,
+                **classification,
+            })
+            continue
 
     for meter in reading_batch.fix_meters.all():
       for supply_point in meter.supply_points.all():
@@ -2084,7 +2059,7 @@ def _run_estimate_readings(self, reading_batch_id, payload=None):
   progress_recorder = ProgressRecorder(self)
 
   reading_batch = ReadingBatch.objects.select_related('status').prefetch_related(
-      'routes__positions__properties__supply_points'
+      'routes'
   ).get(id=reading_batch_id)
   active_contract_token = ConfigProject.objects.get(token='contract_active_token').value
   PERIOD_MONTHS_MAP = {
@@ -2139,33 +2114,31 @@ def _run_estimate_readings(self, reading_batch_id, payload=None):
     target_date = timezone.now().date()
     
   
-  for route in reading_batch.routes.all():
-    for position in route.positions.all():
-      for property_obj in position.properties.all():
-        if exclude_telecontrol:
-          supply_points = property_obj.supply_points.filter(
-              Q(meter__has_remote_reading=False) | Q(meter__sub_meters__has_remote_reading=False)
-              | Q(meter__force_manual_reading=True) | Q(meter__sub_meters__force_manual_reading=True)
+  route_supply_points = SupplyPoint.objects.filter(reading_batch_supply_points_q(reading_batch))
+  if exclude_telecontrol:
+    supply_points = route_supply_points.filter(
+        Q(meter__has_remote_reading=False) | Q(meter__sub_meters__has_remote_reading=False)
+        | Q(meter__force_manual_reading=True) | Q(meter__sub_meters__force_manual_reading=True)
+    )
+  elif exclude_manual:
+    supply_points = route_supply_points.filter(
+        Q(meter__has_remote_reading=True, meter__force_manual_reading=False) | Q(meter__sub_meters__has_remote_reading=True, meter__sub_meters__force_manual_reading=False)
+    )
+  else:
+    supply_points = route_supply_points.all()
+  supply_points = supply_points.filter(
+      Q(contracts__status__token=active_contract_token) |
+      (
+          Q(contracts__status__token=terminated_contract_token) &
+          Q(contracts__contractterminationrequest__status__token=contract_termination_completed_token) &
+          (
+              Q(contracts__contractterminationrequest__approved_at__date__gte=target_date) |
+              Q(contracts__contractterminationrequest__approved_at__isnull=True, contracts__contractterminationrequest__created_at__date__gte=target_date)
           )
-        elif exclude_manual:
-          supply_points = property_obj.supply_points.filter(
-              Q(meter__has_remote_reading=True, meter__force_manual_reading=False) | Q(meter__sub_meters__has_remote_reading=True, meter__sub_meters__force_manual_reading=False)
-          )
-        else:
-          supply_points = property_obj.supply_points.all()
-        supply_points = supply_points.filter(
-            Q(contracts__status__token=active_contract_token) |
-            (
-                Q(contracts__status__token=terminated_contract_token) &
-                Q(contracts__contractterminationrequest__status__token=contract_termination_completed_token) &
-                (
-                    Q(contracts__contractterminationrequest__approved_at__date__gte=target_date) |
-                    Q(contracts__contractterminationrequest__approved_at__isnull=True, contracts__contractterminationrequest__created_at__date__gte=target_date)
-                )
-            )
-        ).distinct()
-        for supply_point in supply_points:
-          batch_supply_points.add(supply_point.id)
+      )
+  ).distinct()
+  for supply_point in supply_points:
+    batch_supply_points.add(supply_point.id)
 
   for meter in reading_batch.fix_meters.all():
     for supply_point in meter.supply_points.all():
@@ -2187,7 +2160,7 @@ def _run_estimate_readings(self, reading_batch_id, payload=None):
 
   if missing_supply_points:
     supply_points_qs = SupplyPoint.objects.select_related(
-        'type', 'status', 'property__route_position__route'
+        'type', 'status', *effective_route_select_related()
     ).filter(id__in=missing_supply_points).order_by('id')
     supply_points = list(supply_points_qs)
   else:
@@ -2214,7 +2187,8 @@ def _run_estimate_readings(self, reading_batch_id, payload=None):
       
       progress_recorder.set_progress(index, total_supplypoints)
       sp_biller_days = biller_days
-      sp_biller = supply_point.property.route_position.route.biller if supply_point.property and supply_point.property.route_position and supply_point.property.route_position.route else None
+      sp_route = effective_route(supply_point)
+      sp_biller = sp_route.biller if sp_route else None
       if sp_biller:
         sp_biller_days = PERIOD_MONTHS_MAP.get(sp_biller.period_type, biller_days)
       if supply_point.contracts.exists():
@@ -2636,7 +2610,7 @@ def update_missing_periods_for_invoices():
   print(f"Found {invoices.count()} reading invoices without periods to update")
   monthly_invoices = invoices.filter(
       Q(billing__biller__period_type='mensual'),
-      Q(contract__supply_point_default__property__route_position__route__biller__period_type='mensual'),
+      effective_route_q('route__biller__period_type', 'mensual', prefix='contract__supply_point_default__'),
   )
   for invoice in invoices:
       invoice.billing_period_month = invoice.issue_date.month
@@ -3010,18 +2984,20 @@ def add_workdays(start_date, workdays):
 def assign_batches_to_invoices(billing_batch_ids):
   with transaction.atomic():  # Ensures data integrity
     for batch in BillingBatch.objects.filter(id__in=billing_batch_ids).prefetch_related(
-      'templates__routes__positions__properties__supply_points__contracts__invoices'
+      'templates__routes'
     ):
       for template in batch.templates.all():
         for route in template.routes.all():
-          for position in route.positions.all():
-            for property_obj in position.properties.all():  # Multiple properties
-              for supply_point in property_obj.supply_points.all():  # Multiple supply points
-                for contract in supply_point.contracts.all():  # Multiple contracts
-                  for invoice in contract.invoices.all():  # Invoices linked to contract
-                    print("ASSIGN BATCH TO INVOICE:")
-                    invoice.batch = batch  # Assign batch
-                    invoice.save(update_fields=['batch'])  # Save efficiently
+          # Punts de la ruta segons la ruta efectiva (pròpia del punt o de la finca)
+          route_supply_points = SupplyPoint.objects.filter(
+            route_supply_points_q(route)
+          ).prefetch_related('contracts__invoices')
+          for supply_point in route_supply_points:  # Multiple supply points
+            for contract in supply_point.contracts.all():  # Multiple contracts
+              for invoice in contract.invoices.all():  # Invoices linked to contract
+                print("ASSIGN BATCH TO INVOICE:")
+                invoice.batch = batch  # Assign batch
+                invoice.save(update_fields=['batch'])  # Save efficiently
 
     print("Batch assignment completed!")
   
@@ -3788,7 +3764,7 @@ def export_readings_by_batch_csv_task(batch_id):
             'meter',
             'supply_point',
             'supply_point__address',
-            'supply_point__property__route_position',
+            *effective_route_select_related('supply_point__'),
         ).order_by('-reading_date')
         
         if not readings.exists():
@@ -3839,9 +3815,7 @@ def export_readings_by_batch_csv_task(batch_id):
             while len(prev_consumptions) < 4:
                 prev_consumptions.append('')
 
-            route_position = None
-            if reading.supply_point and reading.supply_point.property:
-                route_position = reading.supply_point.property.route_position
+            route_position = effective_route_position(reading.supply_point)
             
             row = [
                 reading.reading_date.strftime('%d/%m/%Y') if reading.reading_date else '',

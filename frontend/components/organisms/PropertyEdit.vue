@@ -1,5 +1,5 @@
 <script setup>
-import { toRaw, ref, onMounted } from 'vue';
+import { toRaw, ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { checkPermission } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
@@ -33,6 +33,12 @@ const editingRoutePosition = ref(false);
 const assigningRoute = ref(false);
 
 const address_data = ref({});
+
+// Punts de la finca que tenen una ruta pròpia (diferent de la de la finca)
+const supplyPointsOtherRoutes = computed(() => {
+  const list = props.property?.supply_points_other_routes;
+  return Array.isArray(list) ? list : [];
+});
 
 const getData = async () => {
 
@@ -261,6 +267,20 @@ const deleteProperty = async () => {
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('route') }}</label>
           <button @click="openRegion('route')" class="button-default">
             <Icon name="fa6-solid:plus" />&nbsp; {{ t('common.add') }} {{ t('route').toLowerCase() }}</button>
+        </div>
+        <div v-if="supplyPointsOtherRoutes.length > 0" role="note"
+          class="col-span-2 mb-4 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          <p class="flex items-center gap-2 font-medium">
+            <Icon name="fa6-solid:circle-info" class="text-sky-600" />
+            {{ t('service_block.property_supply_points_other_routes') }}
+          </p>
+          <ul class="mt-1 ml-6 list-disc space-y-0.5">
+            <li v-for="sp in supplyPointsOtherRoutes" :key="sp.id">
+              <span class="font-medium">{{ sp.token }}</span>
+              <span class="text-sky-700"> → {{ sp.route_token }}</span>
+              <span v-if="sp.position_token" class="text-sky-600 text-xs"> ({{ sp.position_token }})</span>
+            </li>
+          </ul>
         </div>
         <div class="mb-4">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.latitude') }}</label>
