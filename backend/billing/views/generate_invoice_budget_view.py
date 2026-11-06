@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals
 from contract.models import Contract, ContractTerminationRequest, ContractRequest, PiggyBank
 from service.models import ConnectionRequest, CompanyBank, Exploitation
+from service.utils.route_scope import effective_route
 from coredata.models import ConfigProject, Person, PersonBank
 from contract.models import PaymentType
 
@@ -332,9 +333,7 @@ class GenerateInvoiceBudgetView(APIView):
                     biller = None
                     first_reading = og_readings[0] if og_readings else None
                     supply_point = getattr(first_reading, "supply_point", None)
-                    prop = getattr(supply_point, "property", None)
-                    route_position = getattr(prop, "route_position", None)
-                    route = getattr(route_position, "route", None)
+                    route = effective_route(supply_point)
                     biller = getattr(route, "biller", None)
                 else:
                     biller = billing.biller
@@ -422,9 +421,7 @@ class GenerateInvoiceBudgetView(APIView):
                 biller = None
                 first_reading = readings[0] if readings else None
                 supply_point = getattr(first_reading, "supply_point", None)
-                prop = getattr(supply_point, "property", None)
-                route_position = getattr(prop, "route_position", None)
-                route = getattr(route_position, "route", None)
+                route = effective_route(supply_point)
                 biller = getattr(route, "biller", None)
                     
                 period_type = biller.period_type if biller else 'trimestral'

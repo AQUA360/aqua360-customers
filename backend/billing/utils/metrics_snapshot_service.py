@@ -89,6 +89,7 @@ def build_billing_routes_summary(billing):
     from contract.models import ContractStatus
     from service.models import SupplyPoint
     from service.serializers.route_serializer import RouteListSerializer
+    from service.utils.route_scope import route_supply_points_q
 
     if billing.is_excluded:
         return [{
@@ -113,7 +114,7 @@ def build_billing_routes_summary(billing):
 
         # Get all supply points that belong to this route with active contracts
         route_supply_points = SupplyPoint.objects.filter(
-            property__route_position__route=route
+            route_supply_points_q(route)
         ).filter(
             Q(contracts__status=active_contract_status) | Q(default_contracts__status=active_contract_status)
         ).distinct()

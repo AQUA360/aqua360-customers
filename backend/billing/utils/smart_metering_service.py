@@ -23,6 +23,7 @@ from coredata.models import ConfigProject
 from coredata.utils.address_utils import get_address_complete_without_city
 from integrations.models import IntegrationRequestLog
 from service.models import Route, RouteZone, SupplyPoint
+from service.utils.route_scope import effective_route_ids, effective_route_q, routes_supply_points_q
 
 logger = logging.getLogger(__name__)
 
@@ -593,16 +594,16 @@ def _smart_metering_scope_q(scope):
         return None
     scope_q = Q(pk__in=[])
     if scope.get("route_ids"):
-        scope_q |= Q(property__route_position__route_id__in=scope["route_ids"])
+        scope_q |= routes_supply_points_q(scope["route_ids"])
     if scope.get("route_zone_ids"):
-        scope_q |= Q(property__route_position__route__route_zone_id__in=scope["route_zone_ids"])
+        scope_q |= effective_route_q("route__route_zone_id__in", scope["route_zone_ids"])
     if scope.get("batch_ids"):
         batch_ids = list(
             ReadingBatch.objects.filter(
                 id__in=scope["batch_ids"], include_telecontrol=True
             ).values_list("id", flat=True)
         )
-        scope_q |= Q(property__route_position__route__reading_batches__in=batch_ids)
+        scope_q |= effective_route_q("route__reading_batches__in", batch_ids)
         scope_q |= Q(meter__reading_batches__in=batch_ids)
     return scope_q
 
@@ -632,17 +633,13 @@ def _label(obj):
 
 def smart_metering_scope_options():
     """Routes, zones and open reading batches that have Smart Metering meters."""
-    route_sm_q = Q(
-        positions__properties__supply_points__meter__has_remote_reading=True,
-        positions__properties__supply_points__meter__remote_reading_type="SMART_METERING",
-    )
-    routes = Route.objects.filter(route_sm_q, is_active=True).distinct().order_by("position", "token", "id")
+    # Rutes amb algun punt Smart Metering (segons la ruta efectiva del punt)
+    sm_route_ids = effective_route_ids(SupplyPoint.objects.filter(SMART_METERING_METER_Q))
+    routes = Route.objects.filter(id__in=sm_route_ids, is_active=True).distinct().order_by("position", "token", "id")
     zones = (
         RouteZone.objects.filter(
             is_active=True,
-            routes__is_active=True,
-            routes__positions__properties__supply_points__meter__has_remote_reading=True,
-            routes__positions__properties__supply_points__meter__remote_reading_type="SMART_METERING",
+            routes__in=Route.objects.filter(id__in=sm_route_ids, is_active=True),
         )
         .distinct()
         .order_by("position", "name", "id")
@@ -655,10 +652,7 @@ def smart_metering_scope_options():
             include_telecontrol=True,
         )
         .filter(
-            Q(
-                routes__positions__properties__supply_points__meter__has_remote_reading=True,
-                routes__positions__properties__supply_points__meter__remote_reading_type="SMART_METERING",
-            )
+            Q(routes__id__in=sm_route_ids)
             | Q(fix_meters__has_remote_reading=True, fix_meters__remote_reading_type="SMART_METERING")
         )
         .distinct()

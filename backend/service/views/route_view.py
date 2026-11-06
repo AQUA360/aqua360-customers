@@ -5,11 +5,15 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from django.http import HttpResponse
+from django.db.models.functions import Coalesce
 
 from auth.permissions import PermissionManager
 from service.models import Route
 from service.serializers.route_serializer import RouteSerializer, RouteListSerializer
 from service.filters.route_filter import RouteFilter
+from service.utils import route_bulk_service
 
 
 class RouteSupplyPointsPagination(PageNumberPagination):
@@ -63,6 +67,64 @@ class RouteViewSet(viewsets.ModelViewSet):
         if self.action == 'permissions':
             return [IsAuthenticated()]
         return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='add-street/preview')
+    def add_street_preview(self, request, pk=None):
+        """Previsualitza les posicions que es crearien en afegir un carrer."""
+        route = self.get_object()
+        try:
+            params = route_bulk_service.parse_add_street_params(request.data)
+            plan = route_bulk_service.build_add_street_plan(route, params)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(route_bulk_service.serialize_add_street_plan(plan))
+
+    @action(detail=True, methods=['post'], url_path='add-street')
+    def add_street(self, request, pk=None):
+        """Afegeix a la ruta les finques d'un carrer (una posició per número
+        o per finca), desplaçant les posicions posteriors si cal."""
+        route = self.get_object()
+        try:
+            params = route_bulk_service.parse_add_street_params(request.data)
+            plan = route_bulk_service.build_add_street_plan(route, params)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(route_bulk_service.apply_add_street_plan(plan))
+
+    @action(detail=False, methods=['get'], url_path='import/template')
+    def import_template(self, request):
+        response = HttpResponse(
+            route_bulk_service.build_import_template(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = 'attachment; filename="route_import_template.xlsx"'
+        return response
+
+    def _import_plan(self, request):
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            raise ValueError("Cal adjuntar un fitxer.")
+        mode = request.data.get('mode') or route_bulk_service.MODE_APPEND
+        rows = route_bulk_service.read_import_file(uploaded_file)
+        return route_bulk_service.build_import_plan(rows, mode)
+
+    @action(detail=False, methods=['post'], url_path='import/preview',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def import_preview(self, request):
+        try:
+            plan = self._import_plan(request)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(route_bulk_service.serialize_import_plan(plan))
+
+    @action(detail=False, methods=['post'], url_path='import/confirm',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def import_confirm(self, request):
+        try:
+            plan = self._import_plan(request)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(route_bulk_service.apply_import_plan(plan))
 
     @action(detail=True, methods=['post'], url_path='export-positions')
     def export_positions(self, request, pk=None):
@@ -126,8 +188,10 @@ class RouteViewSet(viewsets.ModelViewSet):
             else:
                 queryset = queryset.order_by(ordering, 'id')
         else:
-            queryset = queryset.order_by(
-                'property__route_position__position',
+            queryset = queryset.annotate(
+                effective_position=Coalesce('route_position__position', 'property__route_position__position'),
+            ).order_by(
+                'effective_position',
                 'property__token',
                 'token',
                 'id',

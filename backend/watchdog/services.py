@@ -42,6 +42,7 @@ from billing.models import (
 )
 from django.db.models import Count, Q, F, Exists, OuterRef, Prefetch, Subquery, Max
 from django.db.models.functions import Length
+from service.utils.route_scope import without_route_q
 from watchdog.aca_config import check_aca_article_code_issues, check_aca_configuration_issues
 from watchdog.persons_without_contact import (
     ACTIVE_CONTRACT_CHECK_NAME,
@@ -728,7 +729,8 @@ class DataIntegrityService:
 
     def check_supply_points_with_meter_and_property_without_route_position(self):
         """
-        Check for SupplyPoints that have a Meter and a Property, but the Property doesn't have a RoutePosition.
+        Check for SupplyPoints that have a Meter and a Property, but the Property doesn't have a RoutePosition
+        (i el punt tampoc no té posició de ruta pròpia).
         """
         issues = []
 
@@ -736,10 +738,11 @@ class DataIntegrityService:
         # - meter (not null)
         # - property (not null)
         # - property.route_position is null
+        # - sense posició de ruta pròpia (supply_point.route_position)
         invalid_supply_points = SupplyPoint.objects.filter(
             meter__isnull=False,
         ).filter(
-            Q(property__isnull=True) | Q(property__route_position__isnull=True)
+            without_route_q()
         ).select_related('meter', 'property')
 
         for supply_point in invalid_supply_points:
