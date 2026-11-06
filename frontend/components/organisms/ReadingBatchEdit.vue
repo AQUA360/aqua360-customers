@@ -631,7 +631,7 @@ watch(() => props.activeStatus, (newVal) => {
       <!-- Botons de navegació -->
       <div class="flex justify-between mt-4">
         <div>
-          <button v-if="canReturnToSetup" @click="backToSetup" :disabled="previousStepLoading"
+          <button v-if="canReturnToSetup" @click="backToSetup" :disabled="previousStepLoading || nextStepLoading"
             class="px-4 py-2 bg-white text-slate-600 border border-gray-300 rounded enabled:hover:bg-slate-100 disabled:opacity-70 disabled:cursor-not-allowed flex items-center">
             <Icon v-if="previousStepLoading" name="fa6-solid:spinner" class="animate-spin mr-2" />
             <Icon v-else name="fa6-solid:arrow-left" class="mr-2" />
