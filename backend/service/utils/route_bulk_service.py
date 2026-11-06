@@ -69,6 +69,19 @@ def _refresh_tokens(route_positions):
         sync_property_tokens_with_route_position(route_position)
 
 
+def delete_empty_positions(position_ids):
+    """Elimina les posicions indicades que s'han quedat sense finques ni
+    punts. Retorna els ids eliminats."""
+    position_ids = {pid for pid in position_ids if pid}
+    if not position_ids:
+        return set()
+    empty_ids = set(RoutePosition.objects.filter(
+        id__in=position_ids, properties__isnull=True, supply_points__isnull=True,
+    ).values_list('id', flat=True))
+    RoutePosition.objects.filter(id__in=empty_ids).delete()
+    return empty_ids
+
+
 def create_position(route, position, name=None, address_source=None, notebook=None, reader_observation=None):
     """Crea una posició de ruta copiant l'adreça d'una finca (o d'una altra
     posició) si se n'indica una."""
@@ -283,12 +296,17 @@ def apply_add_street_plan(plan):
         shift_positions(route, plan['insert_at'], len(groups))
 
     assigned = 0
+    previous_positions = set()
     for group in groups:
         active = [i['property'] for i in group['items'] if i['action'] != 'skip']
         route_position = create_position(route, group['position'], name=group['label'], address_source=active[0])
-        Property.objects.filter(id__in=[p.id for p in active]).update(route_position=route_position)
+        moved = Property.objects.filter(id__in=[p.id for p in active])
+        previous_positions.update(moved.values_list('route_position_id', flat=True))
+        moved.update(route_position=route_position)
         assigned += len(active)
         sync_property_tokens_with_route_position(route_position)
+    # Les posicions d'on s'han mogut finques no queden buides a l'altra ruta.
+    delete_empty_positions(previous_positions)
 
     return {
         'created_positions': len(groups),
@@ -516,7 +534,11 @@ def build_import_plan(rows, mode):
             if entry['action'] == 'none':
                 entry['action'] = 'own_route'
             current = effective_route_position(sp)
-            if current and current.route_id and current.route.token != route_token:
+            property_position = sp.property.route_position if sp.property_id else None
+            if mode == MODE_APPEND and property_position and property_position.route.token == route_token:
+                messages.append("El punt ja és a la ruta de la seva finca: continuarà seguint la finca.")
+                warn = True
+            elif current and current.route_id and current.route.token != route_token:
                 messages.append(f"El punt es mourà de la ruta {current.route.token}.")
                 warn = True
         else:
@@ -643,6 +665,9 @@ def apply_import_plan(plan):
     positions_created = 0
     properties_assigned = 0
     supply_points_assigned = 0
+    previous_positions = set()
+    created_positions = set()
+    own_supply_point_ids = set()
 
     for token, entries in by_route.items():
         route = routes[token]
@@ -687,13 +712,29 @@ def apply_import_plan(plan):
             positions_created += 1
             property_ids = [p.id for e in group for p in e['properties']]
             if property_ids:
-                Property.objects.filter(id__in=property_ids).update(route_position=route_position)
+                moved = Property.objects.filter(id__in=property_ids)
+                previous_positions.update(moved.values_list('route_position_id', flat=True))
+                moved.update(route_position=route_position)
                 properties_assigned += len(property_ids)
             supply_point_ids = [e['supply_point'].id for e in group if e['supply_point']]
             if supply_point_ids:
-                SupplyPoint.objects.filter(id__in=supply_point_ids).update(route_position=route_position)
+                moved = SupplyPoint.objects.filter(id__in=supply_point_ids)
+                previous_positions.update(moved.values_list('route_position_id', flat=True))
+                moved.update(route_position=route_position)
+                own_supply_point_ids.update(supply_point_ids)
                 supply_points_assigned += len(supply_point_ids)
+            created_positions.add(route_position.id)
             sync_property_tokens_with_route_position(route_position)
+
+    # Un punt que ha quedat a la mateixa ruta que la seva finca segueix la
+    # finca, sense parada pròpia (com a set_supply_point_route).
+    same_route = SupplyPoint.objects.filter(
+        id__in=own_supply_point_ids, property__route_position__route=F('route_position__route'))
+    previous_positions.update(same_route.values_list('route_position_id', flat=True))
+    same_route.update(route_position=None)
+    # Posicions que s'han quedat buides en moure finques o punts.
+    deleted = delete_empty_positions(previous_positions)
+    positions_created -= len(deleted & created_positions)
 
     return {
         'routes_created': routes_created,

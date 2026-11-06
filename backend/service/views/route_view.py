@@ -66,11 +66,20 @@ class RouteViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
+        if self.action in ('add_street_preview', 'add_street'):
+            # Afegir un carrer modifica una ruta existent: cal permís de modificar
+            # rutes (DjangoModelPermissions demanaria el d'afegir en un POST).
+            return [IsAuthenticated()]
         return super().get_permissions()
+
+    def _can_change_routes(self, request):
+        return PermissionManager.get_model_permissions(request.user, 'route', 'service')['can_change']
 
     @action(detail=True, methods=['post'], url_path='add-street/preview')
     def add_street_preview(self, request, pk=None):
         """Previsualitza les posicions que es crearien en afegir un carrer."""
+        if not self._can_change_routes(request):
+            return Response(None, status=status.HTTP_403_FORBIDDEN)
         route = self.get_object()
         try:
             params = route_bulk_service.parse_add_street_params(request.data)
@@ -83,6 +92,8 @@ class RouteViewSet(viewsets.ModelViewSet):
     def add_street(self, request, pk=None):
         """Afegeix a la ruta les finques d'un carrer (una posició per número
         o per finca), desplaçant les posicions posteriors si cal."""
+        if not self._can_change_routes(request):
+            return Response(None, status=status.HTTP_403_FORBIDDEN)
         route = self.get_object()
         try:
             params = route_bulk_service.parse_add_street_params(request.data)

@@ -437,6 +437,9 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         elif self.action == 'bulk_update_property':
             return [IsAuthenticated()]
+        elif self.action == 'set_route':
+            # La vista comprova el permís de modificar punts (no el d'afegir).
+            return [IsAuthenticated()]
         return super().get_permissions()
 
 

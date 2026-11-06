@@ -1466,7 +1466,8 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
                         reading.supply_point.supply_type.name if reading.supply_point and reading.supply_point.supply_type else "",
                     ])
                 else:
-                    i_data.extend([
+                    contract_route = effective_route(contract.supply_point_default) if contract else None
+            i_data.extend([
                         "", "", "", "", "",
                     ])
         
@@ -1475,8 +1476,8 @@ def generate_register_billing_summary(request, black_fill, white_bold_font, task
                 f"{str(contract.address_contact.address.street)}, {str(contract.address_contact.address.street_number)}{get_address_extra_suffix(contract.address_contact.address)}" if contract and contract.address_contact and contract.address_contact.address and different_address else "",
                 contract.address_contact.address.postal_code if contract and contract.address_contact and contract.address_contact.address and different_address else "",
                 contract.address_contact.attention_to if contract and contract.address_contact and different_address else "",
-                effective_route(contract.supply_point_default).token if contract and effective_route(contract.supply_point_default) else "",
-                effective_route(contract.supply_point_default).route_zone.name if contract and effective_route(contract.supply_point_default) and effective_route(contract.supply_point_default).route_zone else "",
+                contract_route.token if contract_route else "",
+                contract_route.route_zone.name if contract_route and contract_route.route_zone else "",
             ])
         
             contract_variables_by_name = {}

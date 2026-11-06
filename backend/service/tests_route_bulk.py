@@ -202,6 +202,8 @@ class TestAddStreet(RouteTestMixin, TestCase):
         route_bulk_service.apply_add_street_plan(self.plan(number_from=3, number_to=3, assigned='move'))
         self.p3.refresh_from_db()
         self.assertEqual(self.p3.route_position.route, self.monthly)
+        # La posició d'on s'ha mogut la finca s'ha quedat buida i s'elimina.
+        self.assertFalse(RoutePosition.objects.filter(id=self.other_position.id).exists())
 
     def test_endpoint(self):
         user = User.objects.create_superuser('admin_routes', 'a@a.cat', 'x')
@@ -290,6 +292,24 @@ class TestRouteImport(RouteTestMixin, TestCase):
         self.assertEqual(self.sp.route_position.route, self.quarterly)
         self.p_old.refresh_from_db()
         self.assertEqual(self.p_old.route_position, self.old_position)
+
+    def test_moved_property_leaves_no_empty_position(self):
+        content = "route_token;position;property_token\nT1;1;POLD\n"
+        route_bulk_service.apply_import_plan(self.plan(content, 'append'))
+        self.p_old.refresh_from_db()
+        self.assertEqual(self.p_old.route_position.route, self.quarterly)
+        self.assertFalse(RoutePosition.objects.filter(id=self.old_position.id).exists())
+
+    def test_supply_point_in_property_route_inherits(self):
+        content = "route_token;position;supply_point_token\nM1;5;SPX\n"
+        plan = self.plan(content, 'append')
+        row = route_bulk_service.serialize_import_plan(plan)['rows'][0]
+        self.assertEqual(row['status'], 'warning')
+        result = route_bulk_service.apply_import_plan(plan)
+        self.sp.refresh_from_db()
+        self.assertIsNone(self.sp.route_position)
+        self.assertEqual(result['positions_created'], 0)
+        self.assertEqual(RoutePosition.objects.filter(route=self.monthly).count(), 1)
 
     def test_replace(self):
         content = "route_token,position,property_token\nM1,4,P1\n"

@@ -25,23 +25,18 @@ def _reading_mode_flags(context):
     return include_telecontrol, bool(include_manual)
 
 
-def _meter_included_for_reading_mode(meter, include_telecontrol, include_manual):
-    is_telecontrol = bool(getattr(meter, 'has_remote_reading', False)) and not bool(getattr(meter, 'force_manual_reading', False))
-    if not include_telecontrol:
-        return not is_telecontrol
-    if not include_manual:
-        return is_telecontrol
-    return True
-
-
 def _position_properties(position, supply_point_filter=Q()):
-    """Finques amb algun punt que pertany efectivament a la posició.
+    """Finques amb algun punt que pertany efectivament a la posició, més les
+    finques de la posició que encara no tenen cap punt.
 
     Inclou les finques d'altres posicions si tenen un punt amb aquesta posició
-    pròpia, i exclou les finques de la posició si cap punt hi pertany.
+    pròpia, i exclou les finques de la posició si tots els seus punts són en
+    una altra ruta.
     """
     supply_points = SupplyPoint.objects.filter(position_supply_points_q(position)).filter(supply_point_filter)
-    return Property.objects.filter(supply_points__in=supply_points).distinct()
+    return Property.objects.filter(
+        Q(supply_points__in=supply_points) | Q(route_position=position, supply_points__isnull=True)
+    ).distinct()
 
 
 def _property_supply_points(instance, context):
