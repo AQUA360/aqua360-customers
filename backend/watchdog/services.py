@@ -43,6 +43,10 @@ from billing.models import (
 from django.db.models import Count, Q, F, Exists, OuterRef, Prefetch, Subquery, Max
 from django.db.models.functions import Length
 from watchdog.aca_config import check_aca_article_code_issues, check_aca_configuration_issues
+from watchdog.termination_used_aca import (
+    TERMINATION_USED_ACA_CHECK_NAME,
+    check_termination_used_aca_issues,
+)
 from watchdog.persons_without_contact import (
     ACTIVE_CONTRACT_CHECK_NAME,
     ZOMBIE_PERSONS_CHECK_NAME,
@@ -1350,6 +1354,10 @@ class DataIntegrityService:
         """Comprova ArticleCode, LineItemType i contract_keeper_use_type_token per als informes ACA."""
         return check_aca_article_code_issues()
 
+    def check_termination_invoices_used_aca(self):
+        """Factures de baixa amb used_aca diferent del use_aca del contracte donat de baixa."""
+        return check_termination_used_aca_issues()
+
     def run_all_checks(self):
         """
         Run all integrity checks and return a dictionary of results.
@@ -1555,6 +1563,8 @@ class DataIntegrityService:
         results["Configuració ACA i use_aca"] = self.check_aca_configuration()
 
         results["ArticleCode per informes ACA"] = self.check_aca_article_codes()
+
+        results[TERMINATION_USED_ACA_CHECK_NAME] = self.check_termination_invoices_used_aca()
 
         return results
 
