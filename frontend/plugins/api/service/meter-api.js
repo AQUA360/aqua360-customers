@@ -350,6 +350,28 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  const bulkChangePreview = async (file) => {
+    const apiUrl = `${apiHost}${entity}bulk-change/preview/`;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      return await $apiManager.fetch(apiUrl, 'POST', formData);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  const bulkChangeConfirm = async (file) => {
+    const apiUrl = `${apiHost}${entity}bulk-change/confirm/`;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      return await $apiManager.fetch(apiUrl, 'POST', formData);
+    } catch (error) {
+      throw error;
+    }
+  }
+
   const apiService = {
     getData,
     exportData,
@@ -367,6 +389,8 @@ export default defineNuxtPlugin(nuxtApp => {
     lookupByCodesCsv,
     bulkUpdatePreview,
     bulkUpdateConfirm,
+    bulkChangePreview,
+    bulkChangeConfirm,
     checkCode
   };
 
