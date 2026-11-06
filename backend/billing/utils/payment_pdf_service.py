@@ -62,9 +62,8 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
         payment_type_token = payment.payment_type_token
         company_bank = get_payment_company_bank(company, payment)
 
-        ident = payment.due_date.strftime("%d%m%y")
-        if limit_date:
-            ident = limit_date.strftime("%d%m%y")
+        # Amb limit_date no cal due_date, que pot ser buit
+        ident = (limit_date or payment.due_date).strftime("%d%m%y")
         barcode_data = {
             'reference': payment.token if len(payment.token) == 11 else payment.token[:-2],
             'total_final': payment.amount,
