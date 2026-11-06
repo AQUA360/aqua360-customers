@@ -1,0 +1,106 @@
+[
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 1,
+        "fields": {
+            "token": "single_family",
+            "name": "Vivienda unifamiliar",
+            "position": 0,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 2,
+        "fields": {
+            "token": "multi_family",
+            "name": "Edificio plurifamiliar",
+            "position": 1,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 3,
+        "fields": {
+            "token": "premises_in_building",
+            "name": "Local / nave en edificio",
+            "position": 2,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 4,
+        "fields": {
+            "token": "industrial_building",
+            "name": "Nave industrial independiente",
+            "position": 3,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 5,
+        "fields": {
+            "token": "facility",
+            "name": "Equipamiento",
+            "position": 4,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 6,
+        "fields": {
+            "token": "plot_works",
+            "name": "Solar / obra",
+            "position": 5,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 7,
+        "fields": {
+            "token": "farmhouse",
+            "name": "Masía / explotación agraria o ganadera",
+            "position": 6,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    },
+    {
+        "model": "service.connectionrequestbuildingtype",
+        "pk": 8,
+        "fields": {
+            "token": "other",
+            "name": "Otros",
+            "position": 7,
+            "is_default": false,
+            "is_active": true,
+            "created_at": null,
+            "updated_at": null
+        }
+    }
+]

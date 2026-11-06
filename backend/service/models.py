@@ -125,6 +125,34 @@ class ConnectionRequestStatus(models.Model):
     def __str__(self):
         return self.name if self.name else "ConnectionRequestStatus ID {}".format(self.token)
 
+
+class ConnectionRequestBuildingType(models.Model):
+    """Tipologia d'edificació de l'emplaçament d'una sol·licitud d'escomesa."""
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    token = models.CharField(max_length=255, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    position = models.IntegerField(null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name if self.name else f"ConnectionRequestBuildingType {self.id}"
+
+
+class ConnectionRequestRepresentativeType(models.Model):
+    """En qualitat de què actua el representant del sol·licitant d'una escomesa."""
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    token = models.CharField(max_length=255, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    position = models.IntegerField(null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name if self.name else f"ConnectionRequestRepresentativeType {self.id}"
+
 class ClusterStatus(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
@@ -680,6 +708,21 @@ def blueprint_upload_to(instance, filename):
     return f'uploads/blueprints/{instance.connection.id if instance.connection else "0" }/{filename}'
 
 class ConnectionRequest(models.Model):
+    REQUESTER_TYPE_CHOICES = [
+        ('natural_person', 'Persona física'),
+        ('legal_person', 'Persona jurídica'),
+        ('owners_community', 'Comunitat de propietaris'),
+        ('joint_ownership', 'Comunitat de béns'),
+    ]
+    PROPERTY_CONDITION_CHOICES = [
+        ('owner', 'Propietari/ària'),
+        ('right_of_use', "Titular d'un dret d'ús"),
+    ]
+    SCOPE_CHOICES = [
+        ('urban', 'Urbà'),
+        ('rural', 'Rural'),
+    ]
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     token = models.CharField(max_length=255, unique=True)
@@ -696,7 +739,21 @@ class ConnectionRequest(models.Model):
     exploitation = models.ForeignKey(Exploitation, on_delete=models.CASCADE, null=True, blank=True)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
-    
+    address_building = models.CharField(max_length=50, null=True, blank=True)
+    address_stair = models.CharField(max_length=50, null=True, blank=True)
+    address_floor = models.CharField(max_length=50, null=True, blank=True)
+    address_door = models.CharField(max_length=50, null=True, blank=True)
+    cadastral = models.CharField(max_length=255, null=True, blank=True)
+    scope = models.CharField(max_length=20, choices=SCOPE_CHOICES, null=True, blank=True)
+    polygon = models.CharField(max_length=50, null=True, blank=True)
+    parcel = models.CharField(max_length=50, null=True, blank=True)
+    building_type = models.ForeignKey(ConnectionRequestBuildingType, on_delete=models.SET_NULL, null=True, blank=True)
+
+    requester_type = models.CharField(max_length=30, choices=REQUESTER_TYPE_CHOICES, null=True, blank=True)
+    property_condition = models.CharField(max_length=30, choices=PROPERTY_CONDITION_CHOICES, null=True, blank=True)
+    representative = models.ForeignKey(Person, on_delete=models.SET_NULL, related_name='connection_requests_represented', null=True, blank=True)
+    representative_type = models.ForeignKey(ConnectionRequestRepresentativeType, on_delete=models.SET_NULL, null=True, blank=True)
+
     code_gis = models.CharField(max_length=255, null=True, blank=True)
     flow_rate = models.CharField(max_length=255, null=True, blank=True, help_text="Cabal nominal (m3/h)")
     type = models.ForeignKey(ConnectionType, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Connection Type")
@@ -1266,3 +1323,15 @@ class ConnectionDocumentationFile(models.Model):
 
     def __str__(self):
         return f"DocumentationFile for connection {self.connection.token if self.connection else self.id}"
+
+
+class ConnectionRequestDocumentationFile(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    connection_request = models.ForeignKey(ConnectionRequest, on_delete=models.CASCADE, related_name='documentation_files', null=True, blank=True)
+    file = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True)
+    type = models.ForeignKey(ConnectionDocumentationType, on_delete=models.SET_NULL, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"DocumentationFile for connection request {self.connection_request.token if self.connection_request else self.id}"
