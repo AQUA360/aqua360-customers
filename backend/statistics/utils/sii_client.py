@@ -29,7 +29,7 @@ _SII_ENDPOINTS = {
     ("prod", True): "https://www10.agenciatributaria.gob.es/wlpl/SSII-FACT/ws/fe/SiiFactFEV1SOAP",
 }
 
-# Map AEAT EstadoEnvio -> our DailyDocument.submission_status
+# Map AEAT EstadoEnvio -> DailyDocumentSubmissionStatus.token
 ESTADO_ENVIO_TO_STATUS = {
     "Correcto": "correct",
     "ParcialmenteCorrecto": "partially_correct",

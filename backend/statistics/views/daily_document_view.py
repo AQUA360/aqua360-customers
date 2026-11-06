@@ -38,11 +38,24 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
         if self.action in ('retrieve', 'submit'):
             return qs.select_related(
                 'status',
+                'submission_status',
                 'template',
                 'template__available_report',
                 'document',
                 'completed_by',
                 'cancelled_by',
+            ).prefetch_related(
+                'template__notify_users',
+                'template__notify_groups',
+            )
+        if self.action == 'list':
+            return qs.select_related(
+                'status',
+                'submission_status',
+                'template',
+                'completed_by',
+                'cancelled_by',
+                'document',
             )
         return qs
     
@@ -54,10 +67,27 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='pending')
     def return_pending_daily_documents(self, request):
         try:
+            from django.db.models import Q
+
             pending_status_token = ConfigProject.objects.get(token='daily_document_status_pending_token').value
             expired_status_token = ConfigProject.objects.get(token='daily_document_status_expired_token').value
-            daily_documents = DailyDocument.objects.filter(status__token__in=[pending_status_token, expired_status_token])
-            return Response(len(daily_documents), status=status.HTTP_200_OK)
+            pending_count = DailyDocument.objects.filter(
+                status__token__in=[pending_status_token, expired_status_token],
+            ).count()
+            # Submission errors only for templates that notify the current user
+            # (directly or via one of their groups).
+            user = request.user
+            error_count = DailyDocument.objects.filter(
+                submission_status__is_error=True,
+                is_active=True,
+            ).filter(
+                Q(template__notify_users=user)
+                | Q(template__notify_groups__in=user.groups.all())
+            ).distinct().count()
+            return Response(
+                {'pending': pending_count, 'errors': error_count},
+                status=status.HTTP_200_OK,
+            )
         except Exception as e:
             logger.exception("Error inesperat")
             return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -79,7 +109,7 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
         """Submit the daily document via its AvailableReport.submission_channel handler."""
         try:
             daily_document = self.get_object()
-            result = submit_daily_document(daily_document)
+            result = submit_daily_document(daily_document, user=request.user)
             daily_document.refresh_from_db()
             payload = DailyDocumentSerializer(
                 daily_document,

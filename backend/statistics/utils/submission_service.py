@@ -76,22 +76,76 @@ def read_document_text(document) -> str:
     return str(content)
 
 
-def _persist_result(daily_document, result: SubmissionResult) -> None:
+def _mark_daily_document_completed(daily_document, user=None) -> list:
+    """Set completed status/fields like the manual 'send' action. Returns update_fields."""
+    from coredata.models import ConfigProject
+    from statistics.models import DailyDocumentStatus
+
+    update_fields = []
+    try:
+        completed_status_token = ConfigProject.objects.get(
+            token="daily_document_status_completed_token"
+        ).value
+        completed_status = DailyDocumentStatus.objects.get(token=completed_status_token)
+    except Exception:
+        logger.exception("Could not resolve completed DailyDocumentStatus")
+        completed_status = None
+
+    now = timezone.now()
+    if not daily_document.is_completed:
+        daily_document.is_completed = True
+        update_fields.append("is_completed")
+    if not daily_document.completed_at:
+        daily_document.completed_at = now
+        update_fields.append("completed_at")
+    if completed_status is not None and daily_document.status_id != completed_status.id:
+        daily_document.status = completed_status
+        update_fields.append("status")
+    if user is not None and not daily_document.completed_by_id:
+        daily_document.completed_by = user
+        update_fields.append("completed_by")
+    return update_fields
+
+
+def _resolve_submission_status(token: Optional[str]):
+    """Map handler token (e.g. 'correct') to a DailyDocumentSubmissionStatus row."""
+    from statistics.models import DailyDocumentSubmissionStatus
+
+    if not token:
+        return None
+    status = DailyDocumentSubmissionStatus.objects.filter(token=token, is_active=True).first()
+    if status is not None:
+        return status
+    # Fallback so a missing seed row never blocks persistence of the submission.
+    status = DailyDocumentSubmissionStatus.objects.filter(token="error", is_active=True).first()
+    if status is None:
+        logger.error("DailyDocumentSubmissionStatus token=%r (and fallback 'error') not found", token)
+    elif token != "error":
+        logger.error(
+            "DailyDocumentSubmissionStatus token=%r not found; falling back to 'error'",
+            token,
+        )
+    return status
+
+
+def _persist_result(daily_document, result: SubmissionResult, user=None) -> None:
     daily_document.submitted_at = timezone.now()
-    daily_document.submission_status = result.submission_status
+    daily_document.submission_status = _resolve_submission_status(result.submission_status)
     daily_document.submission_csv = result.reference
     daily_document.submission_response = result.response_body
     daily_document.submission_error = result.error_message
-    daily_document.save(
-        update_fields=[
-            "submitted_at",
-            "submission_status",
-            "submission_csv",
-            "submission_response",
-            "submission_error",
-            "updated_at",
-        ]
-    )
+    update_fields = [
+        "submitted_at",
+        "submission_status",
+        "submission_csv",
+        "submission_response",
+        "submission_error",
+        "updated_at",
+    ]
+    # Correct external submission finalizes the daily document (sent/completed).
+    if result.ok and not (daily_document.cancelled_at or daily_document.cancelled_by_id):
+        update_fields.extend(_mark_daily_document_completed(daily_document, user=user))
+    daily_document.save(update_fields=update_fields)
 
 
 def _get_handlers() -> Dict[str, SubmissionHandler]:
@@ -107,7 +161,7 @@ def supported_channels() -> List[str]:
     return list(_get_handlers().keys())
 
 
-def submit_daily_document(daily_document) -> SubmissionResult:
+def submit_daily_document(daily_document, user=None) -> SubmissionResult:
     channel = get_submission_channel(daily_document)
     if not channel:
         raise SubmissionError(
@@ -129,5 +183,5 @@ def submit_daily_document(daily_document) -> SubmissionResult:
         raise SubmissionError("Daily document has no file to submit", status_code=400)
 
     result = handler(daily_document)
-    _persist_result(daily_document, result)
+    _persist_result(daily_document, result, user=user)
     return result

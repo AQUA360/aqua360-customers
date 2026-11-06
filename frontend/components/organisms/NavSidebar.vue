@@ -190,33 +190,28 @@ onUnmounted(() => {
   }">
     <!-- Fixed Top Part -->
     <div class="flex-shrink-0 border-b border-slate-200/60 pb-2 mb-2">
-      <div id="nav-logo" class="flex items-center gap-1 mb-2" :class="isCollapsed ? 'flex-col' : 'grid grid-cols-[4fr,1fr]'">
-        <NuxtLink to="/"
-          class="flex gap-3 items-center font-medium px-2 py-1.5 leading-[14px] rounded min-w-0 flex-1"
-          :class="[hoverClass, { 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? appTitle : undefined">
+      <div id="nav-logo" class="flex items-center gap-1 mb-2"
+        :class="isCollapsed ? 'flex-col' : 'grid grid-cols-[4fr,1fr]'">
+        <NuxtLink to="/" class="flex gap-3 items-center font-medium px-2 py-1.5 leading-[14px] rounded min-w-0 flex-1"
+          :class="[hoverClass, { 'justify-center': isCollapsed }]" :title="isCollapsed ? appTitle : undefined">
           <img src="/favicon-32x32.png" alt="" class="shrink-0" style="width: 25px;" />
           <span v-show="!isCollapsed" class="truncate">{{ appTitle }}</span>
         </NuxtLink>
         <div class="flex gap-1 shrink-0" :class="isCollapsed ? 'flex-col' : 'justify-end'">
-          <button
-            v-if="sideBarStore.isOpen && !sideBarStore.isCollapsed"
+          <button v-if="sideBarStore.isOpen && !sideBarStore.isCollapsed"
             class="flex opacity-50 items-center border rounded px-2 py-1 my-1 text-slate-600 hover:opacity-100 hover:border-slate-400 active:bg-slate-300"
-            title="Collapse to icons"
-            @click="collapseOrCloseSidebar">
+            title="Collapse to icons" @click="collapseOrCloseSidebar">
             <Icon name="fa6-solid:angles-left" class="text-slate-400" />
           </button>
           <template v-if="sideBarStore.isCollapsed">
             <button
               class="flex items-center justify-center border rounded p-1.5 text-slate-600 hover:opacity-100 hover:border-slate-400 active:bg-slate-300"
-              title="Expand sidebar"
-              @click="expandSidebar">
+              title="Expand sidebar" @click="expandSidebar">
               <Icon name="fa6-solid:angles-right" class="text-slate-400 text-sm" />
             </button>
             <button
               class="flex items-center justify-center border rounded p-1.5 text-slate-600 hover:opacity-100 hover:border-slate-400 active:bg-slate-300"
-              title="Close sidebar"
-              @click="closeNavSidebar">
+              title="Close sidebar" @click="closeNavSidebar">
               <Icon name="fa6-solid:angles-left" class="text-slate-400 text-sm" />
             </button>
           </template>
@@ -229,7 +224,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path === '/', 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('dashboard.dashboard') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:house" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:house" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('dashboard.dashboard') }}</span>
           </div>
         </NuxtLink>
@@ -246,41 +243,43 @@ onUnmounted(() => {
             </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('calendar_tasks.title') }}</span>
           </div>
-          <span v-show="!isCollapsed && pendingTasks" class="text-xs font-semibold text-white rounded-full px-1.5 py-0.5 shrink-0"
+          <span v-show="!isCollapsed && pendingTasks"
+            class="text-xs font-semibold text-white rounded-full px-1.5 py-0.5 shrink-0"
             :class="tasksSummary.overdue ? 'bg-red-500' : 'bg-sky-500'"
             :title="$t('calendar_tasks.badge_title', { today: tasksSummary.today, overdue: tasksSummary.overdue })">
             {{ pendingTasks }}
           </span>
         </NuxtLink>
 
-        <button
-          class="flex w-full max-h-8 items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
+        <button class="flex w-full max-h-8 items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
           :class="[hoverClass, { 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('dashboard.search') : undefined"
-          @click="toggleSearcher">
+          :title="isCollapsed ? $t('dashboard.search') : undefined" @click="toggleSearcher">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:magnifying-glass" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('dashboard.search') }}</span>
           </div>
-          <kbd v-show="!isCollapsed" class="px-1 py-1.5 text-xs font-light border rounded-lg shrink-0" :class="tooltipClasses">Ctrl k</kbd>
+          <kbd v-show="!isCollapsed" class="px-1 py-1.5 text-xs font-light border rounded-lg shrink-0"
+            :class="tooltipClasses">Ctrl k</kbd>
         </button>
 
-        <button
-          class="flex w-full max-h-8 items-center px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, {
-            'font-[750]': sideBarStore.newNotifications > 0,
-            'font-medium': sideBarStore.newNotifications == 0,
-            'justify-center': isCollapsed
-          }]"
+        <button class="flex w-full max-h-8 items-center px-3 py-2 leading-[14px] text-slate-600 rounded" :class="[hoverClass, {
+          'font-[750]': sideBarStore.newNotifications > 0,
+          'font-medium': sideBarStore.newNotifications == 0,
+          'justify-center': isCollapsed
+        }]"
           :title="isCollapsed ? $t('dashboard.notifications') + (sideBarStore.newNotifications ? ` (${sideBarStore.newNotifications})` : '') : undefined"
-          @click="toggleNotifications"
-          role="notificationRegion">
+          @click="toggleNotifications" role="notificationRegion">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:bell" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:bell" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('dashboard.notifications') }}</span>
             <span v-show="!isCollapsed">({{ sideBarStore.newNotifications }})</span>
           </div>
-          <kbd v-show="!isCollapsed" class="px-1 py-1.5 text-xs font-light border rounded-lg shrink-0" :class="tooltipClasses">Ctrl u</kbd>
+          <kbd v-show="!isCollapsed" class="px-1 py-1.5 text-xs font-light border rounded-lg shrink-0"
+            :class="tooltipClasses">Ctrl u</kbd>
         </button>
       </div>
     </div>
@@ -294,7 +293,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract/follow-contracts/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('customer_service_block.follow_contracts') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:flag" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:flag" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('customer_service_block.follow_contracts') }}</span>
           </div>
         </NuxtLink>
@@ -303,7 +304,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/incident/incidents/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.incidents') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:bug" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:bug" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.incidents') }}</span>
           </div>
         </NuxtLink>
@@ -312,7 +315,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/communication/process-communications/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.comms_process') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:envelopes-bulk" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:envelopes-bulk" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.comms_process') }}</span>
           </div>
         </NuxtLink>
@@ -321,7 +326,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/communication/communications/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.comms') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:envelope" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:envelope" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.comms') }}</span>
           </div>
         </NuxtLink>
@@ -330,7 +337,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/incident/ov-logs/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.ov_logs') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:laptop-file" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:laptop-file" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.ov_logs') }}</span>
           </div>
         </NuxtLink>
@@ -343,7 +352,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contracts/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.contracts') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-contract" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-contract" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.contracts') }}</span>
           </div>
         </NuxtLink>
@@ -352,7 +363,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract-requests/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('contract_requests') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-circle-plus" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-circle-plus" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('contract_requests') }}</span>
           </div>
         </NuxtLink>
@@ -361,7 +374,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract-terminations/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.contract_terminations') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-circle-xmark" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-circle-xmark" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.contract_terminations') }}</span>
           </div>
         </NuxtLink>
@@ -370,7 +385,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/persons/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.persons') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:users" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:users" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.persons') }}</span>
           </div>
         </NuxtLink>
@@ -379,7 +396,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract/aca-documents/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.aca_documents') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-lines" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-lines" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.aca_documents') }}</span>
           </div>
         </NuxtLink>
@@ -388,7 +407,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract/document-signs/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('contract_block.document_signs') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:signature" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:signature" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('contract_block.document_signs') }}</span>
           </div>
         </NuxtLink>
@@ -401,7 +422,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/reading/readings/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.enter_readings') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-arrow-up" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-arrow-up" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.enter_readings') }}</span>
           </div>
         </NuxtLink>
@@ -410,7 +433,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/reading/reading-batches/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.reading_batches') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:clipboard-list" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:clipboard-list" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.reading_batches') }}</span>
           </div>
         </NuxtLink>
@@ -423,7 +448,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/billing/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('billing') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:clipboard" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:clipboard" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('billing') }}</span>
           </div>
         </NuxtLink>
@@ -432,7 +459,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/invoice/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('invoices') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-invoice" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-invoice" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('invoices') }}</span>
           </div>
         </NuxtLink>
@@ -450,7 +479,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/budgets/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.budgets') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:calculator" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:calculator" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.budgets') }}</span>
           </div>
         </NuxtLink>
@@ -459,7 +490,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/bails/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.bails') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:money-bills" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:money-bills" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.bails') }}</span>
           </div>
         </NuxtLink>
@@ -468,7 +501,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/wallet-managements/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.wallet_mngs') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:briefcase" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:briefcase" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.wallet_mngs') }}</span>
           </div>
         </NuxtLink>
@@ -477,7 +512,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/joined-payments/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('billing_block.joined_payments') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:credit-card" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:credit-card" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('billing_block.joined_payments') }}</span>
           </div>
         </NuxtLink>
@@ -486,7 +523,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/transfer/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.trf_managements') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-export" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-export" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.trf_managements') }}</span>
           </div>
         </NuxtLink>
@@ -495,7 +534,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/sepa/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.sepa_managements') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-import" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-import" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.sepa_managements') }}</span>
           </div>
         </NuxtLink>
@@ -504,7 +545,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/sepa-return/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.wallet_mngs') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-excel" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-excel" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('billing_block.return_sepa_multiple') }}</span>
           </div>
         </NuxtLink>
@@ -513,7 +556,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/commitment-deposits/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('claim_block.pay_commitments') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:wallet" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:wallet" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('claim_block.pay_commitments') }}</span>
           </div>
         </NuxtLink>
@@ -522,7 +567,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/claim-managements/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('claim_block.claim_payments') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa-solid:exclamation-circle" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa-solid:exclamation-circle" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('claim_block.claim_payments') }}</span>
           </div>
         </NuxtLink>
@@ -531,7 +578,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/vulnerability-requests/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.vulnerable_reqs') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:shield-halved" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:shield-halved" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.vulnerable_reqs') }}</span>
           </div>
         </NuxtLink>
@@ -540,7 +589,8 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/verifactu/batches/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? 'Verifactu' : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><img src="/agencia-tributaria-logo.png" alt="Agencia Tributaria" class="h-4 grayscale brightness-75 opacity-70" /></span>
+            <span class="flex w-6 shrink-0 justify-center"><img src="/agencia-tributaria-logo.png"
+                alt="Agencia Tributaria" class="h-4 grayscale brightness-75 opacity-70" /></span>
             <span v-show="!isCollapsed" class="truncate">Verifactu</span>
           </div>
         </NuxtLink>
@@ -549,7 +599,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/integrations/batches/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('send_batch_block.batches') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-invoice-dollar" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:file-invoice-dollar" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('send_batch_block.batches') }}</span>
           </div>
         </NuxtLink>
@@ -562,41 +614,55 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/reports/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.reports') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-list" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:table-list" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.reports') }}</span>
           </div>
         </NuxtLink>
-        <NuxtLink v-if="permissions?.permissions?.view_custom_report || permissions?.permissions?.change_custom_report" to="/statistics/custom-reports/"
+        <NuxtLink v-if="permissions?.permissions?.view_custom_report || permissions?.permissions?.change_custom_report"
+          to="/statistics/custom-reports/"
           class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/statistics/custom-reports') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('custom_report_block.title') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-cells" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:table-cells" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('custom_report_block.title') }}</span>
           </div>
         </NuxtLink>
         <NuxtLink to="/statistics/daily-documents/"
-          class="flex w-full items-center px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, {
+          class="flex w-full items-center px-3 py-2 leading-[14px] text-slate-600 rounded" :class="[hoverClass, {
             [highlightClass]: $route.path.indexOf('/statistics/daily-documents/') != -1,
-            'font-[750]': sideBarStore.newDailyDocuments > 0,
-            'font-medium': sideBarStore.newDailyDocuments == 0,
+            'font-[750]': sideBarStore.newDailyDocuments > 0 || sideBarStore.dailyDocumentSubmissionErrors > 0,
+            'font-medium': sideBarStore.newDailyDocuments == 0 && sideBarStore.dailyDocumentSubmissionErrors == 0,
             'justify-center': isCollapsed
           }]"
-          :title="isCollapsed ? $t('statistics_block.daily_document') + (sideBarStore.newDailyDocuments ? ` (${sideBarStore.newDailyDocuments})` : '') : undefined">
+          :title="isCollapsed ? $t('statistics_block.daily_document') + (sideBarStore.dailyDocumentSubmissionErrors ? ` (${sideBarStore.dailyDocumentSubmissionErrors})` : sideBarStore.newDailyDocuments ? ` (${sideBarStore.newDailyDocuments})` : '') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
             <span class="relative flex w-6 shrink-0 justify-center">
-              <Icon name="fa6-solid:file-signature" class="text-slate-500" />
-              <span
-                v-if="sideBarStore.newDailyDocuments > 0"
-                class="pointer-events-none absolute -top-0.5 -right-0.5 flex size-2"
-                aria-hidden="true">
+              <Icon name="fa6-solid:file-signature" class="text-slate-500"
+                :class="{ 'text-red-500': sideBarStore.dailyDocumentSubmissionErrors > 0 }" />
+              <span v-if="sideBarStore.dailyDocumentSubmissionErrors > 0"
+                class="pointer-events-none absolute -top-0.5 -right-0.5 flex size-2.5" aria-hidden="true">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                <span class="relative inline-flex size-2.5 rounded-full bg-red-500"></span>
+              </span>
+              <span v-else-if="sideBarStore.newDailyDocuments > 0"
+                class="pointer-events-none absolute -top-0.5 -right-0.5 flex size-2" aria-hidden="true">
                 <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
                 <span class="relative inline-flex size-2 rounded-full bg-sky-500"></span>
               </span>
             </span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('statistics_block.daily_document') }}</span>
-            <span v-show="!isCollapsed">({{ sideBarStore.newDailyDocuments }})</span>
+            <span v-show="!isCollapsed" class="truncate"
+              :class="{ 'text-red-600': sideBarStore.dailyDocumentSubmissionErrors > 0 }">{{
+                $t('statistics_block.daily_document') }}</span>
+            <span v-show="!isCollapsed && sideBarStore.dailyDocumentSubmissionErrors > 0"
+              class="text-red-600 font-bold">({{
+                sideBarStore.dailyDocumentSubmissionErrors }})</span>
+            <span v-show="!isCollapsed && sideBarStore.dailyDocumentSubmissionErrors == 0">({{
+              sideBarStore.newDailyDocuments }})</span>
           </div>
         </NuxtLink>
         <NuxtLink to="/billing/document-downloads/"
@@ -604,7 +670,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/document-downloads') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('billing_block.download_history') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:download" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:download" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('billing_block.download_history') }}</span>
           </div>
         </NuxtLink>
@@ -617,7 +685,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/orders/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.orders') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:screwdriver-wrench" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:screwdriver-wrench" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.orders') }}</span>
           </div>
         </NuxtLink>
@@ -626,7 +696,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/operators/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.operators') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="healthicons:construction-worker" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="healthicons:construction-worker" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.operators') }}</span>
           </div>
         </NuxtLink>
@@ -639,7 +711,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/supplypoints/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.supplys') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:street-view" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:street-view" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.supplys') }}</span>
           </div>
         </NuxtLink>
@@ -648,7 +722,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/properties/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.properties') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:house-chimney" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:house-chimney" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.properties') }}</span>
           </div>
         </NuxtLink>
@@ -657,7 +733,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/routes/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.routes') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-regular:map" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-regular:map" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.routes') }}</span>
           </div>
         </NuxtLink>
@@ -666,7 +744,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/meters/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.meters') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="my-icon:meter-icon-black" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="my-icon:meter-icon-black" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.meters') }}</span>
           </div>
         </NuxtLink>
@@ -675,7 +755,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/clusters/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.clusters') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:list" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:list" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.clusters') }}</span>
           </div>
         </NuxtLink>
@@ -684,7 +766,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/connections/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.connections') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:plug" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:plug" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.connections') }}</span>
           </div>
         </NuxtLink>
@@ -693,7 +777,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/connection-requests/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.connection_requests') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:plug-circle-plus" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:plug-circle-plus" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.connection_requests') }}</span>
           </div>
         </NuxtLink>
@@ -702,7 +788,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/supply-cut/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.supply_cuts') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:scissors" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:scissors" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.supply_cuts') }}</span>
           </div>
         </NuxtLink>
@@ -711,7 +799,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/fraud/frauds/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.fraud_mngs') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:mask" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:mask" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.fraud_mngs') }}</span>
           </div>
         </NuxtLink>
@@ -720,7 +810,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/consumption-management/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.consumption_mngs') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:droplet" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:droplet" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.consumption_mngs') }}</span>
           </div>
         </NuxtLink>
@@ -733,7 +825,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/pricing/products/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.products') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:cube" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:cube" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.products') }}</span>
           </div>
         </NuxtLink>
@@ -742,7 +836,9 @@ onUnmounted(() => {
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/pricing/price-rates/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.price_rates') : undefined">
           <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:tag" class="text-slate-500" /></span>
+            <span class="flex w-6 shrink-0 justify-center">
+              <Icon name="fa6-solid:tag" class="text-slate-500" />
+            </span>
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.price_rates') }}</span>
           </div>
         </NuxtLink>
@@ -756,7 +852,9 @@ onUnmounted(() => {
             :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/statistics/analysis/') != -1, 'justify-center': isCollapsed }]"
             :title="isCollapsed ? $t('statistics_block.analysis_title') : undefined">
             <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-              <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:chart-column" class="text-slate-500" /></span>
+              <span class="flex w-6 shrink-0 justify-center">
+                <Icon name="fa6-solid:chart-column" class="text-slate-500" />
+              </span>
               <span v-show="!isCollapsed" class="truncate">{{ $t('statistics_block.analysis_title') }}</span>
             </div>
           </NuxtLink>
@@ -765,17 +863,17 @@ onUnmounted(() => {
     </div>
 
     <!-- Fixed Bottom Part -->
-    <div ref="dropdownContainer" class="flex-shrink-0 pt-2 border-t border-slate-200/60 mt-auto flex flex-col gap-2 relative">
+    <div ref="dropdownContainer"
+      class="flex-shrink-0 pt-2 border-t border-slate-200/60 mt-auto flex flex-col gap-2 relative">
       <!-- Exploitation Dropdown Menu -->
-      <div v-show="showDropdown" 
+      <div v-show="showDropdown"
         class="absolute bottom-full left-0 mb-2 w-full bg-white border border-slate-200 rounded-lg shadow-lg py-2 z-30 flex flex-col gap-1 text-sm text-slate-700">
-        
+
 
         <!-- Language Select -->
         <div class="px-3 py-1 flex flex-col gap-1.5">
           <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">{{ $t('common.language') }}</span>
-          <select :value="locale" @change="switchLanguage($event.target.value)"
-            class="input h-8 text-xs">
+          <select :value="locale" @change="switchLanguage($event.target.value)" class="input h-8 text-xs">
             <option v-for="lang in languages" :key="lang.code" :value="lang.code">
               {{ $t(lang.name) }}
             </option>
@@ -794,8 +892,8 @@ onUnmounted(() => {
         <div class="border-t border-slate-100 my-1"></div>
 
         <!-- Help button -->
-        <a :href="`https://docs.customers.aqua360.cloud/${locale}/`" target="_blank" rel="noopener noreferrer" @click="showDropdown = false"
-          class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors">
+        <a :href="`https://docs.customers.aqua360.cloud/${locale}/`" target="_blank" rel="noopener noreferrer"
+          @click="showDropdown = false" class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors">
           <Icon name="fa6-solid:circle-question" class="w-4 h-4 text-slate-500" />
           <span>{{ $t('common.help') }}</span>
         </a>
@@ -812,7 +910,8 @@ onUnmounted(() => {
 
         <!-- User Profile Info -->
         <div v-if="username" class="px-3 py-1.5 flex items-center gap-2 select-none">
-          <div class="rounded-full w-4 h-4 bg-slate-100 flex items-center justify-center border font-semibold text-slate-600 text-xs shrink-0">
+          <div
+            class="rounded-full w-4 h-4 bg-slate-100 flex items-center justify-center border font-semibold text-slate-600 text-xs shrink-0">
             {{ username.charAt(0).toUpperCase() }}
           </div>
           <div class="flex flex-col min-w-0">
@@ -829,23 +928,26 @@ onUnmounted(() => {
       </div>
 
       <!-- Exploitation Trigger Button -->
-      <button @click="toggleDropdown" v-if="currentExploitation?.company" 
-        class="w-full text-left px-2 py-1.5 flex items-center gap-2 border border-slate-200/40 rounded bg-white/40 min-w-0 hover:bg-slate-200/40 active:bg-slate-200/60 transition-all duration-150" 
+      <button @click="toggleDropdown" v-if="currentExploitation?.company"
+        class="w-full text-left px-2 py-1.5 flex items-center gap-2 border border-slate-200/40 rounded bg-white/40 min-w-0 hover:bg-slate-200/40 active:bg-slate-200/60 transition-all duration-150"
         :class="{ 'justify-center': isCollapsed }"
         :title="isCollapsed ? (currentExploitation.name ? `${currentExploitation.company.name} (${currentExploitation.name})` : currentExploitation.company.name) : undefined">
-        <div v-if="currentExploitation.company.logo" 
-          class="rounded shrink-0 w-8 h-8 bg-cover bg-center border"
+        <div v-if="currentExploitation.company.logo" class="rounded shrink-0 w-8 h-8 bg-cover bg-center border"
           :style="{ 'background-image': `url(${currentExploitation.company.logo})` }">
         </div>
-        <div v-else 
+        <div v-else
           class="rounded shrink-0 w-8 h-8 bg-slate-200 flex items-center justify-center border font-bold text-slate-600 text-sm">
           {{ currentExploitation.company.name.charAt(0) }}
         </div>
         <div v-show="!isCollapsed" class="flex flex-col min-w-0 flex-1">
-          <span class="text-xs font-semibold text-slate-800 truncate" :title="currentExploitation.company.name">{{ currentExploitation.company.name }}</span>
-          <span v-if="currentExploitation.name" class="text-[10px] text-slate-500 truncate" :title="currentExploitation.name">{{ currentExploitation.name }}</span>
+          <span class="text-xs font-semibold text-slate-800 truncate" :title="currentExploitation.company.name">{{
+            currentExploitation.company.name }}</span>
+          <span v-if="currentExploitation.name" class="text-[10px] text-slate-500 truncate"
+            :title="currentExploitation.name">{{ currentExploitation.name }}</span>
         </div>
-        <Icon v-show="!isCollapsed" name="fa6-solid:chevron-up" class="w-3 h-3 text-slate-400 transition-transform duration-200 shrink-0" :class="{ 'rotate-180': showDropdown }" />
+        <Icon v-show="!isCollapsed" name="fa6-solid:chevron-up"
+          class="w-3 h-3 text-slate-400 transition-transform duration-200 shrink-0"
+          :class="{ 'rotate-180': showDropdown }" />
       </button>
     </div>
 

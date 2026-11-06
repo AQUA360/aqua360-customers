@@ -573,6 +573,10 @@ getConfigProject();
             @click="showConfigList((t('common.doc') + ': ' + t('common.statuses')), 'statistics/daily-document-status', true, false, false, true)"
             class="text-sky-500 underline hover:no-underline">{{ t('common.doc') }}: {{ t('common.statuses') }}</button>
         </li>
+        <li class="mb-1"><button
+            @click="showConfigList((t('common.doc') + ': ' + t('statistics_block.submission_statuses')), 'statistics/daily-document-submission-status', true, false, false, true)"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.doc') }}: {{ t('statistics_block.submission_statuses') }}</button>
+        </li>
         <!-- <li class="mb-1"><button @click="showConfigList((t('common.doc') + ': ' + t('common.template')), 'statistics/daily-document-template', true, false, false)" class="text-sky-500 underline hover:no-underline">{{ t('common.doc') }}: {{ t('common.template') }}</button></li> -->
         <li class="mb-1">
           <NuxtLink to="/statistics/daily-document-templates/" class="text-sky-500 underline hover:no-underline"

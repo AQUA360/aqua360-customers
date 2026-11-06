@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.db import models
 from contract.models import Contract
 from documentmanager.models import Document
@@ -16,6 +16,27 @@ class DailyDocumentStatus(models.Model):
     is_active = models.BooleanField(default=True)
     def __str__(self):
         return self.name
+
+
+class DailyDocumentSubmissionStatus(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    token = models.CharField(max_length=255, null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    color = models.CharField(max_length=255, null=True, blank=True)
+    position = models.IntegerField(null=True, blank=True)
+    # Marks outcomes that need attention (anything other than pending / correct).
+    is_error = models.BooleanField(default=False)
+
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['position', 'id']
+        verbose_name = "Daily Document Submission Status"
+        verbose_name_plural = "Daily Document Submission Statuses"
+
+    def __str__(self):
+        return self.name or self.token or f"DailyDocumentSubmissionStatus {self.id}"
 
 class AccountingCode(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
@@ -294,6 +315,18 @@ class DailyDocumentTemplate(models.Model):
     create_without_data = models.BooleanField(default=False)
     days_to_complete = models.IntegerField(null=True, blank=True)
     is_work_days = models.BooleanField(default=False)
+
+    # Users/groups alerted when submission errors appear for documents of this template.
+    notify_users = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name='daily_document_templates_to_notify',
+    )
+    notify_groups = models.ManyToManyField(
+        Group,
+        blank=True,
+        related_name='daily_document_templates_to_notify',
+    )
     
     is_active = models.BooleanField(default=True)
     def __str__(self):
@@ -326,18 +359,12 @@ class DailyDocument(models.Model):
     creation_error = models.TextField(null=True, blank=True)
     no_data_found = models.BooleanField(default=False)
 
-    SUBMISSION_STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('correct', 'Correct'),
-        ('partially_correct', 'Partially correct'),
-        ('incorrect', 'Incorrect'),
-        ('error', 'Error'),
-    ]
-    submission_status = models.CharField(
-        max_length=32,
-        choices=SUBMISSION_STATUS_CHOICES,
+    submission_status = models.ForeignKey(
+        DailyDocumentSubmissionStatus,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        related_name='daily_documents',
     )
     submitted_at = models.DateTimeField(null=True, blank=True)
     submission_csv = models.CharField(max_length=255, null=True, blank=True)
@@ -345,5 +372,10 @@ class DailyDocument(models.Model):
     submission_error = models.TextField(null=True, blank=True)
     
     is_active = models.BooleanField(default=True)
+
+    @property
+    def has_submission_error(self):
+        return bool(self.submission_status_id and self.submission_status.is_error)
+
     def __str__(self):
         return self.date.strftime("%Y-%m-%d")

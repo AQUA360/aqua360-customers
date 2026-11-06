@@ -5,14 +5,42 @@ import NavTop from '~/components/organisms/NavTop.vue';
 import NavSidebar from '~/components/organisms/NavSidebar.vue';
 import SideBarSearch from '~/components/organisms/SideBarSearch.vue';
 import NotificationRegion from '~/components/organisms/NotificationRegion.vue';
+import DailyDocumentSubmissionErrorsModal from '~/components/molecules/DailyDocumentSubmissionErrorsModal.vue';
 import { useToast } from 'vue-toastification';
 import { h } from 'vue';
 
 const sidebarStore = useSidebarStore();
 const notificationArea = ref<HTMLElement | null>(null);
 const toast = useToast();
-const { $GeneralNoteApiService } = useNuxtApp();
+const { $GeneralNoteApiService, $DailyDocumentApiService } = useNuxtApp();
 const { t } = useI18n();
+
+const showSubmissionErrorsModal = ref(false);
+const submissionErrorCount = ref(0);
+
+/** Runs only on layout mount (app entry / F5), not on in-app route changes. */
+const checkDailyDocumentSubmissionErrors = async () => {
+  try {
+    const payload = await $DailyDocumentApiService.checkNewDailyDocuments();
+    sidebarStore.newDailyDocumentsFound(payload);
+    const errors = typeof payload === 'number' ? 0 : (payload?.errors ?? 0);
+    if (!errors) return;
+
+    submissionErrorCount.value = errors;
+    showSubmissionErrorsModal.value = true;
+  } catch (err) {
+    console.error('Error checking daily document submission errors:', err);
+  }
+};
+
+const dismissSubmissionErrorsModal = () => {
+  showSubmissionErrorsModal.value = false;
+};
+
+const confirmSubmissionErrorsModal = () => {
+  showSubmissionErrorsModal.value = false;
+  navigateTo('/statistics/daily-documents/');
+};
 
 const generalNoteToastContent = (username: string, note: string) => h('div', [
   h('div', { class: 'text-xs opacity-75 mb-1' }, username),
@@ -126,6 +154,7 @@ onMounted(() => {
 
   checkGeneralNotes();
   generalNotesPollTimer = setInterval(checkGeneralNotes, GENERAL_NOTES_POLL_INTERVAL);
+  checkDailyDocumentSubmissionErrors();
 
   // Downloads queue: resumes the exports still running (and the auto-download of
   // the ones launched from this tab) after a refresh or a new login.
@@ -141,6 +170,12 @@ onUnmounted(() => {
 
 <template>
   <div class="wrapper antialiased h-screen overflow-hidden">
+    <DailyDocumentSubmissionErrorsModal
+      v-model:open="showSubmissionErrorsModal"
+      :error-count="submissionErrorCount"
+      @confirm="confirmSubmissionErrorsModal"
+      @cancel="dismissSubmissionErrorsModal"
+    />
 
     <div class="">
       <SideBarSearch v-if="sidebarStore.isSearchOpen" />

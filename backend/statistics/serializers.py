@@ -126,6 +126,19 @@ class DailyDocumentStatusSerializer(serializers.ModelSerializer):
         model = DailyDocumentStatus
         fields = '__all__'
 
+
+class DailyDocumentSubmissionStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DailyDocumentSubmissionStatus
+        fields = '__all__'
+
+class GroupMinimalSerializer(serializers.ModelSerializer):
+    class Meta:
+        from django.contrib.auth.models import Group
+        model = Group
+        fields = ['id', 'name']
+
+
 class DailyDocumentTemplateListSerializer(serializers.ModelSerializer):
     
     available_report_name = serializers.CharField(source='available_report.name', read_only=True)
@@ -137,6 +150,8 @@ class DailyDocumentTemplateListSerializer(serializers.ModelSerializer):
 class DailyDocumentTemplateSerializer(serializers.ModelSerializer):
     
     available_report = AvailableReportSerializer(read_only=True, required=False, allow_null=True)
+    notify_users = UserMinimalSerializer(many=True, read_only=True)
+    notify_groups = GroupMinimalSerializer(many=True, read_only=True)
     
     class Meta:
         model = DailyDocumentTemplate
@@ -145,13 +160,28 @@ class DailyDocumentTemplateSerializer(serializers.ModelSerializer):
 class DailyDocumentTemplateSaveSerializer(serializers.ModelSerializer):
     
     available_report_id = serializers.IntegerField(required=False, allow_null=True)
+    user_ids = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True, required=False
+    )
+    group_ids = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True, required=False
+    )
     
     class Meta:
         model = DailyDocumentTemplate
-        fields = '__all__'
+        exclude = ('notify_users', 'notify_groups')
     
+    def _apply_notify_targets(self, instance, user_ids=None, group_ids=None):
+        from django.contrib.auth.models import Group, User
+        if user_ids is not None:
+            instance.notify_users.set(User.objects.filter(id__in=user_ids))
+        if group_ids is not None:
+            instance.notify_groups.set(Group.objects.filter(id__in=group_ids))
+
     def create(self, validated_data):
         user = self.context['request'].user
+        user_ids = validated_data.pop('user_ids', None)
+        group_ids = validated_data.pop('group_ids', None)
             
         available_report_id = validated_data.pop('available_report_id', None)
         available_report = None
@@ -159,13 +189,19 @@ class DailyDocumentTemplateSaveSerializer(serializers.ModelSerializer):
         if available_report_id:
             available_report = AvailableReport.objects.get(id=available_report_id)
             validated_data['available_report'] = available_report
-        token = f"{available_report.function_name}_{now.strftime('%Y%m%d')}"
-        if user and user.username:
-            token += f"_{user.username}"
-            
-        return super().create(validated_data)
+        if available_report:
+            token = f"{available_report.function_name}_{now.strftime('%Y%m%d')}"
+            if user and user.username:
+                token += f"_{user.username}"
+            validated_data['token'] = token
+
+        instance = super().create(validated_data)
+        self._apply_notify_targets(instance, user_ids, group_ids)
+        return instance
     
     def update(self, instance, validated_data):
+        user_ids = validated_data.pop('user_ids', None)
+        group_ids = validated_data.pop('group_ids', None)
         available_report_id = validated_data.pop('available_report_id', None)
         if available_report_id:
             available_report = AvailableReport.objects.get(id=available_report_id)
@@ -173,11 +209,13 @@ class DailyDocumentTemplateSaveSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+        self._apply_notify_targets(instance, user_ids, group_ids)
         return instance
 
 class DailyDocumentSerializer(serializers.ModelSerializer):
     
     status = DailyDocumentStatusSerializer(read_only=True, required=False, allow_null=True)
+    submission_status = DailyDocumentSubmissionStatusSerializer(read_only=True, required=False, allow_null=True)
     template = DailyDocumentTemplateSerializer(read_only=True, required=False, allow_null=True)
     
     completed_by = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
@@ -212,6 +250,7 @@ class DailyDocumentListSerializer(serializers.ModelSerializer):
     
     status_name = serializers.CharField(source='status.name', read_only=True)
     status_color = serializers.CharField(source='status.color', read_only=True)
+    submission_status = DailyDocumentSubmissionStatusSerializer(read_only=True, required=False, allow_null=True)
     template_name = serializers.CharField(source='template.name', read_only=True)
     completed_by_name = serializers.CharField(source='completed_by.username', read_only=True)
     cancelled_by_name = serializers.CharField(source='cancelled_by.username', read_only=True)

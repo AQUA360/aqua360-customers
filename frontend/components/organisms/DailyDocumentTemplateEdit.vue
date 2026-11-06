@@ -12,7 +12,7 @@ const props = defineProps({
     }
 });
 
-const { $ReportsApiService, $DailyDocumentTemplateApiService } = useNuxtApp();
+const { $ReportsApiService, $DailyDocumentTemplateApiService, $UserApiService, $GroupApiService } = useNuxtApp();
 const emit = defineEmits(['show-subregion', 'changed', 'close-subregion']);
 
 const loading = ref(false);
@@ -25,6 +25,11 @@ const availableReports = ref([]);
 const selectedSection = ref(null);
 const selectedAvailableReport = ref(null);
 const searchQuery = ref('');
+
+const userOptions = ref([]);
+const groupOptions = ref([]);
+const selectedUsers = ref([]);
+const selectedGroups = ref([]);
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
 
@@ -98,6 +103,14 @@ const getData = async () => {
         daysToComplete.value = response.days_to_complete;
         isWorkDays.value = !!response.is_work_days;
         createWithoutData.value = !!response.create_without_data;
+        selectedUsers.value = (response.notify_users || []).map((user) => ({
+            code: user.id,
+            label: user.username,
+        }));
+        selectedGroups.value = (response.notify_groups || []).map((group) => ({
+            code: group.id,
+            label: group.name,
+        }));
         const report = response.available_report;
         if (report) {
             const normalized = normalizeReport(report);
@@ -125,6 +138,27 @@ const getAvailableReports = async () => {
         console.error(err);
     } finally {
         loadingAvailableReports.value = false;
+    }
+};
+
+const getNotifyOptions = async () => {
+    try {
+        const [userList, groupList] = await Promise.allSettled([
+            $UserApiService.getAll(),
+            $GroupApiService.getAll(),
+        ]);
+        const users = userList.status === 'fulfilled' ? (userList.value?.results || userList.value || []) : [];
+        const groups = groupList.status === 'fulfilled' ? (groupList.value?.results || groupList.value || []) : [];
+        userOptions.value = (Array.isArray(users) ? users : []).map((user) => ({
+            code: user.id,
+            label: user.username,
+        }));
+        groupOptions.value = (Array.isArray(groups) ? groups : []).map((group) => ({
+            code: group.id,
+            label: group.name,
+        }));
+    } catch (err) {
+        console.error(err);
     }
 };
 
@@ -171,7 +205,9 @@ const save = async () => {
             days_to_complete: daysToComplete.value,
             is_work_days: isWorkDays.value,
             create_without_data: createWithoutData.value,
-            available_report_id: selectedAvailableReport.value?.id
+            available_report_id: selectedAvailableReport.value?.id,
+            user_ids: selectedUsers.value.map((user) => user.code),
+            group_ids: selectedGroups.value.map((group) => group.code),
         }
         const response = await $DailyDocumentTemplateApiService.save(payload);
         if (response) {
@@ -195,7 +231,7 @@ const isValid = () => {
 }
 
 onMounted(async () => {
-    await getAvailableReports();
+    await Promise.all([getAvailableReports(), getNotifyOptions()]);
     await getData();
 });
 </script>
@@ -249,6 +285,28 @@ onMounted(async () => {
                             </span>
                         </span>
                     </label>
+                </div>
+                <div class="col-span-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+                    <div>
+                        <p class="text-sm font-medium text-slate-700">{{ t('statistics_block.notify_targets') }}</p>
+                        <p class="mt-0.5 text-xs text-slate-500">{{ t('statistics_block.notify_targets_help') }}</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-500 mb-1">
+                                {{ t('statistics_block.notify_users') }}
+                            </label>
+                            <v-select v-model="selectedUsers" :options="userOptions" multiple
+                                :placeholder="t('statistics_block.notify_users')" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-500 mb-1">
+                                {{ t('statistics_block.notify_groups') }}
+                            </label>
+                            <v-select v-model="selectedGroups" :options="groupOptions" multiple
+                                :placeholder="t('statistics_block.notify_groups')" />
+                        </div>
+                    </div>
                 </div>
             </div>
 
