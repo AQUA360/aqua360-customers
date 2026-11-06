@@ -272,6 +272,8 @@ class Biller(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     period_type = models.CharField(choices=TYPE_CHOICES, default='trimestral')
     initial_month = models.CharField(choices=MONTH_CHOICES, default='jan')
+    # Una facturació és una execució d'aquest facturador: l'explotació es filtra des d'aquí.
+    exploitation = models.ForeignKey(Exploitation, on_delete=models.SET_NULL, null=True, blank=True, related_name='billers')
     is_active = models.BooleanField(default=True)
 
 class ReadingBatchTemplate(models.Model):
@@ -498,6 +500,8 @@ class ReadingBatch(models.Model):
     missing_end = models.DateField(null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
+    # El lot no depèn d'un facturador (pot barrejar rutes o fixar-se només per comptadors).
+    exploitation = models.ForeignKey(Exploitation, on_delete=models.SET_NULL, null=True, blank=True, related_name='reading_batches')
 
     # Comptadors (PS, contractes...) fixats en tancar el lot; null mentre està obert.
     metrics_snapshot = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)

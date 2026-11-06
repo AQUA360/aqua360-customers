@@ -5,11 +5,11 @@ from django.db.models import Q
 
 class ReadingBatchFilter(filters.FilterSet):
     search = filters.CharFilter(method='filter_search')
-    # exploitation = filters.NumberFilter(method='filter_exploitation')
+    exploitation = filters.NumberFilter(field_name='exploitation_id')
     
     class Meta:
         model = ReadingBatch
-        fields = ['search', 'status']
+        fields = ['search', 'status', 'exploitation']
 
     def filter_search(self, queryset, name, value):
         if not value or not str(value).strip():
@@ -24,11 +24,3 @@ class ReadingBatchFilter(filters.FilterSet):
             status_values = value.split(',')
             return queryset.filter(status__token__in=status_values)
         return queryset
-    
-    """ def filter_exploitation(self, queryset, name, value):
-        if value:
-            return queryset.filter(
-                Q(routes__positions__properties__supply_points__connection__exploitation__id=value) |
-                Q(routes__positions__properties__supply_points__connection__exploitation__isnull=True)
-            ).distinct()
-        return queryset """

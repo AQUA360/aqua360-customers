@@ -115,6 +115,11 @@ export default defineNuxtPlugin(nuxtApp => {
 
     apiUrl += `?status=${statusToken}`;
 
+    const exploitation_id = localStorage.getItem('exploitation');
+    if (exploitation_id) {
+      apiUrl += `&exploitation=${exploitation_id}`;
+    }
+
     try {
 
       const response = await $apiManager.fetch(apiUrl, 'GET');
@@ -234,8 +239,13 @@ export default defineNuxtPlugin(nuxtApp => {
   const create = async (data) => {
     let apiUrl = apiHost + entity;
     try {
-      
-      const response = await $apiManager.fetch(apiUrl, 'POST', data, { 'Content-Type': 'application/json' })
+      const exploitation_id = localStorage.getItem('exploitation');
+      const payload = { ...data };
+      if (exploitation_id && !payload.exploitation) {
+        payload.exploitation = exploitation_id;
+      }
+
+      const response = await $apiManager.fetch(apiUrl, 'POST', payload, { 'Content-Type': 'application/json' })
       if (response) {
         return response;
       } else {

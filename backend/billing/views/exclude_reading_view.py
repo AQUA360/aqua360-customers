@@ -58,7 +58,8 @@ class ExcludeReadingView(views.APIView):
                     processed_at=datetime.now(),
                     status=pending_status,
                     excluded_from=origin_batch,
-                    is_excluded=True
+                    is_excluded=True,
+                    exploitation=origin_batch.exploitation,
                 )
             reading.batch = batch
             reading.save()
