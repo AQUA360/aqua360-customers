@@ -321,6 +321,14 @@ class TestRouteImport(RouteTestMixin, TestCase):
         with self.assertRaises(ValueError):
             route_bulk_service.read_import_file(_file("position;property_token\n1;P1\n"))
 
+    def test_corrupted_file_hides_internal_error(self):
+        broken = io.BytesIO(b'no es un excel')
+        broken.name = 'rutes.xlsx'
+        with self.assertLogs('service.utils.route_bulk_service', level='ERROR'):
+            with self.assertRaises(route_bulk_service.RouteBulkError) as ctx:
+                route_bulk_service.read_import_file(broken)
+        self.assertEqual(ctx.exception.message, "No s'ha pogut llegir el fitxer. Comprova que no estigui malmès.")
+
 
 class TestReadingBatchWithOwnRoute(RouteTestMixin, TestCase):
     """Una finca amb un punt trimestral (ruta de la finca) i un de mensual (ruta pròpia)."""

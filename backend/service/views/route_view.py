@@ -75,8 +75,8 @@ class RouteViewSet(viewsets.ModelViewSet):
         try:
             params = route_bulk_service.parse_add_street_params(request.data)
             plan = route_bulk_service.build_add_street_plan(route, params)
-        except ValueError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except route_bulk_service.RouteBulkError as e:
+            return Response({'detail': e.message}, status=status.HTTP_400_BAD_REQUEST)
         return Response(route_bulk_service.serialize_add_street_plan(plan))
 
     @action(detail=True, methods=['post'], url_path='add-street')
@@ -87,8 +87,8 @@ class RouteViewSet(viewsets.ModelViewSet):
         try:
             params = route_bulk_service.parse_add_street_params(request.data)
             plan = route_bulk_service.build_add_street_plan(route, params)
-        except ValueError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except route_bulk_service.RouteBulkError as e:
+            return Response({'detail': e.message}, status=status.HTTP_400_BAD_REQUEST)
         return Response(route_bulk_service.apply_add_street_plan(plan))
 
     @action(detail=False, methods=['get'], url_path='import/template')
@@ -103,7 +103,7 @@ class RouteViewSet(viewsets.ModelViewSet):
     def _import_plan(self, request):
         uploaded_file = request.FILES.get('file')
         if not uploaded_file:
-            raise ValueError("Cal adjuntar un fitxer.")
+            raise route_bulk_service.RouteBulkError("Cal adjuntar un fitxer.")
         mode = request.data.get('mode') or route_bulk_service.MODE_APPEND
         rows = route_bulk_service.read_import_file(uploaded_file)
         return route_bulk_service.build_import_plan(rows, mode)
@@ -113,8 +113,8 @@ class RouteViewSet(viewsets.ModelViewSet):
     def import_preview(self, request):
         try:
             plan = self._import_plan(request)
-        except ValueError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except route_bulk_service.RouteBulkError as e:
+            return Response({'detail': e.message}, status=status.HTTP_400_BAD_REQUEST)
         return Response(route_bulk_service.serialize_import_plan(plan))
 
     @action(detail=False, methods=['post'], url_path='import/confirm',
@@ -122,8 +122,8 @@ class RouteViewSet(viewsets.ModelViewSet):
     def import_confirm(self, request):
         try:
             plan = self._import_plan(request)
-        except ValueError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except route_bulk_service.RouteBulkError as e:
+            return Response({'detail': e.message}, status=status.HTTP_400_BAD_REQUEST)
         return Response(route_bulk_service.apply_import_plan(plan))
 
     @action(detail=True, methods=['post'], url_path='export-positions')

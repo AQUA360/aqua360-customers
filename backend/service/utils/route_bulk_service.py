@@ -5,6 +5,7 @@ pròpia a un punt de subministrament.
 """
 import csv
 import io
+import logging
 import re
 
 from django.db import transaction
@@ -15,6 +16,16 @@ from service.models import Property, Route, RoutePosition, RouteZone, SupplyPoin
 from service.utils.property_route_service import sync_property_tokens_with_route_position
 from service.utils.route_positions_service import build_route_position_token
 from service.utils.route_scope import effective_route_position
+
+logger = logging.getLogger(__name__)
+
+
+class RouteBulkError(ValueError):
+    """Error de validació amb un missatge pensat per mostrar a l'usuari."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
 
 
 # ---------------------------------------------------------------------------
@@ -104,13 +115,13 @@ def _to_int(value):
     try:
         return int(value)
     except (TypeError, ValueError):
-        raise ValueError(f"Valor numèric no vàlid: {value}")
+        raise RouteBulkError(f"Valor numèric no vàlid: {value}") from None
 
 
 def parse_add_street_params(data):
     street_id = _to_int(data.get('street_id'))
     if not street_id:
-        raise ValueError("Cal indicar el carrer.")
+        raise RouteBulkError("Cal indicar el carrer.")
     params = {
         'street_id': street_id,
         'number_from': _to_int(data.get('number_from')),
@@ -122,15 +133,15 @@ def parse_add_street_params(data):
         'assigned': data.get('assigned') or 'skip',
     }
     if params['parity'] not in (PARITY_ALL, PARITY_EVEN, PARITY_ODD):
-        raise ValueError("Paritat no vàlida.")
+        raise RouteBulkError("Paritat no vàlida.")
     if params['order'] not in ('asc', 'desc'):
-        raise ValueError("Ordre no vàlid.")
+        raise RouteBulkError("Ordre no vàlid.")
     if params['group_by'] not in ('number', 'property'):
-        raise ValueError("Agrupació no vàlida.")
+        raise RouteBulkError("Agrupació no vàlida.")
     if params['assigned'] not in ('skip', 'move'):
-        raise ValueError("Opció de finques assignades no vàlida.")
+        raise RouteBulkError("Opció de finques assignades no vàlida.")
     if params['insert_at'] is not None and params['insert_at'] < 1:
-        raise ValueError("La posició d'inserció ha de ser 1 o més.")
+        raise RouteBulkError("La posició d'inserció ha de ser 1 o més.")
     return params
 
 
@@ -153,7 +164,7 @@ def _number_matches(number, params):
 def build_add_street_plan(route, params):
     street = Street.objects.filter(id=params['street_id']).first()
     if not street:
-        raise ValueError("El carrer no existeix.")
+        raise RouteBulkError("El carrer no existeix.")
 
     properties = (
         Property.objects.filter(address_street=street, is_active=True)
@@ -334,10 +345,7 @@ def _cell_str(value):
     return str(value).strip()
 
 
-def read_import_file(uploaded_file):
-    """Retorna una llista de (número de fila, dict) amb les columnes normalitzades."""
-    name = (getattr(uploaded_file, 'name', '') or '').lower()
-    content = uploaded_file.read()
+def _read_raw_rows(name, content):
     if name.endswith('.xlsx') or name.endswith('.xlsm'):
         from openpyxl import load_workbook
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
@@ -347,7 +355,7 @@ def read_import_file(uploaded_file):
         import pandas as pd
         frame = pd.read_excel(io.BytesIO(content), header=None, dtype=object)
         raw_rows = [[_cell_str(None if pd.isna(c) else c) for c in row] for row in frame.values.tolist()]
-    elif name.endswith('.csv') or name.endswith('.txt'):
+    else:  # .csv o .txt
         try:
             text = content.decode('utf-8-sig')
         except UnicodeDecodeError:
@@ -355,14 +363,27 @@ def read_import_file(uploaded_file):
         sample = text[:4096]
         delimiter = ';' if sample.count(';') >= sample.count(',') else ','
         raw_rows = [[_cell_str(c) for c in row] for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
-    else:
-        raise ValueError("Format no suportat. Fes servir .xlsx, .xls o .csv.")
+    return raw_rows
+
+
+def read_import_file(uploaded_file):
+    """Retorna una llista de (número de fila, dict) amb les columnes normalitzades."""
+    name = (getattr(uploaded_file, 'name', '') or '').lower()
+    content = uploaded_file.read()
+    if not name.endswith(('.xlsx', '.xlsm', '.xls', '.csv', '.txt')):
+        raise RouteBulkError("Format no suportat. Fes servir .xlsx, .xls o .csv.")
+    try:
+        raw_rows = _read_raw_rows(name, content)
+    except Exception:
+        # El detall de l'error de lectura només va al log, no a la resposta.
+        logger.exception("No s'ha pogut llegir el fitxer d'importació de rutes")
+        raise RouteBulkError("No s'ha pogut llegir el fitxer. Comprova que no estigui malmès.") from None
 
     if not raw_rows:
-        raise ValueError("El fitxer és buit.")
+        raise RouteBulkError("El fitxer és buit.")
     headers = [_normalize_header(h) for h in raw_rows[0]]
     if 'route_token' not in headers:
-        raise ValueError("Falta la columna obligatòria 'route_token'.")
+        raise RouteBulkError("Falta la columna obligatòria 'route_token'.")
     rows = []
     for index, raw in enumerate(raw_rows[1:], start=2):
         if not any(raw):
@@ -420,7 +441,7 @@ def _find_zone(value):
 
 def build_import_plan(rows, mode):
     if mode not in (MODE_APPEND, MODE_REPLACE):
-        raise ValueError("Mode no vàlid.")
+        raise RouteBulkError("Mode no vàlid.")
 
     route_tokens = {row.get('route_token') for _, row in rows if row.get('route_token')}
     routes = {r.token: r for r in Route.objects.filter(token__in=route_tokens, is_active=True)}
