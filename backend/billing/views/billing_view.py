@@ -504,6 +504,7 @@ class BillingViewSet(viewsets.ModelViewSet):
           billing_missing=billing,
           missing_start=start_date,
           missing_end=end_date,
+          exploitation=billing.biller.exploitation if billing.biller_id else None,
         )
         new_reading_batch.fix_meters.set(meters)
         
@@ -677,6 +678,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -762,6 +764,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -960,13 +963,7 @@ class BillingBadgesView(views.APIView):
       # Validar les dades rebudes
       response = []
       exploitation_id = request.query_params.get('exploitation')
-      try:
-        exploitation = Exploitation.objects.get(id=exploitation_id)
-      except Exception as e:
-        print(e)
-        pass
-        
-      
+
       default_status = BillingStatus.objects.get(is_default=True)
       processed_status_token = ConfigProject.objects.get(token='billing_batch_processed').value
       processed_status = BillingStatus.objects.get(token=processed_status_token)
@@ -976,29 +973,9 @@ class BillingBadgesView(views.APIView):
       
       
       
-      # Filter by exploitation if provided
       if exploitation_id:
-          # Punts de les rutes segons la ruta efectiva: els heretats de la finca
-          # (sense posició pròpia) i els que tenen la posició pròpia a la ruta.
-          exploitation_filter = (
-              Q(invoices__exploitation__id=exploitation_id) |
-              Q(
-                  routes__positions__properties__supply_points__connection__exploitation__id=exploitation_id,
-                  routes__positions__properties__supply_points__route_position__isnull=True,
-              ) |
-              Q(
-                  routes__positions__properties__supply_points__connection__exploitation__isnull=True,
-                  routes__positions__properties__supply_points__route_position__isnull=True,
-              ) |
-              Q(routes__positions__supply_points__connection__exploitation__id=exploitation_id) |
-              Q(
-                  routes__positions__supply_points__isnull=False,
-                  routes__positions__supply_points__connection__exploitation__isnull=True,
-              )
-          )
-          default_billings = default_billings.filter(exploitation_filter).distinct()
-          
-          active_billings = active_billings.filter(exploitation_filter).distinct()
+          default_billings = default_billings.filter(biller__exploitation_id=exploitation_id)
+          active_billings = active_billings.filter(biller__exploitation_id=exploitation_id)
       
       if active_billings:
         total = 0
@@ -1135,7 +1112,8 @@ class StartBillingView(views.APIView):
         routes = biller.routes.all()
         billing.routes.set(routes)
       else:
-        routes = Route.objects.filter(is_active = True).all()
+        from billing.utils.exploitation_scope import routes_for_exploitation
+        routes = routes_for_exploitation(biller.exploitation_id)
         billing.routes.set(routes)
       billing.save()
 

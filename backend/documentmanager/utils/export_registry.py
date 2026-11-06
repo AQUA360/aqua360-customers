@@ -275,10 +275,11 @@ def _biller_config():
 
     class BillerFilter(filters.FilterSet):
         search = filters.CharFilter(method='filter_search')
+        exploitation = filters.NumberFilter(field_name='exploitation_id')
 
         class Meta:
             model = Biller
-            fields = ['search']
+            fields = ['search', 'exploitation']
 
         def filter_search(self, queryset, name, value):
             from django.db.models import Q

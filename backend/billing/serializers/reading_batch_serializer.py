@@ -4,10 +4,11 @@ import hashlib
 
 from billing.serializers.reading_serializer import ReadingMinimalSerializer, ReadingSerializer
 from billing.tasks import fix_readings_batch
+from billing.utils.exploitation_scope import routes_for_exploitation
 from billing.utils.reading_service import get_existing_reading
 from billing.utils.reading_batch_service import count_supply_point_contracts, count_supply_point_meters
 from coredata.models import ConfigProject
-from service.models import Meter, Route, SupplyPoint
+from service.models import Exploitation, Meter, Route, SupplyPoint
 from service.serializers.route_serializer import RouteListSerializer
 from service.utils.route_positions_service import route_count_total_readings
 from service.utils.route_scope import routes_supply_points_q, reading_batch_supply_points_q
@@ -419,9 +420,18 @@ class ReadingBatchSaveSerializer(serializers.ModelSerializer):
         if fileMeters and len(fileMeters) > 0 and fileReadings and len(fileReadings) > 0:
             meters = Meter.objects.filter(code__in=fileMeters)
             fix_readings_batch.delay(fileReadings)
+
+        if not validated_data.get('exploitation'):
+            request = self.context.get('request')
+            raw = None
+            if request is not None:
+                raw = request.data.get('exploitation') or request.query_params.get('exploitation')
+            if raw:
+                validated_data['exploitation'] = Exploitation.objects.filter(pk=raw).first()
         
         if not routes_data and (not meters or len(meters) == 0) and not reading_ids:
-            routes_data = Route.objects.filter(is_active=True).all()
+            exploitation = validated_data.get('exploitation')
+            routes_data = routes_for_exploitation(exploitation.id if exploitation else None)
         
         # Ensure token is set if not provided, using name as fallback
         if not validated_data.get('token') and validated_data.get('name'):
