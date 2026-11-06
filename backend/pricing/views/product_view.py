@@ -66,10 +66,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='priority')
     def priority_list(self, request):
-        exploitation_id = request.query_params.get('exploitation')
         queryset = self.filter_queryset(self.get_queryset()).filter(order_priority__isnull=False)
-        if exploitation_id:
-            queryset = queryset.filter(exploitation__id=exploitation_id)
         queryset = queryset.order_by('order_priority')
         serializer = ProductListSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
