@@ -136,3 +136,26 @@ class AcaDeclarationTests(TestCase):
         call_command(*args, '--fixed', '1.00', '--variable', '10.00', stdout=StringIO())
         declaration = AcaDeclaration.objects.get()
         self.assertEqual((declaration.year, declaration.month, declaration.line_items.count()), (2026, 6, 2))
+
+    def test_report_filters_apply_to_presented_months(self):
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        self.invoice('FR/1', datetime.date(2026, 6, 11))
+        self.freeze(self.masnou, 2026, 6, timezone.now())
+        selection = aca_declaration_selection(*JUNE, SimpleNamespace(data={'prefix': 'FC/'}))
+        self.assertEqual(set(selection.invoices.values_list('serie_final', flat=True)), {'FC/1'})
+
+    def test_factdeta_uses_the_same_selection(self):
+        from unittest import mock
+
+        from statistics.utils.report_factdeta_service import generate_factdeta_report
+
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        deactivated = self.invoice('FC/2', datetime.date(2026, 6, 11))
+        self.freeze(self.masnou, 2026, 6, timezone.now())
+        self.deactivate(deactivated)
+        with mock.patch('statistics.utils.report_factdeta_service.generate_factdeta_document', return_value=[]) as generate:
+            generate_factdeta_report(SimpleNamespace(data={'year': 2026}))
+        _exploitations, invoices = generate.call_args.args
+        lines = InvoiceLineItem.objects.filter(generate.call_args.kwargs['line_items_q'], invoice__in=invoices)
+        self.assertEqual(set(invoices.values_list('serie_final', flat=True)), {'FC/1', 'FC/2'})
+        self.assertEqual(lines.count(), 4)

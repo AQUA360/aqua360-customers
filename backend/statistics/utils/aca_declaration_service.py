@@ -15,6 +15,7 @@ from django.db.models import Q
 from billing.models import Invoice, InvoiceLineItem
 from coredata.models import ConfigProject
 from statistics.models import AcaDeclaration
+from statistics.utils.report_filters import apply_exclude_billing_ids, apply_serie_final_range, apply_serie_ids
 from statistics.views.reports_views import filter_pending_invoices
 
 
@@ -114,7 +115,10 @@ def aca_declaration_selection(start_date, end_date, request):
             and start_key <= _first_open_month(exploitation_id, issue_date.year, issue_date.month, frozen) <= end_key
         }
 
+    # Els filtres de lot i de sèrie de l'informe també valen per als mesos presentats (l'estat, no)
     invoices = Invoice.objects.filter(id__in=sorted(open_ids | frozen_invoice_ids))
+    invoices = apply_exclude_billing_ids(invoices, request.data, field='billing_id')
+    invoices = apply_serie_final_range(apply_serie_ids(invoices, request.data, field='serie_final'), request.data)
     line_items_q = frozen_lines_q | Q(is_active=True, invoice_id__in=sorted(open_ids))
     return SimpleNamespace(invoices=invoices, line_items_q=line_items_q)
 
