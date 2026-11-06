@@ -35,19 +35,19 @@ def _invoice_is_budget(invoice):
 def _keep_budget_identity(new_invoice, original):
     """Un pressupost recalculat ha de continuar sent pressupost, amb la mateixa sèrie."""
     update_fields = []
-    if original.type_id and new_invoice.type_id != original.type_id:
+    if new_invoice.type_id != original.type_id:
         new_invoice.type_id = original.type_id
         update_fields.append('type')
     if original.type_final != new_invoice.type_final:
         new_invoice.type_final = original.type_final
         update_fields.append('type_final')
-    if original.serie_id and new_invoice.serie_id != original.serie_id:
+    if new_invoice.serie_id != original.serie_id:
         new_invoice.serie_id = original.serie_id
         update_fields.append('serie')
     if original.serie_token_final != new_invoice.serie_token_final:
         new_invoice.serie_token_final = original.serie_token_final
         update_fields.append('serie_token_final')
-    if original.serie_final and new_invoice.serie_final != original.serie_final:
+    if new_invoice.serie_final != original.serie_final:
         new_invoice.serie_final = original.serie_final
         update_fields.append('serie_final')
     if update_fields:
