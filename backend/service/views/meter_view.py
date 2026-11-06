@@ -354,7 +354,11 @@ class MeterViewSet(viewsets.ModelViewSet):
                 else build_change_preview(uploaded)
             )
         except MeterBulkChangeError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.exception("Bulk change processing failed: %s", exc)
+            return Response(
+                {"error": "S'ha produït un error en processar el fitxer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(result, status=status.HTTP_200_OK)
 
     @action(
