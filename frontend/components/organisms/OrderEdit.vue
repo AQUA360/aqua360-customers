@@ -33,7 +33,7 @@ const originalToken = ref('')
 const selected_order = ref(null);
 
 const { t } = useI18n();
-const { $OrderApiService } = useNuxtApp();
+const { $OrderApiService, $ObservationApiService } = useNuxtApp();
 const { $OperatorApiService } = useNuxtApp();
 const { $OrderTypeApiService } = useNuxtApp();
 const { $ConfiglistApiService } = useNuxtApp();
@@ -41,6 +41,9 @@ const { $OrderPriorityApiService } = useNuxtApp();
 const { $PropertyApiService } = useNuxtApp();
 const { $SupplyPointApiService } = useNuxtApp();
 const { $ConnectionApiService } = useNuxtApp();
+
+// Observacions escrites en crear l'ordre: es desen quan l'ordre ja té id.
+const pendingObservations = ref([]);
 
 const { $ContractApiService } = useNuxtApp();
 const toast = useToast();
@@ -355,6 +358,16 @@ const getPriorities = async () => {
   }
 }
 
+const addPendingObservation = (text) => {
+  if (text?.trim()) {
+    pendingObservations.value.push(text);
+  }
+}
+
+const removePendingObservation = (index) => {
+  pendingObservations.value.splice(index, 1);
+}
+
 const save = async () => {
   attemptedSave.value = true;
   if (isValid()) {
@@ -432,7 +445,22 @@ const save = async () => {
     }
     try {
       item.value = await $OrderApiService.save(selectedOptions);
-      if (updatePropertyGeolocation.value && 
+
+      // Desa les observacions pendents (ordres noves) un cop l'ordre té id
+      if (pendingObservations.value.length > 0 && item.value?.id) {
+        for (const obs of pendingObservations.value) {
+          try {
+            await $ObservationApiService.postObservation({
+              observation: obs,
+              order: item.value.id
+            }, 'order', 'order');
+          } catch (obsError) {
+            console.error('Error saving observation:', obsError);
+          }
+        }
+        pendingObservations.value = [];
+      }
+      if (updatePropertyGeolocation.value &&
           locationTypeRadio.value == 'SP' && 
           selectedSupplyPoint.value && 
           (latitude.value || longitude.value)) {
@@ -755,6 +783,36 @@ const onIdLostFocus = async () => {
         </textarea>
         <div class="text-right text-xs mt-1" :class="descriptionLength >= 700 ? 'text-red-500' : 'text-slate-400'">
           {{ descriptionLength }} / 700
+        </div>
+      </div>
+
+      <!-- Observations field -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-500 mb-2">
+          {{ t('common.observations') }}
+        </label>
+
+        <div v-if="!props.id">
+          <!-- Observacions abans que l'ordre existeixi: es desen en guardar -->
+          <AtomsInputTextarea @update:text="addPendingObservation" :autosave="true" />
+
+          <!-- Llista d'observacions pendents -->
+          <div v-if="pendingObservations.length > 0" class="mt-2 space-y-2">
+            <div v-for="(obs, index) in pendingObservations" :key="index"
+                 class="p-2 bg-slate-50 border border-slate-200 rounded-md flex justify-between items-start group">
+              <p class="text-sm text-gray-700 whitespace-pre-wrap flex-1">{{ obs }}</p>
+              <button type="button" @click="removePendingObservation(index)"
+                      class="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Icon name="fa6-solid:xmark" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div v-else>
+          <MoleculesObservationList
+            parent_entity="order"
+            :id="props.id"
+            module="order" />
         </div>
       </div>
 
