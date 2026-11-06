@@ -3108,9 +3108,23 @@ class ContractChangeProcedureOVView(APIView):
             )
             # Tarifes periòdiques actives heretades del contracte actual; les
             # d'alta i els tipus d'ordre, els de canvi de nom del tipus de tràmit.
+            # Còpies pròpies (no les mateixes files) de les tarifes actives del
+            # contracte actual: així canviar-les a la sol·licitud o al nou
+            # contracte (p. ex. la referència BOP) no altera l'historial del
+            # contracte anterior.
             contract_request.price_rates.set(
-                contract.price_rates.filter(
-                    is_active=True, price_rate__is_active=True
+                ContractPriceRate.objects.bulk_create(
+                    [
+                        ContractPriceRate(
+                            supply_point=source.supply_point,
+                            price_rate=source.price_rate,
+                            is_bop_reference=source.is_bop_reference,
+                            is_active=True,
+                        )
+                        for source in contract.price_rates.filter(
+                            is_active=True, price_rate__is_active=True
+                        ).order_by("id")
+                    ]
                 )
             )
             contract_request.registration_price_rates.set(

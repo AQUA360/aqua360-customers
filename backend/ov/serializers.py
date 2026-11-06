@@ -25,6 +25,7 @@ from billing.models import (
 from billing.utils.payment_service import get_status_map
 from decouple import config
 from coredata.models import ConfigProject, Person, PersonAddress, PersonBank, PersonContact, Country
+from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from django.utils import timezone
 from django.db import transaction
 from django.utils.dateparse import parse_date
@@ -749,6 +750,17 @@ class InvoicePDFSerializer(serializers.ModelSerializer):
 
     def get_due_date_formatted(self, obj):
         return obj.due_date.strftime("%d/%m/%Y") if obj.due_date else ""
+
+
+def _validated_procedure_iban(value):
+    """Normalitza l'IBAN d'un tràmit (sense espais, en majúscules) i, si no és
+    buit, en valida el format i el dígit de control (mòdul 97 i, per a `ES`,
+    els dígits de control interns) amb el validador comú del PA. Un IBAN buit
+    es deixa passar: l'obligatorietat per a domiciliació es comprova a part."""
+    iban = (value or "").replace(" ", "").upper()
+    if iban and not is_valid_iban(iban):
+        raise serializers.ValidationError("Invalid IBAN.")
+    return iban
 
 
 def mask_iban(iban):
@@ -2137,7 +2149,7 @@ class ContractProcedureRequestSerializer(serializers.Serializer):
         return value
 
     def validate_iban(self, value):
-        return (value or "").replace(" ", "").upper()
+        return _validated_procedure_iban(value)
 
     def validate_iban_holder_dni(self, value):
         return (value or "").upper()
@@ -2299,8 +2311,11 @@ class ContractChangeIncomingSerializer(serializers.Serializer):
         return value
 
     def validate_iban(self, value):
-        """Remove ASCII spaces and uppercase the IBAN; return "" for null values."""
-        return (value or "").replace(" ", "").upper()
+        """Remove ASCII spaces and uppercase the IBAN; return "" for null values.
+
+        Raise ValidationError if a nonempty IBAN fails the format/checksum check.
+        """
+        return _validated_procedure_iban(value)
 
     def validate_iban_holder_dni(self, value):
         """Uppercase the bank account holder's DNI; return "" for null values."""

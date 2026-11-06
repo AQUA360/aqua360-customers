@@ -4037,6 +4037,9 @@ class ContractProcedureOVTests(TestCase):
         )
 
     def setUp(self):
+        # El throttle (35/min) usa la cache per defecte, que persisteix entre
+        # tests: sense netejar-la, la classe sencera esgota el límit.
+        cache.clear()
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
@@ -4355,6 +4358,16 @@ class ContractProcedureOVTests(TestCase):
                 with self.subTest(field=field, value=value):
                     response = self._post(**{field: value})
                     self.assertEqual(response.status_code, 400)
+
+    def test_invalid_iban_returns_400(self):
+        for iban in ("X", "ES9121000418450200051333"):
+            with self.subTest(iban=iban):
+                response = self._post(iban=iban)
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"iban": ["Invalid IBAN."]})
+        self.assertFalse(PersonBank.objects.exists())
+        self.assertFalse(ContractRequest.objects.exists())
 
     def test_direct_debit_requires_bank_fields(self):
         response = self._post(
@@ -5246,8 +5259,13 @@ class ContractChangeProcedureOVTests(TestCase):
         old_rate = PriceRate.objects.create(
             token="CH-OLD", name="Antiga", is_active=False
         )
+        cls.water = water
         cls.active_cpr = ContractPriceRate.objects.create(
-            supply_point=cls.supply_point, price_rate=water, is_active=True
+            token="CPR-OUTGOING",
+            supply_point=cls.supply_point,
+            price_rate=water,
+            is_active=True,
+            is_bop_reference=True,
         )
         inactive_cpr = ContractPriceRate.objects.create(
             supply_point=cls.supply_point, price_rate=water, is_active=False
@@ -5396,8 +5414,35 @@ class ContractChangeProcedureOVTests(TestCase):
         contract_request = ContractRequest.objects.get(
             token=response.data["contract_request_token"]
         )
+        inherited = list(contract_request.price_rates.all())
+        self.assertEqual(len(inherited), 1)
+        self.assertEqual(inherited[0].price_rate, self.water)
+        self.assertEqual(inherited[0].supply_point, self.supply_point)
+        self.assertTrue(inherited[0].is_active)
+        self.assertTrue(inherited[0].is_bop_reference)
+
+    def test_inherited_tariffs_are_independent_copies(self):
+        response = self._post()
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        clone = contract_request.price_rates.get()
+        self.assertNotEqual(clone.pk, self.active_cpr.pk)
+        self.assertFalse(
+            self.contract.price_rates.filter(pk=clone.pk).exists()
+        )
+
+        # Modificar la còpia no altera la tarifa del contracte anterior.
+        clone.is_bop_reference = False
+        clone.is_active = False
+        clone.save()
+        self.active_cpr.refresh_from_db()
+        self.assertTrue(self.active_cpr.is_bop_reference)
+        self.assertTrue(self.active_cpr.is_active)
+        self.assertEqual(self.active_cpr.token, "CPR-OUTGOING")
         self.assertEqual(
-            list(contract_request.price_rates.all()), [self.active_cpr]
+            self.contract.price_rates.filter(is_active=True).count(), 2
         )
 
     def test_uses_change_of_name_registration_rates_and_order_types(self):
@@ -5509,6 +5554,30 @@ class ContractChangeProcedureOVTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("payment_type_token", response.data["incoming"])
+
+    def test_invalid_iban_is_reported_on_incoming(self):
+        for iban in (
+            "X",
+            "ES9121000418450200051333",  # dígit de control incorrecte
+            "ES91 2100 0418 4502 0005 133",  # longitud incorrecta
+            "ZZ9121000418450200051332",  # país desconegut
+            "ES91210004184502000513A2",  # caràcter no numèric
+        ):
+            with self.subTest(iban=iban):
+                response = self._post(incoming={"iban": iban})
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.data, {"incoming": {"iban": ["Invalid IBAN."]}}
+                )
+        self._assert_nothing_created()
+
+    def test_valid_iban_with_spaces_is_accepted(self):
+        response = self._post(
+            incoming={"iban": "es91 2100 0418 4502 0005 1332"}
+        )
+
+        self.assertEqual(response.status_code, 201)
 
     def test_direct_debit_requires_bank_fields_on_incoming(self):
         response = self._post(incoming={"iban": "", "iban_holder_swift": None})
