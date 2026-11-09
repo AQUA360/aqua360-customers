@@ -5,7 +5,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from billing.filter.invoice_filter import InvoiceFilter
-from billing.models import Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentStatus
+from billing.models import Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentStatus, UnpaidFeeRun
+from billing.tasks import generate_unpaid_fee_invoices_task
 from billing.utils.unpaid_fee_service import generate_unpaid_fee_invoices
 from contract.models import Contract
 from coredata.models import ConfigProject, Person
@@ -154,4 +155,60 @@ class UnpaidFeeEndpointTests(UnpaidFeeTestMixin, TestCase):
                 {'price_rate_ids': [self.fee_rate.id], 'excluded_ids': [excluded.id]}, format='json')
 
         self.assertEqual(response.status_code, 202)
-        delay.assert_called_once_with([kept.id], [self.fee_rate.id])
+        run = UnpaidFeeRun.objects.get()
+        delay.assert_called_once_with([kept.id], [self.fee_rate.id], run_id=run.id)
+        self.assertEqual((run.task_id, run.invoice_count, run.created_by), ('task-1', 1, self.user))
+        self.assertEqual(list(run.price_rates.all()), [self.fee_rate])
+
+    def test_running_process_is_reported_and_blocks_another_one(self):
+        self.enable('true')
+        self.invoice('A')
+        run = UnpaidFeeRun.objects.create(task_id='task-1', invoice_count=3, created_by=self.user)
+
+        with patch('celery.result.AsyncResult') as async_result:
+            async_result.return_value.state = 'PROGRESS'
+            config = self.client.get('/billing/invoice/unpaid-fees/config/')
+            with patch('billing.tasks.generate_unpaid_fee_invoices_task.delay') as delay:
+                response = self.client.post(
+                    '/billing/invoice/unpaid-fees/generate/?unpaid_status=expired',
+                    {'price_rate_ids': [self.fee_rate.id]}, format='json')
+
+        self.assertEqual(config.data['running_run']['task_id'], 'task-1')
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data['running_run']['id'], run.id)
+        delay.assert_not_called()
+
+    def test_failed_task_releases_the_process(self):
+        self.enable('true')
+        run = UnpaidFeeRun.objects.create(task_id='task-1')
+
+        with patch('celery.result.AsyncResult') as async_result:
+            async_result.return_value.state = 'FAILURE'
+            config = self.client.get('/billing/invoice/unpaid-fees/config/')
+
+        self.assertIsNone(config.data['running_run'])
+        run.refresh_from_db()
+        self.assertEqual(run.status, UnpaidFeeRun.STATUS_FAILED)
+        self.assertEqual(config.data['last_run']['id'], run.id)
+
+
+class UnpaidFeeTaskTests(UnpaidFeeTestMixin, TestCase):
+
+    def test_task_saves_the_result_in_the_run(self):
+        run = UnpaidFeeRun.objects.create()
+        result = {'created': 2, 'created_ids': [1, 2], 'skipped': 0, 'errors': []}
+        with patch('billing.utils.unpaid_fee_service.generate_unpaid_fee_invoices', return_value=dict(result)):
+            generate_unpaid_fee_invoices_task.apply(args=([1, 2], [self.fee_rate.id]), kwargs={'run_id': run.id})
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, UnpaidFeeRun.STATUS_DONE)
+        self.assertEqual(run.result['created'], 2)
+        self.assertIsNotNone(run.finished_at)
+
+    def test_task_error_marks_the_run_as_failed(self):
+        run = UnpaidFeeRun.objects.create()
+        with patch('billing.utils.unpaid_fee_service.generate_unpaid_fee_invoices', side_effect=ValueError('boom')):
+            generate_unpaid_fee_invoices_task.apply(args=([1], [self.fee_rate.id]), kwargs={'run_id': run.id})
+
+        run.refresh_from_db()
+        self.assertEqual((run.status, run.result), (UnpaidFeeRun.STATUS_FAILED, {'error': 'boom'}))

@@ -2,11 +2,12 @@
 // Despeses d'impagat de factures vençudes (finestreta) o amb un retorn SEPA sense
 // gestionar. Es filtren les factures, s'hi treuen les que no es volen i el backend
 // crea una factura de despeses per a cada una amb les tarifes triades.
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import debounce from 'lodash.debounce';
 import Pagination from '~/components/molecules/Pagination.vue';
+import InvoiceRegion from '~/components/organisms/InvoiceRegion.vue';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -40,6 +41,31 @@ const loadingInvoices = ref(false);
 const pagination = ref({ page: 1, perPage: 50, total: 0, totalPages: 0, isFiltered: true });
 
 const taskId = ref(null);
+// La tasca segueix a Celery encara que es surti de la pantalla: en tornar-hi,
+// el backend diu quina hi ha en marxa i se'n reprèn el seguiment.
+const runningRun = ref(null);
+const lastRun = ref(null);
+
+const followRun = (run) => {
+  runningRun.value = run;
+  taskId.value = run?.task_id || null;
+  generating.value = !!taskId.value;
+};
+
+const formatDateTime = (value) => value ? new Date(value).toLocaleString() : '';
+
+// Detall de la factura al panell lateral, com a la llista de factures.
+const regionInvoiceId = ref(null);
+const isSubRegionOpen = ref(false);
+const openInvoice = (id) => {
+  isSubRegionOpen.value = false;
+  regionInvoiceId.value = null;
+  nextTick(() => { regionInvoiceId.value = id; });
+};
+const closeInvoice = () => {
+  isSubRegionOpen.value = false;
+  regionInvoiceId.value = null;
+};
 const generating = ref(false);
 
 const unpaidStatusOptions = computed(() => [
@@ -118,6 +144,8 @@ const init = async () => {
     enabled.value = !!config?.enabled;
     if (!enabled.value) return;
     selectedPriceRates.value = config.default_price_rates || [];
+    lastRun.value = config.last_run;
+    followRun(config.running_run);
     await loadPaymentTypes();
     searchPriceRates('');
     await searchInvoices(1);
@@ -142,10 +170,12 @@ const generate = async () => {
       selectedPriceRates.value.map(priceRate => priceRate.id),
       excludedInvoices.value,
     );
-    taskId.value = response.task_id;
+    followRun({ task_id: response.task_id, invoice_count: response.count, created_at: new Date().toISOString() });
   } catch (err) {
     console.error(err);
     generating.value = false;
+    // Algú altre ja l'ha llançat: se segueix aquell procés.
+    if (err?.data?.running_run) followRun(err.data.running_run);
   }
 };
 
@@ -166,10 +196,10 @@ const onTaskRefresh = async () => {
     console.error(err);
     toast.error(t('common.error'));
   } finally {
-    taskId.value = null;
-    generating.value = false;
+    followRun(null);
     excludedInvoices.value = [];
     searchInvoices(1);
+    $InvoiceApiService.getUnpaidFeesConfig().then(config => { lastRun.value = config?.last_run; }).catch(() => {});
   }
 };
 
@@ -280,14 +310,32 @@ onMounted(init);
               :loading="loadingPriceRates" @search="searchPriceRates" />
             <p class="text-xs text-gray-500">{{ $t('billing_block.unpaid_fee_fees_help') }}</p>
 
-            <AtomsProcessColorBadge v-if="taskId" class="w-fit flex items-center" @refresh="onTaskRefresh"
-              :value="t('common.processing')" color="blue" :taskId="taskId" />
+            <div v-if="taskId" class="space-y-2">
+              <AtomsProcessColorBadge class="w-fit flex items-center" @refresh="onTaskRefresh" @error="onTaskRefresh"
+                :value="t('common.processing')" color="blue" :taskId="taskId" />
+              <p class="text-xs text-gray-500">
+                {{ $t('billing_block.unpaid_fee_running', {
+                  count: runningRun?.invoice_count ?? '',
+                  date: formatDateTime(runningRun?.created_at),
+                }) }}
+                <span v-if="runningRun?.created_by">· {{ runningRun.created_by }}</span>
+              </p>
+              <p class="text-xs text-gray-500">{{ $t('billing_block.unpaid_fee_running_help') }}</p>
+            </div>
             <button v-else class="button-primary flex w-full items-center justify-center gap-2" :disabled="!canGenerate"
               :class="{ 'cursor-not-allowed opacity-50': !canGenerate }" @click="generate">
               <Icon name="fa6-solid:file-invoice-dollar" />
               {{ $t('billing_block.unpaid_fee_apply') }}
               <span class="rounded-full bg-white/20 px-1.5 py-0.5 text-xs font-semibold">{{ selectedCount }}</span>
             </button>
+            <p v-if="lastRun && !taskId" class="border-t border-gray-100 pt-2 text-xs text-gray-500">
+              {{ $t('billing_block.unpaid_fee_last_run', { date: formatDateTime(lastRun.finished_at || lastRun.created_at) }) }}
+              <span v-if="lastRun.created_by">· {{ lastRun.created_by }}</span><br>
+              <span v-if="lastRun.status === 'failed'" class="text-red-600">{{ $t('common.error') }}: {{ lastRun.result?.error }}</span>
+              <span v-else-if="lastRun.result">
+                {{ $t('billing_block.unpaid_fee_done', { created: lastRun.result.created, skipped: lastRun.result.skipped }) }}
+              </span>
+            </p>
           </div>
         </section>
       </div>
@@ -327,11 +375,12 @@ onMounted(init);
             </thead>
             <tbody class="divide-y divide-gray-100">
               <tr v-for="invoice in invoices" :key="invoice.id"
-                :class="isExcluded(invoice.id) ? 'bg-slate-50 opacity-50' : 'hover:bg-gray-50'">
+                :class="[isExcluded(invoice.id) ? 'bg-slate-50 opacity-50' : 'hover:bg-gray-50',
+                  { 'bg-sky-50': regionInvoiceId === invoice.id }]">
                 <td class="px-3 py-2">
-                  <NuxtLink :to="`/billing/invoice?id=${invoice.id}`" class="font-medium text-sky-700 hover:underline">
+                  <button type="button" class="font-medium text-sky-700 hover:underline" @click="openInvoice(invoice.id)">
                     {{ invoice.serie_final }}
-                  </NuxtLink>
+                  </button>
                   <p v-if="invoice.contract_token" class="text-xs text-gray-500">{{ invoice.contract_token }}</p>
                 </td>
                 <td class="px-3 py-2">{{ invoice.customer_final }}</td>
@@ -352,6 +401,21 @@ onMounted(init);
           <Pagination :pagination="pagination" @update:page="searchInvoices" />
         </div>
       </section>
+    </div>
+
+    <div role="region" id="right_page"
+      class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 ease py-2 text-base bg-white overflow-x-hidden"
+      :class="{ 'translate-x-0': regionInvoiceId, 'translate-x-full': !regionInvoiceId, 'w-[95%]': isSubRegionOpen, 'w-[55%]': !isSubRegionOpen }">
+      <div id="region_nav" class="mb-3 px-3">
+        <button @click="closeInvoice" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
+          <Icon name="fa6-solid:angles-right" class="text-slate-500" />
+        </button>
+      </div>
+      <div v-if="regionInvoiceId" class="pl-10 h-full">
+        <InvoiceRegion :id="regionInvoiceId" :isSubRegionOpen="isSubRegionOpen"
+          @show-subregion="(open) => isSubRegionOpen = open" @changed="searchInvoices(pagination.page)"
+          @close-subregion="closeInvoice" @update-id="(newId) => regionInvoiceId = newId" />
+      </div>
     </div>
   </div>
 </template>

@@ -304,11 +304,11 @@ class InvoiceFilter(filters.FilterSet):
 
     def filter_without_fee_price_rates(self, queryset, name, value):
         """Treu les factures de despeses d'aquestes tarifes i les que ja en tenen."""
-        from billing.utils.unpaid_fee_service import with_fee_q
+        from billing.utils.unpaid_fee_service import with_fee_ids
         price_rate_ids = [v.strip() for v in (value or '').split(',') if v.strip().isdigit()]
         if not price_rate_ids:
             return queryset
-        return queryset.exclude(id__in=Invoice.objects.filter(with_fee_q(price_rate_ids)).values('id'))
+        return queryset.exclude(id__in=with_fee_ids(price_rate_ids))
 
     def filter_exclude_vulnerable(self, queryset, name, value):
         from billing.utils.unpaid_fee_service import vulnerable_q

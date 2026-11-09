@@ -4676,15 +4676,22 @@ def generate_billing_document_download(self, download_id):
 
 
 @shared_task(bind=True)
-def generate_unpaid_fee_invoices_task(self, invoice_ids, price_rate_ids):
+def generate_unpaid_fee_invoices_task(self, invoice_ids, price_rate_ids, run_id=None):
   """Despeses d'impagat de les factures triades a la llista de factures."""
-  from billing.utils.unpaid_fee_service import generate_unpaid_fee_invoices
+  from billing.utils.unpaid_fee_service import finish_run, generate_unpaid_fee_invoices
 
   progress_recorder = ProgressRecorder(self)
 
   def on_progress(done, total):
     progress_recorder.set_progress(done, total, description=f"Generant despeses d'impagat ({done}/{total})")
 
-  result = generate_unpaid_fee_invoices(invoice_ids, price_rate_ids, on_progress=on_progress)
+  try:
+    result = generate_unpaid_fee_invoices(invoice_ids, price_rate_ids, on_progress=on_progress)
+  except Exception as e:
+    if run_id:
+      finish_run(run_id, error=str(e))
+    raise
   result['status'] = 'success'
+  if run_id:
+    finish_run(run_id, result=result)
   return result

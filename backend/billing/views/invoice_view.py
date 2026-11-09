@@ -566,12 +566,22 @@ class InvoiceViewSet(viewsets.ModelViewSet):
   @action(detail=False, methods=['get'], url_path='unpaid-fees/config')
   def unpaid_fees_config(self, request):
     """Si l'operació de despeses d'impagat està activa i la tarifa que es proposa per defecte."""
-    from billing.utils.unpaid_fee_service import is_unpaid_fee_operation_enabled, default_unpaid_fee_price_rate
+    from billing.models import UnpaidFeeRun
+    from billing.utils.unpaid_fee_service import (
+        active_run, default_unpaid_fee_price_rate, is_unpaid_fee_operation_enabled, serialize_run)
     enabled = is_unpaid_fee_operation_enabled()
-    price_rate = default_unpaid_fee_price_rate() if enabled else None
+    if not enabled:
+        return Response({"enabled": False, "default_price_rates": [], "running_run": None, "last_run": None})
+    price_rate = default_unpaid_fee_price_rate()
+    # Primer l'actiu: si s'ha interromput, es tanca i passa a ser el darrer.
+    running_run = active_run()
+    last_run = UnpaidFeeRun.objects.exclude(status=UnpaidFeeRun.STATUS_RUNNING).select_related('created_by').first()
     return Response({
         "enabled": enabled,
         "default_price_rates": [{"id": price_rate.id, "token": price_rate.token, "name": price_rate.name}] if price_rate else [],
+        # Per reprendre el seguiment si es torna a la pantalla amb el procés en marxa.
+        "running_run": serialize_run(running_run),
+        "last_run": serialize_run(last_run),
     }, status=status.HTTP_200_OK)
 
   @action(detail=False, methods=['post'], url_path='unpaid-fees/generate')
@@ -580,10 +590,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     Els filtres van a la query string, com a la llista.
     """
+    from billing.models import UnpaidFeeRun
     from billing.tasks import generate_unpaid_fee_invoices_task
-    from billing.utils.unpaid_fee_service import is_unpaid_fee_operation_enabled
+    from billing.utils.unpaid_fee_service import active_run, is_unpaid_fee_operation_enabled, serialize_run
     if not is_unpaid_fee_operation_enabled():
         return Response({"error": _("Operation not enabled")}, status=status.HTTP_403_FORBIDDEN)
+    running = active_run()
+    if running:
+        return Response({"error": _("Another process is running"), "running_run": serialize_run(running)},
+                        status=status.HTTP_409_CONFLICT)
 
     price_rate_ids = [int(v) for v in request.data.get('price_rate_ids') or [] if str(v).isdigit()]
     if not price_rate_ids:
@@ -598,7 +613,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     if not invoice_ids:
         return Response({"error": _("No invoices found")}, status=status.HTTP_404_NOT_FOUND)
 
-    task = generate_unpaid_fee_invoices_task.delay(invoice_ids, price_rate_ids)
+    run = UnpaidFeeRun.objects.create(invoice_count=len(invoice_ids), created_by=request.user)
+    run.price_rates.set(price_rate_ids)
+    task = generate_unpaid_fee_invoices_task.delay(invoice_ids, price_rate_ids, run_id=run.id)
+    # Només el task_id: si la tasca ja ha acabat, no se'n trepitja l'estat.
+    UnpaidFeeRun.objects.filter(id=run.id).update(task_id=task.id)
     return Response({"task_id": task.id, "count": len(invoice_ids)}, status=status.HTTP_202_ACCEPTED)
 
   @action(detail=True, methods=['post'], url_path='recalculate-smart')

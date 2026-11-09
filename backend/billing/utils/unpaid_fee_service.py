@@ -23,11 +23,8 @@ FEE_INVOICE_TITLE = 'RECLAMACIÓ DE SERVEI'
 UNPAID_STATUS_EXPIRED = 'expired'
 UNPAID_STATUS_RETURNED = 'returned'
 
-# Les despeses es pengen al final de la cadena de factures filles
-# (`invoice_return_charge()`), així que una factura pot tenir-les uns quants
-# nivells per sota. Amb aquesta profunditat n'hi ha de sobres.
-FEE_CHAIN_DEPTH = 6
-
+# Una execució que no ha arrencat en aquestes hores es dona per perduda.
+STALE_RUN_HOURS = 12
 
 def _config_value(token):
     return ConfigProject.objects.filter(token=token).values_list('value', flat=True).first()
@@ -66,15 +63,24 @@ def fee_invoices(price_rate_ids):
     return Invoice.objects.filter(line_items__price_rate__id__in=price_rate_ids)
 
 
-def with_fee_q(price_rate_ids):
-    """Factures que ja són despeses o que ja en tenen alguna a la cadena de filles."""
-    fee_ids = fee_invoices(price_rate_ids).values('id')
-    query = Q(id__in=fee_ids)
-    path = 'child_invoices'
-    for _ in range(FEE_CHAIN_DEPTH):
-        query |= Q(**{f'{path}__in': fee_ids})
-        path += '__child_invoices'
-    return query
+def with_fee_ids(price_rate_ids):
+    """Factures que ja són despeses o que ja en tenen alguna a la cadena de filles.
+
+    Les despeses es pengen al final de la cadena (`invoice_return_charge()`),
+    així que es puja des de cada despesa fins a l'arrel. Es retornen els ids ja
+    calculats: com a subconsulta amb joins encadenats, dins del llistat, la
+    consulta passava de segons.
+    """
+    from billing.models import Invoice
+    managed = set(fee_invoices(price_rate_ids).values_list('id', flat=True))
+    current = managed
+    while current:
+        current = set(
+            Invoice.objects.filter(id__in=current, parent_invoice__isnull=False)
+            .values_list('parent_invoice_id', flat=True)
+        ) - managed
+        managed |= current
+    return managed
 
 
 def vulnerable_q():
@@ -109,6 +115,54 @@ def open_claim_q():
     return Q(payments__claim_requests__claim_request__status__token__in=open_tokens)
 
 
+def active_run():
+    """L'execució en curs, si n'hi ha; només se'n permet una alhora.
+
+    Si la tasca ha fallat sense poder-ho apuntar, o fa hores que no arrenca
+    (worker aturat), es dona per fallida perquè no bloquegi la pantalla.
+    """
+    from datetime import timedelta
+    from celery.result import AsyncResult
+    from django.utils import timezone
+    from billing.models import UnpaidFeeRun
+    run = UnpaidFeeRun.objects.filter(status=UnpaidFeeRun.STATUS_RUNNING).select_related('created_by').first()
+    if not run:
+        return None
+    state = AsyncResult(run.task_id).state if run.task_id else 'PENDING'
+    stale = state == 'PENDING' and run.created_at < timezone.now() - timedelta(hours=STALE_RUN_HOURS)
+    if state in ('FAILURE', 'REVOKED') or stale:
+        finish_run(run.id, error='Task interrupted')
+        return None
+    return run
+
+
+def finish_run(run_id, result=None, error=None):
+    from django.utils import timezone
+    from billing.models import UnpaidFeeRun
+    UnpaidFeeRun.objects.filter(id=run_id).update(
+        status=UnpaidFeeRun.STATUS_FAILED if error else UnpaidFeeRun.STATUS_DONE,
+        result={'error': error} if error else result,
+        finished_at=timezone.now(),
+    )
+
+
+def serialize_run(run):
+    if not run:
+        return None
+    user = run.created_by
+    return {
+        'id': run.id,
+        'task_id': run.task_id,
+        'status': run.status,
+        'invoice_count': run.invoice_count,
+        'price_rates': [price_rate.name or price_rate.token for price_rate in run.price_rates.all()],
+        'result': run.result,
+        'created_by': (user.get_full_name() or user.username) if user else None,
+        'created_at': run.created_at,
+        'finished_at': run.finished_at,
+    }
+
+
 def root_invoice(invoice):
     while invoice.parent_invoice_id:
         invoice = invoice.parent_invoice
@@ -133,13 +187,14 @@ def generate_unpaid_fee_invoices(invoice_ids, price_rate_ids, on_progress=None):
     invoices = list(Invoice.objects.filter(id__in=invoice_ids).select_related('parent_invoice'))
     total = len(invoices)
     processed_root_ids = set()
+    managed_ids = with_fee_ids(price_rate_ids)
     created, skipped, errors = [], 0, []
 
     for index, invoice in enumerate(invoices, start=1):
         root = root_invoice(invoice)
         if root.id in processed_root_ids:
             skipped += 1
-        elif Invoice.objects.filter(with_fee_q(price_rate_ids), id=root.id).exists():
+        elif root.id in managed_ids:
             processed_root_ids.add(root.id)
             skipped += 1
         else:
