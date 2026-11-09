@@ -20,6 +20,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
+from billing.utils.payment_return_warnings import is_rectified_invoice
 from billing.utils.payment_service import add_negative_payment_to_balance, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
 from coredata.utils.name_utils import generate_token
 from documentmanager.utils.main_utils import upload_document
@@ -196,6 +197,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment_returned_token = ConfigProject.objects.get(token='payment_status_returned_token').value
         payment_returned_status = PaymentStatus.objects.get(token=payment_returned_token)
         payment_cancelled_token = ConfigProject.objects.get(token='payment_status_cancelled_token').value
+        invoice_cancelled_token = ConfigProject.objects.filter(token='invoice_status_cancelled_token').values_list('value', flat=True).first()
         invoice_confirmed_token = ConfigProject.objects.get(token='invoice_status_confirmed_token').value
         invoice_status_expired_token = ConfigProject.objects.get(token='invoice_status_expired_token').value
         commitment_deposit_paid_token = ConfigProject.objects.get(token='commitment_deposit_status_paid_token').value
@@ -316,6 +318,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 ).exists()
                 if previous_returns.exists() or already_returned:
                     skip_return = True
+                # Factura ja anul·lada amb una rectificativa (i refeta): el deute és a la factura nova,
+                # i retornar aquest pagament tornaria a obrir la factura antiga i la reclamaria dos cops
+                if payment.invoice and is_rectified_invoice(payment.invoice, invoice_cancelled_token or ''):
+                    skip_return = True
 
                 if not skip_return and ((payment.status.token == payment_paid_token and ((payment.invoice and payment.invoice.status and payment.invoice.status.token == invoice_paid_token) or payment.commitment_deposit)) or (payment.status.token == payment_cancelled_token)):
                     disconnect_payment_signals()
@@ -429,6 +435,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
             claim_instances = claim_instances.filter(id__in=payments_to_return_ids)
         # Un pagament que continua pagat (p. ex. tornat a cobrar pel mètode actual) no té res a reclamar
         claim_instances = claim_instances.exclude(status__token=payment_paid_token)
+        # Ni els de factures anul·lades i refetes: es reclamaria una factura que ja no és deute
+        rectified_invoice_q = Q(invoice__return_token__gt='')
+        if invoice_cancelled_token:
+            rectified_invoice_q |= Q(invoice__status__token=invoice_cancelled_token)
+        claim_instances = claim_instances.exclude(rectified_invoice_q)
         claim_request_open_tokens = list(ConfigProject.objects.filter(
             token__in=['claim_request_status_pending_token', 'claim_request_status_accepted_token']
         ).values_list('value', flat=True))
