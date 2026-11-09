@@ -2514,6 +2514,7 @@ export default {
     unpaid_fee_running: 'Process running: {count} invoices, started on {date}',
     unpaid_fee_running_help: 'You can leave this screen: the process keeps running in the background and will show here when you come back.',
     unpaid_fee_last_run: 'Last process: {date}',
+    unpaid_fee_search_error: 'The invoices could not be loaded. Fees cannot be applied until they load.',
     unpaid_fee_disabled: 'The unpaid fees operation is not enabled for this project.',
     mng_sii: 'Manage the SII',
     download_sii: 'Download SII file',

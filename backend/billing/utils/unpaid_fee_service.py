@@ -9,10 +9,15 @@ Només està disponible si el ConfigProject `unpaid_fee_operation_enabled` val
 `true`.
 """
 
+import logging
+
+from django.db import transaction
 from django.db.models import Q
 
 from coredata.models import ConfigProject
 from pricing.models import PriceRate
+
+logger = logging.getLogger(__name__)
 
 
 ENABLED_CONFIG_TOKEN = 'unpaid_fee_operation_enabled'
@@ -22,6 +27,7 @@ FEE_INVOICE_TITLE = 'RECLAMACIÓ DE SERVEI'
 
 UNPAID_STATUS_EXPIRED = 'expired'
 UNPAID_STATUS_RETURNED = 'returned'
+UNPAID_STATUSES = {UNPAID_STATUS_EXPIRED, UNPAID_STATUS_RETURNED}
 
 # Una execució que no ha arrencat en aquestes hores es dona per perduda.
 STALE_RUN_HOURS = 12
@@ -57,38 +63,98 @@ def unpaid_status_q(kinds):
     return query
 
 
-def fee_invoices(price_rate_ids):
-    """Factures que porten alguna línia d'aquestes tarifes."""
+def eligible_q(kinds=UNPAID_STATUSES):
+    """Factures a què es poden aplicar despeses: pendents de cobrar i amb origen de
+    lectura o d'alta, que són les que sap gestionar `invoice_return_charge()` (les
+    d'escomesa no tenen contracte i hi fallarien, com en els retorns SEPA).
+
+    És la condició que es torna a comprovar al servidor i abans de crear cada
+    despesa, independentment dels filtres que enviï el client.
+    """
+    query = unpaid_status_q(kinds)
+    if not query:
+        return None
+    origin_tokens = list(ConfigProject.objects.filter(
+        token__in=['origin_reading_token', 'origin_contract_token']).values_list('value', flat=True))
+    return query & Q(
+        is_active=True,
+        left_to_pay__gt=0,
+        origin__token__in=origin_tokens,
+    ) & (Q(contract__isnull=False) | Q(contract_request__isnull=False))
+
+
+def eligible_invoices(invoices_qs, kinds=UNPAID_STATUSES):
     from billing.models import Invoice
-    return Invoice.objects.filter(line_items__price_rate__id__in=price_rate_ids)
+    query = eligible_q(kinds)
+    if not query:
+        return invoices_qs.none()
+    # Per id: el join amb els rebuts duplicaria files.
+    return invoices_qs.filter(id__in=Invoice.objects.filter(query).values('id'))
 
 
-def with_fee_ids(price_rate_ids):
-    """Factures que ja són despeses o que ja en tenen alguna a la cadena de filles.
+def fee_invoices(price_rate_ids):
+    """Despeses vigents d'aquestes tarifes: les anul·lades no compten, perquè si
+    s'anul·la una despesa s'ha de poder tornar a aplicar."""
+    from billing.models import Invoice
+    queryset = Invoice.objects.filter(
+        is_active=True,
+        line_items__price_rate__id__in=price_rate_ids,
+        line_items__is_active=True,
+    )
+    cancelled_token = _config_value('invoice_status_cancelled_token')
+    if cancelled_token:
+        queryset = queryset.exclude(status__token=cancelled_token)
+    return queryset
+
+
+def _with_ancestors(invoice_ids):
+    """Les factures i totes les seves mares fins a l'arrel."""
+    from billing.models import Invoice
+    found = set(invoice_ids)
+    current = found
+    while current:
+        current = set(
+            Invoice.objects.filter(id__in=current, parent_invoice__isnull=False)
+            .values_list('parent_invoice_id', flat=True)
+        ) - found
+        found |= current
+    return found
+
+
+def with_fee_ids_by_rate(price_rate_ids):
+    """Per a cada tarifa, les factures que ja la tenen a la cadena de filles.
 
     Les despeses es pengen al final de la cadena (`invoice_return_charge()`),
     així que es puja des de cada despesa fins a l'arrel. Es retornen els ids ja
     calculats: com a subconsulta amb joins encadenats, dins del llistat, la
     consulta passava de segons.
     """
-    from billing.models import Invoice
-    managed = set(fee_invoices(price_rate_ids).values_list('id', flat=True))
-    current = managed
-    while current:
-        current = set(
-            Invoice.objects.filter(id__in=current, parent_invoice__isnull=False)
-            .values_list('parent_invoice_id', flat=True)
-        ) - managed
-        managed |= current
-    return managed
+    return {
+        price_rate_id: _with_ancestors(fee_invoices([price_rate_id]).values_list('id', flat=True).distinct())
+        for price_rate_id in price_rate_ids
+    }
+
+
+def with_fee_ids(price_rate_ids):
+    """Factures que no cal mostrar: les mateixes despeses i les que ja tenen totes
+    les tarifes triades (si en falta alguna, se'ls aplica només la que falta)."""
+    by_rate = with_fee_ids_by_rate(price_rate_ids)
+    if not by_rate:
+        return set()
+    with_all = set.intersection(*by_rate.values())
+    return with_all | set(fee_invoices(price_rate_ids).values_list('id', flat=True))
 
 
 def vulnerable_q():
-    """Contractes amb el titular (o l'inquilí, si el titular és jurídic) vulnerable o en risc."""
-    return (
-        Q(contract__holder__is_juridic=False, contract__holder__vulnerability_level__gt=0)
-        | Q(contract__holder__is_juridic=True, contract__tenant__vulnerability_level__gt=0)
-    )
+    """Titular (o inquilí, si el titular és jurídic) vulnerable o en risc, del
+    contracte o, si encara no n'hi ha, de la sol·licitud d'alta."""
+    query = Q()
+    for relation, extra in (('contract', {}), ('contract_request', {'contract__isnull': True})):
+        query |= (
+            Q(**{f'{relation}__holder__is_juridic': False, f'{relation}__holder__vulnerability_level__gt': 0}, **extra)
+            | Q(**{f'{relation}__holder__is_juridic': True, f'{relation}__tenant__vulnerability_level__gt': 0}, **extra)
+        )
+    return query
 
 
 def terminated_contract_q():
@@ -112,7 +178,11 @@ def open_claim_q():
     )
     if not open_tokens:
         return None
-    return Q(payments__claim_requests__claim_request__status__token__in=open_tokens)
+    # Només els rebuts que hi són de debò: els exclosos de la gestió no la bloquegen.
+    return Q(
+        payments__claim_requests__claim_request__status__token__in=open_tokens,
+        payments__claim_requests__is_excluded=False,
+    )
 
 
 def active_run():
@@ -169,12 +239,15 @@ def root_invoice(invoice):
     return invoice
 
 
-def generate_unpaid_fee_invoices(invoice_ids, price_rate_ids, on_progress=None):
+def generate_unpaid_fee_invoices(invoice_ids, price_rate_ids, on_progress=None, excluded_ids=()):
     """Crea una factura de despeses per a cada factura.
 
-    Les despeses van a la factura arrel, com en els retorns, i no es tornen a
-    crear si la cadena ja en té amb aquestes tarifes (p. ex. si s'ha llançat dos
-    cops). Un error en una factura no atura la resta.
+    Les despeses van a la factura arrel, com en els retorns, i només amb les
+    tarifes que la cadena encara no té (p. ex. si s'ha llançat dos cops). Abans
+    de crear-la es torna a comprovar que la factura encara és pendent de cobrar,
+    perquè es pot haver pagat mentre la tasca esperava a la cua. Si l'operador ha
+    exclòs l'arrel, no es toca. Cada despesa es crea dins d'una transacció: si
+    falla, no queda a mitges. Un error en una factura no atura la resta.
     """
     from billing.models import Invoice
     from billing.utils.invoice_service import invoice_return_charge
@@ -182,28 +255,31 @@ def generate_unpaid_fee_invoices(invoice_ids, price_rate_ids, on_progress=None):
     price_rates = list(PriceRate.objects.filter(id__in=price_rate_ids))
     if not price_rates:
         raise ValueError("No price rates")
-    price_rate_ids = [price_rate.id for price_rate in price_rates]
 
     invoices = list(Invoice.objects.filter(id__in=invoice_ids).select_related('parent_invoice'))
     total = len(invoices)
+    excluded_ids = set(excluded_ids or ())
     processed_root_ids = set()
-    managed_ids = with_fee_ids(price_rate_ids)
+    managed_by_rate = with_fee_ids_by_rate([price_rate.id for price_rate in price_rates])
     created, skipped, errors = [], 0, []
 
     for index, invoice in enumerate(invoices, start=1):
         root = root_invoice(invoice)
-        if root.id in processed_root_ids:
+        missing_rates = [rate for rate in price_rates if root.id not in managed_by_rate[rate.id]]
+        if root.id in processed_root_ids or root.id in excluded_ids or not missing_rates:
             skipped += 1
-        elif root.id in managed_ids:
-            processed_root_ids.add(root.id)
+        elif not eligible_invoices(Invoice.objects.filter(id=invoice.id)).exists():
             skipped += 1
         else:
             processed_root_ids.add(root.id)
             try:
-                fee_invoice = invoice_return_charge(root, FEE_INVOICE_TITLE, fee_price_rates=price_rates)
+                with transaction.atomic():
+                    fee_invoice = invoice_return_charge(root, FEE_INVOICE_TITLE, fee_price_rates=missing_rates)
                 created.append(fee_invoice.id)
-            except Exception as e:
-                errors.append({'invoice': root.serie_final or root.token, 'error': str(e)})
+            except Exception:
+                logger.exception("Despeses d'impagat: error en la factura %s", root.id)
+                # Sense el detall de l'excepció: es mostra a la pantalla.
+                errors.append({'invoice': root.serie_final or root.token, 'error': 'Error creating the fee invoice'})
         if on_progress:
             on_progress(index, total)
 

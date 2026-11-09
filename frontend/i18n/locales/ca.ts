@@ -2575,6 +2575,7 @@ export default {
     unpaid_fee_running: 'Procés en marxa: {count} factures, iniciat el {date}',
     unpaid_fee_running_help: 'Pots sortir de la pantalla: el procés continua en segon pla i el veuràs aquí en tornar.',
     unpaid_fee_last_run: 'Darrer procés: {date}',
+    unpaid_fee_search_error: 'No s\'han pogut carregar les factures. Fins que no es carreguin no es poden aplicar despeses.',
     unpaid_fee_disabled: 'L\'operació de despeses d\'impagat no està activada per a aquest projecte.',
     mng_sii: 'Gestiona el SII',
     download_sii: 'Descarregar fitxer SII',

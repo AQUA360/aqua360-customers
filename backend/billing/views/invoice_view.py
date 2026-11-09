@@ -590,22 +590,31 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     Els filtres van a la query string, com a la llista.
     """
+    from django.db import IntegrityError, transaction
     from billing.models import UnpaidFeeRun
     from billing.tasks import generate_unpaid_fee_invoices_task
-    from billing.utils.unpaid_fee_service import active_run, is_unpaid_fee_operation_enabled, serialize_run
+    from billing.utils.unpaid_fee_service import (
+        active_run, eligible_invoices, finish_run, is_unpaid_fee_operation_enabled, serialize_run)
+    from pricing.models import PriceRate
     if not is_unpaid_fee_operation_enabled():
         return Response({"error": _("Operation not enabled")}, status=status.HTTP_403_FORBIDDEN)
-    running = active_run()
-    if running:
-        return Response({"error": _("Another process is running"), "running_run": serialize_run(running)},
+
+    def conflict():
+        return Response({"error": _("Another process is running"), "running_run": serialize_run(active_run())},
                         status=status.HTTP_409_CONFLICT)
 
-    price_rate_ids = [int(v) for v in request.data.get('price_rate_ids') or [] if str(v).isdigit()]
+    if active_run():
+        return conflict()
+
+    price_rate_ids = sorted({int(v) for v in request.data.get('price_rate_ids') or [] if str(v).isdigit()})
     if not price_rate_ids:
         return Response({"error": _("Select at least one fee")}, status=status.HTTP_400_BAD_REQUEST)
+    if PriceRate.objects.filter(id__in=price_rate_ids).count() != len(price_rate_ids):
+        return Response({"error": _("Fee not found")}, status=status.HTTP_400_BAD_REQUEST)
 
-    queryset = self.filter_queryset(Invoice.objects.filter(is_active=True, is_excluded=False))
-    excluded_ids = request.data.get('excluded_ids')
+    # Els filtres del client trien; la condició d'impagat la imposa sempre el servidor.
+    queryset = eligible_invoices(self.filter_queryset(Invoice.objects.filter(is_active=True, is_excluded=False)))
+    excluded_ids = [int(v) for v in request.data.get('excluded_ids') or [] if str(v).isdigit()]
     if excluded_ids:
         queryset = queryset.exclude(id__in=excluded_ids)
 
@@ -613,9 +622,21 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     if not invoice_ids:
         return Response({"error": _("No invoices found")}, status=status.HTTP_404_NOT_FOUND)
 
-    run = UnpaidFeeRun.objects.create(invoice_count=len(invoice_ids), created_by=request.user)
-    run.price_rates.set(price_rate_ids)
-    task = generate_unpaid_fee_invoices_task.delay(invoice_ids, price_rate_ids, run_id=run.id)
+    try:
+        with transaction.atomic():
+            run = UnpaidFeeRun.objects.create(invoice_count=len(invoice_ids), created_by=request.user)
+            run.price_rates.set(price_rate_ids)
+    except IntegrityError:
+        return conflict()
+
+    try:
+        task = generate_unpaid_fee_invoices_task.delay(
+            invoice_ids, price_rate_ids, run_id=run.id, excluded_ids=excluded_ids)
+    except Exception:
+        # Si la tasca hagués arribat a la cua, en arrencar veurà l'execució tancada i no farà res.
+        logger.exception("Despeses d'impagat: no s'ha pogut encuar l'execució %s", run.id)
+        finish_run(run.id, error='Task could not be queued')
+        return Response({"error": _("The process could not be started")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     # Només el task_id: si la tasca ja ha acabat, no se'n trepitja l'estat.
     UnpaidFeeRun.objects.filter(id=run.id).update(task_id=task.id)
     return Response({"task_id": task.id, "count": len(invoice_ids)}, status=status.HTTP_202_ACCEPTED)

@@ -1437,6 +1437,12 @@ class UnpaidFeeRun(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        # La base de dades garanteix que només n'hi ha una en curs, encara que
+        # arribin dues peticions alhora.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['status'], condition=models.Q(status='running'), name='unpaid_fee_run_single_running'),
+        ]
 
     def __str__(self):
         return f'{self.created_at:%Y-%m-%d %H:%M} ({self.status})'

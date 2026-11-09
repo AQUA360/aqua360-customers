@@ -38,6 +38,9 @@ const loadingPriceRates = ref(false);
 const invoices = ref([]);
 const excludedInvoices = ref([]);
 const loadingInvoices = ref(false);
+const searchError = ref(false);
+// Cada cerca té un número: les respostes d'una cerca anterior es descarten.
+let searchSeq = 0;
 const pagination = ref({ page: 1, perPage: 50, total: 0, totalPages: 0, isFiltered: true });
 
 const taskId = ref(null);
@@ -82,8 +85,9 @@ const filterParams = computed(() => ({
   billing: billingId.value,
   unpaid_status: unpaidStatuses.value,
   payment_type_tokens: selectedPaymentTypes.value.map(type => type.token),
-  start_due_date: startDueDate.value && endDueDate.value ? startDueDate.value : null,
-  end_due_date: startDueDate.value && endDueDate.value ? endDueDate.value : null,
+  // Cada límit per separat: una sola data també ha de filtrar.
+  start_due_date: startDueDate.value || null,
+  end_due_date: endDueDate.value || null,
   without_fee_price_rates: selectedPriceRates.value.map(priceRate => priceRate.id),
   exclude_vulnerable: excludeVulnerable.value || null,
   exclude_terminated: excludeTerminated.value || null,
@@ -91,8 +95,11 @@ const filterParams = computed(() => ({
 }));
 
 const selectedCount = computed(() => Math.max(pagination.value.total - excludedInvoices.value.length, 0));
+// Només amb la llista al dia: si la cerca falla o encara no ha tornat, el que es veu
+// no és el que facturaria el servidor.
 const canGenerate = computed(() =>
-  selectedCount.value > 0 && selectedPriceRates.value.length > 0 && unpaidStatuses.value.length > 0 && !generating.value
+  selectedCount.value > 0 && selectedPriceRates.value.length > 0 && unpaidStatuses.value.length > 0
+  && !generating.value && !loadingInvoices.value && !searchError.value
 );
 
 const loadPaymentTypes = async () => {
@@ -114,23 +121,33 @@ const searchPriceRates = debounce(async (search = '') => {
 }, 300);
 
 const searchInvoices = async (page = 1) => {
+  const seq = ++searchSeq;
+  searchError.value = false;
   if (!unpaidStatuses.value.length) {
     invoices.value = [];
     pagination.value.total = 0;
     pagination.value.totalPages = 0;
+    loadingInvoices.value = false;
     return;
   }
   loadingInvoices.value = true;
   try {
     const response = await $InvoiceApiService.getUnpaidFeeInvoices(filterParams.value, page);
+    if (seq !== searchSeq) return;
     invoices.value = response.results;
     pagination.value.page = page;
     pagination.value.total = response.count;
     pagination.value.totalPages = Math.ceil(response.count / pagination.value.perPage);
   } catch (err) {
+    if (seq !== searchSeq) return;
     console.error(err);
+    // No es deixa la llista anterior: no correspon als filtres actuals.
+    searchError.value = true;
+    invoices.value = [];
+    pagination.value.total = 0;
+    pagination.value.totalPages = 0;
   } finally {
-    loadingInvoices.value = false;
+    if (seq === searchSeq) loadingInvoices.value = false;
   }
 };
 
@@ -214,6 +231,9 @@ watch(
 
 watch([searchInput, billingId], () => {
   excludedInvoices.value = [];
+  // Mentre s'escriu, la llista ja no val: no es pot aplicar fins que torni la cerca.
+  searchSeq++;
+  loadingInvoices.value = true;
   debouncedSearch();
 });
 
@@ -332,9 +352,13 @@ onMounted(init);
               {{ $t('billing_block.unpaid_fee_last_run', { date: formatDateTime(lastRun.finished_at || lastRun.created_at) }) }}
               <span v-if="lastRun.created_by">· {{ lastRun.created_by }}</span><br>
               <span v-if="lastRun.status === 'failed'" class="text-red-600">{{ $t('common.error') }}: {{ lastRun.result?.error }}</span>
-              <span v-else-if="lastRun.result">
-                {{ $t('billing_block.unpaid_fee_done', { created: lastRun.result.created, skipped: lastRun.result.skipped }) }}
-              </span>
+              <template v-else-if="lastRun.result">
+                <span>{{ $t('billing_block.unpaid_fee_done', { created: lastRun.result.created, skipped: lastRun.result.skipped }) }}</span>
+                <template v-if="lastRun.result.errors?.length">
+                  <span class="block text-red-600">{{ $t('billing_block.unpaid_fee_errors', { count: lastRun.result.errors.length }) }}</span>
+                  <span v-for="item in lastRun.result.errors" :key="item.invoice" class="block text-red-600">· {{ item.invoice }}</span>
+                </template>
+              </template>
             </p>
           </div>
         </section>
@@ -355,6 +379,13 @@ onMounted(init);
         <div class="min-h-[280px] flex-1 overflow-auto" :style="{ maxHeight: 'calc(100vh - 220px)' }">
           <div v-if="loadingInvoices" class="flex items-center justify-center py-16">
             <AtomsAppLoading />
+          </div>
+          <div v-else-if="searchError"
+            class="m-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p>{{ $t('billing_block.unpaid_fee_search_error') }}</p>
+            <button @click="searchInvoices(1)" class="mt-2 font-medium text-sky-600 hover:text-sky-800 hover:underline">
+              {{ $t('common.load_again') }}
+            </button>
           </div>
           <div v-else-if="invoices.length === 0"
             class="flex min-h-[240px] flex-col items-center justify-center gap-2 px-4 py-12 text-gray-400">

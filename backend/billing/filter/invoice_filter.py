@@ -290,17 +290,11 @@ class InvoiceFilter(filters.FilterSet):
 
     def filter_unpaid_status(self, queryset, name, value):
         """Factures pendents de cobrar: `expired` (vençudes) i/o `returned` (rebut retornat)."""
-        from billing.utils.unpaid_fee_service import unpaid_status_q
-        kinds = {kind.strip() for kind in (value or '').split(',') if kind.strip()}
+        from billing.utils.unpaid_fee_service import UNPAID_STATUSES, eligible_invoices
+        kinds = {kind.strip() for kind in (value or '').split(',') if kind.strip()} & UNPAID_STATUSES
         if not kinds:
             return queryset
-        query = unpaid_status_q(kinds)
-        if not query:
-            return queryset.none()
-        return queryset.filter(
-            id__in=Invoice.objects.filter(query).values('id'),
-            left_to_pay__gt=0,
-        )
+        return eligible_invoices(queryset, kinds)
 
     def filter_without_fee_price_rates(self, queryset, name, value):
         """Treu les factures de despeses d'aquestes tarifes i les que ja en tenen."""

@@ -2575,6 +2575,7 @@ export default {
     unpaid_fee_running: 'Proceso en marcha: {count} facturas, iniciado el {date}',
     unpaid_fee_running_help: 'Puedes salir de la pantalla: el proceso continúa en segundo plano y lo verás aquí al volver.',
     unpaid_fee_last_run: 'Último proceso: {date}',
+    unpaid_fee_search_error: 'No se han podido cargar las facturas. Hasta que no se carguen no se pueden aplicar gastos.',
     unpaid_fee_disabled: 'La operación de gastos de impago no está activada para este proyecto.',
     mng_sii: 'Gestiona el SII',
     download_sii: 'Descargar archivo SII',
