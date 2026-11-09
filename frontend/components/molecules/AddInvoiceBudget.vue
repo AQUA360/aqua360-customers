@@ -270,6 +270,14 @@ const holderPendingRegen = computed(() => {
   const budgetPersonId = personIdFrom(pendingBudget.value?.person)
   return Boolean(budgetHolderId.value && budgetPersonId && Number(budgetPersonId) !== Number(budgetHolderId.value))
 })
+// Si el titular del pressupost canvia des del panell d'edició (sense regenerar), la
+// selecció d'aquí ja no és la vigent: es descarta perquè no bloquegi "Generar factura".
+watch(() => personIdFrom(pendingBudget.value?.person), (newId, oldId) => {
+  if (newId && oldId && newId !== oldId && selectedHolder.value?.id
+    && Number(selectedHolder.value.id) !== Number(newId)) {
+    clearBudgetHolder()
+  }
+})
 const holderFullName = (person) => person?.full_name || `${person?.name || ''} ${person?.surname || ''}`.trim()
 
 const clearBudgetHolder = () => {

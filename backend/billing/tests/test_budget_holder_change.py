@@ -2,12 +2,15 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory, force_authenticate
 
-from billing.models import Invoice, InvoiceStatus, InvoiceType
+from billing.models import Invoice, InvoiceLineItem, InvoiceStatus, InvoiceType
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals
 from billing.utils.invoice_service import apply_holder_to_budget, pass_budget_to_invoice
 from billing.views.generate_invoice_budget_view import GenerateInvoiceBudgetView
+from billing.views.invoice_change_holder_view import InvoiceChangeHolderView
 from coredata.models import Address, ConfigProject, Person, PersonAddress, PersonContact
 
 
@@ -203,3 +206,56 @@ class GenerateInvoiceBudgetHolderViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mocks['generate'].call_args.kwargs['new_holder'], 7)
         mocks['apply'].assert_called_once_with(mocks['generate'].return_value, holder)
+
+
+class InvoiceChangeHolderViewTest(BudgetHolderFixturesMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.pending = InvoiceStatus.objects.create(token='test-pending', name='Pendent')
+        ConfigProject.objects.update_or_create(token='invoice_status_pending_token', defaults={'value': 'test-pending'})
+        self.user = get_user_model().objects.create_superuser(username='change-holder', password='x', email='')
+
+    def change_holder(self, invoice_id, holder_id):
+        request = APIRequestFactory().post(
+            f'/billing/invoice/{invoice_id}/change-holder/', {'holder_id': holder_id}, format='json',
+        )
+        force_authenticate(request, user=self.user)
+        with patch('billing.views.invoice_change_holder_view.InvoiceFullSerializer') as serializer:
+            serializer.return_value.data = {'id': invoice_id}
+            return InvoiceChangeHolderView.as_view()(request, id=invoice_id)
+
+    def test_pending_budget_changes_holder_and_keeps_lines(self):
+        budget = self.make_budget(status=self.pending)
+        line = InvoiceLineItem.objects.create(invoice=budget, name='Manual line', manually_modified=True)
+
+        response = self.change_holder(budget.id, self.new_holder.id)
+
+        self.assertEqual(response.status_code, 200)
+        budget.refresh_from_db()
+        self.assertEqual(budget.person, self.new_holder)
+        self.assertEqual(budget.customer_token_final, 'NEW-TOKEN')
+        self.assertEqual(list(budget.line_items.values_list('id', flat=True)), [line.id])
+
+    def test_rejects_documents_that_are_not_budgets(self):
+        invoice = self.make_budget(status=self.pending, type=self.invoice_type, type_final=self.invoice_type.token)
+
+        response = self.change_holder(invoice.id, self.new_holder.id)
+
+        self.assertEqual(response.status_code, 400)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.person, self.old_holder)
+
+    def test_rejects_budgets_that_are_not_pending(self):
+        budget = self.make_budget(status=self.confirmed)
+
+        response = self.change_holder(budget.id, self.new_holder.id)
+
+        self.assertEqual(response.status_code, 400)
+        budget.refresh_from_db()
+        self.assertEqual(budget.person, self.old_holder)
+
+    def test_rejects_unknown_holder_and_missing_budget(self):
+        budget = self.make_budget(status=self.pending)
+
+        self.assertEqual(self.change_holder(budget.id, 0).status_code, 400)
+        self.assertEqual(self.change_holder(budget.id + 1000, self.new_holder.id).status_code, 404)
