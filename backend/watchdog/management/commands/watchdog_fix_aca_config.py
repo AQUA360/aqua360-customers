@@ -15,15 +15,15 @@ from watchdog.aca_config import (
     find_canon_product,
     find_price_rates_for_name_patterns,
     get_config_value,
+    is_aca_org,
     split_config_tokens,
-    uses_aca_enabled,
 )
 
 
 class Command(BaseCommand):
     help = (
         "Corregeix la configuració ACA (ConfigProject i VariableType) quan el projecte "
-        "té uses_aca=True. Recomanat quan el watchdog detecta 'Configuració ACA i use_aca'. "
+        "té public_org_type='aca'. Recomanat quan el watchdog detecta 'Configuració ACA i use_aca'. "
         "Per omplir use_aca als contractes, executa després fill_contract_use_aca."
     )
 
@@ -47,17 +47,17 @@ class Command(BaseCommand):
                 'is_active': True,
             })
 
-        if not uses_aca_enabled():
+        if not is_aca_org():
             if not article_codes_to_create:
                 self.stdout.write(
                     self.style.WARNING(
-                        "ConfigProject 'uses_aca' no està activat; no s'apliquen canvis ACA."
+                        "ConfigProject 'public_org_type' no és 'aca'; no s'apliquen canvis ACA."
                     )
                 )
                 return
             self.stdout.write(
                 self.style.WARNING(
-                    "ConfigProject 'uses_aca' no està activat; només es crearan ArticleCode."
+                    "ConfigProject 'public_org_type' no és 'aca'; només es crearan ArticleCode."
                 )
             )
             updates = []

@@ -6,8 +6,16 @@ export const useConfigStore = defineStore('config', {
         documentSignEnabled: null as boolean | null,
         sendBatchEnabled: null as boolean | null,
         acaNotificationEnabled: null as boolean | null,
+        // Organisme públic del projecte: 'aca', '' (fora de Catalunya) o un altre.
+        publicOrgType: null as string | null,
         loading: false,
     }),
+    getters: {
+        /** Cert si el projecte depèn de l'ACA (`public_org_type === 'aca'`). */
+        isAcaOrg(state) {
+            return (state.publicOrgType || '') === 'aca';
+        },
+    },
     actions: {
         async fetchOvEnabled() {
             if (this.ovEnabled !== null) return; // Already fetched
@@ -73,6 +81,25 @@ export const useConfigStore = defineStore('config', {
             } catch (error) {
                 console.error('Error fetching aca_notification_enabled config:', error);
                 this.acaNotificationEnabled = false; // Fallback
+            } finally {
+                this.loading = false;
+            }
+        },
+        async fetchPublicOrgType() {
+            if (this.publicOrgType !== null) return; // Already fetched
+
+            this.loading = true;
+
+            try {
+                const { $ConfigProjectApiService } = useNuxtApp();
+                // `getAll` refresca la cache de localStorage; `get()` la serviria tal com està
+                // i el valor podria quedar desactualitzat entre sessions.
+                const response = await $ConfigProjectApiService.getAll('public_org_type');
+                const value = Array.isArray(response) && response.length ? response[0]?.value : '';
+                this.publicOrgType = String(value ?? '').trim().toLowerCase();
+            } catch (error) {
+                console.error('Error fetching public_org_type config:', error);
+                this.publicOrgType = ''; // Fallback: sense ACA
             } finally {
                 this.loading = false;
             }

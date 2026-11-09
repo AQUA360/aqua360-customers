@@ -207,15 +207,6 @@ const resolveConfigRawValue = (raw) => {
   return raw;
 };
 
-const parseConfigBool = (value) => {
-  const resolved = resolveConfigRawValue(value);
-  return resolved === true
-    || resolved === 'True'
-    || resolved === 'true'
-    || resolved === 1
-    || resolved === '1';
-};
-
 const normalizeConfigValue = (value) => {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string') return value;
@@ -255,15 +246,15 @@ const buildConfigRows = (allConfigs) => {
   });
   configValues.value = values;
 
-  const useAcaConfig = byToken.uses_aca;
-  useAca.value = useAcaConfig != null ? parseConfigBool(useAcaConfig.value) : false;
+  const useAcaConfig = byToken.public_org_type;
+  useAca.value = String(useAcaConfig?.value ?? '').trim().toLowerCase() === 'aca';
 };
 
 const ensureUseAcaConfig = async (allConfigs) => {
-  if (allConfigs?.some((item) => item.token === 'uses_aca')) return allConfigs;
+  if (allConfigs?.some((item) => item.token === 'public_org_type')) return allConfigs;
 
   try {
-    const filtered = await $ConfigProjectApiService.getAll('uses_aca');
+    const filtered = await $ConfigProjectApiService.getAll('public_org_type');
     if (!Array.isArray(filtered) || !filtered.length) return allConfigs;
 
     const merged = [...(allConfigs ?? [])];
@@ -358,7 +349,7 @@ const applyFillResult = (result) => {
 
 const handleFillSkipped = (result) => {
   if (!result?.skipped) return false;
-  if (result.reason === 'uses_aca_disabled') {
+  if (result.reason === 'public_org_type_disabled') {
     toast.error(t('settings_block.aca_fill_skipped_disabled'));
   }
   applyFillResult(result);
@@ -569,7 +560,7 @@ watch(useAca, async (enabled) => {
 });
 
 const configPayload = () => {
-  const items = [{ token: 'uses_aca', value: useAca.value }];
+  const items = [{ token: 'public_org_type', value: useAca.value ? 'aca' : '' }];
   ACA_TOKENS.forEach((token) => {
     items.push({
       token,

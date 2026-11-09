@@ -66,6 +66,13 @@ const smartMeteringEnabled = computed(() => {
   );
   return Boolean(String(item?.value ?? '').trim());
 });
+// Secció Configuració ACA: només per als projectes que depenen de l'ACA.
+const isAcaOrg = computed(() => {
+  const item = (config_projects.value || []).find(
+    (entry) => entry?.token === 'public_org_type',
+  );
+  return String(item?.value ?? '').trim().toLowerCase() === 'aca';
+});
 const getConfigProject = async () => {
   const response = await $ConfigProjectApiService.getAll();
   config_projects.value = response;
@@ -607,7 +614,7 @@ getConfigProject();
         $t('settings_block.settings') }}</h2>
 
       <ul v-if="permissions?.permissions?.view_user" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
+        <li v-if="isAcaOrg" class="mb-1">
           <NuxtLink to="/settings/config_aca/" class="text-sky-500 underline hover:no-underline"
             :class="{ 'bg-slate-200': $route.path.indexOf('/settings/config_aca/') != -1 }">{{
               t('settings_block.config_aca') }}</NuxtLink>

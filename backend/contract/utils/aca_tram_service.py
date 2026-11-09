@@ -6,8 +6,8 @@ configurada a `ConfigProject.aca_tram_members_variable_token` (per defecte
 servei manté les dues coses sincronitzades i aplica el mínim de persones
 (`watchdog.aca_config.aca_tram_min_persons`).
 
-Tot plegat només s'aplica als projectes amb l'ACA activa (`uses_aca`): fora de
-Catalunya no hi ha ampliació de trams.
+Tot plegat només s'aplica als projectes amb l'ACA activa (`public_org_type == 'aca'`):
+fora de Catalunya no hi ha ampliació de trams.
 """
 from django.utils import timezone
 
@@ -49,9 +49,9 @@ def get_active_aca_tram_bonification(contract, bonification_type):
 def aca_tram_min_persons_for_contract(contract):
     """Mínim de persones si el contracte té la bonificació d'ampliació de trams activa
     (per sota, `sync_aca_tram_with_total_persons` la desactivarà); None en cas contrari."""
-    from watchdog.aca_config import aca_tram_min_persons, uses_aca_enabled
+    from watchdog.aca_config import aca_tram_min_persons, is_aca_org
 
-    if not uses_aca_enabled():
+    if not is_aca_org():
         return None
     bonification_type = get_aca_tram_bonification_type()
     if not bonification_type or not get_active_aca_tram_bonification(contract, bonification_type):
@@ -62,9 +62,9 @@ def aca_tram_min_persons_for_contract(contract):
 def aca_tram_members_error(variable_type, value):
     """Missatge d'error si `value` no arriba al mínim de persones per a la variable de
     membres de l'ampliació de trams; None si és vàlid o la variable no hi té res a veure."""
-    from watchdog.aca_config import aca_tram_min_persons, uses_aca_enabled
+    from watchdog.aca_config import aca_tram_min_persons, is_aca_org
 
-    if not is_members_variable_type(variable_type) or not uses_aca_enabled():
+    if not is_members_variable_type(variable_type) or not is_aca_org():
         return None
     bonification_type = get_aca_tram_bonification_type()
     if not bonification_type or not bonification_type.variable_types.filter(pk=variable_type.pk).exists():
@@ -177,12 +177,12 @@ def sync_aca_tram_with_total_persons(contract, old_total_persons):
     - Per sota del mínim: es desactiva la bonificació activa, si n'hi ha.
     - Amb bonificació activa: s'actualitza el nombre de membres.
     - Sense bonificació, només si les persones augmenten i arriben al mínim: es crea."""
-    from watchdog.aca_config import aca_notification_enabled, aca_tram_min_persons, uses_aca_enabled
+    from watchdog.aca_config import aca_notification_enabled, aca_tram_min_persons, is_aca_org
 
     new_total_persons = contract.total_persons
     if old_total_persons is None or new_total_persons is None or new_total_persons == old_total_persons:
         return
-    if not uses_aca_enabled():
+    if not is_aca_org():
         return
 
     bonification_type = get_aca_tram_bonification_type()
