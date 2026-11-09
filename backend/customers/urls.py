@@ -47,6 +47,11 @@ for _app in settings.LOCAL_OWN_APPS:
     if find_spec(f"{_app}.urls") is not None:
         app_urls.append(path(f"{_app}/", include(f"{_app}.urls")))
 
+# Plugins de client (PLUGINS al .env). Mateix muntatge, només si el plugin publica rutes.
+for _app in settings.PLUGIN_APPS:
+    if find_spec(f"{_app}.urls") is not None:
+        app_urls.append(path(f"{_app}/", include(f"{_app}.urls")))
+
 urlpatterns = [
     path('', root_view),
 ]
