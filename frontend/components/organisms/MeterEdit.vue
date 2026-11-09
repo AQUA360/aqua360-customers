@@ -5,6 +5,7 @@ import { useToast } from 'vue-toastification';
 import { remoteTypeOptions } from '~/utils/service';
 import H1 from '~/components/atoms/H1.vue';
 import H1Region from '../atoms/H1Region.vue';
+import DictionarySelectInline from '~/components/molecules/DictionarySelectInline.vue';
 import { checkPermission } from '~/middleware/permission';
 
 const props = defineProps({
@@ -207,9 +208,38 @@ const getMeterModelsByManufacturer = async (manufacturerId) => {
     }
   }
   else {
-    meter_model.value = [];
+    meter_model.value = null;
+    meter_models.value = [];
   }
 }
+
+// Alta inline des dels desplegables: es crea (o reaprofita, sense distingir majúscules) el valor
+// i s'afegeix a les opcions; el component DictionarySelectInline el selecciona.
+const sortByLabel = (options) => [...options].sort((a, b) => a.label.localeCompare(b.label));
+const upsertOption = (optionsRef, option) => {
+  optionsRef.value = sortByLabel([
+    ...optionsRef.value.filter(existing => existing.code !== option.code),
+    option
+  ]);
+  return option;
+};
+
+const createManufacturer = async (name) => {
+  const persisted = await $MeterManufacturerApiService.getOrCreate(name);
+  return upsertOption(meter_manufacturers, { label: persisted.name, code: persisted.id });
+};
+
+const createModel = async (name) => {
+  const manufacturerId = meter_manufacturer.value?.code;
+  if (!manufacturerId) throw new Error('A manufacturer must be selected before creating a model.');
+  const persisted = await $MeterModelApiService.getOrCreate(manufacturerId, name);
+  return upsertOption(meter_models, { label: persisted.name, code: persisted.id });
+};
+
+const createCommTechnology = async (name) => {
+  const persisted = await $MeterCommTechnologyApiService.getOrCreate(name);
+  return upsertOption(meter_comm_technologies, { label: persisted.name, code: persisted.id });
+};
 
 const getMeterStatus = async () => {
   loading_meter_status.value = true;
@@ -285,25 +315,22 @@ const updateSelected = (e) => {
     meter_status.value = e.id;
   }
   else if (e.entity == 'meter_manufacturer') {
-    meter_manufacturer.value = typeof e.id === 'string'
-      ? { label: e.id.trim(), code: null }
-      : e.id
+    const previousCode = meter_manufacturer.value?.code;
+    meter_manufacturer.value = e.id;
     if (meter_manufacturer.value?.code) {
-      getMeterModelsByManufacturer(meter_manufacturer.value.code)
+      if (meter_manufacturer.value.code !== previousCode) {
+        getMeterModelsByManufacturer(meter_manufacturer.value.code)
+      }
     } else {
       meter_models.value = [];
       meter_model.value = null;
     }
   }
   else if (e.entity == 'meter_model') {
-    meter_model.value = typeof e.id === 'string'
-      ? { label: e.id.trim(), code: null }
-      : e.id
+    meter_model.value = e.id;
   }
   else if (e.entity == 'meter_comm_technology') {
-    meter_comm_technology.value = typeof e.id === 'string'
-      ? { label: e.id.trim(), code: null }
-      : e.id
+    meter_comm_technology.value = e.id;
   }
 }
 
@@ -514,17 +541,26 @@ const setValues = async () => {
   selected_remote_type.value = props.meter.remote_reading_type || null;
   let meter_manufacturer_name = props.meter.manufacturer;
   let manufacturerId;
+  // Valors antics que encara no són al diccionari es mostren sense id i es creen en desar
   if (meter_manufacturer_name) {
-    let meter_manufacturer_object = await $MeterManufacturerApiService.getByName(meter_manufacturer_name);
-    manufacturerId = meter_manufacturer_object[0].id
-    await getMeterModelsByManufacturer(manufacturerId)
-    meter_manufacturer.value = { code: manufacturerId, label: meter_manufacturer_object[0].name }
+    const [meter_manufacturer_object] = await $MeterManufacturerApiService.getByName(meter_manufacturer_name);
+    if (meter_manufacturer_object) {
+      manufacturerId = meter_manufacturer_object.id
+      await getMeterModelsByManufacturer(manufacturerId)
+      meter_manufacturer.value = { code: manufacturerId, label: meter_manufacturer_object.name }
+    } else {
+      meter_manufacturer.value = { code: null, label: meter_manufacturer_name }
+    }
   }
 
   let meter_model_name = props.meter.model;
-  if (manufacturerId && meter_model_name) {
-    let meter_model_object = await $MeterModelApiService.getByName(manufacturerId, meter_model_name);
-    meter_model.value = { code: meter_model_object[0].id, label: meter_model_object[0].name }
+  if (meter_model_name) {
+    const [meter_model_object] = manufacturerId
+      ? await $MeterModelApiService.getByName(manufacturerId, meter_model_name)
+      : [];
+    meter_model.value = meter_model_object
+      ? { code: meter_model_object.id, label: meter_model_object.name }
+      : { code: null, label: meter_model_name }
   }
 
   if (props.meter.comm_technology) {
@@ -770,24 +806,17 @@ onMounted(() => {
         </div>
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.manufacturer') }}</label>
-          <!--<input type="text" v-model="meter_manufacturer" class="input" />-->
-          <v-select :model-value="meter_manufacturer" class="block w-full mr-2" :options="meter_manufacturers"
-            :taggable="true" @update:modelValue="updateSelected({ entity: 'meter_manufacturer', id: $event })">
-            <template #no-options="{ search, searching, loading }">
-              {{ t('common.no_records') }}
-            </template>
-          </v-select>
+          <DictionarySelectInline :model-value="meter_manufacturer" :options="meter_manufacturers"
+            :disabled="loading_meter_manufacturers" :on-create="createManufacturer"
+            @update:modelValue="updateSelected({ entity: 'meter_manufacturer', id: $event })" />
         </div>
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.model') }}</label>
-          <!--<input type="text" v-model="model" class="input" />-->
-          <v-select :model-value="meter_model" :disabled="loading_meter_manufacturers || !meter_manufacturer"
-            class="block w-full mr-2" :options="meter_models" :taggable="true"
-            @update:modelValue="updateSelected({ entity: 'meter_model', id: $event })">
-            <template #no-options="{ search, searching, loading }">
-              {{ t('common.no_records') }}
-            </template>
-          </v-select>
+          <DictionarySelectInline :model-value="meter_model" :options="meter_models"
+            :disabled="loading_meter_manufacturers || !meter_manufacturer"
+            :create-disabled="!meter_manufacturer?.code"
+            :create-disabled-hint="t('service_block.select_manufacturer_first')" :on-create="createModel"
+            @update:modelValue="updateSelected({ entity: 'meter_model', id: $event })" />
         </div>
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.manufacturing_year')
@@ -836,14 +865,9 @@ onMounted(() => {
         </div>
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.comm_tech') }}</label>
-          <v-select :model-value="meter_comm_technology" :options="meter_comm_technologies"
-            :disabled="loading_meter_comm_technologies"
-            @update:modelValue="updateSelected({ entity: 'meter_comm_technology', id: $event })"
-            taggable tag-placeholder="Create">
-            <template #no-options="{ search, searching, loading }">
-              {{ t('common.no_records') }}
-            </template>
-          </v-select>
+          <DictionarySelectInline :model-value="meter_comm_technology" :options="meter_comm_technologies"
+            :disabled="loading_meter_comm_technologies" :on-create="createCommTechnology"
+            @update:modelValue="updateSelected({ entity: 'meter_comm_technology', id: $event })" />
         </div>
         <div class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('service_block.network_provider') }}</label>

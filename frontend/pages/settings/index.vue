@@ -10,6 +10,7 @@ import BailTypeEdit from '../../components/organisms/BailTypeEdit.vue';
 import BankConfigList from '~/components/organisms/BankConfigList.vue';
 import IncidentSettings from '~/components/organisms/IncidentSettings.vue';
 import AccountValuesRegion from '~/components/molecules/AccountValuesRegion.vue';
+import MeterDictionaryList from '~/components/organisms/MeterDictionaryList.vue';
 const { $ConfigProjectApiService } = useNuxtApp();
 import { usePermissions } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
@@ -146,6 +147,15 @@ const showConfigAccountValues = () => {
   toggleRegion(true);
 }
 
+const meterDictionaryKind = ref(null);
+const meterDictionaryTitle = ref('');
+const showMeterDictionary = (title, kind) => {
+  meterDictionaryTitle.value = title;
+  meterDictionaryKind.value = kind;
+  RegionActive.value = 'MeterDictionary';
+  toggleRegion(true);
+}
+
 getConfigProject();
 </script>
 
@@ -204,6 +214,18 @@ getConfigProject();
         <li class="mb-1"><button
             @click="showConfigList((t('common.meters') + ': ' + t('service_block.calibers')), 'service/meter-caliber', false, false, false)"
             class="text-sky-500 underline hover:no-underline">{{ t('common.meters') }}: {{ t('service_block.calibers')
+            }}</button></li>
+        <li class="mb-1"><button
+            @click="showMeterDictionary((t('common.meters') + ': ' + t('service_block.manufacturers')), 'manufacturer')"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.meters') }}: {{ t('service_block.manufacturers')
+            }}</button></li>
+        <li class="mb-1"><button
+            @click="showMeterDictionary((t('common.meters') + ': ' + t('service_block.models')), 'model')"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.meters') }}: {{ t('service_block.models')
+            }}</button></li>
+        <li class="mb-1"><button
+            @click="showMeterDictionary((t('common.meters') + ': ' + t('service_block.comm_technologies')), 'comm_technology')"
+            class="text-sky-500 underline hover:no-underline">{{ t('common.meters') }}: {{ t('service_block.comm_technologies')
             }}</button></li>
 
         <li class="mb-1"><button
@@ -692,6 +714,8 @@ getConfigProject();
         <BankConfigList v-if="RegionActive == 'Bank'" />
         <IncidentSettings v-if="RegionActive == 'IncidentSettings'" />
         <AccountValuesRegion v-if="RegionActive == 'AccountValues'" @close="toggleRegion(false)" />
+        <MeterDictionaryList v-if="RegionActive == 'MeterDictionary' && meterDictionaryKind" :key="meterDictionaryKind"
+          :kind="meterDictionaryKind" :title="meterDictionaryTitle" />
       </div>
     </div>
   </div>
