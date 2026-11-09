@@ -2685,7 +2685,7 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
             ET.SubElement(sumIDFact, "sum1:FechaExpedicionFacturaEmisor").text = invoice.issue_date.strftime('%d-%m-%Y') 
             
             sumFactExp = ET.SubElement(sumRegLRFactEmt, "sum:FacturaExpedida")
-            invoice_type = 'F1' if abs(invoice.total_final) >= 400 and not invoice.refactored_token else 'R1' if abs(invoice.total_final) >= 400 and invoice.refactored_token else 'R5' if invoice.refactored_token else 'F2'
+            invoice_type = 'F1' if (abs(invoice.total_final) >= 200 or invoice.customer_is_juridic) and not invoice.refactored_token else 'R1' if (abs(invoice.total_final) >= 200 or invoice.customer_is_juridic) and invoice.refactored_token else 'R5' if invoice.refactored_token else 'F2'
             ET.SubElement(sumFactExp, "sum1:TipoFactura").text = invoice_type
             if invoice_type == 'R1' or invoice_type == 'R5':
                 ET.SubElement(sumFactExp, "sum1:TipoRectificativa").text = "S"
@@ -2708,36 +2708,36 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
             sumTpDesgl = ET.SubElement(sumFactExp, "sum1:TipoDesglose")
             sumDesglTpOp = ET.SubElement(sumTpDesgl, "sum1:DesgloseTipoOperacion") 
             sumPrsServ = ET.SubElement(sumDesglTpOp, "sum1:PrestacionServicios")
-            sumSuj = ET.SubElement(sumPrsServ, "sum1:Sujeta")  
-            
-            # get_totals drops 0% lines from taxes_base, so the exempt base is the
-            # subtotal minus the 10%/21% (and any other taxed) bases.
+
+            # get_totals drops 0% lines from taxes_base, so the non-subject base is
+            # the subtotal minus the 10%/21% (and any other taxed) bases.
+            # In SII this is NoSujeta (sibling of Sujeta), not Sujeta/Exenta.
             taxed_base = sum(round_ceil(float(base or 0)) for base in taxes_base.values())
-            exempt_base = round_ceil(round_ceil(float(subtotal or 0)) - taxed_base)
-            has_non_exempt = any(tax != 0 for tax in taxes.values())
+            not_subject_base = round_ceil(round_ceil(float(subtotal or 0)) - taxed_base)
+            has_subject = any(tax != 0 for tax in taxes.values())
 
-            if exempt_base != 0 or not has_non_exempt:
-                sumEx = ET.SubElement(sumSuj, "sum1:Exenta")
-                sumDetEx = ET.SubElement(sumEx, "sum1:DetalleExenta")
-                ET.SubElement(sumDetEx, "sum1:CausaExencion").text = 'E1'
-                ET.SubElement(sumDetEx, "sum1:BaseImponible").text = "{:.2f}".format(exempt_base)
+            # PrestacionServicios: Sujeta and/or NoSujeta (at least one). Order: Sujeta then NoSujeta.
+            if has_subject:
+                sumSuj = ET.SubElement(sumPrsServ, "sum1:Sujeta")
+                sumNoEx = ET.SubElement(sumSuj, "sum1:NoExenta")
+                ET.SubElement(sumNoEx, "sum1:TipoNoExenta").text = 'S1'
+                sumDesglIVA = ET.SubElement(sumNoEx, "sum1:DesgloseIVA")
+                try:
+                    for tax in taxes_base:
+                        cuota = round_ceil(float(taxes.get(tax, 0)))
+                        base = round_ceil(float(taxes_base.get(tax, 0)))
+                        sumDetIVA = ET.SubElement(sumDesglIVA, "sum1:DetalleIVA")
+                        ET.SubElement(sumDetIVA, "sum1:TipoImpositivo").text = str(int(float(tax)))
+                        ET.SubElement(sumDetIVA, "sum1:BaseImponible").text = "{:.2f}".format(base)
+                        ET.SubElement(sumDetIVA, "sum1:CuotaRepercutida").text = "{:.2f}".format(cuota)
+                except Exception as e:
+                    print("Error in sum1:DetalleIVA: ", e)
+                    raise e
 
-            if not has_non_exempt:
-                continue
-            sumNoEx = ET.SubElement(sumSuj, "sum1:NoExenta") 
-            ET.SubElement(sumNoEx, "sum1:TipoNoExenta").text = 'S1' 
-            sumDesglIVA = ET.SubElement(sumNoEx, "sum1:DesgloseIVA") 
-            try:
-                for tax in taxes_base:
-                    cuota = round_ceil(float(taxes.get(tax, 0)))
-                    base = round_ceil(float(taxes_base.get(tax, 0)))
-                    sumDetIVA = ET.SubElement(sumDesglIVA, "sum1:DetalleIVA") 
-                    ET.SubElement(sumDetIVA, "sum1:TipoImpositivo").text = str(int(float(tax))) 
-                    ET.SubElement(sumDetIVA, "sum1:BaseImponible").text = "{:.2f}".format(base) 
-                    ET.SubElement(sumDetIVA, "sum1:CuotaRepercutida").text = "{:.2f}".format(cuota) 
-            except Exception as e:
-                print("Error in sum1:DetalleIVA: ", e)
-                raise e
+            if not_subject_base != 0 or not has_subject:
+                sumNoSuj = ET.SubElement(sumPrsServ, "sum1:NoSujeta")
+                # Art. 7, 14 u otros (no reglas de localización TAI).
+                ET.SubElement(sumNoSuj, "sum1:ImportePorArticulos7_14_Otros").text = "{:.2f}".format(not_subject_base)
         
         xml_string = ET.tostring(root, encoding='utf-8', xml_declaration=True).decode('utf-8')
 
