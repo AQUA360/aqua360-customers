@@ -47,6 +47,36 @@ for _app in settings.LOCAL_OWN_APPS:
     if find_spec(f"{_app}.urls") is not None:
         app_urls.append(path(f"{_app}/", include(f"{_app}.urls")))
 
+def _registered_prefixes(routes):
+    """Primer segment de cada ruta ja registrada, sense paràmetres."""
+    prefixes = set()
+    for route in routes:
+        pattern = getattr(route, "pattern", None)
+        if pattern is None:
+            continue
+        head = str(pattern).strip("/").split("/", 1)[0]
+        if head and "<" not in head:
+            prefixes.add(head)
+    return prefixes
+
+
+def append_plugin_routes(routes, app_names):
+    """Munta les urls de cada plugin sense tapar una ruta anterior.
+
+    El prefix és ``/<app>/``. Si ja existeix, el plugin queda a
+    ``/plugins/<app>/``: la ruta incorporada es conserva i la del plugin
+    segueix sent accessible.
+    """
+    for app in app_names:
+        if find_spec(f"{app}.urls") is None:
+            continue
+        prefix = f"plugins/{app}/" if app in _registered_prefixes(routes) else f"{app}/"
+        routes.append(path(prefix, include(f"{app}.urls")))
+
+
+# Plugins de client (PLUGINS al .env), només si el plugin publica rutes.
+append_plugin_routes(app_urls, settings.PLUGIN_APPS)
+
 urlpatterns = [
     path('', root_view),
 ]

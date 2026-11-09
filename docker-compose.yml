@@ -15,6 +15,9 @@ x-django-env: &django-env
 # aquella versió sense construir res. Sense CUSTOMERS_VERSION, o amb `up --build`, es construeix
 # aquí com sempre (etiqueta `local-<stack>`: una per stack, perquè els stacks d'un mateix servidor
 # no comparteixin imatge).
+# Etiqueta que escriu `docker compose build` / `up --build`. No és la imatge privada:
+# aquesta es tria amb BACKEND_IMAGE i docker-compose.image.yml, que en treu el build.
+x-local-backend-image: &local-backend-image "ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}"
 services:
   db:
     image: postgres:16-bookworm
@@ -45,7 +48,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
+    image: *local-backend-image
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -78,7 +81,7 @@ services:
         condition: service_healthy
 
   celery-worker:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
+    image: *local-backend-image
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -100,7 +103,7 @@ services:
         condition: service_healthy
 
   celery-beat:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
+    image: *local-backend-image
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -147,7 +150,7 @@ services:
         condition: service_healthy
 
   gmao-consumer:
-    image: ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION:-local-${COMPOSE_PROJECT_NAME}}
+    image: *local-backend-image
     build:
       context: ./backend
       dockerfile: Dockerfile
