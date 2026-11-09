@@ -382,13 +382,12 @@ const settingsTabs = computed(() => [
   { key: 'master_tables', label: t('settings_block.master_tables'), icon: 'fa6-solid:table-list', visible: settingsSections.value.some((section) => section.master.length) },
   { key: 'internal', label: t('settings_block.internal_settings'), icon: 'fa6-solid:screwdriver-wrench', visible: Boolean(permissions.value?.can_edit_config_project) },
 ].filter((tab) => tab.visible));
-const selectedTab = ref(route.query.tab || null);
+// La pestanya activa surt sempre de la URL (?tab=), també en navegar enrere o endavant.
 const activeTab = computed(() => {
   const keys = settingsTabs.value.map((tab) => tab.key);
-  return keys.includes(selectedTab.value) ? selectedTab.value : keys[0];
+  return keys.includes(route.query.tab) ? route.query.tab : keys[0];
 });
 const setActiveTab = (key) => {
-  selectedTab.value = key;
   router.replace({ query: { ...route.query, tab: key } });
 }
 
@@ -460,6 +459,7 @@ getConfigProject();
             </template>
           </li>
         </ul>
+        <p v-else-if="config_projects.length" class="pl-3 text-slate-500">{{ t('common.no_results') }}</p>
       </section>
 
     </div>
