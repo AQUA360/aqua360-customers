@@ -124,7 +124,8 @@ class MeterDictionaryNameMixin:
         try:
             return normalize_dictionary_name(self.Meta.model, value)
         except ValueError as error:
-            raise serializers.ValidationError(str(error))
+            logger.warning("Invalid dictionary name validation failed.", exc_info=True)
+            raise serializers.ValidationError("Invalid value for name.")
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
