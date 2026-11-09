@@ -20,7 +20,7 @@ class PluginAppNamesTests(SimpleTestCase):
 
     def test_invalid_name_is_rejected(self):
         with self.assertRaises(ImproperlyConfigured):
-            plugin_app_names(Path("/unused"), ["../iotcom"])
+            plugin_app_names(Path("/unused"), ["../plugin"])
 
     def test_local_checkout_is_importable(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -170,8 +170,8 @@ def _check_local_apps(apps):
 OWN_APPS += _check_local_apps(LOCAL_OWN_APPS)
 EXTRA_APPS += _check_local_apps(LOCAL_EXTRA_APPS)
 
-# Plugins de client, fora d'aquest repositori (p. ex. PLUGINS=iotcom). El codi es
-# resol des de plugins/<nom>/ al monorepo o des del paquet instal·lat a la imatge.
+# Plugins de client, fora d'aquest repositori. El codi es resol des de
+# plugins/<nom>/ al monorepo o des del paquet instal·lat a la imatge.
 from customers.plugins import plugin_app_names
 
 PLUGIN_APPS = plugin_app_names(BASE_DIR, config("PLUGINS", default="", cast=Csv()))
