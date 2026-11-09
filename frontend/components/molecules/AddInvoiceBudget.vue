@@ -260,6 +260,36 @@ const resetHolderSelection = () => {
   localPersons.value = getOriginalPersons()
 }
 
+// Titular del pressupost mentre no s'ha confirmat. En refacturar el gestiona RedoOptions;
+// en una factura personalitzada a nom d'una persona, el titular ja és aquesta persona.
+const showHolderSelector = computed(() => !props.in_invoice && !finalInvoice.value
+  && (!props.individual || selectedCustom.value?.entity === 'contract'))
+// Només el titular triat explícitament. En regenerar sense triar-ne cap, el backend ja
+// conserva el del pressupost anterior; enviar-lo sempre forçaria l'adreça de la persona.
+const budgetHolderId = computed(() => showHolderSelector.value ? (selectedHolder.value?.id || null) : null)
+const pendingBudget = computed(() => invoices.value.find(invoice => !isInvoice(invoice) && !isVoidedInvoice(invoice)))
+const holderPendingRegen = computed(() => {
+  const budgetPersonId = personIdFrom(pendingBudget.value?.person)
+  return Boolean(budgetHolderId.value && budgetPersonId && Number(budgetPersonId) !== Number(budgetHolderId.value))
+})
+// Si el titular del pressupost canvia des del panell d'edició (sense regenerar), la
+// selecció d'aquí ja no és la vigent: es descarta perquè no bloquegi "Generar factura".
+watch(() => personIdFrom(pendingBudget.value?.person), (newId, oldId) => {
+  if (newId && oldId && newId !== oldId && selectedHolder.value?.id
+    && Number(selectedHolder.value.id) !== Number(newId)) {
+    clearBudgetHolder()
+  }
+})
+const holderFullName = (person) => person?.full_name || `${person?.name || ''} ${person?.surname || ''}`.trim()
+
+const clearBudgetHolder = () => {
+  const removedId = selectedHolder.value?.id
+  selectedHolder.value = null
+  if (removedId && !getOriginalPersons().some(person => person.id === removedId)) {
+    localPersons.value = localPersons.value.filter(person => person.id !== removedId)
+  }
+}
+
 // helpers for child components
 const openSelectContract = () => { showDetail('AddContracts', null) }
 const openSelectPerson = () => {
@@ -270,7 +300,7 @@ const openSelectHolder = () => {
   personSearchContext.value = 'holder'
   showDetail('PersonSearch', null)
 }
-const clearSelected = () => { selectedContract.value = null; selectedPerson.value = null; selectedCustom.value = null }
+const clearSelected = () => { selectedContract.value = null; selectedPerson.value = null; selectedCustom.value = null; selectedHolder.value = null }
 const onUpdateSelectedCustom = (val) => { selectedCustom.value = val }
 const onUpdateReadingHasInvoice = (val) => { readingHasInvoice.value = !!val }
 const setRedoOption = (val) => {
@@ -666,6 +696,11 @@ const ensureRedoHolderSelected = () => {
 }
 
 const generateInvoice = async () => {
+  // La factura copia el titular del pressupost: un titular nou s'ha d'aplicar regenerant-lo.
+  if (holderPendingRegen.value) {
+    toast.warning(t('billing_block.regenerate_budget_holder'))
+    return
+  }
   if (!confirm(t("confirmation_text_block.confirm_budget_invoice"))) return
   if (!ensureRedoHolderSelected()) return
 
@@ -866,6 +901,7 @@ const deleteBudget = async (id) => {
 }
 
 const onContractSelected = async (item) => {
+  selectedHolder.value = null;
   if (selectedContract.value?.id == item.id) {
     selectedContract.value = null;
     selectedCustom.value = null;
@@ -905,6 +941,7 @@ const updateTitle = () => {
 }
 
 const onHolderPersonSaved = async (item) => {
+  const previousHolderId = selectedHolder.value?.id
   selectedHolder.value = item
   try {
     const loadedPerson = await $PersonApiService.getFullDetail(item.id)
@@ -914,7 +951,14 @@ const onHolderPersonSaved = async (item) => {
   }
   const originals = getOriginalPersons()
   const newPerson = selectedHolder.value
-  if (newPerson?.id && originals.some(person => person.id === newPerson.id)) {
+  if (!props.in_invoice) {
+    if (previousHolderId && !originals.some(person => person.id === previousHolderId)) {
+      localPersons.value = localPersons.value.filter(person => person.id !== previousHolderId)
+    }
+    if (newPerson?.id && !localPersons.value.some(person => person.id === newPerson.id)) {
+      localPersons.value = [...localPersons.value, newPerson]
+    }
+  } else if (newPerson?.id && originals.some(person => person.id === newPerson.id)) {
     localPersons.value = originals
   } else if (newPerson) {
     localPersons.value = [...originals, newPerson]
@@ -999,11 +1043,12 @@ const generateBudget = async () => {
       payment_data: paymentData.value,
       redo_option: applyRedoMeta(),
       selected_custom: selectedCustom.value,
-      bill_termination_requester: props.bill_termination_requester
+      bill_termination_requester: props.bill_termination_requester,
+      holder_id: budgetHolderId.value
     };
 
     const response = await $InvoiceApiService.generateInvoiceBudget(invoice_generation);
-    
+
     if (props.entity === 'contract_request' && billCutReading.value && data.value.contract_termination_requests?.length > 0) {
       for (const term of data.value.contract_termination_requests) {
         const invoice_generation_cons = {
@@ -1108,6 +1153,44 @@ watch(() => props.object_id, () => {
         @select-contract="openSelectContract" @select-person="openSelectPerson" @clear-selected="clearSelected"
         @select-exploitation="selectExploitation"
         @update:readingHasInvoice="onUpdateReadingHasInvoice" />
+
+      <fieldset v-if="showHolderSelector" class="mb-4 mx-5 border border-gray-300 rounded-lg p-6">
+        <legend class="font-medium text-gray-700 px-3 py-1">{{ $t('billing_block.budget_holder') }}</legend>
+        <div class="max-w-xl">
+          <div v-if="selectedHolder" class="bg-green-100 p-4 rounded relative group">
+            <p class="font-semibold">
+              {{ holderFullName(selectedHolder) }}<br />
+              <span class="text-sm text-gray-500">{{ selectedHolder.token }}</span>
+            </p>
+            <div class="absolute right-3 top-3 flex gap-2 opacity-0 transition-all duration-300 group-hover:opacity-100">
+              <button type="button" @click="openSelectHolder" :title="$t('common.modify')"
+                class="cursor-pointer shadow-md border text-sm w-8 h-8 bg-white rounded-md text-slate-600">
+                <Icon name="fa6-solid:pencil" />
+              </button>
+              <button type="button" @click="clearBudgetHolder" :title="$t('common.delete')"
+                class="cursor-pointer shadow-md border text-sm w-8 h-8 bg-white rounded-md text-slate-600">
+                <Icon name="fa6-solid:xmark" />
+              </button>
+            </div>
+          </div>
+          <template v-else>
+            <p class="text-sm text-slate-600 mb-2">
+              <template v-if="pendingBudget?.customer_final">
+                {{ $t('billing_block.current_holder') }}:
+                <span class="font-semibold">{{ pendingBudget.customer_final }}</span>
+                <span v-if="pendingBudget.customer_token_final" class="text-gray-500"> ({{ pendingBudget.customer_token_final }})</span>
+              </template>
+              <template v-else>{{ $t('billing_block.budget_default_holder') }}</template>
+            </p>
+            <ButtonSeleccio @click="openSelectHolder()">
+              {{ $t('common.select') }} {{ t('common.or') }} {{ t('common.add') }} {{ t('contract_block.new_holder') }}
+            </ButtonSeleccio>
+          </template>
+          <p v-if="holderPendingRegen" class="text-sm text-orange-600 mt-2">
+            {{ $t('billing_block.regenerate_budget_holder') }}
+          </p>
+        </div>
+      </fieldset>
 
       <fieldset v-if="!use_default" class="mb-4 mx-5 border border-gray-300 rounded-lg p-6">
         <legend class="font-medium text-gray-700 px-3 py-1">{{ $t('common.payment_method') }}</legend>
@@ -1423,7 +1506,8 @@ watch(() => props.object_id, () => {
           @disable-redo="disableRedo" @changed="refresh" :id="data?.id ? data.id : null" :object_id="object_id"
           :invoice_id="regionDetailId" :redo_budget="redoBudget" :payment_data="paymentData"
           :is_budget="showRegionComponent === 'BudgetEdit'" :is_connection="is_connection" :service="props.service"
-          :entity="entity" :redo_option="redoOption" :selected_custom="selectedCustom" :isSubRegion="true" />
+          :entity="entity" :redo_option="redoOption" :selected_custom="selectedCustom" :holder_id="budgetHolderId" :holderPendingRegen="holderPendingRegen"
+          :isSubRegion="true" />
         <ChangeStatus v-if="showRegionComponent === 'ChangeStatus'" entity="invoice" parent_entity="invoice"
           :id="regionDetailId" :status="clickedInvoice?.status_id || clickedInvoice?.status?.id"
           @changed="refresh(true)" :module="'billing'" :has_observation="false"

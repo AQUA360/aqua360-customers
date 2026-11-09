@@ -4,10 +4,12 @@ import { useToast } from 'vue-toastification';
 import H1 from '~/components/atoms/H1.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import { usePermissions } from '~/middleware/permission';
+import { useConfigStore } from '~/stores/useConfigStore';
 import { formatDate } from '~/utils/date';
 
 const { t } = useI18n();
 const toast = useToast();
+const configStore = useConfigStore();
 const {
   $ConfigProjectApiService,
   $ConfiglistApiService,
@@ -257,15 +259,6 @@ const resolveConfigRawValue = (raw) => {
   return raw;
 };
 
-const parseConfigBool = (value) => {
-  const resolved = resolveConfigRawValue(value);
-  return resolved === true
-    || resolved === 'True'
-    || resolved === 'true'
-    || resolved === 1
-    || resolved === '1';
-};
-
 const optionLabel = (option) => {
   if (!option) return '';
   if (option.token && option.name) return `${option.token} - ${option.name}`;
@@ -292,8 +285,8 @@ const selectedProduct = computed(() => {
 const canShowLineItems = computed(() => useAca.value && !!selectedProduct.value);
 
 const parseUseAcaFromConfigs = (allConfigs) => {
-  const useAcaConfig = (allConfigs ?? []).find((item) => item.token === 'uses_aca');
-  useAca.value = useAcaConfig != null ? parseConfigBool(useAcaConfig.value) : false;
+  const orgConfig = (allConfigs ?? []).find((item) => item.token === 'public_org_type');
+  useAca.value = String(orgConfig?.value ?? '').trim().toLowerCase() === 'aca';
 };
 
 const normalizeConfigAcaItem = (item) => ({
@@ -305,10 +298,10 @@ const normalizeConfigAcaItem = (item) => ({
 });
 
 const ensureUseAcaConfig = async (allConfigs) => {
-  if (allConfigs?.some((item) => item.token === 'uses_aca')) return allConfigs;
+  if (allConfigs?.some((item) => item.token === 'public_org_type')) return allConfigs;
 
   try {
-    const filtered = await $ConfigProjectApiService.getAll('uses_aca');
+    const filtered = await $ConfigProjectApiService.getAll('public_org_type');
     if (!Array.isArray(filtered) || !filtered.length) return allConfigs;
 
     const merged = [...(allConfigs ?? [])];
@@ -459,7 +452,7 @@ const applyFillResult = (result) => {
 
 const handleFillSkipped = (result) => {
   if (!result?.skipped) return false;
-  if (result.reason === 'uses_aca_disabled') {
+  if (result.reason === 'public_org_type_disabled') {
     toast.error(t('settings_block.aca_fill_skipped_disabled'));
   }
   applyFillResult(result);
@@ -690,6 +683,17 @@ const saveConfig = async () => {
   try {
     console.log("activeConfigRows")
     console.log(activeConfigRows.value)
+
+    // El toggle d'ACA ara es desa a `public_org_type` ('aca' o buit).
+    const orgTypeValue = useAca.value ? 'aca' : '';
+    const configResponse = await $ConfigProjectApiService.bulkUpdateValues([
+      { token: 'public_org_type', value: orgTypeValue },
+    ]);
+    if (configResponse?.errors?.length) {
+      toast.error(configResponse.errors[0].detail || t('common.error'));
+      return;
+    }
+    configStore.publicOrgType = orgTypeValue;
 
     const response = await $ConfigAcaApiService.updateConfigs(
       {"active_config_rows": activeConfigRows.value}

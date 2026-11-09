@@ -7,6 +7,7 @@ import IBAN from '~/components/atoms/IBAN.vue';
 import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
 import DropdownOption from '~/components/atoms/DropdownOption.vue';
 import AddNewInvoiceLine from '../molecules/AddNewInvoiceLine.vue';
+import PersonSearch from './PersonSearch.vue';
 import _ from 'lodash'
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import Draggable from 'vuedraggable';
@@ -17,6 +18,7 @@ const { $LineItemApiService, $InvoiceApiService, $ConfigProjectApiService, $Line
 const toast = useToast();
 
 const props = defineProps({
+  holderPendingRegen: Boolean,
   id: {
     type: Number,
     default: null
@@ -146,6 +148,30 @@ const handleChanged = (close = true, invoiceData = null) => {
   emit('changed', close, invoiceData);
 }
 
+// Canvi de titular d'un pressupost pendent: es fa sobre el mateix pressupost, sense
+// regenerar-lo, de manera que les línies afegides o editades a mà es mantenen.
+const showHolderSearch = ref(false)
+const changingHolder = ref(false)
+
+const handleChangeHolder = async (person) => {
+  if (!person?.id) return
+  if (!confirm(t('billing_block.confirm_change_holder'))) return
+  changingHolder.value = true
+  try {
+    const updated = await $InvoiceApiService.changeHolder(props.id, person.id)
+    toast.success(t('billing_block.holder_changed'))
+    showHolderSearch.value = false
+    // El canvi de titular no modifica les línies ni el comentari del pressupost.
+    item.value = { ...updated, line_items: item.value.line_items }
+    handleChanged(false, updated)
+  } catch (err) {
+    console.error(err)
+    toast.error(err?.message || t('common.error_save'))
+  } finally {
+    changingHolder.value = false
+  }
+}
+
 const handleSaveLineItem = async (line, index, close = true) => {
   pending.value = true;
   try {
@@ -246,6 +272,7 @@ const canConvertToInvoice = computed(() => {
 });
 
 const convertBudgetToInvoice = async () => {
+  if (props.holderPendingRegen) return;
   if (!confirm(t('confirmation_text_block.confirm_budget_invoice'))) return;
   generatingInvoice.value = true;
   try {
@@ -319,7 +346,7 @@ onMounted( async () => {
               </div>
             </div>
           </div>
-          <button v-if="canConvertToInvoice" @click="convertBudgetToInvoice" :disabled="generatingInvoice"
+          <button v-if="canConvertToInvoice" @click="convertBudgetToInvoice" :disabled="generatingInvoice || holderPendingRegen"
             class="bg-sky-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">
             {{ generatingInvoice ? t('common.loading') + '...' : t('billing_block.invoice_generate') }}
           </button>
@@ -355,9 +382,16 @@ onMounted( async () => {
                 <label>{{ t('billing_block.serie') }}:</label>
                 <span>{{ item?.serie_final }}</span>
               </p>
-              <p class="flex justify-between">
+              <p class="flex justify-between items-center">
                 <label>{{ t('contract_block.holder') }}:</label>
-                <span>{{ item?.customer_final }}</span>
+                <span class="flex items-center gap-2">
+                  {{ item?.customer_final }}
+                  <button v-if="canConvertToInvoice" type="button" :title="t('billing_block.change_holder')"
+                    :disabled="changingHolder" @click="showHolderSearch = !showHolderSearch"
+                    class="w-6 h-6 rounded border border-slate-300 bg-white text-slate-500 hover:bg-slate-100 flex items-center justify-center">
+                    <Icon name="fa6-solid:pencil" class="text-xs" />
+                  </button>
+                </span>
               </p>
               <p class="flex justify-between">
                 <label>{{ t('common.person_id') }}:</label>
@@ -375,6 +409,9 @@ onMounted( async () => {
                 <label>{{ t('contract_block.total_persons') }}:</label>
                 <span>{{ item?.persons_final }}</span>
               </p>
+            </div>
+            <div v-if="showHolderSearch && canConvertToInvoice" class="max-w-xl mb-4 p-4 border border-slate-200 rounded-lg">
+              <PersonSearch personLabel="contract_block.new_holder" :allowCreate="true" @saved="handleChangeHolder" />
             </div>
             <p class="font-semibold pb-2">{{ t('billing') }}</p>
             <div class="invoice__heading max-w-md pb-3">

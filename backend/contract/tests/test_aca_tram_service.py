@@ -10,7 +10,7 @@ class AcaTramServiceTest(TestCase):
 
     def setUp(self):
         for token, value in (
-            ('uses_aca', 'True'),
+            ('public_org_type', 'aca'),
             ('aca_notification_enabled', 'True'),
             ('aca_at_token', 'ACA-TRAM'),
             ('aca_tram_min_persons', '4'),
@@ -117,7 +117,7 @@ class AcaTramServiceTest(TestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
     def test_without_aca_nothing_is_created_or_validated(self):
-        ConfigProject.objects.filter(token='uses_aca').update(value='False')
+        ConfigProject.objects.filter(token='public_org_type').update(value='')
 
         self.set_total_persons(5)
         serializer = VariableSaveSerializer(data={

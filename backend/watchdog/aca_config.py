@@ -4,7 +4,8 @@ from contract.models import Contract, ContractUseType, VariableType
 from coredata.models import ConfigProject
 from pricing.models import ArticleCode, LineItemType, PriceRate, Product
 
-ACA_USES_CONFIG_TOKEN = 'uses_aca'
+PUBLIC_ORG_TYPE_CONFIG_TOKEN = 'public_org_type'
+ACA_ORG_TYPE = 'aca'
 ACA_NOTIFICATION_CONFIG_TOKEN = 'aca_notification_enabled'
 ACA_PRODUCT_CONFIG_TOKEN = 'token_product_aca'
 ACA_DIR_VARIABLE_CONFIG_TOKEN = 'contract_use_aca_dir_variable_token'
@@ -37,22 +38,25 @@ DEFAULT_ACA_VARIABLE_TYPE = {
 }
 
 
-def uses_aca_enabled():
-    try:
-        value = ConfigProject.objects.get(token=ACA_USES_CONFIG_TOKEN).value
-    except ConfigProject.DoesNotExist:
-        return False
-    if value is None:
-        return False
-    return str(value).strip().lower() in ('true', '1', 'yes', 't')
+def public_org_type():
+    """Organisme públic al qual pertany el projecte (`ConfigProject.public_org_type`).
+
+    `'aca'` = Agència Catalana de l'Aigua; buit/`None` = explotació fora de Catalunya
+    (o sense organisme configurat). Retorna una cadena buida si no existeix."""
+    return get_config_value(PUBLIC_ORG_TYPE_CONFIG_TOKEN) or ''
+
+
+def is_aca_org():
+    """Cert si el projecte depèn de l'ACA (`public_org_type == 'aca'`)."""
+    return public_org_type().lower() == ACA_ORG_TYPE
 
 
 def aca_notification_enabled():
     """Activa l'enviament de notificacions a l'ACA (sol·licituds pendents d'enviar,
     exportació del fitxer d'ampliació de trams). La creació de la Bonification/Variable
-    ACA-TRAM en augmentar `total_persons` NO depèn d'aquest flag, només de `uses_aca_enabled`
+    ACA-TRAM en augmentar `total_persons` NO depèn d'aquest flag, només de `is_aca_org`
     (veure `contract.utils.aca_tram_service.sync_aca_tram_with_total_persons`)."""
-    if not uses_aca_enabled():
+    if not is_aca_org():
         return False
     try:
         value = ConfigProject.objects.get(token=ACA_NOTIFICATION_CONFIG_TOKEN).value
@@ -177,7 +181,7 @@ def _append_aca_article_code_fix_recommendations(issues):
 
 def check_aca_article_code_issues():
     """ArticleCode, LineItemType i contract_keeper_use_type_token per exports ACA."""
-    if not uses_aca_enabled():
+    if not is_aca_org():
         return []
 
     issues = []
@@ -225,9 +229,9 @@ def check_aca_article_code_issues():
 def check_aca_configuration_issues():
     """
     Retorna la llista d'incidències de configuració ACA.
-    Buit si uses_aca no està activat o tot és correcte.
+    Buit si public_org_type no és 'aca' o tot és correcte.
     """
-    if not uses_aca_enabled():
+    if not is_aca_org():
         return []
 
     issues = []

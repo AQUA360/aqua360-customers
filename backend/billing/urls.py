@@ -90,6 +90,7 @@ from .views.billing_preinvoices_summary_view import BillingPreInvoicesSummaryVie
 from .views.billing_preinvoices_summary_xls_view import BillingPreInvoicesSummaryXLSViewSet
 from .views.invoice_pdf_view import InvoiceReportPDFDownloadViewSet
 from .views.invoice_send_email_view import InvoiceSendEmailView
+from .views.invoice_change_holder_view import InvoiceChangeHolderView
 from .views.sepa_document_send_email_view import SepaDocumentSendEmailView
 from .views.invoice_generate_pdf_view import InvoiceGeneratePDFViewSet
 from .views.return_sepa_document import ReturnSEPADocument
@@ -246,6 +247,7 @@ urlpatterns = [
     path('billing/pre-invoices/<int:id>/summary/xls', BillingPreInvoicesSummaryXLSViewSet.as_view(http_method_names=['get']), name='billing-preinvoices-summary-xls'),
     path('download-invoice/<int:id>/', InvoiceReportPDFDownloadViewSet.as_view(), name='download-invoice-pdf'),
     path('invoice/<int:id>/send-email/', InvoiceSendEmailView.as_view(http_method_names=['post']), name='invoice-send-email'),
+    path('invoice/<int:id>/change-holder/', InvoiceChangeHolderView.as_view(http_method_names=['post']), name='invoice-change-holder'),
     path('download-template/', InvoiceGeneratePDFViewSet.as_view(http_method_names=['post']), name='download-template-pdf'),
     path('sepa-return/', ReturnSEPADocument.as_view(http_method_names=['put']), name='sepa-return'),
     path('sepa-validate/', SepaXsdValidateView.as_view(http_method_names=['post']), name='sepa-validate'),

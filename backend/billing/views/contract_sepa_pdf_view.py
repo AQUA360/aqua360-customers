@@ -39,6 +39,43 @@ def _resolve_person(request_data):
     return None
 
 
+def _contact_info(holder_person, contract):
+    """
+    Telèfon i correu de contacte a mostrar al mandat SEPA.
+
+    Prioritza els contactes escollits al contracte (correu i SMS) si són de la
+    persona que surt al document; si no, el contacte per defecte de la persona
+    i, finalment, qualsevol contacte actiu seu amb el valor informat.
+    """
+    if holder_person is None:
+        return "", ""
+
+    def _belongs(contact):
+        return contact is not None and contact.is_active and contact.person_id == holder_person.id
+
+    person_contacts = list(
+        holder_person.contacts.filter(is_active=True).order_by("-is_default", "id")
+    )
+
+    email = ""
+    contract_email_contact = getattr(contract, "person_contact_email", None) if contract else None
+    if _belongs(contract_email_contact) and (contract_email_contact.email or "").strip():
+        email = contract_email_contact.email.strip()
+    if not email:
+        email = next(((c.email or "").strip() for c in person_contacts if (c.email or "").strip()), "")
+
+    phone = ""
+    if contract is not None and contract.pk and hasattr(contract, "person_contact_sms"):
+        sms_contacts = contract.person_contact_sms.filter(
+            person=holder_person, is_active=True
+        ).order_by("-is_default", "id")
+        phone = next(((c.phone or "").strip() for c in sms_contacts if (c.phone or "").strip()), "")
+    if not phone:
+        phone = next(((c.phone or "").strip() for c in person_contacts if (c.phone or "").strip()), "")
+
+    return phone, email
+
+
 def _billing_address(holder, holder_person, contract, context):
     if not holder or not holder_person:
         return None
@@ -146,6 +183,7 @@ class ContractSepaPDFView(APIView):
 
         billing_address = _billing_address(holder, holder_person, contract, context)
         iban, swift = _iban_and_swift(person_bank)
+        contact_phone, contact_email = _contact_info(holder_person, contract)
         person_fullname = (
             person_bank.name if person_bank and person_bank.name else holder.get("full_name") if holder else ""
         )
@@ -172,6 +210,8 @@ class ContractSepaPDFView(APIView):
                 "debtor_address": _debtor_address(billing_address),
                 "person_fullname": person_fullname or "",
                 "person_token": person_token or "",
+                "contact_phone": contact_phone,
+                "contact_email": contact_email,
                 "contract": contract,
                 "no_sepa": True,
                 "data_protection_law_text": company.get("data_protection_law_text") if company else None,

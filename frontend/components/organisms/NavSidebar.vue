@@ -13,7 +13,7 @@ const { t, locale } = useI18n();
 const sideBarStore = useSidebarStore();
 const configStore = useConfigStore();
 const exploitationStore = useExploitationStore();
-const { ovEnabled: ovLogsEnabled, documentSignEnabled, sendBatchEnabled } = storeToRefs(configStore);
+const { ovEnabled: ovLogsEnabled, documentSignEnabled, sendBatchEnabled, isAcaOrg } = storeToRefs(configStore);
 const { permissions, loading } = usePermissions();
 const config = useRuntimeConfig();
 const env = config.public.env;
@@ -68,6 +68,7 @@ onMounted(loadTasksSummary);
 configStore.fetchOvEnabled();
 configStore.fetchDocumentSignEnabled();
 configStore.fetchSendBatchEnabled();
+configStore.fetchPublicOrgType();
 
 // Environment-based highlight class as a simple ref
 const highlightClass = ref('bg-slate-200');
@@ -374,7 +375,7 @@ onUnmounted(() => {
             <span v-show="!isCollapsed" class="truncate">{{ $t('common.persons') }}</span>
           </div>
         </NuxtLink>
-        <NuxtLink to="/contract/aca-documents/"
+        <NuxtLink v-if="isAcaOrg" to="/contract/aca-documents/"
           class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
           :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract/aca-documents/') != -1, 'justify-center': isCollapsed }]"
           :title="isCollapsed ? $t('common.aca_documents') : undefined">
