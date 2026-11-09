@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import timedelta, date
 from billing.models import CommitmentDeposit, DocumentSEPA, Invoice, InvoiceStatus, Payment, PaymentRemittance, PaymentStatus, RejectMotive
 from billing.utils.invoice_service import invoice_return_charge
+from billing.utils.payment_return_warnings import annotate_rejection_warnings
 from billing.utils.payment_service import is_paid_by_direct_debit_with_other_method
 from contract.models import Contract, ContractRequest
 from coredata.models import ConfigProject
@@ -331,8 +332,9 @@ def getDocumentSEPAPayments(msgId, company_data, clients_data, file_content, og_
                 rejections = handle_no_document(company_data, block_clients, p_id, client_doc_ids, rjt_date)
             
             all_rejections.extend(rejections)
-            
-        return all_rejections
+
+        # Avisos per a l'usuari: abonats de baixa i factures ja anul·lades i refetes
+        return annotate_rejection_warnings(all_rejections)
 
     except Exception as e:
         raise Exception(f"Error in getDocumentSEPAPayments: {e}")
