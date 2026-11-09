@@ -9,13 +9,25 @@ from django.core.exceptions import ImproperlyConfigured
 _APP_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+def _origin_in_package(spec, package_dir):
+    """True si el mòdul resolt és el paquet local ``plugins/<nom>/<nom>/``."""
+    origin = getattr(spec, "origin", None)
+    if not origin:
+        return False
+    try:
+        return Path(origin).resolve().is_relative_to(package_dir.resolve())
+    except (OSError, ValueError):
+        return False
+
+
 def plugin_app_names(base_dir, names, plugins_root=None):
     """Retorna les apps de PLUGINS i fa importable una còpia local.
 
-    Una còpia a ``plugins/<nom>/<nom>/`` (a l'arrel del monorepo, fora de la
-    imatge pública) s'afegeix a ``sys.path``. Si el paquet ja està instal·lat
-    a la imatge, s'usa directament. Un nom que no es pot importar atura
-    l'arrencada.
+    Comprova ``plugins/<nom>/<nom>/`` i afegeix el directori pare
+    ``plugins/<nom>/`` a ``sys.path``. Si aquest directori no hi és i el
+    paquet ja està instal·lat a la imatge, l'usa. Un nom que no es pot
+    importar, o que resol un mòdul ja carregat en lloc del paquet local,
+    atura l'arrencada.
     """
     cleaned = []
     for name in names:
@@ -40,7 +52,22 @@ def plugin_app_names(base_dir, names, plugins_root=None):
     if added:
         importlib.invalidate_caches()
 
-    missing = [name for name in cleaned if find_spec(name) is None]
+    missing = []
+    collisions = []
+    for name in cleaned:
+        package_dir = root / name / name
+        local = (package_dir / "__init__.py").is_file()
+        spec = find_spec(name)
+        if spec is None:
+            missing.append(name)
+        elif local and not _origin_in_package(spec, package_dir):
+            collisions.append(name)
+    if collisions:
+        raise ImproperlyConfigured(
+            "PLUGINS coincideix amb un mòdul ja carregat i no amb el paquet local: "
+            + ", ".join(collisions)
+            + ". Canvia el nom del plugin."
+        )
     if missing:
         raise ImproperlyConfigured(
             "PLUGINS inclou apps que no es poden importar: "
