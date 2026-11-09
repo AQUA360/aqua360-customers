@@ -139,6 +139,22 @@ def _aca_effective_use_annotation():
     )
 
 
+def _aca_price_to_interval(invoice_dom_lines, part_fixa_token):
+    """Tram de cada preu unitari de les línies variables domèstiques d'una factura, per a les línies sense `interval`.
+
+    Els trams domèstics de l'ACA tenen preus creixents: el preu més baix és el tram 1. La part fixa no és cap
+    tram i no entra a l'ordenació (si hi entrava, desplaçava els trams de les línies variables)."""
+    variable_lines = [
+        l for l in invoice_dom_lines
+        if not (l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)
+    ]
+    ordered_prices = []
+    for l in sorted(variable_lines, key=lambda l: (l.price_unit, l.id)):
+        if l.price_unit not in ordered_prices:
+            ordered_prices.append(l.price_unit)
+    return {price: idx + 1 for idx, price in enumerate(ordered_prices)}
+
+
 def _invoice_effective_use_aca(invoice):
     if invoice.used_aca:
         return invoice.used_aca
@@ -1101,16 +1117,9 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                             effective_interval = 1
                         else:
                             if invoice_id not in invoice_interval_cache:
-                                invoice_dom_lines = dom_lines_by_invoice.get(invoice_id, [])
-                                invoice_dom_lines = sorted(invoice_dom_lines, key=lambda l: (-l.price_unit, l.id))
-                                ordered_prices = []
-                                for l in invoice_dom_lines:
-                                    if l.price_unit not in ordered_prices:
-                                        ordered_prices.append(l.price_unit)
-                                price_to_interval = {
-                                    price: idx + 1
-                                    for idx, price in enumerate(ordered_prices)
-                                }
+                                price_to_interval = _aca_price_to_interval(
+                                    dom_lines_by_invoice.get(invoice_id, []), part_fixa_token
+                                )
                                 invoice_interval_cache[invoice_id] = price_to_interval
                             else:
                                 price_to_interval = invoice_interval_cache[invoice_id]
@@ -1650,16 +1659,9 @@ def generate_aca_summary_report_second_ver(request, black_fill=None, white_bold_
                             effective_interval = 1
                         else:
                             if invoice_id not in invoice_interval_cache:
-                                invoice_dom_lines = dom_lines_by_invoice.get(invoice_id, [])
-                                invoice_dom_lines = sorted(invoice_dom_lines, key=lambda l: (-l.price_unit, l.id))
-                                ordered_prices = []
-                                for l in invoice_dom_lines:
-                                    if l.price_unit not in ordered_prices:
-                                        ordered_prices.append(l.price_unit)
-                                price_to_interval = {
-                                    price: idx + 1
-                                    for idx, price in enumerate(ordered_prices)
-                                }
+                                price_to_interval = _aca_price_to_interval(
+                                    dom_lines_by_invoice.get(invoice_id, []), part_fixa_token
+                                )
                                 invoice_interval_cache[invoice_id] = price_to_interval
                             else:
                                 price_to_interval = invoice_interval_cache[invoice_id]
