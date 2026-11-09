@@ -3104,6 +3104,7 @@ export default {
     admin_permissions: 'Os administradores obteñen todos os permisos sen necesidade de estar nun grupo'
   },
   settings_block:   {
+    general: 'Xeral',
     master_tables: 'Táboas mestras',
     settings: 'Configuracións',
     internal_settings: 'Configuracións internas',

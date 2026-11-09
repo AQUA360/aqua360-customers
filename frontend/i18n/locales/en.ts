@@ -3104,6 +3104,7 @@ export default {
     admin_permissions: 'Administrators get all permissions without needing to belong to a group'
   },
   settings_block:   {
+    general: 'General',
     master_tables: 'Master tables',
     settings: 'Settings',
     internal_settings: 'Internal settings',

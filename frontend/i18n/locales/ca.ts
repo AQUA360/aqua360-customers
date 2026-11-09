@@ -3226,6 +3226,7 @@ export default {
     admin_permissions: 'Els administradors obtenen tots els permisos sense necessitat de estar a dins un grup'
   },
   settings_block:   {
+    general: 'General',
     master_tables: 'Taules mestres',
     settings: 'Configuracions',
     internal_settings: 'Configuracions internes',
