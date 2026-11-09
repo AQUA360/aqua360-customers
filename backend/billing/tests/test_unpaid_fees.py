@@ -1,0 +1,157 @@
+from unittest.mock import patch
+
+from django.contrib.auth.models import Permission, User
+from django.test import TestCase
+from rest_framework.test import APIClient
+
+from billing.filter.invoice_filter import InvoiceFilter
+from billing.models import Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentStatus
+from billing.utils.unpaid_fee_service import generate_unpaid_fee_invoices
+from contract.models import Contract
+from coredata.models import ConfigProject, Person
+from pricing.models import PriceRate
+
+
+class UnpaidFeeTestMixin:
+    def setUp(self):
+        for token, value in (
+            ('invoice_status_expired_token', 'EXPIRED'),
+            ('invoice_status_paid_token', 'PAID'),
+            ('invoice_status_cancelled_token', 'CANCELLED'),
+            ('payment_status_returned_token', 'RETURNED'),
+            ('invoice_return_price_rate_token', 'DESP_IMP'),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
+        self.expired = InvoiceStatus.objects.create(token='EXPIRED', name='Vençuda')
+        self.confirmed = InvoiceStatus.objects.create(token='CONFIRMED', name='Confirmada')
+        self.returned = PaymentStatus.objects.create(token='RETURNED', name='Retornat')
+        self.fee_rate = PriceRate.objects.create(token='DESP_IMP', name='Despeses impagament', is_return_fee=True)
+
+    def invoice(self, token, status=None, left_to_pay=10, payment_type='BANK_PAYMENT', **kwargs):
+        return Invoice.objects.create(
+            token=token, status=status or self.expired, left_to_pay=left_to_pay,
+            payment_type_token_final=payment_type, **kwargs,
+        )
+
+    def add_fee(self, parent, token):
+        fee = Invoice.objects.create(token=token, status=self.confirmed, left_to_pay=0.54, parent_invoice=parent)
+        InvoiceLineItem.objects.create(invoice=fee, price_rate=self.fee_rate, name='Despeses')
+        return fee
+
+    def returned_payment(self, invoice):
+        # Sense senyals: el de pagament arrossega l'estat de la factura.
+        Payment.objects.bulk_create([Payment(token=f'P-{invoice.token}', invoice=invoice, status=self.returned)])
+
+
+class UnpaidFeeFilterTests(UnpaidFeeTestMixin, TestCase):
+
+    def filtered(self, **params):
+        return sorted(InvoiceFilter(params, queryset=Invoice.objects.all()).qs.values_list('token', flat=True))
+
+    def test_unpaid_status_selects_expired_and_returned_with_debt(self):
+        self.invoice('VENCUDA')
+        self.invoice('PAGADA', left_to_pay=0)
+        returned = self.invoice('RETORNADA', status=self.confirmed, payment_type='DIRECT_DEBIT')
+        self.returned_payment(returned)
+        self.invoice('CONFIRMADA', status=self.confirmed)
+
+        self.assertEqual(self.filtered(unpaid_status='expired'), ['VENCUDA'])
+        self.assertEqual(self.filtered(unpaid_status='returned'), ['RETORNADA'])
+        self.assertEqual(self.filtered(unpaid_status='expired,returned'), ['RETORNADA', 'VENCUDA'])
+        self.assertEqual(
+            self.filtered(unpaid_status='expired,returned', payment_type_tokens='BANK_PAYMENT'), ['VENCUDA'])
+
+    def test_without_fee_drops_fee_invoices_and_invoices_that_already_have_one(self):
+        self.invoice('SENSE')
+        managed = self.invoice('AMB')
+        # La despesa penja de l'última filla de la cadena.
+        child = self.invoice('FILLA', parent_invoice=managed)
+        fee = self.add_fee(child, 'DESPESA')
+        fee.status = self.expired
+        fee.save()
+
+        tokens = self.filtered(unpaid_status='expired', without_fee_price_rates=str(self.fee_rate.id))
+
+        self.assertEqual(tokens, ['SENSE'])
+
+    def test_exclude_vulnerable(self):
+        vulnerable = Person.objects.create(name='A', vulnerability_level=2)
+        other = Person.objects.create(name='B', vulnerability_level=0)
+        # Sense senyals: els del contracte demanen configuració que aquí no cal.
+        vulnerable_contract, other_contract = Contract.objects.bulk_create([
+            Contract(token='C1', holder=vulnerable), Contract(token='C2', holder=other)])
+        self.invoice('VULNERABLE', contract=vulnerable_contract)
+        self.invoice('NORMAL', contract=other_contract)
+
+        self.assertEqual(self.filtered(unpaid_status='expired'), ['NORMAL', 'VULNERABLE'])
+        self.assertEqual(self.filtered(unpaid_status='expired', exclude_vulnerable='true'), ['NORMAL'])
+
+
+class GenerateUnpaidFeeTests(UnpaidFeeTestMixin, TestCase):
+
+    def test_creates_one_fee_per_root_invoice_and_skips_managed_ones(self):
+        root = self.invoice('ARREL')
+        child = self.invoice('FILLA', parent_invoice=root)
+        managed = self.invoice('GESTIONADA')
+        self.add_fee(managed, 'DESPESA')
+        failing = self.invoice('ERROR')
+
+        def fake_charge(invoice, title, fee_price_rates=None):
+            if invoice.id == failing.id:
+                raise Exception('boom')
+            self.assertEqual(fee_price_rates, [self.fee_rate])
+            return self.add_fee(invoice, f'D-{invoice.token}')
+
+        with patch('billing.utils.invoice_service.invoice_return_charge', side_effect=fake_charge) as charge:
+            result = generate_unpaid_fee_invoices(
+                [root.id, child.id, managed.id, failing.id], [self.fee_rate.id])
+
+        self.assertEqual([call.args[0].token for call in charge.call_args_list], ['ARREL', 'ERROR'])
+        self.assertEqual(result['created'], 1)
+        self.assertEqual(result['skipped'], 2)
+        self.assertEqual(result['errors'], [{'invoice': 'ERROR', 'error': 'boom'}])
+
+
+class UnpaidFeeEndpointTests(UnpaidFeeTestMixin, TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user('operador')
+        self.user.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label='billing', codename__in=['view_invoice', 'add_invoice']))
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def enable(self, value):
+        ConfigProject.objects.update_or_create(token='unpaid_fee_operation_enabled', defaults={'value': value})
+
+    def test_config_reports_default_fee(self):
+        self.enable('true')
+        response = self.client.get('/billing/invoice/unpaid-fees/config/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['enabled'])
+        self.assertEqual([r['token'] for r in response.data['default_price_rates']], ['DESP_IMP'])
+
+    def test_generate_is_forbidden_when_disabled(self):
+        self.enable('false')
+        response = self.client.post(
+            '/billing/invoice/unpaid-fees/generate/?unpaid_status=expired',
+            {'price_rate_ids': [self.fee_rate.id]}, format='json')
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_generate_launches_task_with_filtered_invoices_minus_excluded(self):
+        self.enable('true')
+        kept = self.invoice('A')
+        excluded = self.invoice('B')
+        self.invoice('C', status=self.confirmed)
+
+        with patch('billing.tasks.generate_unpaid_fee_invoices_task.delay') as delay:
+            delay.return_value.id = 'task-1'
+            response = self.client.post(
+                '/billing/invoice/unpaid-fees/generate/?unpaid_status=expired',
+                {'price_rate_ids': [self.fee_rate.id], 'excluded_ids': [excluded.id]}, format='json')
+
+        self.assertEqual(response.status_code, 202)
+        delay.assert_called_once_with([kept.id], [self.fee_rate.id])

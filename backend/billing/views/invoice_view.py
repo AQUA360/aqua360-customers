@@ -563,6 +563,44 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     task = generate_massive_invoice_download.delay(invoice_ids, base_url, in_zip)
     return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
+  @action(detail=False, methods=['get'], url_path='unpaid-fees/config')
+  def unpaid_fees_config(self, request):
+    """Si l'operació de despeses d'impagat està activa i la tarifa que es proposa per defecte."""
+    from billing.utils.unpaid_fee_service import is_unpaid_fee_operation_enabled, default_unpaid_fee_price_rate
+    enabled = is_unpaid_fee_operation_enabled()
+    price_rate = default_unpaid_fee_price_rate() if enabled else None
+    return Response({
+        "enabled": enabled,
+        "default_price_rates": [{"id": price_rate.id, "token": price_rate.token, "name": price_rate.name}] if price_rate else [],
+    }, status=status.HTTP_200_OK)
+
+  @action(detail=False, methods=['post'], url_path='unpaid-fees/generate')
+  def unpaid_fees_generate(self, request):
+    """Crea les despeses d'impagat de les factures filtrades, llevat de les excloses.
+
+    Els filtres van a la query string, com a la llista.
+    """
+    from billing.tasks import generate_unpaid_fee_invoices_task
+    from billing.utils.unpaid_fee_service import is_unpaid_fee_operation_enabled
+    if not is_unpaid_fee_operation_enabled():
+        return Response({"error": _("Operation not enabled")}, status=status.HTTP_403_FORBIDDEN)
+
+    price_rate_ids = [int(v) for v in request.data.get('price_rate_ids') or [] if str(v).isdigit()]
+    if not price_rate_ids:
+        return Response({"error": _("Select at least one fee")}, status=status.HTTP_400_BAD_REQUEST)
+
+    queryset = self.filter_queryset(Invoice.objects.filter(is_active=True, is_excluded=False))
+    excluded_ids = request.data.get('excluded_ids')
+    if excluded_ids:
+        queryset = queryset.exclude(id__in=excluded_ids)
+
+    invoice_ids = list(queryset.values_list('id', flat=True).distinct())
+    if not invoice_ids:
+        return Response({"error": _("No invoices found")}, status=status.HTTP_404_NOT_FOUND)
+
+    task = generate_unpaid_fee_invoices_task.delay(invoice_ids, price_rate_ids)
+    return Response({"task_id": task.id, "count": len(invoice_ids)}, status=status.HTTP_202_ACCEPTED)
+
   @action(detail=True, methods=['post'], url_path='recalculate-smart')
   def recalculate_smart(self, request, pk=None):
     from billing.utils.recalculate_invoice_service import recalculate_invoice_smart

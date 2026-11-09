@@ -4673,3 +4673,18 @@ def generate_billing_document_download(self, download_id):
   record.completed_at = timezone.now()
   record.save(update_fields=['status', 'error_message', 'completed_at', 'invoice_count'])
   return {"status": "error", "message": message}
+
+
+@shared_task(bind=True)
+def generate_unpaid_fee_invoices_task(self, invoice_ids, price_rate_ids):
+  """Despeses d'impagat de les factures triades a la llista de factures."""
+  from billing.utils.unpaid_fee_service import generate_unpaid_fee_invoices
+
+  progress_recorder = ProgressRecorder(self)
+
+  def on_progress(done, total):
+    progress_recorder.set_progress(done, total, description=f"Generant despeses d'impagat ({done}/{total})")
+
+  result = generate_unpaid_fee_invoices(invoice_ids, price_rate_ids, on_progress=on_progress)
+  result['status'] = 'success'
+  return result
