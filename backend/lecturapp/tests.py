@@ -190,14 +190,24 @@ class TestLecturappExcludesInactiveMeters(TestCase):
         cls.route = route
         cls.context = {'include_telecontrol': True}
 
-    def test_property_meters_only_active(self):
-        from unittest.mock import patch
+    def test_property_meters_only_active_are_readable(self):
+        from unittest.mock import MagicMock, patch
         from lecturapp.serializers import PropertyAppDetailedSerializer
 
-        with patch('lecturapp.serializers.MeterAppSerializer') as meter_serializer:
-            PropertyAppDetailedSerializer(context=self.context).get_meters(self.property)
-        sent_meters = meter_serializer.call_args.args[0]
-        self.assertEqual(sent_meters, [self.meters['1']])
+        def fake_serializer(meters, **kwargs):
+            return MagicMock(data=[{'id': meter.id} for meter in meters])
+
+        context = {**self.context, 'route_position': self.position, 'include_disabled_meters': True}
+        with patch('lecturapp.serializers.MeterAppSerializer', side_effect=fake_serializer) as meter_serializer:
+            data = PropertyAppDetailedSerializer(context=context).get_meters(self.property)
+        self.assertEqual(meter_serializer.call_args.args[0], [self.meters['1']])
+        # Els inactius i en aforament s'envien deshabilitats perquè l'app els mostri.
+        reasons = {item['id']: (item['is_readable'], item['disabled_reason']) for item in data}
+        self.assertEqual(reasons, {
+            self.meters['1'].id: (True, None),
+            self.meters['-1'].id: (False, 'meter_inactive'),
+            self.meters['0'].id: (False, 'no_meter'),
+        })
 
     def test_property_counts_only_active(self):
         from lecturapp.serializers import PropertyAppSerializer
@@ -213,3 +223,98 @@ class TestLecturappExcludesInactiveMeters(TestCase):
             RouteAppDetailSerializer(context=self.context).get_positions(self.route)
         sent_positions = position_serializer.call_args.args[0]
         self.assertEqual(sent_positions, [self.position])
+
+
+class TestLecturappPropertySplitAcrossRoutes(TestCase):
+    """Finca amb un punt a la ruta trimestral (la de la finca), un altre amb ruta
+    pròpia mensual i un de baixa: a cada ruta s'envien tots els comptadors i
+    només es poden llegir els de la ruta."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ConfigProject.objects.update_or_create(token='token_meter_status_no_meter', defaults={'value': '0'})
+        ConfigProject.objects.update_or_create(token='supply_point_status_activate_token', defaults={'value': 'SP_OK'})
+        active = SupplyPointStatus.objects.get_or_create(token='SP_OK', defaults={'name': 'Actiu'})[0]
+        removed = SupplyPointStatus.objects.get_or_create(token='SP_BAIXA', defaults={'name': 'Baixa'})[0]
+        meter_status = MeterStatus.objects.get_or_create(token='1', defaults={'name': 'Actiu'})[0]
+        cls.quarterly = Route.objects.create(token='SPLIT-T')
+        cls.monthly = Route.objects.create(token='SPLIT-M')
+        cls.quarterly_position = RoutePosition.objects.create(route=cls.quarterly, position=1, token='SPLIT-T_1')
+        cls.monthly_position = RoutePosition.objects.create(route=cls.monthly, position=1, token='SPLIT-M_1')
+        cls.property = Property.objects.create(token='split-property', route_position=cls.quarterly_position)
+
+        def supply_point(token, status, route_position=None):
+            meter = Meter.objects.create(code=f'M-{token}', status=meter_status)
+            SupplyPoint.objects.create(token=token, meter=meter, property=cls.property, status=status,
+                                       route_position=route_position)
+            return meter
+
+        cls.meter_a = supply_point('split-a', active)
+        cls.meter_b = supply_point('split-b', active, cls.monthly_position)
+        cls.meter_c = supply_point('split-c', removed)
+
+        # Posició on només hi ha un punt de baixa: no s'envia.
+        cls.removed_position = RoutePosition.objects.create(route=cls.quarterly, position=2, token='SPLIT-T_2')
+        removed_property = Property.objects.create(token='split-removed', route_position=cls.removed_position)
+        SupplyPoint.objects.create(token='split-removed-sp', property=removed_property, status=removed,
+                                   meter=Meter.objects.create(code='M-REMOVED', status=meter_status))
+
+    def meters_at(self, position, include_disabled=True):
+        from unittest.mock import MagicMock, patch
+        from lecturapp.serializers import PropertyAppDetailedSerializer
+
+        def fake_serializer(meters, **kwargs):
+            return MagicMock(data=[{'id': meter.id} for meter in meters])
+
+        context = {'include_telecontrol': True, 'route_position': position, 'include_disabled_meters': include_disabled}
+        with patch('lecturapp.serializers.MeterAppSerializer', side_effect=fake_serializer):
+            serializer = PropertyAppDetailedSerializer(context=context)
+            data = serializer.get_meters(self.property)
+        return {item['id']: item for item in data}
+
+    def test_quarterly_route(self):
+        meters = self.meters_at(self.quarterly_position)
+        self.assertTrue(meters[self.meter_a.id]['is_readable'])
+        self.assertEqual(meters[self.meter_b.id]['disabled_reason'], 'other_route')
+        self.assertEqual(meters[self.meter_b.id]['other_route_token'], 'SPLIT-M')
+        self.assertEqual(meters[self.meter_b.id]['other_position_token'], 'SPLIT-M_1')
+        self.assertEqual(meters[self.meter_c.id]['disabled_reason'], 'supply_point_inactive')
+
+    def test_monthly_route(self):
+        meters = self.meters_at(self.monthly_position)
+        self.assertTrue(meters[self.meter_b.id]['is_readable'])
+        self.assertEqual(meters[self.meter_a.id]['disabled_reason'], 'other_route')
+        self.assertEqual(meters[self.meter_a.id]['other_route_token'], 'SPLIT-T')
+
+    def test_old_app_only_gets_readable_meters(self):
+        meters = self.meters_at(self.quarterly_position, include_disabled=False)
+        self.assertEqual(list(meters), [self.meter_a.id])
+
+    def test_num_meters_counts_only_readable(self):
+        from lecturapp.serializers import property_meter_entries
+
+        context = {'include_telecontrol': True, 'route_position': self.quarterly_position}
+        readable = [meter for _, meter, reason in property_meter_entries(self.property, context) if reason is None]
+        self.assertEqual(readable, [self.meter_a])
+
+    def test_route_skips_positions_with_only_removed_supply_points(self):
+        from unittest.mock import patch
+        from lecturapp.serializers import RouteAppDetailSerializer
+
+        with patch('lecturapp.serializers.RoutePositionAppDetailedSerializer') as position_serializer:
+            RouteAppDetailSerializer(context={'include_telecontrol': True}).get_positions(self.quarterly)
+        self.assertEqual(position_serializer.call_args.args[0], [self.quarterly_position])
+
+    def test_full_serialization(self):
+        from lecturapp.serializers import PropertyAppDetailedSerializer
+
+        ConfigProject.objects.update_or_create(token='contract_active_token', defaults={'value': 'ACTIVE'})
+        context = {'include_telecontrol': True, 'route_position': self.monthly_position, 'reading_batch_id': 1,
+                   'include_disabled_meters': True}
+        data = PropertyAppDetailedSerializer(self.property, context=context).data
+        self.assertEqual(data['num_meters'], 1)
+        meters = {item['supply_token']: item for item in data['meters']}
+        self.assertEqual(meters['split-b']['is_readable'], True)
+        self.assertEqual(meters['split-a']['is_readable'], False)
+        self.assertEqual(meters['split-a']['other_position_token'], 'SPLIT-T_1')
+        self.assertEqual(set(meters['split-a']) ^ set(meters['split-b']), set())
