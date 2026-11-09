@@ -99,7 +99,7 @@ export const useConfigStore = defineStore('config', {
                 this.publicOrgType = String(value ?? '').trim().toLowerCase();
             } catch (error) {
                 console.error('Error fetching public_org_type config:', error);
-                this.publicOrgType = ''; // Fallback: sense ACA
+                // Leave pending (null) so the next call can retry instead of hiding ACA until reload.
             } finally {
                 this.loading = false;
             }
