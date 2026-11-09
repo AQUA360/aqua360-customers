@@ -64,12 +64,25 @@ const processableRejections = computed(() =>
     (rejections.value || []).filter((rejection) => !isExcluded(rejection))
 );
 
+// Els pagaments de factures ja anul·lades i refetes no es retornen ni es reclamen:
+// el deute és a la factura nova (el backend també els exclou)
+const isRectified = (rejection) => Boolean(rejection?.invoice_rectified);
+const selectableRejections = computed(() =>
+    processableRejections.value.filter((rejection) => !isRectified(rejection))
+);
+const terminatedCount = computed(() =>
+    processableRejections.value.filter((rejection) => rejection.contract_terminated).length
+);
+const rectifiedCount = computed(() =>
+    processableRejections.value.filter((rejection) => isRectified(rejection)).length
+);
+
 const allSelectedReturnPayments = computed(() => {
-    const list = processableRejections.value;
+    const list = selectableRejections.value;
     return list.length > 0 && list.every(rejection => selectedReturnPayments.value.includes(rejection.payment_id))
 })
 const allSelectedClaimPayments = computed(() => {
-    const list = processableRejections.value;
+    const list = selectableRejections.value;
     return list.length > 0 && list.every(rejection => selectedClaimPayments.value.includes(rejection.payment_id))
 })
 
@@ -144,7 +157,7 @@ const mapRejections = (rejectionsList) => {
 
 const syncExcludedSelections = () => {
     const excludedIds = new Set(
-        (rejections.value || []).filter((rejection) => isExcluded(rejection)).map((rejection) => rejection.payment_id)
+        (rejections.value || []).filter((rejection) => isExcluded(rejection) || isRectified(rejection)).map((rejection) => rejection.payment_id)
     );
     if (!excludedIds.size) return;
     selectedReturnPayments.value = selectedReturnPayments.value.filter((id) => !excludedIds.has(id));
@@ -180,7 +193,7 @@ const selectAllForInvoices = () => {
     if (allSelectedReturnPayments.value) {
         selectedReturnPayments.value = [];
     } else {
-        selectedReturnPayments.value = processableRejections.value.map(rejection => rejection.payment_id);
+        selectedReturnPayments.value = selectableRejections.value.map(rejection => rejection.payment_id);
         if (selectedClaimPayments.value.length > 0) {
             selectedClaimPayments.value = [];
         }
@@ -216,7 +229,7 @@ const selectAllForClaims = () => {
     if (allSelectedClaimPayments.value) {
         selectedClaimPayments.value = [];
     } else {
-        selectedClaimPayments.value = processableRejections.value.map(rejection => rejection.payment_id);
+        selectedClaimPayments.value = selectableRejections.value.map(rejection => rejection.payment_id);
         if (selectedReturnPayments.value.length > 0) {
             selectedReturnPayments.value = [];
         }
@@ -236,7 +249,24 @@ const exportColumns = computed(() => [
     { header: t('common.previous_status'), value: (row) => row.prev_status },
     { header: t('order_block.reason'), value: (row) => row.motive },
     { header: t('billing_block.sepa_return_date'), value: (row) => row.rjt_dt ? formatDate(row.rjt_dt) : '' },
+    { header: t('billing_block.return_warnings'), value: (row) => returnWarnings(row).join(' · ') },
 ]);
+
+// Avisos de la fila: abonat de baixa i factura anul·lada i refeta
+const returnWarnings = (row) => {
+    const warnings = [];
+    if (row.contract_terminated) {
+        warnings.push(row.contract_termination_date
+            ? `${t('billing_block.return_contract_terminated')} (${formatDate(row.contract_termination_date)})`
+            : t('billing_block.return_contract_terminated'));
+    }
+    if (row.invoice_rectified) {
+        warnings.push(row.refactored_invoice
+            ? `${t('billing_block.return_invoice_refactored')}: ${row.refactored_invoice}`
+            : t('billing_block.return_invoice_rectified'));
+    }
+    return warnings;
+};
 
 const exportSummary = computed(() => {
     const returnDate = rejections.value?.find(rejection => rejection.rjt_dt)?.rjt_dt;
@@ -249,6 +279,8 @@ const exportSummary = computed(() => {
         [t('billing_block.payments_to_return'), rejections.value?.length || 0],
         [t('billing_block.total_amount'), Math.round(totalAmount * 100) / 100],
         [t('common.return_multiple_not_found'), not_found_rejections.value?.length || 0],
+        [t('billing_block.return_contract_terminated'), terminatedCount.value],
+        [t('billing_block.return_invoice_rectified'), rectifiedCount.value],
     ];
 });
 
@@ -302,6 +334,11 @@ watch(() => props.save_response, (newValue) => {
                     contract_holder_nif: row.contract_holder_nif ?? updated.contract_holder_nif,
                     is_legacy_exploitation: row.is_legacy_exploitation ?? updated.is_legacy_exploitation,
                     method_changed: row.method_changed ?? updated.method_changed,
+                    contract_terminated: row.contract_terminated ?? updated.contract_terminated,
+                    contract_termination_date: row.contract_termination_date ?? updated.contract_termination_date,
+                    invoice_rectified: row.invoice_rectified ?? updated.invoice_rectified,
+                    rectifying_invoice: row.rectifying_invoice ?? updated.rectifying_invoice,
+                    refactored_invoice: row.refactored_invoice ?? updated.refactored_invoice,
                 };
             }),
             ...(props.returned_data || []).filter(
@@ -416,6 +453,21 @@ watch(() => props.save_response, (newValue) => {
                         {{ legacyRejections.length }}
                     </span>
                 </button>
+            </div>
+
+            <div v-if="terminatedCount > 0 || rectifiedCount > 0"
+                class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                <div class="min-w-0 text-xs text-amber-900">
+                    <p v-if="terminatedCount > 0">
+                        <span class="font-semibold">{{ t("billing_block.return_contract_terminated") }}: {{ terminatedCount }}.</span>
+                        {{ t("informative_block.info_return_contract_terminated") }}
+                    </p>
+                    <p v-if="rectifiedCount > 0" :class="{ 'mt-1': terminatedCount > 0 }">
+                        <span class="font-semibold">{{ t("billing_block.return_invoice_rectified") }}: {{ rectifiedCount }}.</span>
+                        {{ t("informative_block.info_return_invoice_rectified") }}
+                    </p>
+                </div>
             </div>
 
             <!-- Compact Table -->
@@ -546,6 +598,29 @@ watch(() => props.save_response, (newValue) => {
                                         <p v-if="element.method_changed" class="mt-1 text-xs text-amber-700">
                                             {{ t("informative_block.info_return_method_changed") }}
                                         </p>
+                                        <div v-if="element.contract_terminated || element.invoice_rectified"
+                                            class="mt-1 flex flex-wrap gap-1">
+                                            <span v-if="element.contract_terminated"
+                                                :title="t('informative_block.info_return_contract_terminated')"
+                                                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                                                <Icon name="fa6-solid:user-slash" class="h-3 w-3" />
+                                                {{ t("billing_block.return_contract_terminated") }}
+                                                <template v-if="element.contract_termination_date">
+                                                    ({{ formatDate(element.contract_termination_date) }})
+                                                </template>
+                                            </span>
+                                            <span v-if="element.invoice_rectified"
+                                                :title="t('informative_block.info_return_invoice_rectified')"
+                                                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-violet-100 text-violet-800">
+                                                <Icon name="fa6-solid:file-circle-xmark" class="h-3 w-3" />
+                                                <template v-if="element.refactored_invoice">
+                                                    {{ t("billing_block.return_invoice_refactored") }}: {{ element.refactored_invoice }}
+                                                </template>
+                                                <template v-else>
+                                                    {{ t("billing_block.return_invoice_rectified") }}
+                                                </template>
+                                            </span>
+                                        </div>
                                     </td>
                                     <td class="px-1 py-2">
                                         <abbr :title="`${t('informative_block.info_select_claim_invoice')}`"
@@ -553,7 +628,8 @@ watch(() => props.save_response, (newValue) => {
                                             <button :class="{
                                                 'bg-white border-slate-500': !selectedReturnPayments.includes(element.payment_id),
                                                 'bg-orange-50 border-orange-500': selectedReturnPayments.includes(element.payment_id)
-                                            }" class="rounded border text-sky-600 hover:text-sky-800 h-6 w-6 group-hover:bg-slate-100 group-hover:border-sky-500"
+                                            }" class="rounded border text-sky-600 hover:text-sky-800 h-6 w-6 group-hover:bg-slate-100 group-hover:border-sky-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                :disabled="isRectified(element)"
                                                 @click="addOrRemoveReturnPayment(element.payment_id)">
                                                 <Icon v-if="selectedReturnPayments.includes(element.payment_id)"
                                                     name="fa6-solid:check"
@@ -566,7 +642,8 @@ watch(() => props.save_response, (newValue) => {
                                             <button :class="{
                                                 'bg-white border-slate-500': !selectedClaimPayments.includes(element.payment_id),
                                                 'bg-orange-50 border-orange-500': selectedClaimPayments.includes(element.payment_id)
-                                            }" class="rounded border text-sky-600 hover:text-sky-800 h-6 w-6 group-hover:bg-slate-100 group-hover:border-sky-500"
+                                            }" class="rounded border text-sky-600 hover:text-sky-800 h-6 w-6 group-hover:bg-slate-100 group-hover:border-sky-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                :disabled="isRectified(element)"
                                                 @click="addOrRemoveClaimPayment(element.payment_id)">
                                                 <Icon v-if="selectedClaimPayments.includes(element.payment_id)"
                                                     name="fa6-solid:check"
