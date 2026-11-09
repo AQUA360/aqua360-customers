@@ -49,6 +49,7 @@ def _meter_field_for(instance):
 
 def meters_using(instance, name=None):
     """Comptadors que fan servir (sense distingir majúscules) el valor de diccionari."""
+    from django.db.models import Q
     from service.models import Meter, MeterModel
 
     name = instance.name if name is None else name
@@ -57,8 +58,11 @@ def meters_using(instance, name=None):
 
     field = _meter_field_for(instance)
     meters = Meter.objects.filter(**{f'{field}__iexact': name})
-    if isinstance(instance, MeterModel) and instance.manufacturer_id:
-        meters = meters.filter(manufacturer__iexact=instance.manufacturer.name)
+    if isinstance(instance, MeterModel):
+        if instance.manufacturer_id:
+            meters = meters.filter(manufacturer__iexact=instance.manufacturer.name)
+        else:
+            meters = meters.filter(Q(manufacturer__isnull=True) | Q(manufacturer=''))
     return meters
 
 
