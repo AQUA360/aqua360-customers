@@ -8,7 +8,7 @@ from billing.models import ReadingBatch, Reading
 from service.models import SupplyPoint
 from service.utils.route_scope import effective_route_position, effective_route_select_related, routes_supply_points_q
 from coredata.models import ConfigProject
-from .serializers import RouteAppDetailSerializer, MeterAppSerializer
+from .serializers import RouteAppDetailSerializer, MeterAppSerializer, active_supply_point_q
 
 
 def meter_included_for_batch(meter, include_telecontrol, include_manual):
@@ -22,7 +22,7 @@ def meter_included_for_batch(meter, include_telecontrol, include_manual):
 
 
 @shared_task(bind=True)
-def process_reading_batch_routes_detailed(self, reading_batch_id):
+def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabled_meters=False):
     """
     Process reading batch routes detailed data in background with progress tracking
     """
@@ -237,7 +237,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
         # Punts amb ruta efectiva a les rutes del lot (posició pròpia o, si no en té, la de la finca)
         route_supply_points = SupplyPoint.objects.filter(
             routes_supply_points_q(routes), meter__isnull=False
-        ).select_related('meter__status').prefetch_related('meter__sub_meters__status')
+        ).filter(active_supply_point_q(activate_token)).select_related('meter__status').prefetch_related('meter__sub_meters__status')
         distinct_meter_ids = set()
         
         for sp in route_supply_points:
@@ -266,7 +266,11 @@ def process_reading_batch_routes_detailed(self, reading_batch_id):
             'include_telecontrol': include_telecontrol,
             'include_manual': include_manual,
             'total_meters': total_meters,
-            'month': reading_batch.created_at.month
+            'month': reading_batch.created_at.month,
+            'include_disabled_meters': include_disabled_meters,
+            # Memòries compartides entre posicions (el context es copia per posició)
+            '_config_cache': {},
+            '_meter_entries_cache': {},
         }
         
         progress_recorder.set_progress(30, 100, "Serializing data...")

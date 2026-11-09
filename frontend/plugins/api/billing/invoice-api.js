@@ -771,6 +771,11 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const changeHolder = async (id, holderId) => {
+      const apiUrl = `${apiHost}${entity}${id}/change-holder/`;
+      return await $apiManager.fetch(apiUrl, 'POST', { holder_id: holderId }, { 'Content-Type': 'application/json' })
+    }
+
     const sendEmail = async (id, data) => {
       const apiUrl = `${apiHost}${entity}${id}/send-email/`;
       try {
@@ -835,6 +840,7 @@ export default defineNuxtPlugin(nuxtApp => {
       recalculateSmart,
       manageMassivelyPaid,
       sendEmail,
+      changeHolder,
       sendGroupedEmail,
       getBilledInvoices
     }

@@ -439,3 +439,30 @@ class TestMultiMeterBilling(TestCase):
                 self.contract.price_rates.add(*historical_links)
                 historical_rate.is_active = True
                 historical_rate.save(update_fields=['is_active'])
+
+    def test_recalculation_keeps_budget_type_and_serie(self):
+        from billing.utils.recalculate_invoice_service import (
+            delete_and_recalculate_invoice, recalculate_invoice_smart,
+        )
+
+        budget_type, _ = InvoiceType.objects.get_or_create(
+            token='BUDGET', defaults={'name': 'Pressupost'},
+        )
+        invoice_type = InvoiceType.objects.get(token='1')
+
+        for recalculate in (delete_and_recalculate_invoice, recalculate_invoice_smart):
+            with self.subTest(recalculate=recalculate.__name__):
+                original, _reading = self._create_persons_invoice()
+                original.type = budget_type
+                original.type_final = 'BUDGET'
+                original.serie_final = f'P/{original.pk:06d}'
+                original.save(update_fields=['type', 'type_final', 'serie_final'])
+
+                with patch('billing.utils.recalculate_invoice_service._get_invoice_warning', return_value=None):
+                    regenerated = recalculate(original.pk)
+
+                regenerated.refresh_from_db()
+                self.assertEqual(regenerated.type_id, budget_type.id)
+                self.assertEqual(regenerated.type_final, 'BUDGET')
+                self.assertEqual(regenerated.serie_final, f'P/{original.pk:06d}')
+                self.assertNotEqual(regenerated.type_id, invoice_type.id)

@@ -14,6 +14,7 @@ from communication.models import CANCELLED_STATUS_TOKEN, Communication, Communic
 from communication.filters.communication_filter import CommunicationFilter
 from communication.permissions import CommunicationDeletePermission
 from communication.serializers.communication_serializer import CommunicationSerializer, CommunicationListSerializer, CommunicationSaveSerializer
+from communication.utils.communication_process_service import finish_process_if_done
 from communication.utils.communication_service import get_email_image_preview
 from contract.models import Contract
 from coredata.models import ConfigProject, Person
@@ -109,15 +110,7 @@ class CommunicationViewSet(viewsets.ModelViewSet):
       LogCommunicationStatusChange.objects.bulk_create(log_entries)
 
     if process:
-      if all(
-        communication.status.token == status_token
-        for communication in process.communications.all()
-      ):
-        process_finalized = CommunicationProcessStatus.objects.get(
-          token=ConfigProject.objects.get(token='communication_process_status_finalized_token').value
-        )
-        process.status = process_finalized
-        process.save()
+      finish_process_if_done(process)
 
     return Response({"message": "Communications marked as sent"}, status=status.HTTP_200_OK)
 
