@@ -75,6 +75,11 @@ const props = defineProps({
     }),
   },
 
+  invoiceListMode: {
+    type: String,
+    default: 'invoice',
+  },
+
   person_ids: Array,
   permissions: Object,
   canChange: Boolean,
@@ -91,7 +96,19 @@ const emit = defineEmits([
   'update:order-count',
   'update:bonification-variable-change-count',
   'update-invoices-page',
+  'update-invoice-list-mode',
 ]);
+
+const invoiceListExportFileName = computed(() => {
+  const token = props.contract?.token || props.contract?.id || '';
+  return props.invoiceListMode === 'budget'
+    ? `pressupostos_${token}`
+    : `factures_${token}`;
+});
+
+const onInvoiceListModeSelect = (mode) => {
+  emit('update-invoice-list-mode', mode);
+};
 
 const { t } = useI18n();
 
@@ -720,39 +737,42 @@ const groupedPriceRates = computed(() => {
         </button>
       </div>
 
-      <div v-if="invoicesLoading" class="flex justify-center items-center mt-5 mb-10">
-        <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
-        <span class="ml-2">{{ $t('common.loading') }}...</span>
-      </div>
+      <AtomsTabs v-if="contract.general_invoice">
+        <li class="me-2">
+          <a href="#tab_invoice_invoices" @click.prevent="setInvoiceActiveTab('invoice_invoices')"
+            :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_invoices', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_invoices' }">
+            {{ $t("invoices") }} ({{ invoices_count }})
+          </a>
+        </li>
 
-      <template v-else>
-        <AtomsTabs v-if="contract.general_invoice">
-          <li class="me-2">
-            <a href="#tab_invoice_invoices" @click.prevent="setInvoiceActiveTab('invoice_invoices')"
-              :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_invoices', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_invoices' }">
-              {{ $t("invoices") }} ({{ invoices_count }})
-            </a>
-          </li>
+        <li class="me-2">
+          <a href="#tab_invoice_generals" @click.prevent="setInvoiceActiveTab('invoice_generals')"
+            :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_generals', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_generals' }">
+            {{ $t("billing_block.general_invoices") }} ({{ generalInvoiceRuns.length }})
+          </a>
+        </li>
+      </AtomsTabs>
 
-          <li class="me-2">
-            <a href="#tab_invoice_generals" @click.prevent="setInvoiceActiveTab('invoice_generals')"
-              :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_generals', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_generals' }">
-              {{ $t("billing_block.general_invoices") }} ({{ generalInvoiceRuns.length }})
-            </a>
-          </li>
-        </AtomsTabs>
+      <section v-if="invoiceActiveTab === 'invoice_invoices'" class="mb-10 mt-2">
+        <InvoiceMiniDetail :item="invoices" :contract="contract" @show-detail="showDetail" :isSubRegion="isSubRegion"
+          :autoCols="true" :exportable="true" :export-file-name="invoiceListExportFileName"
+          :grouped-invoice-mode="groupedInvoiceMode"
+          :list-type-selectable="true" :list-type="invoiceListMode"
+          :loading="invoicesLoading"
+          @update:list-type="onInvoiceListModeSelect" />
 
-        <section v-if="invoiceActiveTab === 'invoice_invoices'" class="mb-10 mt-2">
-          <InvoiceMiniDetail :item="invoices" :contract="contract" @show-detail="showDetail" :isSubRegion="isSubRegion"
-            :autoCols="true" :exportable="true" :export-file-name="`factures_${contract?.token || contract?.id || ''}`"
-            :grouped-invoice-mode="groupedInvoiceMode" />
+        <div class="border-t border-gray-100 p-2" v-if="!invoicesLoading && invoicesPagination.totalPages > 1">
+          <Pagination :pagination="invoicesPagination" @update:page="onInvoicesPageChange" />
+        </div>
+      </section>
 
-          <div class="border-t border-gray-100 p-2" v-if="invoicesPagination.totalPages > 1">
-            <Pagination :pagination="invoicesPagination" @update:page="onInvoicesPageChange" />
-          </div>
-        </section>
+      <section v-if="invoiceActiveTab === 'invoice_generals'" class="mb-10 mt-2">
+        <div v-if="invoicesLoading" class="flex justify-center items-center mt-5 mb-10">
+          <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
+          <span class="ml-2">{{ $t('common.loading') }}...</span>
+        </div>
 
-        <section v-if="invoiceActiveTab === 'invoice_generals'" class="mb-10 mt-2">
+        <template v-else>
           <div v-for="(run, index) in generalInvoiceRuns" :key="run.key" class="mb-3 border border-slate-200 rounded">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-slate-50">
               <button type="button" @click="toggleRun(run, index)"
@@ -783,8 +803,8 @@ const groupedPriceRates = computed(() => {
           <div v-if="!generalInvoiceRuns.length" class="footering text-slate-500 p-2">
             {{ $t('common.no_records') }}
           </div>
-        </section>
-      </template>
+        </template>
+      </section>
     </section>
 
     <section v-show="activeTab === 'orders'" role="tabpanel" id="tab_orders" class="bg-white antialiased">

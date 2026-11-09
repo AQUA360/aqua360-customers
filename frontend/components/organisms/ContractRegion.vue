@@ -97,6 +97,8 @@ const expired_bonifications = ref(null)
 const invoices = ref([])
 const general_invoices = ref([])
 const invoicesLoading = ref(false)
+// 'invoice' → is_invoice=true; 'budget' → is_invoice=false
+const invoiceListMode = ref('invoice')
 const invoicesPagination = ref({
   page: 1,
   perPage: 50,
@@ -299,12 +301,12 @@ const loadInvoices = async () => {
 }
 
 const getInvoices = async (page = 1) => {
-  invoices.value = []
   try {
-    const result = await $InvoiceApiService.getInvoicesFromContract(props.id, false, true, page);
+    const isInvoice = invoiceListMode.value === 'invoice';
+    const result = await $InvoiceApiService.getInvoicesFromContract(props.id, false, isInvoice, page);
     invoices.value = result.results;
 
-    if (data.value.request_invoices.length > 0) {
+    if (isInvoice && data.value.request_invoices.length > 0) {
       data.value.request_invoices.forEach(reqInvoice => {
         if (!invoices.value.some(inv => inv.id === reqInvoice.id)) {
           invoices.value.push(reqInvoice);
@@ -322,6 +324,17 @@ const getInvoices = async (page = 1) => {
 
 const onInvoicesPageChange = (newPage) => {
   getInvoices(newPage);
+}
+
+const onInvoiceListModeChange = async (mode) => {
+  if (invoiceListMode.value === mode) return;
+  invoiceListMode.value = mode;
+  invoicesLoading.value = true;
+  try {
+    await getInvoices(1);
+  } finally {
+    invoicesLoading.value = false;
+  }
 }
 
 const getGeneralInvoices = async () => {
@@ -458,6 +471,7 @@ watch(() => props.id, async () => {
   loadedTabs.value = new Set(['observations']);
   invoices.value = [];
   general_invoices.value = [];
+  invoiceListMode.value = 'invoice';
   invoicesPagination.value = {
     page: 1,
     perPage: invoicesPagination.value.perPage || 50,
@@ -818,6 +832,7 @@ const addWalletBalance = () => {
           :general_invoices="general_invoices"
           :invoicesLoading="invoicesLoading"
           :invoicesPagination="invoicesPagination"
+          :invoice-list-mode="invoiceListMode"
           :person_ids="person_ids"
           :permissions="permissions"
           :canChange="objectPermissions?.can_change"
@@ -830,7 +845,8 @@ const addWalletBalance = () => {
           @update:communication-count="updateCommunicationCount"
           @update:order-count="updateOrderCount"
           @update:bonification-variable-change-count="updateBonificationVariableChangeCount"
-          @update-invoices-page="onInvoicesPageChange" />
+          @update-invoices-page="onInvoicesPageChange"
+          @update-invoice-list-mode="onInvoiceListModeChange" />
       </div><!-- end if data -->
     </div><!-- end if pending -->
 
