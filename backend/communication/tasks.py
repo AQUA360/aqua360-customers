@@ -10,6 +10,7 @@ from billing.models import Invoice, PaymentRemittance
 from billing.utils.payment_pdf_service import generate_report_payment_pdf
 from claimrequest.models import ClaimRequest
 from communication.models import Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
+from communication.utils.communication_process_service import finish_process_if_done
 from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file, validate_letter_contract_companies, invoices_attached_to_email
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
@@ -126,16 +127,12 @@ def send_communications_task(process_id=None, communication_ids=None, batch_size
                     }
                     Notification.objects.create(**notification_save)
                     try:
-                        if all(communication.status.token == comm_sent_token for communication in process.communications.all()):
-                            status_finalized_token = ConfigProject.objects.get(token='communication_process_status_finalized_token').value
-                            status_current = CommunicationProcessStatus.objects.get(token=status_finalized_token)
-                        else:
+                        if not finish_process_if_done(process):
                             status_current_token = ConfigProject.objects.get(
                                 token="communication_process_status_current_token"
                             ).value
-                            status_current = CommunicationProcessStatus.objects.get(token=status_current_token)
-                        process.status = status_current
-                        process.save()
+                            process.status = CommunicationProcessStatus.objects.get(token=status_current_token)
+                            process.save()
                     except (ConfigProject.DoesNotExist, CommunicationProcessStatus.DoesNotExist) as e:
                         print(f"Error updating process status: {str(e)}")
                 except Exception as e:

@@ -1448,3 +1448,73 @@ class CommunicationUpdateKeepsMessagesTests(TestCase):
         communication = self._update({'types': [self.email_type.id, self.sms_type.id]})
         self.assertEqual(communication.messages.get(type=self.email_type).body, 'Cos editat')
         self.assertEqual(communication.messages.get(type=self.sms_type).body, 'SMS plantilla')
+
+
+class ProcessFinishedWithCancelledTests(TestCase):
+    """El procés es finalitza quan totes les comunicacions estan enviades o anul·lades."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import User
+        from communication.models import CommunicationStatus
+
+        cls.user = User.objects.create_superuser('admin', 'admin@example.com', 'pass')
+        cls.pending = CommunicationStatus.objects.create(token='0', name='Pendent', is_default=True)
+        cls.sent = CommunicationStatus.objects.create(token='2', name='Enviada')
+        cls.cancelled = CommunicationStatus.objects.create(token='-1', name='Anul·lada')
+        cls.process_current = CommunicationProcessStatus.objects.create(token='2', name='En curs')
+        cls.process_finalized = CommunicationProcessStatus.objects.create(token='3', name='Finalitzat')
+        cls.process_cancelled = CommunicationProcessStatus.objects.create(token='-1', name='Anul·lat')
+        for token, value in (
+            ('communication_status_sent_token', '2'),
+            ('communication_process_status_current_token', '2'),
+            ('communication_process_status_finalized_token', '3'),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.process = CommunicationProcess.objects.create(status=self.process_current)
+
+    def make_comm(self, comm_status):
+        return Communication.objects.create(status=comm_status, process=self.process)
+
+    def assertProcessStatus(self, process_status):
+        self.process.refresh_from_db()
+        self.assertEqual(self.process.status, process_status)
+
+    def test_cancelling_last_pending_finishes_process(self):
+        self.make_comm(self.sent)
+        comm = self.make_comm(self.pending)
+        response = self.client.delete(f'/communication/communication/{comm.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertProcessStatus(self.process_finalized)
+
+    def test_sending_last_pending_with_cancelled_finishes_process(self):
+        self.make_comm(self.cancelled)
+        comm = self.make_comm(self.pending)
+        comm.status = self.sent
+        comm.save()
+        self.assertProcessStatus(self.process_finalized)
+
+    def test_pending_communication_keeps_process_running(self):
+        self.make_comm(self.pending)
+        comm = self.make_comm(self.pending)
+        self.client.delete(f'/communication/communication/{comm.id}/')
+        self.assertProcessStatus(self.process_current)
+
+    def test_all_cancelled_does_not_finish_process(self):
+        comm = self.make_comm(self.pending)
+        self.client.delete(f'/communication/communication/{comm.id}/')
+        self.assertProcessStatus(self.process_current)
+
+    def test_cancelling_process_is_not_overwritten(self):
+        # Primer la pendent: en anul·lar-la, la resta encara consta com a enviada
+        self.make_comm(self.pending)
+        self.make_comm(self.sent)
+        response = self.client.delete(f'/communication/communication-process/{self.process.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertProcessStatus(self.process_cancelled)
