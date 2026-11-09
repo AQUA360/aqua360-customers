@@ -22,6 +22,7 @@ from communication.filters.communication_process_filter import CommunicationProc
 from communication.models import CANCELLED_STATUS_TOKEN, Communication, CommunicationProcess, CommunicationProcessStatus, CommunicationStatus
 from communication.permissions import CommunicationDeletePermission, CommunicationPermission
 from communication.serializers.communication_process_serializer import CommunicationProcessSerializer, CommunicationProcessListSerializer, CommunicationProcessSaveSerializer
+from communication.utils.communication_process_service import finish_process_if_done
 from coredata.models import ConfigProject
 from statistics.utils.report_service import delete_file_later
 class CommunicationProcessViewSet(viewsets.ModelViewSet):
@@ -87,10 +88,7 @@ class CommunicationProcessViewSet(viewsets.ModelViewSet):
       communication_process.download_einvoices_task_id = task_result.id
       communication_process.save()
       
-      if all(communication.status.token == status_token for communication in communication_process.communications.all()):
-          process_finalized = CommunicationProcessStatus.objects.get(token=ConfigProject.objects.get(token='communication_process_status_finalized_token').value)
-          communication_process.status = process_finalized
-          communication_process.save()
+      finish_process_if_done(communication_process)
       
       return JsonResponse({"task_id": task_result.id})
   
