@@ -80,6 +80,12 @@ class InvoiceFilter(filters.FilterSet):
     line_item = filters.CharFilter(method='filter_line_item')
     invoice_kinds = filters.CharFilter(method='filter_invoice_kinds')
     multi_page = filters.BooleanFilter(method='filter_multi_page')
+    # Despeses d'impagat (billing/utils/unpaid_fee_service.py)
+    unpaid_status = filters.CharFilter(method='filter_unpaid_status')
+    without_fee_price_rates = filters.CharFilter(method='filter_without_fee_price_rates')
+    exclude_vulnerable = filters.BooleanFilter(method='filter_exclude_vulnerable')
+    exclude_terminated = filters.BooleanFilter(method='filter_exclude_terminated')
+    exclude_open_claim = filters.BooleanFilter(method='filter_exclude_open_claim')
     
     class Meta:
         model = Invoice
@@ -98,6 +104,11 @@ class InvoiceFilter(filters.FilterSet):
             'person',
             'invoice_kinds',
             'multi_page',
+            'unpaid_status',
+            'without_fee_price_rates',
+            'exclude_vulnerable',
+            'exclude_terminated',
+            'exclude_open_claim',
         ]
 
     def filter_search(self, queryset, name, value):
@@ -273,3 +284,42 @@ class InvoiceFilter(filters.FilterSet):
         if value is True:
             return queryset.filter(contract__isnull=True, contract_request__isnull=True, contract_termination__isnull=True)
         return queryset
+
+    # Els filtres de sota fan servir subconsultes d'ids: amb joins directes per
+    # `payments` o `child_invoices` la llista sortiria amb factures repetides.
+
+    def filter_unpaid_status(self, queryset, name, value):
+        """Factures pendents de cobrar: `expired` (vençudes) i/o `returned` (rebut retornat)."""
+        from billing.utils.unpaid_fee_service import UNPAID_STATUSES, eligible_invoices
+        kinds = {kind.strip() for kind in (value or '').split(',') if kind.strip()} & UNPAID_STATUSES
+        if not kinds:
+            return queryset
+        return eligible_invoices(queryset, kinds)
+
+    def filter_without_fee_price_rates(self, queryset, name, value):
+        """Treu les factures de despeses d'aquestes tarifes i les que ja en tenen."""
+        from billing.utils.unpaid_fee_service import with_fee_ids
+        price_rate_ids = [v.strip() for v in (value or '').split(',') if v.strip().isdigit()]
+        if not price_rate_ids:
+            return queryset
+        return queryset.exclude(id__in=with_fee_ids(price_rate_ids))
+
+    def filter_exclude_vulnerable(self, queryset, name, value):
+        from billing.utils.unpaid_fee_service import vulnerable_q
+        if value is not True:
+            return queryset
+        return queryset.exclude(id__in=Invoice.objects.filter(vulnerable_q()).values('id'))
+
+    def filter_exclude_terminated(self, queryset, name, value):
+        from billing.utils.unpaid_fee_service import terminated_contract_q
+        query = terminated_contract_q() if value is True else None
+        if not query:
+            return queryset
+        return queryset.exclude(id__in=Invoice.objects.filter(query).values('id'))
+
+    def filter_exclude_open_claim(self, queryset, name, value):
+        from billing.utils.unpaid_fee_service import open_claim_q
+        query = open_claim_q() if value is True else None
+        if not query:
+            return queryset
+        return queryset.exclude(id__in=Invoice.objects.filter(query).values('id'))

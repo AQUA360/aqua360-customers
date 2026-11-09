@@ -41,6 +41,8 @@ const toggleRegion = (force, isReload = false) => {
 }
 
 const openIndexDropdown = ref(false)
+// Operació «Despeses d'impagat»: només si el projecte la té activada (ConfigProject).
+const unpaidFeesEnabled = ref(false)
 
 const route = useRoute();
 const router = useRouter();
@@ -394,6 +396,9 @@ onMounted(async () => {
     getFilterOrigin()
     getFilterSerie()
     getFilterPaymentType()
+    $InvoiceApiService.getUnpaidFeesConfig()
+      .then(config => { unpaidFeesEnabled.value = !!config?.enabled })
+      .catch(() => { unpaidFeesEnabled.value = false })
     filtersExtra.value.push(
       { name: t("common.date"), id: "issue_date" },
       { name: t("common.due_date"), id: "due_date" },
@@ -510,6 +515,12 @@ watch(() => route.query, () => {
                 <div class="flex justify-between items-center">
                   {{ $t('billing_block.short_mng_e_invoice') }}
                   <Icon name="fa6-solid:file" class="display-inline mr-2" />
+                </div>
+              </NuxtLink>
+              <NuxtLink v-if="unpaidFeesEnabled" to="/billing/invoice/unpaid-fees" class="button-default">
+                <div class="flex justify-between items-center">
+                  {{ $t('billing_block.unpaid_fee_title') }}
+                  <Icon name="fa6-solid:file-invoice-dollar" class="display-inline mr-2" />
                 </div>
               </NuxtLink>
           </div>

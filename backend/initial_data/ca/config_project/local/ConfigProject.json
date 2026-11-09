@@ -3118,5 +3118,17 @@
             "value": "false",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 263,
+        "fields": {
+            "created_at": "2026-11-09T00:00:00.000Z",
+            "updated_at": "2026-11-09T00:00:00.000Z",
+            "token": "unpaid_fee_operation_enabled",
+            "name": "Mostrar l'operació «Despeses d'impagat» a la llista de factures",
+            "value": "false",
+            "file": null
+        }
     }
 ]

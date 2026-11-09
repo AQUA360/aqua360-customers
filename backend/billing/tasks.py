@@ -4673,3 +4673,33 @@ def generate_billing_document_download(self, download_id):
   record.completed_at = timezone.now()
   record.save(update_fields=['status', 'error_message', 'completed_at', 'invoice_count'])
   return {"status": "error", "message": message}
+
+
+@shared_task(bind=True)
+def generate_unpaid_fee_invoices_task(self, invoice_ids, price_rate_ids, run_id=None, excluded_ids=None):
+  """Despeses d'impagat de les factures triades a la llista de factures."""
+  from billing.models import UnpaidFeeRun
+  from billing.utils.unpaid_fee_service import finish_run, generate_unpaid_fee_invoices
+
+  # Si l'execució s'ha donat per perduda mentre era a la cua, ja no es fa res.
+  if run_id and not UnpaidFeeRun.objects.filter(id=run_id, status=UnpaidFeeRun.STATUS_RUNNING).exists():
+    return {'status': 'cancelled'}
+
+  progress_recorder = ProgressRecorder(self)
+
+  def on_progress(done, total):
+    progress_recorder.set_progress(done, total, description=f"Generant despeses d'impagat ({done}/{total})")
+
+  try:
+    result = generate_unpaid_fee_invoices(
+      invoice_ids, price_rate_ids, on_progress=on_progress, excluded_ids=excluded_ids)
+  except Exception:
+    import logging
+    logging.getLogger(__name__).exception("Despeses d'impagat: error en l'execució %s", run_id)
+    if run_id:
+      finish_run(run_id, error='Process failed')
+    raise
+  result['status'] = 'success'
+  if run_id:
+    finish_run(run_id, result=result)
+  return result
