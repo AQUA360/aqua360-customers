@@ -264,7 +264,7 @@ const resetHolderSelection = () => {
 // en una factura personalitzada a nom d'una persona, el titular ja és aquesta persona.
 const showHolderSelector = computed(() => !props.in_invoice && !finalInvoice.value
   && (!props.individual || selectedCustom.value?.entity === 'contract'))
-const budgetHolderId = computed(() => showHolderSelector.value ? (selectedHolder.value?.id || null) : null)
+const budgetHolderId = computed(() => showHolderSelector.value ? (selectedHolder.value?.id || personIdFrom(pendingBudget.value?.person) || null) : null)
 const pendingBudget = computed(() => invoices.value.find(invoice => !isInvoice(invoice) && !isVoidedInvoice(invoice)))
 const holderPendingRegen = computed(() => {
   const budgetPersonId = personIdFrom(pendingBudget.value?.person)
@@ -939,6 +939,7 @@ const updateTitle = () => {
 }
 
 const onHolderPersonSaved = async (item) => {
+  const previousHolderId = selectedHolder.value?.id
   selectedHolder.value = item
   try {
     const loadedPerson = await $PersonApiService.getFullDetail(item.id)
@@ -949,8 +950,9 @@ const onHolderPersonSaved = async (item) => {
   const originals = getOriginalPersons()
   const newPerson = selectedHolder.value
   if (!props.in_invoice) {
-    // Fora de la refacturació es manté la llista actual (p. ex. el titular del contracte
-    // triat a la factura personalitzada) i s'hi afegeix el nou titular per triar-ne el compte.
+    if (previousHolderId && !originals.some(person => person.id === previousHolderId)) {
+      localPersons.value = localPersons.value.filter(person => person.id !== previousHolderId)
+    }
     if (newPerson?.id && !localPersons.value.some(person => person.id === newPerson.id)) {
       localPersons.value = [...localPersons.value, newPerson]
     }
@@ -1502,7 +1504,7 @@ watch(() => props.object_id, () => {
           @disable-redo="disableRedo" @changed="refresh" :id="data?.id ? data.id : null" :object_id="object_id"
           :invoice_id="regionDetailId" :redo_budget="redoBudget" :payment_data="paymentData"
           :is_budget="showRegionComponent === 'BudgetEdit'" :is_connection="is_connection" :service="props.service"
-          :entity="entity" :redo_option="redoOption" :selected_custom="selectedCustom" :holder_id="budgetHolderId"
+          :entity="entity" :redo_option="redoOption" :selected_custom="selectedCustom" :holder_id="budgetHolderId" :holderPendingRegen="holderPendingRegen"
           :isSubRegion="true" />
         <ChangeStatus v-if="showRegionComponent === 'ChangeStatus'" entity="invoice" parent_entity="invoice"
           :id="regionDetailId" :status="clickedInvoice?.status_id || clickedInvoice?.status?.id"

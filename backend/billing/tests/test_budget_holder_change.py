@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -70,6 +71,16 @@ class ApplyHolderToBudgetTest(BudgetHolderFixturesMixin, TestCase):
         self.assertEqual(budget.postal_code_final, '00000')
         self.assertEqual(budget.payer_final, 'New Holder')
         self.assertEqual(budget.payer_token_final, 'NEW-TOKEN')
+
+    def test_selects_each_contact_channel_independently(self):
+        self.new_holder.contacts.all().delete()
+        PersonContact.objects.create(person=self.new_holder, is_default=True, phone='', email=None)
+        PersonContact.objects.create(person=self.new_holder, is_active=False, phone='inactive', email='inactive@example.test')
+        PersonContact.objects.create(person=self.new_holder, phone='first', email='')
+        PersonContact.objects.create(person=self.new_holder, phone='second', email='first@example.test')
+        budget = apply_holder_to_budget(self.make_budget(), self.new_holder)
+        self.assertEqual(budget.customer_tlf_final, 'first')
+        self.assertEqual(budget.customer_email_final, 'first@example.test')
 
     def test_keeps_bank_payer_and_address_when_holder_has_none(self):
         holder = Person.objects.create(name='Plain', token='PLAIN-TOKEN')
@@ -244,6 +255,33 @@ class InvoiceChangeHolderViewTest(BudgetHolderFixturesMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         invoice.refresh_from_db()
         self.assertEqual(invoice.person, self.old_holder)
+
+    def test_edit_permission_allows_change(self):
+        self.user = get_user_model().objects.create_user(username='editor')
+        self.user.user_permissions.add(Permission.objects.get(content_type__app_label='billing', codename='change_invoice'))
+        budget = self.make_budget(status=self.pending)
+        self.assertEqual(self.change_holder(budget.id, self.new_holder.id).status_code, 200)
+
+    def test_create_permission_does_not_allow_change(self):
+        self.user = get_user_model().objects.create_user(username='creator')
+        self.user.user_permissions.add(Permission.objects.get(content_type__app_label='billing', codename='add_invoice'))
+        budget = self.make_budget(status=self.pending)
+        self.assertEqual(self.change_holder(budget.id, self.new_holder.id).status_code, 403)
+        budget.refresh_from_db()
+        self.assertEqual(budget.person, self.old_holder)
+
+    def test_rejects_budget_linked_to_invoice(self):
+        budget = self.make_budget(status=self.pending, budget_token='FINAL-INVOICE')
+        self.assertEqual(self.change_holder(budget.id, self.new_holder.id).status_code, 400)
+        budget.refresh_from_db()
+        self.assertEqual(budget.person, self.old_holder)
+
+    def test_rejects_reverse_invoice_link(self):
+        budget = self.make_budget(status=self.pending)
+        self.make_budget(token='FINAL-INVOICE', type=self.invoice_type, budget_token=budget.token)
+        self.assertEqual(self.change_holder(budget.id, self.new_holder.id).status_code, 400)
+        budget.refresh_from_db()
+        self.assertEqual(budget.person, self.old_holder)
 
     def test_rejects_budgets_that_are_not_pending(self):
         budget = self.make_budget(status=self.confirmed)

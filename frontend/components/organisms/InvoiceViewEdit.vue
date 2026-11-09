@@ -18,6 +18,7 @@ const { $LineItemApiService, $InvoiceApiService, $ConfigProjectApiService, $Line
 const toast = useToast();
 
 const props = defineProps({
+  holderPendingRegen: Boolean,
   id: {
     type: Number,
     default: null
@@ -160,7 +161,8 @@ const handleChangeHolder = async (person) => {
     const updated = await $InvoiceApiService.changeHolder(props.id, person.id)
     toast.success(t('billing_block.holder_changed'))
     showHolderSearch.value = false
-    await getInvoice()
+    // El canvi de titular no modifica les línies ni el comentari del pressupost.
+    item.value = { ...updated, line_items: item.value.line_items }
     handleChanged(false, updated)
   } catch (err) {
     console.error(err)
@@ -270,6 +272,7 @@ const canConvertToInvoice = computed(() => {
 });
 
 const convertBudgetToInvoice = async () => {
+  if (props.holderPendingRegen) return;
   if (!confirm(t('confirmation_text_block.confirm_budget_invoice'))) return;
   generatingInvoice.value = true;
   try {
@@ -343,7 +346,7 @@ onMounted( async () => {
               </div>
             </div>
           </div>
-          <button v-if="canConvertToInvoice" @click="convertBudgetToInvoice" :disabled="generatingInvoice"
+          <button v-if="canConvertToInvoice" @click="convertBudgetToInvoice" :disabled="generatingInvoice || holderPendingRegen"
             class="bg-sky-500 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded transition duration-300 ease-in-out">
             {{ generatingInvoice ? t('common.loading') + '...' : t('billing_block.invoice_generate') }}
           </button>

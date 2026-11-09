@@ -10,6 +10,10 @@ from billing.utils.invoice_service import apply_holder_to_budget
 from coredata.models import ConfigProject, Person
 
 
+class InvoiceChangeHolderPermissions(DjangoModelPermissions):
+    perms_map = {**DjangoModelPermissions.perms_map, 'POST': ['%(app_label)s.change_%(model_name)s']}
+
+
 class InvoiceChangeHolderView(APIView):
     """Canvia el titular d'un pressupost pendent sense regenerar-lo.
 
@@ -19,7 +23,7 @@ class InvoiceChangeHolderView(APIView):
     només canvien el titular i les seves dades fixades. Un cop confirmat, el titular
     només es pot canviar refacturant.
     """
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, InvoiceChangeHolderPermissions]
     queryset = Invoice.objects.all()
 
     @transaction.atomic
@@ -35,6 +39,9 @@ class InvoiceChangeHolderView(APIView):
             holder = None
         if not holder:
             return Response({'error': 'El titular seleccionat no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if invoice.budget_token or Invoice.objects.filter(budget_token=invoice.token).exists():
+            return Response({'error': 'El pressupost ja té una factura associada.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Mateix criteri que el panell d'edició: només els pressupostos pendents són editables.
         pending_token = ConfigProject.objects.get(token='invoice_status_pending_token').value

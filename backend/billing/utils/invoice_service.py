@@ -2827,9 +2827,11 @@ def apply_holder_to_budget(invoice, person):
     invoice.customer_token_final = person.token
     invoice.customer_is_juridic = person.is_juridic
 
-    contact = person.contacts.filter(is_active=True).order_by('-is_default', 'id').first()
-    invoice.customer_tlf_final = contact.phone if contact else None
-    invoice.customer_email_final = contact.email if contact else None
+    contacts = person.contacts.filter(is_active=True).order_by('-is_default', 'id')
+    phone_contact = contacts.exclude(phone__isnull=True).exclude(phone='').first()
+    email_contact = contacts.exclude(email__isnull=True).exclude(email='').first()
+    invoice.customer_tlf_final = phone_contact.phone if phone_contact else None
+    invoice.customer_email_final = email_contact.email if email_contact else None
 
     address = _person_billing_address(person)
     if address:

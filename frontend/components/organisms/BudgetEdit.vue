@@ -22,6 +22,7 @@ const props = defineProps({
         default: false
     },
     selected_custom: Object,
+    holderPendingRegen: Boolean,
     holder_id: {
         type: Number,
         default: null
@@ -148,7 +149,7 @@ onMounted(async () => {
                 </div>
                 
                 <div v-else class="relative">
-                    <InvoiceViewEdit :is_connection="is_connection" :id="invoice.id" @changed="handleChanged" :allowLineItemTypeManual="true" :isSubRegion="props.isSubRegion" />
+                    <InvoiceViewEdit :holderPendingRegen="holderPendingRegen" :is_connection="is_connection" :id="invoice.id" @changed="handleChanged" :allowLineItemTypeManual="true" :isSubRegion="props.isSubRegion" />
                 </div>
             </div>
         </div>
