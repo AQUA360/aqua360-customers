@@ -5854,7 +5854,8 @@ class ContractChangeProcedureOVTests(TestCase):
         self.contract.refresh_from_db()
         termination = request_obj.contract_termination_requests.get()
         self.assertEqual(termination.status, self.termination_pending)
-        self.assertEqual(self.contract.status, self.terminated_status)
+        # El contracte de sortida no passa a baixa fins que es finalitza la baixa
+        self.assertEqual(self.contract.status, self.active_status)
 
     def test_closed_requests_and_terminations_do_not_block(self):
         ContractRequest.objects.create(

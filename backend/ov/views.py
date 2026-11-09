@@ -2940,8 +2940,9 @@ class ContractChangeProcedureOVView(APIView):
     Com al PA, la sol·licitud hereta les tarifes periòdiques actives del
     contracte actual, rep les tarifes d'alta i tipus d'ordre de canvi de nom del
     tipus de tràmit i copia les variables traspassables. Atenció al client la
-    valida i la finalitza; en crear el nou contracte, la baixa s'activa i el
-    contracte actual es dona de baixa (`check_contract_terminations`).
+    valida i la finalitza; en crear el nou contracte, la baixa passa a pendent
+    (`check_contract_terminations`) i el contracte actual es dona de baixa en
+    finalitzar-la.
 
     Només el titular actual la pot demanar: contracte inexistent, inactiu,
     sense titular o d'un altre titular retornen el mateix 404. El contracte es
