@@ -5,7 +5,7 @@ from django.db.models.signals import post_save, pre_save
 
 from contract.models import Contract
 from contract.signals import contract_pre_save, terminate_contract_update_bail
-from watchdog.aca_config import uses_aca_enabled
+from watchdog.aca_config import is_aca_org
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def get_use_aca_stats():
     pending_contracts = get_pending_use_aca_queryset()
 
     return {
-        'uses_aca_enabled': uses_aca_enabled(),
+        'aca_enabled': is_aca_org(),
         'active_contracts': active_contracts.count(),
         'pending_use_aca': pending_contracts.count(),
         'filled_use_aca': active_contracts.exclude(

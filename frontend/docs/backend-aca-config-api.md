@@ -32,7 +32,7 @@ Actualitza en bloc el `value` de diversos `ConfigProject`.
 
 ```json
 [
-  {"token": "uses_aca", "value": true},
+  {"token": "public_org_type", "value": "aca"},
   {"token": "aca_cs_token", "value": "ACA-CANON"},
   {"token": "token_product_aca", "value": "1002"},
   {"token": "token_price_rate_aca_dom", "value": "CANON-DOM"},
@@ -55,10 +55,10 @@ Actualitza en bloc el `value` de diversos `ConfigProject`.
 {
   "updated": [
     {
-      "token": "uses_aca",
-      "name": "Bool fa servir use_aca",
-      "value": "True",
-      "file": null
+      "token": "public_org_type",
+      "name": "Organisme públic al qual pertany el projecte ('aca' = Agència Catalana de l'Aigua; buit = explotació fora de Catalunya)",
+      "value": "aca",
+      "file": "ACA"
     }
   ],
   "errors": []
@@ -110,7 +110,7 @@ Retorna estadístiques dels contractes actius respecte al camp `use_aca`.
 
 ```json
 {
-  "uses_aca_enabled": true,
+  "aca_enabled": true,
   "active_contracts": 1250,
   "pending_use_aca": 87,
   "filled_use_aca": 1163
@@ -119,7 +119,7 @@ Retorna estadístiques dels contractes actius respecte al camp `use_aca`.
 
 | Camp | Descripció |
 |------|------------|
-| `uses_aca_enabled` | `true` si `ConfigProject.uses_aca` està activat |
+| `aca_enabled` | `true` si `ConfigProject.public_org_type == 'aca'` |
 | `active_contracts` | Total contractes actius |
 | `pending_use_aca` | Contractes actius amb `use_aca` **null o buit** (`""`) |
 | `filled_use_aca` | Contractes actius amb `use_aca` informat |
@@ -129,7 +129,7 @@ Retorna estadístiques dels contractes actius respecte al camp `use_aca`.
 ### Ús al frontend
 
 - Mostrar un avís/comptador del tipus: *"87 contractes sense use_aca"*.
-- Si `uses_aca_enabled === false`, desactivar o amagar l'acció d'omplir.
+- Si `aca_enabled === false`, desactivar o amagar l'acció d'omplir.
 - Si `pending_use_aca === 0`, no cal oferir l'ompliment (o mostrar missatge informatiu).
 
 ---
@@ -179,8 +179,8 @@ Executa la lògica de `fill_contract_use_aca` (script backend que omple `Contrac
 
 | Camp | Descripció |
 |------|------------|
-| `skipped` | `true` si no s'ha executat (p.ex. `uses_aca` desactivat) |
-| `reason` | Motiu si `skipped=true` (p.ex. `"uses_aca_disabled"`) |
+| `skipped` | `true` si no s'ha executat (p.ex. `public_org_type` no és `'aca'`) |
+| `reason` | Motiu si `skipped=true` (p.ex. `"public_org_type_disabled"`) |
 | `total_contracts` | Contractes processats |
 | `updated_count` | Contractes que s'actualitzarien (o s'han actualitzat si no és dry-run) |
 | `skipped_count` | Suma de tots els motius de salt |
@@ -279,7 +279,7 @@ GET /task-progress/{task_id}/
 |----------|----------------|
 | `403` | Mostrar "Sense permisos" |
 | `bulk-update` amb `errors` | Mostrar quins tokens han fallat |
-| `skipped: true, reason: "uses_aca_disabled"` | Informar que ACA no està activat |
+| `skipped: true, reason: "public_org_type_disabled"` | Informar que ACA no està activat |
 | `pending_use_aca === 0` | Missatge: "Tots els contractes actius tenen use_aca informat" |
 
 ---
@@ -288,7 +288,7 @@ GET /task-progress/{task_id}/
 
 | Token | Tipus habitual | Exemple |
 |-------|----------------|---------|
-| `uses_aca` | boolean → string | `true` / `"True"` |
+| `public_org_type` | string | `"aca"` / `""` (fora de Catalunya) |
 | `aca_cs_token` | string | `"ACA-CANON"` |
 | `token_product_aca` | string | `"1002"` |
 | `token_price_rate_aca_dom` | string | `"CANON-DOM"` |
@@ -316,7 +316,7 @@ GET /task-progress/{task_id}/
 ## 7. Checklist d'integració
 
 - [ ] Crida bulk-update amb array directe (no objecte wrapper).
-- [ ] Gestiona booleans al payload (`uses_aca: true`).
+- [ ] Gestiona els booleans al payload (`true` → `"True"`).
 - [ ] Consulta estadístiques abans i després de l'ompliment.
 - [ ] Ofereix dry-run abans de l'execució real.
 - [ ] Per execució real, usa async i `task-progress`.
