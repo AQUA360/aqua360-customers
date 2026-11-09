@@ -10,6 +10,9 @@ import uuid
 from contract.middleware import get_current_user
 from coredata.models import Person, PersonLog
 
+# Informes que només tenen sentit per als projectes de l'ACA.
+ACA_REPORT_FUNCTION_NAMES = ('aca_summary_report', 'factdeta_report')
+
 @receiver(pre_save, sender=Street)
 def street_pre_save(sender, instance, **kwargs):
     if instance.pk:
@@ -95,11 +98,14 @@ def invalidate_use_exploitation_token_for_payment_cache(sender, instance, **kwar
 
 
 @receiver(post_save, sender=ConfigProject)
-def sync_factdeta_report_with_uses_aca(sender, instance, **kwargs):
-    """L'informe FACTDETA només és per als clients ACA. També s'executa amb `loaddata`, que
-    carrega `uses_aca` després de les migracions en una instal·lació nova."""
-    if instance.token != 'uses_aca':
+def sync_aca_reports_with_public_org_type(sender, instance, **kwargs):
+    """Els informes de l'ACA només es mostren als projectes de l'ACA
+    (`public_org_type == 'aca'`). També s'executa amb `loaddata`, que carrega
+    `public_org_type` després de les migracions en una instal·lació nova."""
+    if instance.token != 'public_org_type':
         return
     from statistics.models import AvailableReport
-    is_aca_client = str(instance.value or '').strip().lower() in ('true', '1', 'yes', 't')
-    AvailableReport.objects.filter(function_name='factdeta_report').update(is_active=is_aca_client)
+    is_aca_org = str(instance.value or '').strip().lower() == 'aca'
+    AvailableReport.objects.filter(
+        function_name__in=ACA_REPORT_FUNCTION_NAMES
+    ).update(is_active=is_aca_org)
