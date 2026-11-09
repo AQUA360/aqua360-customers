@@ -48,21 +48,29 @@ def _meter_field_for(instance):
 
 
 def meters_using(instance, name=None):
-    """Comptadors que fan servir (sense distingir majúscules) el valor de diccionari."""
+    """Comptadors que fan servir (sense distingir majúscules) el valor de diccionari.
+
+    El text del comptador es compara retallat: un valor desat com " Kamstrup "
+    correspon a l'entrada de diccionari "Kamstrup".
+    """
     from django.db.models import Q
+    from django.db.models.functions import Trim
     from service.models import Meter, MeterModel
 
     name = instance.name if name is None else name
+    name = name.strip() if isinstance(name, str) else ''
     if not name:
         return Meter.objects.none()
 
     field = _meter_field_for(instance)
-    meters = Meter.objects.filter(**{f'{field}__iexact': name})
+    meters = Meter.objects.annotate(_dict_value=Trim(field)).filter(_dict_value__iexact=name)
     if isinstance(instance, MeterModel):
+        meters = meters.annotate(_dict_manufacturer=Trim('manufacturer'))
         if instance.manufacturer_id:
-            meters = meters.filter(manufacturer__iexact=instance.manufacturer.name)
+            manufacturer_name = instance.manufacturer.name or ''
+            meters = meters.filter(_dict_manufacturer__iexact=manufacturer_name.strip())
         else:
-            meters = meters.filter(Q(manufacturer__isnull=True) | Q(manufacturer=''))
+            meters = meters.filter(Q(manufacturer__isnull=True) | Q(_dict_manufacturer=''))
     return meters
 
 
