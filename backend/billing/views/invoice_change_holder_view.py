@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from billing.models import Invoice
 from billing.serializers.invoice_serializer import InvoiceFullSerializer
-from billing.utils.invoice_service import apply_holder_to_budget
+from billing.utils.invoice_service import apply_holder_to_budget, budget_has_invoice, lock_budget
 from coredata.models import ConfigProject, Person
 
 
@@ -28,7 +28,8 @@ class InvoiceChangeHolderView(APIView):
 
     @transaction.atomic
     def post(self, request, id, *args, **kwargs):
-        invoice = Invoice.objects.select_related('type', 'status').filter(id=id).first()
+        # Bloqueig compartit amb la conversió a factura (pass_budget_to_invoice)
+        invoice = lock_budget(id)
         if not invoice:
             return Response({'error': 'Pressupost no trobat.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -45,7 +46,8 @@ class InvoiceChangeHolderView(APIView):
 
         # Mateix criteri que el panell d'edició: només els pressupostos pendents són editables.
         pending_token = ConfigProject.objects.get(token='invoice_status_pending_token').value
-        if invoice.status and invoice.status.token != pending_token:
+        # Un pressupost ja passat a factura continua pendent: cal mirar si en té.
+        if (invoice.status and invoice.status.token != pending_token) or budget_has_invoice(invoice):
             return Response({'error': 'El titular només es pot canviar en un pressupost no confirmat.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:

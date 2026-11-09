@@ -114,6 +114,18 @@ class ApplyHolderToBudgetTest(BudgetHolderFixturesMixin, TestCase):
         self.assertEqual(invoice.customer_final, 'New Holder')
 
 
+    def test_conversion_copies_holder_saved_after_budget_was_read(self):
+        budget = self.make_budget()
+        stale = Invoice.objects.get(pk=budget.pk)
+        apply_holder_to_budget(budget, self.new_holder)
+
+        with patch('billing.utils.invoice_service.confirm_invoice'):
+            invoice = pass_budget_to_invoice(stale)
+
+        self.assertEqual(invoice.person, self.new_holder)
+        self.assertEqual(invoice.customer_token_final, 'NEW-TOKEN')
+
+
 class GenerateInvoiceBudgetHolderViewTest(TestCase):
     def post(self, data, holder=None, **patches):
         """Crida la vista amb les dependències de BD substituïdes per mocks."""
@@ -201,6 +213,40 @@ class GenerateInvoiceBudgetHolderViewTest(TestCase):
                 if entity == 'contract_request':
                     self.assertEqual(mocks['generate'].call_args.kwargs['new_holder'], 5)
 
+    def regenerate(self, previous_person_id, generated_person_id, **data):
+        previous = MagicMock(id=previous_person_id)
+        budget = MagicMock(person_id=previous_person_id, person=previous)
+        payload = {'entity': 'custom', 'is_budget': True, 'redo_budget': 1,
+                   'selected_custom': {'entity': 'person', 'id': 1}}
+        payload.update(data)
+        with patch(f'{VIEW}.Invoice.objects') as invoices, \
+                patch(f'{VIEW}.generate_empty_invoice', return_value=MagicMock(person_id=generated_person_id)):
+            invoices.get.return_value = budget
+            response, mocks = self.post(payload, holder=MagicMock(id=9), exploitations='Exploitation.objects')
+        return response, mocks, previous
+
+    def test_regeneration_keeps_holder_changed_on_previous_budget(self):
+        response, mocks, previous = self.regenerate(previous_person_id=7, generated_person_id=3)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIs(mocks['apply'].call_args.args[1], previous)
+
+    def test_regeneration_with_same_holder_changes_nothing(self):
+        response, mocks, _ = self.regenerate(previous_person_id=7, generated_person_id=7)
+
+        self.assertEqual(response.status_code, 200)
+        mocks['apply'].assert_not_called()
+
+    def test_regeneration_prefers_explicit_holder_and_skips_rebilling(self):
+        response, mocks, previous = self.regenerate(previous_person_id=7, generated_person_id=3, holder_id=9)
+        self.assertEqual(mocks['apply'].call_args.args[1].id, 9)
+
+        response, mocks, _ = self.regenerate(
+            previous_person_id=7, generated_person_id=3, redo_option={'reason': 'other'},
+        )
+        self.assertEqual(response.status_code, 200)
+        mocks['apply'].assert_not_called()
+
     def test_contract_budget_uses_rebilling_holder_as_fallback(self):
         holder = MagicMock(id=7)
         reading = MagicMock(supply_point=None)
@@ -285,6 +331,17 @@ class InvoiceChangeHolderViewTest(BudgetHolderFixturesMixin, TestCase):
 
     def test_rejects_budgets_that_are_not_pending(self):
         budget = self.make_budget(status=self.confirmed)
+
+        response = self.change_holder(budget.id, self.new_holder.id)
+
+        self.assertEqual(response.status_code, 400)
+        budget.refresh_from_db()
+        self.assertEqual(budget.person, self.old_holder)
+
+    def test_rejects_budget_already_converted_to_invoice(self):
+        budget = self.make_budget(status=self.pending)
+        self.make_budget(token='INVOICE-TEST', number='INVOICE-TEST', budget_token=budget.token,
+                         type=self.invoice_type, type_final=self.invoice_type.token)
 
         response = self.change_holder(budget.id, self.new_holder.id)
 

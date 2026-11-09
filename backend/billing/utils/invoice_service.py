@@ -2861,7 +2861,30 @@ def personalize_budget_to_invoice_data(budget, data):
     return data
 
 
+def lock_budget(budget_id):
+    """Bloqueja la fila del pressupost fins al final de la transacció en curs.
+
+    És el bloqueig compartit entre el canvi de titular i la conversió a factura: així
+    no es pot emetre la factura amb un titular mentre el pressupost en rep un altre.
+    """
+    return Invoice.objects.select_for_update(of=('self',)).select_related('type', 'status').filter(pk=budget_id).first()
+
+
+def budget_has_invoice(budget):
+    """Indica si el pressupost ja s'ha passat a factura (factura amb el seu budget_token)."""
+    invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
+    return Invoice.objects.filter(budget_token=budget.token, type__token=invoice_type_token).exists()
+
+
 def pass_budget_to_invoice(invoice):
+    """Passa el pressupost a factura amb el pressupost bloquejat i les dades rellegides."""
+    with transaction.atomic():
+        lock_budget(invoice.pk)
+        invoice.refresh_from_db()
+        return _pass_budget_to_invoice(invoice)
+
+
+def _pass_budget_to_invoice(invoice):
     try:
     
         invoice_type = InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_invoice_token').value)

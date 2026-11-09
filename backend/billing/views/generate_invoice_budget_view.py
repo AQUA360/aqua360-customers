@@ -103,6 +103,7 @@ class GenerateInvoiceBudgetView(APIView):
         if not holder_id and is_budget and redo_option:
             holder_id = redo_option.get("new_holder") or None
         holder = None
+        previous_holder = None
         if holder_id:
             try:
                 holder = Person.objects.filter(id=int(holder_id)).first()
@@ -119,6 +120,10 @@ class GenerateInvoiceBudgetView(APIView):
             return Response({'invoice': invoice_serialized}, status=status.HTTP_200_OK) """
             try:
                 budget = Invoice.objects.get(id=redo_budget)
+                # Regenerar sense triar titular no ha de perdre el que s'havia canviat al
+                # panell d'edició. La refacturació (redo_option) té la seva pròpia lògica.
+                if not holder and not redo_option and budget.person_id:
+                    previous_holder = budget.person
                 budget.delete()
             except Invoice.DoesNotExist:
                 pass
@@ -467,6 +472,8 @@ class GenerateInvoiceBudgetView(APIView):
                 
             return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not holder and previous_holder and is_budget and invoice.person_id != previous_holder.id:
+            holder = previous_holder
         if holder and is_budget:
             try:
                 apply_holder_to_budget(invoice, holder)
