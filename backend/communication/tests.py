@@ -1462,11 +1462,13 @@ class ProcessFinishedWithCancelledTests(TestCase):
         cls.pending = CommunicationStatus.objects.create(token='0', name='Pendent', is_default=True)
         cls.sent = CommunicationStatus.objects.create(token='2', name='Enviada')
         cls.cancelled = CommunicationStatus.objects.create(token='-1', name='Anul·lada')
+        CommunicationStatus.objects.create(token='-2', name='Rebutjada')
         cls.process_current = CommunicationProcessStatus.objects.create(token='2', name='En curs')
         cls.process_finalized = CommunicationProcessStatus.objects.create(token='3', name='Finalitzat')
         cls.process_cancelled = CommunicationProcessStatus.objects.create(token='-1', name='Anul·lat')
         for token, value in (
             ('communication_status_sent_token', '2'),
+            ('communication_status_rejected_token', '-2'),
             ('communication_process_status_current_token', '2'),
             ('communication_process_status_finalized_token', '3'),
         ):
@@ -1517,4 +1519,13 @@ class ProcessFinishedWithCancelledTests(TestCase):
         self.make_comm(self.sent)
         response = self.client.delete(f'/communication/communication-process/{self.process.id}/')
         self.assertEqual(response.status_code, 200)
+        self.assertProcessStatus(self.process_cancelled)
+
+    def test_sending_task_keeps_cancelled_process(self):
+        from communication.tasks import send_communications_task
+
+        self.process.status = self.process_cancelled
+        self.process.save()
+        self.make_comm(self.cancelled)
+        send_communications_task(self.process.id)
         self.assertProcessStatus(self.process_cancelled)

@@ -9,7 +9,7 @@ from celery import states
 from billing.models import Invoice, PaymentRemittance
 from billing.utils.payment_pdf_service import generate_report_payment_pdf
 from claimrequest.models import ClaimRequest
-from communication.models import Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
+from communication.models import CANCELLED_STATUS_TOKEN, Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
 from communication.utils.communication_process_service import finish_process_if_done
 from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file, validate_letter_contract_companies, invoices_attached_to_email
 from coredata.models import ConfigProject
@@ -127,7 +127,8 @@ def send_communications_task(process_id=None, communication_ids=None, batch_size
                     }
                     Notification.objects.create(**notification_save)
                     try:
-                        if not finish_process_if_done(process):
+                        # Si s'ha anul·lat mentre s'enviava, es queda anul·lat
+                        if not finish_process_if_done(process) and process.status.token != CANCELLED_STATUS_TOKEN:
                             status_current_token = ConfigProject.objects.get(
                                 token="communication_process_status_current_token"
                             ).value
