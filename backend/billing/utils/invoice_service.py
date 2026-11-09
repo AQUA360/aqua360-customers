@@ -2790,6 +2790,64 @@ def invoice_contract_termination_generate(
     return invoice
 
 
+def _person_billing_address(person):
+    """Adreça de facturació activa de la persona (o la primera activa), o None."""
+    person_addresses = person.addresses.filter(is_active=True, address__isnull=False).select_related(
+        'address__city', 'address__province', 'address__country'
+    )
+    person_address = person_addresses.filter(is_billing=True).first() or person_addresses.first()
+    return person_address.address if person_address else None
+
+
+def apply_holder_to_budget(invoice, person):
+    """Canvia el titular d'un pressupost encara no confirmat i en refresca les dades fixades.
+
+    Actualitza `person` i les dades de client (nom, NIF, jurídica, telèfon, correu) a
+    partir de la nova persona. L'adreça només es substitueix si la persona en té una;
+    si no, es manté la del pressupost. El pagador només canvia quan no hi ha cap compte
+    bancari associat i el pagador era el titular anterior: si es paga per domiciliació,
+    el pagador continua sent el titular del compte.
+
+    Llança ValueError si el document no és un pressupost: un cop passat a factura, el
+    titular només es pot canviar refacturant.
+    """
+    budget_type_token = ConfigProject.objects.get(token='invoice_type_budget_token').value
+    if not invoice.type or invoice.type.token != budget_type_token:
+        raise ValueError("Only budgets can change their holder")
+
+    previous_holder_token = invoice.customer_token_final
+    payer_was_holder = (
+        invoice.payment_bank_id is None
+        and (not invoice.payer_token_final or invoice.payer_token_final == previous_holder_token)
+    )
+
+    customer_name = f"{person.name} {person.surname}" if person.surname else (person.name or "")
+    invoice.person = person
+    invoice.customer_final = customer_name
+    invoice.customer_token_final = person.token
+    invoice.customer_is_juridic = person.is_juridic
+
+    contact = person.contacts.filter(is_active=True).order_by('-is_default', 'id').first()
+    invoice.customer_tlf_final = contact.phone if contact else None
+    invoice.customer_email_final = contact.email if contact else None
+
+    address = _person_billing_address(person)
+    if address:
+        invoice.address_final = get_address_complete_without_city(address)
+        invoice.postal_code_final = address.postal_code
+        invoice.city_final = address.city.name if address.city else None
+        invoice.province_final = address.province.name if address.province else None
+        invoice.country_final = address.country.iso_code if address.country else "-"
+        invoice.location_final = f"{address.postal_code} {address.city}, {address.province} - {address.country}"
+
+    if payer_was_holder:
+        invoice.payer_final = customer_name
+        invoice.payer_token_final = person.token
+
+    invoice.save()
+    return invoice
+
+
 def personalize_budget_to_invoice_data(budget, data):
     """Hook per client (no-op per defecte): permet afegir o ajustar els camps de la
     factura que es crea a partir d'un pressupost, just abans de l'`Invoice.objects.create()`

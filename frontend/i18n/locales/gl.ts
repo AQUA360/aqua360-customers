@@ -2083,6 +2083,10 @@ export default {
   },
 
   billing_block: {
+    budget_holder: 'Titular do orzamento',
+    current_holder: 'Titular actual',
+    budget_default_holder: 'Usarase o titular por defecto',
+    regenerate_budget_holder: 'Volve xerar o orzamento para aplicar o novo titular antes de xerar a factura',
     recalculation_original: 'Usar parámetros da factura orixinal (habitantes e tarifas históricas)',
     recalculation_current: 'Aplicar parámetros actuais do contrato',
     recalculation_parameters_title: 'Estratexia de recálculo',

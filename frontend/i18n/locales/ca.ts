@@ -2093,6 +2093,10 @@ export default {
   },
 
   billing_block: {
+    budget_holder: 'Titular del pressupost',
+    current_holder: 'Titular actual',
+    budget_default_holder: 'Es farà servir el titular per defecte',
+    regenerate_budget_holder: 'Torna a generar el pressupost per aplicar el nou titular abans de generar la factura',
     recalculation_original: 'Utilitzar paràmetres de la factura original (habitants i tarifes històriques)',
     recalculation_current: 'Aplicar paràmetres actuals del contracte',
     recalculation_parameters_title: 'Estratègia de recàlcul',

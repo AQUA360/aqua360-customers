@@ -2083,6 +2083,10 @@ export default {
   },
 
   billing_block: {
+    budget_holder: 'Budget holder',
+    current_holder: 'Current holder',
+    budget_default_holder: 'The default holder will be used',
+    regenerate_budget_holder: 'Regenerate the budget to apply the new holder before generating the invoice',
     recalculation_original: 'Use original invoice parameters (historical occupants and rates)',
     recalculation_current: 'Apply current contract parameters',
     recalculation_parameters_title: 'Recalculation strategy',
