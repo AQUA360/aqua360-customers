@@ -24,11 +24,8 @@ export default defineNuxtPlugin(nuxtApp => {
 
     const getByName = async (manufacturerId, modelName) =>  {
         let modelsByManufacturer = await getModelsByManufacturer(manufacturerId)
-        let result = []
-        modelsByManufacturer.filter(model => model.name == modelName).forEach(model => {
-            result.push(model)
-        });
-        return result
+        const target = (modelName || '').trim().toLowerCase()
+        return modelsByManufacturer.filter(model => (model.name || '').trim().toLowerCase() === target)
     }
 
     const getOrCreate = async (manufacturerId, name) => {
@@ -52,8 +49,27 @@ export default defineNuxtPlugin(nuxtApp => {
         }
     }
 
+    // CRUD del diccionari (Configuració > Comptadors)
+    const list = async (params = {}) => {
+        const query = new URLSearchParams(params).toString();
+        const response = await $apiManager.fetch(apiHost + entity + (query ? '?' + query : ''), 'GET');
+        return response.results || [];
+    };
+
+    const create = async (data) => {
+        return await $apiManager.fetch(apiHost + entity, 'POST', JSON.stringify(data), { 'Content-Type': 'application/json' });
+    };
+
+    const update = async (id, data) => {
+        return await $apiManager.fetch(apiHost + entity + id + '/', 'PATCH', JSON.stringify(data), { 'Content-Type': 'application/json' });
+    };
+
+    const remove = async (id) => {
+        return await $apiManager.fetch(apiHost + entity + id + '/', 'DELETE');
+    };
+
     const apiService = {
-        getModelsByManufacturer, getByName, getOrCreate
+        getModelsByManufacturer, getByName, getOrCreate, list, create, update, remove
     };
     
     nuxtApp.provide(provideName, apiService);

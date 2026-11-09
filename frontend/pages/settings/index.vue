@@ -11,6 +11,7 @@ import BailTypeEdit from '../../components/organisms/BailTypeEdit.vue';
 import BankConfigList from '~/components/organisms/BankConfigList.vue';
 import IncidentSettings from '~/components/organisms/IncidentSettings.vue';
 import AccountValuesRegion from '~/components/molecules/AccountValuesRegion.vue';
+import MeterDictionaryList from '~/components/organisms/MeterDictionaryList.vue';
 const { $ConfigProjectApiService } = useNuxtApp();
 import { usePermissions } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
@@ -123,8 +124,18 @@ const showConfigAccountValues = () => {
   toggleRegion(true);
 }
 
+const meterDictionaryKind = ref(null);
+const meterDictionaryTitle = ref('');
+const showMeterDictionary = (title, kind) => {
+  meterDictionaryTitle.value = title;
+  meterDictionaryKind.value = kind;
+  RegionActive.value = 'MeterDictionary';
+  toggleRegion(true);
+}
+
 // Opcions de la pàgina. Cada opció és un enllaç a una pàgina pròpia (`to`), una taula
-// simple editada amb ConfigList (`entity`) o un panell lateral concret (`region`).
+// simple editada amb ConfigList (`entity`), un diccionari de comptadors (`dictionaryKind`)
+// o un panell lateral concret (`region`).
 // Les opcions de configuració van a la pestanya General i les taules simples
 // (estats, tipus, motius...) a Taules mestres.
 const list = (label, entity, hasColor = false, hasMandatoryCheck = false, hasDescription = false, blockEdits = false, hasSerieDigits = false, hasChangeOfNameCheck = false) => ({
@@ -132,6 +143,7 @@ const list = (label, entity, hasColor = false, hasMandatoryCheck = false, hasDes
 });
 const link = (label, to, visible = true) => ({ label, to, visible });
 const region = (label, regionKey) => ({ label, region: regionKey });
+const meterDictionary = (label, kind) => ({ label, dictionaryKind: kind });
 const lbl = (...keys) => keys.map((key) => t(key)).join(': ');
 
 const settingsSections = computed(() => {
@@ -152,6 +164,9 @@ const settingsSections = computed(() => {
         list(lbl('common.supply_points', 'address_block.location'), 'service/supply-point-placement'),
         list(lbl('common.meters', 'common.statuses'), 'service/meter-status', true, false, false, true),
         list(lbl('common.meters', 'service_block.calibers'), 'service/meter-caliber'),
+        meterDictionary(lbl('common.meters', 'service_block.manufacturers'), 'manufacturer'),
+        meterDictionary(lbl('common.meters', 'service_block.models'), 'model'),
+        meterDictionary(lbl('common.meters', 'service_block.comm_technologies'), 'comm_technology'),
         list(t('common.clusters') + ' ' + lbl('service_block.nozzles', 'common.statuses'), 'service/cluster-nozzle-status', true, false, false, true),
         list(t('common.clusters') + ' ' + lbl('service_block.nozzles', 'common.type'), 'service/cluster-nozzle-type'),
         list(lbl('common.clusters', 'common.statuses'), 'service/cluster-status', true, false, false, true),
@@ -351,6 +366,8 @@ const filteredConfigProjects = computed(() => config_projects.value.filter(
 const openItem = (item) => {
   if (item.entity) {
     showConfigList(item.label, item.entity, ...item.options);
+  } else if (item.dictionaryKind) {
+    showMeterDictionary(item.label, item.dictionaryKind);
   } else {
     RegionActive.value = item.region;
     toggleRegion(true);
@@ -406,7 +423,7 @@ getConfigProject();
         <div v-for="section in (tab === 'general' ? generalSections : masterSections)" :key="section.key">
           <h3 class="text-lg mb-2 font-bold pl-3">{{ section.title }}</h3>
           <ul class="text-base ml-3 pl-6 list-disc mb-4">
-            <li v-for="item in section.items" :key="item.to || item.entity || item.region" class="mb-1">
+            <li v-for="item in section.items" :key="item.to || item.entity || item.region || item.dictionaryKind" class="mb-1">
               <NuxtLink v-if="item.to" :to="item.to" class="text-sky-500 underline hover:no-underline">{{ item.label }}
               </NuxtLink>
               <button v-else @click="openItem(item)" class="text-sky-500 underline hover:no-underline">{{ item.label
@@ -473,6 +490,8 @@ getConfigProject();
         <BankConfigList v-if="RegionActive == 'Bank'" />
         <IncidentSettings v-if="RegionActive == 'IncidentSettings'" />
         <AccountValuesRegion v-if="RegionActive == 'AccountValues'" @close="toggleRegion(false)" />
+        <MeterDictionaryList v-if="RegionActive == 'MeterDictionary' && meterDictionaryKind" :key="meterDictionaryKind"
+          :kind="meterDictionaryKind" :title="meterDictionaryTitle" />
       </div>
     </div>
   </div>
