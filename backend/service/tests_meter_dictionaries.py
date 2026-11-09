@@ -8,7 +8,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 
-from service.models import Meter, MeterCommTechnology, MeterManufacturer, MeterModel
+from service.models import Meter, MeterCommTechnology, MeterLog, MeterManufacturer, MeterModel
 from service.utils.meter_dictionary_service import get_or_create_dictionary_value
 
 
@@ -154,22 +154,176 @@ class MeterDictionaryAPITests(TestCase):
                     )
                     self.assertEqual(response.status_code, 400)
 
-    def test_technology_only_allows_reading_and_validated_creation(self):
-        technology = MeterCommTechnology.objects.create(name='NB-IoT')
+    def test_technology_allows_full_crud(self):
         url = '/service/meter-comm-technology/'
-        self.assertEqual(self.client.get(url).status_code, 200)
-        self.assertEqual(self.client.get(f'{url}{technology.pk}/').status_code, 200)
-        for method, target in (
-            ('post', url),
-            ('put', f'{url}{technology.pk}/'),
-            ('patch', f'{url}{technology.pk}/'),
-            ('delete', f'{url}{technology.pk}/'),
+        created = self.client.post(url, {'name': '  NB-IoT  '}, format='json')
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.data['name'], 'NB-IoT')
+
+        detail = f"{url}{created.data['id']}/"
+        self.assertEqual(self.client.get(detail).status_code, 200)
+        self.assertEqual(self.client.patch(detail, {'name': 'LoRaWAN'}, format='json').status_code, 200)
+        self.assertEqual(MeterCommTechnology.objects.get().name, 'LoRaWAN')
+        self.assertEqual(self.client.delete(detail).status_code, 204)
+        self.assertFalse(MeterCommTechnology.objects.exists())
+
+
+class MeterDictionaryCrudAPITests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username='dictionary-crud-user', is_superuser=True)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.manufacturer = MeterManufacturer.objects.create(name='Acme')
+
+    def endpoints(self):
+        return (
+            ('meter-manufacturer', {}),
+            ('meter-model', {'manufacturer': self.manufacturer.pk}),
+            ('meter-comm-technology', {}),
+        )
+
+    def test_create_trims_and_keeps_typed_casing(self):
+        for endpoint, extra in self.endpoints():
+            with self.subTest(endpoint=endpoint):
+                response = self.client.post(
+                    f'/service/{endpoint}/', {'name': '  Mixed Case  ', **extra}, format='json'
+                )
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(response.data['name'], 'Mixed Case')
+
+    def test_case_insensitive_duplicates_return_400(self):
+        for endpoint, extra in self.endpoints():
+            with self.subTest(endpoint=endpoint):
+                url = f'/service/{endpoint}/'
+                self.assertEqual(self.client.post(url, {'name': 'Dup', **extra}, format='json').status_code, 201)
+                response = self.client.post(url, {'name': ' dUP ', **extra}, format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('name', response.data)
+
+    def test_rename_onto_existing_name_returns_400(self):
+        for endpoint, extra in self.endpoints():
+            with self.subTest(endpoint=endpoint):
+                url = f'/service/{endpoint}/'
+                self.client.post(url, {'name': 'Taken', **extra}, format='json')
+                other = self.client.post(url, {'name': 'Free', **extra}, format='json')
+                response = self.client.patch(f"{url}{other.data['id']}/", {'name': 'TAKEN'}, format='json')
+                self.assertEqual(response.status_code, 400)
+
+    def test_rename_changing_only_case_is_allowed(self):
+        response = self.client.patch(
+            f'/service/meter-manufacturer/{self.manufacturer.pk}/', {'name': 'ACME'}, format='json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.manufacturer.refresh_from_db()
+        self.assertEqual(self.manufacturer.name, 'ACME')
+
+    def test_invalid_names_return_400(self):
+        for endpoint, extra in self.endpoints():
+            for name in (None, '', '   ', 'x' * 256):
+                with self.subTest(endpoint=endpoint, name=name):
+                    response = self.client.post(f'/service/{endpoint}/', {'name': name, **extra}, format='json')
+                    self.assertEqual(response.status_code, 400)
+
+    def test_model_requires_a_manufacturer(self):
+        response = self.client.post('/service/meter-model/', {'name': 'Orphan'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('manufacturer', response.data)
+
+    def test_model_manufacturer_cannot_be_changed(self):
+        other = MeterManufacturer.objects.create(name='Other')
+        model = MeterModel.objects.create(name='A1', manufacturer=self.manufacturer)
+        response = self.client.patch(f'/service/meter-model/{model.pk}/', {'manufacturer': other.pk}, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_models_can_be_listed_by_manufacturer(self):
+        other = MeterManufacturer.objects.create(name='Other')
+        MeterModel.objects.create(name='A1', manufacturer=self.manufacturer)
+        MeterModel.objects.create(name='B1', manufacturer=other)
+        response = self.client.get(f'/service/meter-model/?manufacturer={self.manufacturer.pk}')
+        self.assertEqual([item['name'] for item in response.data['results']], ['A1'])
+
+    def test_lists_are_not_truncated_to_the_default_page_size(self):
+        MeterCommTechnology.objects.bulk_create(MeterCommTechnology(name=f'Tech {i:03}') for i in range(60))
+        response = self.client.get('/service/meter-comm-technology/')
+        self.assertEqual(len(response.data['results']), 60)
+
+
+class MeterDictionaryRenameAndDeleteTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username='dictionary-rename-user', is_superuser=True)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.acme = MeterManufacturer.objects.create(name='Acme')
+        self.other = MeterManufacturer.objects.create(name='Other')
+        self.acme_a1 = MeterModel.objects.create(name='A1', manufacturer=self.acme)
+        self.other_a1 = MeterModel.objects.create(name='A1', manufacturer=self.other)
+        self.tech = MeterCommTechnology.objects.create(name='NB-IoT')
+        self.acme_meter = Meter.objects.create(
+            code='RENAME-1', manufacturer='acme', model='a1', comm_technology='nb-iot'
+        )
+        self.other_meter = Meter.objects.create(
+            code='RENAME-2', manufacturer='Other', model='A1', comm_technology='LoRaWAN'
+        )
+
+    def test_manufacturer_rename_propagates_to_meters_and_logs_it(self):
+        response = self.client.patch(
+            f'/service/meter-manufacturer/{self.acme.pk}/', {'name': 'Acme Water'}, format='json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.acme_meter.refresh_from_db()
+        self.other_meter.refresh_from_db()
+        self.assertEqual(self.acme_meter.manufacturer, 'Acme Water')
+        self.assertEqual(self.other_meter.manufacturer, 'Other')
+        log = MeterLog.objects.get(meter=self.acme_meter, field_name='manufacturer')
+        self.assertEqual((log.old_value, log.new_value, log.user), ('acme', 'Acme Water', self.user))
+
+    def test_model_rename_only_touches_meters_of_its_manufacturer(self):
+        response = self.client.patch(f'/service/meter-model/{self.acme_a1.pk}/', {'name': 'A2'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.acme_meter.refresh_from_db()
+        self.other_meter.refresh_from_db()
+        self.assertEqual(self.acme_meter.model, 'A2')
+        self.assertEqual(self.other_meter.model, 'A1')
+
+    def test_technology_rename_propagates_to_meters(self):
+        response = self.client.patch(
+            f'/service/meter-comm-technology/{self.tech.pk}/', {'name': 'NB-IoT v2'}, format='json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.acme_meter.refresh_from_db()
+        self.other_meter.refresh_from_db()
+        self.assertEqual(self.acme_meter.comm_technology, 'NB-IoT v2')
+        self.assertEqual(self.other_meter.comm_technology, 'LoRaWAN')
+
+    def test_values_in_use_cannot_be_deleted(self):
+        for endpoint, pk in (
+            ('meter-manufacturer', self.acme.pk),
+            ('meter-model', self.acme_a1.pk),
+            ('meter-comm-technology', self.tech.pk),
         ):
-            with self.subTest(method=method):
-                response = getattr(self.client, method)(target, {'name': 'Other'}, format='json')
-                self.assertEqual(response.status_code, 405)
-        technology.refresh_from_db()
-        self.assertEqual(technology.name, 'NB-IoT')
+            with self.subTest(endpoint=endpoint):
+                response = self.client.delete(f'/service/{endpoint}/{pk}/')
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data['meters_count'], 1)
+        self.assertTrue(MeterManufacturer.objects.filter(pk=self.acme.pk).exists())
+        self.assertTrue(MeterModel.objects.filter(pk=self.acme_a1.pk).exists())
+        self.assertTrue(MeterCommTechnology.objects.filter(pk=self.tech.pk).exists())
+
+    def test_unused_values_can_be_deleted(self):
+        self.acme_meter.delete()
+        for endpoint, pk in (
+            ('meter-model', self.acme_a1.pk),
+            ('meter-manufacturer', self.acme.pk),
+            ('meter-comm-technology', self.tech.pk),
+        ):
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(self.client.delete(f'/service/{endpoint}/{pk}/').status_code, 204)
 
 
 class MeterDictionaryConcurrencyTests(TransactionTestCase):
