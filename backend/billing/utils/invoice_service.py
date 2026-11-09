@@ -2870,12 +2870,6 @@ def lock_budget(budget_id):
     return Invoice.objects.select_for_update(of=('self',)).select_related('type', 'status').filter(pk=budget_id).first()
 
 
-def budget_has_invoice(budget):
-    """Indica si el pressupost ja s'ha passat a factura (factura amb el seu budget_token)."""
-    invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
-    return Invoice.objects.filter(budget_token=budget.token, type__token=invoice_type_token).exists()
-
-
 def pass_budget_to_invoice(invoice):
     """Passa el pressupost a factura amb el pressupost bloquejat i les dades rellegides."""
     with transaction.atomic():

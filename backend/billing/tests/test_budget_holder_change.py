@@ -338,17 +338,6 @@ class InvoiceChangeHolderViewTest(BudgetHolderFixturesMixin, TestCase):
         budget.refresh_from_db()
         self.assertEqual(budget.person, self.old_holder)
 
-    def test_rejects_budget_already_converted_to_invoice(self):
-        budget = self.make_budget(status=self.pending)
-        self.make_budget(token='INVOICE-TEST', number='INVOICE-TEST', budget_token=budget.token,
-                         type=self.invoice_type, type_final=self.invoice_type.token)
-
-        response = self.change_holder(budget.id, self.new_holder.id)
-
-        self.assertEqual(response.status_code, 400)
-        budget.refresh_from_db()
-        self.assertEqual(budget.person, self.old_holder)
-
     def test_rejects_unknown_holder_and_missing_budget(self):
         budget = self.make_budget(status=self.pending)
 

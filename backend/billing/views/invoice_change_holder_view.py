@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from billing.models import Invoice
 from billing.serializers.invoice_serializer import InvoiceFullSerializer
-from billing.utils.invoice_service import apply_holder_to_budget, budget_has_invoice, lock_budget
+from billing.utils.invoice_service import apply_holder_to_budget, lock_budget
 from coredata.models import ConfigProject, Person
 
 
@@ -41,13 +41,13 @@ class InvoiceChangeHolderView(APIView):
         if not holder:
             return Response({'error': 'El titular seleccionat no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Es comprova després del bloqueig: una conversió simultània ja ha creat l'enllaç.
         if invoice.budget_token or Invoice.objects.filter(budget_token=invoice.token).exists():
             return Response({'error': 'El pressupost ja té una factura associada.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Mateix criteri que el panell d'edició: només els pressupostos pendents són editables.
         pending_token = ConfigProject.objects.get(token='invoice_status_pending_token').value
-        # Un pressupost ja passat a factura continua pendent: cal mirar si en té.
-        if (invoice.status and invoice.status.token != pending_token) or budget_has_invoice(invoice):
+        if invoice.status and invoice.status.token != pending_token:
             return Response({'error': 'El titular només es pot canviar en un pressupost no confirmat.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:

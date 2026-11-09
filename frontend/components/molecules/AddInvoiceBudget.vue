@@ -264,7 +264,9 @@ const resetHolderSelection = () => {
 // en una factura personalitzada a nom d'una persona, el titular ja és aquesta persona.
 const showHolderSelector = computed(() => !props.in_invoice && !finalInvoice.value
   && (!props.individual || selectedCustom.value?.entity === 'contract'))
-const budgetHolderId = computed(() => showHolderSelector.value ? (selectedHolder.value?.id || personIdFrom(pendingBudget.value?.person) || null) : null)
+// Només el titular triat explícitament. En regenerar sense triar-ne cap, el backend ja
+// conserva el del pressupost anterior; enviar-lo sempre forçaria l'adreça de la persona.
+const budgetHolderId = computed(() => showHolderSelector.value ? (selectedHolder.value?.id || null) : null)
 const pendingBudget = computed(() => invoices.value.find(invoice => !isInvoice(invoice) && !isVoidedInvoice(invoice)))
 const holderPendingRegen = computed(() => {
   const budgetPersonId = personIdFrom(pendingBudget.value?.person)
