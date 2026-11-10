@@ -845,7 +845,7 @@ def create_from_lineitemtype(
                 # Els trams sense consum no s'emporten els correctors aplicats (no s'hi ha facturat res)
                 if tram_adjustments and not tram_exhausted:
                     applied_adjustments.extend(tram_adjustments)
-                if line_item_type.price_interval.units == 'm3' and (line_item_type.active_choice or line_item_type.inactive_choice or line_item_type.is_prorated):
+                if line_item_type.price_interval.units == 'm3' and end_stretch_original is not None and (line_item_type.active_choice or line_item_type.inactive_choice or line_item_type.is_prorated):
                     if ((line_item_type.active_choice == 'DAYS' and is_first_invoice) or (line_item_type.inactive_choice == 'DAYS' and is_termination) or line_item_type.is_prorated) and billing_days:
                         if dies_consum and dies_consum > 0:
                             # print("\n\ndies_consum/billing_days: ", dies_consum/billing_days)
@@ -862,7 +862,7 @@ def create_from_lineitemtype(
                     empty_tram_name = f"{line_item_type_name} - {tram.name_stretch}"
                     if end_stretch_original and end_stretch_original < 9999:
                         empty_tram_name += f"; Límit: {end_stretch_original}"
-                    linies.append(create_line_item_data(contract, line_item_type, tram.price if tram.price else tram.proportional_price, 0, 0, empty_tram_name, empty_tram_name, True, reading, None, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
+                    linies.append(create_line_item_data(contract, line_item_type, (tram.price if tram.price else tram.proportional_price) or 0, 0, 0, empty_tram_name, empty_tram_name, True, reading, None, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
                     previous_stretch_end = end_stretch_original
                     continue
 
