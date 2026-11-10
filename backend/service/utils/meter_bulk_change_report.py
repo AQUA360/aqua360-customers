@@ -16,6 +16,18 @@ OK_FILL = PatternFill("solid", start_color="E2EFDA")
 KO_FILL = PatternFill("solid", start_color="FCE4D6")
 
 
+def _set_cell(ws, row, column, value):
+    """
+    Escriu el valor sempre com a dada literal. openpyxl converteix en fórmula
+    qualsevol text que comenci per '=', i les dades venen del fitxer pujat
+    (codis, nom del fitxer...): forcem el tipus text perquè Excel no l'avaluï.
+    """
+    cell = ws.cell(row=row, column=column, value=value)
+    if cell.data_type == 'f':
+        cell.data_type = 's'
+    return cell
+
+
 def _write_table(ws, headers, rows, widths):
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
@@ -24,7 +36,7 @@ def _write_table(ws, headers, rows, widths):
         cell.alignment = Alignment(horizontal="center")
     for r, row in enumerate(rows, 2):
         for c, value in enumerate(row, 1):
-            ws.cell(row=r, column=c, value=value).font = BODY_FONT
+            _set_cell(ws, r, c, value).font = BODY_FONT
     for col, width in enumerate(widths, 1):
         ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = width
     ws.freeze_panes = "A2"
@@ -57,7 +69,7 @@ def build_report(*, analysis, result, applied_rows, created_rows,
     ]
     for r, (label, value) in enumerate(summary, 1):
         ws.cell(row=r, column=1, value=label).font = HEADER_FONT if (r == 1 or value is not None) else BODY_FONT
-        ws.cell(row=r, column=2, value=value).font = BODY_FONT
+        _set_cell(ws, r, 2, value).font = BODY_FONT
     ws.column_dimensions["A"].width = 34
     ws.column_dimensions["B"].width = 60
 
