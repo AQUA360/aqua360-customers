@@ -160,10 +160,22 @@
                                 <td style="text-align: right;">{{ supply_point.meter.code }}</td>
                             </tr>
                             {% endif %}
+                            {% if meter_placement %}
+                            <tr>
+                                <td style="color: #666;">Posició del comptador</td>
+                                <td style="text-align: right;">{{ meter_placement }}</td>
+                            </tr>
+                            {% endif %}
                             {% if contract_code %}
                             <tr>
                                 <td style="color: #666;">Contracte</td>
                                 <td style="text-align: right;">{{ contract_code }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if subscriber_phone %}
+                            <tr>
+                                <td style="color: #666;">Telèfon de l'abonat</td>
+                                <td style="text-align: right;">{{ subscriber_phone }}</td>
                             </tr>
                             {% endif %}
                             {% if physical_person %}
@@ -181,14 +193,18 @@
                         <table width="100%">
                             {% if location_label %}
                             <tr>
-                                <td width="25%" valign="top" style="color: #666;">{{ location_label }}</td>
-                                <td width="75%" valign="top" style="text-align: right;">{{ location_text }}</td>
+                                <td valign="top" style="color: #666;">{{ location_label }}</td>
+                            </tr>
+                            <tr>
+                                <td valign="top" style="padding-bottom: 4px;">{{ location_text }}</td>
                             </tr>
                             {% endif %}
                             {% if physical_address %}
                             <tr>
-                                <td width="25%" valign="top" style="color: #666;">Adreça de contacte</td>
-                                <td width="75%" valign="top" style="text-align: right;">{{ physical_address }}{% if physical_location %}, {{ physical_location }}{% endif %}</td>
+                                <td valign="top" style="color: #666;">Adreça de contacte</td>
+                            </tr>
+                            <tr>
+                                <td valign="top">{{ physical_address }}{% if physical_location %}, {{ physical_location }}{% endif %}</td>
                             </tr>
                             {% endif %}
                         </table>
