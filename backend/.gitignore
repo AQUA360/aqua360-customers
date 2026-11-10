@@ -96,7 +96,7 @@ integrations/outbound/odoo/exports-jsons.zip
 # Dades de producció descarregades localment; no versionar
 dades_prod.json
 
-# Registre del deploy generat per scripts/record_deploy.sh al servidor
+# Informació del deploy, generada en construir la imatge (veure el Dockerfile)
 deploy_info.json
 DEPLOYS.md
 
