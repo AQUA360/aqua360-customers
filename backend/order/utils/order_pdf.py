@@ -117,6 +117,11 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
             location_label = "Coordenades"
             location_text = f"{lat_text}, {lon_text}"
 
+        # Contracte real (per a codi, posició per defecte i telèfon abonat)
+        contract_obj = order.contract
+        if not contract_obj and getattr(order, 'contract_termination_request', None):
+            contract_obj = getattr(order.contract_termination_request, 'contract', None)
+
         # Posició del comptador: sempre que hi hagi un punt de subministrament (encara que l'opció sigui una altra)
         effective_supply_point = supply_point or getattr(contract, 'supply_point_default', None)
         if not effective_supply_point and contract_obj:
@@ -127,9 +132,6 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
 
         # Codi per a la fila "Contracte": només el número del contracte real (no escomesa/sol·licitud/punt)
         contract_code = None
-        contract_obj = order.contract
-        if not contract_obj and getattr(order, 'contract_termination_request', None):
-            contract_obj = getattr(order.contract_termination_request, 'contract', None)
         if contract_obj:
             contract_code = getattr(contract_obj, 'token', None)
 
@@ -142,11 +144,19 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
             if not subscriber_phone:
                 holder = getattr(contract_obj, 'holder', None)
                 if holder and hasattr(holder, 'contacts'):
-                    default_contact = holder.contacts.filter(is_default=True, is_active=True).first()
-                    if not default_contact:
-                        default_contact = holder.contacts.filter(is_active=True).first()
-                    if default_contact and getattr(default_contact, 'phone', None):
-                        subscriber_phone = default_contact.phone
+                    contact = (
+                        holder.contacts.filter(is_default=True, is_active=True)
+                        .exclude(phone__isnull=True).exclude(phone='')
+                        .first()
+                    )
+                    if not contact:
+                        contact = (
+                            holder.contacts.filter(is_active=True)
+                            .exclude(phone__isnull=True).exclude(phone='')
+                            .first()
+                        )
+                    if contact:
+                        subscriber_phone = contact.phone
             
         main_color = "#074df0"
         secondary_color = "#ffffff"
