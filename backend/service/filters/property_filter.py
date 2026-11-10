@@ -19,7 +19,7 @@ class PropertyFilter(filters.FilterSet):
         search_q = Q(token__icontains=value) | Q(name__icontains=value)
         # The property sheet shows the internal id as "Identificador", so a
         # numeric search also matches the id exactly.
-        if value.isdigit():
+        if value.isdecimal():
             search_q |= Q(id=int(value))
         return queryset.filter(search_q)
     

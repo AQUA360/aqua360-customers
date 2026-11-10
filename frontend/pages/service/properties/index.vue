@@ -47,7 +47,7 @@ const items = ref([]);
 const searchInput = ref('');
 const searchByAddress = ref('');
 const showAddressSearch = ref(false);
-const sortBy = ref('token');
+const sortBy = ref('id');
 const sortDesc = ref(false);
 const permissions = ref(null);
 const pagination = ref({
@@ -70,7 +70,7 @@ const getPermissions = async () => {
   }
 }
 
-const getData = async (searchQuery = '', page = 1, sort = 'token', desc = false, searchByAddressQuery = '') => {
+const getData = async (searchQuery = '', page = 1, sort = 'id', desc = false, searchByAddressQuery = '') => {
   if (!permissions.value?.can_view) {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
@@ -251,7 +251,7 @@ watch(() => route.query, () => {
       :is-empty="items.length === 0"
       @retry="getData">
       <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
+        <TableHeader :label="$t('common.identification')" sortKey="id" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
