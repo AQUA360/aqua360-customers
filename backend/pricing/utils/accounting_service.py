@@ -246,6 +246,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     line_name=entry.get('line_name'),
                     movement_date=entry.get('movement_date'),
                     declare_as=entry.get('declare_as') or 'have',
+                    register_key=entry.get('register_key'),
                 )
                 if debt_line:
                     payment_debt_lines.extend(_expand_with_additional_lines(
@@ -283,6 +284,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     line_name=entry.get('line_name'),
                     movement_date=entry.get('movement_date'),
                     declare_as=entry.get('declare_as') or 'have',
+                    register_key=entry.get('register_key'),
                 )
                 if debt_line:
                     payment_debt_lines.extend(_expand_with_additional_lines(
@@ -318,6 +320,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 line_name=entry.get('line_name'),
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
+                register_key=entry.get('register_key'),
             )
             if counter_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -339,6 +342,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 line_name=entry.get('line_name'),
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
+                register_key=entry.get('register_key'),
             )
             if counter_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -373,6 +377,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 line_name=entry.get('line_name'),
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
+                register_key=entry.get('register_key'),
             )
             if debt_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -383,6 +388,26 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     invoice_lines.sort(key=lambda line: 0 if line.get('is_invoice') else 1)
     undeclare_lines.sort(key=lambda line: 0 if line.get('is_invoice') else 1)
     payment_restore_lines.sort(key=lambda line: 0 if line.get('is_invoice') else 1)
+
+    # One register per invoice declaration (clients + taxes + lineitems).
+    # Payments already carry register_key so each movement/counterpart pair is unique.
+    for line in invoice_lines:
+        line['register_key'] = (
+            'invoice',
+            line.get('invoice_category') or _INVOICE_CATEGORY_NORMAL,
+        )
+    for line in lineitem_lines:
+        line['register_key'] = ('invoice', _INVOICE_CATEGORY_NORMAL)
+    for line in undeclare_lines:
+        line['register_key'] = (
+            'undeclare',
+            line.get('invoice_category') or _INVOICE_CATEGORY_NORMAL,
+        )
+    for line in payment_restore_lines:
+        line['register_key'] = (
+            'restore',
+            line.get('invoice_category') or _INVOICE_CATEGORY_NORMAL,
+        )
 
     return (
         invoice_lines
@@ -1791,6 +1816,19 @@ def _load_payment_rows(movements):
     return rows
 
 
+def _select_invoice_debt_spec(matched):
+    """Pick the clients account for a payment counterpart from matched specs."""
+    mains = [spec for spec in matched if spec['has_taxes_and_subtotals']]
+    if mains:
+        best_level = max(spec['level'] for spec in mains)
+        best = [spec for spec in mains if spec['level'] == best_level]
+        best.sort(key=lambda spec: (spec['exploitation_id'] is None, spec['id']))
+        return [best[0]]
+    if len(matched) == 1:
+        return matched
+    return []
+
+
 def _invoice_debt_specs(specs_by_category, row, category=None):
     """Original invoice accounts that take this payment as have.
 
@@ -1802,6 +1840,11 @@ def _invoice_debt_specs(specs_by_category, row, category=None):
     land on that clients account too. Piggy-bank payments use AccountingConfig
     counter pricing instead of invoice matching.
 
+    Payment defaults can still match when no same-exploitation payment
+    pricing exists, so if no clients account matches that exploitation,
+    fall back to the best clients account of the same category ignoring
+    exploitation. That keeps the bank line and its 430 counterpart paired.
+
     category overrides the row invoice_category (used when an
     endowment/irrecoverable collection falls back to a normal payment).
     """
@@ -1812,15 +1855,17 @@ def _invoice_debt_specs(specs_by_category, row, category=None):
     lookup_category = category if category is not None else row['invoice_category']
     specs = specs_by_category.get(lookup_category, ())
     matched = [spec for spec in specs if _invoice_matches_spec(spec, row)]
-    mains = [spec for spec in matched if spec['has_taxes_and_subtotals']]
-    if mains:
-        best_level = max(spec['level'] for spec in mains)
-        best = [spec for spec in mains if spec['level'] == best_level]
-        best.sort(key=lambda spec: (spec['exploitation_id'] is None, spec['id']))
-        return [best[0]]
-    if len(matched) == 1:
-        return matched
-    return []
+    selected = _select_invoice_debt_spec(matched)
+    if selected:
+        return selected
+
+    # Same filters as _invoice_matches_spec, but allow another exploitation's
+    # clients account when payment default already accepted this movement.
+    matched = [
+        spec for spec in specs
+        if _invoice_matches_spec({**spec, 'exploitation_id': None}, row)
+    ]
+    return _select_invoice_debt_spec(matched)
 
 
 def _merge_invoice_amount_groups(target, source):
@@ -1974,6 +2019,25 @@ def _payment_origin_detail(spec, row):
     return origin, _payment_origin_label(origin)
 
 
+def _payment_register_key(
+    payment_pricing_id,
+    movement_date,
+    type_key,
+    payment_type_name,
+    origin_key,
+    movement_declare_as,
+):
+    """Stable id shared by a payment line and its counterpart/counter lines."""
+    return (
+        'payment',
+        payment_pricing_id,
+        str(movement_date or ''),
+        type_key,
+        payment_type_name or '',
+        origin_key,
+        movement_declare_as,
+    )
+
 def _payment_origin_names(invoice_specs_by_category):
     if not any(
         spec.get('separate_by_origin')
@@ -2046,10 +2110,19 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             invoice_id = counterpart_pricing_id
 
         if not spec['grouped_lines']:
+            register_key = _payment_register_key(
+                spec['id'],
+                row['movement_date'],
+                default_type_key,
+                payment_type_name,
+                None,
+                movement_declare_as,
+            )
             bucket_entry = {
                 'movement_date': row['movement_date'],
                 'total': amount,
                 'payment_type_name': payment_type_name,
+                'register_key': register_key,
             }
             if movement_declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
                 bucket_entry['declare_as'] = movement_declare_as
@@ -2064,6 +2137,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     None,
                     None,
                     'have',
+                    movement_declare_as,
                 )] += amount
             elif (
                 row.get('is_piggybank')
@@ -2080,6 +2154,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     None,
                     counter_declare_as,
                     spec['id'],
+                    movement_declare_as,
                 )] += amount
             continue
 
@@ -2108,6 +2183,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 origin_key,
                 origin_name,
                 'have',
+                movement_declare_as,
             )] += amount
         elif (
             row.get('is_piggybank')
@@ -2124,6 +2200,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 origin_name,
                 counter_declare_as,
                 spec['id'],
+                movement_declare_as,
             )] += amount
 
     for pricing_id, groups in grouped_totals.items():
@@ -2135,10 +2212,19 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_name,
             declare_as,
         ), total in groups.items():
+            detail_name = _payment_detail_name(payment_type_name, origin_name)
             bucket_entry = {
                 'movement_date': movement_date,
                 'total': total,
-                'payment_type_name': _payment_detail_name(payment_type_name, origin_name),
+                'payment_type_name': detail_name,
+                'register_key': _payment_register_key(
+                    pricing_id,
+                    movement_date,
+                    _payment_type_id,
+                    payment_type_name,
+                    _origin_key,
+                    declare_as,
+                ),
             }
             if declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
                 bucket_entry['declare_as'] = declare_as
@@ -2154,6 +2240,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         _origin_key,
         origin_name,
         declare_as,
+        movement_declare_as,
     ), total in debt_totals.items():
         spec = specs_by_id[payment_id]
         debt_entries[invoice_id].append({
@@ -2165,6 +2252,14 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             ),
             'payment_pricing_id': payment_id,
             'declare_as': declare_as,
+            'register_key': _payment_register_key(
+                payment_id,
+                movement_date,
+                _type_key,
+                payment_type_name,
+                _origin_key,
+                movement_declare_as,
+            ),
         })
     for entries in debt_entries.values():
         entries.sort(key=lambda entry: (
@@ -2184,6 +2279,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         origin_name,
         declare_as,
         payment_id,
+        movement_declare_as,
     ), total in counter_totals.items():
         spec = specs_by_id.get(payment_id) or {}
         counter_entries[counter_pricing_id].append({
@@ -2195,6 +2291,14 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             ),
             'payment_pricing_id': payment_id,
             'declare_as': declare_as,
+            'register_key': _payment_register_key(
+                payment_id,
+                movement_date,
+                _type_key,
+                payment_type_name,
+                _origin_key,
+                movement_declare_as,
+            ),
         })
     for entries in counter_entries.values():
         entries.sort(key=lambda entry: (
@@ -2302,6 +2406,8 @@ def _get_payment_category_lines(accounting_pricing, bucket_entries, iva_accounti
         # Piggy-bank rules may force a column; otherwise pricing.declare_as applies.
         if entry.get('declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
             line['declare_as'] = entry['declare_as']
+        if entry.get('register_key') is not None:
+            line['register_key'] = entry['register_key']
         lines.append(line)
     return lines
 
@@ -2313,6 +2419,7 @@ def _get_payment_debt_line(
     line_name=None,
     movement_date=None,
     declare_as='have',
+    register_key=None,
 ):
     """Counterpart line for a payment (invoice have, or piggy-bank counter)."""
     if total is None:
@@ -2347,6 +2454,8 @@ def _get_payment_debt_line(
     }
     if movement_date is not None:
         line['movement_date'] = movement_date
+    if register_key is not None:
+        line['register_key'] = register_key
     return line
 
 
@@ -2356,9 +2465,12 @@ def generate_general_accounting(request):
     request_date = request.data.get('start_date')
     date = datetime.strptime(request_date, "%Y-%m-%d")
     last_document = None
-    
+
     date_str = date.strftime("%Y%m%d")
-    doc_number = str(int(last_document.token) + 1) if last_document else '158429'
+    doc_number = request_date.strftime("%y%m%d")
+    # Per-declaration register: YMMDD1, YMMDD2, ... (e.g. 610311, 610312).
+    next_register_number = int(f"{request_date.year % 10}{request_date.strftime('%m%d')}1")
+    register_numbers_by_key = {}
     
     invoice_type_invoice_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
     invoice_status_pending_token = ConfigProject.objects.get(token='invoice_status_pending_token').value
@@ -2441,7 +2553,7 @@ def generate_general_accounting(request):
             # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 34")
         
-        line_content += '60' # DEFAULT FOR THE MOMENT
+        line_content += '70' # DEFAULT FOR THE MOMENT
         
         title_total = 30
         title = normalize_text(line.get('accounting_pricing_name'), title_total)
@@ -2479,9 +2591,22 @@ def generate_general_accounting(request):
         line_content += accounting_account
         
         line_content += '01'
-        
-        line_content += repeat_to_at_least_length(' ', 6-len_doc_number)
-        line_content += str(doc_number)
+
+        register_key = line.get('register_key')
+        if register_key is None:
+            register_key = ('line', id(line))
+        if register_key not in register_numbers_by_key:
+            register_numbers_by_key[register_key] = next_register_number
+            last_document = next_register_number
+            next_register_number += 1
+        register_number = register_numbers_by_key[register_key]
+        register_number_str = str(register_number)
+        if len(register_number_str) > 6:
+            raise Exception(
+                f"Register number {register_number} exceeds 6 characters"
+            )
+        line_content += repeat_to_at_least_length(' ', 6 - len(register_number_str))
+        line_content += register_number_str
         
         if len(line_content) != 116:
             # print(line_content)
