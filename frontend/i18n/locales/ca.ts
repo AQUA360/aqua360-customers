@@ -3180,7 +3180,7 @@ export default {
     conditions_to_apply: 'Condicions per complir',
     always_apply: 'S\'aplica sempre',
     leak_diff: 'Diferencia de fuita',
-    leak_diff_consumption: 'Diferencia de fuita i consum',
+    leak_diff_consumption: 'Fuita i consum',
     min: 'Mínim',
     max: 'Màxim',
     no_adj: 'Sense correcció',
