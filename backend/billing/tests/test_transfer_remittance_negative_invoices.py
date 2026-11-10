@@ -101,6 +101,8 @@ class TestTransferRemittancePreviewLines(TestCase):
         disconnect_payment_signals()
         self.addCleanup(reconnect_payment_signals)
 
+        ConfigProject.objects.get_or_create(
+            token='contract_terminated_status', defaults={'value': '0'})
         self.contract = Contract.objects.create(token='C-PREVIEW')
         self.balance_return = Payment.objects.create(
             token='P-SALDO', amount=Decimal('30.00'), contract=self.contract,
