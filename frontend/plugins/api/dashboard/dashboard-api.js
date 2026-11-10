@@ -22,6 +22,21 @@ export default defineNuxtPlugin(nuxtApp => {
     return await $apiManager.fetch(`${apiHost}${entity}layout/`, 'DELETE');
   };
 
+  /** Personalització del menú lateral de l'usuari: `{ layout, is_default }`. */
+  const getSidebarLayout = async () => {
+    return await $apiManager.fetch(`${apiHost}${entity}sidebar/`, 'GET', null, null, true);
+  };
+
+  /** Persist the current user side menu layout. */
+  const saveSidebarLayout = async (layout) => {
+    return await $apiManager.fetch(`${apiHost}${entity}sidebar/`, 'PUT', { layout }, { 'Content-Type': 'application/json' });
+  };
+
+  /** Torna al menú lateral per defecte. */
+  const resetSidebarLayout = async () => {
+    return await $apiManager.fetch(`${apiHost}${entity}sidebar/`, 'DELETE');
+  };
+
   /** Catàleg de cards que l'usuari pot afegir (ja filtrat per permisos). */
   const getCards = async () => {
     return await $apiManager.fetch(`${apiHost}${entity}cards/`, 'GET');
@@ -43,5 +58,8 @@ export default defineNuxtPlugin(nuxtApp => {
     resetLayout,
     getCards,
     getCardData,
+    getSidebarLayout,
+    saveSidebarLayout,
+    resetSidebarLayout,
   });
 });
