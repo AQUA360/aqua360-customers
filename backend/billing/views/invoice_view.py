@@ -563,6 +563,84 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     task = generate_massive_invoice_download.delay(invoice_ids, base_url, in_zip)
     return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
+  @action(detail=False, methods=['get'], url_path='unpaid-fees/config')
+  def unpaid_fees_config(self, request):
+    """Si l'operació de despeses d'impagat està activa i la tarifa que es proposa per defecte."""
+    from billing.models import UnpaidFeeRun
+    from billing.utils.unpaid_fee_service import (
+        active_run, default_unpaid_fee_price_rate, is_unpaid_fee_operation_enabled, serialize_run)
+    enabled = is_unpaid_fee_operation_enabled()
+    if not enabled:
+        return Response({"enabled": False, "default_price_rates": [], "running_run": None, "last_run": None})
+    price_rate = default_unpaid_fee_price_rate()
+    # Primer l'actiu: si s'ha interromput, es tanca i passa a ser el darrer.
+    running_run = active_run()
+    last_run = UnpaidFeeRun.objects.exclude(status=UnpaidFeeRun.STATUS_RUNNING).select_related('created_by').first()
+    return Response({
+        "enabled": enabled,
+        "default_price_rates": [{"id": price_rate.id, "token": price_rate.token, "name": price_rate.name}] if price_rate else [],
+        # Per reprendre el seguiment si es torna a la pantalla amb el procés en marxa.
+        "running_run": serialize_run(running_run),
+        "last_run": serialize_run(last_run),
+    }, status=status.HTTP_200_OK)
+
+  @action(detail=False, methods=['post'], url_path='unpaid-fees/generate')
+  def unpaid_fees_generate(self, request):
+    """Crea les despeses d'impagat de les factures filtrades, llevat de les excloses.
+
+    Els filtres van a la query string, com a la llista.
+    """
+    from django.db import IntegrityError, transaction
+    from billing.models import UnpaidFeeRun
+    from billing.tasks import generate_unpaid_fee_invoices_task
+    from billing.utils.unpaid_fee_service import (
+        active_run, eligible_invoices, finish_run, is_unpaid_fee_operation_enabled, serialize_run)
+    from pricing.models import PriceRate
+    if not is_unpaid_fee_operation_enabled():
+        return Response({"error": _("Operation not enabled")}, status=status.HTTP_403_FORBIDDEN)
+
+    def conflict():
+        return Response({"error": _("Another process is running"), "running_run": serialize_run(active_run())},
+                        status=status.HTTP_409_CONFLICT)
+
+    if active_run():
+        return conflict()
+
+    price_rate_ids = sorted({int(v) for v in request.data.get('price_rate_ids') or [] if str(v).isdigit()})
+    if not price_rate_ids:
+        return Response({"error": _("Select at least one fee")}, status=status.HTTP_400_BAD_REQUEST)
+    if PriceRate.objects.filter(id__in=price_rate_ids).count() != len(price_rate_ids):
+        return Response({"error": _("Fee not found")}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Els filtres del client trien; la condició d'impagat la imposa sempre el servidor.
+    queryset = eligible_invoices(self.filter_queryset(Invoice.objects.filter(is_active=True, is_excluded=False)))
+    excluded_ids = [int(v) for v in request.data.get('excluded_ids') or [] if str(v).isdigit()]
+    if excluded_ids:
+        queryset = queryset.exclude(id__in=excluded_ids)
+
+    invoice_ids = list(queryset.values_list('id', flat=True).distinct())
+    if not invoice_ids:
+        return Response({"error": _("No invoices found")}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        with transaction.atomic():
+            run = UnpaidFeeRun.objects.create(invoice_count=len(invoice_ids), created_by=request.user)
+            run.price_rates.set(price_rate_ids)
+    except IntegrityError:
+        return conflict()
+
+    try:
+        task = generate_unpaid_fee_invoices_task.delay(
+            invoice_ids, price_rate_ids, run_id=run.id, excluded_ids=excluded_ids)
+    except Exception:
+        # Si la tasca hagués arribat a la cua, en arrencar veurà l'execució tancada i no farà res.
+        logger.exception("Despeses d'impagat: no s'ha pogut encuar l'execució %s", run.id)
+        finish_run(run.id, error='Task could not be queued')
+        return Response({"error": _("The process could not be started")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    # Només el task_id: si la tasca ja ha acabat, no se'n trepitja l'estat.
+    UnpaidFeeRun.objects.filter(id=run.id).update(task_id=task.id)
+    return Response({"task_id": task.id, "count": len(invoice_ids)}, status=status.HTTP_202_ACCEPTED)
+
   @action(detail=True, methods=['post'], url_path='recalculate-smart')
   def recalculate_smart(self, request, pk=None):
     from billing.utils.recalculate_invoice_service import recalculate_invoice_smart
