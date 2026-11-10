@@ -117,12 +117,46 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
             location_label = "Coordenades"
             location_text = f"{lat_text}, {lon_text}"
 
-        # Codi per a la fila "Contracte" (buit si només hi ha coordenades)
+        # Contracte real (per a codi, posició per defecte i telèfon abonat)
+        contract_obj = order.contract
+        if not contract_obj and getattr(order, 'contract_termination_request', None):
+            contract_obj = getattr(order.contract_termination_request, 'contract', None)
+
+        # Posició del comptador: sempre que hi hagi un punt de subministrament (encara que l'opció sigui una altra)
+        effective_supply_point = supply_point or getattr(contract, 'supply_point_default', None)
+        if not effective_supply_point and contract_obj:
+            effective_supply_point = getattr(contract_obj, 'supply_point_default', None)
+        meter_placement = None
+        if effective_supply_point and getattr(effective_supply_point, 'placement', None):
+            meter_placement = str(effective_supply_point.placement)
+
+        # Codi per a la fila "Contracte": només el número del contracte real (no escomesa/sol·licitud/punt)
         contract_code = None
-        if contract:
-            contract_code = getattr(contract, 'token', None)
-        if not contract_code and supply_point:
-            contract_code = supply_point.token  # SUPOSICIÓ: el codi del punt fa de codi de contracte
+        if contract_obj:
+            contract_code = getattr(contract_obj, 'token', None)
+
+        # Telèfon de l'abonat (només quan s'ha triat contracte)
+        subscriber_phone = None
+        if contract_obj:
+            person_contact_email = getattr(contract_obj, 'person_contact_email', None)
+            if person_contact_email and getattr(person_contact_email, 'phone', None):
+                subscriber_phone = person_contact_email.phone
+            if not subscriber_phone:
+                holder = getattr(contract_obj, 'holder', None)
+                if holder and hasattr(holder, 'contacts'):
+                    contact = (
+                        holder.contacts.filter(is_default=True, is_active=True)
+                        .exclude(phone__isnull=True).exclude(phone='')
+                        .first()
+                    )
+                    if not contact:
+                        contact = (
+                            holder.contacts.filter(is_active=True)
+                            .exclude(phone__isnull=True).exclude(phone='')
+                            .first()
+                        )
+                    if contact:
+                        subscriber_phone = contact.phone
             
         main_color = "#074df0"
         secondary_color = "#ffffff"
@@ -172,6 +206,8 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
             'physical_address': physical_address,
             'physical_location': physical_location,
             'physical_person': physical_person,
+            'subscriber_phone': subscriber_phone,
+            'meter_placement': meter_placement,
         }
 
         ctx = Context(context_data)
