@@ -19,3 +19,6 @@ CLAUDE.md
 .claude/settings.local.json
 
 dev.sh
+
+# Plugins de client (codi propi). No entren al repositori públic ni a la imatge.
+/plugins/

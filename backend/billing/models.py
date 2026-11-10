@@ -1408,3 +1408,41 @@ class BillingDocumentDownload(models.Model):
         else:
             origin = f"Billing {self.billing_id}"
         return f"BillingDocumentDownload {self.id} ({self.status}) for {origin}"
+
+class UnpaidFeeRun(models.Model):
+    """Una execució de l'operació «Despeses d'impagat» de la llista de factures.
+
+    Guarda la tasca de Celery perquè, si es surt de la pantalla i s'hi torna,
+    es pugui seguir el procés en curs. També en queda constància de qui l'ha
+    llançat, amb quines tarifes i què ha fet.
+    """
+
+    STATUS_RUNNING = 'running'
+    STATUS_DONE = 'done'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_RUNNING, 'Running'),
+        (STATUS_DONE, 'Done'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_RUNNING)
+    invoice_count = models.PositiveIntegerField(default=0)
+    price_rates = models.ManyToManyField(PriceRate, blank=True, related_name='+')
+    result = models.JSONField(null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        # La base de dades garanteix que només n'hi ha una en curs, encara que
+        # arribin dues peticions alhora.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['status'], condition=models.Q(status='running'), name='unpaid_fee_run_single_running'),
+        ]
+
+    def __str__(self):
+        return f'{self.created_at:%Y-%m-%d %H:%M} ({self.status})'

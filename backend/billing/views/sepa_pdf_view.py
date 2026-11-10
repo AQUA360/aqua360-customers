@@ -16,7 +16,7 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 from service.serializers.company_serializer import CompanySerializer
 
 from documentmanager.utils.main_utils import upload_document
-from billing.views.contract_sepa_pdf_view import _company_from_contract, _debtor_address
+from billing.views.contract_sepa_pdf_view import _company_from_contract, _contact_info, _debtor_address
 
 class SepaPDFDownloadViewSet(APIView):
   permission_classes = [IsAuthenticated] #Since it's a view that shows a document, no further permissions are needed
@@ -107,7 +107,8 @@ class SepaPDFDownloadViewSet(APIView):
     
     person_fullname = personBank.name if personBank and personBank.name else holder.get('full_name') if holder else ''
     person_token = personBank.dni if personBank and personBank.dni else holder.get('token') if holder else ''
-    
+    contact_phone, contact_email = _contact_info(holder_person, contract_request)
+
     # Render HTML content
     html_content = render_to_string('sepa_template.html', 
                                     {'iban': iban or '', 'swift':swift or '',
@@ -119,6 +120,8 @@ class SepaPDFDownloadViewSet(APIView):
                                      'mandate_reference': general_payment.mandate_id if general_payment else None,
                                      'person_fullname': person_fullname or '',
                                      'person_token': person_token or '',
+                                     'contact_phone': contact_phone,
+                                     'contact_email': contact_email,
                                      'contract': contract_request or '',
                                      'holder_fullname': holder.get('full_name') if holder else '',
                                      'holder_token': holder.get('token') if holder else '',

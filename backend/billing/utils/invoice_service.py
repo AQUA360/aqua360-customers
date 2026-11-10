@@ -1552,7 +1552,12 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
         raise Exception("Error creating invoice")
     return invoice
 
-def invoice_return_charge(invoice, title, return_reason=None):
+def invoice_return_charge(invoice, title, return_reason=None, fee_price_rates=None):
+    """Crea la factura de despeses d'impagat d'una factura.
+
+    Sense `fee_price_rates`, fa servir la tarifa de despeses de devolució
+    (`invoice_return_price_rate_token`).
+    """
     try:
         origin_reading_token = ConfigProject.objects.get(token='origin_reading_token').value
         origin_contract_token = ConfigProject.objects.get(token='origin_contract_token').value
@@ -1565,9 +1570,11 @@ def invoice_return_charge(invoice, title, return_reason=None):
             price_rates = contract.registration_price_rates.filter(is_active=True).order_by('product__position')
         else:
             raise Exception("Origin not found")
-        invoice_return_price_rate = PriceRate.objects.get(token=ConfigProject.objects.get(token='invoice_return_price_rate_token').value)
-        pass  # log removed
-        price_rates = [invoice_return_price_rate]
+        if fee_price_rates:
+            price_rates = list(fee_price_rates)
+        else:
+            invoice_return_price_rate = PriceRate.objects.get(token=ConfigProject.objects.get(token='invoice_return_price_rate_token').value)
+            price_rates = [invoice_return_price_rate]
         
         exploitation = invoice.exploitation
         

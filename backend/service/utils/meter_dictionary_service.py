@@ -58,7 +58,13 @@ def _filter_normalized(queryset, field, value):
 
 
 def meters_using(instance, name=None):
-    """Comptadors que fan servir (sense distingir majúscules) el valor de diccionari."""
+    """Comptadors que fan servir (sense distingir majúscules) el valor de diccionari.
+
+    El text del comptador es compara retallat: un valor desat com " Kamstrup "
+    correspon a l'entrada de diccionari "Kamstrup".
+    """
+    from django.db.models import Q
+    from django.db.models.functions import Trim
     from service.models import Meter, MeterModel
 
     name = ((instance.name if name is None else name) or '').strip()
