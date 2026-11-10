@@ -827,15 +827,8 @@ def create_from_lineitemtype(
             show_all_consumption_trams = should_show_all_consumption_trams()
             previous_stretch_end = 0
             for tram in trams:
-                if quantitat <= 0 and tram.stretch != 1: # vol dir que ja li hem restat tot i ja no hi ha més a facturar
-                    if show_all_consumption_trams:
-                        # Mostrem aquest tram (i la resta) sense consum, en lloc de tallar el bucle
-                        empty_tram_name = f"{line_item_type_name} - {tram.name_stretch}"
-                        if tram.end_stretch and tram.end_stretch < 9999:
-                            empty_tram_name += f"; Límit: {tram.end_stretch}"
-                        linies.append(create_line_item_data(contract, line_item_type, tram.price if tram.price else tram.proportional_price, 0, 0, empty_tram_name, empty_tram_name, True, reading, None, tram.stretch, tram.end_stretch, correction_multiplier, units_adjusted))
-                        previous_stretch_end = tram.end_stretch
-                        continue
+                tram_exhausted = quantitat <= 0 and tram.stretch != 1 # vol dir que ja li hem restat tot i ja no hi ha més a facturar
+                if tram_exhausted and not show_all_consumption_trams:
                     if line_item_type.always_show:
                         if previous_stretch_end <= 0:
                             linies.append(create_line_item_data(contract, line_item_type, tram.price if tram.price else tram.proportional_price, 0, 0, line_item_type_name, line_item_type_name, True, reading, None, tram.stretch, tram.end_stretch, correction_multiplier, units_adjusted))
@@ -849,7 +842,8 @@ def create_from_lineitemtype(
                 tram.price, tram.proportional_price, end_stretch_original, adjustment_name, corrected_price_tram, tram_adjustments = calc_correctors_tram(variables, variable_types, tram, line_item_type.id, reading_batch_id)
 
 
-                if tram_adjustments:
+                # Els trams sense consum no s'emporten els correctors aplicats (no s'hi ha facturat res)
+                if tram_adjustments and not tram_exhausted:
                     applied_adjustments.extend(tram_adjustments)
                 if line_item_type.price_interval.units == 'm3' and (line_item_type.active_choice or line_item_type.inactive_choice or line_item_type.is_prorated):
                     if ((line_item_type.active_choice == 'DAYS' and is_first_invoice) or (line_item_type.inactive_choice == 'DAYS' and is_termination) or line_item_type.is_prorated) and billing_days:
@@ -861,8 +855,17 @@ def create_from_lineitemtype(
                                 # print("passed correction")
                                 end_stretch_original = end_stretch_original * (correction_ptg)
                             end_stretch_original = math.ceil(end_stretch_original)
-                
-                
+
+                if tram_exhausted:
+                    # Mostrem aquest tram (i la resta) sense consum, en lloc de tallar el bucle, amb el límit i el
+                    # preu que tindria aplicant-hi els correctors (ampliació, tarifa social...) i el prorrateig
+                    empty_tram_name = f"{line_item_type_name} - {tram.name_stretch}"
+                    if end_stretch_original and end_stretch_original < 9999:
+                        empty_tram_name += f"; Límit: {end_stretch_original}"
+                    linies.append(create_line_item_data(contract, line_item_type, tram.price if tram.price else tram.proportional_price, 0, 0, empty_tram_name, empty_tram_name, True, reading, None, tram.stretch, end_stretch_original, correction_multiplier, units_adjusted))
+                    previous_stretch_end = end_stretch_original
+                    continue
+
                 stretch_width = math.ceil(end_stretch_original - previous_stretch_end)
 
                 # avaluem el tram:
