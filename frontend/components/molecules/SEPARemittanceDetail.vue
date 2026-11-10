@@ -67,6 +67,9 @@ const regenerated = ref(false);
 
 const showRegion = ref(false);
 
+// Una remesa enviada queda bloquejada (el backend també ho impedeix)
+const isSent = computed(() => !!remittanceDetails.value?.sent_at);
+
 const pagination = ref({
   page: 1,
   perPage: 50,
@@ -502,7 +505,7 @@ watch([searchInput], () => {
     <div class="p-1 transition-all duration-500 ease" :class="{ 'mr-[48%]': showRegion }">
       <div class="flex justify-between relative">
         <H1Region>{{ isReturn ? $t('billing_block.trf_remittance_detail') : $t('billing_block.sepa_remittance_detail') }}</H1Region>
-        <div v-if="objectPermissions?.can_change" class="relative">
+        <div v-if="objectPermissions?.can_change && remittanceDetails && !isSent" class="relative">
           <OptionsDropdown id="SupplyPointRegionOptions">
 
             <DropdownOption :name="t('common.delete')" @click="deleteRemittance">
@@ -540,22 +543,23 @@ watch([searchInput], () => {
                 :value="remittanceDetails.company_bank_iban ? formatIban(remittanceDetails.company_bank_iban) : '-'" class="mb-0" />
               
             </div>
-            <AtomsInputDate v-model="desired_send_at"
+            <AtomsInputDate v-if="!isSent" v-model="desired_send_at"
               :label="$t('common.select') + ' ' + $t('common.send_date_expected').toLowerCase()" />
+            <div v-else></div>
             <div v-if="objectPermissions?.can_change" class="flex gap-2 mt-2 whitespace-nowrap justify-end">
               <button v-if="remittanceDetails.document_url" :disabled="!regenerated" @click="downloadXMLDocument"
                 class="button-default" :title="$t('billing_block.download_xml_document')">
                 <Icon name="fa6-solid:download" class="w-4 h-4" />
                 {{ $t('billing_block.download_document') }}
               </button>
-              <button v-if="!regeneratingDocument" @click="regenerateSepaDocument"
+              <button v-if="!regeneratingDocument && !isSent" @click="regenerateSepaDocument"
                 class="button-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="regeneratingDocument || remittanceDetails.has_paid_payments || remittanceDetails.has_non_direct_debit_payments"
                 :title="$t('billing_block.regenerate_sepa_document')">
                 <Icon name="fa6-solid:rotate-right" class="w-4 h-4" />
                 <span>{{ $t('billing_block.regenerate_document') }}</span>
               </button>
-              <AtomsProcessColorBadge v-else class="h-full items-center justify-center py-2.5" 
+              <AtomsProcessColorBadge v-else-if="regeneratingDocument" class="h-full items-center justify-center py-2.5" 
               :value="$t('common.processing')" color="blue" :taskId="taskId" 
               @refresh="getDocument"></AtomsProcessColorBadge>
             </div>
@@ -568,6 +572,10 @@ watch([searchInput], () => {
             <div class="flex gap-2 items-center">
               <FieldDetail :label="$t('billing_block.sent_date')"
                 :value="remittanceDetails.sent_at ? formatDate(remittanceDetails.sent_at) : '-'" />
+            </div>
+            <div class="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 flex items-start gap-2">
+              <Icon name="fa6-solid:lock" class="mt-0.5 text-slate-500" />
+              <span>{{ $t('billing_block.remittance_locked_sent') }}</span>
             </div>
           </template>
           <template v-else>
@@ -740,7 +748,7 @@ watch([searchInput], () => {
               </span>
               <span class="p-1">{{ item.due_date ? formatDate(item.due_date) : '-' }}</span>
               <span class="p-1 ">
-                <button v-if="objectPermissions?.can_change" @click.stop="removePaymentFromRemittance(item)"
+                <button v-if="objectPermissions?.can_change && !isSent" @click.stop="removePaymentFromRemittance(item)"
                   class="w-6 h-6 rounded-full border border-orange-500 text-orange-500 bg-orange-50 hover:bg-orange-100 transition-colors duration-200"
                   :title="$t('billing_block.remove_from_remittance')">
                   <Icon name="fa6-solid:link-slash" class="m-auto w-3 h-3" />

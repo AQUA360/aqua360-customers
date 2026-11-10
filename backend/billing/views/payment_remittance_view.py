@@ -21,6 +21,10 @@ from billing.serializers.payment_serializer import PaymentSerializer, PaymentSEP
 from coredata.models import ConfigProject
 from billing.tasks import send_payment_remittances
 from billing.permissions import PaymentPermission
+from billing.utils.payment_remittance_lock_service import (
+    is_remittance_sent,
+    sent_remittance_error_message,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,22 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return PaymentRemittanceListSerializer
         return PaymentRemittanceSerializer
+
+    def _sent_remittance_response(self):
+        return Response(
+            {"detail": sent_remittance_error_message()},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def update(self, request, *args, **kwargs):
+        if is_remittance_sent(self.get_object()):
+            return self._sent_remittance_response()
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if is_remittance_sent(self.get_object()):
+            return self._sent_remittance_response()
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=['post'], url_path='send')
     def send_remittances(self, request):
@@ -71,6 +91,17 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 {"detail": f"Payment remittances not found: {list(missing_ids)}"},
                 status=status.HTTP_404_NOT_FOUND
             )
+        # Les remeses ja enviades no es poden tornar a enviar
+        already_sent = [
+            remittance.id
+            for remittance in PaymentRemittance.objects.filter(id__in=ids).select_related('status')
+            if is_remittance_sent(remittance, sent_status_token=status_token)
+        ]
+        if already_sent:
+            return Response(
+                {"detail": sent_remittance_error_message(), "ids": already_sent},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         # Perform bulk update - this is already optimized
         updated_count = PaymentRemittance.objects.filter(id__in=ids).update(
             status=status_sent, 
@@ -99,6 +130,9 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
         try:
             # Obtenir el PaymentRemittance
             payment_remittance = self.get_object()
+
+            if is_remittance_sent(payment_remittance):
+                return self._sent_remittance_response()
             
             # Verificar que el Payment existeix
             try:
