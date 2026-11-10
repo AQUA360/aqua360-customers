@@ -13,9 +13,15 @@ class PropertyFilter(filters.FilterSet):
         fields = ['search']
 
     def filter_search(self, queryset, name, value):
-        return queryset.filter(
-            Q(token__icontains=value) | Q(name__icontains=value)
-        )
+        value = (value or '').strip()
+        if not value:
+            return queryset
+        search_q = Q(token__icontains=value) | Q(name__icontains=value)
+        # The property sheet shows the internal id as "Identificador", so a
+        # numeric search also matches the id exactly.
+        if value.isdigit():
+            search_q |= Q(id=int(value))
+        return queryset.filter(search_q)
     
     def filter_only_unassigned(self, queryset, name, value):
         if value:
