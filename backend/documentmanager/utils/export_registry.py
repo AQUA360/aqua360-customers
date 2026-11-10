@@ -91,7 +91,7 @@ def _property_config():
         return f"{rp.route.token if rp.route else ''} - {rp.position if rp.position is not None else ''}".strip(" -")
 
     available_columns = {
-        "token": (_("Token"), lambda p: p.token or ""),
+        "id": (_("Identificador"), lambda p: p.id),
         "name": (_("Nom"), lambda p: p.name or ""),
         "city": (_("Municipi"), lambda p: p.address_city.name if p.address_city else ""),
         "cadastral": (_("Cadastral"), lambda p: p.cadastral or ""),
@@ -108,7 +108,7 @@ def _property_config():
         available_columns=available_columns,
         default_columns=list(available_columns.keys()),
         document_entity="PROPERTY",
-        default_ordering="token",
+        default_ordering="id",
         service_key="connection",
     )
 
