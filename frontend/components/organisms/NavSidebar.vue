@@ -21,7 +21,7 @@ const env = config.public.env;
 
 const showDropdown = ref(false);
 const {
-  deployedAtLabel,
+  summaryLabel: deploySummaryLabel,
   available: deployInfoAvailable,
   frontendLabel: deployFrontendLabel,
   backendLabel: deployBackendLabel,
@@ -35,7 +35,7 @@ const toggleDropdown = () => {
   if (showDropdown.value) loadDeployInfo();
 };
 
-/** Data del deploy i, en passar-hi el ratolí, el commit desplegat de cada repo. */
+/** En passar-hi el ratolí, la versió, el commit i la data del build de frontend i backend. */
 const deployTooltip = computed(() => [
   `${t('common.deploy_frontend')}: ${deployFrontendLabel.value}`,
   `${t('common.deploy_backend')}: ${deployBackendLabel.value}`,
@@ -580,13 +580,13 @@ onUnmounted(() => {
           <span>{{ $t('common.help') }}</span>
         </a>
 
-        <!-- Deploy info: data del deploy i, en hover, els commits desplegats -->
+        <!-- Deploy info: versió i data del deploy i, en hover, el detall de frontend i backend -->
         <div class="px-3 py-2 flex items-center gap-2 text-slate-500 select-none cursor-help"
           :title="deployInfoAvailable ? deployTooltip : $t('common.deploy_unknown')">
           <Icon name="fa6-solid:code-branch" class="w-4 h-4 text-slate-400 shrink-0" />
           <span class="text-xs truncate">
             {{ $t('common.deploy') }}:
-            <span class="font-medium text-slate-600">{{ deployedAtLabel || '—' }}</span>
+            <span class="font-medium text-slate-600">{{ deploySummaryLabel || '—' }}</span>
           </span>
         </div>
 

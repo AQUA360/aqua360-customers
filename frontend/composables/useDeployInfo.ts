@@ -4,19 +4,20 @@ import { formatDateTime } from '~/utils/date';
 /**
  * Informació del deploy que s'està executant, per mostrar-la al NavSidebar.
  *
- * Cada repo la genera al servidor amb `scripts/record_deploy.sh` durant el
- * deploy (data del deploy + commit desplegat):
+ * Es genera en construir cada imatge (veure `.github/workflows/imatges.yml` i
+ * els Dockerfile): versió, commit i data del build, que és la data del deploy.
  *
  *  - frontend: `public/deploy-info.json`, servit a `/deploy-info.json`
  *  - backend:  `deploy_info.json`, servit a `/coredata/deploy-info/`
  *
- * En desenvolupament el fitxer del frontend no existeix (no hi ha hagut
- * deploy) i el backend respon amb el commit del git local i `deployed_at`
- * buit; en aquest cas no es mostra res que no sigui cert.
+ * En desenvolupament no hi ha build: tots dos responen amb el commit del git
+ * local i `deployed_at` buit (el del frontend, `server/routes/deploy-info.json.ts`);
+ * en aquest cas no es mostra res que no sigui cert.
  */
 
 export interface DeployInfo {
     repo?: string;
+    component?: string;
     deployed_at?: string | null;
     commit?: string;
     commit_full?: string;
@@ -90,13 +91,21 @@ export function useDeployInfo() {
 
     const deployedAtLabel = computed<string>(() => (deployedAt.value ? formatDateTime(deployedAt.value) : ''));
 
-    /** Hi ha alguna cosa a mostrar (data de deploy o, com a mínim, un commit). */
-    const available = computed<boolean>(() => !!deployedAt.value || hasCommit(frontend.value) || hasCommit(backend.value));
+    /** Versió desplegada (monorepo: una sola versió). Si frontend i backend no coincideixen, el tooltip ho mostra. */
+    const version = computed<string>(() => frontend.value?.release || backend.value?.release || '');
 
-    /** Una línia per repo: `frontend develop@fedb14d4 · 07/09/2026 11:54`. */
+    /** Línia principal: `v1.152.01 · 07/09/2026 11:54` (el que hi hagi de les dues parts). */
+    const summaryLabel = computed<string>(() => [version.value, deployedAtLabel.value].filter(Boolean).join(' · '));
+
+    /** Hi ha alguna cosa a mostrar (data de deploy, versió o, com a mínim, un commit). */
+    const available = computed<boolean>(() => !!deployedAt.value || !!version.value || hasCommit(frontend.value) || hasCommit(backend.value));
+
+    /** Una línia per part: `v1.152.01 · develop@fedb14d4 · 07/09/2026 11:54`. */
     const describe = (info: DeployInfo | null): string => {
-        if (!info || !info.commit) return '—';
-        const parts = [info.branch ? `${info.branch}@${info.commit}` : info.commit];
+        if (!info || (!info.commit && !info.release && !info.deployed_at)) return '—';
+        const parts: string[] = [];
+        if (info.release) parts.push(info.release);
+        if (info.commit) parts.push(info.branch ? `${info.branch}@${info.commit}` : info.commit);
         if (info.deployed_at) parts.push(formatDateTime(info.deployed_at));
         else if (info.commit_date) parts.push(formatDateTime(info.commit_date));
         return parts.join(' · ');
@@ -112,6 +121,8 @@ export function useDeployInfo() {
         load,
         deployedAt,
         deployedAtLabel,
+        version,
+        summaryLabel,
         available,
         frontendLabel,
         backendLabel,
