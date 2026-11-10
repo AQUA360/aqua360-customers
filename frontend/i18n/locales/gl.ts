@@ -2983,6 +2983,8 @@ export default {
     accounting_pricing_negative_treatment_opposite: 'Oposto',
     accounting_pricing_declared_as: 'Declarar como',
     accounting_pricing_declared_as_hint: 'Título da liña contable. Se está baleiro, úsase o nome.',
+    accounting_pricing_declared_as_return: 'Declarar como (retorno)',
+    accounting_pricing_declared_as_return_hint: 'Título usado en retornos e desdeclaracións. Se está baleiro, úsase o declarar como / nome normal.',
     accounting_pricing_additional_lines_title: 'Liñas extra ao declarar esta conta',
     accounting_pricing_additional_lines_hint: 'Decláranse cos mesmos importes que a conta pai, cambiando concepto, código e nome.',
     accounting_pricing_additional_lines_empty: 'Aínda non hai liñas extra.',

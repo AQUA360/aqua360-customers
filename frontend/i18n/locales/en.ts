@@ -2983,6 +2983,8 @@ export default {
     accounting_pricing_negative_treatment_opposite: 'Opposite',
     accounting_pricing_declared_as: 'Declare as',
     accounting_pricing_declared_as_hint: 'Accounting line title. When empty, the name is used.',
+    accounting_pricing_declared_as_return: 'Declare as (return)',
+    accounting_pricing_declared_as_return_hint: 'Title used for returns and undeclarations. When empty, the normal declare-as / name is used.',
     accounting_pricing_additional_lines_title: 'Extra lines when declaring this account',
     accounting_pricing_additional_lines_hint: 'Declared with the same amounts as the parent account, changing concept, code and name.',
     accounting_pricing_additional_lines_empty: 'No extra lines yet.',
