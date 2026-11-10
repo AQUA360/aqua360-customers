@@ -509,6 +509,8 @@ class AccountingPricing(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     # Accounting line title. When empty, the line keeps name.
     declared_as = models.CharField(max_length=255, null=True, blank=True)
+    # Optional title for returns/undeclares. When empty, declared_as / name is used.
+    declared_as_return = models.CharField(max_length=255, null=True, blank=True)
     
     accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     accounting_cost_center = models.ForeignKey(AccountingCostCenter, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
@@ -609,6 +611,7 @@ class AccountingAdditionalLine(models.Model):
     token_return = models.CharField(max_length=255, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
     declared_as = models.CharField(max_length=255, null=True, blank=True)
+    declared_as_return = models.CharField(max_length=255, null=True, blank=True)
     
     accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='additional_lines', null=True, blank=True)
 

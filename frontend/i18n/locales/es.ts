@@ -3070,6 +3070,8 @@ export default {
     accounting_pricing_negative_treatment_opposite: 'Opuesto',
     accounting_pricing_declared_as: 'Declarar como',
     accounting_pricing_declared_as_hint: 'Título de la línea contable. Si está vacío, se usa el nombre.',
+    accounting_pricing_declared_as_return: 'Declarar como (retorno)',
+    accounting_pricing_declared_as_return_hint: 'Título usado en retornos y desdeclaraciones. Si está vacío, se usa el declarar como / nombre normal.',
     accounting_pricing_default_scope_hint: 'La explotación y la empresa son las mismas para cada registro guardado.',
     accounting_pricing_assign_values_title: 'Asignar código y nombre por valor',
     accounting_pricing_assign_values_hint: 'Marca «usar valores por defecto» o indica un código y un nombre propios. Con «declarar valores agrupados» activo, los valores con el mismo código y nombre se guardan juntos.',

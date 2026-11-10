@@ -3070,6 +3070,8 @@ export default {
     accounting_pricing_negative_treatment_opposite: 'Oposat',
     accounting_pricing_declared_as: 'Declarar com a',
     accounting_pricing_declared_as_hint: 'Títol de la línia comptable. Si està buit, s\'utilitza el nom.',
+    accounting_pricing_declared_as_return: 'Declarar com a (retorn)',
+    accounting_pricing_declared_as_return_hint: 'Títol usat en retorns i desdeclaracions. Si està buit, s\'utilitza el declarar com a / nom normal.',
     accounting_pricing_default_scope_hint: 'L\'explotació i l\'empresa són les mateixes per a cada registre desat.',
     accounting_pricing_assign_values_title: 'Assignar codi i nom per valor',
     accounting_pricing_assign_values_hint: 'Marca «fer servir valors per defecte» o indica un codi i un nom propis. Amb «declarar valors agrupats» actiu, els valors amb el mateix codi i nom es desen junts.',
