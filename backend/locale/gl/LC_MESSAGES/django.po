@@ -4908,3 +4908,7 @@ msgstr "Para cada contrato con saldo ou débeda, o saldo positivo da hucha e a d
 #: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
 msgid "Descarregar Excel"
 msgstr "Descargar Excel"
+
+#: billing/utils/payment_remittance_lock_service.py
+msgid "This remittance has already been sent and can no longer be modified."
+msgstr "Esta remesa xa se enviou e non se pode modificar."
