@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.filters import OrderingFilter
 
 from auth.permissions import PermissionManager
 from service.models import Property
@@ -18,10 +18,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
     queryset = Property.objects.all().filter(is_active=True).order_by('token')
     serializer_class = PropertySerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
-    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = PropertyFilter
-    search_fields = ['token', 'name']
-    ordering_fields = ['token', 'name']
+    ordering_fields = ['id', 'token', 'name']
 
     def get_serializer_class(self):
         if self.action == 'list':  # Corresponds to GET / (list view)

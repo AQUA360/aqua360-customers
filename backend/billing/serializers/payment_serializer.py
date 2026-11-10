@@ -208,7 +208,13 @@ class PaymentSEPASerializer(serializers.ModelSerializer):
         return None
 
     def get_contract(self, obj):
-        contract = obj.invoice.contract if obj.invoice else obj.commitment_deposit.contract if obj.commitment_deposit else obj.contract
+        # Les devolucions de saldo no tenen factura ni dipòsit: el contracte va
+        # directament al pagament.
+        contract = (
+            (obj.invoice.contract if obj.invoice else None)
+            or (obj.commitment_deposit.contract if obj.commitment_deposit else None)
+            or obj.contract
+        )
         if contract:
             return {
                 'id': contract.id,

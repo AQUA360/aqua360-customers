@@ -14,6 +14,7 @@ import ContractRegion from '../organisms/ContractRegion.vue';
 import PersonRegion from '../organisms/PersonRegion.vue';
 import InvoiceRegion from '../organisms/InvoiceRegion.vue';
 import CommitmentDepositRegion from '../organisms/CommitmentDepositRegion.vue';
+import PaymentRegion from '../organisms/PaymentRegion.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { useToast } from 'vue-toastification';
 import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
@@ -270,7 +271,10 @@ const resetFilters = () => {
 
 // Nova funcionalitat: Eliminar relació pagament-remesa
 const removePaymentFromRemittance = async (payment) => {
-  if (confirm(t('confirmation_text_block.confirm_remove_payment_from_remittance'))) {
+  const confirmText = props.isReturn
+    ? 'confirmation_text_block.confirm_remove_payment_from_remittance_trf'
+    : 'confirmation_text_block.confirm_remove_payment_from_remittance';
+  if (confirm(t(confirmText))) {
     try {
       await $SepaRemittanceApiService.deletePaymentRelation(props.remittance_id, payment.id);
       toast.success(t('success_block.payment_removed_from_remittance'));
@@ -466,13 +470,21 @@ onMounted(async () => {
   }
 });
 
+const customerLabel = (item) => [
+  item.customer_token_final || item.invoice?.customer_token_final,
+  item.customer_final || item.invoice?.customer_final,
+].filter(Boolean).join(' ');
+
 const detail = ref(null);
 const selectedItemId = ref(null);
 const selectedItemComponent = ref(null);
-const showDetail = async (component, id) => {
+// `rowId` és el pagament de la fila, per ressaltar-la encara que el detall
+// obert sigui la factura, el contracte o la persona.
+const showDetail = async (component, id, rowId = null) => {
+  if (!id) return;
   await toggleRegion(false);
   detail.value = id;
-  selectedItemId.value = id;
+  selectedItemId.value = rowId ?? id;
   selectedItemComponent.value = component;
   toggleRegion(true);
 }
@@ -661,12 +673,14 @@ watch([searchInput], () => {
           height: '600px',
         }" class="scrollbar-hide border-t border-gray-200">
           <div class="heading sticky top-0 bg-white grid gap-3 text-base border-b items-center z-[5]"
-            style="grid-template-columns: 120px 150px 100px 150px 80px 100px 80px 80px;">
+            style="grid-template-columns: 120px 150px 100px 200px 150px 80px 100px 80px 80px;">
             <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy"
               :sortDesc="sortDesc" @sort="handleSort" />
             <TableHeader :label="$t('invoice')" sortKey="invoice" :currentSortBy="sortBy" :sortDesc="sortDesc"
               @sort="handleSort" />
             <TableHeader :label="$t('common.total')" sortKey="amount" :currentSortBy="sortBy" :sortDesc="sortDesc"
+              @sort="handleSort" />
+            <TableHeader :label="$t('common.client')" sortKey="customer" :currentSortBy="sortBy" :sortDesc="sortDesc"
               @sort="handleSort" />
             <TableHeader :label="$t('contract')" sortKey="contract" :currentSortBy="sortBy" :sortDesc="sortDesc"
               @sort="handleSort" />
@@ -689,24 +703,35 @@ watch([searchInput], () => {
           </div>
           <div v-else class="scrollbar-hide">
             <div v-for="item in items" :key="item.id" class="grid gap-3 text-base border-b items-center"
-              style="grid-template-columns: 120px 150px 100px 150px 80px 100px 80px 80px;"
+              style="grid-template-columns: 120px 150px 100px 200px 150px 80px 100px 80px 80px;"
               :class="{ 'bg-yellow-50': item.id === selectedItemId, 'bg-purple-50': item.is_excluded && !(item.id === selectedItemId) }">
               <span>
                 <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-                  @click="showDetail(isReturn ? item.contract ? 'ContractRegion' : 'PersonRegion' :
-                  item.invoice ? 'InvoiceRegion' : 'CommitmentDepositRegion', 
-                  isReturn ? item.contract ? item.contract.id : item.person ? item.person.id : null : item.invoice ? item.invoice.id : item.commitment_deposit.id);">
+                  @click="showDetail('PaymentRegion', item.id)">
                   <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
                   <Icon name="fa6-solid:eye"
                     class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
                 </button>
               </span>
-              <span v-if="isReturn" class="p-1 truncate">{{ t('contract_block.balance_to_move') }}</span>
-              <span v-else-if="item.invoice" class="p-1 truncate">{{ item.invoice.token
-                }}</span>
-              <span v-else class="p-1 truncate">{{ t('commitment_deposit') }}</span>
+              <!-- A les transferències hi conviuen devolucions de saldo (sense
+                   factura) i pagaments negatius de factures (abonaments). -->
+              <button v-if="item.invoice" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('InvoiceRegion', item.invoice.id, item.id)">{{ item.invoice.token }}</button>
+              <button v-else-if="item.commitment_deposit" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('CommitmentDepositRegion', item.commitment_deposit.id, item.id)">{{ t('commitment_deposit') }}</button>
+              <span v-else-if="isReturn" class="p-1 truncate">{{ t('billing_block.balance_return') }}</span>
+              <span v-else class="p-1 truncate text-slate-400">-</span>
               <span class="p-1">{{ formatMoneyWithCurrency(item.amount) }}</span>
-              <span class="p-1 truncate">{{ item.contract ? item.contract.token : item.person ? `${item.person.token} ${item.person.name}` : '-' }}</span>
+              <span class="p-1 truncate" :title="customerLabel(item)">
+                <span class="font-medium">{{ item.customer_token_final || item.invoice?.customer_token_final }}</span>
+                {{ item.customer_final || item.invoice?.customer_final }}
+                <span v-if="!customerLabel(item)" class="text-slate-400">-</span>
+              </span>
+              <button v-if="item.contract" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('ContractRegion', item.contract.id, item.id)">{{ item.contract.token }}</button>
+              <button v-else-if="item.person" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('PersonRegion', item.person.id, item.id)">{{ `${item.person.token} ${item.person.name}` }}</button>
+              <span v-else class="p-1 truncate text-slate-400">-</span>
 
               <span class="p-1">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</span>
               <span class="p-1">
@@ -744,6 +769,7 @@ watch([searchInput], () => {
           </button>
         </div>
         <div class="px-10 flex-1 overflow-y-auto pb-10">
+          <PaymentRegion v-if="selectedItemComponent == 'PaymentRegion'" :id="parseInt(detail)" :isSubRegion="true" />
           <InvoiceRegion v-if="selectedItemComponent == 'InvoiceRegion'" :id="detail" :isSubRegion="true" />
           <PersonRegion v-if="selectedItemComponent == 'PersonRegion'" :id="detail" :isSubRegion="true" />
           <ContractRegion v-if="selectedItemComponent == 'ContractRegion'" :id="detail" :isSubRegion="true" />
