@@ -56,6 +56,9 @@ const block_billing = ref(null);
 const filter_has_debt = ref([]);
 const selected_has_debt = ref([]);
 const has_debt = ref(null);
+const filter_has_positive_balance = ref([]);
+const selected_has_positive_balance = ref([]);
+const has_positive_balance = ref(null);
 
 const variables = ref([]);
 const bonifications = ref([]);
@@ -143,7 +146,8 @@ const getData = async (searchQuery = '', searchAllAddress = '', filters = [], pa
       desc, variables.value, bonifications.value, client_types.value,
       use_types.value, categories.value, [], debt_management.value, false,
       comm_types.value, searchAllAddress, payment_types.value, [], searchByAddressQuery, totalPersonsMinQuery,
-      companies.value, null, null, block_billing.value, has_debt.value, searchEmailQuery, searchIbanQuery, searchMeterQuery
+      companies.value, null, null, block_billing.value, has_debt.value, searchEmailQuery, searchIbanQuery, searchMeterQuery,
+      has_positive_balance.value
     );
 
     items.value = data.results;
@@ -467,6 +471,13 @@ const handleHasDebtChange = (event) => {
   handleSearch();
 }
 
+const handleHasPositiveBalanceChange = (event) => {
+  selected_has_positive_balance.value = event;
+  has_positive_balance.value = event.length > 0 ? event[0].id : null;
+  pagination.value.page = 1;
+  handleSearch();
+}
+
 const handleFiltersChange = (event) => {
   let newFilters = event
     .filter(el => !isFilterShown.value.includes(el.id));
@@ -525,6 +536,10 @@ const checkInAdvacedFilters = (newFilters) => {
     has_debt.value = null;
     selected_has_debt.value = [];
     handleFilterChange();
+  } else if (isFilterShown.value.some(filter => filter.id === 'has_positive_balance') && !newFilters.some(filter => filter.id === 'has_positive_balance')) {
+    has_positive_balance.value = null;
+    selected_has_positive_balance.value = [];
+    handleFilterChange();
   }
 }
 
@@ -572,6 +587,8 @@ const resetFilters = () => {
   selected_block_billing.value = [];
   has_debt.value = null;
   selected_has_debt.value = [];
+  has_positive_balance.value = null;
+  selected_has_positive_balance.value = [];
   searchEmailInput.value = '';
   searchIbanInput.value = '';
   searchMeterInput.value = '';
@@ -683,6 +700,8 @@ const saveSearchState = () => {
     selected_block_billing: selected_block_billing.value,
     has_debt: has_debt.value,
     selected_has_debt: selected_has_debt.value,
+    has_positive_balance: has_positive_balance.value,
+    selected_has_positive_balance: selected_has_positive_balance.value,
     searchEmailInput: searchEmailInput.value,
     searchIbanInput: searchIbanInput.value,
     showEmailSearch: showEmailSearch.value,
@@ -744,6 +763,8 @@ const loadSearchState = () => {
       if (parsed.selected_block_billing !== undefined) selected_block_billing.value = parsed.selected_block_billing;
       if (parsed.has_debt !== undefined) has_debt.value = parsed.has_debt;
       if (parsed.selected_has_debt !== undefined) selected_has_debt.value = parsed.selected_has_debt;
+      if (parsed.has_positive_balance !== undefined) has_positive_balance.value = parsed.has_positive_balance;
+      if (parsed.selected_has_positive_balance !== undefined) selected_has_positive_balance.value = parsed.selected_has_positive_balance;
       if (parsed.searchEmailInput !== undefined) searchEmailInput.value = parsed.searchEmailInput;
       if (parsed.searchIbanInput !== undefined) searchIbanInput.value = parsed.searchIbanInput;
       if (parsed.showEmailSearch !== undefined) showEmailSearch.value = parsed.showEmailSearch;
@@ -772,6 +793,7 @@ onMounted(async () => {
       { name: t("service_block.companies"), id: "company" },
       { name: t("contract_block.block_billing"), id: "block_billing" },
       { name: t("common.debt"), id: "has_debt" },
+      { name: t("contract_block.positive_balance"), id: "has_positive_balance" },
     );
     filter_total_persons_min.value = [];
     for (let i = 3; i <= 10; i++) {
@@ -791,6 +813,11 @@ onMounted(async () => {
     filter_has_debt.value = [
       { id: 'true', name: t('contract_block.debtor') },
       { id: 'false', name: t('contract_block.no_debtor') },
+    ];
+
+    filter_has_positive_balance.value = [
+      { id: 'true', name: t('contract_block.with_positive_balance') },
+      { id: 'false', name: t('contract_block.without_positive_balance') },
     ];
     
     // Fetch heavy config data in parallel (UI) while first list load starts immediately with active status.
@@ -834,6 +861,7 @@ watch(
     isFilterOpen.value, showAddressSearch.value, isFilterShown.value, pagination.value.page,
     block_billing.value, selected_block_billing.value,
     has_debt.value, selected_has_debt.value,
+    has_positive_balance.value, selected_has_positive_balance.value,
     searchEmailInput.value, searchIbanInput.value, showEmailSearch.value, showIbanSearch.value,
     searchMeterInput.value, showMeterSearch.value
   ],
@@ -925,7 +953,8 @@ const exportExcel = async () => {
       has_debt.value,
       searchEmailInput.value,
       searchIbanInput.value,
-      searchMeterInput.value
+      searchMeterInput.value,
+      has_positive_balance.value
     );
 
     if (response && response.task_id) {
@@ -1221,6 +1250,14 @@ watch(() => route.query, async () => {
         @update:modelValue="handleHasDebtChange($event)">
         <template #icon>
           <Icon name="fa6-solid:euro-sign" class="text-md ml-2 mr-1" size="10px" />
+        </template>
+      </FilterSelect>
+
+      <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'has_positive_balance')" :options="filter_has_positive_balance"
+        :filters="selected_has_positive_balance" :multiple="false" :placeholder="t('contract_block.positive_balance')"
+        @update:modelValue="handleHasPositiveBalanceChange($event)">
+        <template #icon>
+          <Icon name="fa6-solid:piggy-bank" class="text-md ml-2 mr-1" size="10px" />
         </template>
       </FilterSelect>
 

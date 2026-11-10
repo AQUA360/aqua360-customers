@@ -13,7 +13,7 @@ export default defineNuxtPlugin(nuxtApp => {
     client_type_ids = [], use_type_ids = [], category_ids = [],
     product_ids = [], debt_management_types = [], is_checked = false,
     comm_types = [], search_all_address = '', payment_type_ids = [], person_ids = [], search_by_address = '', total_persons_min = null,
-    company_ids = [], holder = null, role = null, block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '') => {
+    company_ids = [], holder = null, role = null, block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '', has_positive_balance = null) => {
     let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
   
     if (role) {
@@ -38,6 +38,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
     if (has_debt !== null) {
       apiUrl += `&has_debt=${has_debt}`;
+    }
+
+    if (has_positive_balance !== null) {
+      apiUrl += `&has_positive_balance=${has_positive_balance}`;
     }
 
     let filtersValues = [];
@@ -541,7 +545,8 @@ export default defineNuxtPlugin(nuxtApp => {
     product_ids = [], debt_management_types = [], is_checked = false,
     comm_types = [], search_all_address = '', payment_type_ids = [],
     person_ids = [], search_by_address = '', total_persons_min = null, company_ids = [],
-    block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = ''
+    block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '',
+    has_positive_balance = null
   ) => {
     let apiUrl = apiHost + entity + 'export/excel/';
     let queryParams = [];
@@ -624,6 +629,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
     if (has_debt !== null) {
       queryParams.push(`has_debt=${has_debt}`);
+    }
+
+    if (has_positive_balance !== null) {
+      queryParams.push(`has_positive_balance=${has_positive_balance}`);
     }
 
     if (search_email) {
