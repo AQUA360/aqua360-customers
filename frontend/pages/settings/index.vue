@@ -78,7 +78,7 @@ const isAcaOrg = computed(() => {
 });
 const getConfigProject = async () => {
   const response = await $ConfigProjectApiService.getAll();
-  config_projects.value = response;
+  config_projects.value = Array.isArray(response) ? response : [];
 }
 
 // Edició en línia dels valors de configuració interna (ConfigProject)
@@ -401,9 +401,10 @@ getConfigProject();
         <H1 class="!mb-0">{{ $t('common.settings') }}</H1>
         <AtomsLanguageSwitcher />
       </div>
-      <Tabs class="mb-4">
-        <li v-for="tab in settingsTabs" :key="tab.key" class="me-2">
-          <a :href="`#tab_${tab.key}`" @click.prevent="setActiveTab(tab.key)" :class="{
+      <Tabs class="mb-4" list-role="tablist">
+        <li v-for="tab in settingsTabs" :key="tab.key" class="me-2" role="presentation">
+          <a :id="`tab_${tab.key}`" :href="`?tab=${tab.key}`" role="tab" :aria-selected="activeTab === tab.key"
+            :aria-controls="`panel_${tab.key}`" @click.prevent="setActiveTab(tab.key)" :class="{
             'text-sky-600 border-sky-600': activeTab === tab.key,
             'hover:text-gray-600 hover:border-gray-300': activeTab !== tab.key,
           }">
@@ -418,7 +419,8 @@ getConfigProject();
         <input v-model="searchText" type="search" class="input !pl-9" :placeholder="t('common.search')" />
       </div>
 
-      <section v-for="tab in ['general', 'master_tables']" v-show="activeTab === tab" :key="tab" role="tabpanel">
+      <section v-for="tab in ['general', 'master_tables']" v-show="activeTab === tab" :id="`panel_${tab}`" :key="tab"
+        role="tabpanel" :aria-labelledby="`tab_${tab}`">
         <div v-for="section in (tab === 'general' ? generalSections : masterSections)" :key="section.key">
           <h3 class="text-lg mb-2 font-bold pl-3">{{ section.title }}</h3>
           <ul class="text-base ml-3 pl-6 list-disc mb-4">
@@ -434,7 +436,8 @@ getConfigProject();
           {{ t('common.no_results') }}</p>
       </section>
 
-      <section v-if="permissions?.can_edit_config_project" v-show="activeTab === 'internal'" role="tabpanel">
+      <section v-if="permissions?.can_edit_config_project" v-show="activeTab === 'internal'" id="panel_internal"
+        role="tabpanel" aria-labelledby="tab_internal">
         <ul v-if="filteredConfigProjects.length" class="ml-3 leading-6">
           <li v-for="item in filteredConfigProjects" :key="item.token" class="flex gap-3 items-center mb-1">
             <abbr class="font-bold" :title=item.name>{{ item.token }}:</abbr>
