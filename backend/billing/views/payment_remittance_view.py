@@ -155,7 +155,9 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
             )
         
         
-        payments = (payment_remittance.payments.select_related('invoice', 'contract', 'status').all())
+        payments = payment_remittance.payments.select_related(
+            'invoice__contract', 'commitment_deposit__contract', 'contract', 'person', 'status', 'reject'
+        ).all()
 
         
         # Cerca per paràmetre 'search'
@@ -168,7 +170,10 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 Q(name__icontains=search_query) |
                 Q(invoice__token__icontains=search_query) |
                 Q(invoice__serie_final__icontains=search_query) |
-                Q(invoice__contract__token__icontains=search_query)
+                Q(invoice__contract__token__icontains=search_query) |
+                Q(contract__token__icontains=search_query) |
+                Q(customer_final__icontains=search_query) |
+                Q(customer_token_final__icontains=search_query)
             )
         if status_query:
             status_query = status_query.split(',')
@@ -186,6 +191,7 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
             'due_date': 'due_date',
             'invoice': 'invoice__token',
             'contract': 'contract__token',
+            'customer': 'customer_final',
             # Tria si prefereixes ordenar pel nom d’estat o per la seva posició
             'status': 'status__position',  # o 'status__name'
         }
@@ -240,6 +246,7 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
             _('Token'),  # Identificació
             _('Invoice'),  # Factura o Commitment Deposit
             _('Amount'),  # Total
+            _('Customer'),  # Abonat
             _('Contract'),  # Contracte
             _('Payment Date'),  # Data de pagament
             _('Status'),  # Estat
@@ -266,6 +273,7 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 payment.get('token', ''),
                 invoice_value,
                 payment.get('amount', ''),
+                ' '.join(filter(None, [payment.get('customer_token_final'), payment.get('customer_final')])) or '-',
                 contract_token,
                 payment.get('payment_date', '') if payment.get('payment_date') else '-',
                 status_name,

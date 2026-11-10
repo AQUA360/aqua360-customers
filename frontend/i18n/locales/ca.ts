@@ -2109,6 +2109,8 @@ export default {
   },
 
   billing_block: {
+    balance_return: 'Devolució de saldo',
+    remittance_line_origin: 'Factura / Origen',
     budget_holder: 'Titular del pressupost',
     current_holder: 'Titular actual',
     budget_default_holder: 'Es farà servir el titular per defecte',

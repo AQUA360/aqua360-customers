@@ -17,8 +17,10 @@ from billing.utils.payment_service import (
 from billing.views.sepa_payment_document_generate_view import (
     RequestData,
     check_for_anomalies,
+    get_preview_line,
     get_sepa_payments_and_batches,
 )
+from billing.serializers.payment_serializer import PaymentSEPASerializer
 from contract.models import Contract, PaymentType, PiggyBank
 from coredata.models import ConfigProject
 
@@ -88,6 +90,68 @@ class TestTransferRemittanceNegativeInvoices(TestCase):
 
         remittance.is_return = False
         self.assertEqual(get_remittance_total_amount(remittance), Decimal('10.00'))
+
+
+class TestTransferRemittancePreviewLines(TestCase):
+    """Les línies de la previsualització separen factura i pagament: una
+    devolució de saldo no té factura i no s'ha d'obrir cap factura amb l'id
+    del pagament."""
+
+    def setUp(self):
+        disconnect_payment_signals()
+        self.addCleanup(reconnect_payment_signals)
+
+        ConfigProject.objects.get_or_create(
+            token='contract_terminated_status', defaults={'value': '0'})
+        self.contract = Contract.objects.create(token='C-PREVIEW')
+        self.balance_return = Payment.objects.create(
+            token='P-SALDO', amount=Decimal('30.00'), contract=self.contract,
+            payment_type_token='BANK_TRANSFER', payment_bank=IBAN,
+            customer_final='Abonat de prova', customer_token_final='12345678Z')
+        invoice = Invoice.objects.create(
+            token='F-NEG', serie_final='FR/F-NEG', contract=self.contract,
+            customer_final='Abonat factura', customer_token_final='87654321X')
+        self.negative_invoice = Payment.objects.create(
+            token='P-ABONAMENT', amount=Decimal('-20.00'), invoice=invoice,
+            payment_type_token='BANK_TRANSFER', payment_bank=IBAN)
+
+    def test_devolucio_de_saldo_sense_factura(self):
+        line = get_preview_line(self.balance_return, Decimal('30.00'))
+
+        self.assertIsNone(line['invoice_id'])
+        self.assertEqual(line['payment_id'], self.balance_return.id)
+        self.assertEqual(line['payment_token'], 'P-SALDO')
+        # El contracte surt del propi pagament.
+        self.assertEqual(line['contract_id'], self.contract.id)
+        self.assertEqual(line['customer_final'], 'Abonat de prova')
+        self.assertEqual(line['customer_token_final'], '12345678Z')
+        self.assertEqual(line['iban'], IBAN)
+
+    def test_factura_negativa_amb_dades_de_la_factura(self):
+        line = get_preview_line(self.negative_invoice, Decimal('20.00'))
+
+        self.assertEqual(line['invoice_id'], self.negative_invoice.invoice.id)
+        self.assertEqual(line['invoice_token'], 'FR/F-NEG')
+        self.assertEqual(line['payment_id'], self.negative_invoice.id)
+        self.assertEqual(line['contract_id'], self.contract.id)
+        # Sense dades al pagament, es fan servir les de la factura.
+        self.assertEqual(line['customer_final'], 'Abonat factura')
+        self.assertEqual(line['customer_token_final'], '87654321X')
+
+    def test_serializer_contracte_de_la_devolucio_de_saldo(self):
+        data = PaymentSEPASerializer(self.balance_return).data
+
+        self.assertIsNone(data['invoice'])
+        self.assertEqual(data['contract']['id'], self.contract.id)
+
+    def test_serializer_factura_sense_contracte_usa_el_del_pagament(self):
+        invoice = Invoice.objects.create(token='F-SENSE-CONTRACTE')
+        payment = Payment.objects.create(
+            token='P-SENSE', amount=Decimal('-5.00'), invoice=invoice, contract=self.contract)
+
+        data = PaymentSEPASerializer(payment).data
+
+        self.assertEqual(data['contract']['id'], self.contract.id)
 
 
 class TestSwitchNegativeDirectDebitToTransfer(TestCase):
