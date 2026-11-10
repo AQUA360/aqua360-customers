@@ -2734,7 +2734,10 @@ def generate_general_accounting(request):
                 iva_amount != 0
                 or (int(float(iva_value)) == 0 and iva_base_total != 0)
             ) and has_iva
-            line_content += '1' if show_iva else ' '
+            if show_iva:
+                line_content += '2' if int(float(iva_value)) == 0 else '1'
+            else:
+                line_content += ' '
             line_content += repeat_to_at_least_length(' ', len_iva_value-len(iva_value_str))
             line_content += iva_value_str
             line_content += repeat_to_at_least_length(' ', len_percentage-len(iva_str))
