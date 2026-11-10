@@ -557,6 +557,9 @@ msgstr "No price rates"
 msgid "Contract"
 msgstr "Contract"
 
+msgid "Customer"
+msgstr "Customer"
+
 #: billing/utils/billing_service.py
 msgid "Creation date"
 msgstr "Creation date"

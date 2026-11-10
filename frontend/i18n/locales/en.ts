@@ -2096,6 +2096,8 @@ export default {
   },
 
   billing_block: {
+    balance_return: 'Balance refund',
+    remittance_line_origin: 'Invoice / Origin',
     budget_holder: 'Budget holder',
     current_holder: 'Current holder',
     budget_default_holder: 'The default holder will be used',

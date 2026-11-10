@@ -113,6 +113,39 @@ def get_remittance_amount(payment, is_return=False):
     return abs(amount) if is_return else amount
 
 
+def get_preview_line(payment, amount):
+    """
+    Línia de la previsualització dels fitxers de remesa.
+
+    Els identificadors de factura i de pagament van en camps separats: les
+    devolucions de saldo no tenen factura i, si s'enviava l'id del pagament com
+    a id de factura, el frontend obria una factura qualsevol amb aquell id.
+    El contracte es busca també al propi pagament, que és l'únic lligam que
+    tenen les devolucions de saldo.
+    """
+    invoice = payment.invoice
+    commitment = payment.commitment_deposit
+    contract = (
+        (commitment.contract if commitment else None)
+        or (invoice.contract if invoice else None)
+        or payment.contract
+    )
+    return {
+        'payment_id': payment.id,
+        'payment_token': payment.token,
+        'invoice_id': invoice.id if invoice else None,
+        'invoice_token': (invoice.serie_final or invoice.token) if invoice else None,
+        'commitment_deposit_id': commitment.id if commitment else None,
+        'commitment_deposit_token': commitment.token if commitment else None,
+        'contract_id': contract.id if contract else None,
+        'contract_token': contract.token if contract else None,
+        'customer_final': payment.customer_final or (invoice.customer_final if invoice else None),
+        'customer_token_final': payment.customer_token_final or (invoice.customer_token_final if invoice else None),
+        'iban': payment.payment_bank,
+        'amount': amount,
+    }
+
+
 class RequestData:
     """
     Embolcall minim amb l'atribut `data`, per poder cridar
@@ -322,7 +355,11 @@ def get_sepa_payments_and_batches(request):
             Q(invoice__customer_final__icontains=search) | 
             Q(invoice__customer_token_final__icontains=search) |
             Q(commitment_deposit__token__icontains=search) |
-            Q(commitment_deposit__contract__token__icontains=search)
+            Q(commitment_deposit__contract__token__icontains=search) |
+            # Devolucions de saldo: sense factura, lligades al contracte.
+            Q(contract__token__icontains=search) |
+            Q(customer_final__icontains=search) |
+            Q(customer_token_final__icontains=search)
         )
         
     # `only_excluded` serveix a la pestanya d'exclosos del llistat de pagaments:
@@ -338,6 +375,7 @@ def get_sepa_payments_and_batches(request):
         .exclude(status__token__in=excluded_status_tokens)
         .exclude(remittances__id__isnull=False, remittances__sent_at__isnull=True)
         .exclude(joined_payments__status__token__in=joined_payment_status_tokens)
+        .select_related('invoice__contract', 'commitment_deposit__contract', 'contract')
         .distinct()
         .order_by("-token")
     )
@@ -394,14 +432,9 @@ def get_sepa_payments_and_batches(request):
                     r_date_str = datetime.now().strftime("%Y-%m-%d")
             
             if r_date_str not in groups:
-                groups[r_date_str] = {'remittance_date': r_date_str, 'total_amount': Decimal("0"), 'payments': [], 'invoices': []}
+                groups[r_date_str] = {'remittance_date': r_date_str, 'payments': []}
             
-            groups[r_date_str]['total_amount'] += get_remittance_amount(payment, is_return)
             groups[r_date_str]['payments'].append(payment)
-            if payment.invoice:
-                groups[r_date_str]['invoices'].append({'id': payment.invoice.id, 'token': payment.invoice.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': get_remittance_amount(payment, is_return)})
-            else:
-                groups[r_date_str]['invoices'].append({'id': payment.id, 'token': payment.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': get_remittance_amount(payment, is_return)})
 
     payments_batches = []
     max_limit = Decimal(str(max_total_remittance)) if max_total_remittance and Decimal(str(max_total_remittance)) > 0 else None
@@ -806,11 +839,7 @@ class SEPAPaymentFilesPreviewViewSet(APIView):
                 for payment in batch_payments:
                     amount = get_remittance_amount(payment, is_return)
                     batch_total += amount
-                    contract = payment.commitment_deposit.contract if payment.commitment_deposit else payment.invoice.contract if payment.invoice else None
-                    if payment.invoice:
-                        batch_invoices.append({'id': payment.invoice.id, 'token': payment.invoice.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': amount})
-                    else:
-                        batch_invoices.append({'id': payment.id, 'token': payment.token, 'contract_id': contract.id if contract else None, 'contract_token': contract.token if contract else None, 'amount': amount})
+                    batch_invoices.append(get_preview_line(payment, amount))
                 sepa_files_preview.append({
                     'remittance_date': d_str if d_str else datetime.now().strftime("%Y-%m-%d"),
                     'total_amount': batch_total,

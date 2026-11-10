@@ -2096,6 +2096,8 @@ export default {
   },
 
   billing_block: {
+    balance_return: 'Devolución de saldo',
+    remittance_line_origin: 'Factura / Orixe',
     budget_holder: 'Titular do orzamento',
     current_holder: 'Titular actual',
     budget_default_holder: 'Usarase o titular por defecto',

@@ -109,6 +109,9 @@ msgstr "Sen tarifas"
 msgid "Contract"
 msgstr "Contrato"
 
+msgid "Customer"
+msgstr "Abonado"
+
 msgid "Creation date"
 msgstr "Data creación"
 
