@@ -56,6 +56,7 @@ const props = defineProps({
 const { te, t } = useI18n();
 const emit = defineEmits(['update:modelValue']);
 
+const dropdownTrigger = ref(null);
 const isDropdownVisible = ref(props.defaultOpen);
 const selectedElements = ref([...props.filters]);
 
@@ -65,6 +66,11 @@ const selectedDateRange = ref(props.initialDateRange);
 
 const toggleDropdown = () => {
     isDropdownVisible.value = !isDropdownVisible.value;
+};
+
+const closeDropdown = () => {
+    isDropdownVisible.value = false;
+    dropdownTrigger.value?.focus();
 };
 
 const handleClickOutside = (event) => {
@@ -118,6 +124,9 @@ const handleSelection = (option) => {
     if (props.selector) {
         isDropdownVisible.value = false
     }
+    if (!isDropdownVisible.value) {
+        dropdownTrigger.value?.focus();
+    }
     emit('update:modelValue', [...selectedElements.value]);
 };
 
@@ -144,8 +153,8 @@ watch(
 </script>
 
 <template>
-    <div class="relative dropdown-container">
-        <button @click="toggleDropdown"
+    <div class="relative dropdown-container" @keydown.esc.stop.prevent="closeDropdown">
+        <button ref="dropdownTrigger" type="button" :aria-expanded="isDropdownVisible" @click="toggleDropdown"
             class="w-full text-left bg-whiterounded focus:outline-none focus:ring focus:ring-blue-300 mx-1 flex items-center gap-2"
             :class="{
                 'hover:bg-gray-100 text-gray-400': selector && !plain,
@@ -183,11 +192,17 @@ watch(
                 <li v-else-if="datePick" class="p-2 flex items-center cursor-pointer">
                     <DatePicker @date-range-selected="handleDateRangeSelected" />
                 </li>
-                <li v-else v-for="option in options" :key="option.id"
-                    class="p-2 hover:bg-gray-100 flex items-center cursor-pointer" @click="handleSelection(option)">
-                    <input v-if="multiple" type="checkbox" :checked="selectedElements.some((el) => el.id === option.id)"
-                        class="mr-2" />
-                    {{ translateOptionName(option.name) }}
+                <li v-else v-for="option in options" :key="option.id">
+                    <label v-if="multiple" class="p-2 hover:bg-gray-100 flex items-center cursor-pointer">
+                        <input type="checkbox" :checked="selectedElements.some((el) => el.id === option.id)"
+                            class="mr-2" @change="handleSelection(option)" />
+                        {{ translateOptionName(option.name) }}
+                    </label>
+                    <button v-else type="button" :aria-pressed="selectedElements.some((el) => el.id === option.id)"
+                        class="w-full p-2 text-left hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+                        @click="handleSelection(option)">
+                        {{ translateOptionName(option.name) }}
+                    </button>
                 </li>
             </ul>
         </div>
@@ -207,7 +222,7 @@ watch(
     appearance: none;
 }
 
-.dropdown-container button {
+.dropdown-container > button {
     height: 25px !important;
     padding: 0 10px;
     width: auto;

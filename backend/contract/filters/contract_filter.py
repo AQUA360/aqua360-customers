@@ -54,6 +54,7 @@ class ContractFilter(filters.FilterSet):
     total_persons_min = filters.NumberFilter(field_name='total_persons', lookup_expr='gte')
     block_billing = filters.CharFilter(method='filter_block_billing')
     has_debt = filters.CharFilter(method='filter_has_debt')
+    has_positive_balance = filters.CharFilter(method='filter_has_positive_balance')
     
     class Meta:
         model = Contract
@@ -64,7 +65,7 @@ class ContractFilter(filters.FilterSet):
                   'start_at', 'end_at', 'product', 
                   'is_pinned', 'is_checked', 'is_active', 'exploitation',
                   'communication_type', 'payment_type', 'persons', 'role', 'total_persons_min', 'block_billing',
-                  'has_debt']
+                  'has_debt', 'has_positive_balance']
 
     def filter_queryset(self, queryset):
         queryset = queryset.filter(is_active=True)
@@ -104,6 +105,19 @@ class ContractFilter(filters.FilterSet):
             return filter_contract_queryset_by_debt(queryset, False)
         return queryset
     
+    def filter_has_positive_balance(self, queryset, name, value):
+        if value is None or value == '':
+            return queryset
+
+        from contract.utils.contract_list_queryset import filter_contract_queryset_by_positive_balance
+
+        normalized = str(value).lower()
+        if normalized in ("true", "1"):
+            return filter_contract_queryset_by_positive_balance(queryset, True)
+        if normalized in ("false", "0"):
+            return filter_contract_queryset_by_positive_balance(queryset, False)
+        return queryset
+
     def search_token(self, queryset, name, value):
         if value:
             return queryset.filter(token__icontains=value)
