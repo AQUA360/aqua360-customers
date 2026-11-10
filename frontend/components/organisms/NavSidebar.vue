@@ -363,7 +363,9 @@ const getCurrentExploitation = async () => {
 const dropdownContainer = ref(null);
 
 const handleClickOutside = (event) => {
-  if (dropdownContainer.value && !dropdownContainer.value.contains(event.target)) {
+  // composedPath es calcula en llançar el clic: serveix encara que l'element
+  // clicat ja s'hagi tret del DOM (p. ex. el botó de restaurar el menú).
+  if (dropdownContainer.value && !event.composedPath().includes(dropdownContainer.value)) {
     showDropdown.value = false;
     showMenuCustomizer.value = false;
   }
@@ -526,7 +528,7 @@ onUnmounted(() => {
       <button type="button"
         class="flex w-full items-center px-3 py-2 leading-[14px] text-sm text-slate-400 rounded hover:text-slate-600"
         :class="[hoverClass, { 'justify-center': isCollapsed, 'text-slate-600': showMenuCustomizer }]"
-        :title="$t('common.customize_menu')"
+        :title="$t('common.customize_menu')" :aria-expanded="showMenuCustomizer"
         @click.stop="showMenuCustomizer ? (showMenuCustomizer = false) : openMenuCustomizer()">
         <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
           <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:sliders" /></span>
@@ -563,7 +565,7 @@ onUnmounted(() => {
         </NuxtLink>
 
         <!-- Personalitzar el menú lateral -->
-        <button type="button" @click="openMenuCustomizer"
+        <button type="button" :aria-expanded="showMenuCustomizer" @click="openMenuCustomizer"
           class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors w-full text-left">
           <Icon name="fa6-solid:sliders" class="w-4 h-4 text-slate-500" />
           <span>{{ $t('common.customize_menu') }}</span>
@@ -607,7 +609,8 @@ onUnmounted(() => {
       </div>
 
       <!-- Personalització del menú: seccions i enllaços visibles, i el seu ordre -->
-      <div v-if="showMenuCustomizer"
+      <div v-if="showMenuCustomizer" role="dialog" :aria-label="$t('common.customize_menu')"
+        @keydown.esc="showMenuCustomizer = false"
         class="absolute bottom-full left-0 mb-2 w-[300px] max-h-[75vh] overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg p-2 z-30 text-sm text-slate-700">
         <div class="flex items-center justify-between px-1">
           <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">{{ $t('common.customize_menu') }}</span>
