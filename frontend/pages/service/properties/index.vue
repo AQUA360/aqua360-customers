@@ -132,7 +132,7 @@ const handleSort = (key) => {
 }
 
 const exportColumns = computed(() => [
-  { header: t('common.identification'), value: (row) => row.token, key: 'token' },
+  { header: t('common.identification'), value: (row) => row.id, key: 'id' },
   { header: t('common.name'), value: (row) => row.name, key: 'name' },
   { header: t('address_block.city'), value: (row) => row.city, key: 'city' },
   { header: t('common.cadastral'), value: (row) => row.cadastral, key: 'cadastral' },
