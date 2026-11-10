@@ -1,6 +1,8 @@
 import uuid
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q, Value
+from django.db.models.functions import Trim, Upper
 
 
 def normalize_dictionary_name(model, name):
@@ -47,18 +49,32 @@ def _meter_field_for(instance):
     raise TypeError(f'Unsupported meter dictionary model: {type(instance).__name__}')
 
 
+def _filter_normalized(queryset, field, value):
+    """Coincidència sense distingir majúscules i ignorant espais sobrants (a BD i al valor)."""
+    alias = f'_normalized_{field}'
+    return queryset.alias(**{alias: Upper(Trim(field))}).filter(
+        **{alias: Upper(Value(value.strip()))}
+    )
+
+
 def meters_using(instance, name=None):
     """Comptadors que fan servir (sense distingir majúscules) el valor de diccionari."""
     from service.models import Meter, MeterModel
 
-    name = instance.name if name is None else name
+    name = ((instance.name if name is None else name) or '').strip()
     if not name:
         return Meter.objects.none()
 
     field = _meter_field_for(instance)
-    meters = Meter.objects.filter(**{f'{field}__iexact': name})
-    if isinstance(instance, MeterModel) and instance.manufacturer_id:
-        meters = meters.filter(manufacturer__iexact=instance.manufacturer.name)
+    meters = _filter_normalized(Meter.objects.all(), field, name)
+    if isinstance(instance, MeterModel):
+        if instance.manufacturer_id:
+            meters = _filter_normalized(meters, 'manufacturer', instance.manufacturer.name or '')
+        else:
+            # Model sense fabricant: només comptadors que tampoc en tenen
+            meters = meters.alias(_trimmed_manufacturer=Trim('manufacturer')).filter(
+                Q(manufacturer__isnull=True) | Q(_trimmed_manufacturer='')
+            )
     return meters
 
 

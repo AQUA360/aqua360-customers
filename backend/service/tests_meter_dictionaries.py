@@ -315,6 +315,35 @@ class MeterDictionaryRenameAndDeleteTests(TestCase):
         self.assertTrue(MeterModel.objects.filter(pk=self.acme_a1.pk).exists())
         self.assertTrue(MeterCommTechnology.objects.filter(pk=self.tech.pk).exists())
 
+    def test_model_without_manufacturer_only_matches_meters_without_manufacturer(self):
+        orphan = MeterModel.objects.create(name='A1', manufacturer=None)
+        orphan_meter = Meter.objects.create(code='RENAME-3', manufacturer=None, model='a1')
+
+        response = self.client.delete(f'/service/meter-model/{orphan.pk}/')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['meters_count'], 1)
+
+        response = self.client.patch(f'/service/meter-model/{orphan.pk}/', {'name': 'A3'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        orphan_meter.refresh_from_db()
+        self.acme_meter.refresh_from_db()
+        self.other_meter.refresh_from_db()
+        self.assertEqual(orphan_meter.model, 'A3')
+        self.assertEqual(self.acme_meter.model, 'a1')
+        self.assertEqual(self.other_meter.model, 'A1')
+
+    def test_meter_values_with_surrounding_spaces_are_matched(self):
+        padded_meter = Meter.objects.bulk_create([
+            Meter(code='RENAME-4', manufacturer='  ACME ', model=' A1  ', comm_technology=' nb-iot ')
+        ])[0]
+
+        response = self.client.delete(f'/service/meter-comm-technology/{self.tech.pk}/')
+        self.assertEqual(response.data['meters_count'], 2)
+
+        self.client.patch(f'/service/meter-model/{self.acme_a1.pk}/', {'name': 'A2'}, format='json')
+        padded_meter.refresh_from_db()
+        self.assertEqual(padded_meter.model, 'A2')
+
     def test_unused_values_can_be_deleted(self):
         self.acme_meter.delete()
         for endpoint, pk in (
