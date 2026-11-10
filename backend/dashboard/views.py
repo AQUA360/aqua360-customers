@@ -7,8 +7,8 @@ from auth.permissions import PermissionManager
 
 from .cards import available_cards, get_card
 from .defaults import default_layout
-from .models import UserDashboard
-from .serializers import LayoutSerializer, clean_layout
+from .models import UserDashboard, UserSidebarLayout
+from .serializers import LayoutSerializer, SidebarLayoutSerializer, clean_layout, clean_sidebar_layout
 
 
 class DashboardLayoutView(APIView):
@@ -70,3 +70,30 @@ class DashboardCardDataView(APIView):
             return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
         config = card.clean_config(request.query_params.dict())
         return Response({'key': key, 'config': config, 'data': card.get_data(request.user, config)})
+
+
+class SidebarLayoutView(APIView):
+    """Personalització del menú lateral de l'usuari de la sessió."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Return the user sidebar layout, or an empty one when not customised."""
+        sidebar = UserSidebarLayout.objects.filter(user=request.user).first()
+        return Response({
+            'layout': clean_sidebar_layout(sidebar.layout if sidebar else {}),
+            'is_default': sidebar is None,
+        })
+
+    def put(self, request):
+        """Validate and save the authenticated user sidebar layout."""
+        serializer = SidebarLayoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        sidebar, _created = UserSidebarLayout.objects.update_or_create(
+            user=request.user, defaults={'layout': serializer.validated_data['layout']},
+        )
+        return Response({'layout': sidebar.layout, 'is_default': False}, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        """Torna al menú per defecte."""
+        UserSidebarLayout.objects.filter(user=request.user).delete()
+        return Response({'layout': clean_sidebar_layout({}), 'is_default': True}, status=status.HTTP_200_OK)
