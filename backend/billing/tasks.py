@@ -2314,7 +2314,7 @@ def process_billing_batch(self, billing_id, queue_item_id=None):
   try:
     return _process_billing_batch(self, billing_id, queue_item_id)
   except Exception as exc:
-    logger.exception("Error en processar la facturació %s", billing_id)
+    logger.exception("Error en processar la facturació")
     error = classify_billing_error(exc, contract_level=False)
     message = ' '.join(filter(None, [error['message'], error['hint']]))
     if queue_item_id:
@@ -2490,7 +2490,7 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
               invoice.save(update_fields=['warning'])
           invoices.append(invoice)
         except Exception as exc:
-          logger.exception("No s'ha pogut facturar el contracte %s de la facturació %s", contract.id, billing_id)
+          logger.exception("No s'ha pogut facturar el contracte %s", contract.id)
           process_errors.append(build_contract_error(contract, exc))
         finally:
           processed_contracts += 1
@@ -4218,7 +4218,7 @@ def process_selected_contracts_task(billing_id, contract_ids):
                 invoice.billing = billing
                 invoice.save()
         except Exception as exc:
-            logger.exception("No s'ha pogut facturar el contracte %s de la facturació %s", contract.id, billing.id)
+            logger.exception("No s'ha pogut facturar el contracte %s", contract.id)
             upsert_billing_process_error(billing.id, build_contract_error(contract, exc))
             continue
         remove_billing_process_errors(billing.id, [contract.id])

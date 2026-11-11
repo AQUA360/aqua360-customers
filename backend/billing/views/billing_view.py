@@ -914,7 +914,7 @@ class BillingViewSet(viewsets.ModelViewSet):
               invoice.billing = billing
               invoice.save()
       except Exception as exc:
-          logger.exception("No s'ha pogut facturar el contracte %s de la facturació %s", contract.id, billing.id)
+          logger.exception("No s'ha pogut facturar el contracte %s", contract.id)
           entry = build_contract_error(contract, exc)
           upsert_billing_process_error(billing.id, entry)
           return Response(
