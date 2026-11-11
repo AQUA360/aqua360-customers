@@ -29,7 +29,7 @@ class InvoiceFilter(filters.FilterSet):
     )
     # Factures del contracte i de la seva sol·licitud d'alta (pestanya del contracte)
     contract_with_request = filters.CharFilter(method='filter_contract_with_request')
-    # Any del període facturat (o de la data d'emissió); `none` per a les que no en tenen
+    # Any del cicle del facturador (amb `contract_with_request`); `none` per a les que no en tenen
     period_year = filters.CharFilter(method='filter_period_year')
     contract_request = filters.CharFilter(
         field_name='contract_request__id',
@@ -129,6 +129,9 @@ class InvoiceFilter(filters.FilterSet):
         return queryset.filter(condition)
 
     def filter_period_year(self, queryset, name, value):
+        # El cicle es calcula en Python: només dins d'un contracte, mai sobre totes les factures
+        if not self.data.get('contract_with_request'):
+            return queryset.none()
         return filter_period_year(queryset, value)
 
     def filter_search(self, queryset, name, value):

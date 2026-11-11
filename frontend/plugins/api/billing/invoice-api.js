@@ -413,6 +413,16 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const saveToPiggyBank = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/save-to-piggy-bank/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'PUT', {}, { 'Content-Type': 'application/json' });
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const recalculateSmart = async (id) => {
       const apiUrl = `${apiHost}${entity}${id}/recalculate-smart/`;
       try {
@@ -511,6 +521,16 @@ export default defineNuxtPlugin(nuxtApp => {
       const response = await $apiManager.fetch(apiUrl, 'GET');
       if (!Array.isArray(response)) {
         throw new Error('Error estructura de la resposta');
+      }
+      return response;
+    }
+
+    // One page of every contract invoice (classic list view of the contract tab).
+    const getContractInvoicesPage = async (contractId, page = 1, isInvoice = true) => {
+      const apiUrl = `${apiHost}${entity}?${contractPeriodQuery(contractId, isInvoice)}&page=${page}`;
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (!response || !Array.isArray(response.results)) {
+        throw new Error('Error estructura `results` no trobat');
       }
       return response;
     }
@@ -893,6 +913,7 @@ export default defineNuxtPlugin(nuxtApp => {
       getInvoicesFromContract,
       getContractInvoicePeriodYears,
       getContractInvoicesByPeriodYear,
+      getContractInvoicesPage,
       getConnectionRequestInvoice,
       getInvoiceLineItems,
       getConnectionInvoice,
@@ -908,6 +929,7 @@ export default defineNuxtPlugin(nuxtApp => {
       manageNewBudgetLine,
       returnInvoice,
       passToPending,
+      saveToPiggyBank,
       changePaymentMethod,
       getInvoiceByCustomerToken,
       changeAddress,
