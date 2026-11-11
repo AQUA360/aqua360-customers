@@ -476,6 +476,17 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Contractes que no s'han pogut facturar en el darrer processat (motiu i què cal revisar)
+  const getProcessErrors = async (billingId) => {
+    const apiUrl = `${apiHost}/billing/billing/${billingId}/process-errors/`;
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
+
+  const dismissProcessErrors = async (billingId, contractIds) => {
+    const apiUrl = `${apiHost}/billing/billing/${billingId}/dismiss-process-errors/`;
+    return await $apiManager.fetch(apiUrl, 'POST', { contract_ids: contractIds }, { 'Content-Type': 'application/json' });
+  }
+
   const processSelectedContracts = async (billingId, contractIds) => {
     let apiUrl = `${apiHost}/billing/billing/${billingId}/process-selected/`;
     try {
@@ -546,6 +557,8 @@ export default defineNuxtPlugin(nuxtApp => {
     addToBatch,
     processContract,
     processSelectedContracts,
+    getProcessErrors,
+    dismissProcessErrors,
   };
 
   nuxtApp.provide(provideName, apiService);

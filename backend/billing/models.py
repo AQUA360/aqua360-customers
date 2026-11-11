@@ -337,6 +337,10 @@ class Billing(models.Model):
 
     # Comptadors fixats en processar la facturació (resum per ruta); null mentre està oberta.
     metrics_snapshot = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
+
+    # Contractes que no s'han pogut facturar en el darrer processat (pre-factures):
+    # [{contract_id, contract_token, code, message, hint, at}]. Es treuen en tornar-los a processar.
+    process_errors = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
     
     class Meta:
         verbose_name = "Billing"
