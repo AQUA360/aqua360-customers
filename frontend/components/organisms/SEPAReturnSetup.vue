@@ -252,11 +252,26 @@ const exportColumns = computed(() => [
     { header: t('billing_block.return_warnings'), value: (row) => returnWarnings(row).join(' · ') },
 ]);
 
+// Compte invàlid: abans de desar és el canvi previst; després, el resultat que retorna el backend
+const invalidAccountState = (row) => {
+    if (row.invalid_account_status === 'applied') {
+        return { label: 'billing_block.return_invalid_account_applied', classes: 'bg-rose-100 text-rose-800' };
+    }
+    if (row.invalid_account_status === 'not_applied') {
+        return { label: 'billing_block.return_invalid_account_not_applied', classes: 'bg-amber-100 text-amber-800' };
+    }
+    if (row.invalid_account) {
+        return { label: 'billing_block.return_invalid_account', classes: 'bg-rose-100 text-rose-800' };
+    }
+    return null;
+};
+
 // Avisos de la fila: compte invàlid, abonat de baixa i factura anul·lada i refeta
 const returnWarnings = (row) => {
     const warnings = [];
-    if (row.invalid_account) {
-        warnings.push(t('billing_block.return_invalid_account'));
+    const invalidAccount = invalidAccountState(row);
+    if (invalidAccount) {
+        warnings.push(t(invalidAccount.label));
     }
     if (row.contract_terminated) {
         warnings.push(row.contract_termination_date
@@ -338,6 +353,8 @@ watch(() => props.save_response, (newValue) => {
                     is_legacy_exploitation: row.is_legacy_exploitation ?? updated.is_legacy_exploitation,
                     method_changed: row.method_changed ?? updated.method_changed,
                     invalid_account: row.invalid_account ?? updated.invalid_account,
+                    // Resultat real de la cascada: només el que diu el backend en desar
+                    invalid_account_status: updated.invalid_account_status ?? null,
                     contract_terminated: row.contract_terminated ?? updated.contract_terminated,
                     contract_termination_date: row.contract_termination_date ?? updated.contract_termination_date,
                     invoice_rectified: row.invoice_rectified ?? updated.invoice_rectified,
@@ -602,13 +619,14 @@ watch(() => props.save_response, (newValue) => {
                                         <p v-if="element.method_changed" class="mt-1 text-xs text-amber-700">
                                             {{ t("informative_block.info_return_method_changed") }}
                                         </p>
-                                        <div v-if="element.invalid_account || element.contract_terminated || element.invoice_rectified"
+                                        <div v-if="invalidAccountState(element) || element.contract_terminated || element.invoice_rectified"
                                             class="mt-1 flex flex-wrap gap-1">
-                                            <span v-if="element.invalid_account"
+                                            <span v-if="invalidAccountState(element)"
                                                 :title="t('informative_block.info_return_invalid_account')"
-                                                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800">
+                                                :class="invalidAccountState(element).classes"
+                                                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium">
                                                 <Icon name="fa6-solid:building-columns" class="h-3 w-3" />
-                                                {{ t("billing_block.return_invalid_account") }}
+                                                {{ t(invalidAccountState(element).label) }}
                                             </span>
                                             <span v-if="element.contract_terminated"
                                                 :title="t('informative_block.info_return_contract_terminated')"
