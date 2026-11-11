@@ -288,6 +288,11 @@ def update_payment(sender, instance, created, **kwargs):
         if not instance.invoice or instance.invoice == None:
             if not instance.commitment_deposit or instance.commitment_deposit == None or instance.status != status:
                 return
+            # Només quan el pagament passa a pagat: si ja ho estava (p. ex. se n'edita la data),
+            # el cobrament ja s'havia descomptat del compromís i no s'ha de tornar a comptar.
+            previous_status_id = getattr(instance, '_previous_status_id', None)
+            if previous_status_id is not None and previous_status_id == status.id:
+                return
             wallet_payment_deposit_update(instance, user)
             return
 
@@ -391,6 +396,16 @@ def surcharge_invoice(sender, instance, **kwargs):
                 while invoice.parent_invoice:
                     invoice = invoice.parent_invoice
             surcharge = invoice_return_charge(invoice, 'RECLAMACIÓ DE SERVEI') """
+
+@receiver(pre_save, sender=Payment)
+def remember_commitment_payment_status(sender, instance, **kwargs):
+    """Desa l'estat anterior dels pagaments de compromís (sense factura) perquè
+    update_payment només descompti el cobrament quan el pagament passa a pagat."""
+    if kwargs.get('raw', False):
+        return
+    if not instance.pk or instance.invoice_id or not instance.commitment_deposit_id:
+        return
+    instance._previous_status_id = sender.objects.filter(pk=instance.pk).values_list('status_id', flat=True).first()
 
 @receiver(pre_save, sender=Payment)
 def update_contract_debt(sender, instance, **kwargs):
