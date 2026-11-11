@@ -18,6 +18,7 @@ from verifactu.serializers.verifactu_serializer import VerifactuNotificationSeri
 
 from billing.utils.invoice_service import change_status_logger, get_totals
 from billing.utils.invoice_list_queryset import invoice_list_config_tokens
+from billing.utils.invoice_period import invoice_relations_map
 from billing.utils.invoice_suppression_service import invoice_needs_return, suppress_invoice
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
 from coredata.models import ConfigProject
@@ -151,6 +152,7 @@ class InvoiceMinimalBatchListSerializer(serializers.ListSerializer):
 
         self.child.context['budget_invoice_by_token'] = budget_invoice_by_token
         self.child.context['invoice_list_tokens'] = tokens
+        self.child.context['invoice_relations'] = invoice_relations_map(iterable, tokens['invoice'])
         return [self.child.to_representation(item) for item in iterable]
 
 
@@ -231,6 +233,9 @@ class InvoiceMinimalSerializer(serializers.ModelSerializer):
             if invoice:
                 representation['invoice_budget'] = InvoiceIdListSerializer(invoice).data
         representation['excluded_payments'] = any(payment.is_excluded for payment in payments)
+        relations = self.context.get('invoice_relations')
+        if relations is not None:
+            representation.update(relations.get(instance.id, {}))
         
         return representation
     

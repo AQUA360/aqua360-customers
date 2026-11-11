@@ -75,6 +75,18 @@ const showDetail = function (component, id) {
   emit('show-detail', component, id);
 };
 
+// Relations sent by the invoice list (credit note and rebilling, both directions).
+const INVOICE_RELATIONS = [
+  { key: 'rectifying_invoice', label: 'billing_block.relation_rectified_by' },
+  { key: 'rectified_invoice', label: 'billing_block.relation_rectifies' },
+  { key: 'refactored_invoice', label: 'billing_block.relation_refactors' },
+  { key: 'refactor_invoice', label: 'billing_block.relation_refactored_in' },
+];
+
+const invoiceRelations = (item) => INVOICE_RELATIONS
+  .filter((relation) => item[relation.key])
+  .map((relation) => ({ key: relation.key, label: t(relation.label), invoice: item[relation.key] }));
+
 // ---------------------------------------------------------
 // XLSX EXPORT
 // ---------------------------------------------------------
@@ -659,9 +671,8 @@ watch(
       </div>
 
       <!-- Invoice -->
-      <div
-        class="footering text-slate-500 p-2 w-full min-w-0 flex items-center gap-x-2"
-      >
+      <div class="footering text-slate-500 p-2 w-full min-w-0">
+      <div class="flex items-center gap-x-2">
 
         <button
           v-if="!props.isSubRegion"
@@ -685,6 +696,31 @@ watch(
           :id="item.id"
           :path="'/billing/invoice/'"
         />
+
+      </div>
+
+      <!-- Credit notes and rebilling linked to the invoice -->
+      <p
+        v-for="relation in invoiceRelations(item)"
+        :key="relation.key"
+        class="text-xs leading-tight flex flex-wrap items-center gap-x-1"
+      >
+        <span>{{ relation.label }}</span>
+        <button
+          v-if="!props.isSubRegion"
+          @click="showDetail('InvoiceRegion', relation.invoice.id)"
+          class="text-sky-500 underline break-all text-start"
+        >
+          {{ relation.invoice.serie_final || relation.invoice.token }}
+        </button>
+        <span v-else class="break-all">
+          {{ relation.invoice.serie_final || relation.invoice.token }}
+        </span>
+        <AtomsRedirectButton
+          :id="relation.invoice.id"
+          :path="'/billing/invoice/'"
+        />
+      </p>
 
       </div>
 
