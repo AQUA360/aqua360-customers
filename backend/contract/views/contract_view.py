@@ -111,6 +111,21 @@ class ContractViewSet(viewsets.ModelViewSet):
         ordering = query_params.get("ordering") or "default"
         return f"{CONTRACT_LIST_CACHE_KEY_PREFIX}:status_2:exploitation_{exploitation}:page_1:order_{ordering}"
 
+    @staticmethod
+    def _apply_user_flags(data, user):
+        """The list cache is shared by every user, but `is_pinned` / `is_checked` depend on who
+        asks: recompute them for the current user on every response (cached or not)."""
+        results = data.get('results') if isinstance(data, dict) else None
+        if not results or not user or not user.is_authenticated:
+            return data
+        ids = [item['id'] for item in results]
+        pinned_id = Contract.objects.filter(user_pinned=user).values_list('id', flat=True).first()
+        checked_ids = set(user.checked_contracts.filter(id__in=ids).values_list('id', flat=True))
+        for item in results:
+            item['is_pinned'] = item['id'] == pinned_id
+            item['is_checked'] = item['id'] in checked_ids
+        return data
+
     def list(self, request, *args, **kwargs):
         """Serve page 1 from cache for status=2 when only cacheable params are used."""
         cache_key = self._contract_list_cache_key(request)
@@ -118,7 +133,7 @@ class ContractViewSet(viewsets.ModelViewSet):
             cached = cache.get(cache_key)
             if cached is not None:
                 print(f"Contract list: served from cache (key={cache_key})")
-                return Response(cached, status=status.HTTP_200_OK)
+                return Response(self._apply_user_flags(cached, request.user), status=status.HTTP_200_OK)
 
         response = super().list(request, *args, **kwargs)
 
@@ -452,8 +467,19 @@ class ContractViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='pinned-full')
     def pinned_full(self, request, pk=None):
         
+        from django.db.models import Prefetch
+        from service.models import SupplyCut
+
         contract_id = pk
-        pinned_contract = Contract.objects.filter(id=contract_id).first()
+        # Same supply cut prefetch as the contract list: SupplyPointSerializer only builds
+        # supply_cut_alert from `_prefetched_supply_cuts`.
+        pinned_contract = Contract.objects.prefetch_related(
+            Prefetch(
+                'supply_point_default__supply_cuts',
+                queryset=SupplyCut.objects.select_related('status', 'cause').order_by('-id'),
+                to_attr='_prefetched_supply_cuts',
+            )
+        ).filter(id=contract_id).first()
         if not pinned_contract:
             return Response( None, status=status.HTTP_200_OK )
         serializer = PinnedContractSerializer(pinned_contract, context={'request': request})
