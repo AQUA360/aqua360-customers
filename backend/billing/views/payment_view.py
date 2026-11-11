@@ -599,18 +599,18 @@ class PaymentViewSet(viewsets.ModelViewSet):
             amount = payment.amount
         
         invoice = payment.invoice
-        payoff_token = ConfigProject.objects.get(token='invoice_status_payoff_token').value
-        is_negative_non_payoff_invoice = (
-            invoice
-            and invoice.total_final is not None
-            and invoice.total_final < 0
-            and (not invoice.status or invoice.status.token != payoff_token)
-        )
-        if is_negative_non_payoff_invoice and pay_method.token != 'BALANCE':
-            return Response(
-                {"error": "Negative invoices must be saved to the piggy bank."},
-                status=status.HTTP_400_BAD_REQUEST,
+        if invoice:
+            payoff_token = ConfigProject.objects.get(token='invoice_status_payoff_token').value
+            is_negative_non_payoff_invoice = (
+                invoice.total_final is not None
+                and invoice.total_final < 0
+                and (not invoice.status or invoice.status.token != payoff_token)
             )
+            if is_negative_non_payoff_invoice and pay_method.token != 'BALANCE':
+                return Response(
+                    {"error": "Negative invoices must be saved to the piggy bank."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         if payment.amount is not None and payment.amount < 0 and pay_method.token == 'BALANCE':
             # Factura negativa: en comptes de retornar-la per transferència,
@@ -619,6 +619,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
             if not payment_date:
                 return Response({"error": "Payment date is required."}, status=status.HTTP_400_BAD_REQUEST)
             payment = Payment.objects.select_for_update().get(id=payment.id)
+            piggy_status_token = ConfigProject.objects.get(token='payment_status_piggy_token').value
+            if payment.status and payment.status.token in (paid_status_token, status_cancelled_token, piggy_status_token):
+                return Response({"error": "Payment already settled."}, status=status.HTTP_400_BAD_REQUEST)
+            if payment.remittances.filter(sent_at__isnull=True).exists():
+                return Response({"error": "Payment belongs to a pending remittance."}, status=status.HTTP_400_BAD_REQUEST)
             try:
                 settle_negative_payment_to_piggy(payment, user, payment_date)
             except ValueError as e:

@@ -236,11 +236,14 @@ class TestManualPaymentNegativeToBalance(TestCase):
             'payment_status_cancelled_token': 'CANCELLED',
             'payment_status_piggy_token': 'PIGGY',
             'payment_status_payoff_token': 'PAYOFF',
+            'invoice_status_paid_token': 'INV_PAID',
+            'invoice_status_payoff_token': 'INV_PAYOFF',
         }.items():
             ConfigProject.objects.update_or_create(token=config_token, defaults={'value': value})
         self.pending = PaymentStatus.objects.create(token='PENDING', name='Pendent')
         PaymentStatus.objects.create(token='PAID', name='Pagat')
         PaymentStatus.objects.create(token='CANCELLED', name='Abonat')
+        PaymentStatus.objects.create(token='PIGGY', name='Saldo')
         self.balance = PaymentType.objects.create(token='BALANCE', name='Saldo')
 
         self.piggy_bank = PiggyBank.objects.create(token='M-2', amount=Decimal('5.00'))
