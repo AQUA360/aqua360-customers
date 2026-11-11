@@ -15,6 +15,7 @@ import OrderMiniDetail from '~/components/molecules/OrderMiniDetail.vue';
 import CalendarTaskList from '~/components/molecules/CalendarTaskList.vue';
 import VariablesBonificationsChange from '~/components/atoms/VariablesBonificationsChange.vue';
 import InvoiceMiniDetail from '~/components/molecules/InvoiceMiniDetail.vue';
+import SelectorType from '~/components/atoms/SelectorType.vue';
 import { formatDate } from '~/utils/date';
 import { formatMoneyWithCurrency } from '~/utils/money';
 import HolderChange from '~/components/atoms/HolderChange.vue';
@@ -221,6 +222,30 @@ const isMonthExpanded = (group, index) => toggledMonths.value[monthKey(group)] ?
 const toggleMonth = (group, index) => {
   toggledMonths.value[monthKey(group)] = !isMonthExpanded(group, index);
 };
+
+// Toggle between invoices (is_invoice=true) and budgets (is_invoice=false).
+const invoiceListTypeOptions = computed(() => [
+  { value: 'invoice', label: t('invoices') },
+  { value: 'budget', label: t('common.budgets') },
+]);
+
+const invoiceListMode = computed(() => props.invoicesByPeriod?.listMode || 'invoice');
+
+const invoiceListLabel = computed(() =>
+  invoiceListMode.value === 'budget' ? t('common.budgets') : t('invoices')
+);
+
+const invoiceListExportPrefix = computed(() =>
+  invoiceListMode.value === 'budget' ? 'pressupostos' : 'factures'
+);
+
+const onInvoiceListModeSelect = (mode) => {
+  props.invoicesByPeriod?.setListMode(mode);
+};
+
+watch(invoiceListMode, () => {
+  extraYearTabs.value = [];
+});
 
 const downloadingSummaryId = ref(null);
 
@@ -804,6 +829,15 @@ const groupedPriceRates = computed(() => {
       </AtomsTabs>
 
         <section v-if="invoiceActiveTab === 'invoice_invoices' && invoicesByPeriod" class="mb-10 mt-2">
+          <div class="flex justify-end items-center gap-2 mb-2">
+            <SelectorType
+              :model-value="invoiceListMode"
+              :options="invoiceListTypeOptions"
+              :class="{ 'pointer-events-none opacity-60': invoicesByPeriod.loading }"
+              @select="onInvoiceListModeSelect"
+            />
+          </div>
+
           <div v-if="periodYears.length" class="flex flex-wrap items-end gap-2 border-b border-gray-200">
             <AtomsTabs class="flex-1 min-w-0 !mb-0">
               <li v-for="row in visibleYearTabs" :key="row.year" class="me-2">
@@ -842,7 +876,7 @@ const groupedPriceRates = computed(() => {
           <!-- Grouped sends select across months: the whole year in a single list. -->
           <InvoiceMiniDetail v-else-if="groupedInvoiceMode" :item="invoicesByPeriod.invoices" :contract="contract"
             @show-detail="showDetail" :isSubRegion="isSubRegion" :autoCols="true" :grouped-invoice-mode="true"
-            class="mt-2" />
+            :list-type="invoiceListMode" class="mt-2" />
 
           <template v-else>
             <div v-for="(group, index) in invoiceMonths" :key="`${invoicesByPeriod.activeYear}-${group.month}`"
@@ -852,14 +886,14 @@ const groupedPriceRates = computed(() => {
                 <Icon name="fa6-solid:angle-down" class="text-slate-500 transition-transform duration-200"
                   :class="{ '-rotate-90': !isMonthExpanded(group, index) }" />
                 <span class="font-semibold text-slate-900">{{ monthLabel(group.month) }}</span>
-                <span class="text-slate-500">{{ group.invoices.length }} {{ $t('invoices').toLowerCase() }}</span>
+                <span class="text-slate-500">{{ group.invoices.length }} {{ invoiceListLabel.toLowerCase() }}</span>
                 <span class="font-semibold text-slate-700">{{ formatMoneyWithCurrency(group.total) }}</span>
               </button>
 
               <div v-if="isMonthExpanded(group, index)" class="px-2 pb-2">
                 <InvoiceMiniDetail :item="group.invoices" :contract="contract" @show-detail="showDetail"
-                  :isSubRegion="isSubRegion" :autoCols="true" :exportable="true"
-                  :export-file-name="`factures_${contract?.token || contract?.id || ''}_${invoicesByPeriod.activeYear}_${group.month}`" />
+                  :isSubRegion="isSubRegion" :autoCols="true" :exportable="true" :list-type="invoiceListMode"
+                  :export-file-name="`${invoiceListExportPrefix}_${contract?.token || contract?.id || ''}_${invoicesByPeriod.activeYear}_${group.month}`" />
               </div>
             </div>
           </template>
