@@ -803,7 +803,8 @@ const addWalletBalance = () => {
 
         <ContractDetail :data="data" @show-subregion="showDetail" :isSubRegion="isSubRegion"
           :canChange="objectPermissions?.can_change" :isSubRegionOpen="isSubRegionOpen" @change="handleChange"
-          :showImportantObservations="false" :showDebtDetail="true" @new-call="startCall" />
+          :showImportantObservations="false" :showDebtDetail="true" :showBailTab="true"
+          @new-call="startCall" @update-active-tab="setActiveTab" />
 
         <ContractTabs
           :contract="data"

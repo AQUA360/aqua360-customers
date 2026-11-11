@@ -682,7 +682,8 @@ const setActiveTab = (tab) => {
                   :title="contract.blocking_incident.name">
                   <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
                 </div>
-                <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall" />
+                <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall"
+                    @update-active-tab="setActiveTab" />
             </div>
 
             <ContractTabs
