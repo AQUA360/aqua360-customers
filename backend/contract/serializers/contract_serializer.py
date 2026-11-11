@@ -40,6 +40,24 @@ from contract.utils.contract_service import get_contract_housing_units, log_cont
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
 from service.utils.route_scope import effective_route
 
+
+def serialize_contract_show_price_rates(contract):
+    """Tarifes del contracte tal com les mostra la pestanya de tarifes (agrupades per punt
+    de subministrament). Compartit amb el serializer del contracte fixat perquè les dues
+    vistes rebin el mateix format."""
+    from pricing.serializers.price_rate_serializer import PriceRateSerializer
+    contract_price_rates = contract.price_rates.all().order_by('price_rate__product__position')
+    return [
+        {
+            'id': cr_price_rate.id,
+            'price_rate': PriceRateSerializer(cr_price_rate.price_rate).data,
+            'supply_point': SupplyPointMinimalSerializer(cr_price_rate.supply_point).data,
+            'is_bop_reference': cr_price_rate.is_bop_reference,
+        }
+        for cr_price_rate in contract_price_rates
+    ]
+
+
 class ContractObservationSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(required=False, allow_null=True)
     class Meta:
@@ -317,19 +335,7 @@ class ContractSerializer(serializers.ModelSerializer):
         return PriceRateSerializer(registration_price_rates, many=True, read_only=True).data
     
     def get_show_price_rates(self, obj):
-        from pricing.serializers.price_rate_serializer import PriceRateSerializer
-        contract_price_rates = obj.price_rates.all().order_by('price_rate__product__position')
-        serialized_price_rates = []
-        for cr_price_rate in contract_price_rates:
-            serialized_price_rate = {
-                'id': cr_price_rate.id,
-                'price_rate': PriceRateSerializer(cr_price_rate.price_rate).data,
-                'supply_point': SupplyPointMinimalSerializer(cr_price_rate.supply_point).data,
-                'is_bop_reference': cr_price_rate.is_bop_reference,
-            }
-            serialized_price_rates.append(serialized_price_rate)
-        
-        return serialized_price_rates
+        return serialize_contract_show_price_rates(obj)
     
     def get_active_contract_termination(self, obj):
         from contract.models import ContractTerminationRequest

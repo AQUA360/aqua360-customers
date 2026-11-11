@@ -713,11 +713,7 @@ const saveConfig = async () => {
 };
 
 const saveLineItemArticle = async (lineItem) => {
-  const articleId = lineItemArticles.value[lineItem.id];
-  if (!articleId) {
-    toast.error(t('settings_block.aca_select_article_code'));
-    return;
-  }
+  const articleId = lineItemArticles.value[lineItem.id] || null;
 
   savingLineItemId.value = lineItem.id;
   try {
@@ -729,6 +725,9 @@ const saveLineItemArticle = async (lineItem) => {
       is_fix: false,
       article_id: articleId,
     });
+    lineItem.article = articleId
+      ? (articles.value.find((article) => article.id === articleId) ?? lineItem.article)
+      : null;
     toast.success(t('common.correct_save'));
   } catch (error) {
     console.error(error);
@@ -820,21 +819,22 @@ onBeforeUnmount(() => {
                   <v-select v-if="row.token_type === 'VariableType'" v-model="row.variable_types"
                     :options="variableTypes" :get-option-label="optionLabel" multiple track-by="id"
                     :close-on-select="false" :disabled="savingConfig" :placeholder="t('None')"
-                    class="w-full min-w-[14rem] text-sm" />
+                    class="w-full min-w-[14rem] text-sm" append-to-body />
 
                   <v-select v-else-if="row.token_type === 'ContractUseType'" v-model="row.contract_use_types"
                     :options="contractUseTypes" :get-option-label="optionLabel" multiple track-by="id"
                     :close-on-select="false" :disabled="savingConfig" :placeholder="t('None')"
-                    class="w-full min-w-[14rem] text-sm" />
+                    class="w-full min-w-[14rem] text-sm" append-to-body />
 
                   <v-select v-else-if="row.token_type === 'Product'" v-model="row.products" :options="products"
                     :get-option-label="optionLabel" multiple track-by="id" :close-on-select="false"
-                    :disabled="savingConfig" :placeholder="t('None')" class="w-full min-w-[14rem] text-sm" />
+                    :disabled="savingConfig" :placeholder="t('None')" class="w-full min-w-[14rem] text-sm"
+                    append-to-body />
 
                   <v-select v-else-if="row.token_type === 'PriceRate'" v-model="row.price_rates" :options="priceRates"
                     :get-option-label="optionLabel" multiple track-by="id" :close-on-select="false"
                     :disabled="savingConfig || !selectedProduct" :placeholder="t('None')"
-                    class="w-full min-w-[14rem] text-sm" />
+                    class="w-full min-w-[14rem] text-sm" append-to-body />
 
                   <span v-else class="text-slate-400">—</span>
                 </td>
@@ -1050,3 +1050,10 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style>
+/* El menú va al body: si es queda dins el contenidor amb overflow, obre un segon scroll. */
+body > ul.vs__dropdown-menu {
+  z-index: 10050;
+}
+</style>
