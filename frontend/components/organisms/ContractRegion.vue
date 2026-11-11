@@ -4,6 +4,7 @@ import { ref, resolveDirective, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import { formatDate } from '~/utils/date';
+import ContractInvalidAccountAlert from '~/components/molecules/ContractInvalidAccountAlert.vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import H1Region from '~/components/atoms/H1Region.vue';
@@ -39,6 +40,7 @@ import TypedConfirmationModal from '../molecules/TypedConfirmationModal.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
 import { usePermissions } from '~/middleware/permission';
+import { useContractInvoicesByPeriod } from '~/composables/useContractInvoicesByPeriod';
 
 
 const { t } = useI18n();
@@ -94,18 +96,9 @@ const allModifications = computed(() =>
 
 const expired_variables = ref(null)
 const expired_bonifications = ref(null)
-const invoices = ref([])
+const invoicesByPeriod = useContractInvoicesByPeriod(() => props.id)
 const general_invoices = ref([])
 const invoicesLoading = ref(false)
-// 'invoice' → is_invoice=true; 'budget' → is_invoice=false
-const invoiceListMode = ref('invoice')
-const invoicesPagination = ref({
-  page: 1,
-  perPage: 50,
-  total: 0,
-  totalPages: 0,
-  isFiltered: true,
-})
 
 const important_observations = ref([])
 const show_important_observations = ref(false)
@@ -294,44 +287,7 @@ const getExpiredVariables = async () => {
 const loadInvoices = async () => {
   invoicesLoading.value = true;
   try {
-    await Promise.all([getInvoices(), getGeneralInvoices()]);
-  } finally {
-    invoicesLoading.value = false;
-  }
-}
-
-const getInvoices = async (page = 1) => {
-  try {
-    const isInvoice = invoiceListMode.value === 'invoice';
-    const result = await $InvoiceApiService.getInvoicesFromContract(props.id, false, isInvoice, page);
-    invoices.value = result.results;
-
-    if (isInvoice && data.value.request_invoices.length > 0) {
-      data.value.request_invoices.forEach(reqInvoice => {
-        if (!invoices.value.some(inv => inv.id === reqInvoice.id)) {
-          invoices.value.push(reqInvoice);
-        }
-      });
-    }
-
-    invoicesPagination.value.page = page;
-    invoicesPagination.value.total = result.count || 0;
-    invoicesPagination.value.totalPages = Math.ceil((result.count || 0) / invoicesPagination.value.perPage);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-const onInvoicesPageChange = (newPage) => {
-  getInvoices(newPage);
-}
-
-const onInvoiceListModeChange = async (mode) => {
-  if (invoiceListMode.value === mode) return;
-  invoiceListMode.value = mode;
-  invoicesLoading.value = true;
-  try {
-    await getInvoices(1);
+    await Promise.all([invoicesByPeriod.load(), getGeneralInvoices()]);
   } finally {
     invoicesLoading.value = false;
   }
@@ -353,10 +309,9 @@ const getGeneralInvoices = async () => {
 // without reloading the whole invoice list.
 const onInvoicePdfGenerated = ({ id, invoice_file }) => {
   const invoiceId = parseInt(id);
-  [invoices.value, general_invoices.value].forEach(list => {
-    const item = (list || []).find(inv => inv.id === invoiceId);
-    if (item) item.invoice_file = invoice_file;
-  });
+  invoicesByPeriod.updateInvoiceFile({ id, invoice_file });
+  const item = (general_invoices.value || []).find(inv => inv.id === invoiceId);
+  if (item) item.invoice_file = invoice_file;
 }
 
 const getLatestByToken = (items) => {
@@ -469,16 +424,8 @@ watch(() => props.id, async () => {
   // (e.g. opening contracts from ReadingBatchSummary), clear lazy-loaded
   // tab state so invoices/etc. are fetched for the new contract.
   loadedTabs.value = new Set(['observations']);
-  invoices.value = [];
+  invoicesByPeriod.reset();
   general_invoices.value = [];
-  invoiceListMode.value = 'invoice';
-  invoicesPagination.value = {
-    page: 1,
-    perPage: invoicesPagination.value.perPage || 50,
-    total: 0,
-    totalPages: 0,
-    isFiltered: true,
-  };
   members_change.value = [];
   contract_phones_logs.value = [];
   contract_logs.value = [];
@@ -801,6 +748,8 @@ const addWalletBalance = () => {
           </div>
         </div>
 
+        <ContractInvalidAccountAlert :alert="data.invalid_account_payment_alert" />
+
         <ContractDetail :data="data" @show-subregion="showDetail" :isSubRegion="isSubRegion"
           :canChange="objectPermissions?.can_change" :isSubRegionOpen="isSubRegionOpen" @change="handleChange"
           :showImportantObservations="false" :showDebtDetail="true" :showBailTab="true"
@@ -828,12 +777,10 @@ const addWalletBalance = () => {
           :contract_logs="contract_logs"
           :expired_variables="expired_variables"
           :expired_bonifications="expired_bonifications"
-          :invoices="invoices"
+          :invoices-by-period="invoicesByPeriod"
           :invoices_count="data ? data.invoices_count : 0"
           :general_invoices="general_invoices"
           :invoicesLoading="invoicesLoading"
-          :invoicesPagination="invoicesPagination"
-          :invoice-list-mode="invoiceListMode"
           :person_ids="person_ids"
           :permissions="permissions"
           :canChange="objectPermissions?.can_change"
@@ -845,9 +792,7 @@ const addWalletBalance = () => {
           @update:incident-count="updateIncidentCount"
           @update:communication-count="updateCommunicationCount"
           @update:order-count="updateOrderCount"
-          @update:bonification-variable-change-count="updateBonificationVariableChangeCount"
-          @update-invoices-page="onInvoicesPageChange"
-          @update-invoice-list-mode="onInvoiceListModeChange" />
+          @update:bonification-variable-change-count="updateBonificationVariableChangeCount" />
       </div><!-- end if data -->
     </div><!-- end if pending -->
 

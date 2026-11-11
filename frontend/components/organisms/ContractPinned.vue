@@ -1,4 +1,5 @@
 <script setup>
+import ContractInvalidAccountAlert from '~/components/molecules/ContractInvalidAccountAlert.vue';
 import { useFixedObjectsStore } from '~/stores/useFixedObjects';
 import { useToast } from 'vue-toastification';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
@@ -32,6 +33,7 @@ import ContractDebtRegion from './ContractDebtRegion.vue';
 import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
+import { useContractInvoicesByPeriod } from '~/composables/useContractInvoicesByPeriod';
 
 const { $ContractApiService, $InvoiceApiService, $LoggerApiService, $VulnerabilityRequestApiService, $ConfigProjectApiService } = useNuxtApp();
 const fixedObjectsStore = useFixedObjectsStore();
@@ -75,7 +77,7 @@ const objectPermissions = ref({});
 
 const allowSelectSupplyPointFraud = ref(false);
 
-const invoices = ref([])
+const invoicesByPeriod = useContractInvoicesByPeriod(() => contract.value.id)
 const general_invoices = ref([])
 const invoiceTypeToken = ref(null)
 const invoicesLoading = ref(false)
@@ -200,19 +202,8 @@ const getPersonIds = (data) => {
 
 const getInvoices = async () => {
     invoicesLoading.value = true;
-    invoices.value = []
     try {
-        const result = await $InvoiceApiService.getInvoicesFromContract(contract.value.id, false, true);
-        invoices.value = result.results;
-        if (contract.value.request_invoices.length > 0) {
-            contract.value.request_invoices.forEach(reqInvoice => {
-                if (!invoices.value.some(inv => inv.id === reqInvoice.id)) {
-                    invoices.value.push(reqInvoice);
-                }
-            });
-        }
-    } catch (error) {
-        console.log(error);
+        await invoicesByPeriod.load();
     } finally {
         invoicesLoading.value = false;
     }
@@ -234,9 +225,7 @@ const getGeneralInvoices = async () => {
 // Update a single invoice's PDF document in-place so the "send" button reactivates
 // without reloading the whole invoice list.
 const onInvoicePdfGenerated = ({ id, invoice_file }) => {
-    const invoiceId = parseInt(id);
-    const item = (invoices.value || []).find(inv => inv.id === invoiceId);
-    if (item) item.invoice_file = invoice_file;
+    invoicesByPeriod.updateInvoiceFile({ id, invoice_file });
 }
 
 const getExpiredVariables = async () => {
@@ -682,6 +671,7 @@ const setActiveTab = (tab) => {
                   :title="contract.blocking_incident.name">
                   <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
                 </div>
+                <ContractInvalidAccountAlert :alert="contract?.invalid_account_payment_alert" />
                 <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall"
                     @update-active-tab="setActiveTab" />
             </div>
@@ -708,7 +698,7 @@ const setActiveTab = (tab) => {
                 :contract_logs="contract_logs"
                 :expired_variables="expired_variables"
                 :expired_bonifications="expired_bonifications"
-                :invoices="invoices"
+                :invoices-by-period="invoicesByPeriod"
                 :invoices_count="contract ? contract.invoices_count : 0"
                 :general_invoices="general_invoices"
                 :invoicesLoading="invoicesLoading"
