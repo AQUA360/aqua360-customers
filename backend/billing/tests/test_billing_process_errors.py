@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.db.models import Max
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -78,7 +79,9 @@ class ProcessErrorsBase(TestCase):
             # Es reaprofiten els avisos que ja carreguen les migracions de dades
             config, _ = ConfigProject.objects.get_or_create(token=f'invoice_warning_{token}', defaults={'value': f'W_{token}'})
             if not InvoiceWarning.objects.filter(token=config.value).exists():
-                InvoiceWarning.objects.create(token=config.value, name=token)
+                # Id explícit: la seqüència pot no estar al dia amb les files de les migracions
+                next_id = (InvoiceWarning.objects.aggregate(m=Max('id'))['m'] or 0) + 1
+                InvoiceWarning.objects.create(id=next_id, token=config.value, name=token)
         BillingStatus.objects.get_or_create(token='PENDING', defaults={'name': 'Pendent'})
         active, _ = ContractStatus.objects.get_or_create(token='ACTIVE', defaults={'name': 'Actiu'})
 
