@@ -42,6 +42,8 @@ const statusCommitmentToken = ref(false)
 const statusIrrecoverableToken = ref(false)
 const statusReturnedToken = ref(false)
 const statusSentToken = ref(false)
+const statusPiggyToken = ref(false)
+const invoiceStatusPayoffToken = ref(false)
 
 const openLiquidateModal = ref(false);
 const selectedPaymentDate = ref(null);
@@ -77,6 +79,14 @@ const availableBalance = computed(() => {
     (data?.value?.invoice && data?.value?.invoice?.person_piggy_bank) ||
     (data?.value?.commitment_deposit && data?.value?.commitment_deposit?.person_piggy_bank);
 });
+// Factura negativa no payoff: només es pot abonar al saldo, no cobrar per altres vies.
+const mustSaveToPiggyBank = computed(() => {
+  const invoice = data.value?.invoice;
+  if (!invoice || Number(invoice.total_final) >= 0) return false;
+  const statusToken = invoice.status_token || invoice.status?.token;
+  if (statusToken && statusToken === invoiceStatusPayoffToken.value) return false;
+  return true;
+});
 
 const updateLogCount = (num) => {
   logNumber.value = num;
@@ -109,6 +119,8 @@ const getData = async (load = true) => {
   statusIrrecoverableToken.value = await $ConfigProjectApiService.get('payment_status_irrecoverable_token');
   statusReturnedToken.value = await $ConfigProjectApiService.get('payment_status_returned_token');
   statusSentToken.value = await $ConfigProjectApiService.get('payment_status_sent_token');
+  statusPiggyToken.value = await $ConfigProjectApiService.get('payment_status_piggy_token');
+  invoiceStatusPayoffToken.value = await $ConfigProjectApiService.get('invoice_status_payoff_token');
 
   try {
     const result = await $PaymentApiService.getDetail(props.id);
@@ -173,11 +185,25 @@ const getPaymentTypes = async () => {
         });
       }
     });
-    if (!isPiggyBankAvailable.value) {
-      payment_types.value = payment_types.value.filter(payment_type => payment_type.token != 'BALANCE');
-    } else {
+    // Factura negativa no payoff: només BALANCE (abonar al saldo).
+    if (mustSaveToPiggyBank.value) {
+      payment_types.value = payment_types.value.filter(payment_type => payment_type.token === 'BALANCE');
       selectedPaymentAmount.value = data.value.amount;
-      // selectedPaymentAmount.value = data.value.invoice ? data.value.invoice.left_to_pay : data.value.amount;
+    } else {
+      // Pagament negatiu: BALANCE abona al saldo (no el descompta), així que cal
+      // mantenir-lo encara que el saldo disponible sigui inferior a l'import.
+      const canCreditPiggyBank = data.value?.amount < 0 && (
+        data.value?.invoice?.contract_piggy_bank != null
+        || data.value?.invoice?.person_piggy_bank != null
+        || data.value?.commitment_deposit?.contract_piggy_bank != null
+        || data.value?.commitment_deposit?.person_piggy_bank != null
+        || isPiggyContract.value
+      );
+      if (!isPiggyBankAvailable.value && !canCreditPiggyBank) {
+        payment_types.value = payment_types.value.filter(payment_type => payment_type.token != 'BALANCE');
+      } else {
+        selectedPaymentAmount.value = data.value.amount;
+      }
     }
     console.log("selectedPaymentAmount", selectedPaymentAmount.value);
   } catch (err) {
@@ -246,11 +272,41 @@ const updateSubRegion = function () {
 }
 
 const openLiquidateMethod = () => {
+  if (mustSaveToPiggyBank.value) {
+    toast.warning(t('informative_block.info_negative_invoice_piggy_bank_only'));
+    return;
+  }
   // L'import es pren del pagament obert: si la regió canvia de pagament, el de
   // l'anterior no pot arribar al backend.
   selectedPaymentAmount.value = data.value.amount;
   openLiquidateModal.value = true;
   selectedPaymentDate.value = format(new Date(), 'yyyy-MM-dd');
+}
+
+const saveAmountInPiggyBank = async () => {
+  if (!confirm(t("confirmation_text_block.confirm_save_amount_in_piggy_bank"))) return;
+  const balanceType = payment_types.value.find(payment_type => payment_type.token === 'BALANCE');
+  if (!balanceType) {
+    toast.error(t("common.error"));
+    return;
+  }
+  try {
+    const response = await $PaymentApiService.manualPayment({
+      id: props.id,
+      payment_date: format(new Date(), 'yyyy-MM-dd'),
+      is_piggy_contract: isPiggyContract.value,
+      payment_method: balanceType.id,
+      amount: data.value.amount,
+    });
+    if (response) {
+      toast.success(t("common.correct_save"));
+      getData(false);
+      emit('close', true);
+    }
+  } catch (err) {
+    console.error(err);
+    toast.error(err?.data?.error || t("common.error"));
+  }
 }
 
 const closeSubRegion = function () {
@@ -449,7 +505,8 @@ watch(selectedPaymentDate, () => {
           </span>
         </H1Region>
         <div v-if="objectPermissions?.can_change" class="relative">
-          <OptionsDropdown v-if="!((data.status.token === statusPaidToken) || 
+          <OptionsDropdown v-if="!((data.status.token === statusPaidToken) ||
+          (data.status.token === statusPiggyToken) ||
           (data.status.token === statusLostToken ||
           (data.status.token === statusCommitmentToken)
           ))"
@@ -462,8 +519,15 @@ watch(selectedPaymentDate, () => {
             </div>
             <DropdownOption v-if="data.is_excluded" :name="t('billing_block.include')" @click="includePayment">
             </DropdownOption>
-            <DropdownOption :disabled="!allow_payment" :name="t('billing_block.single_pay')"
+            <DropdownOption v-if="!mustSaveToPiggyBank" :disabled="!allow_payment"
+              :name="t('billing_block.single_pay')"
               @click="openLiquidateMethod"></DropdownOption>
+            <DropdownOption v-if="mustSaveToPiggyBank" :disabled="!allow_payment"
+              :name="t('billing_block.save_amount_in_piggy_bank')"
+              @click="saveAmountInPiggyBank">
+              <Icon name="fa6-solid:piggy-bank" class="display-inline mr-2" />
+              {{ t('billing_block.save_amount_in_piggy_bank') }}
+            </DropdownOption>
             <DropdownOption
               v-if="data.commitment_deposit" :disabled="!allow_payment"
               :name="t('common.generate') + ' ' + t('billing_block.payment')"

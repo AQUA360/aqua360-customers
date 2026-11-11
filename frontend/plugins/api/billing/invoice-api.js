@@ -413,6 +413,16 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const saveToPiggyBank = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/save-to-piggy-bank/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'PUT', {}, { 'Content-Type': 'application/json' });
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const recalculateSmart = async (id) => {
       const apiUrl = `${apiHost}${entity}${id}/recalculate-smart/`;
       try {
@@ -919,6 +929,7 @@ export default defineNuxtPlugin(nuxtApp => {
       manageNewBudgetLine,
       returnInvoice,
       passToPending,
+      saveToPiggyBank,
       changePaymentMethod,
       getInvoiceByCustomerToken,
       changeAddress,

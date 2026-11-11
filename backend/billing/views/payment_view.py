@@ -22,7 +22,7 @@ from rest_framework.filters import OrderingFilter
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import is_rectified_invoice
 from billing.utils.sepa_invalid_account_service import get_invalid_account_reject_tokens, handle_invalid_account_return, invalid_account_return_has_changes, is_invalid_account_reject_token
-from billing.utils.payment_service import add_negative_payment_to_balance, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
+from billing.utils.payment_service import disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals, settle_negative_payment_to_piggy
 from coredata.utils.name_utils import generate_token
 from documentmanager.utils.main_utils import upload_document
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, ClaimRequestTemplate
@@ -598,23 +598,48 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if amount == None:
             amount = payment.amount
         
+        invoice = payment.invoice
+        if invoice:
+            payoff_token = ConfigProject.objects.get(token='invoice_status_payoff_token').value
+            is_negative_non_payoff_invoice = (
+                invoice.total_final is not None
+                and invoice.total_final < 0
+                and (not invoice.status or invoice.status.token != payoff_token)
+            )
+            if is_negative_non_payoff_invoice and pay_method.token != 'BALANCE':
+                return Response(
+                    {"error": "Negative invoices must be saved to the piggy bank."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         if payment.amount is not None and payment.amount < 0 and pay_method.token == 'BALANCE':
             # Factura negativa: en comptes de retornar-la per transferència,
-            # l'import s'afegeix al saldo del client. Es decideix pel signe del
-            # pagament, no per l'import rebut, i amb el pagament bloquejat perquè
-            # una petició repetida no l'aboni dues vegades.
+            # l'import s'afegeix al saldo del client amb estat payment_status_piggy_token
+            # (com el retorn de fiança). Es decideix pel signe del pagament.
             if not payment_date:
                 return Response({"error": "Payment date is required."}, status=status.HTTP_400_BAD_REQUEST)
             payment = Payment.objects.select_for_update().get(id=payment.id)
-            if payment.status and payment.status.token in (paid_status_token, status_cancelled_token):
+            piggy_status_token = ConfigProject.objects.get(token='payment_status_piggy_token').value
+            if payment.status and payment.status.token in (paid_status_token, status_cancelled_token, piggy_status_token):
                 return Response({"error": "Payment already settled."}, status=status.HTTP_400_BAD_REQUEST)
             if payment.remittances.filter(sent_at__isnull=True).exists():
                 return Response({"error": "Payment belongs to a pending remittance."}, status=status.HTTP_400_BAD_REQUEST)
             try:
-                add_negative_payment_to_balance(payment, payment_date)
+                settle_negative_payment_to_piggy(payment, user, payment_date)
             except ValueError as e:
                 logger.warning("Failed to add negative payment to balance for payment %s: %s", payment.id, str(e))
-                return Response({"error": "Unable to process this payment request."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": "Unable to process payment."}, status=status.HTTP_400_BAD_REQUEST)
+            if payment.invoice:
+                disconnect_payment_signals()
+                try:
+                    invoice = Invoice.objects.get(pk=payment.invoice_id)
+                    invoice.payment_type_final = pay_method.name
+                    invoice.payment_type_token_final = pay_method.token
+                    invoice.save(update_fields=['payment_type_final', 'payment_type_token_final'])
+                finally:
+                    reconnect_payment_signals()
+            serialized_invoices = PaymentSerializer(payment)
+            return Response({"payment": serialized_invoices.data}, status=status.HTTP_200_OK)
         elif amount and float(amount) > 0:
             if payment.invoice or payment.commitment_deposit:
                 contract = None
