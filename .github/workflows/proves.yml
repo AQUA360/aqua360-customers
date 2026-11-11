@@ -61,15 +61,40 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.ubuntu.txt
       - name: Llibreries del sistema
+        # Si el mirall d'apt no respon, que falli aviat en lloc de quedar-se penjat
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libpq-dev libcairo2-dev \
-            libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev pkg-config gettext \
-            postgresql-client
+          apt_opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          apt_llest=""
+          # Actualitza l'índex un sol cop. Si el mirall del runner (Azure) no respon,
+          # torna a provar amb el mirall general d'Ubuntu.
+          prepara_apt() {
+            [ -n "$apt_llest" ] && return 0
+            if ! sudo apt-get "${apt_opts[@]}" update --error-on=any; then
+              echo "::warning::El mirall d'apt del runner no respon; es prova amb archive.ubuntu.com"
+              cat /etc/apt/apt-mirrors.txt 2>/dev/null || true
+              echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+              sudo apt-get "${apt_opts[@]}" update
+            fi
+            apt_llest=1
+          }
+          instal_la() {
+            prepara_apt && sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends "$@"
+          }
+          # Només s'instal·la el que la imatge del runner no porta
+          paquets=(libpq-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev
+                   pkg-config gettext postgresql-client)
+          falten=()
+          for paquet in "${paquets[@]}"; do
+            dpkg -s "$paquet" >/dev/null 2>&1 || falten+=("$paquet")
+          done
+          if [ ${#falten[@]} -gt 0 ]; then
+            instal_la "${falten[@]}"
+          fi
           # El servidor de proves és PostgreSQL 16. Si el runner porta un client
           # més nou i el paquet del 16 existeix, el posem davant al PATH.
           if ! pg_dump --version | grep -q ' 16\.'; then
-            sudo apt-get install -y --no-install-recommends postgresql-client-16 \
+            instal_la postgresql-client-16 \
               && echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH" \
               && export PATH="/usr/lib/postgresql/16/bin:$PATH" \
               || echo "Segueix el client ja instal·lat: $(pg_dump --version)"
