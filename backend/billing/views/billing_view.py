@@ -806,6 +806,7 @@ class BillingViewSet(viewsets.ModelViewSet):
 
   @action(detail=True, methods=['post'], url_path='process-contract')
   def process_contract(self, request, pk=None):
+      """Factura un contracte a la facturació; si falla, desa el motiu a `process_errors`."""
       billing = self.get_object()
       contract_id = request.data.get('contract_id')
       if not contract_id:

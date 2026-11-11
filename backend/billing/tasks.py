@@ -2325,6 +2325,7 @@ def process_billing_batch(self, billing_id, queue_item_id=None):
 
 
 def _process_billing_batch(self, billing_id, queue_item_id=None):
+  """Cos de `process_billing_batch`; les excepcions globals les tracta el cridador."""
   progress_recorder = ProgressRecorder(self)
   
   print("Start processing invoices")

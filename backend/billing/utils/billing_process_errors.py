@@ -27,6 +27,7 @@ class BillingProcessError(Exception):
   """Error conegut del processat, amb codi i missatge per a l'usuari."""
 
   def __init__(self, code, message, hint=None):
+    """`code` identifica el cas; `message` i `hint` són el motiu i què cal fer."""
     super().__init__(message)
     self.code = code
     self.message = message
@@ -34,6 +35,7 @@ class BillingProcessError(Exception):
 
 
 def _supply_point_label(reading):
+  """Nom (o codi) del punt de subministrament de la lectura, per al missatge."""
   supply_point = getattr(reading, 'supply_point', None)
   if supply_point is None:
     return None
@@ -41,6 +43,7 @@ def _supply_point_label(reading):
 
 
 def _validate_reading_meter(reading):
+  """La lectura ha de tenir comptador: sense, no es pot agrupar ni calcular."""
   if reading.meter_id is not None:
     return
   supply_point = _supply_point_label(reading)
@@ -56,6 +59,7 @@ def _validate_reading_meter(reading):
 
 
 def _validate_reading_values(reading):
+  """La lectura que es factura ha de tenir data i consum calculat."""
   if reading.reading_date is None:
     raise BillingProcessError(
       'reading_without_date',
