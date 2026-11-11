@@ -183,7 +183,9 @@ const createEmpty = () => {
   clusterAddressExtra.value = null;
   clusterNbNozzles.value = 1;
   clusterCadastral.value = null;
-  nozzlesBD.value = [
+  // Una bateria nova encara no té boquilles a BD: la llista de la pantalla va a part de la còpia desada
+  nozzlesBD.value = [];
+  nozzles.value = [
     {
       position: 1,
       diameter: selected_connection.value?.diameter?.name || cluster.value?.connection?.diameter?.name,
@@ -204,7 +206,6 @@ const createEmpty = () => {
       }
     }
   ]
-  nozzles.value = nozzlesBD.value;
   isLoading.value = false;
 }
 
@@ -454,6 +455,30 @@ const confirmLinkedNozzleChanges = () => {
 // pendents de columna, fila o destinació passen per la confirmació en desar la bateria.
 const storedNozzle = (nozzle) => nozzlesBD.value.find(n => n.id === nozzle.id) || nozzle;
 
+// Desa de seguida el vincle d'una boquilla de BD amb un punt. La resta de camps s'envien amb els
+// valors desats (la destinació, la calculada si n'hi ha) i s'actualitza la còpia desada.
+const saveNozzleLink = async (nozzle, supplyPoint, destination = undefined) => {
+  const stored = storedNozzle(nozzle);
+  const savedDestination = destination ?? stored.destination;
+  await $ClusterNozzleApiService.save({
+    id: nozzle.id,
+    cluster: cluster.value?.id,
+    token: stored.token,
+    position: stored.position,
+    status: stored.status?.id ?? stored.status,
+    type: stored.type?.id ?? stored.type,
+    diameter: stored.diameter,
+    destination: savedDestination,
+    col: stored.col,
+    row: stored.row,
+    supply_point_id: supplyPoint.id,
+  });
+  const index = nozzlesBD.value.findIndex(n => n.id === nozzle.id);
+  if (index !== -1) {
+    nozzlesBD.value.splice(index, 1, { ...nozzlesBD.value[index], destination: savedDestination, supplyPoint });
+  }
+}
+
 // Funció per guardar el cluster
 const saveCluster = async () => {
   // Forcem el blur de l'input actiu perquè es propagui (@change) qualsevol valor
@@ -594,7 +619,8 @@ const saveCluster = async () => {
       // mirem si existeix a nozzlesBD
 
       console.log("1. nozzle.value.map",nozzle, nozzle.position)
-      const index = nozzlesBD.value.findIndex((n) => n.id == nozzle.id);
+      // Només per id real: una boquilla nova (sense id) no ha de coincidir amb cap altra sense id
+      const index = nozzle.id ? nozzlesBD.value.findIndex((n) => n.id == nozzle.id) : -1;
       console.log("2. index",index)
       const nozzleBD = nozzlesBD.value[index];
 
@@ -677,8 +703,11 @@ const saveCluster = async () => {
       delete data.supplyPoint;
       // si existeix, actualitzem, si no creem
       const savedNozzle = await $ClusterNozzleApiService.save(data);
-      // Una boquilla nova passa a ser de BD: si el desat falla més endavant, en reintentar no es duplica
-      if (!nozzleBD && savedNozzle?.id) {
+      // La còpia desada reflecteix el que ja és a BD: si el desat falla més endavant, en reintentar
+      // no es duplica la boquilla i la confirmació compara amb els valors realment desats
+      if (nozzleBD) {
+        nozzlesBD.value.splice(index, 1, { ...nozzle });
+      } else if (savedNozzle?.id) {
         nozzle.id = savedNozzle.id;
         nozzlesBD.value.push({ ...nozzle });
       }
@@ -816,19 +845,7 @@ const onSupplyPointSelected = async (supplyPoint) => {
       // si la boquilla ja existeix a BD, guardem el vincle immediatament
       if (updatedNozzle.id) {
         try {
-          await $ClusterNozzleApiService.save({
-            id: updatedNozzle.id,
-            cluster: cluster.value?.id,
-            token: updatedNozzle.token,
-            position: updatedNozzle.position,
-            status: updatedNozzle.status?.id ?? updatedNozzle.status,
-            type: updatedNozzle.type?.id ?? updatedNozzle.type,
-            diameter: updatedNozzle.diameter,
-            destination: storedNozzle(updatedNozzle).destination,
-            col: storedNozzle(updatedNozzle).col,
-            row: storedNozzle(updatedNozzle).row,
-            supply_point_id: supplyPoint.id,
-          });
+          await saveNozzleLink(updatedNozzle, supplyPoint);
           toast.success(t('common.saved_successfully'));
         } catch (error) {
           console.error('Error vinculant el punt de subministrament:', error);
@@ -850,19 +867,10 @@ const onSupplyPointCreated = async (supplyPoint) => {
       // Si la boquilla ja existeix a BD, vinculem el punt de subministrament acabat de crear/editar immediatament
       if (updatedNozzle.id) {
         try {
-          await $ClusterNozzleApiService.save({
-            id: updatedNozzle.id,
-            cluster: cluster.value?.id,
-            token: updatedNozzle.token,
-            position: updatedNozzle.position,
-            status: updatedNozzle.status?.id ?? updatedNozzle.status,
-            type: updatedNozzle.type?.id ?? updatedNozzle.type,
-            diameter: updatedNozzle.diameter,
-            destination: updateDestination(supplyPoint.address || {}),
-            col: storedNozzle(updatedNozzle).col,
-            row: storedNozzle(updatedNozzle).row,
-            supply_point_id: supplyPoint.id,
-          });
+          const destination = updateDestination(supplyPoint.address || {});
+          await saveNozzleLink(updatedNozzle, supplyPoint, destination);
+          // La destinació desada passa també a la pantalla, perquè desar la bateria no la torni enrere
+          nozzles.value.splice(index, 1, { ...updatedNozzle, destination });
           toast.success(t('common.saved_successfully'));
         } catch (error) {
           console.error('Error vinculant el punt de subministrament amb la bateria:', error);
@@ -991,19 +999,9 @@ const createNewLocalSupplyPoint = async () => {
     // Si la boquilla ja existeix a BD, vinculem el punt de subministrament acabat de crear immediatament
     if (updatedNozzle.id) {
       try {
-        await $ClusterNozzleApiService.save({
-          id: updatedNozzle.id,
-          cluster: cluster.value?.id,
-          token: updatedNozzle.token,
-          position: updatedNozzle.position,
-          status: updatedNozzle.status?.id ?? updatedNozzle.status,
-          type: updatedNozzle.type?.id ?? updatedNozzle.type,
-          diameter: updatedNozzle.diameter,
-          destination: updateDestination(address),
-          col: updatedNozzle.col,
-          row: updatedNozzle.row,
-          supply_point_id: response.id,
-        });
+        const destination = updateDestination(address);
+        await saveNozzleLink(updatedNozzle, response, destination);
+        nozzles.value.splice(index, 1, { ...updatedNozzle, destination });
       } catch (error) {
         console.error('Error vinculant el punt de subministrament amb la bateria:', error);
         toast.error(t('common.error_save'));
