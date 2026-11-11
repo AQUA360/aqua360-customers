@@ -1,6 +1,6 @@
 from django.http import FileResponse
 from django.conf import settings
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Case, Count, F, Prefetch, Q, When
 from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
@@ -2372,15 +2372,32 @@ def _generate_contract_request_token(is_change_of_name=False):
     return generate_contract_request_token()
 
 
+def _lock_procedure_holder_dni(dni):
+    """Take a PostgreSQL transaction advisory lock for the normalized DNI.
+
+    Concurrent procedures for the same new holder wait here until the first
+    transaction ends, so the re-check that follows sees its committed Person.
+    The lock is released at commit or rollback. No-op on other databases.
+    """
+    if connection.vendor != "postgresql":
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))",
+            [f"ov-procedure-holder:{dni}"],
+        )
+
+
 def _create_procedure_holder(dni, data):
     """Return the holder for a procedure whose DNI was not found at validation.
 
     Must be called inside the procedure's transaction so any later error rolls
-    back the new records. The DNI is resolved again first, to reuse a person
-    created meanwhile. Otherwise create the `Person` (token = normalized DNI),
+    back the new records. A per-DNI lock serializes concurrent creations and
+    the DNI is resolved again under it, to reuse a person created meanwhile. Otherwise create the `Person` (token = normalized DNI),
     its `PersonPiggyBank` (as the back office does) and one default
     `PersonContact` with the phone and email from the validated data.
     """
+    _lock_procedure_holder_dni(dni)
     holder = _resolve_contract_procedure_person(dni)
     if holder is not None:
         return holder

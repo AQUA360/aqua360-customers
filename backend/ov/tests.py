@@ -4294,6 +4294,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertEqual(response.status_code, 201)
 
     def test_existing_holder_with_only_dni_does_not_create_person(self):
+        """An existing holder needs only the DNI and no Person is created."""
+
         person_count = Person.objects.count()
 
         response = self._post()
@@ -4303,6 +4305,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertEqual(self._created_request(response).holder, self.holder)
 
     def test_existing_holder_ignores_new_holder_fields(self):
+        """Personal fields sent for an existing holder do not modify it."""
+
         response = self._post(**NEW_HOLDER_FIELDS)
 
         self.assertEqual(response.status_code, 201)
@@ -4313,6 +4317,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertFalse(PersonContact.objects.filter(person=self.holder).exists())
 
     def test_unknown_holder_without_personal_data_returns_400(self):
+        """An unknown DNI without personal data returns 400 per missing field."""
+
         request_count = ContractRequest.objects.count()
 
         response = self._post(holder_dni=NEW_HOLDER_DNI)
@@ -4324,6 +4330,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_bank_account_dni_cannot_resolve_a_different_holder(self):
+        """A bank account DNI of another person is treated as a new holder."""
+
         PersonBank.objects.create(
             person=self.holder, dni=NEW_HOLDER_DNI, iban="ES9121000418450200051332"
         )
@@ -4337,6 +4345,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_unknown_holder_with_personal_data_creates_and_links_person(self):
+        """An unknown DNI with full data creates the Person and links it."""
+
         response = self._post(holder_dni=NEW_HOLDER_DNI, **NEW_HOLDER_FIELDS)
 
         self.assertEqual(response.status_code, 201)
@@ -4362,6 +4372,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertEqual(response.data["person"]["name"], "Nova")
 
     def test_new_holder_dni_is_normalized(self):
+        """The new holder is stored with the normalized DNI as token."""
+
         response = self._post(
             holder_dni="00.000.000-t", **NEW_HOLDER_FIELDS
         )
@@ -4370,6 +4382,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertTrue(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
 
     def test_new_holder_explicit_identification_type(self):
+        """An explicit identification type token is stored on the new holder."""
+
         response = self._post(
             holder_dni=NEW_HOLDER_DNI,
             holder_identification_type_token="nie",
@@ -4382,6 +4396,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertFalse(person.dni_validated)
 
     def test_new_holder_unknown_identification_type_returns_400(self):
+        """An unknown identification type token returns 400."""
+
         response = self._post(
             holder_dni=NEW_HOLDER_DNI,
             holder_identification_type_token="unknown",
@@ -4396,6 +4412,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
 
     def test_new_juridic_holder_does_not_need_surname(self):
+        """A legal-entity new holder can omit the surname."""
+
         fields = dict(NEW_HOLDER_FIELDS, holder_surname="", holder_is_juridic=True)
 
         response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
@@ -4406,6 +4424,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertIsNone(person.surname)
 
     def test_new_holder_invalid_email_returns_400(self):
+        """An invalid email for a new holder returns 400."""
+
         fields = dict(NEW_HOLDER_FIELDS, holder_email="not-an-email")
 
         response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
@@ -4414,7 +4434,45 @@ class ContractProcedureOVTests(TestCase):
         self.assertIn("holder_email", response.data)
         self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
 
+    def test_existing_holder_ignores_invalid_new_holder_fields(self):
+        """Invalid personal fields are ignored for an existing holder."""
+
+        response = self._post(
+            holder_email="not-an-email", holder_phone="9" * 30
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+
+    def test_new_holder_too_long_phone_returns_400(self):
+        """A phone longer than the model allows returns 400 for a new holder."""
+
+        fields = dict(NEW_HOLDER_FIELDS, holder_phone="9" * 21)
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["holder_phone"],
+            ["Ensure this field has no more than 20 characters."],
+        )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_existing_token_with_whitespace_is_not_duplicated(self):
+        """A stored token with whitespace still matches, so no duplicate is created."""
+
+        legacy = Person.objects.create(token="22222222\tj", name="Llegat")
+        person_count = Person.objects.count()
+
+        response = self._post(holder_dni="22222222J", **NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        self.assertEqual(self._created_request(response).holder, legacy)
+
     def test_new_holder_not_created_when_request_is_rejected(self):
+        """A request rejected before the transaction creates no Person."""
+
         response = self._post(
             holder_dni=NEW_HOLDER_DNI,
             property_token="PROP-UNKNOWN",
@@ -4425,6 +4483,8 @@ class ContractProcedureOVTests(TestCase):
         self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
 
     def test_new_holder_rolled_back_when_creation_fails(self):
+        """A downstream failure rolls back the new Person and related rows."""
+
         request_count = ContractRequest.objects.count()
 
         with patch.object(
@@ -5868,6 +5928,8 @@ class ContractChangeProcedureOVTests(TestCase):
     # --- 404 --------------------------------------------------------------
 
     def test_unknown_incoming_holder_without_personal_data_returns_400(self):
+        """An unknown incoming DNI without data returns nested 400 errors."""
+
         response = self._post(incoming={"holder_dni": NEW_HOLDER_DNI})
 
         self.assertEqual(response.status_code, 400)
@@ -5880,6 +5942,8 @@ class ContractChangeProcedureOVTests(TestCase):
         self._assert_nothing_created()
 
     def test_existing_incoming_holder_does_not_create_person(self):
+        """An existing incoming holder is reused and not modified."""
+
         person_count = Person.objects.count()
 
         response = self._post(incoming=NEW_HOLDER_FIELDS)
@@ -5894,6 +5958,8 @@ class ContractChangeProcedureOVTests(TestCase):
         self.assertEqual(self.incoming_holder.name, "Entrant")
 
     def test_unknown_incoming_holder_with_personal_data_creates_person(self):
+        """An unknown incoming DNI with full data creates and links the Person."""
+
         response = self._post(
             incoming=dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
         )
@@ -5921,7 +5987,38 @@ class ContractChangeProcedureOVTests(TestCase):
         )
         self.assertEqual(termination.person, self.outgoing_holder)
 
+    def test_existing_incoming_holder_ignores_invalid_email(self):
+        """An invalid email is ignored for an existing incoming holder."""
+
+        response = self._post(incoming={"holder_email": "not-an-email"})
+
+        self.assertEqual(response.status_code, 201)
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(contract_request.holder, self.incoming_holder)
+
+    def test_new_incoming_holder_invalid_email_returns_nested_400(self):
+        """An invalid email for a new incoming holder returns nested 400."""
+
+        response = self._post(
+            incoming=dict(
+                NEW_HOLDER_FIELDS,
+                holder_dni=NEW_HOLDER_DNI,
+                holder_email="not-an-email",
+            )
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["incoming"]["holder_email"],
+            ["Enter a valid email address."],
+        )
+        self._assert_nothing_created()
+
     def test_unknown_incoming_identification_type_returns_nested_400(self):
+        """An unknown identification type returns nested 400 under incoming."""
+
         response = self._post(
             incoming=dict(
                 NEW_HOLDER_FIELDS,
@@ -5938,6 +6035,8 @@ class ContractChangeProcedureOVTests(TestCase):
         self._assert_nothing_created()
 
     def test_new_incoming_holder_not_created_on_contract_404_or_409(self):
+        """Contract 404/409 inside the transaction leave no new Person."""
+
         incoming = dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
         for outgoing, expected in (
             ({"contract_token": "CT-UNKNOWN"}, 404),
@@ -5953,6 +6052,8 @@ class ContractChangeProcedureOVTests(TestCase):
                 self._assert_nothing_created()
 
     def test_new_incoming_holder_rolled_back_when_creation_fails(self):
+        """A downstream failure rolls back the new incoming holder."""
+
         with patch(
             "ov.views._create_procedure_payment",
             side_effect=RuntimeError("downstream failure"),

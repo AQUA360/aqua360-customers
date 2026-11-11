@@ -35,6 +35,8 @@ from coredata.models import (
 )
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from django.utils import timezone
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Count, Value
 from django.db.models.functions import Replace, Upper
@@ -2129,12 +2131,16 @@ def _normalize_person_dni(value):
     return _PERSON_DNI_SEPARATORS.sub("", value or "").upper()
 
 
+_PERSON_DNI_SQL_SEPARATORS = ("-", ".", " ", "\t", "\n", "\r", "\xa0")
+
+
 def _normalized_dni_expression(field):
     """Expressió SQL equivalent a `_normalize_person_dni` per al camp indicat:
-    `UPPER(REPLACE(REPLACE(REPLACE(field, '-', ''), '.', ''), ' ', ''))`."""
-    expression = Replace(field, Value("-"), Value(""))
-    expression = Replace(expression, Value("."), Value(""))
-    expression = Replace(expression, Value(" "), Value(""))
+    elimina guions, punts i espais (inclosos tabuladors, salts de línia i
+    espais no separables) i passa el resultat a majúscules."""
+    expression = field
+    for separator in _PERSON_DNI_SQL_SEPARATORS:
+        expression = Replace(expression, Value(separator), Value(""))
     return Upper(expression)
 
 
@@ -2177,13 +2183,14 @@ def _resolve_contract_procedure_person(dni):
 
 
 NEW_HOLDER_REQUIRED_MESSAGE = "This field is required when the holder does not exist."
-NEW_HOLDER_TEXT_FIELDS = (
-    "holder_name",
-    "holder_surname",
-    "holder_phone",
-    "holder_email",
-    "holder_identification_type_token",
-)
+NEW_HOLDER_FIELD_MAX_LENGTHS = {
+    "holder_name": 255,
+    "holder_surname": 255,
+    "holder_phone": 20,
+    "holder_email": 255,
+    "holder_identification_type_token": 255,
+}
+NEW_HOLDER_TEXT_FIELDS = tuple(NEW_HOLDER_FIELD_MAX_LENGTHS)
 
 
 class ProcedureNewHolderSerializer(serializers.Serializer):
@@ -2199,21 +2206,24 @@ class ProcedureNewHolderSerializer(serializers.Serializer):
     si s'ha de crear) i, per a titulars nous, `identification_type`.
     """
 
+    # Sense `max_length` ni `EmailField`: el format i la llargada només es
+    # validen per a titulars nous (a `_validate_holder`), perquè per a un
+    # titular existent aquests camps s'ignoren.
     holder_name = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+        required=False, allow_blank=True, allow_null=True
     )
     holder_surname = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+        required=False, allow_blank=True, allow_null=True
     )
     holder_phone = serializers.CharField(
-        max_length=20, required=False, allow_blank=True, allow_null=True
+        required=False, allow_blank=True, allow_null=True
     )
-    holder_email = serializers.EmailField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+    holder_email = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
     )
     holder_is_juridic = serializers.BooleanField(required=False, default=False)
     holder_identification_type_token = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+        required=False, allow_blank=True, allow_null=True
     )
 
     def _validate_holder(self, attrs):
@@ -2223,6 +2233,7 @@ class ProcedureNewHolderSerializer(serializers.Serializer):
         exist (or the normalized DNI is blank, which the views reject). For a
         new holder, require name, surname (unless juridic), phone and email,
         and set attrs["identification_type"] from the token or the default.
+        Length and email format are only checked for a new holder.
         """
         for field in NEW_HOLDER_TEXT_FIELDS:
             if attrs.get(field) is not None:
@@ -2241,9 +2252,19 @@ class ProcedureNewHolderSerializer(serializers.Serializer):
         for field in required:
             if not attrs.get(field):
                 errors[field] = [NEW_HOLDER_REQUIRED_MESSAGE]
+        for field, max_length in NEW_HOLDER_FIELD_MAX_LENGTHS.items():
+            if len(attrs.get(field) or "") > max_length:
+                errors[field] = [
+                    f"Ensure this field has no more than {max_length} characters."
+                ]
+        if attrs.get("holder_email") and "holder_email" not in errors:
+            try:
+                validate_email(attrs["holder_email"])
+            except DjangoValidationError:
+                errors["holder_email"] = ["Enter a valid email address."]
 
         type_token = attrs.get("holder_identification_type_token")
-        if type_token:
+        if type_token and "holder_identification_type_token" not in errors:
             identification_type = (
                 IdentificationType.objects.filter(token=type_token)
                 .order_by("id")
@@ -2253,6 +2274,8 @@ class ProcedureNewHolderSerializer(serializers.Serializer):
                 errors["holder_identification_type_token"] = [
                     "Unknown identification type."
                 ]
+        elif type_token:
+            identification_type = None
         else:
             identification_type = (
                 IdentificationType.objects.filter(is_default=True)
