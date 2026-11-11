@@ -662,6 +662,7 @@ export default {
     add_favorite: 'Afegeix a preferits',
     remove_favorite: 'Treu de preferits',
     drop_here_favorite: 'Deixa-hi un enllaç per tenir-lo a mà',
+    recent: 'Recents',
     show_section_links: 'Personalitzar els enllaços de la secció',
     fold_section: 'Plegar la secció',
     unfold_section: 'Desplegar la secció',

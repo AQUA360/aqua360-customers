@@ -653,6 +653,7 @@ export default {
     add_favorite: 'Add to favourites',
     remove_favorite: 'Remove from favourites',
     drop_here_favorite: 'Drop a link here to keep it at hand',
+    recent: 'Recent',
     show_section_links: 'Customize the links of the section',
     fold_section: 'Fold section',
     unfold_section: 'Unfold section',

@@ -5,7 +5,8 @@ import { ref, computed, onMounted, onUnmounted, unref } from 'vue';
  *  - which sections are shown and in which order,
  *  - which sections are folded so only their title is visible,
  *  - which links of each section are shown and in which order,
- *  - which links are favourites, shown first in their own order.
+ *  - which links are favourites, shown first in their own order,
+ *  - which links were visited last (at most MAX_RECENT, newest first).
  *
  * Section descriptor: { key, label, icon, items: [{ key, label, icon, ... }] }.
  * Only the sections and links the user can access must be passed, so the
@@ -14,6 +15,7 @@ import { ref, computed, onMounted, onUnmounted, unref } from 'vue';
  */
 
 const SAVE_DELAY_MS = 500;
+const MAX_RECENT = 5;
 
 const emptyBlock = () => ({ hidden: [], order: [] });
 
@@ -47,6 +49,8 @@ export function useNavSidebarLayout(sectionsSource) {
   const itemsLayout = ref({});
   // Enllaços preferits, en ordre: "<sectionKey>/<itemKey>".
   const favoriteKeys = ref([]);
+  // Darrers enllaços visitats, del més recent al més antic: "<sectionKey>/<itemKey>".
+  const recentKeys = ref([]);
 
   // --- Persistence -------------------------------------------------------------
 
@@ -65,6 +69,7 @@ export function useNavSidebarLayout(sectionsSource) {
     foldedKeys.value = Array.isArray(layout?.folded) ? layout.folded : [];
     itemsLayout.value = layout?.items && typeof layout.items === 'object' ? layout.items : {};
     favoriteKeys.value = Array.isArray(layout?.favorites) ? layout.favorites : [];
+    recentKeys.value = Array.isArray(layout?.recent) ? layout.recent : [];
   };
 
   const loadLayout = async () => {
@@ -76,6 +81,13 @@ export function useNavSidebarLayout(sectionsSource) {
       console.error('Could not load side menu layout', e);
     } finally {
       loaded = true;
+      // La visita de la pàgina on s'ha entrat s'anota un cop hi ha la configuració
+      // desada, perquè no se la mengi.
+      if (pendingVisit) {
+        const { sectionKey, itemKey } = pendingVisit;
+        pendingVisit = null;
+        recordVisit(sectionKey, itemKey);
+      }
     }
   };
 
@@ -84,6 +96,7 @@ export function useNavSidebarLayout(sectionsSource) {
     folded: foldedKeys.value,
     items: itemsLayout.value,
     favorites: favoriteKeys.value,
+    recent: recentKeys.value,
   });
 
   const flushSave = async () => {
@@ -215,6 +228,17 @@ export function useNavSidebarLayout(sectionsSource) {
 
   const favoriteKey = (sectionKey, itemKey) => `${sectionKey}/${itemKey}`;
 
+  /** Every link the user can access by "<sectionKey>/<itemKey>": { section, item }. */
+  const linksByKey = computed(() => {
+    const byKey = new Map();
+    definitions.value.forEach((section) => {
+      (section.items || []).forEach((item) => {
+        byKey.set(favoriteKey(section.key, item.key), { section, item });
+      });
+    });
+    return byKey;
+  });
+
   const isFavorite = (sectionKey, itemKey) => favoriteKeys.value.includes(favoriteKey(sectionKey, itemKey));
 
   /**
@@ -223,12 +247,7 @@ export function useNavSidebarLayout(sectionsSource) {
    * kept saved but not shown. A hidden link is still shown as favourite.
    */
   const favoriteItems = computed(() => {
-    const byKey = new Map();
-    definitions.value.forEach((section) => {
-      (section.items || []).forEach((item) => {
-        byKey.set(favoriteKey(section.key, item.key), { section, item });
-      });
-    });
+    const byKey = linksByKey.value;
     return favoriteKeys.value
       .filter((key) => byKey.has(key))
       .map((key) => ({ key, ...byKey.get(key) }));
@@ -263,6 +282,29 @@ export function useNavSidebarLayout(sectionsSource) {
     scheduleSave();
   };
 
+  // --- Recent links ---------------------------------------------------------------
+
+  let pendingVisit = null;
+
+  /** Note a visit to a link: it goes first in the recent links. */
+  const recordVisit = (sectionKey, itemKey) => {
+    if (!loaded) {
+      pendingVisit = { sectionKey, itemKey };
+      return;
+    }
+    const key = favoriteKey(sectionKey, itemKey);
+    // Tornar a la mateixa pàgina no canvia res: no cal desar.
+    if (recentKeys.value[0] === key) return;
+    recentKeys.value = [key, ...recentKeys.value.filter((k) => k !== key)].slice(0, MAX_RECENT);
+    scheduleSave();
+  };
+
+  /** The recent links the user can access, newest first: [{ key, section, item }]. */
+  const recentItems = computed(() => {
+    const byKey = linksByKey.value;
+    return recentKeys.value.filter((key) => byKey.has(key)).map((key) => ({ key, ...byKey.get(key) }));
+  });
+
   // --- Whole layout --------------------------------------------------------------
 
   const isCustomised = computed(
@@ -284,9 +326,13 @@ export function useNavSidebarLayout(sectionsSource) {
       saveTimer = null;
     }
     if (!loaded) changedBeforeLoad = true;
-    applyLayout({});
+    // Els recents no són personalització: es mantenen.
+    const recent = recentKeys.value;
+    applyLayout({ recent });
     try {
       await $DashboardApiService.resetSidebarLayout();
+      // Es tornen a desar els recents, que restaurar no els ha d'esborrar.
+      if (recent.length) await flushSave();
     } catch (e) {
       console.error('Could not reset side menu layout', e);
     }
@@ -331,6 +377,8 @@ export function useNavSidebarLayout(sectionsSource) {
     addFavorite,
     toggleFavorite,
     moveFavoriteTo,
+    recentItems,
+    recordVisit,
     isCustomised,
     resetLayout,
   };

@@ -268,9 +268,22 @@ const {
   addFavorite,
   toggleFavorite,
   moveFavoriteTo,
+  recentItems,
+  recordVisit,
   isCustomised: isMenuCustomised,
   resetLayout: resetMenuLayout,
 } = useNavSidebarLayout(menuSections);
+
+// Cada pàgina del menú que es visita passa al davant de Recents.
+watch([() => route.path, menuSections], () => {
+  for (const section of menuSections.value) {
+    const item = section.items.find(isMenuItemActive);
+    if (item) {
+      recordVisit(section.key, item.key);
+      return;
+    }
+  }
+}, { immediate: true });
 
 // --- Arrossegament al menú ----------------------------------------------------
 // Sortable amb `forceFallback`: la còpia que segueix el ratolí és un element
@@ -627,6 +640,18 @@ onUnmounted(() => {
         <p v-if="!favoriteItems.length && !isCollapsed" class="px-3 pb-2 text-xs text-slate-400 pointer-events-none">
           {{ $t('common.drop_here_favorite') }}
         </p>
+      </MoleculesNavSidebarSection>
+
+      <!-- Recents: les darreres pàgines del menú visitades, de la més nova a la més antiga -->
+      <MoleculesNavSidebarSection v-if="recentItems.length" id="nav-recent-links" data-nav-drop="recent"
+        :title="$t('common.recent')" :folded="isFolded('recent') || draggingSections" :icons-only="isCollapsed"
+        class="transition-opacity" :class="{ 'opacity-30': !canDropItemIn('recent') }"
+        @toggle="toggleFolded('recent')">
+        <MoleculesNavSidebarLink v-for="recent in recentItems" :key="recent.key" :item="recent.item"
+          :active="isMenuItemActive(recent.item)" :icons-only="isCollapsed"
+          :favorite="isFavorite(recent.section.key, recent.item.key)" :hover-class="hoverClass"
+          :highlight-class="highlightClass" :new-daily-documents="sideBarStore.newDailyDocuments"
+          @toggle-favorite="toggleFavorite(recent.section.key, recent.item.key)" />
       </MoleculesNavSidebarSection>
 
       <Draggable :model-value="visibleMenuSections" item-key="key" v-bind="dragOptions" handle=".nav-section-handle"

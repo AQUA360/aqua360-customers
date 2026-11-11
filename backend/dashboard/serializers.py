@@ -45,6 +45,7 @@ class LayoutSerializer(serializers.Serializer):
 
 MAX_SIDEBAR_KEYS = 100
 MAX_SIDEBAR_KEY_LENGTH = 64
+MAX_SIDEBAR_RECENT = 5
 
 
 def _clean_keys(value):
@@ -85,6 +86,8 @@ def clean_sidebar_layout(layout):
         'items': cleaned_items,
         # Enllaços preferits, en l'ordre de l'usuari, com a "<secció>/<enllaç>".
         'favorites': _clean_keys(layout.get('favorites')),
+        # Darrers enllaços visitats, del més recent al més antic.
+        'recent': _clean_keys(layout.get('recent'))[:MAX_SIDEBAR_RECENT],
     }
 
 
