@@ -100,7 +100,11 @@ class GenerateInvoiceBudgetView(APIView):
         # New budgets need a default due_date; conversions keep the budget dates
         # unless payment_data explicitly overrides them.
         if not due_date and is_budget:
-            due_date = (timezone.now() + timedelta(days=30)).date()
+            try:
+                due_days = int(ConfigProject.objects.get(token='budget_due_date_days').value)
+            except (ConfigProject.DoesNotExist, TypeError, ValueError):
+                due_days = 60
+            due_date = (timezone.now() + timedelta(days=due_days)).date()
             due_date_provided = True
             
         
