@@ -500,13 +500,14 @@ export default defineNuxtPlugin(nuxtApp => {
       return { count: results.length, results };
     }
 
-    // Contract invoices tab: the contract's invoices plus those of its registration request.
-    const contractPeriodQuery = (contractId) =>
-      `contract_with_request=${contractId}&is_invoice=true`;
+    // Contract invoices tab: the contract's invoices/budgets plus those of its registration request.
+    // isInvoice=true → invoices; false → budgets.
+    const contractPeriodQuery = (contractId, isInvoice = true) =>
+      `contract_with_request=${contractId}&is_invoice=${isInvoice}`;
 
     // Years of the billed period with invoices ([{ year, count }], newest first, 'none' last).
-    const getContractInvoicePeriodYears = async (contractId) => {
-      const apiUrl = `${apiHost}${entity}period-years/?${contractPeriodQuery(contractId)}`;
+    const getContractInvoicePeriodYears = async (contractId, isInvoice = true) => {
+      const apiUrl = `${apiHost}${entity}period-years/?${contractPeriodQuery(contractId, isInvoice)}`;
       const response = await $apiManager.fetch(apiUrl, 'GET');
       if (!Array.isArray(response)) {
         throw new Error('Error estructura de la resposta');
@@ -515,13 +516,13 @@ export default defineNuxtPlugin(nuxtApp => {
     }
 
     // Every invoice of one billed-period year (all pages: the tab groups them by month).
-    const getContractInvoicesByPeriodYear = async (contractId, year) => {
+    const getContractInvoicesByPeriodYear = async (contractId, year, isInvoice = true) => {
       const results = [];
       let page = 1;
       let count = 0;
 
       do {
-        const apiUrl = `${apiHost}${entity}?${contractPeriodQuery(contractId)}`
+        const apiUrl = `${apiHost}${entity}?${contractPeriodQuery(contractId, isInvoice)}`
           + `&period_year=${encodeURIComponent(year)}&page=${page}`;
         const response = await $apiManager.fetch(apiUrl, 'GET');
 
