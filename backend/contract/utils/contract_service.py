@@ -577,10 +577,16 @@ def create_bails(contract, piggy_bank):
     
 
 def check_contract_terminations(contract, contract_request=None):
+    """En crear el contracte d'una alta, passa a pendents les baixes en esborrany dels contractes
+    de sortida (mateixos punts o baixes vinculades a la sol·licitud).
+
+    No canvia l'estat del contracte de sortida: passa a baixa quan es finalitza la baixa (manualment
+    o en completar-se'n les ordres). Si es fes abans, la fiança es traspassaria a saldo i afectaria
+    la factura de baixa.
+    """
     supply_points = contract.supply_points.all()
     termination_pending_status = ConfigProject.objects.get(token='contract_termination_pending_status').value
     termination_draft_status = ConfigProject.objects.get(token='contract_termination_draft').value
-    contract_terminated_status_token = ConfigProject.objects.get(token='contract_terminated_status').value
     outgoing_contracts = Contract.objects.filter(supply_points__in=supply_points)
     if contract_request is not None:
         outgoing_contracts = Contract.objects.filter(
@@ -588,17 +594,13 @@ def check_contract_terminations(contract, contract_request=None):
             | Q(pk__in=contract_request.contract_termination_requests.values("contract_id"))
         )
     for outgoing_contract in outgoing_contracts.distinct():
-        terminations = ContractTerminationRequest.objects.filter(
+        draft_termination = ContractTerminationRequest.objects.filter(
             contract=outgoing_contract,
-            status__token__in=[termination_pending_status, termination_draft_status],
-        )
-        draft_termination = terminations.filter(status__token=termination_draft_status).first()
+            status__token=termination_draft_status,
+        ).first()
         if draft_termination:
             draft_termination.status = ContractTerminationStatus.objects.get(token=termination_pending_status)
             draft_termination.save()
-        if terminations.exists():
-            outgoing_contract.status = ContractStatus.objects.get(token=contract_terminated_status_token)
-            outgoing_contract.save()
 
 def updateTotalMembers(user, data, new_contract):
     if new_contract.total_persons != data.get('total_persons') and data.get('total_persons'):

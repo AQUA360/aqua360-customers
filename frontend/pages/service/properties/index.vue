@@ -47,7 +47,7 @@ const items = ref([]);
 const searchInput = ref('');
 const searchByAddress = ref('');
 const showAddressSearch = ref(false);
-const sortBy = ref('token');
+const sortBy = ref('id');
 const sortDesc = ref(false);
 const permissions = ref(null);
 const pagination = ref({
@@ -70,7 +70,7 @@ const getPermissions = async () => {
   }
 }
 
-const getData = async (searchQuery = '', page = 1, sort = 'token', desc = false, searchByAddressQuery = '') => {
+const getData = async (searchQuery = '', page = 1, sort = 'id', desc = false, searchByAddressQuery = '') => {
   if (!permissions.value?.can_view) {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
@@ -132,7 +132,7 @@ const handleSort = (key) => {
 }
 
 const exportColumns = computed(() => [
-  { header: t('common.identification'), value: (row) => row.token, key: 'token' },
+  { header: t('common.identification'), value: (row) => row.id, key: 'id' },
   { header: t('common.name'), value: (row) => row.name, key: 'name' },
   { header: t('address_block.city'), value: (row) => row.city, key: 'city' },
   { header: t('common.cadastral'), value: (row) => row.cadastral, key: 'cadastral' },
@@ -251,7 +251,7 @@ watch(() => route.query, () => {
       :is-empty="items.length === 0"
       @retry="getData">
       <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
+        <TableHeader :label="$t('common.identification')" sortKey="id" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
@@ -272,7 +272,7 @@ watch(() => route.query, () => {
           <span>
             <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
               @click="showPropertyRegion(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.id }}</abbr>
+              <abbr :title="item.id" class="no-underline">{{ item.id }}</abbr>
               <Icon name="fa6-solid:eye"
                 class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
             </button>

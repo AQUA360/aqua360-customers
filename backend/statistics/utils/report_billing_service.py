@@ -5,6 +5,7 @@ import threading
 from django.core.files.base import ContentFile
 from django.db.models import F, Count, Sum, Q, Max, Case, When, Value, BooleanField, CharField, DecimalField, Subquery
 from decimal import Decimal
+from collections import defaultdict
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Window
@@ -19,6 +20,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from billing.utils.aca_company_service import ACACompanyError, get_records_company, resolve_aca_company, use_multiple_companies
+from billing.utils.generate_factdeta_service import factdeta_invoice_volumes
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
@@ -139,6 +141,22 @@ def _aca_effective_use_annotation():
     )
 
 
+def _aca_price_to_interval(invoice_dom_lines, part_fixa_token):
+    """Tram de cada preu unitari de les línies variables domèstiques d'una factura, per a les línies sense `interval`.
+
+    Els trams domèstics de l'ACA tenen preus creixents: el preu més baix és el tram 1. La part fixa no és cap
+    tram i no entra a l'ordenació (si hi entrava, desplaçava els trams de les línies variables)."""
+    variable_lines = [
+        l for l in invoice_dom_lines
+        if not (l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)
+    ]
+    ordered_prices = []
+    for l in sorted(variable_lines, key=lambda l: (l.price_unit, l.id)):
+        if l.price_unit not in ordered_prices:
+            ordered_prices.append(l.price_unit)
+    return {price: idx + 1 for idx, price in enumerate(ordered_prices)}
+
+
 def _invoice_effective_use_aca(invoice):
     if invoice.used_aca:
         return invoice.used_aca
@@ -247,6 +265,12 @@ def _get_aca_invoices_data(invoices, aca_product_token, pre_invoice_token, line_
     )
 
     return aca_invoice_ids, invoices_by_exploitation, totals_dict, aca_line_items_qs
+
+
+def _m3(value):
+    """Volum per a l'informe: enter si no té decimals."""
+    value = Decimal(str(value or 0))
+    return int(value) if value == value.to_integral_value() else float(value)
 
 
 def _get_signed_invoice_consumption_total(invoices, payoff_status_token):
@@ -974,10 +998,6 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                     print("no type found for invoice: ", lines_no_type.first().invoice.serie_final)
                 #DOM
                 dom_lines = aca_line_items_ex.filter(effective_use_aca="D").distinct()
-                dom_lines_list = list(dom_lines)
-                dom_lines_by_invoice = {}
-                for l in dom_lines_list:
-                    dom_lines_by_invoice.setdefault(l.invoice_id, []).append(l)
 
                 dom_invoices = invoices_exploitation.filter(id__in=dom_lines.values_list('invoice__id', flat=True)).distinct()
                 
@@ -1049,123 +1069,27 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 # lines_no_line_item_type = aca_line_items_ex.filter(line_item_type__isnull=True) #if no line item it SHOULD be variable (error with prev 2026)
                 lines_part_variable = aca_line_items_ex.exclude(line_item_type__article__token=part_fixa_token).distinct()
                 
-                # DOM SOCIAL
-                dom_not_social = {}
-                dom_social = {}
-                dom_social_0 = 0
-                dom_no_fixa = 0
-                for i in range(4):
-                    dom_not_social[i + 1] = 0
-                    dom_social[i + 1] = 0
+                # Volums (m³) amb el mateix càlcul que el FACTDETA en baixa, sobre les mateixes línies:
+                # el consumit és el real de la factura i cada factura va al tipus de tarifa amb què es declara
+                volume_lines = defaultdict(list)
+                for line in aca_line_items_ex.select_related(
+                    'line_item_type__article', 'line_item_type__quantity',
+                ).prefetch_related('adjustments__adjustment__conditions'):
+                    volume_lines[line.invoice_id].append(line)
+                volume_invoices = invoices_exploitation.select_related(
+                    'contract', 'contract_termination__contract',
+                )
+                volumes = factdeta_invoice_volumes(volume_invoices, volume_lines, part_fixa_token, tarifa_social_token)
+                consumed_by_tariff, billed_by_tariff = defaultdict(Decimal), defaultdict(Decimal)
+                dom_not_social, dom_social = [Decimal(0)] * 4, [Decimal(0)] * 4
+                dom_social_0 = Decimal(0)
+                for volume in volumes:
+                    consumed_by_tariff[volume.tariff_type] += volume.consumed
+                    billed_by_tariff[volume.tariff_type] += volume.billed
+                    dom_not_social = [total + tram for total, tram in zip(dom_not_social, volume.trams)]
+                    dom_social = [total + tram for total, tram in zip(dom_social, volume.social_trams)]
+                    dom_social_0 += volume.social_zero
 
-                invoice_interval_cache = {} 
-                invoice_leak_cache = {}     
-                dom_no_fixa = sum(l.units or 0 for l in dom_lines_list if l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)
-
-                print("-- part fixa token: ", part_fixa_token)
-                dom_lines_exclude_fixa = [l for l in dom_lines_list if not (l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)]
-                for dom_line in dom_lines_exclude_fixa:
-                    """ if dom_line.line_item_type and dom_line.line_item_type.quantity and dom_line.line_item_type.quantity.token == 'diferencia_fuita':
-                        print("diferencia fuita")
-                        continue """
-                    if dom_line.line_item_type and dom_line.line_item_type.article:
-                        print(f"------ 8< ------- \n\n\n\ndom line: {dom_line.id}, {dom_line.line_item_type.article.token}")
-                    else:
-                        print(f"------ 8< ------- \n\n\ndom line: {dom_line.id}, no line item type or article")
-
-                    invoice = dom_line.invoice
-                    invoice_id = dom_line.invoice_id
-                    # Warn when units are not a whole number (robust for Decimal/float/str)
-                    units_value = dom_line.units
-                    if units_value is not None:
-                        try:
-                            normalized_units = Decimal(str(units_value))
-                            if normalized_units != normalized_units.to_integral_value():
-                                print("WARNING: dom line units has decimals: ", dom_line.units)
-                        except Exception:
-                            print("WARNING: could not parse dom line units for decimal check: ", dom_line.units)
-
-                    effective_interval = dom_line.interval
-                    if not effective_interval:
-                        leak_total = invoice_leak_cache.get(invoice_id)
-                        if leak_total is None:
-                            leak_total = sum(r.leak_value or 0 for r in invoice.readings.all())
-                            invoice_leak_cache[invoice_id] = leak_total
-
-                        if (
-                            dom_line.units
-                            and dom_line.units > 0
-                            and leak_total
-                            and dom_line.units == leak_total
-                        ):
-                            effective_interval = 1
-                        else:
-                            if invoice_id not in invoice_interval_cache:
-                                invoice_dom_lines = dom_lines_by_invoice.get(invoice_id, [])
-                                invoice_dom_lines = sorted(invoice_dom_lines, key=lambda l: (-l.price_unit, l.id))
-                                ordered_prices = []
-                                for l in invoice_dom_lines:
-                                    if l.price_unit not in ordered_prices:
-                                        ordered_prices.append(l.price_unit)
-                                price_to_interval = {
-                                    price: idx + 1
-                                    for idx, price in enumerate(ordered_prices)
-                                }
-                                invoice_interval_cache[invoice_id] = price_to_interval
-                            else:
-                                price_to_interval = invoice_interval_cache[invoice_id]
-
-                            effective_interval = price_to_interval.get(dom_line.price_unit)
-
-                    applied_adjustments = []
-                    
-                    if hasattr(dom_line, "adjustments") and dom_line.adjustments:
-                        if dom_line.adjustments.all(): 
-                            print(f"line item: {dom_line.id}, {dom_line.name}, {dom_line.token}, {dom_line.adjustments.all()}")
-                        for adjustment in dom_line.adjustments.all():
-                            print(f"adjustment: {adjustment.id}, {adjustment.name}, {adjustment.token}")
-                        applied_adjustments.extend(dom_line.adjustments.all())
-
-                    has_social_adjustment = False
-                    for adj in applied_adjustments:
-                        adjustment_obj = getattr(adj, "adjustment", None)
-                        if not adjustment_obj:
-                            continue
-                        conditions_manager = getattr(adjustment_obj, "conditions", None)
-                        if not conditions_manager:
-                            continue
-
-                        for cond in conditions_manager.all():
-                            cond_quantity = getattr(cond, "quantity", None)
-                            if ( not isinstance(cond_quantity, dict) ):
-                                continue
-
-                            if (
-                                cond_quantity.get("value") == f"variable.{tarifa_social_token}"
-                                and cond.operation != "is_null"
-                            ):
-                                has_social_adjustment = True
-                                break
-                        if has_social_adjustment:
-                            break
-
-                    if has_social_adjustment:
-                        # print(f"has social adjustment: {invoice.serie_final}, {dom_line.price_unit}, {effective_interval}")
-                        if dom_line.price_unit < 0.01:
-                            dom_social_0 += dom_line.units
-                        else:
-                            if effective_interval and 1 <= effective_interval <= 4:
-                                print(f"has social adjustment: {invoice.serie_final}, {dom_line.id}, {effective_interval}");
-                                dom_social[effective_interval] += dom_line.units
-                            else:
-                                print("ERROR: no interval (social) found for invoice: ", invoice.serie_final)
-                                dom_social[1] += dom_line.units
-                    else:
-                        if effective_interval and 1 <= effective_interval <= 4:
-                            dom_not_social[effective_interval] += dom_line.units
-                        else:
-                            print("ERROR: no interval (not social) found for invoice: ", invoice.serie_final)
-                            dom_not_social[1] += dom_line.units
                 most_used_date_range = (None, None)
                 invoice_issue_dates = list(
                     invoices_exploitation.values_list("issue_date", flat=True)
@@ -1222,11 +1146,6 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                         )
                         most_used_date_range = (avg_prev, avg_curr)
 
-                total_dom_consumption = 0   #actually use this to avoid variations caused by decimals
-                total_dom_consumption += sum(dom_not_social.values())
-                total_dom_consumption += sum(dom_social.values())
-                total_dom_consumption += dom_social_0
-                
                 fallback_start = start_date if start_date else (billing.created_at if (id and billing and billing.created_at) else billing_date)
                 fallback_end = end_date if end_date else (billing.created_at if (id and billing and billing.created_at) else billing_date)
 
@@ -1243,35 +1162,13 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                     lines_part_variable.aggregate(total=Sum('price'))['total'] or 0,
                     aca_line_items_ex.aggregate(total=Sum('price'))['total'] or 0,
                     
-                    total_dom_consumption,
-                    # _get_signed_invoice_consumption_total(dom_invoices, payoff_status_token),
-                    int(ind_lines.filter(line_item_type__quantity__token='diferencia_fuita_consum').exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
-                    # _get_signed_invoice_consumption_total(ind_invoices, payoff_status_token),
-                    int(mun_lines.exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
-                    # _get_signed_invoice_consumption_total(mun_invoices, payoff_status_token),
-                    # _get_signed_invoice_consumption_total(keeper_invoices, payoff_status_token),
-                    0,
-
-                    # int(dom_lines.exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
-                    total_dom_consumption,
-                    int(ind_lines.filter(line_item_type__quantity__token='diferencia_fuita_consum').exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
-                    int(mun_lines.exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
-                    # int(keeper_lines.filter(line_item_type__quantity__token='diferencia_fuita_consum').exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0),
-                    0,
-                    # int(keeper_invoices.aggregate(total_units=Sum('consumption'))['total_units'] or 0),
-
-                    _get_signed_invoice_consumption_total(direct_free_invoices, payoff_status_token),
-                    _get_signed_invoice_consumption_total(ind_invoices_free, payoff_status_token),
-                    #ind_lines_free.aggregate(total_units=Sum('units'))['total_units'] or 0,
-                    _get_signed_invoice_consumption_total(keeper_free_invoices, payoff_status_token),
-                    #keeper_free_lines.aggregate(total_units=Sum('units'))['total_units'] or 0,
+                    _m3(consumed_by_tariff['D']), _m3(consumed_by_tariff['I']), _m3(consumed_by_tariff['A']), 0,
+                    _m3(billed_by_tariff['D']), _m3(billed_by_tariff['I']), _m3(billed_by_tariff['A']), 0,
+                    # Mesurament directe, exempt i ramader amb quota 0: el consumit
+                    _m3(consumed_by_tariff['M']), _m3(consumed_by_tariff['E']), _m3(consumed_by_tariff['Q']),
                 ]
                 
-                for i in range(4):
-                    new_line.append((dom_not_social[i+1]))
-                for i in range(4):
-                    new_line.append((dom_social[i+1]))
-                new_line.append((dom_social_0))
+                new_line += [_m3(value) for value in dom_not_social + dom_social + [dom_social_0]]
             except Exception as e:
                 print(f"Error adding line for exploitation {exploitation}: {e}")
                 raise e
@@ -1650,16 +1547,9 @@ def generate_aca_summary_report_second_ver(request, black_fill=None, white_bold_
                             effective_interval = 1
                         else:
                             if invoice_id not in invoice_interval_cache:
-                                invoice_dom_lines = dom_lines_by_invoice.get(invoice_id, [])
-                                invoice_dom_lines = sorted(invoice_dom_lines, key=lambda l: (-l.price_unit, l.id))
-                                ordered_prices = []
-                                for l in invoice_dom_lines:
-                                    if l.price_unit not in ordered_prices:
-                                        ordered_prices.append(l.price_unit)
-                                price_to_interval = {
-                                    price: idx + 1
-                                    for idx, price in enumerate(ordered_prices)
-                                }
+                                price_to_interval = _aca_price_to_interval(
+                                    dom_lines_by_invoice.get(invoice_id, []), part_fixa_token
+                                )
                                 invoice_interval_cache[invoice_id] = price_to_interval
                             else:
                                 price_to_interval = invoice_interval_cache[invoice_id]

@@ -133,6 +133,46 @@ export default defineNuxtPlugin(nuxtApp => {
     // plus the invoices the user excluded from the current selection; the backend gathers every
     // matching invoice (ignoring pagination), builds the zip/pdf and returns a Celery task_id to
     // poll via the existing `task-progress/<task_id>/` endpoint.
+    // Despeses d'impagat: els filtres van com a objecte `{ param: valor }` i
+    // s'envien tal qual a la query string, igual a la llista que a la generació.
+    const buildUnpaidFeeQuery = (params = {}) => {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') return;
+        if (Array.isArray(value)) {
+          if (value.length) query.set(key, value.join(','));
+          return;
+        }
+        query.set(key, String(value));
+      });
+      const exploitation_id = localStorage.getItem('exploitation');
+      if (exploitation_id) {
+        query.set('exploitation', exploitation_id);
+      }
+      return query.toString();
+    }
+
+    const getUnpaidFeesConfig = async () => {
+      return await $apiManager.fetch(`${apiHost}${entity}unpaid-fees/config/`, 'GET');
+    }
+
+    const getUnpaidFeeInvoices = async (params = {}, page = 1) => {
+      const apiUrl = `${apiHost}${entity}?${buildUnpaidFeeQuery({ ...params, page })}`;
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (!response?.results) {
+        throw new Error('Error estructura `results` no trobat');
+      }
+      return response;
+    }
+
+    const generateUnpaidFees = async (params = {}, priceRateIds = [], excludedIds = []) => {
+      const apiUrl = `${apiHost}${entity}unpaid-fees/generate/?${buildUnpaidFeeQuery(params)}`;
+      return await $apiManager.fetch(apiUrl, 'POST', {
+        price_rate_ids: priceRateIds,
+        excluded_ids: excludedIds,
+      }, { 'Content-Type': 'application/json' });
+    }
+
     const massiveDownload = async (
       excludedIds = [], inZip = true,
       searchQuery = '', filters = [], contract = null,
@@ -771,6 +811,11 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const changeHolder = async (id, holderId) => {
+      const apiUrl = `${apiHost}${entity}${id}/change-holder/`;
+      return await $apiManager.fetch(apiUrl, 'POST', { holder_id: holderId }, { 'Content-Type': 'application/json' })
+    }
+
     const sendEmail = async (id, data) => {
       const apiUrl = `${apiHost}${entity}${id}/send-email/`;
       try {
@@ -796,6 +841,9 @@ export default defineNuxtPlugin(nuxtApp => {
     const apiService = {
       getAll,
       massiveDownload,
+      getUnpaidFeesConfig,
+      getUnpaidFeeInvoices,
+      generateUnpaidFees,
       exportData,
       save,
       getDetail,
@@ -835,6 +883,7 @@ export default defineNuxtPlugin(nuxtApp => {
       recalculateSmart,
       manageMassivelyPaid,
       sendEmail,
+      changeHolder,
       sendGroupedEmail,
       getBilledInvoices
     }

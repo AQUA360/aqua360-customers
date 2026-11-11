@@ -21,6 +21,7 @@ from billing.serializers.invoice_serializer import InvoiceFullSerializer
 from billing.utils.invoice_service import (
     generate_consumption_invoice_multiple,
     pass_budget_to_invoice,
+    apply_holder_to_budget,
     invoice_contract_termination_generate,
     invoice_connection_generate,
     invoice_contract_generate,
@@ -94,6 +95,23 @@ class GenerateInvoiceBudgetView(APIView):
             due_date = (timezone.now() + timedelta(days=30)).date()
             
         
+        # Titular triat per a un pressupost encara no confirmat. En refacturar, el
+        # titular nou pot arribar dins de redo_option (motiu "holder").
+        holder_id = request.data.get('holder_id') or None
+        if holder_id and not is_budget:
+            return Response({'error': 'El titular només es pot canviar en un pressupost no confirmat.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not holder_id and is_budget and redo_option:
+            holder_id = redo_option.get("new_holder") or None
+        holder = None
+        previous_holder = None
+        if holder_id:
+            try:
+                holder = Person.objects.filter(id=int(holder_id)).first()
+            except (TypeError, ValueError):
+                holder = None
+            if not holder:
+                return Response({'error': 'El titular seleccionat no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
+
         if redo_budget:
             print("redo_budget")
             """ budget = self.updatePaymentBudget(redo_budget, payment_type, payment_bank, company_bank, electronic_data)
@@ -102,6 +120,10 @@ class GenerateInvoiceBudgetView(APIView):
             return Response({'invoice': invoice_serialized}, status=status.HTTP_200_OK) """
             try:
                 budget = Invoice.objects.get(id=redo_budget)
+                # Regenerar sense triar titular no ha de perdre el que s'havia canviat al
+                # panell d'edició. La refacturació (redo_option) té la seva pròpia lògica.
+                if not holder and not redo_option and budget.person_id:
+                    previous_holder = budget.person
                 budget.delete()
             except Invoice.DoesNotExist:
                 pass
@@ -194,10 +216,9 @@ class GenerateInvoiceBudgetView(APIView):
         elif entity == "contract_request":
             contract_request = ContractRequest.objects.get(id=object_id)
             
-            new_holder_id = None
+            new_holder_id = holder.id if holder else None
             if redo_option:
                 reason = redo_option.get("reason")
-                new_holder_id = redo_option.get("new_holder", None)
             # Save bill_cut_reading if provided in the request and propagate to terminations
             bill_cut_reading = request.data.get('bill_cut_reading', None)
             if bill_cut_reading is not None:
@@ -236,7 +257,7 @@ class GenerateInvoiceBudgetView(APIView):
             contract = Contract.objects.get(id=object_id)
             title = 'Facturació'
             refactor_invoice_token = None
-            new_holder_id = None
+            new_holder_id = holder.id if holder else None
             recalc_strategy = "current"
             
             if redo_option: # or top_invoice_token:
@@ -249,7 +270,6 @@ class GenerateInvoiceBudgetView(APIView):
                 #         'leak_consum': {}
                 #     }
                 reason = redo_option.get("reason")
-                new_holder_id = redo_option.get("new_holder", None)
                 title = redo_option.get("title", 'Refacturació')
                 refactor_invoice_token = redo_option.get("invoice_token")
                 requested_strategy = redo_option.get("recalculation_strategy")
@@ -451,6 +471,15 @@ class GenerateInvoiceBudgetView(APIView):
                 error_msg += ' És possible que no s\'hagin generat línies de factura (comprovi els preus del contracte).'
                 
             return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not holder and previous_holder and is_budget and invoice.person_id != previous_holder.id:
+            holder = previous_holder
+        if holder and is_budget:
+            try:
+                apply_holder_to_budget(invoice, holder)
+            except ValueError:
+                transaction.set_rollback(True)
+                return Response({'error': 'El titular només es pot canviar en un pressupost no confirmat.'}, status=status.HTTP_400_BAD_REQUEST)
 
         disconnect_payment_signals()
         if issue_date:

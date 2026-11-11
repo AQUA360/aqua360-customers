@@ -1,11 +1,14 @@
 # FOR ACCOUNTING REPORTS EXPORTATION
 import datetime
+from collections import defaultdict
 from django.utils.dateparse import parse_date
 import os
 import threading
 from django.core.files.base import ContentFile
 from django.db import connection
-from django.db.models import F, Q, Count, Max, Sum, OuterRef, Subquery, Prefetch
+from django.db.models import (Case, CharField, Count, F, FloatField, Max, OuterRef, Prefetch, Q, Subquery, Sum, Value,
+                              When)
+from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.utils.translation import gettext as _
 import openpyxl
@@ -1767,50 +1770,120 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
     if product_ids:
         line_items_qs = line_items_qs.filter(product__id__in=product_ids)
 
-    # Discover all (product_name, interval) pairs and sort for stable column order
-    def _product_column_label(product_name, interval):
-        pn = (product_name or "").strip()
-        iv = interval
+    # Cada línia es classifica pel seu tipus de línia, no només per (producte, interval):
+    # - LINE_KIND_M3: la quantitat surt del consum (trams, fuita, cànon variable): units = m3.
+    # - LINE_KIND_VARIABLE: preu per interval d'una variable (quota fixa per calibre): l'interval
+    #   és el calibre, no un tram de consum, i les units són quotes.
+    # - LINE_KIND_UNIT: quota o import fix (part fixa ACA, manteniment...): units = quotes.
+    # - LINE_KIND_NONE: línia sense tipus (afegida a mà): es manté el criteri per nom de producte.
+    # Així la quota fixa no es compta com a m3 de tram i cada concepte de l'ACA (part fixa,
+    # ús específic, ús general) té la seva fila, en lloc de sumar els m3 dues vegades.
+    LINE_KIND_M3, LINE_KIND_VARIABLE, LINE_KIND_UNIT, LINE_KIND_NONE = "m3", "variable", "unit", "none"
+    consumption_quantity_tokens = ["consum", "prev_consum", "diferencia_fuita", "diferencia_fuita_consum"]
+    line_items_qs = line_items_qs.annotate(
+        line_kind=Case(
+            When(line_item_type__isnull=True, then=Value(LINE_KIND_NONE)),
+            When(line_item_type__price_variable__isnull=False, then=Value(LINE_KIND_VARIABLE)),
+            When(line_item_type__quantity__token__in=consumption_quantity_tokens, then=Value(LINE_KIND_M3)),
+            default=Value(LINE_KIND_UNIT),
+            output_field=CharField(),
+        ),
+        concept=Coalesce(F("line_item_type__name"), Value(""), output_field=CharField()),
+        variable_units=F("line_item_type__price_variable__units"),
+    )
+    line_key_fields = ("product_name", "concept", "line_kind", "variable_units", "interval")
+
+    def _is_m3_product(product_name):
+        p_upper = (product_name or "").upper()
+        if "QUOTA FIXA" in p_upper or "CONSERVACIÓ" in p_upper or "CONSERVACIO" in p_upper or "MANTENIMENT" in p_upper:
+            return False
+        if any(k in p_upper for k in ["AIGUA", "CANON", "ACA", "CLAVEGUERAM", "CONSUM"]):
+            return True
+        return False
+
+    def _is_m3_line(product_name, kind):
+        if kind == LINE_KIND_NONE:
+            return _is_m3_product(product_name)
+        return kind == LINE_KIND_M3
+
+    def _raw_key(values):
+        pn, concept, kind, variable_units, iv = (values[f] for f in line_key_fields)
+        concept = (concept or "").strip()
+        # Un concepte igual al nom del producte no aporta res
+        if concept.upper() == (pn or "").strip().upper():
+            concept = ""
+        return (pn or "", concept, kind, variable_units, iv)
+
+    raw_keys = sorted(
+        set(_raw_key(v) for v in line_items_qs.values(*line_key_fields).distinct()),
+        key=lambda k: (k[0].upper(), k[2] == LINE_KIND_VARIABLE, k[1].upper(), k[4] or 0),
+    )
+    concepts_by_product = defaultdict(set)
+    for pn, concept, _kind, _vu, _iv in raw_keys:
+        if concept:
+            concepts_by_product[pn].add(concept)
+
+    def _row_label(raw_key):
+        pn, concept, kind, variable_units, iv = raw_key
+        label = pn.strip()
+        # El concepte només s'afegeix si el producte en té més d'un
+        if concept and len(concepts_by_product[pn]) > 1:
+            label = f"{label} - {concept}"
         if iv is not None and iv != 0:
-            return _("%(product)s TRAM %(interval)s") % {"product": pn, "interval": iv}
-        return pn
+            if kind == LINE_KIND_VARIABLE:
+                if variable_units in ("dm_met", "dm_con"):
+                    label = _("%(product)s CALIBRE %(interval)s") % {"product": label, "interval": iv}
+                else:
+                    label = _("%(product)s INTERVAL %(interval)s") % {"product": label, "interval": iv}
+            else:
+                label = _("%(product)s TRAM %(interval)s") % {"product": label, "interval": iv}
+        return label
 
-    all_pairs = list(
-        set(line_items_qs.values_list("product_name", "interval"))
-    )
-    all_pairs_sorted = sorted(
-        all_pairs,
-        key=lambda x: (str(x[0] or "").upper(), x[1] or 0),
-    )
-    product_interval_pairs = [
-        (pn, iv) for pn, iv in all_pairs_sorted if _product_column_label(pn, iv)
-    ]
+    # Fila de l'informe: (producte, etiqueta, és m3). Claus diferents amb la mateixa etiqueta
+    # (p. ex. interval 0 i sense interval) van a la mateixa fila.
+    def _row_id(raw_key):
+        return (raw_key[0], _row_label(raw_key), _is_m3_line(raw_key[0], raw_key[2]))
 
-    # Per-exploitation, per (product_name, interval): sum units and sum total
+    product_rows = []
+    for raw_key in raw_keys:
+        row_id = _row_id(raw_key)
+        if row_id[1] and row_id not in product_rows:
+            product_rows.append(row_id)
+
+    # Abonaments: el consum de la factura es guarda en positiu però les línies són negatives;
+    # per quadrar amb les línies, el consum es resta (com a _get_signed_invoice_consumption_total).
+    payoff_status_token = ConfigProject.objects.filter(
+        token="invoice_status_payoff_token"
+    ).values_list("value", flat=True).first()
+    signed_consumption = Case(
+        When(status__token=payoff_status_token, then=-Abs(F("consumption"))),
+        default=F("consumption"),
+        output_field=FloatField(),
+    ) if payoff_status_token else F("consumption")
+
+    # Per-exploitation, per fila: sum units and sum total. També els m3 d'aigua facturats
+    # (només línies de consum, no la quota fixa per calibre), amb tram o sense.
     line_aggregates = (
-        line_items_qs.values(
-            "invoice__exploitation_id",
-            "product_name",
-            "interval",
-        )
+        line_items_qs.values("invoice__exploitation_id", *line_key_fields)
         .annotate(
             units_sum=Sum("units"),
             total_sum=Sum("total"),
             price_sum=Sum("price"),
         )
+        .order_by()
     )
 
-    # Build lookup: (exploitation_id, (product_name, interval)) -> {units, total}
     exp_product_sums = {}
+    agua_tram_m3 = defaultdict(float)
+    agua_notram_m3 = defaultdict(float)
     for agg in line_aggregates:
         eid = agg["invoice__exploitation_id"]
-        pn = agg["product_name"] or ""
-        iv = agg["interval"]
+        raw_key = _raw_key(agg)
         units = float(agg["units_sum"] or 0.0)
         total = float(agg["total_sum"] or 0.0)
         price = float(agg["price_sum"] or 0.0)
 
-        key = (eid, (pn, iv))
+        key = (eid, _row_id(raw_key))
         if key not in exp_product_sums:
             exp_product_sums[key] = {
                 "units": 0.0,
@@ -1822,12 +1895,23 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
         exp_product_sums[key]["total"] += total
         exp_product_sums[key]["price"] += price
 
+        pn, _concept, kind, _vu, iv = raw_key
+        if pn in ["AIGUA", "AIGUA C"] and _is_m3_line(pn, kind):
+            if iv is not None and iv > 0:
+                agua_tram_m3[eid] += units
+            else:
+                agua_notram_m3[eid] += units
+
+    # Els agregats de factura es fan sobre els ids: el filtre de pagaments actius fa un JOIN
+    # i una factura amb més d'un pagament actiu es sumaria més d'una vegada.
+    invoices_for_sums = Invoice.objects.filter(id__in=invoices.values("id"))
+
     # Group and aggregate invoices by exploitation
     invoices_grouped_by_exploitation = list(
-        invoices
+        invoices_for_sums
         .values("exploitation_id", "exploitation__name")
         .annotate(
-            total_m3=Sum("consumption"),
+            total_m3=Sum(signed_consumption),
             total_final_sum=Sum("total_final"),
             subtotal_sum=Sum("subtotal_final"),
         )
@@ -1840,7 +1924,7 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
     pou_propi_data = {}
     for exp in invoices_grouped_by_exploitation:
         eid = exp["exploitation_id"]
-        invs_exp = invoices.filter(exploitation_id=eid)
+        invs_exp = invoices_for_sums.filter(exploitation_id=eid)
         est_sum = Reading.objects.filter(invoices__in=invs_exp).aggregate(sum_est=Sum('estimated_used'))['sum_est'] or 0.0
         estimated_used_by_exp[eid] = float(est_sum)
         invs_without_aigua = invs_exp.exclude(
@@ -1850,7 +1934,7 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
                 is_active=True
             ).values_list('invoice_id', flat=True)
         )
-        pp_brut = float(invs_without_aigua.aggregate(Sum('consumption'))['consumption__sum'] or 0.0)
+        pp_brut = float(invs_without_aigua.aggregate(s=Sum(signed_consumption))['s'] or 0.0)
         pp_est = float(Reading.objects.filter(invoices__in=invs_without_aigua).aggregate(sum_est=Sum('estimated_used'))['sum_est'] or 0.0)
         pou_propi_data[eid] = {
             'brut': pp_brut,
@@ -1861,10 +1945,10 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
     # --- Desglosament per USE TYPE de contracte (a nivell de factura) ---
     # Tipus d'ús que tenia el contracte quan es va generar la factura (vegeu dated_use_type).
     use_type_agg = list(
-        annotate_dated_use_type(invoices, invoice_prefix="", name=True)
+        annotate_dated_use_type(invoices_for_sums, invoice_prefix="", name=True)
         .values("exploitation_id", ut_name=F("dated_use_type_name"))
         .annotate(
-            total_m3=Sum("consumption"),
+            total_m3=Sum(signed_consumption),
             total_final_sum=Sum("total_final"),
             subtotal_sum=Sum("subtotal_final"),
         )
@@ -1882,24 +1966,29 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
         }
 
     # --- Desglosament per USE TYPE a nivell de línia de producte ---
+    # Tipus d'ús de la factura (no el del contracte de la línia): així cada línia cau a la mateixa
+    # columna que la seva factura i les files de producte sumen els totals de factura. Abans,
+    # les línies sense contracte (p. ex. d'abonament) quedaven fora de totes les columnes.
     ut_line_agg = (
-        annotate_dated_use_type(line_items_qs, contract_field="contract", name=True)
-        .values("invoice__exploitation_id", "product_name", "interval", ut_name=F("dated_use_type_name"))
+        annotate_dated_use_type(line_items_qs, name=True)
+        .values("invoice__exploitation_id", *line_key_fields, ut_name=F("dated_use_type_name"))
         .annotate(units_sum=Sum("units"), total_sum=Sum("total"), price_sum=Sum("price"))
+        .order_by()
     )
-    # (eid, ut, (pn, iv)) -> {units, total, price}
+    # (eid, ut, row_id) -> {units, total, price}
     ut_product_sums = {}
     for agg in ut_line_agg:
         eid = agg["invoice__exploitation_id"]
         ut = agg["ut_name"] or _("(Sense tipus)")
-        pn = agg["product_name"] or ""
-        iv = agg["interval"]
-        key = (eid, ut, (pn, iv))
+        key = (eid, ut, _row_id(_raw_key(agg)))
         if key not in ut_product_sums:
             ut_product_sums[key] = {"units": 0.0, "total": 0.0, "price": 0.0}
         ut_product_sums[key]["units"] += float(agg["units_sum"] or 0)
         ut_product_sums[key]["total"] += float(agg["total_sum"] or 0)
         ut_product_sums[key]["price"] += float(agg["price_sum"] or 0)
+
+    # Cap línia ha de quedar fora de les columnes per tipus d'ús
+    all_use_types = sorted(set(all_use_types) | {key[1] for key in ut_product_sums})
 
     # Lookup per eid per als totals de factura
     exp_totals = {e["exploitation_id"]: e for e in invoices_grouped_by_exploitation}
@@ -1917,7 +2006,6 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
 
     # --- Resum superior (TOTAL M3 i desglossament per tipus d'ús) ---
     import unicodedata
-    from collections import defaultdict
 
     def _normalize_use_type(name):
         name = unicodedata.normalize('NFKD', name or "").encode('ascii', 'ignore').decode('ascii')
@@ -2026,21 +2114,11 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
         return cells
 
     # --- Files de mètriques de resum ---
-    from collections import defaultdict
-
     def _sum_agua_trams(eid):
-        return sum(
-            data["units"] for key, data in exp_product_sums.items()
-            if key[0] == eid and key[1][0] in ["AIGUA", "AIGUA C"]
-            and key[1][1] is not None and key[1][1] > 0
-        )
+        return agua_tram_m3.get(eid, 0.0)
 
     def _sum_agua_notram(eid):
-        return sum(
-            data["units"] for key, data in exp_product_sums.items()
-            if key[0] == eid and key[1][0] in ["AIGUA", "AIGUA C"]
-            and (key[1][1] is None or key[1][1] <= 0)
-        )
+        return agua_notram_m3.get(eid, 0.0)
 
     summary_metrics = [
         (
@@ -2090,10 +2168,11 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
         (
             "  -> " + _("M3 DESVIAMENTS / ARRODONIMENTS"),
             None,
+            # Sense max(0): si els trams superen el consum, la diferència ha de sortir negativa.
             lambda eid: round(
-                max(0.0, float(exp_totals.get(eid, {}).get("total_m3") or 0) - (
-                    _sum_agua_trams(eid) + estimated_used_by_exp.get(eid, 0.0)
-                ))
+                float(exp_totals.get(eid, {}).get("total_m3") or 0)
+                - _sum_agua_trams(eid)
+                - estimated_used_by_exp.get(eid, 0.0)
                 - pou_propi_data.get(eid, {}).get('net', 0.0)
                 - _sum_agua_notram(eid),
                 4
@@ -2120,52 +2199,39 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
     row = add_row(sheet, row, [""])
 
     # --- Files per producte ---
-    product_to_intervals = defaultdict(list)
-    for pn, iv in product_interval_pairs:
-        product_to_intervals[pn].append(iv)
+    for index, key in enumerate(product_rows):
+        pn, label_base, is_m3 = key
+        if is_m3:
+            label_units = _("%(product)s M3") % {"product": label_base}
+        else:
+            label_units = _("%(product)s QUOTES/UNITATS") % {"product": label_base}
+        label_eur = _("%(product)s TOTAL") % {"product": label_base}
 
-    def _is_m3_product(product_name):
-        p_upper = (product_name or "").upper()
-        if "QUOTA FIXA" in p_upper or "CONSERVACIÓ" in p_upper or "CONSERVACIO" in p_upper or "MANTENIMENT" in p_upper:
-            return False
-        if any(k in p_upper for k in ["AIGUA", "CANON", "ACA", "CLAVEGUERAM", "CONSUM"]):
-            return True
-        return False
+        label_eur_no_tax = _("%(product)s TOTAL SENSE IVA") % {"product": label_base}
 
-    sorted_products = sorted(product_to_intervals.keys(), key=lambda x: x.upper())
-    for pn in sorted_products:
-        intervals = product_to_intervals[pn]
-        for iv in intervals:
-            label_base = _product_column_label(pn, iv)
-            if iv != 0 or _is_m3_product(pn):
-                label_units = _("%(product)s M3") % {"product": label_base}
-            else:
-                label_units = _("%(product)s QUOTES/UNITATS") % {"product": label_base}
-            label_eur = _("%(product)s TOTAL") % {"product": label_base}
+        row = add_row(sheet, row, _data_row(
+            label_units,
+            lambda eid, ut, k=key: ut_product_sums.get((eid, ut, k), {}).get("units"),
+            lambda eid, k=key: round(exp_product_sums.get((eid, k), {}).get("units", 0.0), 4),
+            4,
+        ))
+        row = add_row(sheet, row, _data_row(
+            label_eur_no_tax,
+            lambda eid, ut, k=key: ut_product_sums.get((eid, ut, k), {}).get("price"),
+            lambda eid, k=key: round(exp_product_sums.get((eid, k), {}).get("price", 0.0), 2),
+            2,
+        ))
+        row = add_row(sheet, row, _data_row(
+            label_eur,
+            lambda eid, ut, k=key: ut_product_sums.get((eid, ut, k), {}).get("total"),
+            lambda eid, k=key: round(exp_product_sums.get((eid, k), {}).get("total", 0.0), 2),
+            2,
+        ))
+        row = add_row(sheet, row, [""])
 
-            label_eur_no_tax = _("%(product)s TOTAL SENSE IVA") % {"product": label_base}
-
-            row = add_row(sheet, row, _data_row(
-                label_units,
-                lambda eid, ut, p=pn, i=iv: ut_product_sums.get((eid, ut, (p, i)), {}).get("units"),
-                lambda eid, p=pn, i=iv: round(exp_product_sums.get((eid, (p, i)), {}).get("units", 0.0), 4),
-                4,
-            ))
-            row = add_row(sheet, row, _data_row(
-                label_eur_no_tax,
-                lambda eid, ut, p=pn, i=iv: ut_product_sums.get((eid, ut, (p, i)), {}).get("price"),
-                lambda eid, p=pn, i=iv: round(exp_product_sums.get((eid, (p, i)), {}).get("price", 0.0), 2),
-                2,
-            ))
-            row = add_row(sheet, row, _data_row(
-                label_eur,
-                lambda eid, ut, p=pn, i=iv: ut_product_sums.get((eid, ut, (p, i)), {}).get("total"),
-                lambda eid, p=pn, i=iv: round(exp_product_sums.get((eid, (p, i)), {}).get("total", 0.0), 2),
-                2,
-            ))
-            row = add_row(sheet, row, [""])
-
-        if pn in ["AIGUA", "AIGUA C"]:
+        # Darrera fila del producte d'aigua: m3 estimats restats
+        is_last_of_product = index + 1 == len(product_rows) or product_rows[index + 1][0] != pn
+        if pn in ["AIGUA", "AIGUA C"] and is_last_of_product:
             row = add_row(sheet, row, _data_row(
                 _("%(product)s ESTIMAT RESTAT M3") % {"product": pn},
                 None,
@@ -2685,7 +2751,7 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
             ET.SubElement(sumIDFact, "sum1:FechaExpedicionFacturaEmisor").text = invoice.issue_date.strftime('%d-%m-%Y') 
             
             sumFactExp = ET.SubElement(sumRegLRFactEmt, "sum:FacturaExpedida")
-            invoice_type = 'F1' if abs(invoice.total_final) >= 400 and not invoice.refactored_token else 'R1' if abs(invoice.total_final) >= 400 and invoice.refactored_token else 'R5' if invoice.refactored_token else 'F2'
+            invoice_type = 'F1' if (abs(invoice.total_final) >= 200 or invoice.customer_is_juridic) and not invoice.refactored_token else 'R1' if (abs(invoice.total_final) >= 200 or invoice.customer_is_juridic) and invoice.refactored_token else 'R5' if invoice.refactored_token else 'F2'
             ET.SubElement(sumFactExp, "sum1:TipoFactura").text = invoice_type
             if invoice_type == 'R1' or invoice_type == 'R5':
                 ET.SubElement(sumFactExp, "sum1:TipoRectificativa").text = "S"
@@ -2708,36 +2774,36 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
             sumTpDesgl = ET.SubElement(sumFactExp, "sum1:TipoDesglose")
             sumDesglTpOp = ET.SubElement(sumTpDesgl, "sum1:DesgloseTipoOperacion") 
             sumPrsServ = ET.SubElement(sumDesglTpOp, "sum1:PrestacionServicios")
-            sumSuj = ET.SubElement(sumPrsServ, "sum1:Sujeta")  
-            
-            # get_totals drops 0% lines from taxes_base, so the exempt base is the
-            # subtotal minus the 10%/21% (and any other taxed) bases.
+
+            # get_totals drops 0% lines from taxes_base, so the non-subject base is
+            # the subtotal minus the 10%/21% (and any other taxed) bases.
+            # In SII this is NoSujeta (sibling of Sujeta), not Sujeta/Exenta.
             taxed_base = sum(round_ceil(float(base or 0)) for base in taxes_base.values())
-            exempt_base = round_ceil(round_ceil(float(subtotal or 0)) - taxed_base)
-            has_non_exempt = any(tax != 0 for tax in taxes.values())
+            not_subject_base = round_ceil(round_ceil(float(subtotal or 0)) - taxed_base)
+            has_subject = any(tax != 0 for tax in taxes.values())
 
-            if exempt_base != 0 or not has_non_exempt:
-                sumEx = ET.SubElement(sumSuj, "sum1:Exenta")
-                sumDetEx = ET.SubElement(sumEx, "sum1:DetalleExenta")
-                ET.SubElement(sumDetEx, "sum1:CausaExencion").text = 'E1'
-                ET.SubElement(sumDetEx, "sum1:BaseImponible").text = "{:.2f}".format(exempt_base)
+            # PrestacionServicios: Sujeta and/or NoSujeta (at least one). Order: Sujeta then NoSujeta.
+            if has_subject:
+                sumSuj = ET.SubElement(sumPrsServ, "sum1:Sujeta")
+                sumNoEx = ET.SubElement(sumSuj, "sum1:NoExenta")
+                ET.SubElement(sumNoEx, "sum1:TipoNoExenta").text = 'S1'
+                sumDesglIVA = ET.SubElement(sumNoEx, "sum1:DesgloseIVA")
+                try:
+                    for tax in taxes_base:
+                        cuota = round_ceil(float(taxes.get(tax, 0)))
+                        base = round_ceil(float(taxes_base.get(tax, 0)))
+                        sumDetIVA = ET.SubElement(sumDesglIVA, "sum1:DetalleIVA")
+                        ET.SubElement(sumDetIVA, "sum1:TipoImpositivo").text = str(int(float(tax)))
+                        ET.SubElement(sumDetIVA, "sum1:BaseImponible").text = "{:.2f}".format(base)
+                        ET.SubElement(sumDetIVA, "sum1:CuotaRepercutida").text = "{:.2f}".format(cuota)
+                except Exception as e:
+                    print("Error in sum1:DetalleIVA: ", e)
+                    raise e
 
-            if not has_non_exempt:
-                continue
-            sumNoEx = ET.SubElement(sumSuj, "sum1:NoExenta") 
-            ET.SubElement(sumNoEx, "sum1:TipoNoExenta").text = 'S1' 
-            sumDesglIVA = ET.SubElement(sumNoEx, "sum1:DesgloseIVA") 
-            try:
-                for tax in taxes_base:
-                    cuota = round_ceil(float(taxes.get(tax, 0)))
-                    base = round_ceil(float(taxes_base.get(tax, 0)))
-                    sumDetIVA = ET.SubElement(sumDesglIVA, "sum1:DetalleIVA") 
-                    ET.SubElement(sumDetIVA, "sum1:TipoImpositivo").text = str(int(float(tax))) 
-                    ET.SubElement(sumDetIVA, "sum1:BaseImponible").text = "{:.2f}".format(base) 
-                    ET.SubElement(sumDetIVA, "sum1:CuotaRepercutida").text = "{:.2f}".format(cuota) 
-            except Exception as e:
-                print("Error in sum1:DetalleIVA: ", e)
-                raise e
+            if not_subject_base != 0 or not has_subject:
+                sumNoSuj = ET.SubElement(sumPrsServ, "sum1:NoSujeta")
+                # Art. 7, 14 u otros (no reglas de localización TAI).
+                ET.SubElement(sumNoSuj, "sum1:ImportePorArticulos7_14_Otros").text = "{:.2f}".format(not_subject_base)
         
         xml_string = ET.tostring(root, encoding='utf-8', xml_declaration=True).decode('utf-8')
 

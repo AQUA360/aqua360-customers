@@ -322,8 +322,14 @@ def reading_batch_routes(request, reading_batch_id):
 def reading_batch_routes_detailed(request, reading_batch_id):
     """Get all reading batches with detailed information - ASYNC WITH CELERY & PROGRESS"""
     
+    # Els comptadors deshabilitats (d'una altra ruta, punts de baixa, comptadors
+    # inactius) només s'envien a les versions de l'app que els saben mostrar:
+    # les anteriors els tractarien com a comptadors per llegir.
+    include_disabled_meters = request.GET.get('include_disabled_meters') in ('1', 'true')
+
     # Start the Celery task
-    task = process_reading_batch_routes_detailed.delay(reading_batch_id)
+    task = process_reading_batch_routes_detailed.delay(
+        reading_batch_id, include_disabled_meters=include_disabled_meters)
     
     return JsonResponse({
         'status': 'processing',

@@ -22,6 +22,11 @@ const props = defineProps({
         default: false
     },
     selected_custom: Object,
+    holderPendingRegen: Boolean,
+    holder_id: {
+        type: Number,
+        default: null
+    },
     isSubRegion: {
         type: Boolean,
         default: false
@@ -58,7 +63,9 @@ const getData = async () => {
                     redo_budget: props.invoice_id,
                     payment_data: props.payment_data,
                     redo_option: props.redo_option,
-                    selected_custom: props.selected_custom
+                    selected_custom: props.selected_custom,
+                    // El titular només es pot canviar en un pressupost, mai en confirmar-lo
+                    holder_id: props.is_budget ? props.holder_id : null
                 }
 
                 let response = await $InvoiceApiService.generateInvoiceBudget(invoice_generation);
@@ -80,7 +87,8 @@ const getData = async () => {
                 is_budget: props.is_budget,
                 payment_data: props.payment_data,
                 redo_option: props.redo_option,
-                selected_custom: props.selected_custom
+                selected_custom: props.selected_custom,
+                holder_id: props.is_budget ? props.holder_id : null
             }
 
             let response = await $InvoiceApiService.generateInvoiceBudget(invoice_generation);
@@ -141,7 +149,7 @@ onMounted(async () => {
                 </div>
                 
                 <div v-else class="relative">
-                    <InvoiceViewEdit :is_connection="is_connection" :id="invoice.id" @changed="handleChanged" :allowLineItemTypeManual="true" :isSubRegion="props.isSubRegion" />
+                    <InvoiceViewEdit :holderPendingRegen="holderPendingRegen" :is_connection="is_connection" :id="invoice.id" @changed="handleChanged" :allowLineItemTypeManual="true" :isSubRegion="props.isSubRegion" />
                 </div>
             </div>
         </div>

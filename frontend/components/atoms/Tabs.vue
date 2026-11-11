@@ -9,7 +9,12 @@ const props = defineProps({
   is_tab: {
     type: Boolean,
     default: true,
-  }
+  },
+  // Rol ARIA de la llista: "tablist" quan les pestanyes canvien panells dins la mateixa pàgina.
+  listRole: {
+    type: String,
+    default: null,
+  },
 });
 
 // Handle wheel event for horizontal scrolling
@@ -85,7 +90,7 @@ onBeforeUnmount(() => {
     <!-- Scrollable Tab List -->
     <div id="region_tabs" ref="scrollContainer" class="overflow-x-auto over scrollbar-hide overflow-y-hidden"
     :class="{'border-b border-gray-200': is_tab}">
-      <ul class="flex flex-nowrap -mb-px text-sm font-medium text-center text-gray-500 custom-tabs">
+      <ul :role="listRole" class="flex flex-nowrap -mb-px text-sm font-medium text-center text-gray-500 custom-tabs">
         <slot></slot>
       </ul>
     </div>

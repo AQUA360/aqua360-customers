@@ -316,7 +316,7 @@ def track_aca_bonification_request(sender, instance, **kwargs):
     Aquest tracking (i tot el que en depèn: sol·licituds pendents, exportació del
     fitxer) només s'activa amb `aca_notification_enabled` (ConfigProject); la
     Bonification/Variable en si es crea igualment (veure
-    `contract.utils.aca_tram_service.sync_aca_tram_with_total_persons`), només amb `uses_aca`."""
+    `contract.utils.aca_tram_service.sync_aca_tram_with_total_persons`), només amb `public_org_type == 'aca'`."""
     if getattr(instance, '_skip_signal', False):
         return
 
@@ -436,7 +436,7 @@ def sync_contract_total_persons_from_aca_variable(sender, instance, **kwargs):
     """Quan es crea o modifica la variable "Membres d'ampliació de tram (ACA)" d'una
     Bonification ACA-TRAM, actualitza `Contract.total_persons` (Persones a
     l'habitatge) amb el mateix valor — només si l'ACA està activa per aquest
-    projecte (`watchdog.aca_config.uses_aca_enabled`). És el sentit invers de
+    projecte (`watchdog.aca_config.is_aca_org`). És el sentit invers de
     `sync_aca_tram_on_total_persons_change` (aquest mateix fitxer).
 
     Si la variable s'ha desat solta sobre el contracte (sense bonificació), abans la
@@ -450,12 +450,12 @@ def sync_contract_total_persons_from_aca_variable(sender, instance, **kwargs):
         return
     from watchdog.aca_config import (
         aca_tram_min_persons,
+        is_aca_org,
         is_aca_tram_members_variable_type,
-        uses_aca_enabled,
     )
     if not instance.is_active or not is_aca_tram_members_variable_type(instance.type):
         return
-    if not uses_aca_enabled():
+    if not is_aca_org():
         return
 
     try:

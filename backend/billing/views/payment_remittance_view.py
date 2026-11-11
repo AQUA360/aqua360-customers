@@ -21,6 +21,10 @@ from billing.serializers.payment_serializer import PaymentSerializer, PaymentSEP
 from coredata.models import ConfigProject
 from billing.tasks import send_payment_remittances
 from billing.permissions import PaymentPermission
+from billing.utils.payment_remittance_lock_service import (
+    is_remittance_sent,
+    sent_remittance_error_message,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,22 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return PaymentRemittanceListSerializer
         return PaymentRemittanceSerializer
+
+    def _sent_remittance_response(self):
+        return Response(
+            {"detail": sent_remittance_error_message()},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def update(self, request, *args, **kwargs):
+        if is_remittance_sent(self.get_object()):
+            return self._sent_remittance_response()
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if is_remittance_sent(self.get_object()):
+            return self._sent_remittance_response()
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=['post'], url_path='send')
     def send_remittances(self, request):
@@ -71,6 +91,17 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 {"detail": f"Payment remittances not found: {list(missing_ids)}"},
                 status=status.HTTP_404_NOT_FOUND
             )
+        # Les remeses ja enviades no es poden tornar a enviar
+        already_sent = [
+            remittance.id
+            for remittance in PaymentRemittance.objects.filter(id__in=ids).select_related('status')
+            if is_remittance_sent(remittance, sent_status_token=status_token)
+        ]
+        if already_sent:
+            return Response(
+                {"detail": sent_remittance_error_message(), "ids": already_sent},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         # Perform bulk update - this is already optimized
         updated_count = PaymentRemittance.objects.filter(id__in=ids).update(
             status=status_sent, 
@@ -99,6 +130,9 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
         try:
             # Obtenir el PaymentRemittance
             payment_remittance = self.get_object()
+
+            if is_remittance_sent(payment_remittance):
+                return self._sent_remittance_response()
             
             # Verificar que el Payment existeix
             try:
@@ -155,7 +189,9 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
             )
         
         
-        payments = (payment_remittance.payments.select_related('invoice', 'contract', 'status').all())
+        payments = payment_remittance.payments.select_related(
+            'invoice__contract', 'commitment_deposit__contract', 'contract', 'person', 'status', 'reject'
+        ).all()
 
         
         # Cerca per paràmetre 'search'
@@ -168,7 +204,10 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 Q(name__icontains=search_query) |
                 Q(invoice__token__icontains=search_query) |
                 Q(invoice__serie_final__icontains=search_query) |
-                Q(invoice__contract__token__icontains=search_query)
+                Q(invoice__contract__token__icontains=search_query) |
+                Q(contract__token__icontains=search_query) |
+                Q(customer_final__icontains=search_query) |
+                Q(customer_token_final__icontains=search_query)
             )
         if status_query:
             status_query = status_query.split(',')
@@ -186,6 +225,7 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
             'due_date': 'due_date',
             'invoice': 'invoice__token',
             'contract': 'contract__token',
+            'customer': 'customer_final',
             # Tria si prefereixes ordenar pel nom d’estat o per la seva posició
             'status': 'status__position',  # o 'status__name'
         }
@@ -240,6 +280,7 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
             _('Token'),  # Identificació
             _('Invoice'),  # Factura o Commitment Deposit
             _('Amount'),  # Total
+            _('Customer'),  # Abonat
             _('Contract'),  # Contracte
             _('Payment Date'),  # Data de pagament
             _('Status'),  # Estat
@@ -266,6 +307,7 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 payment.get('token', ''),
                 invoice_value,
                 payment.get('amount', ''),
+                ' '.join(filter(None, [payment.get('customer_token_final'), payment.get('customer_final')])) or '-',
                 contract_token,
                 payment.get('payment_date', '') if payment.get('payment_date') else '-',
                 status_name,

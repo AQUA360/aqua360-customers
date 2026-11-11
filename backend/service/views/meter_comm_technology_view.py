@@ -10,12 +10,13 @@ from service.models import MeterCommTechnology
 from service.permissions import MeterPermission
 from service.serializers.value_objects_serializer import MeterCommTechnologySerializer
 from service.utils.meter_dictionary_service import get_or_create_dictionary_value
+from service.views.meter_dictionary_mixin import MeterDictionaryViewSetMixin
 
 
 logger = logging.getLogger(__name__)
 
 
-class MeterCommTechnologyViewSet(viewsets.ReadOnlyModelViewSet):
+class MeterCommTechnologyViewSet(MeterDictionaryViewSetMixin, viewsets.ModelViewSet):
     queryset = MeterCommTechnology.objects.all().order_by('name')
     serializer_class = MeterCommTechnologySerializer
     permission_classes = [IsAuthenticated, MeterPermission]
