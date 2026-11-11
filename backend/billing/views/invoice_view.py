@@ -22,7 +22,7 @@ from billing.filter.invoice_filter import InvoiceFilter
 from billing.models import Invoice, InvoiceLog, InvoiceStatus, InvoiceSuppressionReason, Payment, PaymentStatus, PaymentType, RejectMotive, PaymentMovement
 from billing.serializers.invoice_serializer import InvoiceFullSerializer, InvoiceLogSerializer, InvoiceMinimalSerializer
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals, log_payment_status, generate_payment_movement
-from billing.utils.invoice_service import get_electronic_invoices_data, return_invoice, log_invoice_data_change, change_status_logger
+from billing.utils.invoice_service import apply_invoice_payment_method, get_electronic_invoices_data, return_invoice, log_invoice_data_change, change_status_logger
 from billing.utils.invoice_list_queryset import invoice_list_queryset
 from billing.utils.invoice_suppression_service import suppress_invoice
 from coredata.models import ConfigProject, PersonAddress, PersonPiggyBankMovement
@@ -101,7 +101,6 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     payment_type =PaymentType.objects.get(id=payment_type_final)
     invoice_status_paid_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
-    payment_status_paid_token = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
 
     # Canviar el mètode d'un cobrament ja fet no genera cap moviment, i la comptabilitat continuaria
     # dient el mètode original: primer s'ha de fer el retorn i tornar-la a pagar pel mètode nou
@@ -128,28 +127,13 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         payment_bank_final = company_bank.iban
         payment_swift_final = company_bank.swift
 
+    # Sense comptes a l'empresa, a les transferències no es pot quedar el compte d'empresa que tenia abans
+    extra = {'company_bank': company_bank} if payment_type.token == 'BANK_TRANSFER' else {}
     disconnect_payment_signals()
-
-    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
-
-    invoice.payment_bank_final = payment_bank_final
-    # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor
-    invoice.payment_swift_final = payment_swift_final
-    invoice.payment_type_final = payment_type.name
-    invoice.payment_type_token_final = payment_type.token
-    if payment_type.token == 'BANK_TRANSFER':
-      # Sense comptes a l'empresa, no es pot quedar el compte d'empresa que tenia abans
-      invoice.payment_company_bank = company_bank
-    # invoice.payment_type = payment_type
-    invoice.save()
-
-    payments = invoice.payments.exclude(status__token=payment_status_paid_token.token).distinct()
-    payments.update(
-        payment_type=payment_type.name,
-        payment_type_token=payment_type.token,
-        payment_bank=payment_bank_final,
-        payment_swift=payment_swift_final)
-    reconnect_payment_signals()
+    try:
+      apply_invoice_payment_method(user, invoice, payment_type, payment_bank_final, payment_swift_final, **extra)
+    finally:
+      reconnect_payment_signals()
     return Response({'message': 'Invoice updated successfully'}, status=status.HTTP_200_OK)
    
   @action(detail=True, methods=['put'], url_path='change-dates')

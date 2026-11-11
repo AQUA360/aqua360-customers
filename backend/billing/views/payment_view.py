@@ -21,6 +21,7 @@ from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import is_rectified_invoice
+from billing.utils.sepa_invalid_account_service import get_invalid_account_reject_tokens, handle_invalid_account_return, normalize_iban
 from billing.utils.payment_service import add_negative_payment_to_balance, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals
 from coredata.utils.name_utils import generate_token
 from documentmanager.utils.main_utils import upload_document
@@ -219,6 +220,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payments_to_return = Payment.objects.filter(id__in=payments_to_return_ids)
         invoices_to_update_rejection = []
         returned_payment_ids = set()
+        # Retorns per compte invàlid: es treu la domiciliació de cada IBAN un sol cop per fitxer
+        invalid_account_tokens = get_invalid_account_reject_tokens()
+        invalid_account_ibans = set()
+        invalid_account_changes = []
         
         try:
             remittance_return = None
@@ -323,6 +328,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 if payment.invoice and is_rectified_invoice(payment.invoice, invoice_cancelled_token or ''):
                     skip_return = True
 
+                returned_now = False
                 if not skip_return and ((payment.status.token == payment_paid_token and ((payment.invoice and payment.invoice.status and payment.invoice.status.token == invoice_paid_token) or payment.commitment_deposit)) or (payment.status.token == payment_cancelled_token)):
                     disconnect_payment_signals()
                     today = timezone.now().date()
@@ -342,6 +348,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             reconnect_payment_signals()
                             raise
                         payment.reject_date = rjt_date
+                        returned_now = True
                     elif not last_movement or last_movement.current_status.token == payment_paid_token:
                         movement_date = rjt_date
                         log_payment_status(payment, payment_returned_status, request.user, movement_date)
@@ -358,6 +365,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             payment.reject_date = rejection['rjt_dt'].split("T")[0] if isinstance(rejection['rjt_dt'], str) else rejection['rjt_dt']
                         payment.save()
                         returned_payment_ids.add(payment.id)
+                        returned_now = True
                         if payment.invoice:
                             payment.invoice.status = invoice_confirmed_status if payment.invoice.due_date > today else invoice_expired_status
                             payment.invoice.save()
@@ -420,6 +428,24 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             payment.commitment_deposit.save()
                             
                     reconnect_payment_signals()
+
+                if returned_now and invalid_account_tokens:
+                    returned_iban = (
+                        direct_debit_movement.payment_bank
+                        if direct_debit_movement and direct_debit_movement.payment_bank else payment.payment_bank
+                    )
+                    iban_key = normalize_iban(returned_iban)
+                    if iban_key and iban_key not in invalid_account_ibans:
+                        try:
+                            change = handle_invalid_account_return(
+                                payment, return_motive, returned_iban, request.user, invalid_account_tokens)
+                        except Exception:
+                            # El retorn ja s'ha aplicat: si falla la cascada, es deixa constància i es continua
+                            logger.exception("Error en treure la domiciliació d'un retorn per compte invàlid")
+                            change = None
+                        if change:
+                            invalid_account_ibans.add(iban_key)
+                            invalid_account_changes.append(change)
                 
         Payment.objects.bulk_update(payments_to_return, ['reject', 'reject_date'], batch_size=100)
         Invoice.objects.bulk_update(invoices_to_update_rejection, ['reject'], batch_size=100)
@@ -540,7 +566,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
             })
         
         
-        return Response({"rejections": payments_data}, status=status.HTTP_200_OK)
+        return Response(
+            {"rejections": payments_data, "invalid_account_changes": invalid_account_changes},
+            status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['post'], url_path='manual-payment')
     @transaction.atomic
