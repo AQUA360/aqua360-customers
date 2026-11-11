@@ -580,6 +580,10 @@ const saveCluster = async () => {
   try {
     const response = await $ClusterApiService.save(data);
     console.log("0. response cluster data", response)
+    // Es guarda l'id de seguida: si el desat falla més endavant, en reintentar no es crea una altra bateria
+    if (response?.id && !cluster.value?.id) {
+      cluster.value = { ...(cluster.value || {}), id: response.id };
+    }
     
     let street = response.address_street
     if (street) {
@@ -672,7 +676,12 @@ const saveCluster = async () => {
       }
       delete data.supplyPoint;
       // si existeix, actualitzem, si no creem
-      await $ClusterNozzleApiService.save(data);
+      const savedNozzle = await $ClusterNozzleApiService.save(data);
+      // Una boquilla nova passa a ser de BD: si el desat falla més endavant, en reintentar no es duplica
+      if (!nozzleBD && savedNozzle?.id) {
+        nozzle.id = savedNozzle.id;
+        nozzlesBD.value.push({ ...nozzle });
+      }
     } // end for nozzles
 
     // Eliminem les boquilles de la BD que s'han tret de la llista (per id, no per índex,
