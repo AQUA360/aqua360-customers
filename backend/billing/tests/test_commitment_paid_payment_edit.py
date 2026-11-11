@@ -102,3 +102,22 @@ class CommitmentDepositPaymentCollectionTests(TestCase):
 
         self.assert_collected_once()
         self.assertEqual(self.collections().get().payment_date, date(2026, 11, 11))
+
+    def test_failed_collection_leaves_the_payment_unpaid_and_can_be_retried(self):
+        # Sense el tipus de pagament configurat, el cobrament del compromís falla
+        Payment.objects.filter(id=self.payment.id).update(payment_type='Bizum', payment_type_token='BIZUM')
+        self.payment.refresh_from_db()
+
+        with self.assertRaises(Exception):
+            self.collect()
+
+        self.assertEqual(Payment.objects.get(id=self.payment.id).status, self.payment_status['1'])
+        self.deposit.refresh_from_db()
+        self.assertEqual(self.deposit.remaining, Decimal('300.00'))
+        self.assertFalse(self.collections().exists())
+
+        PaymentType.objects.create(token='BIZUM', name='Bizum')
+        self.payment = Payment.objects.get(id=self.payment.id)
+        self.collect()
+
+        self.assert_collected_once()
