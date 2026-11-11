@@ -161,6 +161,8 @@ class ContractSerializer(serializers.ModelSerializer):
     incidents = serializers.SerializerMethodField()
     # Incidència oberta d'un tipus que bloqueja les ofertes comercials (art. 16.2)
     blocking_incident = serializers.SerializerMethodField()
+    # Domiciliació anul·lada per un retorn SEPA de compte invàlid, pendent de revisar
+    invalid_account_payment_alert = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
     total_in_commitment_deposits = serializers.SerializerMethodField()
@@ -356,6 +358,11 @@ class ContractSerializer(serializers.ModelSerializer):
         vulnerability_requests = obj.vulnerability_requests.filter(status__token=vulnerability_pending_token)
         return vulnerability_requests.count() > 0
     
+    def get_invalid_account_payment_alert(self, obj):
+        """Avís de domiciliació anul·lada per un retorn SEPA de compte invàlid, o None."""
+        from billing.utils.sepa_invalid_account_service import invalid_account_payment_alert
+        return invalid_account_payment_alert(obj)
+
     def get_blocking_incident(self, obj):
         from notification.utils.incident_utils import blocking_incident
         incident = blocking_incident(obj)
