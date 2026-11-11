@@ -4,7 +4,8 @@ import { ref, computed, onMounted, onUnmounted, unref } from 'vue';
  * Per-user layout of the side menu, stored in the database (`/dashboard/sidebar/`):
  *  - which sections are shown and in which order,
  *  - which sections are folded so only their title is visible,
- *  - which links of each section are shown and in which order.
+ *  - which links of each section are shown and in which order,
+ *  - which links are favourites, shown first in their own order.
  *
  * Section descriptor: { key, label, icon, items: [{ key, label, icon, ... }] }.
  * Only the sections and links the user can access must be passed, so the
@@ -44,6 +45,8 @@ export function useNavSidebarLayout(sectionsSource) {
   const foldedKeys = ref([]);
   // { [sectionKey]: { hidden: [itemKey], order: [itemKey] } }
   const itemsLayout = ref({});
+  // Enllaços preferits, en ordre: "<sectionKey>/<itemKey>".
+  const favoriteKeys = ref([]);
 
   // --- Persistence -------------------------------------------------------------
 
@@ -61,6 +64,7 @@ export function useNavSidebarLayout(sectionsSource) {
     };
     foldedKeys.value = Array.isArray(layout?.folded) ? layout.folded : [];
     itemsLayout.value = layout?.items && typeof layout.items === 'object' ? layout.items : {};
+    favoriteKeys.value = Array.isArray(layout?.favorites) ? layout.favorites : [];
   };
 
   const loadLayout = async () => {
@@ -79,6 +83,7 @@ export function useNavSidebarLayout(sectionsSource) {
     sections: sectionsLayout.value,
     folded: foldedKeys.value,
     items: itemsLayout.value,
+    favorites: favoriteKeys.value,
   });
 
   const flushSave = async () => {
@@ -206,6 +211,58 @@ export function useNavSidebarLayout(sectionsSource) {
   const moveItemBy = (section, itemKey, offset) =>
     moveItem(section, itemKey, orderedItems(section).findIndex((item) => item.key === itemKey) + offset);
 
+  // --- Favourites ---------------------------------------------------------------
+
+  const favoriteKey = (sectionKey, itemKey) => `${sectionKey}/${itemKey}`;
+
+  const isFavorite = (sectionKey, itemKey) => favoriteKeys.value.includes(favoriteKey(sectionKey, itemKey));
+
+  /**
+   * The favourite links the user can access, in the user's order:
+   * [{ key, section, item }]. Favourites of links the user cannot access are
+   * kept saved but not shown. A hidden link is still shown as favourite.
+   */
+  const favoriteItems = computed(() => {
+    const byKey = new Map();
+    definitions.value.forEach((section) => {
+      (section.items || []).forEach((item) => {
+        byKey.set(favoriteKey(section.key, item.key), { section, item });
+      });
+    });
+    return favoriteKeys.value
+      .filter((key) => byKey.has(key))
+      .map((key) => ({ key, ...byKey.get(key) }));
+  });
+
+  /** Add a link to the favourites, at the end or before the favourite at `beforeKey`. */
+  const addFavorite = (sectionKey, itemKey, beforeKey = null) => {
+    const key = favoriteKey(sectionKey, itemKey);
+    if (favoriteKeys.value.includes(key)) return;
+    const result = [...favoriteKeys.value];
+    const index = beforeKey ? result.indexOf(beforeKey) : -1;
+    result.splice(index === -1 ? result.length : index, 0, key);
+    favoriteKeys.value = result;
+    scheduleSave();
+  };
+
+  const removeFavorite = (sectionKey, itemKey) => {
+    const key = favoriteKey(sectionKey, itemKey);
+    if (!favoriteKeys.value.includes(key)) return;
+    favoriteKeys.value = favoriteKeys.value.filter((k) => k !== key);
+    scheduleSave();
+  };
+
+  const toggleFavorite = (sectionKey, itemKey) =>
+    isFavorite(sectionKey, itemKey) ? removeFavorite(sectionKey, itemKey) : addFavorite(sectionKey, itemKey);
+
+  /** Drop favourite `key` at the position currently held by favourite `targetKey`. */
+  const moveFavoriteTo = (key, targetKey) => {
+    const order = reorder(favoriteKeys.value, key, favoriteKeys.value.indexOf(targetKey));
+    if (!order) return;
+    favoriteKeys.value = order;
+    scheduleSave();
+  };
+
   // --- Whole layout --------------------------------------------------------------
 
   const isCustomised = computed(
@@ -213,6 +270,7 @@ export function useNavSidebarLayout(sectionsSource) {
       sectionsLayout.value.hidden.length > 0 ||
       sectionsLayout.value.order.length > 0 ||
       foldedKeys.value.length > 0 ||
+      favoriteKeys.value.length > 0 ||
       Object.keys(itemsLayout.value).some((key) => {
         const { hidden, order } = itemsStateOf(key);
         return hidden.length > 0 || order.length > 0;
@@ -268,6 +326,11 @@ export function useNavSidebarLayout(sectionsSource) {
     toggleItem,
     moveItemTo,
     moveItemBy,
+    favoriteItems,
+    isFavorite,
+    addFavorite,
+    toggleFavorite,
+    moveFavoriteTo,
     isCustomised,
     resetLayout,
   };

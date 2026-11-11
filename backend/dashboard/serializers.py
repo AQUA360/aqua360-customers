@@ -83,6 +83,8 @@ def clean_sidebar_layout(layout):
         'sections': _clean_hidden_and_order(layout.get('sections')),
         'folded': _clean_keys(layout.get('folded')),
         'items': cleaned_items,
+        # Enllaços preferits, en l'ordre de l'usuari, com a "<secció>/<enllaç>".
+        'favorites': _clean_keys(layout.get('favorites')),
     }
 
 
