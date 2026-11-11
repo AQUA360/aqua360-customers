@@ -525,6 +525,16 @@ export default defineNuxtPlugin(nuxtApp => {
       return response;
     }
 
+    // One page of every contract invoice (classic list view of the contract tab).
+    const getContractInvoicesPage = async (contractId, page = 1, isInvoice = true) => {
+      const apiUrl = `${apiHost}${entity}?${contractPeriodQuery(contractId, isInvoice)}&page=${page}`;
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (!response || !Array.isArray(response.results)) {
+        throw new Error('Error estructura `results` no trobat');
+      }
+      return response;
+    }
+
     // Every invoice of one billed-period year (all pages: the tab groups them by month).
     const getContractInvoicesByPeriodYear = async (contractId, year, isInvoice = true) => {
       const results = [];
@@ -903,6 +913,7 @@ export default defineNuxtPlugin(nuxtApp => {
       getInvoicesFromContract,
       getContractInvoicePeriodYears,
       getContractInvoicesByPeriodYear,
+      getContractInvoicesPage,
       getConnectionRequestInvoice,
       getInvoiceLineItems,
       getConnectionInvoice,

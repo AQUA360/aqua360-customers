@@ -18,7 +18,7 @@ from verifactu.serializers.verifactu_serializer import VerifactuNotificationSeri
 
 from billing.utils.invoice_service import change_status_logger, get_totals
 from billing.utils.invoice_list_queryset import invoice_list_config_tokens
-from billing.utils.invoice_period import invoice_relations_map
+from billing.utils.invoice_period import invoice_billing_cycles, invoice_payment_states, invoice_relations_map
 from billing.utils.invoice_suppression_service import invoice_needs_return, suppress_invoice
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
 from coredata.models import ConfigProject
@@ -153,6 +153,13 @@ class InvoiceMinimalBatchListSerializer(serializers.ListSerializer):
         self.child.context['budget_invoice_by_token'] = budget_invoice_by_token
         self.child.context['invoice_list_tokens'] = tokens
         self.child.context['invoice_relations'] = invoice_relations_map(iterable, tokens['invoice'])
+        request = self.context.get('request')
+        if request is not None and 'period_year' in request.query_params:
+            # Pestanya de factures del contracte: cicle del facturador per agrupar-les
+            self.child.context['billing_cycles'] = invoice_billing_cycles(
+                Invoice.objects.filter(id__in=[obj.id for obj in iterable])
+            )
+            self.child.context['payment_states'] = invoice_payment_states(iterable, datetime.date.today())
         return [self.child.to_representation(item) for item in iterable]
 
 
@@ -237,6 +244,10 @@ class InvoiceMinimalSerializer(serializers.ModelSerializer):
         relations = self.context.get('invoice_relations')
         if relations is not None:
             representation.update(relations.get(instance.id, {}))
+        cycles = self.context.get('billing_cycles')
+        if cycles is not None:
+            representation['billing_cycle'] = cycles.get(instance.id)
+            representation['payment_state'] = self.context.get('payment_states', {}).get(instance.id)
         
         return representation
     
