@@ -1632,6 +1632,11 @@ export default {
     cause_change_vulnerable_confirm: 'O cambio de motivo afecta a persoas vulnerables xa incluídas no corte. Escriba CONFIRMAR para confirmar.',
   },
   contract_block:   {
+    invoices_more_years: 'Máis anos…',
+    invoices_no_period: 'Sen período',
+    invoices_no_month: 'Sen mes',
+    invoices_load_error: 'Non se puideron cargar as facturas deste ano.',
+    invoices_retry: 'Reintentar',
     no_standalone_variable_types: 'Non hai variables personalizadas dispoñibles. As variables deste contrato engádense a través das bonificacións.',
     standalone_variable_types_info: 'Só se amosan as variables personalizadas. As variables vinculadas a unha bonificación engádense dende a bonificación.',
     current_use_type: 'Tipo de uso actual',
@@ -2099,6 +2104,10 @@ export default {
   },
 
   billing_block: {
+    relation_rectified_by: 'Abonada por',
+    relation_rectifies: 'Abona',
+    relation_refactors: 'Refacturación de',
+    relation_refactored_in: 'Refeita en',
     balance_return: 'Devolución de saldo',
     remittance_line_origin: 'Factura / Orixe',
     budget_holder: 'Titular do orzamento',
