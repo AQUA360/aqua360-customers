@@ -3221,7 +3221,6 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
     pass  # log removed
     simplified = contract.simplified_invoice if contract else False
     exploitation = exploitation_instance
-    print("payment data: ", payment_data)
     try:
         if contract:
             exploitation = Exploitation.objects.get(id=contract.supply_point_default.connection.exploitation.id)
