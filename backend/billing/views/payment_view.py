@@ -623,7 +623,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 settle_negative_payment_to_piggy(payment, user, payment_date)
             except ValueError as e:
                 logger.warning("Failed to add negative payment to balance for payment %s: %s", payment.id, str(e))
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": "Unable to process payment."}, status=status.HTTP_400_BAD_REQUEST)
             if payment.invoice:
                 disconnect_payment_signals()
                 try:
