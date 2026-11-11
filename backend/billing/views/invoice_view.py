@@ -659,7 +659,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         save_negative_invoice_to_piggy_bank(invoice, request.user)
     except ValueError as e:
         logger.warning("Cannot save invoice %s to piggy bank: %s", invoice.id, str(e))
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": _("Unable to save amount to piggy bank.")}, status=status.HTTP_400_BAD_REQUEST)
     except Exception:
         logger.exception("Unexpected error saving invoice %s to piggy bank", invoice.id)
         return Response({"error": _("Unable to save amount to piggy bank.")}, status=status.HTTP_400_BAD_REQUEST)
