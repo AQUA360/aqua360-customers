@@ -3,12 +3,16 @@ from datetime import date
 from django.test import TestCase
 
 from billing.filter.invoice_filter import InvoiceFilter
-from billing.models import Invoice, InvoiceStatus, InvoiceType
+from billing.models import Biller, Billing, Invoice, InvoiceStatus, InvoiceType, Reading
 from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
 from billing.utils.invoice_list_queryset import invoice_list_queryset
-from billing.utils.invoice_period import NO_PERIOD, invoice_relations_map, period_year_counts
+from billing.utils.invoice_period import (
+    EXPIRED, NO_PERIOD, PAID, PENDING, SETTLED, invoice_billing_cycles, invoice_payment_states,
+    invoice_relations_map, period_year_counts,
+)
 from contract.models import Contract, ContractRequest
 from coredata.models import ConfigProject
+from pricing.models import ProductOrigin
 
 
 class ContractInvoicePeriodsBase(TestCase):
@@ -24,6 +28,7 @@ class ContractInvoicePeriodsBase(TestCase):
             ('invoice_status_expired_token', 'EXPIRED'),
             ('debt_vulnerable_token', 'VULNERABLE'),
             ('contract_terminated_status', 'TERMINATED'),
+            ('origin_reading_token', 'aigua'),
         ):
             ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
         cls.invoice_type = InvoiceType.objects.create(token='INVOICE', name='Factura')
@@ -34,7 +39,8 @@ class ContractInvoicePeriodsBase(TestCase):
 
     def invoice(self, token, **kwargs):
         kwargs.setdefault('contract', self.contract)
-        return Invoice.objects.create(token=token, type=self.invoice_type, status=self.status, **kwargs)
+        kwargs.setdefault('status', self.status)
+        return Invoice.objects.create(token=token, type=self.invoice_type, **kwargs)
 
     def filtered(self, params):
         params = {'contract_with_request': str(self.contract.id), 'is_invoice': 'true', **params}
@@ -77,6 +83,81 @@ class ContractInvoicePeriodYearTests(ContractInvoicePeriodsBase):
             {'year': 2023, 'count': 1},
             {'year': NO_PERIOD, 'count': 1},
         ])
+
+
+class BillingCycleTests(ContractInvoicePeriodsBase):
+    """El període és el cicle del facturador, no el mes d'emissió."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.water = ProductOrigin.objects.create(token='aigua', name='Aigua')
+        cls.quarterly = Billing.objects.create(
+            token='FAC-T', biller=Biller.objects.create(name='Trimestral', period_type='trimestral', initial_month='jan'))
+        cls.from_november = Billing.objects.create(
+            token='FAC-N', biller=Biller.objects.create(name='Des de novembre', period_type='trimestral', initial_month='nov'))
+
+    def consumption(self, token, issue, period=None, billing=None, readings=(), **kwargs):
+        period = period or (issue.year, issue.month)
+        invoice = self.invoice(token, origin=self.water, billing=billing or self.quarterly, issue_date=issue,
+                               billing_period_year=period[0], billing_period_month=period[1], **kwargs)
+        invoice.readings.set(readings)
+        return invoice
+
+    def reading(self, day, previous_day=None):
+        previous = Reading.objects.create(reading_date=previous_day) if previous_day else None
+        return Reading.objects.create(reading_date=day, previous_reading=previous)
+
+    def cycles(self):
+        cycles = invoice_billing_cycles(Invoice.objects.filter(contract=self.contract))
+        return {
+            invoice.token: cycles[invoice.id] and (
+                cycles[invoice.id]['start_year'], cycles[invoice.id]['start_month'],
+                cycles[invoice.id]['end_year'], cycles[invoice.id]['end_month'])
+            for invoice in Invoice.objects.filter(contract=self.contract)
+        }
+
+    def test_issued_after_the_quarter_belongs_to_the_quarter_of_its_readings(self):
+        self.consumption('OCT', date(2026, 10, 7), readings=[self.reading(date(2026, 9, 10), date(2026, 6, 11))])
+
+        self.assertEqual(self.cycles()['OCT'], (2026, 7, 2026, 9))
+
+    def test_without_readings_the_quarter_ends_the_month_before_billing(self):
+        self.consumption('JAN', date(2026, 1, 2))
+
+        self.assertEqual(self.cycles()['JAN'], (2025, 10, 2025, 12))
+
+    def test_cycle_follows_the_initial_month_of_the_biller(self):
+        self.consumption('NOV', date(2026, 2, 3), billing=self.from_november,
+                         readings=[self.reading(date(2026, 1, 20), date(2025, 10, 20))])
+
+        self.assertEqual(self.cycles()['NOV'], (2025, 11, 2026, 1))
+        self.assertEqual(period_year_counts(self.filtered({})), [{'year': 2026, 'count': 1}])
+
+    def test_one_off_invoice_stays_in_its_month(self):
+        self.invoice('ALTA', issue_date=date(2026, 5, 4), billing_period_year=2026, billing_period_month=5)
+
+        self.assertEqual(self.cycles()['ALTA'], (2026, 5, 2026, 5))
+
+    def test_reading_shared_by_several_periods_uses_the_stored_period(self):
+        shared = self.reading(date(2021, 12, 20), date(2021, 9, 20))
+        self.consumption('OLD-1', date(2022, 3, 1), period=(2019, 5), readings=[shared])
+        self.consumption('OLD-2', date(2022, 3, 1), period=(2020, 8), readings=[shared])
+
+        cycles = self.cycles()
+
+        self.assertEqual(cycles['OLD-1'], (2019, 4, 2019, 6))
+        self.assertEqual(cycles['OLD-2'], (2020, 7, 2020, 9))
+
+    def test_credit_note_takes_the_cycle_of_the_cancelled_invoice(self):
+        reading = self.reading(date(2025, 12, 11), date(2025, 9, 11))
+        self.consumption('ABONAMENT', date(2026, 5, 20), readings=[reading])
+        self.consumption('ORIGINAL', date(2026, 1, 2), readings=[reading], return_token='ABONAMENT')
+
+        cycles = self.cycles()
+
+        self.assertEqual(cycles['ORIGINAL'], (2025, 10, 2025, 12))
+        self.assertEqual(cycles['ABONAMENT'], (2025, 10, 2025, 12))
 
 
 class InvoiceListRelationsTests(ContractInvoicePeriodsBase):
@@ -153,3 +234,32 @@ class ContractInvoicesCountTests(ContractInvoicePeriodsBase):
 
         self.assertEqual(count, sum(row['count'] for row in period_year_counts(self.filtered({}))))
         self.assertEqual(count, 2)
+
+
+class InvoicePaymentStateTests(ContractInvoicePeriodsBase):
+    """Resum de cobrament de cada període: pagades, pendents i vençudes."""
+
+    def test_states_by_status_and_due_date(self):
+        ConfigProject.objects.update_or_create(token='invoice_status_dropped_token', defaults={'value': 'DROPPED'})
+        statuses = {token: InvoiceStatus.objects.create(token=token, name=token)
+                    for token in ('PAID', 'EXPIRED', 'CANCELLED', 'DROPPED', 'SENT')}
+        today = date(2026, 6, 1)
+        invoices = {
+            'paid': self.invoice('PAID'),
+            'expired': self.invoice('EXPIRED'),
+            'cancelled': self.invoice('CANCELLED'),
+            'dropped': self.invoice('DROPPED'),
+            'pending': self.invoice('SENT', due_date=date(2026, 6, 30)),
+            'overdue': self.invoice('LATE', due_date=date(2026, 5, 1)),
+        }
+        # Sense passar pels senyals de canvi d'estat (necessiten més configuració)
+        for key, status in (('paid', 'PAID'), ('expired', 'EXPIRED'), ('cancelled', 'CANCELLED'),
+                            ('dropped', 'DROPPED'), ('pending', 'SENT'), ('overdue', 'SENT')):
+            Invoice.objects.filter(id=invoices[key].id).update(status=statuses[status])
+
+        states = invoice_payment_states(list(Invoice.objects.select_related('status')), today)
+
+        self.assertEqual({key: states[invoice.id] for key, invoice in invoices.items()}, {
+            'paid': PAID, 'expired': EXPIRED, 'cancelled': SETTLED, 'dropped': SETTLED,
+            'pending': PENDING, 'overdue': EXPIRED,
+        })
