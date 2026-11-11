@@ -399,7 +399,7 @@ watch(() => route.query, () => {
               </button>
             </span>
             <span class="p-1 flex gap-2 justify-center">
-              <button @click.stop="deleteRemittance(item)"
+              <button v-if="!item.sent_at" @click.stop="deleteRemittance(item)"
                 class="w-6 h-6 rounded-full border border-red-500 text-red-500 bg-red-50 hover:bg-red-100 transition-colors duration-200"
                 :title="$t('common.delete')">
                 <Icon name="fa6-solid:trash" class="m-auto w-3 h-3" />

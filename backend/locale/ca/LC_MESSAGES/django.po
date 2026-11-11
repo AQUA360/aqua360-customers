@@ -128,6 +128,9 @@ msgstr "Sense tarifes"
 msgid "Contract"
 msgstr "Contracte"
 
+msgid "Customer"
+msgstr "Abonat"
+
 #: billing/utils/billing_service.py:47
 msgid "Creation date"
 msgstr "Data creació"
@@ -6301,3 +6304,7 @@ msgstr "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola
 #: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
 msgid "Descarregar Excel"
 msgstr "Descarregar Excel"
+
+#: billing/utils/payment_remittance_lock_service.py
+msgid "This remittance has already been sent and can no longer be modified."
+msgstr "Aquesta remesa ja s'ha enviat i no es pot modificar."

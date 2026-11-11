@@ -6,6 +6,8 @@ import { formatMoneyWithCurrency } from '~/utils/money';
 import { formatDate } from '~/utils/date';
 import InvoiceRegion from '~/components/organisms/InvoiceRegion.vue';
 import ContractRegion from '~/components/organisms/ContractRegion.vue';
+import PaymentRegion from '~/components/organisms/PaymentRegion.vue';
+import CommitmentDepositRegion from '~/components/organisms/CommitmentDepositRegion.vue';
 
 const props = defineProps({
   sepaFiles: {
@@ -122,38 +124,61 @@ watch(() => props.sepaFiles, () => {
             <table class="w-full text-sm">
               <thead class="bg-slate-50 sticky top-0 border-b border-slate-100 z-[1]">
                 <tr>
-                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-4/12">{{ $t('billing_block.generated_invoices') }}</th>
-                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-4/12">{{ $t('contract') }}</th>
-                  <th class="px-4 py-2 text-right font-medium text-slate-500 w-4/12">{{ $t('billing_block.total_amount') }}</th>
+                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-3/12">{{ $t('billing_block.remittance_line_origin') }}</th>
+                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-4/12">{{ $t('common.client') }}</th>
+                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-3/12">{{ $t('contract') }}</th>
+                  <th class="px-4 py-2 text-right font-medium text-slate-500 w-2/12">{{ $t('billing_block.total_amount') }}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-50">
                 <tr v-if="!file.invoices || !file.invoices.length">
-                  <td class="px-4 py-3 text-center text-slate-400 italic">{{ $t('common.no_invoice') }}</td>
+                  <td colspan="4" class="px-4 py-3 text-center text-slate-400 italic">{{ $t('common.no_invoice') }}</td>
                 </tr>
-                <tr v-for="invoice in file.invoices" :key="invoice.id" class="hover:bg-slate-50/50">
+                <!-- Cada línia és un pagament: la factura, el compromís o la
+                     devolució de saldo (sense factura) que l'origina. -->
+                <tr v-for="line in file.invoices" :key="line.payment_id" class="hover:bg-slate-50/50">
                   <td class="px-4 py-2">
-                    <div class="flex gap-2" v-if="invoice.id">
-                      <button @click="showDetail('InvoiceRegion', invoice.id)"
+                    <div class="flex gap-2" v-if="line.invoice_id">
+                      <button @click="showDetail('InvoiceRegion', line.invoice_id)"
                         class="text-sky-600 hover:text-sky-800 hover:underline font-medium focus:outline-none flex items-center gap-2">
-                        <span>{{ invoice.token || invoice.serie_final }}</span>
+                        <span>{{ line.invoice_token }}</span>
                       </button>
-                      <AtomsRedirectButton :id="invoice.id" :path="'/billing/invoice/'" />
+                      <AtomsRedirectButton :id="line.invoice_id" :path="'/billing/invoice/'" />
                     </div>
+                    <button v-else-if="line.commitment_deposit_id" @click="showDetail('CommitmentDepositRegion', line.commitment_deposit_id)"
+                      class="text-sky-600 hover:text-sky-800 hover:underline font-medium focus:outline-none">
+                      {{ line.commitment_deposit_token || $t('commitment_deposit') }}
+                    </button>
+                    <div v-else class="flex flex-col">
+                      <button @click="showDetail('PaymentRegion', line.payment_id)"
+                        class="text-sky-600 hover:text-sky-800 hover:underline font-medium focus:outline-none text-left">
+                        {{ line.payment_token }}
+                      </button>
+                      <span class="text-xs text-slate-500">{{ $t('billing_block.balance_return') }}</span>
+                    </div>
+                  </td>
+                  <td class="px-4 py-2 truncate max-w-[220px]" :title="`${line.customer_token_final || ''} ${line.customer_final || ''}`">
+                    <template v-if="line.customer_final || line.customer_token_final">
+                      <span class="font-medium">{{ line.customer_token_final }}</span>
+                      {{ line.customer_final }}
+                    </template>
                     <span v-else class="text-slate-400">-</span>
+                    <div v-if="line.iban" class="text-xs text-slate-500">
+                      <AtomsIBAN :value="line.iban" />
+                    </div>
                   </td>
                   <td class="px-4 py-2">
-                    <div class="flex gap-2" v-if="invoice.contract_id">
-                      <button @click="showDetail('ContractRegion', invoice.contract_id)"
+                    <div class="flex gap-2" v-if="line.contract_id">
+                      <button @click="showDetail('ContractRegion', line.contract_id)"
                         class="text-sky-600 hover:text-sky-800 hover:underline font-medium focus:outline-none flex items-center gap-2">
-                        <span>{{ invoice.contract_token || $t('common.contract') }}</span>
+                        <span>{{ line.contract_token || $t('common.contract') }}</span>
                       </button>
-                      <AtomsRedirectButton :id="invoice.contract_id" :path="'/contract/contracts/'" />
+                      <AtomsRedirectButton :id="line.contract_id" :path="'/contract/contracts/'" />
                     </div>
                     <span v-else class="text-slate-400">-</span>
                   </td>
                   <td class="px-4 py-2 text-right font-medium">
-                    {{ formatMoneyWithCurrency(invoice.amount) }}
+                    {{ formatMoneyWithCurrency(line.amount) }}
                   </td>
                 </tr>
               </tbody>
@@ -182,6 +207,12 @@ watch(() => props.sepaFiles, () => {
         <ContractRegion v-if="showRegionDetailComponent == 'ContractRegion'" :id="parseInt(regionDetailId)"
           :isSubRegionOpen="isSubRegionOpen" :isSubRegion="isRegion" @show-subregion="handleSubRegionEvent">
         </ContractRegion>
+        <PaymentRegion v-if="showRegionDetailComponent == 'PaymentRegion'" :id="parseInt(regionDetailId)"
+          :isSubRegionOpen="isSubRegionOpen" :isSubRegion="isRegion" @show-subregion="handleSubRegionEvent">
+        </PaymentRegion>
+        <CommitmentDepositRegion v-if="showRegionDetailComponent == 'CommitmentDepositRegion'" :id="parseInt(regionDetailId)"
+          :isSubRegionOpen="isSubRegionOpen" :isSubRegion="isRegion" @show-subregion="handleSubRegionEvent">
+        </CommitmentDepositRegion>
       </div>
     </div>
   </div>

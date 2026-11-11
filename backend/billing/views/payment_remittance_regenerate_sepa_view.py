@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 
 from billing.models import PaymentRemittance, PaymentRemittanceStatus
+from billing.utils.payment_remittance_lock_service import is_remittance_sent, sent_remittance_error_message
 from coredata.models import ConfigProject
 
 
@@ -30,6 +31,12 @@ class PaymentRemittanceRegenerateSepaView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
+        if is_remittance_sent(payment_remittance):
+            return JsonResponse(
+                {"error": sent_remittance_error_message()},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Obtenir els payments associats
         payments = payment_remittance.payments.all()
         
