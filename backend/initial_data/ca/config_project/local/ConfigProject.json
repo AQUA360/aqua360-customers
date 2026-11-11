@@ -3138,8 +3138,8 @@
             "created_at": "2026-11-10T00:00:00.000Z",
             "updated_at": "2026-11-10T00:00:00.000Z",
             "token": "sepa_invalid_account_reject_tokens",
-            "name": "Retorn SEPA → Pagament Bancari: AC01 IBAN incorrecte, AC04 compte tancat, AC06 compte bloquejat, AC13 tipus compte invàlid, AG01 compte no admet rebuts, BE06 deutor desconegut, MD07 titular difunt, RC01 BIC incorrecte",
-            "value": "AC01,AC04,AC06,AC13,AG01,BE06,MD07,RC01",
+            "name": "Retorn SEPA → Pagament Bancari: AC01 IBAN incorrecte, AC04 compte tancat, AC06 compte bloquejat, AC13 tipus compte invàlid, AG01 compte no admet rebuts, BE06 deutor desconegut, MD07 titular difunt",
+            "value": "AC01,AC04,AC06,AC13,AG01,BE06,MD07",
             "file": null
         }
     }

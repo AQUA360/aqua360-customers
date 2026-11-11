@@ -359,6 +359,7 @@ class ContractSerializer(serializers.ModelSerializer):
         return vulnerability_requests.count() > 0
     
     def get_invalid_account_payment_alert(self, obj):
+        """Avís de domiciliació anul·lada per un retorn SEPA de compte invàlid, o None."""
         from billing.utils.sepa_invalid_account_service import invalid_account_payment_alert
         return invalid_account_payment_alert(obj)
 

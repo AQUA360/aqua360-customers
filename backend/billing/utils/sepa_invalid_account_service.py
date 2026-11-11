@@ -11,7 +11,6 @@ compte no té sentit. Valor per defecte (motius ISO 20022):
 - AG01: operació no permesa (el compte no admet domiciliacions)
 - BE06: deutor desconegut (identificador del deutor invàlid)
 - MD07: titular difunt
-- RC01: identificador del banc incorrecte / BIC invàlid
 
 En aplicar el retorn:
 
@@ -28,12 +27,11 @@ Si el paràmetre no existeix o és buit, no es fa res.
 import logging
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q, Value
 from django.db.models.functions import Replace, Upper
-from django.db.models import Value
 from django.utils import timezone
 
-from billing.models import GeneralPayment, Invoice
+from billing.models import GeneralPayment, Invoice, Payment
 from billing.utils.invoice_service import apply_invoice_payment_method
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals
 from contract.models import Contract, ContractDataChange, PaymentType
@@ -47,15 +45,18 @@ DEFAULT_BANK_PAYMENT_TOKEN = 'BANK_PAYMENT'
 
 
 def normalize_iban(iban):
+    """IBAN sense espais i en majúscules, per comparar-lo amb el de la base de dades."""
     return (iban or '').replace(' ', '').upper()
 
 
 def get_invalid_account_reject_tokens():
+    """Motius de retorn configurats com a compte invàlid (buit si el paràmetre no hi és)."""
     value = ConfigProject.objects.filter(token=INVALID_ACCOUNT_CONFIG_TOKEN).values_list('value', flat=True).first()
     return {token.strip().upper() for token in (value or '').split(',') if token.strip()}
 
 
 def is_invalid_account_reject_token(reject_token, tokens=None):
+    """Indica si el motiu de retorn és dels de compte invàlid."""
     if not reject_token:
         return False
     if tokens is None:
@@ -64,15 +65,18 @@ def is_invalid_account_reject_token(reject_token, tokens=None):
 
 
 def _config_value(token):
+    """Valor d'un ConfigProject, o None si no existeix."""
     return ConfigProject.objects.filter(token=token).values_list('value', flat=True).first()
 
 
 def _bank_payment_type():
+    """El tipus de pagament «Pagament bancari» configurat."""
     token = _config_value('bank_payment_token') or DEFAULT_BANK_PAYMENT_TOKEN
     return PaymentType.objects.filter(token=token).first()
 
 
 def _normalized(field):
+    """Expressió SQL que treu espais i passa a majúscules un camp d'IBAN."""
     return Upper(Replace(field, Value(' '), Value('')))
 
 
@@ -92,6 +96,7 @@ def resolve_payment_contract(payment):
 
 
 def _deactivate_person_banks(person_banks, now):
+    """Desactiva els comptes del titular i, si calia, en fa principal un altre d'actiu."""
     for person_bank in person_banks:
         was_default = person_bank.is_default
         person_bank.is_active = False
@@ -161,6 +166,13 @@ def _eligible_invoices(contracts, extra_invoice_ids, iban):
     if not issued_status_tokens or not open_payment_status_tokens:
         return Invoice.objects.none()
 
+    # Factura sense IBAN propi: només si algun rebut no cobrat es domicilia a l'IBAN retornat
+    payment_on_iban = (
+        Payment.objects.filter(invoice=OuterRef('pk'), status__token__in=open_payment_status_tokens)
+        .annotate(normalized_payment_bank=_normalized('payment_bank'))
+        .filter(normalized_payment_bank=iban)
+    )
+
     scope = Q(id__in=extra_invoice_ids)
     if contracts:
         scope |= (
@@ -177,8 +189,11 @@ def _eligible_invoices(contracts, extra_invoice_ids, iban):
             payment_type_token_final=DIRECT_DEBIT_TOKEN,
             payments__status__token__in=open_payment_status_tokens,
         )
-        .annotate(normalized_bank=_normalized('payment_bank_final'))
-        .filter(Q(normalized_bank=iban) | Q(payment_bank_final__isnull=True) | Q(payment_bank_final=''))
+        .annotate(normalized_bank=_normalized('payment_bank_final'), has_payment_on_iban=Exists(payment_on_iban))
+        .filter(
+            Q(normalized_bank=iban)
+            | ((Q(payment_bank_final__isnull=True) | Q(payment_bank_final='')) & Q(has_payment_on_iban=True))
+        )
         # Un rebut que ja és en una remesa pendent d'enviar es deixa com està: la remesa el cobrarà
         .exclude(payments__remittances__id__isnull=False, payments__remittances__sent_at__isnull=True)
         .distinct()
@@ -244,6 +259,13 @@ def handle_invalid_account_return(payment, motive, iban, user=None, tokens=None)
         'contracts': [c.token for c in changed_contracts],
         'invoices': [i.serie_final or i.token for i in invoices],
     }
+
+
+def invalid_account_return_has_changes(summary):
+    """Indica si el resum de `handle_invalid_account_return` recull algun canvi fet."""
+    return bool(summary and (
+        summary['deactivated_banks'] or summary['deactivated_payments'] or summary['contracts'] or summary['invoices']
+    ))
 
 
 def invalid_account_payment_alert(contract):

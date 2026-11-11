@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 
 from billing.models import GeneralPayment, Invoice, Payment, PaymentRemittance, RejectMotive
 from billing.tests.test_return_after_payment_method_change import ReturnAfterPaymentMethodChangeBase
+from billing.utils.invoice_service import log_invoice_data_change
 from billing.utils.payment_service import generate_payment_movement
 from billing.utils.sepa_invalid_account_service import (
     INVALID_ACCOUNT_CONFIG_TOKEN, get_invalid_account_reject_tokens, invalid_account_payment_alert,
@@ -25,7 +26,7 @@ from logger.models import LogInvoiceDataChange
 
 INVALID_IBAN = 'ES0000000000000000000000'
 OTHER_IBAN = 'ES1111111111111111111111'
-DEFAULT_TOKENS = ['AC01', 'AC04', 'AC06', 'AC13', 'AG01', 'BE06', 'MD07', 'RC01']
+DEFAULT_TOKENS = ['AC01', 'AC04', 'AC06', 'AC13', 'AG01', 'BE06', 'MD07']
 
 
 class TestInvalidAccountTokens(TestCase):
@@ -85,28 +86,29 @@ class InvalidAccountReturnBase(ReturnAfterPaymentMethodChangeBase):
         self.contract.payment = self.general_payment
         self.contract.save()
 
-    def create_invoice(self, token, invoice_status, payment_status, iban=INVALID_IBAN):
+    def create_invoice(self, token, invoice_status, payment_status, iban=INVALID_IBAN, payment_iban=None,
+                       contract=None):
         invoice = Invoice.objects.create(
-            token=token, contract=self.contract, serie_final=f'FC/{token}',
+            token=token, contract=contract or self.contract, serie_final=f'FC/{token}',
             status=self.invoice_status[invoice_status], due_date=date(2026, 12, 31),
             payment_type_final='Domiciliació', payment_type_token_final='DIRECT_DEBIT',
             payment_bank_final=iban, payment_swift_final='TESTESBB')
         payment = Payment.objects.create(
             token=f'P{token}', amount=Decimal('10.00'), invoice=invoice,
             status=self.payment_status[payment_status], payment_type='Domiciliació',
-            payment_type_token='DIRECT_DEBIT', payment_bank=iban, payment_swift='TESTESBB',
+            payment_type_token='DIRECT_DEBIT', payment_bank=payment_iban or iban, payment_swift='TESTESBB',
             due_date=date(2026, 12, 31))
         return invoice, payment
 
-    def post_return(self, motive):
+    def post_return(self, motive, payments=None):
         client = APIClient()
         client.force_authenticate(self.user)
-        rejection = {
-            'id': self.payment.id, 'skip_return': False, 'rjt_dt': '2026-09-09',
+        rejections = [{
+            'id': payment.id, 'skip_return': False, 'rjt_dt': '2026-09-09',
             'motive_id': motive.id, 'motive': motive.name,
-        }
+        } for payment in (payments or [self.payment])]
         data = {
-            'payments_to_return': json.dumps([rejection]),
+            'payments_to_return': json.dumps(rejections),
             'return_payments': json.dumps([]),
             'claim_payments': json.dumps([]),
             'return_date': '2026-09-09',
@@ -406,3 +408,99 @@ class TestContractInvalidAccountAlert(InvalidAccountReturnBase):
         # Paràmetre del tipus de pagament bancari + l'últim canvi de dades del contracte
         with self.assertNumQueries(2):
             invalid_account_payment_alert(contract)
+
+
+class TestInvalidAccountReviewFixes(InvalidAccountReturnBase):
+    """Casos de la revisió: historial d'IBAN, factures sense IBAN, IBAN compartit i resultat per fila."""
+
+    def create_paid_direct_debit_contract(self, token):
+        """Un altre titular amb el mateix IBAN i un cobrament per domiciliació ja pagat."""
+        holder = Person.objects.create(name='Altre', surname='Titular', token=f'{token}T')
+        bank = PersonBank.objects.create(person=holder, iban=INVALID_IBAN, is_default=True)
+        general_payment = GeneralPayment.objects.create(token=f'GP-{token}', type=self.direct_debit, IBAN=bank)
+        contract = Contract.objects.create(token=f'C-{token}', holder=holder, payment=general_payment)
+        invoice = Invoice.objects.create(
+            token=f'F-{token}', contract=contract, serie_final=f'FC/{token}',
+            status=self.invoice_status['PAID'], due_date=date(2026, 9, 30),
+            payment_type_final='Domiciliació', payment_type_token_final='DIRECT_DEBIT')
+        payment = Payment.objects.create(
+            token=f'P{token}', amount=Decimal('12.00'), invoice=invoice,
+            status=self.payment_status['1'], payment_type='Domiciliació', payment_type_token='DIRECT_DEBIT',
+            payment_bank=INVALID_IBAN, due_date=date(2026, 9, 3))
+        generate_payment_movement(payment, self.payment_status['0'], date(2026, 9, 3), 'DIRECT_DEBIT', INVALID_IBAN, self.user)
+        payment.status = self.payment_status['0']
+        payment.payment_date = date(2026, 9, 3)
+        payment.save()
+        return contract, bank, payment
+
+    def test_invoice_history_keeps_the_removed_iban(self):
+        invoice, _ = self.create_invoice('PEND', 'CONFIRMED', '1')
+
+        self.post_return(self.invalid_motive)
+
+        log = LogInvoiceDataChange.objects.get(object=invoice)
+        self.assertEqual(log.previous_iban, INVALID_IBAN)
+        self.assertIsNone(log.current_iban)
+
+    def test_log_without_bank_argument_does_not_record_ibans(self):
+        invoice, _ = self.create_invoice('PEND', 'CONFIRMED', '1')
+
+        log_invoice_data_change(self.user, invoice, None, 'Transferència')
+
+        log = LogInvoiceDataChange.objects.get(object=invoice)
+        self.assertIsNone(log.previous_iban)
+        self.assertIsNone(log.current_iban)
+
+    def test_invoice_without_iban_and_payment_on_another_iban_is_not_changed(self):
+        invoice, payment = self.create_invoice('NOIB', 'CONFIRMED', '1', iban=None, payment_iban=OTHER_IBAN)
+
+        self.post_return(self.invalid_motive)
+
+        invoice.refresh_from_db()
+        payment.refresh_from_db()
+        self.assertEqual(invoice.payment_type_token_final, 'DIRECT_DEBIT')
+        self.assertEqual(payment.payment_bank, OTHER_IBAN)
+
+    def test_invoice_without_iban_and_payment_on_returned_iban_is_changed(self):
+        invoice, payment = self.create_invoice('NOIB', 'CONFIRMED', '1', iban=None, payment_iban=INVALID_IBAN)
+
+        self.post_return(self.invalid_motive)
+
+        invoice.refresh_from_db()
+        payment.refresh_from_db()
+        self.assertEqual(invoice.payment_type_token_final, 'BANK_PAYMENT')
+        self.assertIsNone(payment.payment_bank)
+
+    def test_shared_iban_switches_every_holder_in_the_file(self):
+        other_contract, other_bank, other_payment = self.create_paid_direct_debit_contract('SHR')
+
+        response = self.post_return(self.invalid_motive, payments=[self.payment, other_payment])
+
+        self.assertEqual(response.status_code, 200)
+        for contract, bank in ((self.contract, self.person_bank), (other_contract, other_bank)):
+            contract.refresh_from_db()
+            bank.refresh_from_db()
+            self.assertEqual(contract.payment.type, self.bank_payment)
+            self.assertFalse(bank.is_active)
+        self.assertEqual(len(response.json()['invalid_account_changes']), 2)
+        statuses = {row['payment_id']: row['invalid_account_status'] for row in response.json()['rejections']}
+        self.assertEqual(statuses, {self.payment.id: 'applied', other_payment.id: 'applied'})
+
+    def test_status_is_applied_for_invalid_account_return(self):
+        response = self.post_return(self.invalid_motive)
+
+        self.assertEqual(response.json()['rejections'][0]['invalid_account_status'], 'applied')
+
+    def test_status_is_absent_for_other_motive(self):
+        response = self.post_return(self.motive)
+
+        self.assertIsNone(response.json()['rejections'][0]['invalid_account_status'])
+
+    def test_status_is_not_applied_without_bank_payment_type(self):
+        PaymentType.objects.filter(token='BANK_PAYMENT').delete()
+
+        response = self.post_return(self.invalid_motive)
+
+        self.assertEqual(response.json()['rejections'][0]['invalid_account_status'], 'not_applied')
+        self.assertEqual(response.json()['invalid_account_changes'], [])
+        self.assert_direct_debit_kept()

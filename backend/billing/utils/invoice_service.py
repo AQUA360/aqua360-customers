@@ -3660,27 +3660,35 @@ def check_existing_token(token, exploitation_token='0'):
     except Exception as e:
         raise Exception("Error while checking existing token: ", e)
 
-def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=None):
-    if (new_address == invoice.address_final and 
-        new_payment_type == invoice.payment_type_final and 
-        new_payment_bank == invoice.payment_bank_final):
-        pass  # log removed
+_UNCHANGED = object()
+
+
+def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=_UNCHANGED):
+    """Registra a l'historial de la factura un canvi d'adreça, de mètode de pagament o d'IBAN.
+
+    L'IBAN només es registra si qui crida el passa: si el passa buit (el compte es retira),
+    queda l'anterior a l'historial.
+    """
+    bank_given = new_payment_bank is not _UNCHANGED
+    new_bank = (new_payment_bank or None) if bank_given else None
+    previous_bank = invoice.payment_bank_final or None
+    bank_changed = bank_given and new_bank != previous_bank
+    if (new_address == invoice.address_final and
+        new_payment_type == invoice.payment_type_final and
+        not bank_changed):
         return
-    pass  # log removed
     LogInvoiceDataChange.objects.create(
         object=invoice,
         current_address=new_address,
         previous_address=invoice.address_final if new_address and new_address != '' else None,
         current_payment_type=new_payment_type,
         previous_payment_type=invoice.payment_type_final if new_payment_type and new_payment_type != '' else None,
-        current_iban=new_payment_bank,
-        previous_iban=invoice.payment_bank_final if new_payment_bank and new_payment_bank != '' else None,
+        current_iban=new_bank,
+        # Amb un IBAN nou o quan es retira el compte, l'anterior queda a l'historial
+        previous_iban=previous_bank if (new_bank or bank_changed) else None,
         user=user,
         timestamp=timezone.now()
     )
-
-
-_UNCHANGED = object()
 
 
 def apply_invoice_payment_method(user, invoice, payment_type, payment_bank_final=None, payment_swift_final=None,
