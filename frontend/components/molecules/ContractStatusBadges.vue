@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
@@ -15,15 +15,35 @@ const props = defineProps({
         type: Boolean,
         default: false
     },
+    // Bail badge switches to the bails tab (only where the parent handles it)
+    showBailTab: {
+        type: Boolean,
+        default: false
+    },
 });
 
-const emit = defineEmits(['show-detail']);
+const emit = defineEmits(['show-detail', 'show-tab']);
 
 const { t } = useI18n();
+const { $ConfigProjectApiService } = useNuxtApp();
+
+const bailReturnedToken = ref(null);
 
 const showDetail = (component, id) => {
     emit('show-detail', component, id);
 }
+
+const showTab = (tab) => {
+    emit('show-tab', tab);
+}
+
+const availableBailAmount = computed(() => {
+    const bails = props.contract?.bails;
+    if (!bails?.length) return 0;
+    return bails
+        .filter((bail) => bail.status_token !== bailReturnedToken.value)
+        .reduce((acc, bail) => acc + (parseFloat(bail.amount) || 0), 0);
+});
 
 const totalBagConsumption = computed(() => {
     if (!props.contract?.estimated_bags) return 0;
@@ -43,6 +63,14 @@ function removeUselessZero(value) {
     }
     return value;
 }
+
+onMounted(async () => {
+    try {
+        bailReturnedToken.value = await $ConfigProjectApiService.get('bail_status_returned_token');
+    } catch (err) {
+        console.error(err);
+    }
+});
 </script>
 
 
@@ -66,6 +94,21 @@ function removeUselessZero(value) {
             </span>
             <Icon v-if="!isSubRegion" name="fa6-solid:chevron-right" class="text-sky-400 text-[10px] ml-1 group-hover:translate-x-0.5 transition-transform" />
         </button>
+        <component :is="showBailTab ? 'button' : 'div'"
+            v-if="availableBailAmount > 0"
+            @click="showBailTab && showTab('bails')"
+            class="flex items-center gap-2 rounded px-2 py-1 border truncate transition-colors group shadow-sm"
+            :class="showBailTab
+                ? 'bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100 hover:border-sky-400'
+                : 'bg-slate-50 border-slate-200 text-slate-500'"
+            :title="showBailTab ? t('common.view_details') : ''">
+            <Icon name="fa6-solid:money-bills" :class="showBailTab ? 'text-sky-500' : 'text-slate-400'" />
+            <span class="text-sm font-semibold">
+                {{ t('bail') }}: {{ formatMoneyWithCurrency(availableBailAmount) }}
+            </span>
+            <Icon v-if="showBailTab" name="fa6-solid:chevron-right"
+                class="text-sky-400 text-[10px] ml-1 group-hover:translate-x-0.5 transition-transform" />
+        </component>
         <button v-if="showExtra && totalBagConsumption > 0 && mainBagId" @click="showDetail('EstimatedBagRegion', mainBagId)"
             :disabled="isSubRegion"
             class="flex items-center gap-2 rounded px-2 py-1 border transition-all truncate enabled:bg-sky-50 enabled:border-sky-300 enabled:text-sky-700 enabled:hover:bg-sky-100 enabled:hover:border-sky-400 disabled:bg-slate-50 disabled:border-slate-200 disabled:text-slate-400 disabled:cursor-default shadow-sm group"

@@ -55,8 +55,8 @@ class GenerateInvoiceBudgetView(APIView):
         selected_custom = request.data.get('selected_custom', None)
         bill_termination_requester = request.data.get('bill_termination_requester', False)
         
-        print(f"[GenerateInvoiceBudgetView] entity: {entity}, object_id: {object_id}, is_budget: {is_budget}")
-        print(f"[GenerateInvoiceBudgetView] redo_option: {redo_option}")
+        # print(f"[GenerateInvoiceBudgetView] entity: {entity}, object_id: {object_id}, is_budget: {is_budget}")
+        # print(f"[GenerateInvoiceBudgetView] redo_option: {redo_option}")
 
         # print("object: ", object_id)
         # print("is_budget: ", is_budget)
@@ -70,6 +70,8 @@ class GenerateInvoiceBudgetView(APIView):
         send_at = None
         issue_date = None
         readings = None
+        due_date_provided = False
+        send_at_provided = False
         
         payment_type = None
         payment_bank = None
@@ -81,8 +83,12 @@ class GenerateInvoiceBudgetView(APIView):
             payment_bank = payment_data.get("IBAN")
             company_bank = payment_data.get("company_iban", None)
             electronic_data = payment_data.get("electronic_data")
-            due_date = payment_data.get("due_date")
-            send_at = payment_data.get("send_at", None)
+            if 'due_date' in payment_data:
+                due_date_provided = True
+                due_date = payment_data.get("due_date")
+            if 'send_at' in payment_data:
+                send_at_provided = True
+                send_at = payment_data.get("send_at")
             issue_date = payment_data.get("issue_date", None)
             selected_exploitation = payment_data.get("selected_exploitation", None)
             exploitation = None
@@ -91,8 +97,15 @@ class GenerateInvoiceBudgetView(APIView):
                     exploitation = Exploitation.objects.get(id=selected_exploitation)
                 except:
                     pass
-        if not due_date:
-            due_date = (timezone.now() + timedelta(days=30)).date()
+        # New budgets need a default due_date; conversions keep the budget dates
+        # unless payment_data explicitly overrides them.
+        if not due_date and is_budget:
+            try:
+                due_days = int(ConfigProject.objects.get(token='budget_due_date_days').value)
+            except (ConfigProject.DoesNotExist, TypeError, ValueError):
+                due_days = 60
+            due_date = (timezone.now() + timedelta(days=due_days)).date()
+            due_date_provided = True
             
         
         # Titular triat per a un pressupost encara no confirmat. En refacturar, el
@@ -184,7 +197,6 @@ class GenerateInvoiceBudgetView(APIView):
                 Invoice.objects.filter(contract_termination=contract_termination_request, type__token=budget_type_token).delete()
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
                 invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
-            print("invoice")
         
         elif entity == "connection_request":
             connection_request = ConnectionRequest.objects.get(id=object_id)
@@ -205,7 +217,6 @@ class GenerateInvoiceBudgetView(APIView):
                 } """
                 # invoice = invoice_connection_generate(None, object_id, 'SOL·LICITUD D\'ESCOMESA', payment_type, payment_bank, company_bank, is_budget, electronic_data)
                 invoice = generate_empty_invoice(None, connection_request, connection_request.person, 'SOL·LICITUD D\'ESCOMESA', payment_data, connection_request.exploitation)
-            print("invoice")
         
         elif entity == "invoice":
             if is_budget:
@@ -252,7 +263,8 @@ class GenerateInvoiceBudgetView(APIView):
                     electronic_data, is_budget, company_bank,
                     company_id=payment_data.get('company_id') if payment_data else None,
                     category_id=payment_data.get('category_id') if payment_data else None,
-                    new_holder=new_holder_id)
+                    new_holder=new_holder_id,
+                    payment_data=payment_data)
         elif entity == "contract":
             contract = Contract.objects.get(id=object_id)
             title = 'Facturació'
@@ -490,8 +502,10 @@ class GenerateInvoiceBudgetView(APIView):
                     invoice.issue_date = parsed_issue_date
             else:
                 invoice.issue_date = issue_date
-        invoice.due_date = due_date
-        invoice.send_at = send_at
+        if due_date_provided:
+            invoice.due_date = due_date
+        if send_at_provided:
+            invoice.send_at = send_at
 
         invoice.save()
         reconnect_payment_signals()
@@ -501,9 +515,7 @@ class GenerateInvoiceBudgetView(APIView):
 
     def updatePaymentBudget(self, redo_budget, payment_type, payment_bank, company_bank, electronic_data):
         try:
-            print("updating payment budget")
             payment_type_instance = PaymentType.objects.get(id = payment_type)
-            print("payment type")
             payment_bank_instance = PersonBank.objects.get(id = payment_bank) if payment_bank else None
             payment_comp_bank_instance = CompanyBank.objects.get(id = company_bank) if company_bank else None
             iban = None

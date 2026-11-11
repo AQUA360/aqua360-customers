@@ -56,6 +56,7 @@ class BailListSerializer(serializers.ModelSerializer):
             ]
 
 class BailMinimalSerializer(serializers.ModelSerializer):
+    status_token = serializers.CharField(source='status.token', read_only=True)
     class Meta:
         model = Bail
-        fields = ['id', 'token', 'amount']
+        fields = ['id', 'token', 'amount', 'status_token']

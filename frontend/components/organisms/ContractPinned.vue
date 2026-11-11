@@ -672,7 +672,8 @@ const setActiveTab = (tab) => {
                   <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
                 </div>
                 <ContractInvalidAccountAlert :alert="contract?.invalid_account_payment_alert" />
-                <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall" />
+                <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall"
+                    @update-active-tab="setActiveTab" />
             </div>
 
             <ContractTabs

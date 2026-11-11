@@ -12,9 +12,13 @@ export function useContractInvoicesByPeriod(getContractId) {
   const invoices = ref([]);
   const loading = ref(false);
   const error = ref(false);
+  // 'invoice' → is_invoice=true; 'budget' → is_invoice=false
+  const listMode = ref('invoice');
 
   // Answers of older requests are dropped (fast year switching, contract change).
   let requestId = 0;
+
+  const isInvoice = () => listMode.value === 'invoice';
 
   const loadYear = async (year) => {
     const current = ++requestId;
@@ -27,7 +31,11 @@ export function useContractInvoicesByPeriod(getContractId) {
     }
     loading.value = true;
     try {
-      const results = await $InvoiceApiService.getContractInvoicesByPeriodYear(getContractId(), year);
+      const results = await $InvoiceApiService.getContractInvoicesByPeriodYear(
+        getContractId(),
+        year,
+        isInvoice(),
+      );
       if (current === requestId) invoices.value = results;
     } catch (err) {
       console.error(err);
@@ -43,7 +51,10 @@ export function useContractInvoicesByPeriod(getContractId) {
     loading.value = true;
     error.value = false;
     try {
-      const result = await $InvoiceApiService.getContractInvoicePeriodYears(getContractId());
+      const result = await $InvoiceApiService.getContractInvoicePeriodYears(
+        getContractId(),
+        isInvoice(),
+      );
       if (current !== requestId) return;
       years.value = result;
       const keep = result.some((row) => row.year === activeYear.value);
@@ -57,6 +68,14 @@ export function useContractInvoicesByPeriod(getContractId) {
     }
   };
 
+  const setListMode = async (mode) => {
+    if (listMode.value === mode) return;
+    listMode.value = mode;
+    // Budgets and invoices rarely share the same years; start from the newest.
+    activeYear.value = null;
+    await load();
+  };
+
   const reset = () => {
     requestId++;
     years.value = [];
@@ -64,6 +83,7 @@ export function useContractInvoicesByPeriod(getContractId) {
     invoices.value = [];
     loading.value = false;
     error.value = false;
+    listMode.value = 'invoice';
   };
 
   // Keeps the "send" button in sync after a PDF is generated, without reloading.
@@ -73,7 +93,7 @@ export function useContractInvoicesByPeriod(getContractId) {
   };
 
   return reactive({
-    years, activeYear, invoices, loading, error,
-    load, loadYear, reset, updateInvoiceFile,
+    years, activeYear, invoices, loading, error, listMode,
+    load, loadYear, setListMode, reset, updateInvoiceFile,
   });
 }
