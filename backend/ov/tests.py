@@ -37,10 +37,12 @@ from coredata.models import (
     City,
     ConfigProject,
     Country,
+    IdentificationType,
     Person,
     PersonAddress,
     PersonBank,
     PersonContact,
+    PersonPiggyBank,
     PostalCode,
     Street,
     StreetNumber,
@@ -3933,6 +3935,28 @@ class InvoiceReturnRequestOVTests(TestCase):
         )
 
 
+NEW_HOLDER_DNI = "00000000T"
+NEW_HOLDER_REQUIRED = "This field is required when the holder does not exist."
+NEW_HOLDER_FIELDS = {
+    "holder_name": "Nova",
+    "holder_surname": "Titular Prova",
+    "holder_phone": "600000000",
+    "holder_email": "titular.nou@example.com",
+}
+
+
+def _new_holder_identification_types():
+    """Create the default `dni` and a `nie` identification type for tests."""
+    IdentificationType.objects.update(is_default=False)
+    dni_type, _ = IdentificationType.objects.update_or_create(
+        token="dni", defaults={"name": "DNI", "is_default": True}
+    )
+    nie_type, _ = IdentificationType.objects.update_or_create(
+        token="nie", defaults={"name": "NIE", "is_default": False}
+    )
+    return dni_type, nie_type
+
+
 class ContractProcedureOVTests(TestCase):
     """`POST /ov/procedures/contract/` — crea una sol·licitud d'alta de
     contracte (`ContractRequest`) en estat esborrany, sense crear cap
@@ -4004,6 +4028,7 @@ class ContractProcedureOVTests(TestCase):
         cls.other_holder = Person.objects.create(
             token="11111111A", name="Bernat", surname="Prova"
         )
+        cls.dni_type, cls.nie_type = _new_holder_identification_types()
 
         cls.property = Property.objects.create(
             token="PROP-1", name="Finca 1", is_active=True
@@ -4268,22 +4293,155 @@ class ContractProcedureOVTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
 
-    def test_unknown_person_returns_404(self):
-        response = self._post(holder_dni="99999999Z")
+    def test_existing_holder_with_only_dni_does_not_create_person(self):
+        person_count = Person.objects.count()
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+
+    def test_existing_holder_ignores_new_holder_fields(self):
+        response = self._post(**NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+        self.holder.refresh_from_db()
+        self.assertEqual(self.holder.name, "Anna")
+        self.assertEqual(self.holder.surname, "Prova")
+        self.assertFalse(PersonContact.objects.filter(person=self.holder).exists())
+
+    def test_unknown_holder_without_personal_data_returns_400(self):
+        request_count = ContractRequest.objects.count()
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI)
+
+        self.assertEqual(response.status_code, 400)
+        for field in ("holder_name", "holder_surname", "holder_phone", "holder_email"):
+            self.assertEqual(response.data[field], [NEW_HOLDER_REQUIRED])
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_bank_account_dni_cannot_resolve_a_different_holder(self):
         PersonBank.objects.create(
-            person=self.holder, dni="99999999Z", iban="ES9121000418450200051332"
+            person=self.holder, dni=NEW_HOLDER_DNI, iban="ES9121000418450200051332"
         )
         request_count = ContractRequest.objects.count()
 
-        response = self._post(holder_dni="99999999Z")
+        response = self._post(holder_dni=NEW_HOLDER_DNI)
+
+        # The bank DNI does not identify the holder: it is treated as new.
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("holder_name", response.data)
+        self.assertEqual(ContractRequest.objects.count(), request_count)
+
+    def test_unknown_holder_with_personal_data_creates_and_links_person(self):
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.name, "Nova")
+        self.assertEqual(person.surname, "Titular Prova")
+        self.assertFalse(person.is_juridic)
+        self.assertEqual(person.identification_type, self.dni_type)
+        self.assertTrue(person.dni_validated)
+        self.assertIsNotNone(person.piggy_bank)
+        self.assertEqual(person.piggy_bank.token, NEW_HOLDER_DNI)
+        contact = PersonContact.objects.get(person=person)
+        self.assertEqual(contact.phone, "600000000")
+        self.assertEqual(contact.email, "titular.nou@example.com")
+        self.assertTrue(contact.is_default)
+        self.assertTrue(contact.is_active)
+
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.person, person)
+        self.assertEqual(request_obj.holder, person)
+        self.assertEqual(request_obj.payment.IBAN.person, person)
+        self.assertEqual(response.data["person"]["token"], NEW_HOLDER_DNI)
+        self.assertEqual(response.data["person"]["name"], "Nova")
+
+    def test_new_holder_dni_is_normalized(self):
+        response = self._post(
+            holder_dni="00.000.000-t", **NEW_HOLDER_FIELDS
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_holder_explicit_identification_type(self):
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            holder_identification_type_token="nie",
+            **NEW_HOLDER_FIELDS,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.identification_type, self.nie_type)
+        self.assertFalse(person.dni_validated)
+
+    def test_new_holder_unknown_identification_type_returns_400(self):
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            holder_identification_type_token="unknown",
+            **NEW_HOLDER_FIELDS,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["holder_identification_type_token"],
+            ["Unknown identification type."],
+        )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_juridic_holder_does_not_need_surname(self):
+        fields = dict(NEW_HOLDER_FIELDS, holder_surname="", holder_is_juridic=True)
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertTrue(person.is_juridic)
+        self.assertIsNone(person.surname)
+
+    def test_new_holder_invalid_email_returns_400(self):
+        fields = dict(NEW_HOLDER_FIELDS, holder_email="not-an-email")
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("holder_email", response.data)
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_holder_not_created_when_request_is_rejected(self):
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            property_token="PROP-UNKNOWN",
+            **NEW_HOLDER_FIELDS,
+        )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_holder_rolled_back_when_creation_fails(self):
+        request_count = ContractRequest.objects.count()
+
+        with patch.object(
+            LogContractRequestStatus.objects,
+            "create",
+            side_effect=RuntimeError("downstream failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(holder_dni=NEW_HOLDER_DNI, **NEW_HOLDER_FIELDS)
+
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertFalse(
+            PersonContact.objects.filter(token__startswith=NEW_HOLDER_DNI).exists()
+        )
+        self.assertFalse(
+            PersonPiggyBank.objects.filter(token=NEW_HOLDER_DNI).exists()
+        )
         self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_unknown_or_inactive_property_returns_404(self):
@@ -5249,6 +5407,7 @@ class ContractChangeProcedureOVTests(TestCase):
         cls.incoming_holder = Person.objects.create(
             token="87654321Y", name="Entrant", surname="Prova"
         )
+        cls.dni_type, cls.nie_type = _new_holder_identification_types()
 
         cls.supply_point = SupplyPoint.objects.create(
             token="SP-CHANGE", is_active=True
@@ -5708,11 +5867,108 @@ class ContractChangeProcedureOVTests(TestCase):
 
     # --- 404 --------------------------------------------------------------
 
-    def test_unknown_incoming_person_returns_404(self):
-        response = self._post(incoming={"holder_dni": "00000000T"})
+    def test_unknown_incoming_holder_without_personal_data_returns_400(self):
+        response = self._post(incoming={"holder_dni": NEW_HOLDER_DNI})
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("outgoing", response.data)
+        for field in ("holder_name", "holder_surname", "holder_phone", "holder_email"):
+            self.assertEqual(
+                response.data["incoming"][field], [NEW_HOLDER_REQUIRED]
+            )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self._assert_nothing_created()
+
+    def test_existing_incoming_holder_does_not_create_person(self):
+        person_count = Person.objects.count()
+
+        response = self._post(incoming=NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(contract_request.holder, self.incoming_holder)
+        self.incoming_holder.refresh_from_db()
+        self.assertEqual(self.incoming_holder.name, "Entrant")
+
+    def test_unknown_incoming_holder_with_personal_data_creates_person(self):
+        response = self._post(
+            incoming=dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+        )
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.name, "Nova")
+        self.assertEqual(person.surname, "Titular Prova")
+        self.assertEqual(person.identification_type, self.dni_type)
+        self.assertEqual(person.piggy_bank.token, NEW_HOLDER_DNI)
+        contact = PersonContact.objects.get(person=person)
+        self.assertEqual(contact.phone, "600000000")
+        self.assertEqual(contact.email, "titular.nou@example.com")
+        self.assertTrue(contact.is_default)
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertTrue(contract_request.is_change_of_name)
+        self.assertEqual(contract_request.person, person)
+        self.assertEqual(contract_request.holder, person)
+        self.assertEqual(contract_request.payment.IBAN.person, person)
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(termination.person, self.outgoing_holder)
+
+    def test_unknown_incoming_identification_type_returns_nested_400(self):
+        response = self._post(
+            incoming=dict(
+                NEW_HOLDER_FIELDS,
+                holder_dni=NEW_HOLDER_DNI,
+                holder_identification_type_token="unknown",
+            )
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["incoming"]["holder_identification_type_token"],
+            ["Unknown identification type."],
+        )
+        self._assert_nothing_created()
+
+    def test_new_incoming_holder_not_created_on_contract_404_or_409(self):
+        incoming = dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+        for outgoing, expected in (
+            ({"contract_token": "CT-UNKNOWN"}, 404),
+            ({"contract_token": self.terminated_contract.token}, 409),
+        ):
+            with self.subTest(outgoing=outgoing):
+                response = self._post(outgoing=outgoing, incoming=incoming)
+
+                self.assertEqual(response.status_code, expected)
+                self.assertFalse(
+                    Person.objects.filter(token=NEW_HOLDER_DNI).exists()
+                )
+                self._assert_nothing_created()
+
+    def test_new_incoming_holder_rolled_back_when_creation_fails(self):
+        with patch(
+            "ov.views._create_procedure_payment",
+            side_effect=RuntimeError("downstream failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(
+                    incoming=dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+                )
+
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertFalse(
+            PersonContact.objects.filter(token__startswith=NEW_HOLDER_DNI).exists()
+        )
+        self.assertFalse(
+            PersonPiggyBank.objects.filter(token=NEW_HOLDER_DNI).exists()
+        )
         self._assert_nothing_created()
 
     def test_outgoing_contract_errors_return_uniform_404(self):

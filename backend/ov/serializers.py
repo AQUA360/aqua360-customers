@@ -24,12 +24,23 @@ from billing.models import (
 )
 from billing.utils.payment_service import get_status_map
 from decouple import config
-from coredata.models import ConfigProject, Person, PersonAddress, PersonBank, PersonContact, Country
+from coredata.models import (
+    ConfigProject,
+    Country,
+    IdentificationType,
+    Person,
+    PersonAddress,
+    PersonBank,
+    PersonContact,
+)
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Count, Value
+from django.db.models.functions import Replace, Upper
 from django.utils.dateparse import parse_date
 import logging
+import re
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -2109,11 +2120,157 @@ class ReturnRequestResponseSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
-class ContractProcedureRequestSerializer(serializers.Serializer):
+_PERSON_DNI_SEPARATORS = re.compile(r"[\s.\-]+")
+
+
+def _normalize_person_dni(value):
+    """Normalitza un DNI/NIF per comparar-lo amb les dades heretades de la BD:
+    ignora espais, guions i punts i el passa a majúscules."""
+    return _PERSON_DNI_SEPARATORS.sub("", value or "").upper()
+
+
+def _normalized_dni_expression(field):
+    """Expressió SQL equivalent a `_normalize_person_dni` per al camp indicat:
+    `UPPER(REPLACE(REPLACE(REPLACE(field, '-', ''), '.', ''), ' ', ''))`."""
+    expression = Replace(field, Value("-"), Value(""))
+    expression = Replace(expression, Value("."), Value(""))
+    expression = Replace(expression, Value(" "), Value(""))
+    return Upper(expression)
+
+
+def _resolve_contract_procedure_person(dni):
+    """Resol una persona a partir del DNI normalitzat.
+
+    Replica la resolució de `PersonDataOVView`: primer `Person.token` i, si no
+    hi ha coincidència, el DNI de la compte bancària (`PersonBank.dni`), que és
+    com s'identifiquen els pagadors. El token de la persona també ha de coincidir
+    amb el DNI. Així l'OV rep el mateix resultat que en el preomplert de
+    `GET /ov/person-data/`.
+    """
+    person_id = (
+        Person.objects.annotate(
+            normalized_token=_normalized_dni_expression("token"),
+            contact_count=Count("contacts"),
+        )
+        .filter(normalized_token=dni)
+        .order_by("-contact_count", "id")
+        .values_list("id", flat=True)
+        .first()
+    )
+
+    if person_id is None:
+        person_id = (
+            PersonBank.objects.annotate(
+                normalized_dni=_normalized_dni_expression("dni"),
+                normalized_token=_normalized_dni_expression("person__token"),
+                contact_count=Count("person__contacts"),
+            )
+            .filter(normalized_dni=dni, normalized_token=dni, person__isnull=False)
+            .order_by("-contact_count", "id")
+            .values_list("person_id", flat=True)
+            .first()
+        )
+
+    if person_id is None:
+        return None
+    return Person.objects.filter(pk=person_id).first()
+
+
+NEW_HOLDER_REQUIRED_MESSAGE = "This field is required when the holder does not exist."
+NEW_HOLDER_TEXT_FIELDS = (
+    "holder_name",
+    "holder_surname",
+    "holder_phone",
+    "holder_email",
+    "holder_identification_type_token",
+)
+
+
+class ProcedureNewHolderSerializer(serializers.Serializer):
+    """Camps per donar d'alta el titular d'un tràmit quan el `holder_dni` no
+    correspon a cap `Person` existent.
+
+    Si el DNI ja existeix, els camps `holder_*` són opcionals i s'ignoren (no
+    modifiquen la persona existent). Si no existeix, nom, cognoms, telèfon i
+    correu són obligatoris (els cognoms no ho són per a persones jurídiques) i
+    el tipus d'identificació, si s'omet, és el marcat per defecte.
+
+    `_validate_holder` deixa a `attrs` la persona resolta (`holder`, o `None`
+    si s'ha de crear) i, per a titulars nous, `identification_type`.
+    """
+
+    holder_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    holder_surname = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    holder_phone = serializers.CharField(
+        max_length=20, required=False, allow_blank=True, allow_null=True
+    )
+    holder_email = serializers.EmailField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    holder_is_juridic = serializers.BooleanField(required=False, default=False)
+    holder_identification_type_token = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+
+    def _validate_holder(self, attrs):
+        """Resolve the holder and return field errors for a new holder.
+
+        Set attrs["holder"] to the existing Person, or None when it does not
+        exist (or the normalized DNI is blank, which the views reject). For a
+        new holder, require name, surname (unless juridic), phone and email,
+        and set attrs["identification_type"] from the token or the default.
+        """
+        for field in NEW_HOLDER_TEXT_FIELDS:
+            if attrs.get(field) is not None:
+                attrs[field] = attrs[field].strip()
+
+        dni = _normalize_person_dni(attrs.get("holder_dni"))
+        holder = _resolve_contract_procedure_person(dni) if dni else None
+        attrs["holder"] = holder
+        if holder is not None or not dni:
+            return {}
+
+        errors = {}
+        required = ["holder_name", "holder_phone", "holder_email"]
+        if not attrs.get("holder_is_juridic"):
+            required.insert(1, "holder_surname")
+        for field in required:
+            if not attrs.get(field):
+                errors[field] = [NEW_HOLDER_REQUIRED_MESSAGE]
+
+        type_token = attrs.get("holder_identification_type_token")
+        if type_token:
+            identification_type = (
+                IdentificationType.objects.filter(token=type_token)
+                .order_by("id")
+                .first()
+            )
+            if identification_type is None:
+                errors["holder_identification_type_token"] = [
+                    "Unknown identification type."
+                ]
+        else:
+            identification_type = (
+                IdentificationType.objects.filter(is_default=True)
+                .order_by("position", "id")
+                .first()
+            )
+        attrs["identification_type"] = identification_type
+        return errors
+
+
+class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     """Sol·licitud d'alta de contracte enviada per l'OV.
 
     El `tariff_token` és la tarifa que l'OV ha mostrat i cobrat a l'abonat, i
     és la font de veritat de la tarifa de la sol·licitud (`ContractRequest`).
+
+    Si `holder_dni` no existeix, els camps `holder_*` permeten crear el
+    titular (vegeu `ProcedureNewHolderSerializer`).
     """
 
     holder_dni = serializers.CharField(max_length=255)
@@ -2153,6 +2310,13 @@ class ContractProcedureRequestSerializer(serializers.Serializer):
 
     def validate_iban_holder_dni(self, value):
         return (value or "").upper()
+
+    def validate(self, attrs):
+        """Return attrs with the holder resolved; raise new-holder errors."""
+        errors = self._validate_holder(attrs)
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
 
 class ContractProcedureResponseSerializer(serializers.Serializer):
@@ -2271,12 +2435,16 @@ class ContractChangeOutgoingSerializer(serializers.Serializer):
         return attrs
 
 
-class ContractChangeIncomingSerializer(serializers.Serializer):
+class ContractChangeIncomingSerializer(ProcedureNewHolderSerializer):
     """Bloc `incoming` del canvi de nom: nou titular, tipus de tràmit i forma
     de pagament. Les dades bancàries només són obligatòries per a
     domiciliació. No hi ha camps de tarifa: s'hereten del contracte actual.
 
-    Deixa resolts a `validated_data` `procedure_type` i `payment_type`.
+    Si `holder_dni` no existeix, els camps `holder_*` permeten crear el nou
+    titular (vegeu `ProcedureNewHolderSerializer`).
+
+    Deixa resolts a `validated_data` `procedure_type`, `payment_type` i
+    `holder` (o `None` si s'ha de crear).
     """
 
     holder_dni = serializers.CharField(max_length=255)
@@ -2322,12 +2490,13 @@ class ContractChangeIncomingSerializer(serializers.Serializer):
         return (value or "").upper()
 
     def validate(self, attrs):
-        """Return attrs with the active procedure type and payment type resolved.
+        """Return attrs with the procedure type, payment type and holder resolved.
 
-        Require all four bank fields for DIRECT_DEBIT. Raise ValidationError
-        with field-specific errors for unknown types or missing bank fields.
+        Require all four bank fields for DIRECT_DEBIT, and the personal fields
+        when the holder does not exist. Raise ValidationError with
+        field-specific errors for unknown types or missing fields.
         """
-        errors = {}
+        errors = self._validate_holder(attrs)
         procedure_type = ContractRequestType.objects.filter(
             token=attrs["procedure_type_token"], is_active=True
         ).first()
