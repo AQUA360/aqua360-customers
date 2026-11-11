@@ -22,7 +22,7 @@ from rest_framework.filters import OrderingFilter
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import is_rectified_invoice
 from billing.utils.sepa_invalid_account_service import get_invalid_account_reject_tokens, handle_invalid_account_return, invalid_account_return_has_changes, is_invalid_account_reject_token
-from billing.utils.payment_service import disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals, settle_negative_payment_to_piggy
+from billing.utils.payment_service import check_claim_payments_for_paid_invoice, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals, settle_negative_payment_to_piggy
 from coredata.utils.name_utils import generate_token
 from documentmanager.utils.main_utils import upload_document
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, ClaimRequestTemplate
@@ -719,10 +719,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 )
         if payment.invoice:
             disconnect_payment_signals()
-            payment.invoice.payment_type_final = pay_method.name
-            payment.invoice.payment_type_token_final = pay_method.token
-            payment.invoice.save()
-            reconnect_payment_signals()
+            try:
+                payment.invoice.payment_type_final = pay_method.name
+                payment.invoice.payment_type_token_final = pay_method.token
+                payment.invoice.save()
+                payment.invoice.refresh_from_db()
+                if used_token == paid_status_token:
+                    check_claim_payments_for_paid_invoice(payment.invoice, user)
+            finally:
+                reconnect_payment_signals()
         serialized_invoices = PaymentSerializer(payment)
         return Response({"payment": serialized_invoices.data}, status=status.HTTP_200_OK)
     

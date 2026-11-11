@@ -541,6 +541,82 @@ def save_negative_invoice_to_piggy_bank(invoice, user, payment_date=None):
 def log_invoice_status(invoice, invoice_status, current_user=None):
     change_status_logger(get_acting_user(current_user), invoice, invoice_status)
 
+
+def check_claim_payments_for_paid_invoice(invoice, user=None):
+    """
+    Quan una factura queda pagada amb almenys un pagament en estat PAID
+    (no només piggy), actualitza els ClaimRequestPayment associats i, si
+    tots els del contracte dins la reclamació estan pagats, els marca
+    com a exclosos. Es pot cridar amb els signals desconnectats.
+    """
+    if not invoice or not invoice.status:
+        return
+
+    paid_invoice_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
+    if invoice.status.token != paid_invoice_token:
+        return
+
+    paid_payment_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+    # Només PAID real: un abonament només a moneder no ha d'excloure la reclamació
+    if not invoice.payments.filter(status__token=paid_payment_token).exists():
+        return
+
+    from claimrequest.models import ClaimRequestPayment, VulnerabilityRequest, VulnerabilityRequestStatus
+    from logger.models import LogClaimRequestContractChange
+
+    user = get_acting_user(user)
+    claim_payments = ClaimRequestPayment.objects.filter(payment__invoice=invoice)
+    if not claim_payments.exists():
+        return
+
+    vulnerable_status_approved = VulnerabilityRequestStatus.objects.get(
+        token=ConfigProject.objects.get(token='vulnerability_request_status_accepted_token').value
+    )
+    excluded_contracts = set()
+
+    for claim_payment in claim_payments:
+        claim_payment.is_paid = True
+        vulnerability_request = VulnerabilityRequest.objects.filter(
+            claim_request=claim_payment.claim_request,
+            status=vulnerable_status_approved,
+        )
+        claim_payment.is_vulnerable = (
+            bool(invoice.contract and vulnerability_request.exists())
+            if invoice.contract else False
+        )
+        claim_payment.save(update_fields=['is_paid', 'is_vulnerable', 'updated_at'])
+
+        if not claim_payment.contract_id or not claim_payment.claim_request_id:
+            continue
+
+        contract_key = (claim_payment.claim_request_id, claim_payment.contract_id)
+        if contract_key in excluded_contracts:
+            continue
+
+        # Tots els pagaments del contracte dins aquesta reclamació han de ser pagats
+        contract_claim_payments = ClaimRequestPayment.objects.filter(
+            claim_request_id=claim_payment.claim_request_id,
+            contract_id=claim_payment.contract_id,
+        )
+        if contract_claim_payments.filter(is_paid=False).exists():
+            continue
+
+        still_included = contract_claim_payments.filter(is_excluded=False)
+        if not still_included.exists():
+            excluded_contracts.add(contract_key)
+            continue
+
+        still_included.update(is_excluded=True)
+        excluded_contracts.add(contract_key)
+
+        LogClaimRequestContractChange.objects.create(
+            object=claim_payment.claim_request,
+            deleted_contract=claim_payment.contract,
+            amount_paid=invoice.total_final,
+            user=user,
+        )
+
+
 def disconnect_payment_signals():
     from billing.signals import check_cancel_invoice, check_paid_invoice, create_payment_invoice, payment_status_changed, update_payment, update_contract_debt
     post_save.disconnect(check_paid_invoice, sender=Invoice)

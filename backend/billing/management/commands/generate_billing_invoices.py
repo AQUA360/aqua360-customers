@@ -21,6 +21,7 @@ from django.db.models import Count, Exists, OuterRef, Q
 from billing.models import Billing, BillingStatus, Invoice, InvoiceStatus, Payment, Reading, ReadingBatch
 from billing.tasks import process_billing_batch, process_invoice_documents
 from billing.utils.payment_service import (
+    check_claim_payments_for_paid_invoice,
     disconnect_payment_signals,
     get_status_map,
     log_invoice_status,
@@ -329,6 +330,7 @@ class Command(BaseCommand):
                     invoice.save(update_fields=['status'])
                     log_invoice_status(invoice, paid_invoice_status, user)
                     marked += 1
+                check_claim_payments_for_paid_invoice(invoice, user)
         finally:
             reconnect_payment_signals()
 

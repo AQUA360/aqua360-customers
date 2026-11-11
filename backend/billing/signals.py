@@ -14,12 +14,11 @@ from billing.models import Billing, ReadingBatch, CommitmentDeposit, EstimatedBa
 from billing.utils.metrics_snapshot_service import sync_billing_snapshot, sync_reading_batch_snapshot
 from billing.utils.commitment_deposit_service import update_deposit, wallet_payment_deposit_update
 from billing.utils.payment_service import *
-from claimrequest.models import ClaimRequest, ClaimRequestPayment, VulnerabilityRequest, VulnerabilityRequestStatus
 from contract.models import Bail, BailStatus, Contract, PaymentType, PiggyBank, PiggyBankMovement
 from notification.models import Notification
 from contract.middleware import get_current_user
 from coredata.utils.validators_utils import validate_nif
-from logger.models import LogBailStatus, LogClaimRequestContractChange, LogCommitmentDepositMovement
+from logger.models import LogBailStatus, LogCommitmentDepositMovement
 from billing.utils.invoice_service import change_status_logger, check_piggy_bank, generate_serie_final, get_invoice_status, invoice_claim_paid_generate, invoice_return_charge
 from verifactu.utils.save_verifactu_info import create_verifactu_invoice
 import uuid
@@ -319,6 +318,10 @@ def update_payment(sender, instance, created, **kwargs):
             if invoice_fully_paid:
                 invoice.status = get_invoice_status("invoice_status_paid_token")
                 invoice.save()
+                # PAID real (no piggy): sincronitza reclamacions encara que
+                # check_paid_invoice estigui desconnectat en altres fluxos.
+                if instance.status == status:
+                    check_claim_payments_for_paid_invoice(invoice, user)
             if instance.status == status:
                 try:
                     commitment_deposit = CommitmentDeposit.objects.filter(invoices=invoice).exclude(status__token=commitment_cancelled).get()
@@ -466,35 +469,7 @@ def check_paid_invoice(sender, instance, **kwargs):
                 bail.return_date = payment_date
                 bail.status = BailStatus.objects.get(token=bail_paid_token)
                 bail.save()
-        claim_payments = ClaimRequestPayment.objects.filter(payment__invoice=instance)
-        
-        # Actualitzem els camps is_paid i is_vulnerable
-        for claim_payment in claim_payments:
-            claim_payment.is_paid = True
-            vulnerable_status_approved = VulnerabilityRequestStatus.objects.get(token=ConfigProject.objects.get(token='vulnerability_request_status_accepted_token').value)
-            vulnerability_request = VulnerabilityRequest.objects.filter(claim_request=claim_payment.claim_request, status=vulnerable_status_approved)
-            claim_payment.is_vulnerable = instance.contract and vulnerability_request.exists() if instance.contract else False
-            claim_payment.save()
-            
-            # Si tots els pagaments estan pagats, marquem el contracte com a exclòs
-            if claim_payment.contract:
-                all_payments_paid = not ClaimRequestPayment.objects.filter(
-                    contract=claim_payment.contract,
-                    is_paid=False
-                ).exists()
-                
-                if all_payments_paid:
-                    claim_payment.is_excluded = True
-                    claim_payment.save()
-                    
-                    # Creem un log de l'acció
-                    
-                    LogClaimRequestContractChange.objects.create(
-                        object=claim_payment.claim_request,
-                        deleted_contract=claim_payment.contract,
-                        amount_paid=instance.total_final,
-                        user=user,
-                    )
+        check_claim_payments_for_paid_invoice(instance, user)
 
 @receiver(post_save, sender=Invoice)
 def check_cancel_invoice(sender, instance, **kwargs):

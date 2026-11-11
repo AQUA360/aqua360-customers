@@ -4104,7 +4104,8 @@ export default {
     unlinked_reason_contract_not_found: 'The request is finished but its contract cannot be found',
     open_termination: 'Termination in progress',
     open_termination_info: 'It has a termination request started and unfinished: it will enter the management unless you exclude it manually',
-    only_open_termination: 'Only with termination in progress'
+    only_open_termination: 'Only with termination in progress',
+    with_paid_payments: 'With collected payments'
   },
   editor_block:   {
     head: 'Header',
