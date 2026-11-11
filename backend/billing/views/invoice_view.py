@@ -21,7 +21,7 @@ from auth.permissions import PermissionManager
 from billing.filter.invoice_filter import InvoiceFilter
 from billing.models import Invoice, InvoiceLog, InvoiceStatus, InvoiceSuppressionReason, Payment, PaymentStatus, PaymentType, RejectMotive, PaymentMovement
 from billing.serializers.invoice_serializer import InvoiceFullSerializer, InvoiceLogSerializer, InvoiceMinimalSerializer
-from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals, log_payment_status, generate_payment_movement
+from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals, log_payment_status, generate_payment_movement, save_negative_invoice_to_piggy_bank
 from billing.utils.invoice_service import apply_invoice_payment_method, get_electronic_invoices_data, return_invoice, log_invoice_data_change, change_status_logger
 from billing.utils.invoice_list_queryset import invoice_list_queryset
 from billing.utils.invoice_period import period_year_counts
@@ -32,6 +32,7 @@ from service.models import CompanyBank
 from coredata.utils.name_utils import generate_token
 from billing.views.epayment_document_generate_view import generate_xml
 from statistics.utils.report_service import delete_file_later
+from django.db import transaction
 import logging
 
 logger = logging.getLogger(__name__)
@@ -645,6 +646,27 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     except Exception as e:
         logger.exception("Error inesperat")
         return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+
+  @action(detail=True, methods=['put'], url_path='save-to-piggy-bank')
+  @transaction.atomic
+  def save_to_piggy_bank(self, request, pk=None):
+    """
+    Factura negativa (no payoff): abona l'import al saldo i marca els pagaments
+    amb payment_status_piggy_token. La factura queda pagada.
+    """
+    invoice = Invoice.objects.select_for_update().get(pk=self.get_object().pk)
+    try:
+        save_negative_invoice_to_piggy_bank(invoice, request.user)
+    except ValueError as e:
+        logger.warning("Cannot save invoice %s to piggy bank: %s", invoice.id, str(e))
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        logger.exception("Unexpected error saving invoice %s to piggy bank", invoice.id)
+        return Response({"error": _("Unable to save amount to piggy bank.")}, status=status.HTTP_400_BAD_REQUEST)
+
+    invoice.refresh_from_db()
+    serializer = InvoiceFullSerializer(invoice, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
   @action(detail=False, methods=['get'], url_path='permissions')
 
