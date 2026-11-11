@@ -29,6 +29,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# El detall de l'excepció no es mostra a l'usuari (pot exposar dades internes): va al log de
+# Celery. Les tasques que coneixen el motiu ja tanquen l'item amb un missatge entenedor.
+QUEUE_TASK_FAILED_MESSAGE = "La tasca ha fallat de manera inesperada. Torneu-ho a provar amb «Reiniciar» i, si es repeteix, contacteu amb suport."
+
 class BillingQueueListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -81,7 +85,7 @@ class BillingQueueListView(APIView):
                     try:
                         q_item.status = 'failed'
                         q_item.completed_at = completed_at
-                        q_item.error_message = str(res.info) if res.state == 'FAILURE' else 'Tasca aturada (revoked).'
+                        q_item.error_message = QUEUE_TASK_FAILED_MESSAGE if res.state == 'FAILURE' else 'Tasca aturada (revoked).'
                         q_item.save(update_fields=['status', 'completed_at', 'error_message'])
                         process_next_queue_item()
                     except:
@@ -146,7 +150,7 @@ class BillingQueueStatusView(APIView):
                     try:
                         q_item.status = 'failed'
                         q_item.completed_at = completed_at
-                        q_item.error_message = str(res.info)
+                        q_item.error_message = QUEUE_TASK_FAILED_MESSAGE
                         q_item.save(update_fields=['status', 'completed_at', 'error_message'])
                         process_next_queue_item()
                     except:

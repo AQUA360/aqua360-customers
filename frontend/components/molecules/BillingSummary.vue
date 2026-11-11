@@ -6,6 +6,7 @@ import debounce from 'lodash.debounce';
 import H1 from '~/components/atoms/H1.vue';
 import InvoiceViewEdit from '~/components/organisms/InvoiceViewEdit.vue';
 import MissingContractsDetail from './MissingContractsDetail.vue';
+import BillingProcessErrorsDetail from './BillingProcessErrorsDetail.vue';
 import ConsumptionAlertsDetail from './ConsumptionAlertsDetail.vue';
 import BilledInvoicesCard from './BilledInvoicesCard.vue';
 import BilledInvoicesDetail from './BilledInvoicesDetail.vue';
@@ -84,6 +85,35 @@ const medianDuration = ref(0);
 const numDateRangeWarnings = ref(0);
 
 const consumptionAlertsCount = ref(0);
+
+// Contractes que no s'han pogut facturar en el darrer processat (el lot continua sense ells)
+const processErrors = ref([]);
+const loadingProcessErrors = ref(false);
+
+const loadProcessErrors = async () => {
+  loadingProcessErrors.value = true;
+  try {
+    const res = await $BillingApiService.getProcessErrors(props.billing_id);
+    processErrors.value = Array.isArray(res) ? res : [];
+  } catch (e) {
+    console.error('Error loading process errors:', e);
+  } finally {
+    loadingProcessErrors.value = false;
+  }
+};
+
+const openProcessErrorsRegion = () => {
+  showRegionComponent.value = 'ProcessErrors';
+  showRegion.value = true;
+  loadProcessErrors();
+};
+
+// En tornar a processar o descartar un contracte canvien les factures i els comptadors
+const onProcessErrorsReload = () => {
+  loadProcessErrors();
+  loadData();
+  getData(searchInput.value, 1);
+};
 const loadingConsumptionAlerts = ref(false);
 
 const alertLabel = (alert) => {
@@ -340,6 +370,7 @@ const loadData = async () => {
     }
 
     getInfoMissingContracts();
+    loadProcessErrors();
 
   } else if ((props.queue_item_id || props.task_id || props.billing_id) && !['completed', 'failed', 'skipped'].includes(queueStatus.value)) {
     error.value = false;
@@ -514,6 +545,7 @@ const regenerate = async () => {
       reloading.value = true
       counters.value = null;
       warningInvoices.value = [];
+      processErrors.value = [];
       invoices.value = [];
       progress.value = 0;
       numInvoices.value = 0;
@@ -721,7 +753,7 @@ watch(() => props.load_invoices, (newValue) => {
             <Icon name="fa6-solid:circle-exclamation" />
             {{ t('failed') }}
           </span>
-          <span v-if="queueErrorMessage" class="text-sm text-red-600 font-medium truncate">
+          <span v-if="queueErrorMessage" class="text-sm text-red-600 font-medium line-clamp-3" :title="queueErrorMessage">
             {{ queueErrorMessage }}
           </span>
           <button type="button" :disabled="restartingQueue" @click="restartQueueTask"
@@ -733,6 +765,20 @@ watch(() => props.load_invoices, (newValue) => {
           </button>
         </div>
         <ul class="divide-y divide-gray-200">
+          <li v-if="processErrors.length > 0" class="flex justify-between items-center p-4 relative group bg-red-50">
+            <span class="font-bold text-red-700">
+              <Icon name="fa6-solid:circle-exclamation" class="mr-1" />
+              {{ t('billing_block.process_errors') }}:
+            </span>
+            <span
+              class="inline-flex items-center bg-red-500 text-white text-sm rounded-full px-2 py-1 ml-2 mr-5">{{
+                processErrors.length }}</span>
+            <div
+              class="w-10 cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-150 bg-gradient-to-r from-transparent to-red-200 h-full absolute top-0 right-0 flex items-center justify-center"
+              @click="openProcessErrorsRegion" :title="t('common.view_details')">
+              <Icon name="fa6-solid:eye" class="w-4 h-4 text-red-600" />
+            </div>
+          </li>
           <li class="flex justify-between items-center p-4 relative group">
             <span class="font-bold">{{ t('num_invoices') }}:</span>
             <span
@@ -950,6 +996,11 @@ watch(() => props.load_invoices, (newValue) => {
         <MissingContractsDetail :loading="loadingMissingContracts" :missingContracts="missingContracts"
           :startDate="infoMissingContracts.start_date" :endDate="infoMissingContracts.end_date"
           :type="missingRegionType" :billingId="props.billing_id" @reload="getInfoMissingContracts(true)" />
+      </div>
+      <div v-if="showRegionComponent === 'ProcessErrors'" class="px-10 flex flex-col h-full">
+        <BillingProcessErrorsDetail :billingId="props.billing_id" :errors="processErrors"
+          :loading="loadingProcessErrors && processErrors.length === 0" :disabled="props.isQueueBlocked"
+          @reload="onProcessErrorsReload" @open-region="openRegion" />
       </div>
       <div v-if="showRegionComponent === 'BilledInvoices'" class="px-10 flex flex-col h-full">
         <BilledInvoicesDetail :billingId="props.billing_id" :type="billedInvoicesType" @reload="loadData" />
