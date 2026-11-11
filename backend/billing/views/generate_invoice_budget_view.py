@@ -70,6 +70,8 @@ class GenerateInvoiceBudgetView(APIView):
         send_at = None
         issue_date = None
         readings = None
+        due_date_provided = False
+        send_at_provided = False
         
         payment_type = None
         payment_bank = None
@@ -81,8 +83,12 @@ class GenerateInvoiceBudgetView(APIView):
             payment_bank = payment_data.get("IBAN")
             company_bank = payment_data.get("company_iban", None)
             electronic_data = payment_data.get("electronic_data")
-            due_date = payment_data.get("due_date")
-            send_at = payment_data.get("send_at", None)
+            if 'due_date' in payment_data:
+                due_date_provided = True
+                due_date = payment_data.get("due_date")
+            if 'send_at' in payment_data:
+                send_at_provided = True
+                send_at = payment_data.get("send_at")
             issue_date = payment_data.get("issue_date", None)
             selected_exploitation = payment_data.get("selected_exploitation", None)
             exploitation = None
@@ -91,8 +97,11 @@ class GenerateInvoiceBudgetView(APIView):
                     exploitation = Exploitation.objects.get(id=selected_exploitation)
                 except:
                     pass
-        if not due_date:
+        # New budgets need a default due_date; conversions keep the budget dates
+        # unless payment_data explicitly overrides them.
+        if not due_date and is_budget:
             due_date = (timezone.now() + timedelta(days=30)).date()
+            due_date_provided = True
             
         
         # Titular triat per a un pressupost encara no confirmat. En refacturar, el
@@ -252,7 +261,8 @@ class GenerateInvoiceBudgetView(APIView):
                     electronic_data, is_budget, company_bank,
                     company_id=payment_data.get('company_id') if payment_data else None,
                     category_id=payment_data.get('category_id') if payment_data else None,
-                    new_holder=new_holder_id)
+                    new_holder=new_holder_id,
+                    payment_data=payment_data)
         elif entity == "contract":
             contract = Contract.objects.get(id=object_id)
             title = 'Facturació'
@@ -490,8 +500,10 @@ class GenerateInvoiceBudgetView(APIView):
                     invoice.issue_date = parsed_issue_date
             else:
                 invoice.issue_date = issue_date
-        invoice.due_date = due_date
-        invoice.send_at = send_at
+        if due_date_provided:
+            invoice.due_date = due_date
+        if send_at_provided:
+            invoice.send_at = send_at
 
         invoice.save()
         reconnect_payment_signals()

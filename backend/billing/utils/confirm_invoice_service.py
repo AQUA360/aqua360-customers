@@ -112,7 +112,7 @@ def switch_negative_direct_debit_to_transfer(instance, direct_debit_token):
     instance.payment_type_token_final = bank_transfer.token
 
 
-def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, config_cache = None):
+def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, config_cache = None, preserve_dates = False):
     from billing.utils.invoice_service import check_piggy_bank, generate_serie_final
     from billing.views.invoice_pdf_view import generate_report_invoice_pdf
     
@@ -180,11 +180,12 @@ def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, 
         if not instance.due_date:
             base_date = base_date + relativedelta(months=1)
         
-        # Calculate payment date based on remittance date
+        # Calculate payment date based on remittance date.
+        # preserve_dates: keep budget/invoice due_date & send_at as-is (budget→invoice).
         payment_date = base_date
         due_date = None
         send_at = None
-        if remittance_date:
+        if remittance_date and not preserve_dates:
             # Get the last day of the base_date month using calendar.monthrange
             last_day_of_month = calendar.monthrange(base_date.year, base_date.month)[1]
             last_day_of_month_send = calendar.monthrange(base_send_at.year, base_send_at.month)[1]
@@ -232,7 +233,7 @@ def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, 
                 payment_swift=instance.payment_swift_final if instance.payment_swift_final and instance.left_to_pay != 0 else None,
                 address_final=instance.address_final,
                 location_final=instance.location_final,
-                due_date=base_date,
+                due_date=due_date if due_date else base_date,
                 status=payment_status,
                 payment_date= instance.issue_date if instance.left_to_pay != 0 else payment_date if instance.payment_type_token_final == direct_debit_token else None,
             )
@@ -248,14 +249,14 @@ def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, 
         instance._skip_signal = True
 
         if is_initial_confirmation:
-            # Update due_date if needed
-            current_due_date = _parse_date(instance.due_date)
-            if due_date:
-                instance.due_date = due_date
-            else:
-                instance.due_date = base_date if (current_due_date and current_due_date < base_date) or not current_due_date else current_due_date
-            if send_at:
-                instance.send_at = send_at
+            if not preserve_dates:
+                current_due_date = _parse_date(instance.due_date)
+                if due_date:
+                    instance.due_date = due_date
+                else:
+                    instance.due_date = base_date if (current_due_date and current_due_date < base_date) or not current_due_date else current_due_date
+                if send_at:
+                    instance.send_at = send_at
 
             if instance.status == status_payoff:
                 instance.due_date = datetime.datetime.now().date()
