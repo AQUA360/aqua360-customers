@@ -145,7 +145,13 @@ const selectedPaymentType = ref(null);
 const selectedBankDebit = ref(null);
 const selectedCompanyBankDebit = ref(null);
 const electronicInvoiceData = ref({})
-const due_date = ref(new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+const DEFAULT_BUDGET_DUE_DATE_DAYS = 60;
+const dueDateFromDays = (days) => {
+  const parsed = Number(days);
+  const offset = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_BUDGET_DUE_DATE_DAYS;
+  return new Date(Date.now() + offset * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+};
+const due_date = ref(dueDateFromDays(DEFAULT_BUDGET_DUE_DATE_DAYS));
 const issue_date = ref(new Date(Date.now()).toISOString().split('T')[0]);
 const send_at = ref(null);
 const period_year = ref(new Date().getFullYear());
@@ -832,6 +838,12 @@ onMounted(async () => {
     useMultipleCompanies.value = multi === true || multi === 'True' || multi === 'true';
   } catch {
     useMultipleCompanies.value = false;
+  }
+  try {
+    const days = await $ConfigProjectApiService.get('budget_due_date_days');
+    due_date.value = dueDateFromDays(days);
+  } catch {
+    due_date.value = dueDateFromDays(DEFAULT_BUDGET_DUE_DATE_DAYS);
   }
   await getData()
   if (props.in_invoice) {

@@ -998,8 +998,8 @@ def generate_consumption_invoice_multiple(
             'contract': contract_base,
             'used_aca': contract_base.use_aca,
             'issue_date': billing_batch.issue_date if billing_batch and billing_batch.issue_date else issue_date.date(),
-            'due_date': billing_batch.due_date if billing_batch and billing_batch.due_date else None,
-            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else None,
+            'due_date': billing_batch.due_date if billing_batch and billing_batch.due_date else extra_payment_data.get('due_date') if extra_payment_data and extra_payment_data.get('due_date') else None,
+            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else extra_payment_data.get('send_at') if extra_payment_data and extra_payment_data.get('send_at') else None,
             'title_final': title if title else f"{invoice_type.name.upper()} {contract_base.token}",
             'batch': billing_batch if billing_batch else None,
             'billing': billing if billing else None,
@@ -1124,7 +1124,7 @@ def generate_consumption_invoice_multiple(
         raise Exception("Error creating invoice")
     return invoice
 
-def invoice_contract_generate(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None, company_id=None, category_id=None, new_holder=None):
+def invoice_contract_generate(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None, company_id=None, category_id=None, new_holder=None, payment_data=None):
     # print("creating invoice from contract")
     # print(invoice_type_token)
     try:
@@ -1249,7 +1249,8 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
                 'company': selected_company,
                 'category': selected_category,
                 'exploitation': exploitation if exploitation else None,
-                'issue_date': datetime.datetime.now().date(),
+                'issue_date': datetime.datetime.now().date(), # issue date should never be changed nor customizable
+                'send_at': payment_data.get('send_at') if payment_data and payment_data.get('send_at') else None,
                 'title_final': f'{invoice_type.name.upper()} {title}',
                 'customer_final': f"{person.name} {person.surname if person.surname else ''}",
                 'customer_token_final': person.token,
@@ -2991,7 +2992,8 @@ def _pass_budget_to_invoice(invoice):
         invoice_created._generate_verifactu = True
         invoice_created.save()
 
-        confirm_invoice(invoice_created)
+        # Keep budget due_date/send_at; do not remittance-snap them on confirm.
+        confirm_invoice(invoice_created, preserve_dates=True)
         
         return invoice_created
     except Exception as e:
@@ -3219,7 +3221,6 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
     pass  # log removed
     simplified = contract.simplified_invoice if contract else False
     exploitation = exploitation_instance
-    
     try:
         if contract:
             exploitation = Exploitation.objects.get(id=contract.supply_point_default.connection.exploitation.id)
@@ -3347,7 +3348,7 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             'connection_request': connection_request,
             'issue_date': billing_batch.issue_date if billing_batch and billing_batch.issue_date else issue_date.date(),
             'due_date': billing_batch.due_date if billing_batch and billing_batch.due_date else payment_data.get('due_date') if payment_data and payment_data.get('due_date') else None,
-            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else None,
+            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else payment_data.get('send_at') if payment_data and payment_data.get('send_at') else None,
             'title_final': title if title else f"{invoice_type.name.upper()}",
             'batch': billing_batch,
             'billing': billing,

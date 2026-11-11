@@ -383,7 +383,11 @@ class ContractSerializer(serializers.ModelSerializer):
         
         pending_claim = ConfigProject.objects.get(token='claim_request_status_pending_token').value
         accepted_claim = ConfigProject.objects.get(token='claim_request_status_accepted_token').value
-        claim_requests = ClaimRequest.objects.filter(payments__contract=obj, status__token__in=[pending_claim, accepted_claim])
+        claim_requests = ClaimRequest.objects.filter(
+            payments__contract=obj, 
+            payments__is_excluded=False,
+            status__token__in=[pending_claim, accepted_claim],
+            )
         return claim_requests.count() > 0
     
     def get_calendar_tasks(self, obj):
