@@ -164,7 +164,7 @@ watch(sideIsPinnedContractOpen, (newVal) => {
 
 </script>
 <template>
-    <div class="flex items-center justify-end gap-2">
+    <div class="flex items-center justify-end gap-2 min-w-0">
         <button @click="toggleExploitation" :disabled="loadingExploitation"
             class="enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 w-auto bg-white rounded-lg px-3 hover:bg-slate-200 flex items-center justify-between gap-4">
             <div class="flex justify-end w-full">
@@ -182,19 +182,21 @@ watch(sideIsPinnedContractOpen, (newVal) => {
         </NuxtLink>
         
         <button v-if="fixedObjectsStore.currentPinnedContract" @click="toggleContractPinned"
-            class="cursor-pointer w-[50%] bg-white rounded-lg border border-slate-200 px-3 hover:bg-slate-100 flex items-center justify-between gap-4">
-            <div class="flex justify-between w-full">
-                <div class="flex items-center gap-3">
-                    <Icon name="ic:sharp-push-pin" class="w-5 h-5 text-sky-500" />
-                    <span class="text-slate-800 font-semibold">
+            :title="fixedObjectsStore.currentPinnedContract.holder_full"
+            class="cursor-pointer w-[50%] min-w-0 overflow-hidden bg-white rounded-lg border border-slate-200 px-3 hover:bg-slate-100 flex items-center justify-between gap-4">
+            <!-- min-w-0 on every flex level so a long holder name gets truncated instead of overflowing -->
+            <div class="flex justify-between w-full min-w-0 gap-2">
+                <div class="flex items-center gap-3 min-w-0">
+                    <Icon name="ic:sharp-push-pin" class="w-5 h-5 text-sky-500 shrink-0" />
+                    <span class="text-slate-800 font-semibold shrink-0">
                         <AtomsContractBadge class="cursor-pointer" :contract="fixedObjectsStore.currentPinnedContract"
                             :color="'white'" />
                     </span>
-                    <span class="text-slate-600 text-sm truncate px-2">
+                    <span class="text-slate-600 text-sm truncate px-2 min-w-0">
                         {{ fixedObjectsStore.currentPinnedContract.holder_full }}
                     </span>
                 </div>
-                <kbd class="px-1 my-0.5 items-center flex text-xs font-light text-slate-400 border border-slate-300 rounded-lg">
+                <kbd class="shrink-0 px-1 my-0.5 items-center flex text-xs font-light text-slate-400 border border-slate-300 rounded-lg">
                     Ctrl p</kbd>
 
             </div>
@@ -218,8 +220,11 @@ watch(sideIsPinnedContractOpen, (newVal) => {
         </div>
     </div>
 
+    <!-- z-[45]: NavTop is rendered before <main>, so any page element with the same z-index
+         (table column picker, "..." menus, page regions up to z-40) would be painted on top.
+         Stays below the search and the modals (z-50). -->
     <div role="region" id="right_page"
-        class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 w-[40%] z-20 ease py-2 text-base bg-white overflow-x-hidden overflow-y-auto scrollbar-hide"
+        class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 w-[40%] z-[45] ease py-2 text-base bg-white overflow-x-hidden overflow-y-auto scrollbar-hide"
         :class="{
             'translate-x-0': showRegion,
             'translate-x-full': !showRegion,
