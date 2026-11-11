@@ -357,7 +357,7 @@ class MeterViewSet(viewsets.ModelViewSet):
         except MeterBulkChangeValidationError as exc:
             logger.warning("Bulk change validation failed: %s", exc)
             return Response(
-                {"error": "El fitxer no és vàlid o conté errors de validació."},
+                {"error": exc.public_message},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except MeterBulkChangeError as exc:

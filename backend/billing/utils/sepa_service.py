@@ -5,6 +5,7 @@ from billing.models import CommitmentDeposit, DocumentSEPA, Invoice, InvoiceStat
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import annotate_rejection_warnings
 from billing.utils.payment_service import is_paid_by_direct_debit_with_other_method
+from billing.utils.sepa_invalid_account_service import get_invalid_account_reject_tokens, is_invalid_account_reject_token
 from contract.models import Contract, ContractRequest
 from coredata.models import ConfigProject
 from dateutil.relativedelta import relativedelta
@@ -143,6 +144,7 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
         
         rejections = []
         rjt_dt = datetime.strptime(str(rjt_date), "%Y-%m-%dT%H:%M:%S")
+        invalid_account_tokens = get_invalid_account_reject_tokens()
         for payment_data in returned_payments:
             rejection = {}
             returned_status = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_returned_token').value)
@@ -221,6 +223,7 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
                 rejection["motive"] = f'Invoice paid through another payment method: {payment.payment_type}'
                 final_rjt_str = item_rjt_date.strftime("%Y-%m-%d") if hasattr(item_rjt_date, "strftime") else str(item_rjt_date).split("T")[0] if item_rjt_date else None
                 rejection["rjt_dt"] = final_rjt_str # Ensure rjt_dt is always added
+                rejection["invalid_account"] = False
                 rejection.update(_rejection_file_comparison_fields(payment_data, payment))
                 rejections.append(rejection)
                 continue
@@ -253,6 +256,7 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
                     rejection["prev_status_color"] = payment.status.color
                     rejection["motive_id"] = None
                     rejection["motive"] = f'Payment date is after reject date: {payment.payment_date} > {item_rjt_date}'
+                    rejection["invalid_account"] = False
                     rejection.update(_rejection_file_comparison_fields(payment_data, payment))
                     rejections.append(rejection)
                     continue
@@ -279,6 +283,11 @@ def prepare_rejection_info(returned_payments, company_data, paid_payments, clien
             rejection["motive_id"] = motive.id if motive else None
             rejection["motive"] = motive.name if motive else None
             rejection["rjt_dt"] = item_rjt_date.strftime("%Y-%m-%d") if hasattr(item_rjt_date, "strftime") else str(item_rjt_date).split("T")[0] if item_rjt_date else None
+            # Motiu de compte invàlid: en aplicar el retorn es treurà la domiciliació d'aquest IBAN
+            rejection["invalid_account"] = (
+                is_invalid_account_reject_token(payment_data.get("RJT"), invalid_account_tokens)
+                and not rejection.get("skip_return")
+            )
             rejection.update(_rejection_file_comparison_fields(payment_data, payment))
             rejections.append(rejection)
         
@@ -389,6 +398,7 @@ def handle_not_found_payment(client_data, company_data, rjt_date):
         rejection["motive_id"] = None
         rejection["motive"] = motive.name if motive else None
         rejection["rjt_dt"] = reject_date # Ensure rjt_dt is always added
+        rejection["invalid_account"] = False
         return rejection
     if payment.invoice:
         invoice = Invoice.objects.get(id=payment.invoice.id)
@@ -429,6 +439,7 @@ def handle_not_found_payment(client_data, company_data, rjt_date):
         rejection["motive_id"] = None
         rejection["motive"] = f'Invoice paid through another payment method: {payment.payment_type}'
         rejection["rjt_dt"] = reject_date # Ensure rjt_dt is always added
+        rejection["invalid_account"] = False
         return rejection
     
     if payment.payment_date and reject_date:
@@ -461,6 +472,8 @@ def handle_not_found_payment(client_data, company_data, rjt_date):
     rejection["motive_id"] = motive.id if motive else None
     rejection["motive"] = motive.name if motive else None
     rejection["rjt_dt"] = reject_date # Ensure rjt_dt is always added
+    # Motiu de compte invàlid: en aplicar el retorn es treurà la domiciliació d'aquest IBAN
+    rejection["invalid_account"] = is_invalid_account_reject_token(reject_token) and not rejection.get("skip_return")
     return rejection
 
 def handle_document_sepa(document, company_data, clients_data, msgId, client_doc_ids, or_file_content, rjt_date):

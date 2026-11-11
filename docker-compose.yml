@@ -10,6 +10,16 @@ x-django-env: &django-env
   DATABASE_PORT: 5432
   CELERY_BROKER_URL: redis://redis:6379/0
 
+# Informació del deploy per al NavSidebar (versió, commit i data del build). Les imatges de
+# GitHub ja la porten; en un build local només cal si es vol informar: exporta aquestes variables
+# abans de `docker compose build` (sense, només es registra la data del build).
+x-deploy-build-args: &deploy-build-args
+  APP_VERSION: ${APP_VERSION:-}
+  GIT_COMMIT: ${GIT_COMMIT:-}
+  GIT_COMMIT_DATE: ${GIT_COMMIT_DATE:-}
+  GIT_BRANCH: ${GIT_BRANCH:-}
+  BUILD_DATE: ${BUILD_DATE:-}
+
 # Imatges: cada release es construeix a GitHub (.github/workflows/imatges.yml) i es publica a ghcr.io.
 # Amb CUSTOMERS_VERSION=v1.135.00 al .env, `docker compose pull && docker compose up -d` baixa
 # aquella versió sense construir res. Sense CUSTOMERS_VERSION, o amb `up --build`, es construeix
@@ -52,6 +62,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args: *deploy-build-args
     restart: unless-stopped
     env_file:
       - .env
@@ -85,6 +96,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args: *deploy-build-args
     restart: unless-stopped
     entrypoint: ["/app/docker-celery-worker.sh"]
     command: []
@@ -107,6 +119,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args: *deploy-build-args
     restart: unless-stopped
     entrypoint: ["/app/docker-celery-beat.sh"]
     command: []
@@ -130,6 +143,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
+        <<: *deploy-build-args
         NUXT_PUBLIC_API_HOST: ${NUXT_PUBLIC_API_HOST:-http://localhost:8000}
         NUXT_PUBLIC_DEFAULT_LOCALE: ${LANGUAGE:-ca}
         NUXT_PUBLIC_ENV: ${ENV:-test}
@@ -154,6 +168,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args: *deploy-build-args
     command: python -u manage.py run_gmao_consumer
     # Només per als clients amb GMAO: s'engega amb COMPOSE_PROFILES=gmao al .env. Sense, l'stack
     # no el crea ni l'actualitza.

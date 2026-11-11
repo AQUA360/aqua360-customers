@@ -111,6 +111,7 @@ const tokenReturnInvoice = ref('');
 const tokenReturnPayment = ref('');
 const tokenReturnLineitem = ref('');
 const name = ref('');
+const declaredAsReturn = ref('');
 const declaredAs = ref('');
 /** Normal amounts: debt/have column + normal/negative sign. */
 const declareAs = ref('debt');
@@ -252,6 +253,7 @@ const additionalLineForm = ref({
     tokenReturn: '',
     name: '',
     declaredAs: '',
+    declaredAsReturn: '',
     accountingConcept: null,
     isNegative: false,
     declareAs: 'debt',
@@ -358,6 +360,7 @@ const resetAdditionalLineForm = () => {
         tokenReturn: '',
         name: '',
         declaredAs: '',
+        declaredAsReturn: '',
         accountingConcept: null,
         isNegative: false,
         declareAs: 'debt',
@@ -422,6 +425,7 @@ const openAdditionalLinePanel = async (line = null) => {
             tokenReturn: line.token_return || '',
             name: line.name || '',
             declaredAs: line.declared_as || '',
+            declaredAsReturn: line.declared_as_return || '',
             accountingConcept: mapAdditionalLineConceptOption(line.accounting_concept),
             isNegative: !!line.is_negative,
             declareAs: normalizeDeclareAs(line.declare_as),
@@ -465,6 +469,7 @@ const saveAdditionalLine = async () => {
             token_return: optionalText(form.tokenReturn),
             name: (form.name || '').trim(),
             declared_as: optionalText(form.declaredAs),
+            declared_as_return: optionalText(form.declaredAsReturn),
             is_negative: !!form.isNegative,
             declare_as: normalizeDeclareAs(form.declareAs),
             declare_sign: normalizeSign(form.declareSign),
@@ -1980,6 +1985,7 @@ const getAccountingPricingData = async () => {
         tokenReturnLineitem.value = response.token_return_lineitem || '';
         name.value = response.name || '';
         declaredAs.value = response.declared_as || '';
+        declaredAsReturn.value = response.declared_as_return || '';
         declareAs.value = normalizeDeclareAs(response.declare_as);
         declareSign.value = normalizeSign(response.declare_sign);
         returnDeclareAs.value = normalizeDeclareAs(response.return_declare_as);
@@ -2203,6 +2209,7 @@ const buildBasePayload = () => ({
     token_return_lineitem: optionalText(tokenReturnLineitem.value),
     name: (name.value || '').trim(),
     declared_as: optionalText(declaredAs.value),
+    declared_as_return: optionalText(declaredAsReturn.value),
     declare_as: normalizeDeclareAs(declareAs.value),
     declare_sign: normalizeSign(declareSign.value),
     return_declare_as: normalizeDeclareAs(returnDeclareAs.value),
@@ -3378,6 +3385,21 @@ onMounted(async () => {
                                 </p>
                             </div>
 
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_pricing_declared_as_return') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
+                                        }})</span>
+                                </label>
+                                <input v-model="declaredAsReturn" type="text" class="input"
+                                    :disabled="!!existingSelection"
+                                    :placeholder="declaredAs || t('pricing_block.accounting_pricing_declared_as_return')" />
+                                <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                    {{ t('pricing_block.accounting_pricing_declared_as_return_hint') }}
+                                </p>
+                            </div>
+
                             <details class="group/declare sm:col-span-2 overflow-hidden rounded-md border bg-white"
                                 style="border-color: var(--accent-soft)">
                                 <summary
@@ -4171,6 +4193,9 @@ onMounted(async () => {
                                     @click="openAdditionalLinePanel(line)">
                                     <p class="truncate text-[13px] font-bold text-sky-950">
                                         {{ line.declared_as || line.name || '—' }}
+                                        <template v-if="line.declared_as_return">
+                                            · <span class="font-normal text-slate-500">{{ line.declared_as_return }}</span>
+                                        </template>
                                     </p>
                                     <p class="mt-0.5 font-mono text-[11px] tracking-wide text-slate-500">
                                         {{ line.token || '—' }}
@@ -4293,6 +4318,16 @@ onMounted(async () => {
                                 </label>
                                 <input v-model="additionalLineForm.declaredAs" type="text" class="input"
                                     :placeholder="t('pricing_block.accounting_pricing_declared_as')" />
+                            </div>
+                            <div>
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_pricing_declared_as_return') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
+                                        }})</span>
+                                </label>
+                                <input v-model="additionalLineForm.declaredAsReturn" type="text" class="input"
+                                    :placeholder="additionalLineForm.declaredAs || t('pricing_block.accounting_pricing_declared_as_return')" />
                             </div>
                             <div class="sm:col-span-2">
                                 <label

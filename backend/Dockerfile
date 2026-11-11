@@ -26,6 +26,18 @@ COPY . /app/
 RUN chmod +x /app/docker-entrypoint.sh \
     && chmod +x /app/docker-celery-worker.sh /app/docker-celery-beat.sh
 
+# Informació del deploy (versió, commit i data del build) per al NavSidebar. La passa
+# .github/workflows/imatges.yml; el context del build no porta .git ni la imatge té git.
+# Sense args (build al servidor) només es registra la data del build.
+ARG APP_VERSION=
+ARG GIT_COMMIT=
+ARG GIT_COMMIT_DATE=
+ARG GIT_BRANCH=
+ARG BUILD_DATE=
+RUN APP_VERSION="$APP_VERSION" GIT_COMMIT="$GIT_COMMIT" GIT_COMMIT_DATE="$GIT_COMMIT_DATE" \
+    GIT_BRANCH="$GIT_BRANCH" BUILD_DATE="$BUILD_DATE" \
+    python -m customers.deploy_info /app/deploy_info.json
+
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 CMD ["gunicorn", "customers.wsgi:application", "-c", "/app/gunicorn.conf.py"]

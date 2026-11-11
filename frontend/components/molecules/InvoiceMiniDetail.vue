@@ -10,6 +10,8 @@ import { formatDate } from '~/utils/date';
 
 import IBAN from '../atoms/IBAN.vue';
 
+import SelectorType from '../atoms/SelectorType.vue';
+
 import SendInvoiceModal from './SendInvoiceModal.vue';
 
 const { t } = useI18n();
@@ -62,9 +64,38 @@ const props = defineProps({
     default: false
   },
 
+  // Toggle between invoices (is_invoice=true) and budgets (is_invoice=false).
+  listTypeSelectable: {
+    type: Boolean,
+    default: false
+  },
+
+  listType: {
+    type: String,
+    default: 'invoice',
+  },
+
+  loading: {
+    type: Boolean,
+    default: false,
+  },
+
 });
 
-const emit = defineEmits(['show-detail']);
+const emit = defineEmits(['show-detail', 'update:listType']);
+
+const listTypeOptions = computed(() => [
+  { value: 'invoice', label: t('invoices') },
+  { value: 'budget', label: t('common.budgets') },
+]);
+
+const exportSheetName = computed(() =>
+  props.listType === 'budget' ? t('common.budgets') : t('invoices')
+);
+
+const onListTypeSelect = (value) => {
+  emit('update:listType', value);
+};
 
 const {
   $PaymentApiService
@@ -74,6 +105,18 @@ const showDetail = function (component, id) {
   selectedId.value = id;
   emit('show-detail', component, id);
 };
+
+// Relations sent by the invoice list (credit note and rebilling, both directions).
+const INVOICE_RELATIONS = [
+  { key: 'rectifying_invoice', label: 'billing_block.relation_rectified_by' },
+  { key: 'rectified_invoice', label: 'billing_block.relation_rectifies' },
+  { key: 'refactored_invoice', label: 'billing_block.relation_refactors' },
+  { key: 'refactor_invoice', label: 'billing_block.relation_refactored_in' },
+];
+
+const invoiceRelations = (item) => INVOICE_RELATIONS
+  .filter((relation) => item[relation.key])
+  .map((relation) => ({ key: relation.key, label: t(relation.label), invoice: item[relation.key] }));
 
 // ---------------------------------------------------------
 // XLSX EXPORT
@@ -386,6 +429,10 @@ const selectedId = ref(null);
 
 const localData = ref(null);
 
+const showToolbar = computed(() =>
+  props.listTypeSelectable || Boolean(props.exportable && localData.value?.length)
+);
+
 const paymentSelected = ref(null);
 
 const showPayments = (item) => {
@@ -506,9 +553,16 @@ watch(
 
   <!-- Toolbar -->
   <div
-    v-if="exportable && localData && localData.length > 0"
+    v-if="showToolbar"
     class="flex justify-end items-center gap-2 mb-1"
   >
+    <SelectorType
+      v-if="listTypeSelectable"
+      :model-value="listType"
+      :options="listTypeOptions"
+      @select="onListTypeSelect"
+    />
+
     <!-- Grouped send -->
     <button
       v-if="groupedInvoiceMode && showSend"
@@ -530,16 +584,23 @@ watch(
   
     <!-- Download XLSX -->
     <AtomsDownloadXlsxButton
+      v-if="exportable && localData && localData.length > 0"
       :rows="localData"
       :columns="exportColumns"
       :file-name="exportFileName"
-      :sheet-name="t('invoices')"
+      :sheet-name="exportSheetName"
+      :class="{ 'pointer-events-none opacity-60': loading }"
     />
+  </div>
+
+  <div v-if="loading" class="flex justify-center items-center mt-5 mb-10">
+    <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
+    <span class="ml-2">{{ t('common.loading') }}...</span>
   </div>
 
   <!-- Invoice table -->
   <div
-    v-if="localData && localData.length > 0"
+    v-else-if="localData && localData.length > 0"
     class="min-w-full text-sm text-slate-800 mt-2 overflow-x-auto"
   >
 
@@ -659,9 +720,8 @@ watch(
       </div>
 
       <!-- Invoice -->
-      <div
-        class="footering text-slate-500 p-2 w-full min-w-0 flex items-center gap-x-2"
-      >
+      <div class="footering text-slate-500 p-2 w-full min-w-0">
+      <div class="flex items-center gap-x-2">
 
         <button
           v-if="!props.isSubRegion"
@@ -685,6 +745,31 @@ watch(
           :id="item.id"
           :path="'/billing/invoice/'"
         />
+
+      </div>
+
+      <!-- Credit notes and rebilling linked to the invoice -->
+      <p
+        v-for="relation in invoiceRelations(item)"
+        :key="relation.key"
+        class="text-xs leading-tight flex flex-wrap items-center gap-x-1"
+      >
+        <span>{{ relation.label }}</span>
+        <button
+          v-if="!props.isSubRegion"
+          @click="showDetail('InvoiceRegion', relation.invoice.id)"
+          class="text-sky-500 underline break-all text-start"
+        >
+          {{ relation.invoice.serie_final || relation.invoice.token }}
+        </button>
+        <span v-else class="break-all">
+          {{ relation.invoice.serie_final || relation.invoice.token }}
+        </span>
+        <AtomsRedirectButton
+          :id="relation.invoice.id"
+          :path="'/billing/invoice/'"
+        />
+      </p>
 
       </div>
 

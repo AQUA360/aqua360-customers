@@ -267,7 +267,7 @@ class TestSidebarLayout(DashboardTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['is_default'])
         self.assertEqual(response.data['layout'], {
-            'sections': {'hidden': [], 'order': []}, 'folded': [], 'items': {},
+            'sections': {'hidden': [], 'order': []}, 'folded': [], 'items': {}, 'favorites': [], 'recent': [],
         })
 
     def test_save_and_read_per_user(self):
@@ -276,6 +276,8 @@ class TestSidebarLayout(DashboardTestCase):
             'sections': {'hidden': ['pricing'], 'order': ['billing', 'contract']},
             'folded': ['service'],
             'items': {'billing': {'hidden': ['bails'], 'order': ['invoices', 'billing']}},
+            'favorites': ['billing/invoices', 'contract/contracts'],
+            'recent': ['contract/persons', 'billing/invoices'],
         }
         response = self.client.put(SIDEBAR_URL, {'layout': layout}, format='json')
         self.assertEqual(response.status_code, 200)
@@ -296,6 +298,8 @@ class TestSidebarLayout(DashboardTestCase):
             'sections': {'hidden': ['pricing', 'pricing', 3, None, 'x' * 100], 'order': 'billing'},
             'folded': {'service': True},
             'items': {'billing': {'hidden': ['bails', {'a': 1}]}, 'y' * 100: {'hidden': ['a']}, 'orders': 'x'},
+            'favorites': ['billing/invoices', 'billing/invoices', 7, 'z' * 100],
+            'recent': ['a/1', 'a/1', 'a/2', 'a/3', 'a/4', 'a/5', 'a/6'],
             'unknown': 'ignored',
         }
         response = self.client.put(SIDEBAR_URL, {'layout': layout}, format='json')
@@ -307,6 +311,8 @@ class TestSidebarLayout(DashboardTestCase):
                 'billing': {'hidden': ['bails'], 'order': []},
                 'orders': {'hidden': [], 'order': []},
             },
+            'favorites': ['billing/invoices'],
+            'recent': ['a/1', 'a/2', 'a/3', 'a/4', 'a/5'],
         })
 
     def test_layout_must_be_an_object(self):

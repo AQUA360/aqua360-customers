@@ -46,11 +46,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.CODI }}
+          # Historial i etiquetes complets: `git describe --tags` dona la versió de les imatges
+          # de branca (per exemple, v1.152.01-5-gabcdef12).
+          fetch-depth: 0
 
       # Etiqueta també amb el commit: HelpAsset, en actualitzar, busca la imatge del commit que
       # posa i, si no hi és, la construeix al servidor.
+      #
+      # La resta és la informació del deploy que es mostra al NavSidebar (es passa com a build
+      # args: el context del build no porta .git). La data del deploy és la del build: la imatge
+      # és immutable i reiniciar el contenidor no la canvia.
       - id: commit
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          ESDEVENIMENT: ${{ github.event_name }}
+          BRANCA: ${{ github.ref_name }}
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          if [ "$ESDEVENIMENT" = "push" ]; then
+            echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+            echo "branch=$BRANCA" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$VERSIO" >> "$GITHUB_OUTPUT"
+            echo "branch=" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-buildx-action@v3
 
@@ -64,6 +84,12 @@ jobs:
         with:
           context: ./${{ matrix.part }}
           push: true
+          build-args: |
+            APP_VERSION=${{ steps.commit.outputs.version }}
+            GIT_COMMIT=${{ steps.commit.outputs.sha }}
+            GIT_COMMIT_DATE=${{ steps.commit.outputs.date }}
+            GIT_BRANCH=${{ steps.commit.outputs.branch }}
+            BUILD_DATE=${{ steps.commit.outputs.built }}
           tags: |
             ghcr.io/aqua360/aqua360-customers-${{ matrix.part }}:${{ env.VERSIO }}
             ghcr.io/aqua360/aqua360-customers-${{ matrix.part }}:${{ steps.commit.outputs.sha }}

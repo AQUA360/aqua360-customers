@@ -6,9 +6,10 @@ import { usePermissions } from '~/middleware/permission';
 import { useConfigStore } from '~/stores/useConfigStore';
 import { useExploitationStore } from '~/stores/useExploitationStore';
 import { storeToRefs } from 'pinia';
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { AVAILABLE_LANGUAGES } from '~/utils/languages';
 import { useNavSidebarLayout } from '~/composables/useNavSidebarLayout';
+import Draggable from 'vuedraggable';
 
 const { t, locale } = useI18n();
 const sideBarStore = useSidebarStore();
@@ -21,7 +22,7 @@ const env = config.public.env;
 
 const showDropdown = ref(false);
 const {
-  deployedAtLabel,
+  summaryLabel: deploySummaryLabel,
   available: deployInfoAvailable,
   frontendLabel: deployFrontendLabel,
   backendLabel: deployBackendLabel,
@@ -35,7 +36,7 @@ const toggleDropdown = () => {
   if (showDropdown.value) loadDeployInfo();
 };
 
-/** Data del deploy i, en passar-hi el ratolí, el commit desplegat de cada repo. */
+/** En passar-hi el ratolí, la versió, el commit i la data del build de frontend i backend. */
 const deployTooltip = computed(() => [
   `${t('common.deploy_frontend')}: ${deployFrontendLabel.value}`,
   `${t('common.deploy_backend')}: ${deployBackendLabel.value}`,
@@ -262,9 +263,133 @@ const {
   toggleItem: toggleMenuItem,
   moveItemTo: moveMenuItemTo,
   moveItemBy: moveMenuItemBy,
+  favoriteItems,
+  isFavorite,
+  addFavorite,
+  toggleFavorite,
+  moveFavoriteTo,
+  recentItems,
+  recordVisit,
   isCustomised: isMenuCustomised,
   resetLayout: resetMenuLayout,
 } = useNavSidebarLayout(menuSections);
+
+// Cada pàgina del menú que es visita passa al davant de Recents.
+watch([() => route.path, menuSections], () => {
+  for (const section of menuSections.value) {
+    const item = section.items.find(isMenuItemActive);
+    if (item) {
+      recordVisit(section.key, item.key);
+      return;
+    }
+  }
+}, { immediate: true });
+
+// --- Arrossegament al menú ----------------------------------------------------
+// Sortable amb `forceFallback`: la còpia que segueix el ratolí és un element
+// nostre (classe `nav-drag-fallback`) i, després d'arrossegar, el clic que
+// tanca el gest no plega la secció ni obre l'enllaç.
+const dragOptions = {
+  animation: 180,
+  forceFallback: true,
+  fallbackOnBody: true,
+  fallbackTolerance: 5,
+  fallbackClass: 'nav-drag-fallback',
+  ghostClass: 'nav-drag-placeholder',
+  delayOnTouchOnly: true,
+  delay: 200,
+};
+
+// Mentre s'arrossega una secció es pleguen totes (només visualment, no es desa)
+// perquè es vegi on anirà.
+const draggingSections = ref(false);
+// Enllaç que s'està arrossegant: { sectionKey, favorite }. Mentre dura es mostra
+// Preferits encara que sigui buit, per poder-l'hi deixar.
+const draggedItem = ref(null);
+const draggingItem = computed(() => !!draggedItem.value);
+
+/** Un enllaç només es pot deixar a la seva secció o, si encara no ho és, a Preferits. */
+const canDropItemIn = (zoneKey) =>
+  !draggedItem.value ||
+  zoneKey === draggedItem.value.sectionKey ||
+  (zoneKey === 'favorites' && !draggedItem.value.favorite);
+
+// Si el ratolí és fora d'on es pot deixar l'enllaç, la còpia que l'acompanya ho indica.
+const markForbiddenDrop = (event) => {
+  const zone = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-nav-drop]');
+  const allowed = !!zone && canDropItemIn(zone.dataset.navDrop);
+  document.querySelector('.nav-drag-fallback')?.classList.toggle('nav-drag-forbidden', !allowed);
+  document.body.classList.toggle('nav-drag-forbidden-cursor', !allowed);
+};
+
+const onItemDragStart = (section, event) => {
+  draggedItem.value = { sectionKey: section.key, favorite: !!event.item?.dataset.favorite };
+  document.addEventListener('pointermove', markForbiddenDrop);
+  document.addEventListener('mousemove', markForbiddenDrop);
+  document.addEventListener('touchmove', markForbiddenTouch, { passive: true });
+};
+
+const markForbiddenTouch = (event) => {
+  if (event.touches?.[0]) markForbiddenDrop(event.touches[0]);
+};
+
+const onItemDragEnd = () => {
+  draggedItem.value = null;
+  document.removeEventListener('pointermove', markForbiddenDrop);
+  document.removeEventListener('mousemove', markForbiddenDrop);
+  document.removeEventListener('touchmove', markForbiddenTouch);
+  document.body.classList.remove('nav-drag-forbidden-cursor');
+};
+
+const onSectionDragStart = (event) => {
+  draggingSections.value = true;
+  // En plegar-se tot, la secció arrossegada pot quedar fora de la vista.
+  nextTick(() => event.item?.scrollIntoView({ block: 'nearest' }));
+};
+
+const onSectionDragEnd = () => {
+  draggingSections.value = false;
+};
+
+/**
+ * vuedraggable informa de la nova posició dins la llista visible; es passa a la
+ * clau que hi havia en aquella posició perquè les seccions o enllaços amagats
+ * conservin el seu lloc a l'ordre complet.
+ */
+const onSectionsChange = ({ moved }) => {
+  if (!moved) return;
+  const target = visibleMenuSections.value[moved.newIndex];
+  if (target) moveMenuSectionTo(moved.element.key, target.key);
+};
+
+const onItemsChange = (section, { moved }) => {
+  if (!moved) return;
+  const target = visibleMenuItems(section)[moved.newIndex];
+  if (target) moveMenuItemTo(section, moved.element.key, target.key);
+};
+
+// Un enllaç arrossegat des d'una secció a Preferits s'hi copia (es queda també a la secció).
+const itemsGroup = { name: 'nav-items', pull: 'clone', put: false };
+const favoritesGroup = {
+  name: 'nav-favorites',
+  pull: false,
+  put: (_to, _from, dragEl) => !dragEl.dataset.favorite,
+};
+
+const onFavoritesChange = ({ moved, added }) => {
+  if (moved) {
+    const target = favoriteItems.value[moved.newIndex];
+    if (target) moveFavoriteTo(moved.element.key, target.key);
+  } else if (added) {
+    // L'element afegit és l'enllaç d'una secció: { key, ..., sectionKey }.
+    const before = favoriteItems.value[added.newIndex];
+    addFavorite(added.element.sectionKey, added.element.key, before?.key);
+  }
+};
+
+/** Enllaços d'una secció per al llistat arrossegable, amb la clau de la secció. */
+const draggableItems = (section) =>
+  visibleMenuItems(section).map((item) => ({ ...item, sectionKey: section.key }));
 
 const showMenuCustomizer = ref(false);
 // Seccions desplegades al panell de personalització per veure'n els enllaços.
@@ -379,6 +504,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
+  onItemDragEnd();
 });
 
 </script>
@@ -494,35 +620,62 @@ onUnmounted(() => {
 
     <!-- Scrollable Middle Part -->
     <div class="flex-1 overflow-y-auto pr-1 select-none scrollbar-thin">
-      <MoleculesNavSidebarSection v-for="section in visibleMenuSections" :key="section.key" :id="section.id"
-        :title="section.label" :folded="isFolded(section.key)" :icons-only="isCollapsed"
-        @toggle="toggleFolded(section.key)">
-        <NuxtLink v-for="item in visibleMenuItems(section)" :key="item.key" :to="item.to"
-          class="flex w-full items-center px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, {
-            [highlightClass]: isMenuItemActive(item),
-            'font-[750]': item.dailyDocumentsBadge && sideBarStore.newDailyDocuments > 0,
-            'font-medium': !(item.dailyDocumentsBadge && sideBarStore.newDailyDocuments > 0),
-            'justify-center': isCollapsed
-          }]"
-          :title="isCollapsed ? item.label + (item.dailyDocumentsBadge && sideBarStore.newDailyDocuments ? ` (${sideBarStore.newDailyDocuments})` : '') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="relative flex w-6 shrink-0 justify-center">
-              <img v-if="item.image" :src="item.image" alt="" class="h-4 grayscale brightness-75 opacity-70" />
-              <Icon v-else :name="item.icon" class="text-slate-500" />
-              <span
-                v-if="item.dailyDocumentsBadge && sideBarStore.newDailyDocuments > 0"
-                class="pointer-events-none absolute -top-0.5 -right-0.5 flex size-2"
-                aria-hidden="true">
-                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
-                <span class="relative inline-flex size-2 rounded-full bg-sky-500"></span>
-              </span>
-            </span>
-            <span v-show="!isCollapsed" class="truncate">{{ item.label }}</span>
-            <span v-if="item.dailyDocumentsBadge" v-show="!isCollapsed">({{ sideBarStore.newDailyDocuments }})</span>
-          </div>
-        </NuxtLink>
+      <!-- Preferits: s'hi pot arrossegar un enllaç de qualsevol secció -->
+      <MoleculesNavSidebarSection v-if="favoriteItems.length || draggingItem" id="nav-favorite-links" data-nav-drop="favorites"
+        class="transition-opacity" :class="{ 'opacity-30': !canDropItemIn('favorites') }"
+        :title="$t('common.favorites')" :folded="isFolded('favorites') || draggingSections" :icons-only="isCollapsed"
+        @toggle="toggleFolded('favorites')">
+        <Draggable :model-value="favoriteItems" item-key="key" :group="favoritesGroup" v-bind="dragOptions"
+          :disabled="isCollapsed" class="min-h-8 rounded" :class="{ 'bg-amber-50 outline-dashed outline-1 outline-amber-300': draggingItem && canDropItemIn('favorites') }"
+          @change="onFavoritesChange">
+          <template #item="{ element }">
+            <div :data-favorite="true">
+              <MoleculesNavSidebarLink :item="element.item" :active="isMenuItemActive(element.item)"
+                :icons-only="isCollapsed" favorite :hover-class="hoverClass" :highlight-class="highlightClass"
+                :new-daily-documents="sideBarStore.newDailyDocuments"
+                @toggle-favorite="toggleFavorite(element.section.key, element.item.key)" />
+            </div>
+          </template>
+        </Draggable>
+        <p v-if="!favoriteItems.length && !isCollapsed" class="px-3 pb-2 text-xs text-slate-400 pointer-events-none">
+          {{ $t('common.drop_here_favorite') }}
+        </p>
       </MoleculesNavSidebarSection>
+
+      <!-- Recents: les darreres pàgines del menú visitades, de la més nova a la més antiga -->
+      <MoleculesNavSidebarSection v-if="recentItems.length" id="nav-recent-links" data-nav-drop="recent"
+        :title="$t('common.recent')" :folded="isFolded('recent') || draggingSections" :icons-only="isCollapsed"
+        class="transition-opacity" :class="{ 'opacity-30': !canDropItemIn('recent') }"
+        @toggle="toggleFolded('recent')">
+        <MoleculesNavSidebarLink v-for="recent in recentItems" :key="recent.key" :item="recent.item"
+          :active="isMenuItemActive(recent.item)" :icons-only="isCollapsed"
+          :favorite="isFavorite(recent.section.key, recent.item.key)" :hover-class="hoverClass"
+          :highlight-class="highlightClass" :new-daily-documents="sideBarStore.newDailyDocuments"
+          @toggle-favorite="toggleFavorite(recent.section.key, recent.item.key)" />
+      </MoleculesNavSidebarSection>
+
+      <Draggable :model-value="visibleMenuSections" item-key="key" v-bind="dragOptions" handle=".nav-section-handle"
+        :disabled="isCollapsed" @start="onSectionDragStart" @end="onSectionDragEnd" @change="onSectionsChange">
+        <template #item="{ element: section }">
+          <MoleculesNavSidebarSection :id="section.id" :title="section.label" :data-nav-drop="section.key"
+            class="transition-opacity" :class="{ 'opacity-30': !canDropItemIn(section.key) }"
+            :folded="isFolded(section.key) || draggingSections" :icons-only="isCollapsed"
+            @toggle="toggleFolded(section.key)">
+            <Draggable :model-value="draggableItems(section)" item-key="key" :group="itemsGroup" v-bind="dragOptions"
+              :disabled="isCollapsed" @start="onItemDragStart(section, $event)" @end="onItemDragEnd"
+              @change="onItemsChange(section, $event)">
+              <template #item="{ element: item }">
+                <div :data-favorite="isFavorite(section.key, item.key) || undefined">
+                  <MoleculesNavSidebarLink :item="item" :active="isMenuItemActive(item)" :icons-only="isCollapsed"
+                    :favorite="isFavorite(section.key, item.key)" :hover-class="hoverClass"
+                    :highlight-class="highlightClass" :new-daily-documents="sideBarStore.newDailyDocuments"
+                    @toggle-favorite="toggleFavorite(section.key, item.key)" />
+                </div>
+              </template>
+            </Draggable>
+          </MoleculesNavSidebarSection>
+        </template>
+      </Draggable>
 
       <!-- Accés visible a la personalització, sempre al final de les seccions -->
       <button type="button"
@@ -580,13 +733,13 @@ onUnmounted(() => {
           <span>{{ $t('common.help') }}</span>
         </a>
 
-        <!-- Deploy info: data del deploy i, en hover, els commits desplegats -->
+        <!-- Deploy info: versió i data del deploy i, en hover, el detall de frontend i backend -->
         <div class="px-3 py-2 flex items-center gap-2 text-slate-500 select-none cursor-help"
           :title="deployInfoAvailable ? deployTooltip : $t('common.deploy_unknown')">
           <Icon name="fa6-solid:code-branch" class="w-4 h-4 text-slate-400 shrink-0" />
           <span class="text-xs truncate">
             {{ $t('common.deploy') }}:
-            <span class="font-medium text-slate-600">{{ deployedAtLabel || '—' }}</span>
+            <span class="font-medium text-slate-600">{{ deploySummaryLabel || '—' }}</span>
           </span>
         </div>
 
@@ -717,6 +870,35 @@ onUnmounted(() => {
 
   </nav>
 </template>
+
+<style>
+/* Còpia que segueix el ratolí en arrossegar (penja del body, per això no és scoped):
+   una secció es mostra plegada, només amb el títol. */
+.nav-drag-fallback {
+  height: auto !important;
+  background: white;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+  opacity: 0.95 !important;
+  list-style: none;
+}
+.nav-drag-fallback [data-nav-section-links] {
+  display: none !important;
+}
+.nav-drag-fallback.nav-drag-forbidden {
+  opacity: 0.45 !important;
+  outline: 1px solid rgb(248 113 113);
+}
+body.nav-drag-forbidden-cursor,
+body.nav-drag-forbidden-cursor * {
+  cursor: not-allowed !important;
+}
+.nav-drag-placeholder {
+  opacity: 0.4;
+  background: rgb(224 242 254);
+  border-radius: 0.375rem;
+}
+</style>
 
 <style scoped>
 /* Integrated custom scrollbar that doesn't stand out */
