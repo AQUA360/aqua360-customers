@@ -533,7 +533,9 @@ const pinObject = async () => {
       save_date.is_checked = true;
       data.value.is_checked = true;
       await nextTick();
-      return router.push(`/contract/contracts/${props.id}/pinned/`);
+      // Open the pinned contract as a region (NavTopPinned panel) instead of navigating to the
+      // full page, so the user stays where they were and can close it.
+      sidebarStore.openPinnedContract();
     }
     handleChange()
   } catch (err) {
@@ -704,14 +706,16 @@ const addWalletBalance = () => {
                 class="px-1 py-1.5 text-xs font-light text-slate-400 bg-white group-hover:bg-slate-100 border border-gray-200 rounded-lg">
                 Ctrl p</kbd>
             </button>
-            <button @click="pinObject" class="flex items-center justify-center px-4 py-[5px]">
+            <button @click="pinObject" class="flex items-center justify-center px-4 py-[5px]"
+              :title="isPinned ? t('contract_block.unpin_contract') : t('contract_block.pin_contract')">
               <Icon name="ic:sharp-push-pin" class="w-4 h-4" :class="{
                 'text-red-500 hover:bg-red-900': isPinned,
                 'text-slate-500 hover:text-sky-500': !isPinned
               }" />
             </button>
 
-            <button @click="checkObject" class="group flex items-center justify-center px-4 py-[5px]">
+            <button @click="checkObject" class="group flex items-center justify-center px-4 py-[5px]"
+              :title="isChecked ? t('contract_block.unfollow_contract') : t('contract_block.follow_contract')">
               <Icon :name="isChecked ? 'fa6-solid:flag' : 'fa6-regular:flag'" class="w-3.5 h-3.5" :class="{
                 'text-red-500 group-hover:bg-red-900': isChecked,
                 'text-slate-500 group-hover:text-sky-500': !isChecked
