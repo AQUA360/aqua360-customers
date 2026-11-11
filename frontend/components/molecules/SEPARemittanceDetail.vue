@@ -14,6 +14,7 @@ import ContractRegion from '../organisms/ContractRegion.vue';
 import PersonRegion from '../organisms/PersonRegion.vue';
 import InvoiceRegion from '../organisms/InvoiceRegion.vue';
 import CommitmentDepositRegion from '../organisms/CommitmentDepositRegion.vue';
+import PaymentRegion from '../organisms/PaymentRegion.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { useToast } from 'vue-toastification';
 import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
@@ -65,6 +66,9 @@ const taskId = ref(null);
 const regenerated = ref(false);
 
 const showRegion = ref(false);
+
+// Una remesa enviada queda bloquejada (el backend també ho impedeix)
+const isSent = computed(() => !!remittanceDetails.value?.sent_at);
 
 const pagination = ref({
   page: 1,
@@ -270,7 +274,10 @@ const resetFilters = () => {
 
 // Nova funcionalitat: Eliminar relació pagament-remesa
 const removePaymentFromRemittance = async (payment) => {
-  if (confirm(t('confirmation_text_block.confirm_remove_payment_from_remittance'))) {
+  const confirmText = props.isReturn
+    ? 'confirmation_text_block.confirm_remove_payment_from_remittance_trf'
+    : 'confirmation_text_block.confirm_remove_payment_from_remittance';
+  if (confirm(t(confirmText))) {
     try {
       await $SepaRemittanceApiService.deletePaymentRelation(props.remittance_id, payment.id);
       toast.success(t('success_block.payment_removed_from_remittance'));
@@ -466,13 +473,21 @@ onMounted(async () => {
   }
 });
 
+const customerLabel = (item) => [
+  item.customer_token_final || item.invoice?.customer_token_final,
+  item.customer_final || item.invoice?.customer_final,
+].filter(Boolean).join(' ');
+
 const detail = ref(null);
 const selectedItemId = ref(null);
 const selectedItemComponent = ref(null);
-const showDetail = async (component, id) => {
+// `rowId` és el pagament de la fila, per ressaltar-la encara que el detall
+// obert sigui la factura, el contracte o la persona.
+const showDetail = async (component, id, rowId = null) => {
+  if (!id) return;
   await toggleRegion(false);
   detail.value = id;
-  selectedItemId.value = id;
+  selectedItemId.value = rowId ?? id;
   selectedItemComponent.value = component;
   toggleRegion(true);
 }
@@ -490,7 +505,7 @@ watch([searchInput], () => {
     <div class="p-1 transition-all duration-500 ease" :class="{ 'mr-[48%]': showRegion }">
       <div class="flex justify-between relative">
         <H1Region>{{ isReturn ? $t('billing_block.trf_remittance_detail') : $t('billing_block.sepa_remittance_detail') }}</H1Region>
-        <div v-if="objectPermissions?.can_change" class="relative">
+        <div v-if="objectPermissions?.can_change && remittanceDetails && !isSent" class="relative">
           <OptionsDropdown id="SupplyPointRegionOptions">
 
             <DropdownOption :name="t('common.delete')" @click="deleteRemittance">
@@ -528,22 +543,23 @@ watch([searchInput], () => {
                 :value="remittanceDetails.company_bank_iban ? formatIban(remittanceDetails.company_bank_iban) : '-'" class="mb-0" />
               
             </div>
-            <AtomsInputDate v-model="desired_send_at"
+            <AtomsInputDate v-if="!isSent" v-model="desired_send_at"
               :label="$t('common.select') + ' ' + $t('common.send_date_expected').toLowerCase()" />
+            <div v-else></div>
             <div v-if="objectPermissions?.can_change" class="flex gap-2 mt-2 whitespace-nowrap justify-end">
               <button v-if="remittanceDetails.document_url" :disabled="!regenerated" @click="downloadXMLDocument"
                 class="button-default" :title="$t('billing_block.download_xml_document')">
                 <Icon name="fa6-solid:download" class="w-4 h-4" />
                 {{ $t('billing_block.download_document') }}
               </button>
-              <button v-if="!regeneratingDocument" @click="regenerateSepaDocument"
+              <button v-if="!regeneratingDocument && !isSent" @click="regenerateSepaDocument"
                 class="button-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="regeneratingDocument || remittanceDetails.has_paid_payments || remittanceDetails.has_non_direct_debit_payments"
                 :title="$t('billing_block.regenerate_sepa_document')">
                 <Icon name="fa6-solid:rotate-right" class="w-4 h-4" />
                 <span>{{ $t('billing_block.regenerate_document') }}</span>
               </button>
-              <AtomsProcessColorBadge v-else class="h-full items-center justify-center py-2.5" 
+              <AtomsProcessColorBadge v-else-if="regeneratingDocument" class="h-full items-center justify-center py-2.5" 
               :value="$t('common.processing')" color="blue" :taskId="taskId" 
               @refresh="getDocument"></AtomsProcessColorBadge>
             </div>
@@ -556,6 +572,10 @@ watch([searchInput], () => {
             <div class="flex gap-2 items-center">
               <FieldDetail :label="$t('billing_block.sent_date')"
                 :value="remittanceDetails.sent_at ? formatDate(remittanceDetails.sent_at) : '-'" />
+            </div>
+            <div class="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 flex items-start gap-2">
+              <Icon name="fa6-solid:lock" class="mt-0.5 text-slate-500" />
+              <span>{{ $t('billing_block.remittance_locked_sent') }}</span>
             </div>
           </template>
           <template v-else>
@@ -661,12 +681,14 @@ watch([searchInput], () => {
           height: '600px',
         }" class="scrollbar-hide border-t border-gray-200">
           <div class="heading sticky top-0 bg-white grid gap-3 text-base border-b items-center z-[5]"
-            style="grid-template-columns: 120px 150px 100px 150px 80px 100px 80px 80px;">
+            style="grid-template-columns: 120px 150px 100px 200px 150px 80px 100px 80px 80px;">
             <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy"
               :sortDesc="sortDesc" @sort="handleSort" />
             <TableHeader :label="$t('invoice')" sortKey="invoice" :currentSortBy="sortBy" :sortDesc="sortDesc"
               @sort="handleSort" />
             <TableHeader :label="$t('common.total')" sortKey="amount" :currentSortBy="sortBy" :sortDesc="sortDesc"
+              @sort="handleSort" />
+            <TableHeader :label="$t('common.client')" sortKey="customer" :currentSortBy="sortBy" :sortDesc="sortDesc"
               @sort="handleSort" />
             <TableHeader :label="$t('contract')" sortKey="contract" :currentSortBy="sortBy" :sortDesc="sortDesc"
               @sort="handleSort" />
@@ -689,24 +711,35 @@ watch([searchInput], () => {
           </div>
           <div v-else class="scrollbar-hide">
             <div v-for="item in items" :key="item.id" class="grid gap-3 text-base border-b items-center"
-              style="grid-template-columns: 120px 150px 100px 150px 80px 100px 80px 80px;"
+              style="grid-template-columns: 120px 150px 100px 200px 150px 80px 100px 80px 80px;"
               :class="{ 'bg-yellow-50': item.id === selectedItemId, 'bg-purple-50': item.is_excluded && !(item.id === selectedItemId) }">
               <span>
                 <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-                  @click="showDetail(isReturn ? item.contract ? 'ContractRegion' : 'PersonRegion' :
-                  item.invoice ? 'InvoiceRegion' : 'CommitmentDepositRegion', 
-                  isReturn ? item.contract ? item.contract.id : item.person ? item.person.id : null : item.invoice ? item.invoice.id : item.commitment_deposit.id);">
+                  @click="showDetail('PaymentRegion', item.id)">
                   <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
                   <Icon name="fa6-solid:eye"
                     class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
                 </button>
               </span>
-              <span v-if="isReturn" class="p-1 truncate">{{ t('contract_block.balance_to_move') }}</span>
-              <span v-else-if="item.invoice" class="p-1 truncate">{{ item.invoice.token
-                }}</span>
-              <span v-else class="p-1 truncate">{{ t('commitment_deposit') }}</span>
+              <!-- A les transferències hi conviuen devolucions de saldo (sense
+                   factura) i pagaments negatius de factures (abonaments). -->
+              <button v-if="item.invoice" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('InvoiceRegion', item.invoice.id, item.id)">{{ item.invoice.token }}</button>
+              <button v-else-if="item.commitment_deposit" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('CommitmentDepositRegion', item.commitment_deposit.id, item.id)">{{ t('commitment_deposit') }}</button>
+              <span v-else-if="isReturn" class="p-1 truncate">{{ t('billing_block.balance_return') }}</span>
+              <span v-else class="p-1 truncate text-slate-400">-</span>
               <span class="p-1">{{ formatMoneyWithCurrency(item.amount) }}</span>
-              <span class="p-1 truncate">{{ item.contract ? item.contract.token : item.person ? `${item.person.token} ${item.person.name}` : '-' }}</span>
+              <span class="p-1 truncate" :title="customerLabel(item)">
+                <span class="font-medium">{{ item.customer_token_final || item.invoice?.customer_token_final }}</span>
+                {{ item.customer_final || item.invoice?.customer_final }}
+                <span v-if="!customerLabel(item)" class="text-slate-400">-</span>
+              </span>
+              <button v-if="item.contract" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('ContractRegion', item.contract.id, item.id)">{{ item.contract.token }}</button>
+              <button v-else-if="item.person" class="p-1 truncate text-left text-sky-500 hover:underline"
+                @click="showDetail('PersonRegion', item.person.id, item.id)">{{ `${item.person.token} ${item.person.name}` }}</button>
+              <span v-else class="p-1 truncate text-slate-400">-</span>
 
               <span class="p-1">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</span>
               <span class="p-1">
@@ -715,7 +748,7 @@ watch([searchInput], () => {
               </span>
               <span class="p-1">{{ item.due_date ? formatDate(item.due_date) : '-' }}</span>
               <span class="p-1 ">
-                <button v-if="objectPermissions?.can_change" @click.stop="removePaymentFromRemittance(item)"
+                <button v-if="objectPermissions?.can_change && !isSent" @click.stop="removePaymentFromRemittance(item)"
                   class="w-6 h-6 rounded-full border border-orange-500 text-orange-500 bg-orange-50 hover:bg-orange-100 transition-colors duration-200"
                   :title="$t('billing_block.remove_from_remittance')">
                   <Icon name="fa6-solid:link-slash" class="m-auto w-3 h-3" />
@@ -744,6 +777,7 @@ watch([searchInput], () => {
           </button>
         </div>
         <div class="px-10 flex-1 overflow-y-auto pb-10">
+          <PaymentRegion v-if="selectedItemComponent == 'PaymentRegion'" :id="parseInt(detail)" :isSubRegion="true" />
           <InvoiceRegion v-if="selectedItemComponent == 'InvoiceRegion'" :id="detail" :isSubRegion="true" />
           <PersonRegion v-if="selectedItemComponent == 'PersonRegion'" :id="detail" :isSubRegion="true" />
           <ContractRegion v-if="selectedItemComponent == 'ContractRegion'" :id="detail" :isSubRegion="true" />

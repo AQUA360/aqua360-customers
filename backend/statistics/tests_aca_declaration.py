@@ -159,3 +159,59 @@ class AcaDeclarationTests(TestCase):
         lines = InvoiceLineItem.objects.filter(generate.call_args.kwargs['line_items_q'], invoice__in=invoices)
         self.assertEqual(set(invoices.values_list('serie_final', flat=True)), {'FC/1', 'FC/2'})
         self.assertEqual(lines.count(), 4)
+
+
+class AcaVolumeTests(TestCase):
+    """Els m³ de la Declaració ACA surten amb el mateix càlcul que el FACTDETA en baixa."""
+
+    def setUp(self):
+        from pricing.models import VariableCalculation
+
+        for token, value in (('invoice_status_paid_token', '-1'), ('invoice_status_cancelled_token', '-6')):
+            ConfigProject.objects.create(token=token, value=value)
+        self.paid = InvoiceStatus.objects.create(token='0', name='Confirmada')
+        self.fixed = LineItemType.objects.create(article=ArticleCode.objects.create(token='part_fixa', name='Part fixa'))
+        self.leak = LineItemType.objects.create(name='FUITA', quantity=VariableCalculation.objects.create(token='diferencia_fuita'))
+        self.domestic = LineItemType.objects.create(name='CANON DOMESTIC')
+        self.general = LineItemType.objects.create(name='GRAVAMEN GENERAL INDUSTRIAL')
+        self.specific = LineItemType.objects.create(name='GRAVAMEN ESPECIFIC INDUSTRIAL')
+
+    def invoice(self, number, used_aca, consumption, lines):
+        invoice = Invoice.objects.create(
+            serie_final=number, token=number, issue_date=datetime.date(2026, 6, 1), type_final='F',
+            status=self.paid, used_aca=used_aca, real_consumption=consumption,
+        )
+        created = [InvoiceLineItem.objects.create(invoice=invoice, line_item_type=self.fixed, price=1, units=1)]
+        for line_type, units, price_unit, interval in lines:
+            created.append(InvoiceLineItem.objects.create(
+                invoice=invoice, line_item_type=line_type, units=units, price_unit=price_unit,
+                price=units * price_unit, interval=interval,
+            ))
+        return invoice, created
+
+    def volumes(self, *invoices):
+        from billing.utils.generate_factdeta_service import factdeta_invoice_volumes
+
+        lines = {invoice.id: created for invoice, created in invoices}
+        return {
+            volume.invoice.serie_final: volume
+            for volume in factdeta_invoice_volumes([invoice for invoice, _ in invoices], lines, 'part_fixa', 'tarifa_social')
+        }
+
+    def test_domestic_volumes(self):
+        volumes = self.volumes(self.invoice('FC/D', 'D', 30, [
+            (self.domestic, 10, 0.5, 1), (self.domestic, 8, 1.0, 2), (self.leak, 2, 0.5, None), (self.domestic, 5, 0, None),
+        ]))
+        volume = volumes['FC/D']
+        self.assertEqual((volume.tariff_type, volume.consumed, volume.billed), ('D', Decimal('30'), Decimal('25')))
+        # La fuita va al primer tram i les línies a preu 0, a tarifa social 0
+        self.assertEqual(volume.trams, [Decimal('12'), Decimal('8'), Decimal('0'), Decimal('0')])
+        self.assertEqual(volume.social_zero, Decimal('5'))
+
+    def test_domestic_use_billed_as_industrial_counts_volume_once(self):
+        volumes = self.volumes(
+            self.invoice('FC/I', 'D', 7, [(self.general, 7, 0.1, None), (self.specific, 7, 0.2, None)]),
+            self.invoice('FC/L', 'L', 9, [(self.domestic, 9, 0.5, 1)]),
+        )
+        self.assertEqual(set(volumes), {'FC/I'})
+        self.assertEqual((volumes['FC/I'].tariff_type, volumes['FC/I'].billed), ('I', Decimal('7')))
