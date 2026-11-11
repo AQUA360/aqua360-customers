@@ -22,6 +22,10 @@ const props = defineProps({
   contract_id: {
     type: Number,
     required: false
+  },
+  connection_request_id: {
+    type: Number,
+    required: false
   }
 });
 
@@ -46,7 +50,7 @@ const { $ConnectionApiService } = useNuxtApp();
 const pendingObservations = ref([]);
 const observationInput = ref(null);
 
-const { $ContractApiService } = useNuxtApp();
+const { $ContractApiService, $ConnectionRequestApiService } = useNuxtApp();
 const toast = useToast();
 
 const attemptedSave = ref(false);
@@ -253,6 +257,22 @@ const getData = async () => {
       } catch (err) {
         console.error('Error fetching contract detail:', err);
       }
+    } else if (props.connection_request_id) {
+      // L'ordre queda vinculada a la sol·licitud. Si ja té escomesa, es proposa com a ubicació;
+      // si no, el backend n'agafa l'adreça i les coordenades de la sol·licitud.
+      try {
+        const connectionRequest = await $ConnectionRequestApiService.getDetail(props.connection_request_id);
+        suppressLocationWatch.value = true;
+        if (connectionRequest?.connection) {
+          selectedConnection.value = connectionRequest.connection;
+          locationTypeRadio.value = 'C';
+        } else {
+          locationTypeRadio.value = 'N';
+        }
+        suppressLocationWatch.value = false;
+      } catch (err) {
+        console.error('Error fetching connection request detail:', err);
+      }
     }
   }
 
@@ -406,6 +426,9 @@ const save = async () => {
     
     if (props.incident_id) {
       selectedOptions.incident = props.incident_id;
+    }
+    if (props.connection_request_id && !selectedOptions.id) {
+      selectedOptions.connection_request = props.connection_request_id;
     }
     if (locationTypeRadio.value == 'SP') {
       selectedOptions.supply_point = selectedSupplyPoint.value ? selectedSupplyPoint.value.id : null;
@@ -833,7 +856,7 @@ const onIdLostFocus = async () => {
       <div v-if="selectedType" class="row">
         <label class="block text-sm font-medium text-slate-500 mb-2">
           {{ t('address_block.location') }}
-          <span v-if="props.contract_id" class="text-slate-400 text-sm">
+          <span v-if="props.contract_id || props.connection_request_id" class="text-slate-400 text-sm">
             ({{ t('common.optional') }})
           </span>
         </label>

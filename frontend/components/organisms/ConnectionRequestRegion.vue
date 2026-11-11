@@ -159,6 +159,13 @@ const handleClickModify = () => {
   router.push(`/service/connection-requests/edit/${props.id}`);
 }
 
+const newOrder = () => {
+  return navigateTo({
+    path: '/order/orders/add',
+    query: { connection_request_id: props.id }
+  })
+}
+
 </script>
 
 <template>
@@ -180,6 +187,7 @@ const handleClickModify = () => {
             <DropdownOption :name="`${t('common.modify')} ${t('connection_request')}`" 
             @click="handleClickModify"></DropdownOption>
             <DropdownOption :name="`${t('common.change')} ${t('common.status')}`" @click="handleClickChangeStatus"></DropdownOption>
+            <DropdownOption :name="t('order_block.new_order')" @click="newOrder"></DropdownOption>
           </OptionsDropdown>
         </div>
       </div>
@@ -224,6 +232,12 @@ const handleClickModify = () => {
           </MoleculesLogList>
         </section>
         <section v-show="activeTab === 'orders'" role="tabpanel" id="tab_orders" class="bg-white antialiased">
+          <div v-if="objectPermissions?.can_change" class="flex justify-end mt-2 mb-4">
+            <button @click="newOrder" class="button-primary !px-2.5 !py-1 text-xs">
+              <Icon name="fa6-solid:clipboard-list" />
+              <span class="ml-1">{{ t('order_block.new_order') }}</span>
+            </button>
+          </div>
           <OrderMiniDetail :connection_request_id="props.id" @show-detail="showDetail" @update:count="updateOrdersCount" />
         </section>
       </div>
