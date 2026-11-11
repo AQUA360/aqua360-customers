@@ -1,4 +1,5 @@
 <script setup>
+import ContractInvalidAccountAlert from '~/components/molecules/ContractInvalidAccountAlert.vue';
 import { useFixedObjectsStore } from '~/stores/useFixedObjects';
 import { useToast } from 'vue-toastification';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
@@ -670,6 +671,7 @@ const setActiveTab = (tab) => {
                   :title="contract.blocking_incident.name">
                   <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
                 </div>
+                <ContractInvalidAccountAlert :alert="contract?.invalid_account_payment_alert" />
                 <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall" />
             </div>
 

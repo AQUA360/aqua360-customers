@@ -3660,24 +3660,63 @@ def check_existing_token(token, exploitation_token='0'):
     except Exception as e:
         raise Exception("Error while checking existing token: ", e)
 
-def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=None):
-    if (new_address == invoice.address_final and 
-        new_payment_type == invoice.payment_type_final and 
-        new_payment_bank == invoice.payment_bank_final):
-        pass  # log removed
+_UNCHANGED = object()
+
+
+def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=_UNCHANGED):
+    """Registra a l'historial de la factura un canvi d'adreça, de mètode de pagament o d'IBAN.
+
+    L'IBAN només es registra si qui crida el passa: si el passa buit (el compte es retira),
+    queda l'anterior a l'historial.
+    """
+    bank_given = new_payment_bank is not _UNCHANGED
+    new_bank = (new_payment_bank or None) if bank_given else None
+    previous_bank = invoice.payment_bank_final or None
+    bank_changed = bank_given and new_bank != previous_bank
+    if (new_address == invoice.address_final and
+        new_payment_type == invoice.payment_type_final and
+        not bank_changed):
         return
-    pass  # log removed
     LogInvoiceDataChange.objects.create(
         object=invoice,
         current_address=new_address,
         previous_address=invoice.address_final if new_address and new_address != '' else None,
         current_payment_type=new_payment_type,
         previous_payment_type=invoice.payment_type_final if new_payment_type and new_payment_type != '' else None,
-        current_iban=new_payment_bank,
-        previous_iban=invoice.payment_bank_final if new_payment_bank and new_payment_bank != '' else None,
+        current_iban=new_bank,
+        # Amb un IBAN nou o quan es retira el compte, l'anterior queda a l'historial
+        previous_iban=previous_bank if (new_bank or bank_changed) else None,
         user=user,
         timestamp=timezone.now()
     )
+
+
+def apply_invoice_payment_method(user, invoice, payment_type, payment_bank_final=None, payment_swift_final=None,
+                                 company_bank=_UNCHANGED):
+    """Canvia el mètode de pagament d'una factura i dels seus pagaments no cobrats.
+
+    Deixa constància del canvi a l'historial de la factura (`log_invoice_data_change`). No
+    comprova si la factura es pot canviar ni gestiona els senyals de pagaments: ho ha de fer
+    qui la crida. `company_bank` només es toca si es passa explícitament.
+    """
+    payment_status_paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+
+    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
+
+    invoice.payment_bank_final = payment_bank_final
+    # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor
+    invoice.payment_swift_final = payment_swift_final
+    invoice.payment_type_final = payment_type.name
+    invoice.payment_type_token_final = payment_type.token
+    if company_bank is not _UNCHANGED:
+        invoice.payment_company_bank = company_bank
+    invoice.save()
+
+    invoice.payments.exclude(status__token=payment_status_paid_token).distinct().update(
+        payment_type=payment_type.name,
+        payment_type_token=payment_type.token,
+        payment_bank=payment_bank_final,
+        payment_swift=payment_swift_final)
 
 
 def get_electronic_invoices_data(request):
