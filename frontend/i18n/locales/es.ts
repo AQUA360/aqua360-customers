@@ -4251,7 +4251,8 @@ supply_cut_actions:   {
     unlinked_reason_contract_not_found: 'La solicitud está finalizada pero no se encuentra su contrato',
     open_termination: 'Baja en curso',
     open_termination_info: 'Tiene una solicitud de baja empezada y sin finalizar: entrará en la gestión si no lo excluyes a mano',
-    only_open_termination: 'Solo con baja en curso'
+    only_open_termination: 'Solo con baja en curso',
+    with_paid_payments: 'Con pagos cobrados'
   },
   editor_block:   {
     head: 'Encabezado',

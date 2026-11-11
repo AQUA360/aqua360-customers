@@ -4251,7 +4251,8 @@ export default {
     unlinked_reason_contract_not_found: 'La sol·licitud està finalitzada però no es troba el seu contracte',
     open_termination: 'Baixa en curs',
     open_termination_info: 'Té una sol·licitud de baixa començada i sense acabar: entrarà a la gestió si no l\'exclous a mà',
-    only_open_termination: 'Només amb baixa en curs'
+    only_open_termination: 'Només amb baixa en curs',
+    with_paid_payments: 'Amb pagaments cobrats'
   },
   editor_block:   {
     head: 'Encapçalament',

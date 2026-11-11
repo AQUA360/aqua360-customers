@@ -4104,7 +4104,8 @@ export default {
     unlinked_reason_contract_not_found: 'A solicitude está finalizada pero non se atopa o seu contrato',
     open_termination: 'Baixa en curso',
     open_termination_info: 'Ten unha solicitude de baixa comezada e sen finalizar: entrará na xestión se non o exclúes a man',
-    only_open_termination: 'Só con baixa en curso'
+    only_open_termination: 'Só con baixa en curso',
+    with_paid_payments: 'Con pagos cobrados'
   },
   editor_block:   {
     head: 'Encabezado',
