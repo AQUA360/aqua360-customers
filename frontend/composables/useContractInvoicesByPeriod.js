@@ -21,7 +21,10 @@ export function useContractInvoicesByPeriod(getContractId) {
     activeYear.value = year;
     invoices.value = [];
     error.value = false;
-    if (year === null) return;
+    if (year === null) {
+      loading.value = false;
+      return;
+    }
     loading.value = true;
     try {
       const results = await $InvoiceApiService.getContractInvoicesByPeriodYear(getContractId(), year);

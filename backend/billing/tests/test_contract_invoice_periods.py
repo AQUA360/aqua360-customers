@@ -110,3 +110,46 @@ class InvoiceListRelationsTests(ContractInvoicePeriodsBase):
             relations = invoice_relations_map(invoices, 'INVOICE')
 
         self.assertEqual(sum(len(relation) for relation in relations.values()), 20)
+
+    def test_inactive_related_invoice_is_not_linked(self):
+        self.invoice('ABONAMENT', is_active=False)
+        self.invoice('ORIGINAL', return_token='ABONAMENT')
+
+        rows = self.serialize()
+
+        self.assertNotIn('rectifying_invoice', rows['ORIGINAL'])
+
+    def test_duplicated_token_of_another_contract_is_not_linked(self):
+        self.invoice('ABONAMENT', contract=self.other_contract)
+        self.invoice('ORIGINAL', return_token='ABONAMENT')
+        self.invoice('REFETA', contract=self.other_contract, refactored_token='ORIGINAL')
+
+        rows = self.serialize()
+
+        self.assertNotIn('rectifying_invoice', rows['ORIGINAL'])
+        self.assertNotIn('refactor_invoice', rows['ORIGINAL'])
+
+    def test_registration_request_invoice_is_linked_to_its_credit_note(self):
+        credit = self.invoice('ABONAMENT', contract=None, contract_request=self.contract_request)
+        original = self.invoice('ORIGINAL', contract=None, contract_request=self.contract_request,
+                                return_token='ABONAMENT')
+
+        relations = invoice_relations_map([original, credit], 'INVOICE')
+
+        self.assertEqual(relations[original.id]['rectifying_invoice']['id'], credit.id)
+        self.assertEqual(relations[credit.id]['rectified_invoice']['id'], original.id)
+
+
+class ContractInvoicesCountTests(ContractInvoicePeriodsBase):
+    """El total de la pestanya té el mateix abast que les pestanyes d'any (sense excloses)."""
+
+    def test_count_skips_excluded_invoices(self):
+        from contract.serializers.contract_serializer import ContractSerializer
+        self.invoice('VISIBLE', issue_date=date(2025, 1, 1))
+        self.invoice('REQUEST', contract=None, contract_request=self.contract_request, issue_date=date(2025, 1, 1))
+        self.invoice('EXCLUDED', issue_date=date(2025, 1, 1), is_excluded=True)
+
+        count = ContractSerializer().get_invoices_count(self.contract)
+
+        self.assertEqual(count, sum(row['count'] for row in period_year_counts(self.filtered({}))))
+        self.assertEqual(count, 2)

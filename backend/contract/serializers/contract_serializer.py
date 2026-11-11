@@ -397,8 +397,9 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def get_invoices_count(self, obj):
         invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
-        request_invoices = Invoice.objects.filter(contract_request=obj.contract_request, is_active=True, type__token=invoice_type_token, contract_request__isnull=False)
-        unique_invoices = list(set(request_invoices.values_list('id', flat=True)) | set(obj.invoices.filter(is_active=True, type__token=invoice_type_token).values_list('id', flat=True)))
+        # Mateix abast que la pestanya de factures del contracte (sense les excloses)
+        request_invoices = Invoice.objects.filter(contract_request=obj.contract_request, is_active=True, is_excluded=False, type__token=invoice_type_token, contract_request__isnull=False)
+        unique_invoices = list(set(request_invoices.values_list('id', flat=True)) | set(obj.invoices.filter(is_active=True, is_excluded=False, type__token=invoice_type_token).values_list('id', flat=True)))
         return len(unique_invoices)
 
     def get_general_invoices_count(self, obj):

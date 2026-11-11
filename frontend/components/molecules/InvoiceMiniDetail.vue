@@ -703,19 +703,23 @@ watch(
       <p
         v-for="relation in invoiceRelations(item)"
         :key="relation.key"
-        class="text-xs leading-tight whitespace-nowrap truncate"
+        class="text-xs leading-tight flex flex-wrap items-center gap-x-1"
       >
         <span>{{ relation.label }}</span>
         <button
           v-if="!props.isSubRegion"
           @click="showDetail('InvoiceRegion', relation.invoice.id)"
-          class="ml-1 text-sky-500 underline"
+          class="text-sky-500 underline break-all text-start"
         >
           {{ relation.invoice.serie_final || relation.invoice.token }}
         </button>
-        <span v-else class="ml-1">
+        <span v-else class="break-all">
           {{ relation.invoice.serie_final || relation.invoice.token }}
         </span>
+        <AtomsRedirectButton
+          :id="relation.invoice.id"
+          :path="'/billing/invoice/'"
+        />
       </p>
 
       </div>
