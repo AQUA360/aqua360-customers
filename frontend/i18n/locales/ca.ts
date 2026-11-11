@@ -1645,6 +1645,11 @@ export default {
     invalid_account_alert_title: 'Avís: domiciliació anul·lada per retorn SEPA amb compte invàlid.',
     invalid_account_alert_detail: 'Mètode canviat a Pagament Bancari. Pendent de revisar les dades bancàries.',
     invalid_account_alert_previous_iban: 'IBAN anterior',
+    invoices_more_years: 'Més anys…',
+    invoices_no_period: 'Sense període',
+    invoices_no_month: 'Sense mes',
+    invoices_load_error: 'No s\'han pogut carregar les factures d\'aquest any.',
+    invoices_retry: 'Reintentar',
     no_standalone_variable_types: 'No hi ha variables personalitzades disponibles. Les variables d\'aquest contracte s\'afegeixen a través de les bonificacions.',
     standalone_variable_types_info: 'Només es mostren les variables personalitzades. Les variables vinculades a una bonificació s\'afegeixen des de la bonificació.',
     current_use_type: 'Tipus d\'ús actual',
@@ -2112,6 +2117,10 @@ export default {
   },
 
   billing_block: {
+    relation_rectified_by: 'Abonada per',
+    relation_rectifies: 'Abona',
+    relation_refactors: 'Refacturació de',
+    relation_refactored_in: 'Refeta a',
     balance_return: 'Devolució de saldo',
     remittance_line_origin: 'Factura / Origen',
     budget_holder: 'Titular del pressupost',

@@ -1635,6 +1635,11 @@ export default {
     invalid_account_alert_title: 'Warning: direct debit cancelled due to a SEPA return for an invalid account.',
     invalid_account_alert_detail: 'Payment method switched to Bank Payment. Bank details pending review.',
     invalid_account_alert_previous_iban: 'Previous IBAN',
+    invoices_more_years: 'More years…',
+    invoices_no_period: 'No period',
+    invoices_no_month: 'No month',
+    invoices_load_error: 'The invoices of this year could not be loaded.',
+    invoices_retry: 'Retry',
     no_standalone_variable_types: 'There are no custom variables available. Variables for this contract are added through bonuses.',
     standalone_variable_types_info: 'Only custom variables are shown. Variables linked to a bonus are added from the bonus.',
     current_use_type: 'Current use type',
@@ -2102,6 +2107,10 @@ export default {
   },
 
   billing_block: {
+    relation_rectified_by: 'Credited by',
+    relation_rectifies: 'Credits',
+    relation_refactors: 'Rebilling of',
+    relation_refactored_in: 'Rebilled as',
     balance_return: 'Balance refund',
     remittance_line_origin: 'Invoice / Origin',
     budget_holder: 'Budget holder',

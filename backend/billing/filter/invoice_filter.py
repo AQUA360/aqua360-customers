@@ -2,6 +2,7 @@ from django_filters import rest_framework as filters
 
 from coredata.models import ConfigProject
 from ..models import Invoice
+from ..utils.invoice_period import filter_period_year
 from django.db.models import Q
 from functools import reduce
 from operator import and_
@@ -26,6 +27,10 @@ class InvoiceFilter(filters.FilterSet):
         field_name='contract__id',
         lookup_expr='exact'
     )
+    # Factures del contracte i de la seva sol·licitud d'alta (pestanya del contracte)
+    contract_with_request = filters.CharFilter(method='filter_contract_with_request')
+    # Any del període facturat (o de la data d'emissió); `none` per a les que no en tenen
+    period_year = filters.CharFilter(method='filter_period_year')
     contract_request = filters.CharFilter(
         field_name='contract_request__id',
         lookup_expr='exact'
@@ -90,7 +95,8 @@ class InvoiceFilter(filters.FilterSet):
     class Meta:
         model = Invoice
         fields = [
-            'search', 'contract', 'contract_request', 'is_invoice',
+            'search', 'contract', 'contract_with_request', 'period_year',
+            'contract_request', 'is_invoice',
             'origin', 'connection_request', 'status', 'expired',
             'billing', 'alert', 'holder', 'serie', 'exploitation', 
             'contract_null', 'payment_bank_final', 'left_to_pay',
@@ -110,6 +116,20 @@ class InvoiceFilter(filters.FilterSet):
             'exclude_terminated',
             'exclude_open_claim',
         ]
+
+    def filter_contract_with_request(self, queryset, name, value):
+        from contract.models import Contract
+        contract = Contract.objects.filter(id=value).only('id', 'contract_request_id').first() \
+            if str(value).isdigit() else None
+        if not contract:
+            return queryset.none()
+        condition = Q(contract_id=contract.id)
+        if contract.contract_request_id:
+            condition |= Q(contract_request_id=contract.contract_request_id)
+        return queryset.filter(condition)
+
+    def filter_period_year(self, queryset, name, value):
+        return filter_period_year(queryset, value)
 
     def filter_search(self, queryset, name, value):
         if not value:

@@ -1645,6 +1645,11 @@ export default {
     invalid_account_alert_title: 'Aviso: domiciliación anulada por devolución SEPA con cuenta inválida.',
     invalid_account_alert_detail: 'Método cambiado a Pago Bancario. Pendiente de revisar los datos bancarios.',
     invalid_account_alert_previous_iban: 'IBAN anterior',
+    invoices_more_years: 'Más años…',
+    invoices_no_period: 'Sin periodo',
+    invoices_no_month: 'Sin mes',
+    invoices_load_error: 'No se han podido cargar las facturas de este año.',
+    invoices_retry: 'Reintentar',
     no_standalone_variable_types: 'No hay variables personalizadas disponibles. Las variables de este contrato se añaden a través de las bonificaciones.',
     standalone_variable_types_info: 'Solo se muestran las variables personalizadas. Las variables vinculadas a una bonificación se añaden desde la bonificación.',
     current_use_type: 'Tipo de uso actual',
@@ -2112,6 +2117,10 @@ export default {
   },
 
   billing_block: {
+    relation_rectified_by: 'Abonada por',
+    relation_rectifies: 'Abona',
+    relation_refactors: 'Refacturación de',
+    relation_refactored_in: 'Rehecha en',
     balance_return: 'Devolución de saldo',
     remittance_line_origin: 'Factura / Origen',
     budget_holder: 'Titular del presupuesto',

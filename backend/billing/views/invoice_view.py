@@ -24,6 +24,7 @@ from billing.serializers.invoice_serializer import InvoiceFullSerializer, Invoic
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals, log_payment_status, generate_payment_movement
 from billing.utils.invoice_service import apply_invoice_payment_method, get_electronic_invoices_data, return_invoice, log_invoice_data_change, change_status_logger
 from billing.utils.invoice_list_queryset import invoice_list_queryset
+from billing.utils.invoice_period import period_year_counts
 from billing.utils.invoice_suppression_service import suppress_invoice
 from coredata.models import ConfigProject, PersonAddress, PersonPiggyBankMovement
 from contract.models import PiggyBankMovement, Contract
@@ -51,9 +52,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
       queryset = invoice_list_queryset()
     else:
       queryset = super().get_queryset()
-    if self.action == 'list' and 'is_excluded' not in self.request.query_params:
+    if self.action in ('list', 'period_years') and 'is_excluded' not in self.request.query_params:
         return queryset.filter(is_excluded=False)
     return queryset
+
+  @action(detail=False, methods=['get'], url_path='period-years')
+  def period_years(self, request):
+    """Anys del període facturat amb factures, amb els mateixos filtres que la llista."""
+    queryset = self.filter_queryset(self.get_queryset())
+    return Response(period_year_counts(queryset))
   
   def get_serializer_class(self):
     
