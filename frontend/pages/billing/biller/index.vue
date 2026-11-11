@@ -107,6 +107,7 @@ const handleSort = (key) => {
 const exportColumns = computed(() => [
   { header: t('common.identification'), value: (row) => row.token, key: 'token' },
   { header: t('common.name'), value: (row) => row.name, key: 'name' },
+  { header: t('exploitation'), value: (row) => row.exploitation_name || '', key: 'exploitation' },
   { header: t('common.range'), value: (row) => row.period_type, key: 'period_type' },
   { header: t('billing_block.initial_month'), value: (row) => row.initial_month, key: 'initial_month' },
   { header: t('common.status'), value: (row) => row.is_active ? t('common.active') : t('common.inactive'), key: 'is_active' },
@@ -190,7 +191,7 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,1fr,1fr,1fr,1fr,1fr"
+      grid-template="150px,1fr,1fr,1fr,1fr,1fr,1fr"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
@@ -199,6 +200,8 @@ watch(() => route.query, () => {
         <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('common.name')" sortKey="issue_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          @sort="handleSort" />
+        <TableHeader :label="$t('exploitation')" sortKey="exploitation__name" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('common.range')" sortKey="title_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
@@ -228,6 +231,7 @@ watch(() => route.query, () => {
             </button>
           </span>
           <span class="p-1">{{ item.name }}</span>
+          <span class="p-1">{{ item.exploitation_name || '—' }}</span>
           <span class="p-1">{{ item.period_type }}</span>
           <span class="p-1">{{ item.initial_month }}</span>
           <!-- <span class="p-1">{{ item.contract? item.contract.token : '-' }}</span>
