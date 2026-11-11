@@ -467,8 +467,19 @@ class ContractViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='pinned-full')
     def pinned_full(self, request, pk=None):
         
+        from django.db.models import Prefetch
+        from service.models import SupplyCut
+
         contract_id = pk
-        pinned_contract = Contract.objects.filter(id=contract_id).first()
+        # Same supply cut prefetch as the contract list: SupplyPointSerializer only builds
+        # supply_cut_alert from `_prefetched_supply_cuts`.
+        pinned_contract = Contract.objects.prefetch_related(
+            Prefetch(
+                'supply_point_default__supply_cuts',
+                queryset=SupplyCut.objects.select_related('status', 'cause').order_by('-id'),
+                to_attr='_prefetched_supply_cuts',
+            )
+        ).filter(id=contract_id).first()
         if not pinned_contract:
             return Response( None, status=status.HTTP_200_OK )
         serializer = PinnedContractSerializer(pinned_contract, context={'request': request})

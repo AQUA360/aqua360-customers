@@ -238,7 +238,8 @@ watch(sideIsPinnedContractOpen, (newVal) => {
         </div>
         <div class="px-10">
             <GeneralNoteList v-if="isNotesOpen" />
-            <ContractPinned v-if="isContractPinnedOpen" :isSubRegion="true" :id="currentPinnedContractId"
+            <!-- key: remount (and reload) when another contract gets pinned while the panel is open -->
+            <ContractPinned v-if="isContractPinnedOpen" :key="currentPinnedContractId" :isSubRegion="true" :id="currentPinnedContractId"
                 @close="closeRegions" />
             <CurrentExploitationSelect v-if="isExploitationOpen" :id="currentExploitation?.id" @close="handleExploitationSelected" />
         </div>
