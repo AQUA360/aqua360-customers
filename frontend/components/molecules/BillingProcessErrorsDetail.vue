@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import AppLoading from '../atoms/AppLoading.vue';
@@ -13,6 +13,8 @@ const props = defineProps({
     default: () => []
   },
   loading: Boolean,
+  // La llista s'està tornant a carregar
+  reloading: Boolean,
   disabled: Boolean
 });
 
@@ -24,10 +26,22 @@ const { $BillingApiService } = useNuxtApp();
 // Contracte en curs (id) o 'all' mentre es tornen a processar tots.
 const busy = ref(null);
 
+// Contractes ja facturats: s'amaguen de seguida perquè un segon clic abans que arribi
+// la llista nova no generi una altra pre-factura amb les lectures que quedin.
+const processedIds = ref(new Set());
+watch(() => props.errors, () => { processedIds.value = new Set(); });
+const visibleErrors = computed(() => props.errors.filter(e => !processedIds.value.has(e.contract_id)));
+const locked = computed(() => !!busy.value || props.reloading || props.disabled);
+
+const markProcessed = (contractId) => {
+  processedIds.value = new Set([...processedIds.value, contractId]);
+};
+
 const retryContract = async (contractId) => {
   // L'error ja el mostra el gestor de l'API; aquí només es refresca la llista.
   try {
     await $BillingApiService.processContract(props.billingId, contractId);
+    markProcessed(contractId);
     return true;
   } catch (e) {
     console.error(e);
@@ -36,7 +50,7 @@ const retryContract = async (contractId) => {
 };
 
 const retry = async (contractId) => {
-  if (busy.value) return;
+  if (locked.value) return;
   busy.value = contractId;
   try {
     if (await retryContract(contractId)) {
@@ -49,11 +63,11 @@ const retry = async (contractId) => {
 };
 
 const retryAll = async () => {
-  if (busy.value) return;
+  if (locked.value) return;
   busy.value = 'all';
   let failed = 0;
   try {
-    for (const err of [...props.errors]) {
+    for (const err of [...visibleErrors.value]) {
       if (!(await retryContract(err.contract_id))) failed++;
     }
     if (failed === 0) {
@@ -68,10 +82,11 @@ const retryAll = async () => {
 };
 
 const dismiss = async (contractId) => {
-  if (busy.value || !confirm(t('billing_block.process_error_confirm_dismiss'))) return;
+  if (locked.value || !confirm(t('billing_block.process_error_confirm_dismiss'))) return;
   busy.value = contractId;
   try {
     await $BillingApiService.dismissProcessErrors(props.billingId, [contractId]);
+    markProcessed(contractId);
   } catch (e) {
     console.error(e);
   } finally {
@@ -94,9 +109,9 @@ const dismiss = async (contractId) => {
         </div>
         <div class="flex items-center gap-2">
           <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
-            {{ errors.length }}
+            {{ visibleErrors.length }}
           </span>
-          <button v-if="errors.length > 1" type="button" :disabled="!!busy || disabled" @click="retryAll"
+          <button v-if="visibleErrors.length > 1" type="button" :disabled="locked" @click="retryAll"
             class="flex items-center gap-2 rounded-md px-3 py-1.5 border text-sm font-medium transition-all bg-sky-50 border-sky-200 text-sky-700 enabled:hover:bg-sky-100 disabled:opacity-50">
             <Icon name="fa6-solid:rotate-right" :class="{ 'animate-spin': busy === 'all' }" class="w-3.5 h-3.5" />
             {{ t('billing_block.process_error_retry_all') }}
@@ -104,7 +119,7 @@ const dismiss = async (contractId) => {
         </div>
       </header>
 
-      <p v-if="errors.length === 0" class="py-8 text-center text-slate-500">
+      <p v-if="visibleErrors.length === 0" class="py-8 text-center text-slate-500">
         {{ t('billing_block.process_errors_empty') }}
       </p>
 
@@ -118,7 +133,7 @@ const dismiss = async (contractId) => {
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
-          <tr v-for="err in errors" :key="err.contract_id" class="align-top">
+          <tr v-for="err in visibleErrors" :key="err.contract_id" class="align-top">
             <td class="px-3 py-2 whitespace-nowrap">
               <button type="button" class="font-medium text-sky-700 hover:underline"
                 @click="emit('open-region', { id: err.contract_id, entity: 'ContractRegion' })">
@@ -129,12 +144,12 @@ const dismiss = async (contractId) => {
             <td class="px-3 py-2 text-slate-600">{{ err.hint }}</td>
             <td class="px-3 py-2">
               <div class="flex justify-end gap-2">
-                <button type="button" :disabled="!!busy || disabled" @click="retry(err.contract_id)"
+                <button type="button" :disabled="locked" @click="retry(err.contract_id)"
                   class="flex items-center gap-1 rounded px-2 py-1 border border-sky-300 bg-white text-sky-700 enabled:hover:bg-sky-50 disabled:opacity-50 text-xs font-semibold whitespace-nowrap">
                   <Icon name="fa6-solid:rotate-right" :class="{ 'animate-spin': busy === err.contract_id }" />
                   {{ t('billing_block.process_error_retry') }}
                 </button>
-                <button type="button" :disabled="!!busy || disabled" @click="dismiss(err.contract_id)"
+                <button type="button" :disabled="locked" @click="dismiss(err.contract_id)"
                   class="flex items-center gap-1 rounded px-2 py-1 border border-slate-300 bg-white text-slate-600 enabled:hover:bg-slate-50 disabled:opacity-50 text-xs font-semibold whitespace-nowrap">
                   <Icon name="fa6-solid:xmark" />
                   {{ t('billing_block.process_error_dismiss') }}

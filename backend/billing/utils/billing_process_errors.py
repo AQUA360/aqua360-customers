@@ -18,6 +18,11 @@ from django.utils.translation import gettext as _
 logger = logging.getLogger(__name__)
 
 
+# Missatges de la cua de facturació quan una tasca falla sense un error conegut.
+QUEUE_TASK_FAILED_MESSAGE = ("La tasca ha fallat de manera inesperada. Torneu-ho a provar amb «Reiniciar» i, si es repeteix, contacteu amb suport.")
+QUEUE_TASK_START_FAILED_MESSAGE = ("No s'ha pogut engegar la tasca. Torneu-ho a provar amb «Reiniciar» i, si es repeteix, contacteu amb suport.")
+
+
 class BillingProcessError(Exception):
   """Error conegut del processat, amb codi i missatge per a l'usuari."""
 
@@ -35,49 +40,65 @@ def _supply_point_label(reading):
   return supply_point.name or supply_point.token
 
 
-def validate_contract_readings(readings):
-  """Comprova que les lectures del contracte tenen les dades que el càlcul necessita."""
-  for reading in readings:
-    supply_point = _supply_point_label(reading)
-    if reading.meter_id is None:
-      if supply_point:
-        message = _('Hi ha una lectura sense comptador al punt de subministrament %(supply_point)s.') % {'supply_point': supply_point}
-      else:
-        message = _('Hi ha una lectura sense comptador.')
-      raise BillingProcessError(
-        'reading_without_meter',
-        message,
-        _("Assigneu el comptador al punt o anul·leu la lectura des de «Modificar lectures», i torneu a processar el contracte."),
-      )
-    if reading.reading_date is None:
-      raise BillingProcessError(
-        'reading_without_date',
-        _('Hi ha una lectura sense data de lectura.'),
-        _("Poseu la data a la lectura des de «Modificar lectures» i torneu a processar el contracte."),
-      )
-    if reading.calculated_value is None:
-      raise BillingProcessError(
-        'reading_without_consumption',
-        _('Hi ha una lectura sense el consum calculat.'),
-        _("Reviseu la lectura des de «Modificar lectures» (valor i lectura anterior) i torneu a processar el contracte."),
-      )
+def _validate_reading_meter(reading):
+  if reading.meter_id is not None:
+    return
+  supply_point = _supply_point_label(reading)
+  if supply_point:
+    message = _('Hi ha una lectura sense comptador al punt de subministrament %(supply_point)s.') % {'supply_point': supply_point}
+  else:
+    message = _('Hi ha una lectura sense comptador.')
+  raise BillingProcessError(
+    'reading_without_meter',
+    message,
+    _("Assigneu el comptador al punt o anul·leu la lectura des de «Modificar lectures», i torneu a processar el contracte."),
+  )
+
+
+def _validate_reading_values(reading):
+  if reading.reading_date is None:
+    raise BillingProcessError(
+      'reading_without_date',
+      _('Hi ha una lectura sense data de lectura.'),
+      _("Poseu la data a la lectura des de «Modificar lectures» i torneu a processar el contracte."),
+    )
+  if reading.calculated_value is None:
+    raise BillingProcessError(
+      'reading_without_consumption',
+      _('Hi ha una lectura sense el consum calculat.'),
+      _("Reviseu la lectura des de «Modificar lectures» (valor i lectura anterior) i torneu a processar el contracte."),
+    )
 
 
 def dedupe_contract_readings(contract, readings):
   """
   Valida les lectures i en deixa una per comptador (la primera de la llista, que ha de
   venir ordenada per data descendent o ascendent segons el que vulgui el cridador).
+
+  El comptador es valida a totes (cal per agrupar-les); la data i el consum, només a les
+  que es facturen: una lectura descartada no ha d'impedir la factura.
   """
-  validate_contract_readings(readings)
   seen = set()
   result = []
   for reading in readings:
+    _validate_reading_meter(reading)
     key = (contract.token, reading.meter.code)
     if key in seen:
       continue
     seen.add(key)
     result.append(reading)
+  for reading in result:
+    _validate_reading_values(reading)
   return result
+
+
+def no_invoice_generated_error():
+  """El generador no ha creat factura (lectures anteriors a l'alta o cap preu aplicable)."""
+  return BillingProcessError(
+    'no_invoice_generated',
+    _("No s'ha generat cap factura per al contracte."),
+    _("Comproveu que les lectures no són anteriors a la data d'alta del contracte i que les tarifes tenen preus per al període facturat; després torneu-lo a processar."),
+  )
 
 
 def _exception_chain(exc):

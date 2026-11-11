@@ -53,6 +53,15 @@ class TestClassifyBillingError(SimpleTestCase):
         r2 = SimpleNamespace(meter_id=1, meter=meter, supply_point=None, reading_date=timezone.now().date(), calculated_value=Decimal('2'))
         self.assertEqual(dedupe_contract_readings(SimpleNamespace(token='C-1'), [r1, r2]), [r1])
 
+    def test_discarded_reading_without_consumption_does_not_block(self):
+        meter = SimpleNamespace(code='M-1')
+        recent = SimpleNamespace(meter_id=1, meter=meter, supply_point=None, reading_date=timezone.now().date(), calculated_value=Decimal('1'))
+        old = SimpleNamespace(meter_id=1, meter=meter, supply_point=None, reading_date=timezone.now().date(), calculated_value=None)
+        self.assertEqual(dedupe_contract_readings(SimpleNamespace(token='C-1'), [recent, old]), [recent])
+        with self.assertRaises(BillingProcessError) as ctx:
+            dedupe_contract_readings(SimpleNamespace(token='C-1'), [old, recent])
+        self.assertEqual(ctx.exception.code, 'reading_without_consumption')
+
 
 class ProcessErrorsBase(TestCase):
 
@@ -108,12 +117,15 @@ class TestProcessBillingBatchErrors(ProcessErrorsBase):
 
     def test_failing_contracts_are_recorded_and_the_rest_processed(self, _progress, _close):
         calls = []
+        # Un error desat per un altre procés mentre el lot treballa no s'ha de perdre
+        concurrent = {'contract_id': 999999, 'code': 'unknown'}
 
         def fake_generate(contract, readings, *args, **kwargs):
             calls.append(contract.id)
             if contract.id == self.contracts['crash'].id:
                 raise AttributeError("'NoneType' object has no attribute 'code'")
-            return None
+            upsert_billing_process_error(self.billing.id, concurrent)
+            return mock.MagicMock(id=999999, total_final=Decimal('10'), payment_type=None)
 
         with mock.patch('billing.tasks.generate_consumption_invoice_multiple', side_effect=fake_generate):
             process_billing_batch(self.billing.id)
@@ -121,11 +133,19 @@ class TestProcessBillingBatchErrors(ProcessErrorsBase):
         self.assertCountEqual(calls, [self.contracts['ok'].id, self.contracts['crash'].id])
         self.billing.refresh_from_db()
         errors = {e['contract_id']: e for e in self.billing.process_errors}
-        self.assertEqual(set(errors), {self.contracts['no_meter'].id, self.contracts['crash'].id})
+        self.assertEqual(set(errors), {self.contracts['no_meter'].id, self.contracts['crash'].id, 999999})
         self.assertEqual(errors[self.contracts['no_meter'].id]['code'], 'reading_without_meter')
         self.assertEqual(errors[self.contracts['no_meter'].id]['contract_token'], 'CON-PROCESS-ERRORS-no_meter')
         self.assertEqual(errors[self.contracts['crash'].id]['code'], 'unknown')
         self.assertEqual(self.billing.status.token, 'PENDING')
+
+    def test_contract_without_generated_invoice_is_recorded(self, _progress, _close):
+        with mock.patch('billing.tasks.generate_consumption_invoice_multiple', return_value=None):
+            process_billing_batch(self.billing.id)
+
+        self.billing.refresh_from_db()
+        errors = {e['contract_id']: e['code'] for e in self.billing.process_errors}
+        self.assertEqual(errors[self.contracts['ok'].id], 'no_invoice_generated')
 
     def test_global_error_closes_queue_item_with_readable_message(self, _progress, _close):
         billing = Billing.objects.create(token='FACT-NO-BILLER')

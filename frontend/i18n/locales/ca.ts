@@ -2855,7 +2855,7 @@ export default {
     process_error_retry: 'Tornar a processar',
     process_error_retry_all: 'Tornar a processar tots',
     process_error_dismiss: 'Descartar',
-    process_error_confirm_dismiss: 'El contracte no es facturarà en aquesta facturació i desapareixerà de la llista. Voleu continuar?',
+    process_error_confirm_dismiss: 'L\'error desapareixerà de la llista, però el contracte no queda exclòs: si es torna a processar la facturació, es pot facturar. Voleu continuar?',
     process_error_retry_failed: 'El contracte continua amb error. Reviseu el motiu indicat.',
     correct_process_selected: 'Procés iniciat correctament en segon pla',
     generated_reading_batches: 'Lots de lectures generats',

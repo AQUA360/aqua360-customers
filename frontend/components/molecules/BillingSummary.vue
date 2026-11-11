@@ -545,13 +545,14 @@ const regenerate = async () => {
       reloading.value = true
       counters.value = null;
       warningInvoices.value = [];
-      processErrors.value = [];
       invoices.value = [];
       progress.value = 0;
       numInvoices.value = 0;
       numSuccessInvoices.value = 0;
       numWarningInvoices.value = 0;
       const res = await $BillingApiService.recalculate(props.billing_id);
+      // Un cop acceptat: si el recàlcul falla, els errors es continuen veient
+      processErrors.value = [];
       emit('recalculate', res);
     }
   }
@@ -773,11 +774,11 @@ watch(() => props.load_invoices, (newValue) => {
             <span
               class="inline-flex items-center bg-red-500 text-white text-sm rounded-full px-2 py-1 ml-2 mr-5">{{
                 processErrors.length }}</span>
-            <div
-              class="w-10 cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-150 bg-gradient-to-r from-transparent to-red-200 h-full absolute top-0 right-0 flex items-center justify-center"
-              @click="openProcessErrorsRegion" :title="t('common.view_details')">
+            <button type="button"
+              class="w-10 cursor-pointer opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 transition-all duration-150 bg-gradient-to-r from-transparent to-red-200 h-full absolute top-0 right-0 flex items-center justify-center"
+              @click="openProcessErrorsRegion" :title="t('common.view_details')" :aria-label="t('billing_block.process_errors_title')">
               <Icon name="fa6-solid:eye" class="w-4 h-4 text-red-600" />
-            </div>
+            </button>
           </li>
           <li class="flex justify-between items-center p-4 relative group">
             <span class="font-bold">{{ t('num_invoices') }}:</span>
@@ -999,7 +1000,7 @@ watch(() => props.load_invoices, (newValue) => {
       </div>
       <div v-if="showRegionComponent === 'ProcessErrors'" class="px-10 flex flex-col h-full">
         <BillingProcessErrorsDetail :billingId="props.billing_id" :errors="processErrors"
-          :loading="loadingProcessErrors && processErrors.length === 0" :disabled="props.isQueueBlocked"
+          :loading="loadingProcessErrors && processErrors.length === 0" :reloading="loadingProcessErrors" :disabled="props.isQueueBlocked"
           @reload="onProcessErrorsReload" @open-region="openRegion" />
       </div>
       <div v-if="showRegionComponent === 'BilledInvoices'" class="px-10 flex flex-col h-full">

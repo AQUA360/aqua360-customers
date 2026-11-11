@@ -2791,7 +2791,7 @@ export default {
     process_error_retry: 'Volver procesar',
     process_error_retry_all: 'Volver procesar todos',
     process_error_dismiss: 'Descartar',
-    process_error_confirm_dismiss: 'O contrato non se facturará nesta facturación e desaparecerá da lista. Queredes continuar?',
+    process_error_confirm_dismiss: 'O erro desaparecerá da lista, pero o contrato non queda excluído: se se volve procesar a facturación, pódese facturar. Queredes continuar?',
     process_error_retry_failed: 'O contrato segue con erro. Revisade o motivo indicado.',
     correct_process_selected: 'Proceso iniciado correctamente en segundo plano',
     generated_reading_batches: 'Lotes de lecturas xerados',

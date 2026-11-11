@@ -2791,7 +2791,7 @@ export default {
     process_error_retry: 'Process again',
     process_error_retry_all: 'Process all again',
     process_error_dismiss: 'Dismiss',
-    process_error_confirm_dismiss: 'The contract will not be billed in this billing and will be removed from the list. Continue?',
+    process_error_confirm_dismiss: 'The error will be removed from the list, but the contract is not excluded: if the billing is processed again, it may be billed. Continue?',
     process_error_retry_failed: 'The contract still has an error. Check the reason shown.',
     correct_process_selected: 'Process started successfully in the background',
     generated_reading_batches: 'Generated reading batches',

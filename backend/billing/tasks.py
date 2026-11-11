@@ -73,8 +73,8 @@ from django.utils import timezone
 from django.utils import translation
 from django.utils.translation import gettext as _
 from billing.utils.billing_process_errors import (
-  BillingProcessError, build_contract_error, classify_billing_error, dedupe_contract_readings,
-  remove_billing_process_errors, upsert_billing_process_error,
+  QUEUE_TASK_FAILED_MESSAGE, QUEUE_TASK_START_FAILED_MESSAGE, BillingProcessError, build_contract_error, classify_billing_error, dedupe_contract_readings,
+  no_invoice_generated_error, remove_billing_process_errors, upsert_billing_process_error,
 )
 import logging
 
@@ -2445,7 +2445,9 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
       contract_readings.setdefault(reading.contract, []).append(reading)
 
     invoices = []
-    process_errors = []
+    # Els errors es desen un a un (amb bloqueig) i no al final: així no es perden els
+    # que desi alhora un reprocessat individual ni tornen els que es descartin.
+    Billing.objects.filter(id=billing.id).update(process_errors=[])
     
     avg_total_cache = TotalAmountAvgCache(contract_ids)
 
@@ -2465,7 +2467,7 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
             readings_list = dedupe_contract_readings(contract, readings_list)
             invoice = generate_consumption_invoice_multiple(contract, readings_list, name, billing=billing, period_months=period_months)
             if not invoice:
-              continue
+              raise no_invoice_generated_error()
             if contract.general_invoice:
               general_invoice = contract.general_invoice
               general_contracts = [ctr for ctr in contracts if ctr.general_invoice == general_invoice]
@@ -2491,7 +2493,7 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
           invoices.append(invoice)
         except Exception as exc:
           logger.exception("No s'ha pogut facturar el contracte %s", contract.id)
-          process_errors.append(build_contract_error(contract, exc))
+          upsert_billing_process_error(billing.id, build_contract_error(contract, exc))
         finally:
           processed_contracts += 1
           progress_recorder.set_progress(processed_contracts, total_contracts)
@@ -2508,8 +2510,10 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
   pending_status_token = ConfigProject.objects.get(token='billing_batch_pending').value
   pending_status = BillingStatus.objects.get(token=pending_status_token)
   billing.status = pending_status
-  billing.process_errors = process_errors
-  billing.save()
+  # Sense `process_errors`: el valor en memòria és el de l'inici i esborraria els desats.
+  billing.save(update_fields=[
+    f.name for f in Billing._meta.concrete_fields if not f.primary_key and f.name != 'process_errors'
+  ])
 
   if queue_item_id:
     from django.utils import timezone
@@ -3246,10 +3250,12 @@ def regenerate_billing_pdfs(self, billing_id, queue_item_id=None):
 
     return {'billing_id': billing_id, 'total': total, 'generated': generated}
 
-  except Exception as e:
+  except Exception:
+    logger.exception("Error a regenerate_billing_pdfs")
     if q_item:
-      _close_billing_queue_item(q_item.id, self.request.id, status='failed', completed_at=timezone.now(), error_message=str(e))
-    raise Exception(f"Error in regenerate_billing_pdfs: {e}")
+      _close_billing_queue_item(q_item.id, self.request.id, status='failed', completed_at=timezone.now(), error_message=QUEUE_TASK_FAILED_MESSAGE)
+    # Sense l'excepció original: el resultat de Celery es pot mostrar a l'usuari.
+    raise Exception(QUEUE_TASK_FAILED_MESSAGE) from None
 
 
 @shared_task(bind=True)
@@ -3324,10 +3330,12 @@ def export_wincen_task(self, billing_id, queue_item_id=None):
 
     return {'billing_id': billing_id, 'total': total, 'file_url': file_url, 'filename': filename, 'document_id': document_id}
 
-  except Exception as e:
+  except Exception:
+    logger.exception("Error a export_wincen_task")
     if q_item:
-      _close_billing_queue_item(q_item.id, self.request.id, status='failed', completed_at=timezone.now(), error_message=str(e))
-    raise Exception(f"Error in export_wincen_task: {e}")
+      _close_billing_queue_item(q_item.id, self.request.id, status='failed', completed_at=timezone.now(), error_message=QUEUE_TASK_FAILED_MESSAGE)
+    # Sense l'excepció original: el resultat de Celery es pot mostrar a l'usuari.
+    raise Exception(QUEUE_TASK_FAILED_MESSAGE) from None
 
 
 @shared_task
@@ -4090,59 +4098,60 @@ def process_selected_contracts_task(billing_id, contract_ids):
             print(f"Contract {contract_id} not found.")
             continue
 
-        # Check if contract has an active reading in this period
-        reading = Reading.objects.filter(
-            contract=contract,
-            is_initial=False,
-            is_control=False,
-            is_active=True,
-            invoices__isnull=True,
-        ).filter(
-            reading_date__gte=contract.created_at.date() if contract.created_at else contract.registration_date
-        )
-
-        if first_start_reading and last_end_reading:
-            margin_days = timedelta(days=(billing_period_days * (limit/100)))
-            reading = reading.filter(
-                reading_date__range=(first_start_reading, last_end_reading + margin_days)
-            )
-
-        reading = reading.order_by('-reading_date', '-id').first()
-
-        # If no reading, generate estimated reading
-        if not reading:
-            supply_point = contract.supply_point_default
-            if not supply_point:
-                supply_point = contract.supply_points.first()
-            if not supply_point:
-                print(f"No supply point for contract {contract_id}")
-                continue
-
-            from billing.utils.reading_service import get_estimated_reading_minimal_object
-            reading = get_estimated_reading_minimal_object(
-                supply_point=supply_point,
-                contract=contract,
-                date=target_date,
-                batch=ref_batch,
-                offset_days=billing_period_days,
-                max_day_limit=date.today(),
-                create_reading=True
-            )
-
-        if not reading:
-            print(f"Could not find or generate reading for contract {contract_id}")
-            continue
-
-        # Ensure reading is associated to ref_batch and billing
-        if reading.batch != ref_batch or reading.billing != billing:
-            reading.batch = ref_batch
-            reading.billing = billing
-            reading.save()
-
-        # Cada contracte en la seva transacció; si falla, l'error queda a la facturació
-        # (process_errors) perquè l'usuari el vegi i el pugui tornar a processar.
+        # Cada contracte en la seva transacció (també la preparació de la lectura); si
+        # falla, l'error queda a la facturació (process_errors) perquè l'usuari el vegi
+        # i el pugui tornar a processar.
         try:
             with transaction.atomic():
+                # Check if contract has an active reading in this period
+                reading = Reading.objects.filter(
+                    contract=contract,
+                    is_initial=False,
+                    is_control=False,
+                    is_active=True,
+                    invoices__isnull=True,
+                ).filter(
+                    reading_date__gte=contract.created_at.date() if contract.created_at else contract.registration_date
+                )
+
+                if first_start_reading and last_end_reading:
+                    margin_days = timedelta(days=(billing_period_days * (limit/100)))
+                    reading = reading.filter(
+                        reading_date__range=(first_start_reading, last_end_reading + margin_days)
+                    )
+
+                reading = reading.order_by('-reading_date', '-id').first()
+
+                # If no reading, generate estimated reading
+                if not reading:
+                    supply_point = contract.supply_point_default
+                    if not supply_point:
+                        supply_point = contract.supply_points.first()
+                    if not supply_point:
+                        print(f"No supply point for contract {contract_id}")
+                        continue
+
+                    from billing.utils.reading_service import get_estimated_reading_minimal_object
+                    reading = get_estimated_reading_minimal_object(
+                        supply_point=supply_point,
+                        contract=contract,
+                        date=target_date,
+                        batch=ref_batch,
+                        offset_days=billing_period_days,
+                        max_day_limit=date.today(),
+                        create_reading=True
+                    )
+
+                if not reading:
+                    print(f"Could not find or generate reading for contract {contract_id}")
+                    continue
+
+                # Ensure reading is associated to ref_batch and billing
+                if reading.batch != ref_batch or reading.billing != billing:
+                    reading.batch = ref_batch
+                    reading.billing = billing
+                    reading.save()
+
                 # Process invoice
                 contract_readings = list(billing.readings.filter(
                     contract=contract,
@@ -4171,8 +4180,7 @@ def process_selected_contracts_task(billing_id, contract_ids):
                 )
 
                 if not invoice:
-                    print(f"Failed to generate invoice for contract {contract_id}")
-                    continue
+                    raise no_invoice_generated_error()
 
                 if contract.general_invoice:
                     general_invoice = contract.general_invoice
@@ -4274,10 +4282,12 @@ def process_next_queue_item():
         args=args, kwargs={'queue_item_id': next_item.id}, task_id=task_id,
         headers={CURRENT_USER_HEADER: next_item.created_by_id},
       )
-  except Exception as e:
+  except Exception:
+    # p. ex. el broker no respon; el detall al log, no a la cua que veu l'usuari
+    logger.exception("No s'ha pogut engegar la tasca de la cua de facturació")
     next_item.status = 'failed'
     next_item.completed_at = timezone.now()
-    next_item.error_message = str(e)
+    next_item.error_message = QUEUE_TASK_START_FAILED_MESSAGE
     next_item.save()
     # Trigger next task recursively
     process_next_queue_item()

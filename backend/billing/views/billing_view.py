@@ -40,7 +40,7 @@ from billing.serializers.billing_serializer import BillingListSerializer, Billin
 from django.db import transaction
 from django.utils.translation import gettext as _
 from billing.utils.billing_process_errors import (
-  build_contract_error, dedupe_contract_readings, remove_billing_process_errors, upsert_billing_process_error,
+  build_contract_error, dedupe_contract_readings, no_invoice_generated_error, remove_billing_process_errors, upsert_billing_process_error,
 )
 import logging
 
@@ -867,7 +867,7 @@ class BillingViewSet(viewsets.ModelViewSet):
               )
 
               if not invoice:
-                  return Response({"error": _("No s'ha generat cap factura: el contracte no té comptador o les lectures són anteriors a l'alta.")}, status=status.HTTP_400_BAD_REQUEST)
+                  raise no_invoice_generated_error()
 
               # Set general contracts if general invoice exists
               if contract.general_invoice:

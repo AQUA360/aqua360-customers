@@ -25,13 +25,13 @@ from django.db.models.functions import Abs
 from django.utils import translation
 from django.utils.translation import gettext as _
 from billing.permissions import BillingPermission
+from billing.utils.billing_process_errors import QUEUE_TASK_FAILED_MESSAGE
 import logging
 
 logger = logging.getLogger(__name__)
 
 # El detall de l'excepció no es mostra a l'usuari (pot exposar dades internes): va al log de
 # Celery. Les tasques que coneixen el motiu ja tanquen l'item amb un missatge entenedor.
-QUEUE_TASK_FAILED_MESSAGE = "La tasca ha fallat de manera inesperada. Torneu-ho a provar amb «Reiniciar» i, si es repeteix, contacteu amb suport."
 
 class BillingQueueListView(APIView):
     permission_classes = [IsAuthenticated]
