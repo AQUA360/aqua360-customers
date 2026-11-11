@@ -4,6 +4,7 @@ import { ref, resolveDirective, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import { formatDate } from '~/utils/date';
+import ContractInvalidAccountAlert from '~/components/molecules/ContractInvalidAccountAlert.vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import H1Region from '~/components/atoms/H1Region.vue';
@@ -786,6 +787,8 @@ const addWalletBalance = () => {
             </div>
           </div>
         </div>
+
+        <ContractInvalidAccountAlert :alert="data.invalid_account_payment_alert" />
 
         <ContractDetail :data="data" @show-subregion="showDetail" :isSubRegion="isSubRegion"
           :canChange="objectPermissions?.can_change" :isSubRegionOpen="isSubRegionOpen" @change="handleChange"

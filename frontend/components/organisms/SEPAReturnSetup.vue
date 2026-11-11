@@ -252,9 +252,12 @@ const exportColumns = computed(() => [
     { header: t('billing_block.return_warnings'), value: (row) => returnWarnings(row).join(' · ') },
 ]);
 
-// Avisos de la fila: abonat de baixa i factura anul·lada i refeta
+// Avisos de la fila: compte invàlid, abonat de baixa i factura anul·lada i refeta
 const returnWarnings = (row) => {
     const warnings = [];
+    if (row.invalid_account) {
+        warnings.push(t('billing_block.return_invalid_account'));
+    }
     if (row.contract_terminated) {
         warnings.push(row.contract_termination_date
             ? `${t('billing_block.return_contract_terminated')} (${formatDate(row.contract_termination_date)})`
@@ -334,6 +337,7 @@ watch(() => props.save_response, (newValue) => {
                     contract_holder_nif: row.contract_holder_nif ?? updated.contract_holder_nif,
                     is_legacy_exploitation: row.is_legacy_exploitation ?? updated.is_legacy_exploitation,
                     method_changed: row.method_changed ?? updated.method_changed,
+                    invalid_account: row.invalid_account ?? updated.invalid_account,
                     contract_terminated: row.contract_terminated ?? updated.contract_terminated,
                     contract_termination_date: row.contract_termination_date ?? updated.contract_termination_date,
                     invoice_rectified: row.invoice_rectified ?? updated.invoice_rectified,
@@ -598,8 +602,14 @@ watch(() => props.save_response, (newValue) => {
                                         <p v-if="element.method_changed" class="mt-1 text-xs text-amber-700">
                                             {{ t("informative_block.info_return_method_changed") }}
                                         </p>
-                                        <div v-if="element.contract_terminated || element.invoice_rectified"
+                                        <div v-if="element.invalid_account || element.contract_terminated || element.invoice_rectified"
                                             class="mt-1 flex flex-wrap gap-1">
+                                            <span v-if="element.invalid_account"
+                                                :title="t('informative_block.info_return_invalid_account')"
+                                                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800">
+                                                <Icon name="fa6-solid:building-columns" class="h-3 w-3" />
+                                                {{ t("billing_block.return_invalid_account") }}
+                                            </span>
                                             <span v-if="element.contract_terminated"
                                                 :title="t('informative_block.info_return_contract_terminated')"
                                                 class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
