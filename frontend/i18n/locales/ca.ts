@@ -1303,6 +1303,7 @@ export default {
     cut_supply: 'Tallar subministrament',
     no_supply_cuts: 'Sense talls de subministrament',
     active_supply_cut_warning: 'Punt de subministrament amb tall vigent',
+    linked_nozzle_change_confirm: 'Has canviat la destinació, la columna o la fila de boquilles que ja tenen punt de subministrament ({tokens}). Per a un punt nou, afegeix una boquilla nova amb «Nou registre». Vols desar igualment?',
     remove_supply_point_from_cut: 'Treure del tall',
     confirm_remove_supply_point_from_cut: 'Segur que vols treure aquest punt de subministrament del tall? El subministrament es tornarà a habilitar i el contracte deixarà de constar com a tallat.',
     supply_cut_date: 'Data tall de subm.',

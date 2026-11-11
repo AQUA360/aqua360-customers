@@ -1293,6 +1293,7 @@ export default {
     cut_supply: 'Cut supply',
     no_supply_cuts: 'No supply cuts',
     active_supply_cut_warning: 'Supply point with an active supply cut',
+    linked_nozzle_change_confirm: 'You changed the destination, column or row of nozzles that already have a supply point ({tokens}). For a new supply point, add a new nozzle with «New record». Save anyway?',
     remove_supply_point_from_cut: 'Remove from cut',
     confirm_remove_supply_point_from_cut: 'Are you sure you want to remove this supply point from the cut? The supply will be re-enabled and the contract will no longer show as cut.',
     supply_cut_date: 'Supply cut date',

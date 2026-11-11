@@ -1303,6 +1303,7 @@ export default {
     cut_supply: 'Cortar suministro',
     no_supply_cuts: 'Sin cortes de suministro',
     active_supply_cut_warning: 'Punto de suministro con corte vigente',
+    linked_nozzle_change_confirm: 'Has cambiado el destino, la columna o la fila de boquillas que ya tienen punto de suministro ({tokens}). Para un punto nuevo, añade una boquilla nueva con «Nuevo registro». ¿Quieres guardar igualmente?',
     remove_supply_point_from_cut: 'Quitar del corte',
     confirm_remove_supply_point_from_cut: '¿Seguro que quieres quitar este punto de suministro del corte? El suministro se volverá a habilitar y el contrato dejará de constar como cortado.',
     supply_cut_date: 'Fecha de corte sumtr.',

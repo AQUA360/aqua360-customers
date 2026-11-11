@@ -425,6 +425,23 @@ const isValid = () => {
   return true;
 }
 
+// Una boquilla desada que ja té punt de subministrament no s'ha de reaprofitar per a un punt nou:
+// si se'n canvia la destinació, la columna o la fila, es demana confirmació abans de desar.
+const confirmLinkedNozzleChanges = () => {
+  const sameValue = (a, b) => (a ?? '').toString() === (b ?? '').toString();
+  const changed = nozzles.value.filter(nozzle => {
+    if (!nozzle.id || !nozzle.supplyPoint?.id) return false;
+    const original = nozzlesBD.value.find(n => n.id === nozzle.id);
+    if (!original) return false;
+    return !sameValue(nozzle.destination, original.destination)
+      || !sameValue(nozzle.col, original.col)
+      || !sameValue(nozzle.row, original.row);
+  });
+  if (changed.length === 0) return true;
+  const tokens = changed.map(n => n.supplyPoint.token).join(', ');
+  return confirm(t('service_block.linked_nozzle_change_confirm', { tokens }));
+}
+
 // Funció per guardar el cluster
 const saveCluster = async () => {
   // Forcem el blur de l'input actiu perquè es propagui (@change) qualsevol valor
@@ -435,6 +452,10 @@ const saveCluster = async () => {
 
   attemptedSave.value = true;
   if (!isValid()) {
+    return;
+  }
+
+  if (!confirmLinkedNozzleChanges()) {
     return;
   }
 
@@ -651,6 +672,7 @@ const saveCluster = async () => {
     nozzlesBD.value = nozzlesBD.value.filter(n => !removedNozzles.includes(n));
     console.log("9. nozzlesBD.value",nozzlesBD.value)
 
+    toast.success(t('common.saved_successfully'));
     emits('saved', response);
 
     if (props.allowNavigation) {
@@ -658,7 +680,9 @@ const saveCluster = async () => {
     }
 
   } catch (error) {
+    // Sense avís, l'usuari no sap que les boquilles a partir de la que ha fallat no s'han desat
     console.error(error);
+    toast.error(t('common.error_save'));
   } finally {
     saving.value = false;
   }
