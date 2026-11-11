@@ -61,20 +61,29 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.ubuntu.txt
       - name: Llibreries del sistema
-        # Si el mirall d'apt no respon, que falli aviat en lloc de quedar-se penjat
+        # Si els miralls d'apt no responen, que falli aviat en lloc de quedar-se penjat
         timeout-minutes: 15
         run: |
           apt_opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
           apt_llest=""
-          # Actualitza l'índex un sol cop. Si el mirall del runner (Azure) no respon,
-          # torna a provar amb el mirall general d'Ubuntu.
+          # Actualitza l'índex un sol cop. Si el DNS del runner no resol els miralls
+          # d'Ubuntu, es fan servir DNS públics; si tot i així falla, s'atura de seguida.
+          resol_miralls() {
+            timeout 10 getent hosts azure.archive.ubuntu.com >/dev/null \
+              && timeout 10 getent hosts archive.ubuntu.com >/dev/null
+          }
           prepara_apt() {
             [ -n "$apt_llest" ] && return 0
+            if ! resol_miralls; then
+              echo "::warning::El DNS del runner no resol els miralls d'Ubuntu; es fan servir DNS públics"
+              interficie=$(ip route show default | awk '{print $5; exit}')
+              sudo resolvectl dns "$interficie" 1.1.1.1 8.8.8.8
+              sudo resolvectl flush-caches
+              resol_miralls || echo "::warning::Tampoc es resolen amb DNS públics"
+            fi
             if ! sudo apt-get "${apt_opts[@]}" update --error-on=any; then
-              echo "::warning::El mirall d'apt del runner no respon; es prova amb archive.ubuntu.com"
-              cat /etc/apt/apt-mirrors.txt 2>/dev/null || true
-              echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
-              sudo apt-get "${apt_opts[@]}" update
+              echo "::error::No es pot actualitzar l'índex d'apt: els miralls d'Ubuntu no responen"
+              return 1
             fi
             apt_llest=1
           }
