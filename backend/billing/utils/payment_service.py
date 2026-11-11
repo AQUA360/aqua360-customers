@@ -2,7 +2,7 @@ from http.client import PAYMENT_REQUIRED
 import logging
 import re
 from django.utils import timezone
-from billing.models import CommitmentDeposit, DocumentSEPA, DocumentSEPALine, Invoice, Payment, PaymentMovement, PaymentStatus
+from billing.models import CommitmentDeposit, DocumentSEPA, DocumentSEPALine, Invoice, InvoiceStatus, Payment, PaymentMovement, PaymentStatus
 from billing.utils.invoice_service import change_status_logger
 from contract.models import Contract, PaymentType, PiggyBank, PiggyBankMovement
 from coredata.models import ConfigProject
@@ -419,6 +419,123 @@ def add_negative_payment_to_balance(payment, payment_date):
         )
 
     raise ValueError("Piggy bank not found to add the payment to the balance")
+
+
+def settle_negative_payment_to_piggy(payment, user, payment_date=None):
+    """
+    Abona un pagament negatiu al saldo i el marca amb payment_status_piggy_token
+    (igual que el retorn de fiança), generant el moviment BALANCE corresponent.
+    Desconnecta els signals de pagament perquè no es dupliquin log i moviment.
+    """
+    if payment.amount is None or payment.amount >= 0:
+        raise ValueError("Payment amount must be negative")
+
+    payment_date = payment_date or timezone.localdate()
+    paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+    cancelled_token = ConfigProject.objects.get(token='payment_status_cancelled_token').value
+    piggy_status = PaymentStatus.objects.get(
+        token=ConfigProject.objects.get(token='payment_status_piggy_token').value
+    )
+    balance_type = PaymentType.objects.get(token="BALANCE")
+    paid_invoice_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
+
+    if payment.status and payment.status.token in (paid_token, cancelled_token, piggy_status.token):
+        raise ValueError("Payment already settled")
+    if payment.remittances.filter(sent_at__isnull=True).exists():
+        raise ValueError("Payment belongs to a pending remittance.")
+
+    disconnect_payment_signals()
+    try:
+        add_negative_payment_to_balance(payment, payment_date)
+        log_payment_status(payment, piggy_status, user, payment_date, balance_type.token)
+        generate_payment_movement(
+            payment, piggy_status,
+            payment_date, balance_type.token,
+            None, user,
+            None, None,
+        )
+        payment.status = piggy_status
+        payment.payment_type = balance_type.name
+        payment.payment_type_token = balance_type.token
+        payment.payment_date = payment_date
+        payment.paid_at = payment_date
+        payment.save()
+
+        # Sense update_payment: cal marcar la factura pagada aquí.
+        invoice = payment.invoice
+        if invoice:
+            paid_status = InvoiceStatus.objects.get(token=paid_invoice_token)
+            piggy_token = piggy_status.token
+            total_paid = sum(
+                (p.amount or 0)
+                for p in invoice.payments.filter(status__token__in=[paid_token, piggy_token])
+            )
+            remaining = float(invoice.total_final or 0) - float(total_paid)
+            if remaining <= 0:
+                if not invoice.status or invoice.status.token != paid_invoice_token:
+                    log_invoice_status(invoice, paid_status, user)
+                    invoice.status = paid_status
+                invoice.payment_type_final = balance_type.name
+                invoice.payment_type_token_final = balance_type.token
+                invoice.save()
+    finally:
+        reconnect_payment_signals()
+
+    payment.refresh_from_db()
+    return payment
+
+
+def save_negative_invoice_to_piggy_bank(invoice, user, payment_date=None):
+    """
+    Factura amb total_final negatiu (no abonament/payoff): abona l'import al
+    saldo del client i marca els pagaments amb payment_status_piggy_token.
+    La factura queda pagada via el signal d'actualització de pagaments.
+    """
+    if invoice.total_final is None or invoice.total_final >= 0:
+        raise ValueError("Invoice total must be negative")
+
+    payoff_token = ConfigProject.objects.get(token='invoice_status_payoff_token').value
+    paid_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
+    if invoice.status and invoice.status.token == payoff_token:
+        raise ValueError("Payoff invoices cannot be saved to piggy bank")
+    if invoice.status and invoice.status.token == paid_token:
+        raise ValueError("Invoice is already paid")
+
+    payment_date = payment_date or timezone.localdate()
+    paid_payment_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+    cancelled_payment_token = ConfigProject.objects.get(token='payment_status_cancelled_token').value
+    piggy_token = ConfigProject.objects.get(token='payment_status_piggy_token').value
+    settled_tokens = {paid_payment_token, cancelled_payment_token, piggy_token}
+    balance_type = PaymentType.objects.get(token="BALANCE")
+
+    payments = list(invoice.payments.select_for_update().all())
+    unsettled = [
+        payment for payment in payments
+        if payment.amount is not None
+        and payment.amount < 0
+        and (not payment.status or payment.status.token not in settled_tokens)
+    ]
+    if not unsettled:
+        raise ValueError("No unsettled negative payments to save to piggy bank")
+
+    for payment in unsettled:
+        settle_negative_payment_to_piggy(payment, user, payment_date)
+
+    invoice.refresh_from_db()
+    paid_status = InvoiceStatus.objects.get(token=paid_token)
+    disconnect_payment_signals()
+    try:
+        # El signal de pagament ja hauria de deixar la factura pagada; reforcem
+        # estat, mètode BALANCE per si els signals estaven desconnectats.
+        if not invoice.status or invoice.status.token != paid_token:
+            log_invoice_status(invoice, paid_status, user)
+            invoice.status = paid_status
+        invoice.payment_type_final = balance_type.name
+        invoice.payment_type_token_final = balance_type.token
+        invoice.save()
+    finally:
+        reconnect_payment_signals()
+    return invoice
 
 
 def log_invoice_status(invoice, invoice_status, current_user=None):

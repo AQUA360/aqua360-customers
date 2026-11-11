@@ -176,6 +176,7 @@ class InvoiceMinimalSerializer(serializers.ModelSerializer):
     origin_name = serializers.CharField(read_only=True, source='origin.name')
     status_name = serializers.CharField(read_only=True, source='status.name')
     status_color = serializers.CharField(read_only=True, source='status.color')
+    status_token = serializers.CharField(read_only=True, source='status.token')
     contract_piggy_bank = serializers.SerializerMethodField()
     person_piggy_bank = serializers.SerializerMethodField()
     period_from = serializers.SerializerMethodField()

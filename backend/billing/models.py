@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.translation import gettext_lazy as _
 
@@ -1051,9 +1051,18 @@ class Payment(models.Model):
     class Meta:
         verbose_name = "Payment"
         verbose_name_plural = "Payments"
-    
+
     def __str__(self):
         return f"Payment {self.token} of {self.amount} for Invoice {self.invoice.token if self.invoice else 'No invoice'}"
+
+    def save(self, *args, **kwargs):
+        """Els pagaments de compromís (sense factura) es desen en la mateixa transacció que
+        el cobrament que en fan els senyals: si el cobrament falla, el pagament no queda pagat
+        i es pot tornar a cobrar."""
+        if self.commitment_deposit_id and not self.invoice_id:
+            with transaction.atomic():
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
 
 class PaymentRemittance(models.Model):
