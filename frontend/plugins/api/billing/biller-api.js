@@ -73,9 +73,9 @@ export default defineNuxtPlugin(nuxtApp => {
         apiUrl += data.id + '/';
       }
       const payload = { ...data };
-      if (!payload.id) {
+      if (!payload.id && !Object.prototype.hasOwnProperty.call(data, 'exploitation')) {
         const exploitation_id = localStorage.getItem('exploitation');
-        if (exploitation_id && !payload.exploitation) {
+        if (exploitation_id) {
           payload.exploitation = exploitation_id;
         }
       }

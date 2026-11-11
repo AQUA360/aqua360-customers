@@ -291,10 +291,11 @@ def _biller_config():
         "period_type": (_("Periodicitat"), lambda b: b.get_period_type_display() if b.period_type else ""),
         "initial_month": (_("Mes inicial"), lambda b: b.get_initial_month_display() if b.initial_month else ""),
         "is_active": (_("Actiu"), lambda b: "Sí" if b.is_active else "No"),
+        "exploitation": (_("Explotació"), lambda b: b.exploitation.name if b.exploitation else ""),
     }
 
     return ExportConfig(
-        queryset=lambda: Biller.objects.all(),
+        queryset=lambda: Biller.objects.select_related('exploitation'),
         filterset_class=BillerFilter,
         permission_classes=[IsAuthenticated, export_permission_class('billing', 'biller')],
         available_columns=available_columns,
