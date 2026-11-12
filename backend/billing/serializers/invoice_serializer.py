@@ -18,7 +18,9 @@ from verifactu.serializers.verifactu_serializer import VerifactuNotificationSeri
 
 from billing.utils.invoice_service import change_status_logger, get_totals
 from billing.utils.invoice_list_queryset import invoice_list_config_tokens
-from billing.utils.invoice_period import invoice_billing_cycles, invoice_payment_states, invoice_relations_map
+from billing.utils.invoice_period import (
+    invoice_billing_cycles, invoice_payment_states, invoice_payment_summaries, invoice_relations_map,
+)
 from billing.utils.invoice_suppression_service import invoice_needs_return, suppress_invoice
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
 from coredata.models import ConfigProject
@@ -160,6 +162,9 @@ class InvoiceMinimalBatchListSerializer(serializers.ListSerializer):
                 Invoice.objects.filter(id__in=[obj.id for obj in iterable])
             )
             self.child.context['payment_states'] = invoice_payment_states(iterable, datetime.date.today())
+        if self.context.get('with_payment_summary'):
+            # Llistes de factures (principal i del contracte): estat del cobrament i retorns bancaris
+            self.child.context['payment_summaries'] = invoice_payment_summaries(iterable)
         return [self.child.to_representation(item) for item in iterable]
 
 
@@ -248,6 +253,9 @@ class InvoiceMinimalSerializer(serializers.ModelSerializer):
         if cycles is not None:
             representation['billing_cycle'] = cycles.get(instance.id)
             representation['payment_state'] = self.context.get('payment_states', {}).get(instance.id)
+        summaries = self.context.get('payment_summaries')
+        if summaries is not None:
+            representation['payment_summary'] = summaries.get(instance.id)
         
         return representation
     

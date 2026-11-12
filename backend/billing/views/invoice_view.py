@@ -75,6 +75,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
   def get_serializer_context(self):
     context = super().get_serializer_context()
     context['request'] = self.request
+    # Columna «Estat de pagament» de les llistes de factures
+    context['with_payment_summary'] = self.action == 'list'
     return context
    
   @action(detail=True, methods=['put'], url_path='return')
