@@ -8,6 +8,7 @@ import NotificationRegion from '~/components/organisms/NotificationRegion.vue';
 import DailyDocumentSubmissionErrorsModal from '~/components/molecules/DailyDocumentSubmissionErrorsModal.vue';
 import { useToast } from 'vue-toastification';
 import { h } from 'vue';
+import { usePinnedContractOverPage } from '~/composables/usePinnedContractLayer';
 
 const sidebarStore = useSidebarStore();
 const notificationArea = ref<HTMLElement | null>(null);
@@ -99,12 +100,31 @@ const handleKeydown = (event: KeyboardEvent) => {
 };
 
 
+const pinnedContractOverPage = usePinnedContractOverPage();
+
+const isAbovePage = (element: HTMLElement, pinnedPanel: HTMLElement) => {
+  if (pinnedPanel.contains(element)) return true;
+  // Teleported to <body>: it is above the panel when its top-level layer has a higher z-index
+  let layer = element;
+  while (layer.parentElement && layer.parentElement !== document.body) layer = layer.parentElement;
+  if (layer.contains(pinnedPanel)) return false; // the app root: page content under the panel
+  const pinnedZ = parseInt(getComputedStyle(pinnedPanel).zIndex) || 0;
+  return (parseInt(getComputedStyle(layer).zIndex) || 0) > pinnedZ;
+}
+
 /* Closes the open region furthest to the right (the innermost one when several are open)
    by simulating the click of its region nav button. Closed regions stay in the DOM translated
    off-screen to the right, so a region is open when its right edge is inside the viewport. */
 const closeTopRegion = () => {
   const viewportWidth = window.innerWidth;
-  const openRegions = Array.from(document.querySelectorAll<HTMLElement>('[role="region"]'))
+  // The pinned contract panel covers the page regions: only the regions shown above the page can
+  // be closed, i.e. the panel, its subregions and the ones teleported to <body> above it
+  const pinnedPanel = sidebarStore.isPinnedContractOpen
+    ? document.querySelector<HTMLElement>('[data-pinned-contract-panel]')
+    : null;
+  const allRegions = Array.from(document.querySelectorAll<HTMLElement>('[role="region"]'));
+  const candidates = pinnedPanel ? allRegions.filter((element) => isAbovePage(element, pinnedPanel)) : allRegions;
+  const openRegions = candidates
     .map((element) => ({ element, rect: element.getBoundingClientRect() }))
     .filter(({ rect }) => rect.width > 0 && rect.height > 0 && rect.left < viewportWidth && rect.right <= viewportWidth + 1);
   if (openRegions.length === 0) return;
@@ -197,7 +217,11 @@ onUnmounted(() => {
           width: 'calc(100vw - ' + sidebarStore.sidebarWidth + 'px)',
         }">
         <NavTop class="shrink-0" />
-        <main id="page" class="px-4 py-5 pb-0 flex-1 min-h-0 overflow-y-auto">
+        <!-- isolate while the pinned contract is open (or sliding out): page regions with z-index above the pinned
+             panel (z-[45], e.g. the z-[100] ones of claim managements or SEPA) stay below it.
+             Layers the page teleports to <body> use usePinnedContractCoversPage() instead. -->
+        <main id="page" class="px-4 py-5 pb-0 flex-1 min-h-0 overflow-y-auto"
+          :class="{ 'isolate': pinnedContractOverPage }">
           <slot />
         </main>
       </div><!-- end content -->
