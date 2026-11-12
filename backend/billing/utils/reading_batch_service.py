@@ -173,6 +173,16 @@ SETUP_FILTERS = (
 )
 
 
+def get_photo_readings_queryset(reading_batch):
+    """
+    Lectures pendents de facturar del lot amb foto (sense les de control).
+    Font única per al comptador «Lectures amb foto» i per a la galeria.
+    """
+    return reading_batch.readings.filter(is_control=False).filter(
+        PENDING_READING_FILTER
+    ).exclude(Q(photo__isnull=True) | Q(photo='')).distinct()
+
+
 def get_setup_filter_supply_point_ids(reading_batch, filter_key, active_contract_token=None):
     """
     Supply points de cada apartat del pas de lectures pendents del lot.
