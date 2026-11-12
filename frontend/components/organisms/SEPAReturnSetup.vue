@@ -64,12 +64,18 @@ const processableRejections = computed(() =>
     (rejections.value || []).filter((rejection) => !isExcluded(rejection))
 );
 
-// Els pagaments de factures ja anul·lades i refetes no es retornen ni es reclamen:
-// el deute és a la factura nova (el backend també els exclou)
+// Els pagaments de factures ja anul·lades i refetes no es tornen a obrir: el saldo que havien
+// deixat es treu i el que no cobreix queda pendent a la factura refeta, que és la que es reclama
 const isRectified = (rejection) => Boolean(rejection?.invoice_rectified);
+const isClaimable = (rejection) => !isRectified(rejection) || Boolean(rejection?.refactored_invoice);
 const selectableRejections = computed(() =>
     processableRejections.value.filter((rejection) => !isRectified(rejection))
 );
+const claimableRejections = computed(() =>
+    processableRejections.value.filter((rejection) => isClaimable(rejection))
+);
+const formatEuros = (value) =>
+    `${Number(value || 0).toLocaleString('ca-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const terminatedCount = computed(() =>
     processableRejections.value.filter((rejection) => rejection.contract_terminated).length
 );
@@ -82,7 +88,7 @@ const allSelectedReturnPayments = computed(() => {
     return list.length > 0 && list.every(rejection => selectedReturnPayments.value.includes(rejection.payment_id))
 })
 const allSelectedClaimPayments = computed(() => {
-    const list = selectableRejections.value;
+    const list = claimableRejections.value;
     return list.length > 0 && list.every(rejection => selectedClaimPayments.value.includes(rejection.payment_id))
 })
 
@@ -156,12 +162,15 @@ const mapRejections = (rejectionsList) => {
 }
 
 const syncExcludedSelections = () => {
-    const excludedIds = new Set(
-        (rejections.value || []).filter((rejection) => isExcluded(rejection) || isRectified(rejection)).map((rejection) => rejection.payment_id)
+    const rows = rejections.value || [];
+    const notReturnableIds = new Set(
+        rows.filter((rejection) => isExcluded(rejection) || isRectified(rejection)).map((rejection) => rejection.payment_id)
     );
-    if (!excludedIds.size) return;
-    selectedReturnPayments.value = selectedReturnPayments.value.filter((id) => !excludedIds.has(id));
-    selectedClaimPayments.value = selectedClaimPayments.value.filter((id) => !excludedIds.has(id));
+    const notClaimableIds = new Set(
+        rows.filter((rejection) => isExcluded(rejection) || !isClaimable(rejection)).map((rejection) => rejection.payment_id)
+    );
+    selectedReturnPayments.value = selectedReturnPayments.value.filter((id) => !notReturnableIds.has(id));
+    selectedClaimPayments.value = selectedClaimPayments.value.filter((id) => !notClaimableIds.has(id));
 };
 
 // En canviar la selecció s'ha de reenviar el mateix que en carregar el fitxer (rjt_dt i og_msg_id
@@ -229,7 +238,7 @@ const selectAllForClaims = () => {
     if (allSelectedClaimPayments.value) {
         selectedClaimPayments.value = [];
     } else {
-        selectedClaimPayments.value = selectableRejections.value.map(rejection => rejection.payment_id);
+        selectedClaimPayments.value = claimableRejections.value.map(rejection => rejection.payment_id);
         if (selectedReturnPayments.value.length > 0) {
             selectedReturnPayments.value = [];
         }
@@ -266,6 +275,29 @@ const invalidAccountState = (row) => {
     return null;
 };
 
+// Saldo que es treu i deute que queda a la factura refeta: el previst i, un cop desat, el resultat
+const rectifiedBalanceLines = (row) => {
+    if (row.rectified_return?.status === 'error') {
+        return [t('billing_block.return_rectified_error')];
+    }
+    const balance = row.rectified_return?.status === 'applied'
+        ? {
+            balance_to_remove: row.rectified_return.balance_removed,
+            refactored_debt: row.rectified_return.refactored_debt,
+            uncovered: row.rectified_return.uncovered,
+        }
+        : row.rectified_balance;
+    if (!balance) return [];
+    const lines = [`${t('billing_block.return_rectified_balance')}: ${formatEuros(balance.balance_to_remove)}`];
+    if (Number(balance.refactored_debt) > 0) {
+        lines.push(`${t('billing_block.return_rectified_debt')}: ${formatEuros(balance.refactored_debt)}`);
+    }
+    if (Number(balance.uncovered) > 0) {
+        lines.push(`${t('billing_block.return_rectified_uncovered')}: ${formatEuros(balance.uncovered)}`);
+    }
+    return lines;
+};
+
 // Avisos de la fila: compte invàlid, abonat de baixa i factura anul·lada i refeta
 const returnWarnings = (row) => {
     const warnings = [];
@@ -282,6 +314,7 @@ const returnWarnings = (row) => {
         warnings.push(row.refactored_invoice
             ? `${t('billing_block.return_invoice_refactored')}: ${row.refactored_invoice}`
             : t('billing_block.return_invoice_rectified'));
+        warnings.push(...rectifiedBalanceLines(row));
     }
     return warnings;
 };
@@ -360,6 +393,9 @@ watch(() => props.save_response, (newValue) => {
                     invoice_rectified: row.invoice_rectified ?? updated.invoice_rectified,
                     rectifying_invoice: row.rectifying_invoice ?? updated.rectifying_invoice,
                     refactored_invoice: row.refactored_invoice ?? updated.refactored_invoice,
+                    rectified_balance: row.rectified_balance ?? updated.rectified_balance,
+                    // Resultat real del saldo tret: només el que diu el backend en desar
+                    rectified_return: updated.rectified_return ?? null,
                 };
             }),
             ...(props.returned_data || []).filter(
@@ -649,6 +685,12 @@ watch(() => props.save_response, (newValue) => {
                                                 </template>
                                             </span>
                                         </div>
+                                        <p v-for="line in (element.invoice_rectified ? rectifiedBalanceLines(element) : [])"
+                                            :key="line"
+                                            :class="element.rectified_return?.status === 'error' ? 'text-red-700' : 'text-violet-800'"
+                                            class="mt-1 text-xs">
+                                            {{ line }}
+                                        </p>
                                     </td>
                                     <td class="px-1 py-2">
                                         <abbr :title="`${t('informative_block.info_select_claim_invoice')}`"
@@ -671,7 +713,7 @@ watch(() => props.save_response, (newValue) => {
                                                 'bg-white border-slate-500': !selectedClaimPayments.includes(element.payment_id),
                                                 'bg-orange-50 border-orange-500': selectedClaimPayments.includes(element.payment_id)
                                             }" class="rounded border text-sky-600 hover:text-sky-800 h-6 w-6 group-hover:bg-slate-100 group-hover:border-sky-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                :disabled="isRectified(element)"
+                                                :disabled="!isClaimable(element)"
                                                 @click="addOrRemoveClaimPayment(element.payment_id)">
                                                 <Icon v-if="selectedClaimPayments.includes(element.payment_id)"
                                                     name="fa6-solid:check"

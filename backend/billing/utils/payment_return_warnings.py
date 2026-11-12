@@ -2,9 +2,11 @@
 
 Abans de processar un retorn, l'usuari ha de saber si el pagament és d'un abonat
 donat de baixa o d'una factura que ja s'ha anul·lat i refet: en aquest segon cas el
-deute ja és a la factura nova i no s'ha de tornar a reclamar l'antiga.
+deute ja és a la factura nova i no s'ha de tornar a reclamar l'antiga; si el cobrament
+havia passat al saldo, se'n treurà (veure rectified_invoice_return_service).
 """
 from billing.models import Invoice, Payment
+from billing.utils.rectified_invoice_return_service import rectified_return_plan
 from contract.models import Contract
 from coredata.models import ConfigProject
 
@@ -49,6 +51,7 @@ def payment_return_warnings(payment, terminated_token=None, cancelled_token=None
     invoice_rectified = is_rectified_invoice(invoice, cancelled_token or '')
     rectifying_invoice = None
     refactored_invoice = None
+    balance_plan = None
     if invoice_rectified:
         invoices = Invoice.objects.all()
         if invoice_type_token:
@@ -60,12 +63,21 @@ def payment_return_warnings(payment, terminated_token=None, cancelled_token=None
             .order_by('-created_at').values_list('serie_final', flat=True).first()
             if invoice.token else None
         )
+        plan = rectified_return_plan(payment)
+        if plan:
+            balance_plan = {
+                "balance_to_remove": float(plan['balance_to_remove']),
+                "refactored_debt": float(plan['refactored_debt']),
+                "uncovered": float(plan['uncovered']),
+            }
     return {
         "contract_terminated": contract_terminated,
         "contract_termination_date": str(contract.termination_date) if contract_terminated and contract.termination_date else None,
         "invoice_rectified": invoice_rectified,
         "rectifying_invoice": rectifying_invoice,
         "refactored_invoice": refactored_invoice,
+        # Saldo que es traurà i deute que quedarà a la factura refeta en processar el retorn
+        "rectified_balance": balance_plan,
     }
 
 

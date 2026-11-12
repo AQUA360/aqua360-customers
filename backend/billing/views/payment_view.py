@@ -21,6 +21,7 @@ from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import is_rectified_invoice
+from billing.utils.rectified_invoice_return_service import refactored_unpaid_payment_ids, reverse_rectified_payment_balance
 from billing.utils.sepa_invalid_account_service import get_invalid_account_reject_tokens, handle_invalid_account_return, invalid_account_return_has_changes, is_invalid_account_reject_token
 from billing.utils.payment_service import check_claim_payments_for_paid_invoice, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals, settle_negative_payment_to_piggy
 from coredata.utils.name_utils import generate_token
@@ -224,6 +225,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
         invalid_account_tokens = get_invalid_account_reject_tokens()
         invalid_account_status = {}
         invalid_account_changes = []
+        # Retorns de factures anul·lades i refetes: saldo tret i deute que queda a la factura refeta
+        rectified_results = {}
         
         try:
             remittance_return = None
@@ -323,9 +326,29 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 ).exists()
                 if previous_returns.exists() or already_returned:
                     skip_return = True
-                # Factura ja anul·lada amb una rectificativa (i refeta): el deute és a la factura nova,
-                # i retornar aquest pagament tornaria a obrir la factura antiga i la reclamaria dos cops
+                # Factura ja anul·lada amb una rectificativa (i refeta): la factura antiga no es torna a
+                # obrir. Si el cobrament havia passat al saldo en anul·lar-la, se'n treu i el que el saldo
+                # no cobreix queda pendent a la factura refeta
                 if payment.invoice and is_rectified_invoice(payment.invoice, invoice_cancelled_token or ''):
+                    if not skip_return:
+                        disconnect_payment_signals()
+                        try:
+                            plan = reverse_rectified_payment_balance(
+                                payment, request.user, rjt_date, payment_returned_status, return_motive,
+                                payment.remittances.filter(sent_at__isnull=False).order_by('-sent_at').first(),
+                                direct_debit_movement.payment_bank if direct_debit_movement and direct_debit_movement.payment_bank else None)
+                            if plan:
+                                rectified_results[payment.id] = {
+                                    'status': 'applied',
+                                    'balance_removed': plan['balance_to_remove'],
+                                    'refactored_debt': plan['refactored_debt'],
+                                    'uncovered': plan['uncovered'],
+                                }
+                        except Exception:
+                            logger.exception("Error en desfer el saldo d'un retorn d'una factura refeta")
+                            rectified_results[payment.id] = {'status': 'error'}
+                        finally:
+                            reconnect_payment_signals()
                     skip_return = True
 
                 returned_now = False
@@ -467,7 +490,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
         rectified_invoice_q = Q(invoice__return_token__gt='')
         if invoice_cancelled_token:
             rectified_invoice_q |= Q(invoice__status__token=invoice_cancelled_token)
+        rectified_claim_ids = list(claim_instances.filter(rectified_invoice_q).values_list('id', flat=True))
         claim_instances = claim_instances.exclude(rectified_invoice_q)
+        # ...però sí el deute que ha quedat a la factura refeta
+        refactored_debt_ids = refactored_unpaid_payment_ids(Payment.objects.filter(id__in=rectified_claim_ids))
+        if refactored_debt_ids:
+            claim_instances = Payment.objects.filter(
+                Q(id__in=claim_instances.values('id')) | Q(id__in=refactored_debt_ids))
         claim_request_open_tokens = list(ConfigProject.objects.filter(
             token__in=['claim_request_status_pending_token', 'claim_request_status_accepted_token']
         ).values_list('value', flat=True))
@@ -566,6 +595,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 "prev_status": payment.status.name,
                 "prev_status_color": payment.status.color,
                 "invalid_account_status": invalid_account_status.get(payment.id),
+                "rectified_return": rectified_results.get(payment.id),
             })
         
         
