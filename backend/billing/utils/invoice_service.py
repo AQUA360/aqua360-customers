@@ -998,8 +998,8 @@ def generate_consumption_invoice_multiple(
             'contract': contract_base,
             'used_aca': contract_base.use_aca,
             'issue_date': billing_batch.issue_date if billing_batch and billing_batch.issue_date else issue_date.date(),
-            'due_date': billing_batch.due_date if billing_batch and billing_batch.due_date else None,
-            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else None,
+            'due_date': billing_batch.due_date if billing_batch and billing_batch.due_date else extra_payment_data.get('due_date') if extra_payment_data and extra_payment_data.get('due_date') else None,
+            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else extra_payment_data.get('send_at') if extra_payment_data and extra_payment_data.get('send_at') else None,
             'title_final': title if title else f"{invoice_type.name.upper()} {contract_base.token}",
             'batch': billing_batch if billing_batch else None,
             'billing': billing if billing else None,
@@ -1124,7 +1124,7 @@ def generate_consumption_invoice_multiple(
         raise Exception("Error creating invoice")
     return invoice
 
-def invoice_contract_generate(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None, company_id=None, category_id=None, new_holder=None):
+def invoice_contract_generate(user, contract_request_id, title, payment_type, payment_bank, is_return=False, invoice_id=None, electronic_invoice_data=None, is_budget=False, company_bank=None, company_id=None, category_id=None, new_holder=None, payment_data=None):
     # print("creating invoice from contract")
     # print(invoice_type_token)
     try:
@@ -1249,7 +1249,8 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
                 'company': selected_company,
                 'category': selected_category,
                 'exploitation': exploitation if exploitation else None,
-                'issue_date': datetime.datetime.now().date(),
+                'issue_date': datetime.datetime.now().date(), # issue date should never be changed nor customizable
+                'send_at': payment_data.get('send_at') if payment_data and payment_data.get('send_at') else None,
                 'title_final': f'{invoice_type.name.upper()} {title}',
                 'customer_final': f"{person.name} {person.surname if person.surname else ''}",
                 'customer_token_final': person.token,
@@ -1552,7 +1553,12 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
         raise Exception("Error creating invoice")
     return invoice
 
-def invoice_return_charge(invoice, title, return_reason=None):
+def invoice_return_charge(invoice, title, return_reason=None, fee_price_rates=None):
+    """Crea la factura de despeses d'impagat d'una factura.
+
+    Sense `fee_price_rates`, fa servir la tarifa de despeses de devolució
+    (`invoice_return_price_rate_token`).
+    """
     try:
         origin_reading_token = ConfigProject.objects.get(token='origin_reading_token').value
         origin_contract_token = ConfigProject.objects.get(token='origin_contract_token').value
@@ -1565,9 +1571,11 @@ def invoice_return_charge(invoice, title, return_reason=None):
             price_rates = contract.registration_price_rates.filter(is_active=True).order_by('product__position')
         else:
             raise Exception("Origin not found")
-        invoice_return_price_rate = PriceRate.objects.get(token=ConfigProject.objects.get(token='invoice_return_price_rate_token').value)
-        pass  # log removed
-        price_rates = [invoice_return_price_rate]
+        if fee_price_rates:
+            price_rates = list(fee_price_rates)
+        else:
+            invoice_return_price_rate = PriceRate.objects.get(token=ConfigProject.objects.get(token='invoice_return_price_rate_token').value)
+            price_rates = [invoice_return_price_rate]
         
         exploitation = invoice.exploitation
         
@@ -2790,6 +2798,66 @@ def invoice_contract_termination_generate(
     return invoice
 
 
+def _person_billing_address(person):
+    """Adreça de facturació activa de la persona (o la primera activa), o None."""
+    person_addresses = person.addresses.filter(is_active=True, address__isnull=False).select_related(
+        'address__city', 'address__province', 'address__country'
+    )
+    person_address = person_addresses.filter(is_billing=True).first() or person_addresses.first()
+    return person_address.address if person_address else None
+
+
+def apply_holder_to_budget(invoice, person):
+    """Canvia el titular d'un pressupost encara no confirmat i en refresca les dades fixades.
+
+    Actualitza `person` i les dades de client (nom, NIF, jurídica, telèfon, correu) a
+    partir de la nova persona. L'adreça només es substitueix si la persona en té una;
+    si no, es manté la del pressupost. El pagador només canvia quan no hi ha cap compte
+    bancari associat i el pagador era el titular anterior: si es paga per domiciliació,
+    el pagador continua sent el titular del compte.
+
+    Llança ValueError si el document no és un pressupost: un cop passat a factura, el
+    titular només es pot canviar refacturant.
+    """
+    budget_type_token = ConfigProject.objects.get(token='invoice_type_budget_token').value
+    if not invoice.type or invoice.type.token != budget_type_token:
+        raise ValueError("Only budgets can change their holder")
+
+    previous_holder_token = invoice.customer_token_final
+    payer_was_holder = (
+        invoice.payment_bank_id is None
+        and (not invoice.payer_token_final or invoice.payer_token_final == previous_holder_token)
+    )
+
+    customer_name = f"{person.name} {person.surname}" if person.surname else (person.name or "")
+    invoice.person = person
+    invoice.customer_final = customer_name
+    invoice.customer_token_final = person.token
+    invoice.customer_is_juridic = person.is_juridic
+
+    contacts = person.contacts.filter(is_active=True).order_by('-is_default', 'id')
+    phone_contact = contacts.exclude(phone__isnull=True).exclude(phone='').first()
+    email_contact = contacts.exclude(email__isnull=True).exclude(email='').first()
+    invoice.customer_tlf_final = phone_contact.phone if phone_contact else None
+    invoice.customer_email_final = email_contact.email if email_contact else None
+
+    address = _person_billing_address(person)
+    if address:
+        invoice.address_final = get_address_complete_without_city(address)
+        invoice.postal_code_final = address.postal_code
+        invoice.city_final = address.city.name if address.city else None
+        invoice.province_final = address.province.name if address.province else None
+        invoice.country_final = address.country.iso_code if address.country else "-"
+        invoice.location_final = f"{address.postal_code} {address.city}, {address.province} - {address.country}"
+
+    if payer_was_holder:
+        invoice.payer_final = customer_name
+        invoice.payer_token_final = person.token
+
+    invoice.save()
+    return invoice
+
+
 def personalize_budget_to_invoice_data(budget, data):
     """Hook per client (no-op per defecte): permet afegir o ajustar els camps de la
     factura que es crea a partir d'un pressupost, just abans de l'`Invoice.objects.create()`
@@ -2801,7 +2869,24 @@ def personalize_budget_to_invoice_data(budget, data):
     return data
 
 
+def lock_budget(budget_id):
+    """Bloqueja la fila del pressupost fins al final de la transacció en curs.
+
+    És el bloqueig compartit entre el canvi de titular i la conversió a factura: així
+    no es pot emetre la factura amb un titular mentre el pressupost en rep un altre.
+    """
+    return Invoice.objects.select_for_update(of=('self',)).select_related('type', 'status').filter(pk=budget_id).first()
+
+
 def pass_budget_to_invoice(invoice):
+    """Passa el pressupost a factura amb el pressupost bloquejat i les dades rellegides."""
+    with transaction.atomic():
+        lock_budget(invoice.pk)
+        invoice.refresh_from_db()
+        return _pass_budget_to_invoice(invoice)
+
+
+def _pass_budget_to_invoice(invoice):
     try:
     
         invoice_type = InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_invoice_token').value)
@@ -2907,7 +2992,8 @@ def pass_budget_to_invoice(invoice):
         invoice_created._generate_verifactu = True
         invoice_created.save()
 
-        confirm_invoice(invoice_created)
+        # Keep budget due_date/send_at; do not remittance-snap them on confirm.
+        confirm_invoice(invoice_created, preserve_dates=True)
         
         return invoice_created
     except Exception as e:
@@ -3135,7 +3221,6 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
     pass  # log removed
     simplified = contract.simplified_invoice if contract else False
     exploitation = exploitation_instance
-    
     try:
         if contract:
             exploitation = Exploitation.objects.get(id=contract.supply_point_default.connection.exploitation.id)
@@ -3263,7 +3348,7 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             'connection_request': connection_request,
             'issue_date': billing_batch.issue_date if billing_batch and billing_batch.issue_date else issue_date.date(),
             'due_date': billing_batch.due_date if billing_batch and billing_batch.due_date else payment_data.get('due_date') if payment_data and payment_data.get('due_date') else None,
-            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else None,
+            'send_at': billing_batch.send_at if billing_batch and billing_batch.send_at else payment_data.get('send_at') if payment_data and payment_data.get('send_at') else None,
             'title_final': title if title else f"{invoice_type.name.upper()}",
             'batch': billing_batch,
             'billing': billing,
@@ -3576,24 +3661,63 @@ def check_existing_token(token, exploitation_token='0'):
     except Exception as e:
         raise Exception("Error while checking existing token: ", e)
 
-def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=None):
-    if (new_address == invoice.address_final and 
-        new_payment_type == invoice.payment_type_final and 
-        new_payment_bank == invoice.payment_bank_final):
-        pass  # log removed
+_UNCHANGED = object()
+
+
+def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=_UNCHANGED):
+    """Registra a l'historial de la factura un canvi d'adreça, de mètode de pagament o d'IBAN.
+
+    L'IBAN només es registra si qui crida el passa: si el passa buit (el compte es retira),
+    queda l'anterior a l'historial.
+    """
+    bank_given = new_payment_bank is not _UNCHANGED
+    new_bank = (new_payment_bank or None) if bank_given else None
+    previous_bank = invoice.payment_bank_final or None
+    bank_changed = bank_given and new_bank != previous_bank
+    if (new_address == invoice.address_final and
+        new_payment_type == invoice.payment_type_final and
+        not bank_changed):
         return
-    pass  # log removed
     LogInvoiceDataChange.objects.create(
         object=invoice,
         current_address=new_address,
         previous_address=invoice.address_final if new_address and new_address != '' else None,
         current_payment_type=new_payment_type,
         previous_payment_type=invoice.payment_type_final if new_payment_type and new_payment_type != '' else None,
-        current_iban=new_payment_bank,
-        previous_iban=invoice.payment_bank_final if new_payment_bank and new_payment_bank != '' else None,
+        current_iban=new_bank,
+        # Amb un IBAN nou o quan es retira el compte, l'anterior queda a l'historial
+        previous_iban=previous_bank if (new_bank or bank_changed) else None,
         user=user,
         timestamp=timezone.now()
     )
+
+
+def apply_invoice_payment_method(user, invoice, payment_type, payment_bank_final=None, payment_swift_final=None,
+                                 company_bank=_UNCHANGED):
+    """Canvia el mètode de pagament d'una factura i dels seus pagaments no cobrats.
+
+    Deixa constància del canvi a l'historial de la factura (`log_invoice_data_change`). No
+    comprova si la factura es pot canviar ni gestiona els senyals de pagaments: ho ha de fer
+    qui la crida. `company_bank` només es toca si es passa explícitament.
+    """
+    payment_status_paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+
+    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
+
+    invoice.payment_bank_final = payment_bank_final
+    # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor
+    invoice.payment_swift_final = payment_swift_final
+    invoice.payment_type_final = payment_type.name
+    invoice.payment_type_token_final = payment_type.token
+    if company_bank is not _UNCHANGED:
+        invoice.payment_company_bank = company_bank
+    invoice.save()
+
+    invoice.payments.exclude(status__token=payment_status_paid_token).distinct().update(
+        payment_type=payment_type.name,
+        payment_type_token=payment_type.token,
+        payment_bank=payment_bank_final,
+        payment_swift=payment_swift_final)
 
 
 def get_electronic_invoices_data(request):

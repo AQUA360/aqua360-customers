@@ -379,3 +379,31 @@ class DailyDocument(models.Model):
 
     def __str__(self):
         return self.date.strftime("%Y-%m-%d")
+
+class AcaDeclaration(models.Model):
+    """Declaració ACA (A1) d'un mes ja presentada per a una explotació. Les línies de cànon declarades
+    queden congelades: l'A1 per dates i el FACTDETA d'aquell mes surten sempre igual que el que es va
+    presentar, i les factures del mes que no s'hi van declarar passen al primer mes encara obert."""
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+
+    exploitation = models.ForeignKey('service.Exploitation', on_delete=models.PROTECT, related_name='aca_declarations')
+    year = models.PositiveSmallIntegerField()
+    month = models.PositiveSmallIntegerField()
+    # Moment de l'informe presentat: les factures creades després hi queden fora
+    presented_at = models.DateTimeField()
+    # Totals presentats, per comprovar que les línies congelades els reprodueixen
+    fixed_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    variable_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    source = models.CharField(max_length=255, blank=True, default='')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='aca_declarations')
+
+    line_items = models.ManyToManyField('billing.InvoiceLineItem', related_name='aca_declarations', blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['exploitation', 'year', 'month'], name='unique_aca_declaration_month'),
+        ]
+
+    def __str__(self):
+        return f"ACA {self.exploitation_id} {self.year}-{self.month:02d}"

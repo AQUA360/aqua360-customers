@@ -8,12 +8,12 @@ from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
 
-from billing.models import Invoice
 from billing.utils.aca_company_service import ACACompanyError
 from billing.utils.factdeta_reader import build_factdeta_workbook, read_factdeta
 from billing.utils.generate_factdeta_service import FactdetaValidationError, generate_factdeta_document
 from service.models import Exploitation
 from statistics.utils.report_filters import get_multi_ids, invoice_multi_filter_q
+from statistics.utils.aca_declaration_service import aca_declaration_selection
 from statistics.views.reports_views import save_report
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,6 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
                 return Response({"error": "date_range must be two dates."}, status=status.HTTP_400_BAD_REQUEST), None, None
             if start_date > end_date:
                 return Response({"error": "date_range start must not be after end."}, status=status.HTTP_400_BAD_REQUEST), None, None
-            invoices = Invoice.objects.filter(is_active=True, issue_date__range=(start_date, end_date))
             label = f"{start_date:%Y%m%d}_{end_date:%Y%m%d}"
         else:
             year = request.data.get('year') or request.data.get('model_347_year')
@@ -70,8 +69,11 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
             if not 1 <= year <= 9999:
                 return Response({"error": "year must be between 1 and 9999."}, status=status.HTTP_400_BAD_REQUEST), None, None
             start_date, end_date = datetime.date(year, 1, 1), datetime.date(year, 12, 31)
-            invoices = Invoice.objects.filter(is_active=True, issue_date__year=year)
             label = str(year)
+        # Les mateixes factures i línies de cànon que la Declaració ACA (A1) per dates, perquè els dos
+        # informes quadrin: els mesos ja presentats, tal com es van declarar
+        aca_selection = aca_declaration_selection(start_date, end_date, request)
+        invoices = aca_selection.invoices
         # Amb múltiples empreses cada fitxer ACA és d'una sola empresa (veure resolve_aca_company)
         company_id = request.data.get('company_id', None)
         if company_id:
@@ -90,7 +92,7 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
             invoices = invoices.filter(exploitation_id=exploitation_id)
 
         try:
-            files = generate_factdeta_document(exploitations, invoices)
+            files = generate_factdeta_document(exploitations, invoices, line_items_q=aca_selection.line_items_q)
         except (ACACompanyError, FactdetaValidationError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
         if not files:

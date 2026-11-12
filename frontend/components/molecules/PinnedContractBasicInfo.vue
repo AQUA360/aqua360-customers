@@ -8,7 +8,7 @@ const { t } = useI18n();
 const props = defineProps({
     contract: Object,
 })
-const emit = defineEmits(['show-detail', 'new-call', 'change']);
+const emit = defineEmits(['show-detail', 'new-call', 'change', 'update-active-tab']);
 
 const showAddresses = ref(false);
 const showComms = ref(false);
@@ -133,7 +133,7 @@ const showDetail = (component, id) => {
             </div>
         </div><!-- end relative avisos -->
         <ContractStatusBadges :contract="contract" :isSubRegion="isSubRegion" :showDebtDetail="true"
-            @show-detail="showDetail" />
+            :showBailTab="true" @show-detail="showDetail" @show-tab="emit('update-active-tab', $event)" />
     </div>
     <div class="grid grid-cols-3 gap-4" @click="showAddresses = false; showComms = false; showContacts = false">
 

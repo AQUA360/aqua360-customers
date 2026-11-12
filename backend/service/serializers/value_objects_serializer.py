@@ -7,6 +7,7 @@ from communication.models import CommunicationUseType
 from communication.serializers.value_objects_serializer import CommunicationUseTypeSerializer
 from documentmanager.serializers import DocumentSerializer
 from ..models import *
+from ..utils.meter_dictionary_service import normalize_dictionary_name
 import logging
 
 logger = logging.getLogger(__name__)
@@ -112,20 +113,63 @@ class SupplyCutCauseSerializer(serializers.ModelSerializer):
         model = SupplyCutCause
         fields = '__all__'
         
-class MeterManufacturerSerializer(serializers.ModelSerializer):
+class MeterDictionaryNameMixin:
+    """
+    Normalitza el nom (trim, conservant majúscules) i rebutja duplicats sense
+    distingir majúscules amb un 400 en lloc de deixar petar la restricció de BD.
+    """
+    duplicate_scope_fields = ()
+
+    def validate_name(self, value):
+        try:
+            return normalize_dictionary_name(self.Meta.model, value)
+        except ValueError as error:
+            logger.warning("Invalid dictionary name validation failed.", exc_info=True)
+            raise serializers.ValidationError("Invalid value for name.")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        name = attrs.get('name', getattr(self.instance, 'name', None))
+        if name:
+            lookup = {'name__iexact': name}
+            for field in self.duplicate_scope_fields:
+                lookup[field] = attrs.get(field, getattr(self.instance, field, None))
+            duplicates = self.Meta.model.objects.filter(**lookup)
+            if self.instance is not None:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                raise serializers.ValidationError({'name': ['A value with this name already exists.']})
+        return attrs
+
+
+class MeterManufacturerSerializer(MeterDictionaryNameMixin, serializers.ModelSerializer):
     class Meta:
         model = MeterManufacturer
         fields = '__all__'
+        extra_kwargs = {'name': {'required': True, 'allow_null': False}}
 
-class MeterModelSerializer(serializers.ModelSerializer):
+class MeterModelSerializer(MeterDictionaryNameMixin, serializers.ModelSerializer):
+    duplicate_scope_fields = ('manufacturer',)
+
+    def validate_manufacturer(self, value):
+        # Canviar el fabricant d'un model deixaria el text dels comptadors inconsistent.
+        if self.instance is not None and self.instance.manufacturer_id and value != self.instance.manufacturer:
+            raise serializers.ValidationError('The manufacturer of an existing model cannot be changed.')
+        return value
+
     class Meta:
         model = MeterModel
         fields = '__all__'
+        extra_kwargs = {
+            'name': {'required': True, 'allow_null': False},
+            'manufacturer': {'required': True, 'allow_null': False},
+        }
 
-class MeterCommTechnologySerializer(serializers.ModelSerializer):
+class MeterCommTechnologySerializer(MeterDictionaryNameMixin, serializers.ModelSerializer):
     class Meta:
         model = MeterCommTechnology
         fields = '__all__'
+        extra_kwargs = {'name': {'required': True, 'allow_null': False}}
 
 class CompanyTypeSerializer(serializers.ModelSerializer):
     class Meta:

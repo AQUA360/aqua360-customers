@@ -38,6 +38,11 @@ export default defineNuxtPlugin(nuxtApp => {
       apiUrl += `&ordering=${desc ? '-' : ''}${sort}`;
     }
 
+    const exploitation_id = localStorage.getItem('exploitation');
+    if (exploitation_id) {
+      apiUrl += `&exploitation=${exploitation_id}`;
+    }
+
     try {
 
       const response = await $apiManager.fetch(apiUrl, 'GET');
@@ -56,7 +61,8 @@ export default defineNuxtPlugin(nuxtApp => {
   // to `{entity}export/` so the backend builds the full, filter-aware XLSX as a
   // background task, returning `{ task_id }`. Same args as getAll (no page).
   const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, columns = []) => {
-    return $apiManager.exportTable(entity, { searchQuery, filters, sort, desc, columns });
+    const exploitation_id = localStorage.getItem('exploitation');
+    return $apiManager.exportTable(entity, { searchQuery, filters, sort, desc, columns, extraParams: { exploitation: exploitation_id || null } });
   }
 
   const save = async (data) => {
@@ -179,6 +185,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
   const getBadges = async () => {
     let apiUrl = apiHost + '/billing/badges';
+    const exploitation_id = localStorage.getItem('exploitation');
+    if (exploitation_id) {
+      apiUrl += `?exploitation=${exploitation_id}`;
+    }
     try {
       const response = await $apiManager.fetch(apiUrl, 'GET')
       if (response) {
@@ -466,6 +476,17 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Contractes que no s'han pogut facturar en el darrer processat (motiu i què cal revisar)
+  const getProcessErrors = async (billingId) => {
+    const apiUrl = `${apiHost}/billing/billing/${billingId}/process-errors/`;
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
+
+  const dismissProcessErrors = async (billingId, contractIds) => {
+    const apiUrl = `${apiHost}/billing/billing/${billingId}/dismiss-process-errors/`;
+    return await $apiManager.fetch(apiUrl, 'POST', { contract_ids: contractIds }, { 'Content-Type': 'application/json' });
+  }
+
   const processSelectedContracts = async (billingId, contractIds) => {
     let apiUrl = `${apiHost}/billing/billing/${billingId}/process-selected/`;
     try {
@@ -536,6 +557,8 @@ export default defineNuxtPlugin(nuxtApp => {
     addToBatch,
     processContract,
     processSelectedContracts,
+    getProcessErrors,
+    dismissProcessErrors,
   };
 
   nuxtApp.provide(provideName, apiService);

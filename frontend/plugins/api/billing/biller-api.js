@@ -38,6 +38,11 @@ export default defineNuxtPlugin(nuxtApp => {
       apiUrl += `&ordering=${desc ? '-' : ''}${sort}`;
     }
 
+    const exploitation_id = localStorage.getItem('exploitation');
+    if (exploitation_id) {
+      apiUrl += `&exploitation=${exploitation_id}`;
+    }
+
     try {
 
       const response = await $apiManager.fetch(apiUrl, 'GET');
@@ -56,7 +61,8 @@ export default defineNuxtPlugin(nuxtApp => {
   // to `{entity}export/` so the backend builds the full, filter-aware XLSX as a
   // background task, returning `{ task_id }`. Same args as getAll (no page).
   const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, columns = []) => {
-    return $apiManager.exportTable(entity, { searchQuery, filters, sort, desc, columns });
+    const exploitation_id = localStorage.getItem('exploitation');
+    return $apiManager.exportTable(entity, { searchQuery, filters, sort, desc, columns, extraParams: { exploitation: exploitation_id || null } });
   }
 
   const save = async (data) => {
@@ -66,7 +72,14 @@ export default defineNuxtPlugin(nuxtApp => {
       if (method == 'PUT') {
         apiUrl += data.id + '/';
       }
-      const response = await $apiManager.fetch(apiUrl, method, data, { 'Content-Type': 'application/json' })
+      const payload = { ...data };
+      if (!payload.id && !Object.prototype.hasOwnProperty.call(data, 'exploitation')) {
+        const exploitation_id = localStorage.getItem('exploitation');
+        if (exploitation_id) {
+          payload.exploitation = exploitation_id;
+        }
+      }
+      const response = await $apiManager.fetch(apiUrl, method, payload, { 'Content-Type': 'application/json' })
       if (response) {
         return response;
       } else {

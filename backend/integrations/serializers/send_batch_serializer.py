@@ -18,10 +18,30 @@ class SendBatchProviderSerializer(serializers.ModelSerializer):
 
 class SendBatchTypeSerializer(serializers.ModelSerializer):
     provider = SendBatchProviderSerializer(read_only=True)
+    provider_id = serializers.PrimaryKeyRelatedField(
+        queryset=SendBatchProvider.objects.all(),
+        source="provider",
+        write_only=True,
+    )
 
     class Meta:
         model = SendBatchType
-        fields = ["id", "provider", "token", "name", "position", "is_default"]
+        fields = [
+            "id",
+            "provider",
+            "provider_id",
+            "token",
+            "name",
+            "endpoint",
+            "position",
+            "is_default",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # En actualitzacions parcials el provider pot quedar-se igual.
+        if self.instance is not None:
+            self.fields["provider_id"].required = False
 
 
 class SendBatchStatusSerializer(serializers.ModelSerializer):

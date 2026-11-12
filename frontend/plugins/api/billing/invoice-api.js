@@ -133,6 +133,46 @@ export default defineNuxtPlugin(nuxtApp => {
     // plus the invoices the user excluded from the current selection; the backend gathers every
     // matching invoice (ignoring pagination), builds the zip/pdf and returns a Celery task_id to
     // poll via the existing `task-progress/<task_id>/` endpoint.
+    // Despeses d'impagat: els filtres van com a objecte `{ param: valor }` i
+    // s'envien tal qual a la query string, igual a la llista que a la generació.
+    const buildUnpaidFeeQuery = (params = {}) => {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') return;
+        if (Array.isArray(value)) {
+          if (value.length) query.set(key, value.join(','));
+          return;
+        }
+        query.set(key, String(value));
+      });
+      const exploitation_id = localStorage.getItem('exploitation');
+      if (exploitation_id) {
+        query.set('exploitation', exploitation_id);
+      }
+      return query.toString();
+    }
+
+    const getUnpaidFeesConfig = async () => {
+      return await $apiManager.fetch(`${apiHost}${entity}unpaid-fees/config/`, 'GET');
+    }
+
+    const getUnpaidFeeInvoices = async (params = {}, page = 1) => {
+      const apiUrl = `${apiHost}${entity}?${buildUnpaidFeeQuery({ ...params, page })}`;
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (!response?.results) {
+        throw new Error('Error estructura `results` no trobat');
+      }
+      return response;
+    }
+
+    const generateUnpaidFees = async (params = {}, priceRateIds = [], excludedIds = []) => {
+      const apiUrl = `${apiHost}${entity}unpaid-fees/generate/?${buildUnpaidFeeQuery(params)}`;
+      return await $apiManager.fetch(apiUrl, 'POST', {
+        price_rate_ids: priceRateIds,
+        excluded_ids: excludedIds,
+      }, { 'Content-Type': 'application/json' });
+    }
+
     const massiveDownload = async (
       excludedIds = [], inZip = true,
       searchQuery = '', filters = [], contract = null,
@@ -373,6 +413,16 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const saveToPiggyBank = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/save-to-piggy-bank/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'PUT', {}, { 'Content-Type': 'application/json' });
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const recalculateSmart = async (id) => {
       const apiUrl = `${apiHost}${entity}${id}/recalculate-smart/`;
       try {
@@ -458,6 +508,56 @@ export default defineNuxtPlugin(nuxtApp => {
       } while (results.length < count);
 
       return { count: results.length, results };
+    }
+
+    // Contract invoices tab: the contract's invoices/budgets plus those of its registration request.
+    // isInvoice=true → invoices; false → budgets.
+    const contractPeriodQuery = (contractId, isInvoice = true) =>
+      `contract_with_request=${contractId}&is_invoice=${isInvoice}`;
+
+    // Years of the billed period with invoices ([{ year, count }], newest first, 'none' last).
+    const getContractInvoicePeriodYears = async (contractId, isInvoice = true) => {
+      const apiUrl = `${apiHost}${entity}period-years/?${contractPeriodQuery(contractId, isInvoice)}`;
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (!Array.isArray(response)) {
+        throw new Error('Error estructura de la resposta');
+      }
+      return response;
+    }
+
+    // One page of every contract invoice (classic list view of the contract tab).
+    const getContractInvoicesPage = async (contractId, page = 1, isInvoice = true) => {
+      const apiUrl = `${apiHost}${entity}?${contractPeriodQuery(contractId, isInvoice)}&page=${page}`;
+      const response = await $apiManager.fetch(apiUrl, 'GET');
+      if (!response || !Array.isArray(response.results)) {
+        throw new Error('Error estructura `results` no trobat');
+      }
+      return response;
+    }
+
+    // Every invoice of one billed-period year (all pages: the tab groups them by month).
+    const getContractInvoicesByPeriodYear = async (contractId, year, isInvoice = true) => {
+      const results = [];
+      let page = 1;
+      let count = 0;
+
+      do {
+        const apiUrl = `${apiHost}${entity}?${contractPeriodQuery(contractId, isInvoice)}`
+          + `&period_year=${encodeURIComponent(year)}&page=${page}`;
+        const response = await $apiManager.fetch(apiUrl, 'GET');
+
+        if (!response || !Array.isArray(response.results)) {
+          throw new Error('Error estructura `results` no trobat');
+        }
+
+        results.push(...response.results);
+        count = response.count ?? results.length;
+
+        if (!response.next || !response.results.length) break;
+        page++;
+      } while (results.length < count);
+
+      return results;
     }
 
     const downloadGeneralSummaryPdf = async (id) => {
@@ -771,6 +871,11 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const changeHolder = async (id, holderId) => {
+      const apiUrl = `${apiHost}${entity}${id}/change-holder/`;
+      return await $apiManager.fetch(apiUrl, 'POST', { holder_id: holderId }, { 'Content-Type': 'application/json' })
+    }
+
     const sendEmail = async (id, data) => {
       const apiUrl = `${apiHost}${entity}${id}/send-email/`;
       try {
@@ -796,6 +901,9 @@ export default defineNuxtPlugin(nuxtApp => {
     const apiService = {
       getAll,
       massiveDownload,
+      getUnpaidFeesConfig,
+      getUnpaidFeeInvoices,
+      generateUnpaidFees,
       exportData,
       save,
       getDetail,
@@ -803,6 +911,9 @@ export default defineNuxtPlugin(nuxtApp => {
       generateConnectionInvoice,
       getContractInvoice,
       getInvoicesFromContract,
+      getContractInvoicePeriodYears,
+      getContractInvoicesByPeriodYear,
+      getContractInvoicesPage,
       getConnectionRequestInvoice,
       getInvoiceLineItems,
       getConnectionInvoice,
@@ -818,6 +929,7 @@ export default defineNuxtPlugin(nuxtApp => {
       manageNewBudgetLine,
       returnInvoice,
       passToPending,
+      saveToPiggyBank,
       changePaymentMethod,
       getInvoiceByCustomerToken,
       changeAddress,
@@ -835,6 +947,7 @@ export default defineNuxtPlugin(nuxtApp => {
       recalculateSmart,
       manageMassivelyPaid,
       sendEmail,
+      changeHolder,
       sendGroupedEmail,
       getBilledInvoices
     }

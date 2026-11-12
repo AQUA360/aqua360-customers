@@ -19,6 +19,7 @@ from billing.utils.reading_service import (
 )
 from coredata.utils.name_utils import generate_token
 from coredata.models import ConfigProject
+from service.utils.route_scope import effective_route_q
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class ContractEstimationView(APIView):
 
         if batch_template_ids:
             queryset = queryset.filter(
-                supply_points__property__route_position__route__reading_batch_template__id__in=batch_template_ids
+                effective_route_q('route__reading_batch_template__id__in', batch_template_ids, prefix='supply_points__')
             ).distinct()
             
         # Annotate with last invoice date and last reading date for initial filtering

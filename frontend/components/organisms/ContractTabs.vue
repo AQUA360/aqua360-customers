@@ -15,7 +15,7 @@ import OrderMiniDetail from '~/components/molecules/OrderMiniDetail.vue';
 import CalendarTaskList from '~/components/molecules/CalendarTaskList.vue';
 import VariablesBonificationsChange from '~/components/atoms/VariablesBonificationsChange.vue';
 import InvoiceMiniDetail from '~/components/molecules/InvoiceMiniDetail.vue';
-import Pagination from '~/components/molecules/Pagination.vue';
+import SelectorType from '~/components/atoms/SelectorType.vue';
 import { formatDate } from '~/utils/date';
 import { formatMoneyWithCurrency } from '~/utils/money';
 import HolderChange from '~/components/atoms/HolderChange.vue';
@@ -24,6 +24,8 @@ import DataChange from '~/components/atoms/DataChange.vue';
 import TimeRelative from '~/components/atoms/TimeRelative.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { useTabsLayout } from '~/composables/useTabsLayout';
+import Pagination from '~/components/molecules/Pagination.vue';
+import { NO_PERIOD_YEAR, VIEW_LIST, VIEW_PERIODS } from '~/composables/useContractInvoicesByPeriod';
 
 const props = defineProps({
   contract: Object,
@@ -56,23 +58,16 @@ const props = defineProps({
 
   expired_variables: Array,
   expired_bonifications: Array,
-  invoices: Array,
+  // State of useContractInvoicesByPeriod: invoices of the selected billed-period year.
+  invoicesByPeriod: {
+    type: Object,
+    default: null,
+  },
   invoices_count: Number,
   general_invoices: Array,
   invoicesLoading: {
     type: Boolean,
     default: false,
-  },
-
-  invoicesPagination: {
-    type: Object,
-    default: () => ({
-      page: 1,
-      perPage: 50,
-      total: 0,
-      totalPages: 0,
-      isFiltered: true
-    }),
   },
 
   person_ids: Array,
@@ -90,10 +85,9 @@ const emit = defineEmits([
   'update:communication-count',
   'update:order-count',
   'update:bonification-variable-change-count',
-  'update-invoices-page',
 ]);
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const { $ConfigProjectApiService, $InvoiceApiService } = useNuxtApp();
 
@@ -151,6 +145,167 @@ const isRunExpanded = (run, index) =>
 const toggleRun = (run, index) => {
   toggledRuns.value[run.key] = !isRunExpanded(run, index);
 };
+
+// --- Invoices by billed-period year and month ------------------------------
+
+// Newest years shown as tabs; the rest are added as extra tabs from the dropdown.
+const MAX_YEAR_TABS = 5;
+
+const periodYears = computed(() => props.invoicesByPeriod?.years || []);
+
+const extraYearTabs = ref([]);
+
+watch(() => props.contract?.id, () => {
+  extraYearTabs.value = [];
+});
+
+const visibleYearTabs = computed(() => {
+  const newest = periodYears.value
+    .filter((row) => row.year !== NO_PERIOD_YEAR)
+    .slice(0, MAX_YEAR_TABS);
+  return periodYears.value.filter((row) =>
+    newest.includes(row)
+    || extraYearTabs.value.includes(row.year)
+    || row.year === props.invoicesByPeriod?.activeYear
+  );
+});
+
+const hiddenYears = computed(() =>
+  periodYears.value.filter((row) => !visibleYearTabs.value.includes(row))
+);
+
+const showInvoiceViewToggle = computed(() =>
+  !!props.invoicesByPeriod && invoiceActiveTab.value === 'invoice_invoices' && !props.invoicesLoading
+);
+
+const isPeriodView = computed(() => props.invoicesByPeriod?.viewMode !== VIEW_LIST);
+
+const invoiceViewOptions = computed(() => [
+  { value: VIEW_PERIODS, icon: 'fa6-solid:calendar-days', label: t('contract_block.invoices_view_periods') },
+  { value: VIEW_LIST, icon: 'fa6-solid:list', label: t('contract_block.invoices_view_list') },
+]);
+
+const yearLabel = (year) => (year === NO_PERIOD_YEAR ? t('contract_block.invoices_no_period') : year);
+
+const selectYear = (year) => {
+  if (year !== props.invoicesByPeriod?.activeYear) props.invoicesByPeriod?.loadYear(year);
+};
+
+const addYearTab = (event) => {
+  const row = hiddenYears.value.find((r) => String(r.year) === event.target.value);
+  event.target.value = '';
+  if (!row) return;
+  extraYearTabs.value.push(row.year);
+  selectYear(row.year);
+};
+
+// Billed cycle of each invoice (from the biller: a quarterly biller gives three-month
+// cycles). One-off invoices come as a single month and join the cycle that contains it.
+const monthIndex = (year, month) => year * 12 + (month - 1);
+
+const invoiceCycles = computed(() => {
+  const cycles = new Map();
+  const singles = [];
+  const add = (cycle, invoice) => {
+    const key = cycle
+      ? `${cycle.start_year}-${cycle.start_month}-${cycle.end_year}-${cycle.end_month}`
+      : 'none';
+    if (!cycles.has(key)) {
+      cycles.set(key, {
+        key,
+        cycle,
+        start: cycle ? monthIndex(cycle.start_year, cycle.start_month) : -1,
+        end: cycle ? monthIndex(cycle.end_year, cycle.end_month) : -1,
+        invoices: [],
+        total: 0,
+        states: { paid: 0, pending: 0, expired: 0 },
+      });
+    }
+    const group = cycles.get(key);
+    group.invoices.push(invoice);
+    group.total += Number(invoice.total_final ?? 0);
+    if (invoice.payment_state in group.states) group.states[invoice.payment_state] += 1;
+  };
+
+  for (const invoice of props.invoicesByPeriod?.invoices || []) {
+    const cycle = invoice.billing_cycle;
+    const single = cycle && cycle.start_year === cycle.end_year && cycle.start_month === cycle.end_month;
+    if (single) singles.push(invoice);
+    else add(cycle, invoice);
+  }
+  for (const invoice of singles) {
+    const cycle = invoice.billing_cycle;
+    const index = monthIndex(cycle.start_year, cycle.start_month);
+    const container = [...cycles.values()].find((g) => g.cycle && g.start <= index && index <= g.end);
+    add(container ? container.cycle : cycle, invoice);
+  }
+  // Newest cycle first, invoices without any date last.
+  return [...cycles.values()].sort((a, b) => b.end - a.end || b.start - a.start);
+});
+
+// Collection summary of a cycle: cancelled invoices and credit notes do not count.
+const cyclePaymentBadges = (group) => {
+  if (invoiceListMode.value === 'budget') return [];
+  const { paid, pending, expired } = group.states;
+  if (!pending && !expired) {
+    return paid ? [{ key: 'paid', icon: 'fa6-solid:circle-check', class: 'bg-green-100 text-green-800',
+      label: t('contract_block.invoices_all_paid') }] : [];
+  }
+  const badges = [];
+  if (expired) badges.push({ key: 'expired', icon: 'fa6-solid:triangle-exclamation', class: 'bg-red-100 text-red-800',
+    label: t('contract_block.invoices_expired_count', expired) });
+  if (pending) badges.push({ key: 'pending', icon: 'fa6-solid:clock', class: 'bg-amber-100 text-amber-800',
+    label: t('contract_block.invoices_pending_count', pending) });
+  return badges;
+};
+
+const monthName = (month) => {
+  const name = new Date(2000, month - 1, 1).toLocaleString(locale.value, { month: 'long' });
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
+const cycleLabel = (cycle) => {
+  if (!cycle) return t('contract_block.invoices_no_month');
+  const { start_year, start_month, end_year, end_month } = cycle;
+  if (start_year === end_year && start_month === end_month) return monthName(end_month);
+  if (start_year === end_year) return `${monthName(start_month)} - ${monthName(end_month)}`;
+  return `${monthName(start_month)} ${start_year} - ${monthName(end_month)} ${end_year}`;
+};
+
+// Cycles toggled by the user; until then only the newest cycle is expanded.
+const toggledCycles = ref({});
+
+const cycleKey = (group) => `${props.invoicesByPeriod?.activeYear}-${group.key}`;
+
+const isCycleExpanded = (group, index) => toggledCycles.value[cycleKey(group)] ?? index === 0;
+
+const toggleCycle = (group, index) => {
+  toggledCycles.value[cycleKey(group)] = !isCycleExpanded(group, index);
+};
+
+// Toggle between invoices (is_invoice=true) and budgets (is_invoice=false).
+const invoiceListTypeOptions = computed(() => [
+  { value: 'invoice', label: t('invoices') },
+  { value: 'budget', label: t('common.budgets') },
+]);
+
+const invoiceListMode = computed(() => props.invoicesByPeriod?.listMode || 'invoice');
+
+const invoiceListLabel = computed(() =>
+  invoiceListMode.value === 'budget' ? t('common.budgets') : t('invoices')
+);
+
+const invoiceListExportPrefix = computed(() =>
+  invoiceListMode.value === 'budget' ? 'pressupostos' : 'factures'
+);
+
+const onInvoiceListModeSelect = (mode) => {
+  props.invoicesByPeriod?.setListMode(mode);
+};
+
+watch(invoiceListMode, () => {
+  extraYearTabs.value = [];
+});
 
 const downloadingSummaryId = ref(null);
 
@@ -437,9 +592,6 @@ const updateOrderCount = (num) =>
 const updateBonificationVariableChangeCount = (num) =>
   emit('update:bonification-variable-change-count', num);
 
-const onInvoicesPageChange = (newPage) =>
-  emit('update-invoices-page', newPage);
-
 onMounted(async () => {
   try {
     invoiceTypeToken.value =
@@ -695,7 +847,23 @@ const groupedPriceRates = computed(() => {
     <!-- ========================================================= -->
 
     <section v-if="activeTab === 'invoices'" role="tabpanel" id="tab_invoices" class="bg-white antialiased">
-      <div v-if="canChange" class="flex justify-end flex-wrap mt-2 mb-4 gap-2">
+      <div v-if="canChange || showInvoiceViewToggle" class="flex flex-wrap items-center mt-2 mb-4 gap-2">
+        <!-- Each user chooses: by billed periods (years and cycles) or the classic full list -->
+        <div v-if="showInvoiceViewToggle" role="group" :aria-label="t('contract_block.invoices_view')"
+          class="inline-flex rounded border border-slate-300 overflow-hidden text-xs">
+          <button v-for="option in invoiceViewOptions" :key="option.value" type="button"
+            @click="invoicesByPeriod.setViewMode(option.value)"
+            :aria-pressed="invoicesByPeriod.viewMode === option.value"
+            class="flex items-center gap-1 px-2.5 py-1"
+            :class="invoicesByPeriod.viewMode === option.value ? 'bg-sky-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'">
+            <Icon :name="option.icon" />
+            <span>{{ option.label }}</span>
+          </button>
+        </div>
+
+        <div class="flex-1"></div>
+
+        <template v-if="canChange">
         <button type="button" @click="toggleGroupedInvoiceMode"
           class="button-primary !px-2.5 !py-1 text-xs flex items-center justify-center">
           <Icon :name="groupedInvoiceMode ? 'fa6-solid:xmark' : 'reicon:envelopes-filled'" class="text-white" />
@@ -718,41 +886,124 @@ const groupedPriceRates = computed(() => {
           <Icon name="fa6-solid:coins" />
           <span class="ml-1">{{ t('common.add') }} {{ t('billing_block.custom_invoice') }}</span>
         </button>
+        </template>
       </div>
 
-      <div v-if="invoicesLoading" class="flex justify-center items-center mt-5 mb-10">
-        <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
-        <span class="ml-2">{{ $t('common.loading') }}...</span>
-      </div>
+      <AtomsTabs v-if="contract.general_invoice">
+        <li class="me-2">
+          <a href="#tab_invoice_invoices" @click.prevent="setInvoiceActiveTab('invoice_invoices')"
+            :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_invoices', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_invoices' }">
+            {{ $t("invoices") }} ({{ invoices_count }})
+          </a>
+        </li>
 
-      <template v-else>
-        <AtomsTabs v-if="contract.general_invoice">
-          <li class="me-2">
-            <a href="#tab_invoice_invoices" @click.prevent="setInvoiceActiveTab('invoice_invoices')"
-              :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_invoices', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_invoices' }">
-              {{ $t("invoices") }} ({{ invoices_count }})
-            </a>
-          </li>
+        <li class="me-2">
+          <a href="#tab_invoice_generals" @click.prevent="setInvoiceActiveTab('invoice_generals')"
+            :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_generals', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_generals' }">
+            {{ $t("billing_block.general_invoices") }} ({{ generalInvoiceRuns.length }})
+          </a>
+        </li>
+      </AtomsTabs>
 
-          <li class="me-2">
-            <a href="#tab_invoice_generals" @click.prevent="setInvoiceActiveTab('invoice_generals')"
-              :class="{ 'text-sky-600 border-sky-600': invoiceActiveTab === 'invoice_generals', 'hover:text-gray-600 hover:border-gray-300': invoiceActiveTab !== 'invoice_generals' }">
-              {{ $t("billing_block.general_invoices") }} ({{ generalInvoiceRuns.length }})
-            </a>
-          </li>
-        </AtomsTabs>
-
-        <section v-if="invoiceActiveTab === 'invoice_invoices'" class="mb-10 mt-2">
-          <InvoiceMiniDetail :item="invoices" :contract="contract" @show-detail="showDetail" :isSubRegion="isSubRegion"
-            :autoCols="true" :exportable="true" :export-file-name="`factures_${contract?.token || contract?.id || ''}`"
-            :grouped-invoice-mode="groupedInvoiceMode" />
-
-          <div class="border-t border-gray-100 p-2" v-if="invoicesPagination.totalPages > 1">
-            <Pagination :pagination="invoicesPagination" @update:page="onInvoicesPageChange" />
+        <section v-if="invoiceActiveTab === 'invoice_invoices' && invoicesByPeriod" class="mb-10 mt-2">
+          <div class="flex justify-end items-center gap-2 mb-2">
+            <SelectorType
+              :model-value="invoiceListMode"
+              :options="invoiceListTypeOptions"
+              :class="{ 'pointer-events-none opacity-60': invoicesByPeriod.loading }"
+              @select="onInvoiceListModeSelect"
+            />
           </div>
+
+          <div v-if="isPeriodView && periodYears.length" class="flex flex-wrap items-end gap-2 border-b border-gray-200">
+            <AtomsTabs class="flex-1 min-w-0 !mb-0">
+              <li v-for="row in visibleYearTabs" :key="row.year" class="me-2">
+                <a :href="`#tab_invoice_year_${row.year}`" @click.prevent="selectYear(row.year)"
+                  :class="{ 'text-sky-600 border-sky-600': invoicesByPeriod.activeYear === row.year, 'hover:text-gray-600 hover:border-gray-300': invoicesByPeriod.activeYear !== row.year }">
+                  {{ yearLabel(row.year) }} ({{ row.count }})
+                </a>
+              </li>
+            </AtomsTabs>
+
+            <select v-if="hiddenYears.length" @change="addYearTab" :aria-label="t('contract_block.invoices_more_years')"
+              class="mb-1 text-xs border border-slate-300 rounded py-1 pl-2 pr-7 text-slate-600">
+              <option value="">{{ t('contract_block.invoices_more_years') }}</option>
+              <option v-for="row in hiddenYears" :key="row.year" :value="String(row.year)">
+                {{ yearLabel(row.year) }} ({{ row.count }})
+              </option>
+            </select>
+          </div>
+
+          <div v-if="invoicesByPeriod.loading" class="flex justify-center items-center mt-5 mb-10">
+            <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
+            <span class="ml-2">{{ $t('common.loading') }}...</span>
+          </div>
+
+          <div v-else-if="invoicesByPeriod.error"
+            class="mt-3 p-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded flex items-center gap-2">
+            <Icon name="fa6-solid:triangle-exclamation" />
+            <span>{{ t('contract_block.invoices_load_error') }}</span>
+            <button type="button" class="underline" @click="invoicesByPeriod.load()">{{ t('contract_block.invoices_retry') }}</button>
+          </div>
+
+          <template v-else-if="!isPeriodView">
+            <div v-if="!invoicesByPeriod.listInvoices.length" class="footering text-slate-500 p-2">
+              {{ $t('common.no_records') }}
+            </div>
+            <template v-else>
+              <InvoiceMiniDetail :item="invoicesByPeriod.listInvoices" :contract="contract" @show-detail="showDetail"
+                :isSubRegion="isSubRegion" :autoCols="true" :exportable="true"
+                :export-file-name="`${invoiceListExportPrefix}_${contract?.token || contract?.id || ''}`"
+                :grouped-invoice-mode="groupedInvoiceMode" :list-type="invoiceListMode" />
+              <div class="border-t border-gray-100 p-2" v-if="invoicesByPeriod.listPagination.totalPages > 1">
+                <Pagination :pagination="invoicesByPeriod.listPagination"
+                  @update:page="(page) => invoicesByPeriod.loadListPage(page)" />
+              </div>
+            </template>
+          </template>
+
+          <div v-else-if="!invoiceCycles.length" class="footering text-slate-500 p-2">
+            {{ $t('common.no_records') }}
+          </div>
+
+          <!-- Grouped sends select across months: the whole year in a single list. -->
+          <InvoiceMiniDetail v-else-if="groupedInvoiceMode" :item="invoicesByPeriod.invoices" :contract="contract"
+            @show-detail="showDetail" :isSubRegion="isSubRegion" :autoCols="true" :grouped-invoice-mode="true"
+            :list-type="invoiceListMode" class="mt-2" />
+
+          <template v-else>
+            <div v-for="(group, index) in invoiceCycles" :key="`${invoicesByPeriod.activeYear}-${group.key}`"
+              class="mt-2 border border-slate-200 rounded">
+              <button type="button" @click="toggleCycle(group, index)"
+                class="w-full flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-slate-50 text-left text-sm">
+                <Icon name="fa6-solid:angle-down" class="text-slate-500 transition-transform duration-200"
+                  :class="{ '-rotate-90': !isCycleExpanded(group, index) }" />
+                <span class="font-semibold text-slate-900">{{ cycleLabel(group.cycle) }}</span>
+                <span class="text-slate-500">{{ group.invoices.length }} {{ invoiceListLabel.toLowerCase() }}</span>
+                <span class="font-semibold text-slate-700">{{ formatMoneyWithCurrency(group.total) }}</span>
+                <span v-for="badge in cyclePaymentBadges(group)" :key="badge.key"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" :class="badge.class">
+                  <Icon :name="badge.icon" />
+                  {{ badge.label }}
+                </span>
+              </button>
+
+              <div v-if="isCycleExpanded(group, index)" class="px-2 pb-2">
+                <InvoiceMiniDetail :item="group.invoices" :contract="contract" @show-detail="showDetail"
+                  :isSubRegion="isSubRegion" :autoCols="true" :exportable="true" :list-type="invoiceListMode"
+                  :export-file-name="`${invoiceListExportPrefix}_${contract?.token || contract?.id || ''}_${invoicesByPeriod.activeYear}_${group.key}`" />
+              </div>
+            </div>
+          </template>
         </section>
 
-        <section v-if="invoiceActiveTab === 'invoice_generals'" class="mb-10 mt-2">
+      <section v-if="invoiceActiveTab === 'invoice_generals'" class="mb-10 mt-2">
+        <div v-if="invoicesLoading" class="flex justify-center items-center mt-5 mb-10">
+          <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
+          <span class="ml-2">{{ $t('common.loading') }}...</span>
+        </div>
+
+        <template v-else>
           <div v-for="(run, index) in generalInvoiceRuns" :key="run.key" class="mb-3 border border-slate-200 rounded">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-slate-50">
               <button type="button" @click="toggleRun(run, index)"
@@ -783,8 +1034,8 @@ const groupedPriceRates = computed(() => {
           <div v-if="!generalInvoiceRuns.length" class="footering text-slate-500 p-2">
             {{ $t('common.no_records') }}
           </div>
-        </section>
-      </template>
+        </template>
+      </section>
     </section>
 
     <section v-show="activeTab === 'orders'" role="tabpanel" id="tab_orders" class="bg-white antialiased">

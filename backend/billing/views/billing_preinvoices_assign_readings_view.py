@@ -8,6 +8,8 @@ from django.db.models import Q
 from billing.models import Billing, ReadingBatch, Reading
 from django.shortcuts import get_object_or_404
 from billing.utils.reading_filters import PENDING_READING_FILTER
+from service.models import SupplyPoint
+from service.utils.route_scope import routes_supply_points_q
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,12 +30,11 @@ class BillingPreInvoicesAssignReadingsViewSet(views.APIView):
                 return Response({"num_assigned_readings": 0}, status=status.HTTP_200_OK)
             
             # Get all supply point IDs that belong to routes in this billing using a single query
-            # Route -> RoutePosition -> Property -> SupplyPoint
+            # Route -> RoutePosition -> (SupplyPoint propi | Property -> SupplyPoint)
             billing_supply_point_ids = set(
-                billing.routes.values_list(
-                    'positions__properties__supply_points__id',
-                    flat=True
-                ).distinct()
+                SupplyPoint.objects.filter(
+                    routes_supply_points_q(billing.routes.all())
+                ).values_list('id', flat=True)
             )
             
             # Remove None values in case of null relationships

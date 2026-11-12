@@ -191,6 +191,11 @@ const refresh = async (close = true) => {
   emit('changed')
 }
 
+const onOrderChanged = () => {
+  closeSubRegion();
+  return refresh(false);
+}
+
 const setActiveTab = (tab) => {
   activeTab.value = tab;
 }
@@ -390,7 +395,7 @@ onMounted(async () => {
         <IncidentReportEdit v-if="showRegionDetailComponent === 'IncidentReportEdit'" :id="regionDetailId"
           :incident_id="props.id" @changed="refresh" />
         <OrderEdit v-if="showRegionDetailComponent === 'OrderEdit'" :isSubRegion="true" :incident_id="props.id"
-          :contract_id="data.contract?.id" @changed="refresh" />
+          :contract_id="data.contract?.id" @changed="onOrderChanged" />
         <OrderRegion v-if="showRegionDetailComponent === 'OrderRegion'" :id="regionDetailId" :isSubRegion="true"
           @changed="refresh" />
         <CommitmentDepositRegion v-if="showRegionDetailComponent === 'CommitmentDepositRegion'" :id="regionDetailId"

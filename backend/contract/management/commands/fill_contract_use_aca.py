@@ -4,7 +4,7 @@ from django.db.models import Q
 from contract.models import Contract
 from contract.utils.use_aca_service import run_fill_contract_use_aca
 from coredata.models import ConfigProject
-from watchdog.aca_config import split_config_tokens, uses_aca_enabled
+from watchdog.aca_config import is_aca_org, split_config_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +54,13 @@ def _build_fill_result(
 
 
 def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_contract_id=None):
-    if not uses_aca_enabled():
+    if not is_aca_org():
         logger.warning('No s\'actualitzarà use_aca')
         return _build_fill_result(
             dry_run=dry_run,
             update_all_contracts=update_all_contracts,
             skipped=True,
-            reason='uses_aca_disabled',
+            reason='public_org_type_disabled',
         )
 
     contract_use_aca_mun_tokens = split_config_tokens(ConfigProject.objects.get(token="contract_use_aca_mun_tokens").value)

@@ -22,6 +22,10 @@ const props = defineProps({
   contract_id: {
     type: Number,
     required: false
+  },
+  connection_request_id: {
+    type: Number,
+    required: false
   }
 });
 
@@ -33,7 +37,7 @@ const originalToken = ref('')
 const selected_order = ref(null);
 
 const { t } = useI18n();
-const { $OrderApiService } = useNuxtApp();
+const { $OrderApiService, $ObservationApiService } = useNuxtApp();
 const { $OperatorApiService } = useNuxtApp();
 const { $OrderTypeApiService } = useNuxtApp();
 const { $ConfiglistApiService } = useNuxtApp();
@@ -42,7 +46,11 @@ const { $PropertyApiService } = useNuxtApp();
 const { $SupplyPointApiService } = useNuxtApp();
 const { $ConnectionApiService } = useNuxtApp();
 
-const { $ContractApiService } = useNuxtApp();
+// Observacions escrites en crear l'ordre: es desen quan l'ordre ja té id.
+const pendingObservations = ref([]);
+const observationInput = ref(null);
+
+const { $ContractApiService, $ConnectionRequestApiService } = useNuxtApp();
 const toast = useToast();
 
 const attemptedSave = ref(false);
@@ -249,6 +257,22 @@ const getData = async () => {
       } catch (err) {
         console.error('Error fetching contract detail:', err);
       }
+    } else if (props.connection_request_id) {
+      // L'ordre queda vinculada a la sol·licitud. Si ja té escomesa, es proposa com a ubicació;
+      // si no, el backend n'agafa l'adreça i les coordenades de la sol·licitud.
+      try {
+        const connectionRequest = await $ConnectionRequestApiService.getDetail(props.connection_request_id);
+        suppressLocationWatch.value = true;
+        if (connectionRequest?.connection) {
+          selectedConnection.value = connectionRequest.connection;
+          locationTypeRadio.value = 'C';
+        } else {
+          locationTypeRadio.value = 'N';
+        }
+        suppressLocationWatch.value = false;
+      } catch (err) {
+        console.error('Error fetching connection request detail:', err);
+      }
     }
   }
 
@@ -355,9 +379,22 @@ const getPriorities = async () => {
   }
 }
 
+const addPendingObservation = (text) => {
+  if (!saving.value && text?.trim()) {
+    pendingObservations.value.push(text);
+  }
+}
+
+const removePendingObservation = (index) => {
+  if (saving.value) return;
+  pendingObservations.value.splice(index, 1);
+}
+
 const save = async () => {
+  if (saving.value) return;
   attemptedSave.value = true;
   if (isValid()) {
+    if (!props.id) observationInput.value?.emitChange();
     saving.value = true;
 
     // Handle both array (when editing) and object (when creating) formats
@@ -365,7 +402,7 @@ const save = async () => {
     const statusCode = Array.isArray(selectedStatus.value) ? selectedStatus.value[0]?.code : selectedStatus.value?.code;
 
     const selectedOptions = {
-      id: props.id,
+      id: item.value?.id ?? props.id,
       token: token.value,
       operators: selectedOperators.value.map(operator => operator.code),
       type: typeCode,
@@ -389,6 +426,9 @@ const save = async () => {
     
     if (props.incident_id) {
       selectedOptions.incident = props.incident_id;
+    }
+    if (props.connection_request_id && !selectedOptions.id) {
+      selectedOptions.connection_request = props.connection_request_id;
     }
     if (locationTypeRadio.value == 'SP') {
       selectedOptions.supply_point = selectedSupplyPoint.value ? selectedSupplyPoint.value.id : null;
@@ -432,7 +472,25 @@ const save = async () => {
     }
     try {
       item.value = await $OrderApiService.save(selectedOptions);
-      if (updatePropertyGeolocation.value && 
+      token.value = item.value.token ?? token.value;
+
+      // Desa les observacions pendents (ordres noves) un cop l'ordre té id
+      if (pendingObservations.value.length > 0 && item.value?.id) {
+        const failedObservations = [];
+        for (const obs of pendingObservations.value) {
+          try {
+            await $ObservationApiService.postObservation({
+              observation: obs,
+              order: item.value.id
+            }, 'order', 'order');
+          } catch (obsError) {
+            failedObservations.push(obs);
+            console.error('Error saving observation:', obsError);
+          }
+        }
+        pendingObservations.value = failedObservations;
+      }
+      if (updatePropertyGeolocation.value &&
           locationTypeRadio.value == 'SP' && 
           selectedSupplyPoint.value && 
           (latitude.value || longitude.value)) {
@@ -467,6 +525,11 @@ const save = async () => {
         }
       }
       
+      if (pendingObservations.value.length > 0) {
+        toast.error(t('common.error'));
+        return;
+      }
+
       if (props.incident_id) {
         emit('changed');
       } else if (!props.id && item.value?.id) {
@@ -758,11 +821,42 @@ const onIdLostFocus = async () => {
         </div>
       </div>
 
+      <!-- Observations field -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-slate-500 mb-2">
+          {{ t('common.observations') }}
+        </label>
+
+        <fieldset v-if="!props.id" :disabled="saving">
+          <!-- Observacions abans que l'ordre existeixi: es desen en guardar -->
+          <AtomsInputTextarea ref="observationInput" @update:text="addPendingObservation" :autosave="true" />
+
+          <!-- Llista d'observacions pendents -->
+          <div v-if="pendingObservations.length > 0" class="mt-2 space-y-2">
+            <div v-for="(obs, index) in pendingObservations" :key="index"
+                 class="p-2 bg-slate-50 border border-slate-200 rounded-md flex justify-between items-start group">
+              <p class="text-sm text-gray-700 whitespace-pre-wrap flex-1">{{ obs }}</p>
+              <button type="button" @click="removePendingObservation(index)"
+                      :disabled="saving" :aria-label="t('common.delete')"
+                      class="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity">
+                <Icon name="fa6-solid:xmark" />
+              </button>
+            </div>
+          </div>
+        </fieldset>
+        <div v-else>
+          <MoleculesObservationList
+            parent_entity="order"
+            :id="props.id"
+            module="order" />
+        </div>
+      </div>
+
       <!-- Location section -->
       <div v-if="selectedType" class="row">
         <label class="block text-sm font-medium text-slate-500 mb-2">
           {{ t('address_block.location') }}
-          <span v-if="props.contract_id" class="text-slate-400 text-sm">
+          <span v-if="props.contract_id || props.connection_request_id" class="text-slate-400 text-sm">
             ({{ t('common.optional') }})
           </span>
         </label>

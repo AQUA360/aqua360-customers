@@ -10,6 +10,7 @@ from billing.models import ReadingBatch, Reading
 from billing.serializers.reading_serializer import ReadingSerializer
 from coredata.models import ConfigProject
 from service.models import SupplyPoint
+from service.utils.route_scope import effective_route_select_related
 from billing.utils.reading_batch_service import (
     SETUP_FILTERS,
     get_setup_filter_supply_point_ids,
@@ -62,7 +63,7 @@ class ReadingBatchSetupViewSet(viewsets.ViewSet):
                     })
 
                 supply_points = SupplyPoint.objects.select_related(
-                    'type', 'status', 'property__route_position__route'
+                    'type', 'status', *effective_route_select_related()
                 ).filter(id__in=supply_point_ids).order_by('id')
                 supply_points = apply_search(supply_points)
 

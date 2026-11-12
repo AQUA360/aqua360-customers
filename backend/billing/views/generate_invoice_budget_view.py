@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals
 from contract.models import Contract, ContractTerminationRequest, ContractRequest, PiggyBank
 from service.models import ConnectionRequest, CompanyBank, Exploitation
+from service.utils.route_scope import effective_route
 from coredata.models import ConfigProject, Person, PersonBank
 from contract.models import PaymentType
 
@@ -20,6 +21,7 @@ from billing.serializers.invoice_serializer import InvoiceFullSerializer
 from billing.utils.invoice_service import (
     generate_consumption_invoice_multiple,
     pass_budget_to_invoice,
+    apply_holder_to_budget,
     invoice_contract_termination_generate,
     invoice_connection_generate,
     invoice_contract_generate,
@@ -53,8 +55,8 @@ class GenerateInvoiceBudgetView(APIView):
         selected_custom = request.data.get('selected_custom', None)
         bill_termination_requester = request.data.get('bill_termination_requester', False)
         
-        print(f"[GenerateInvoiceBudgetView] entity: {entity}, object_id: {object_id}, is_budget: {is_budget}")
-        print(f"[GenerateInvoiceBudgetView] redo_option: {redo_option}")
+        # print(f"[GenerateInvoiceBudgetView] entity: {entity}, object_id: {object_id}, is_budget: {is_budget}")
+        # print(f"[GenerateInvoiceBudgetView] redo_option: {redo_option}")
 
         # print("object: ", object_id)
         # print("is_budget: ", is_budget)
@@ -68,6 +70,8 @@ class GenerateInvoiceBudgetView(APIView):
         send_at = None
         issue_date = None
         readings = None
+        due_date_provided = False
+        send_at_provided = False
         
         payment_type = None
         payment_bank = None
@@ -79,8 +83,12 @@ class GenerateInvoiceBudgetView(APIView):
             payment_bank = payment_data.get("IBAN")
             company_bank = payment_data.get("company_iban", None)
             electronic_data = payment_data.get("electronic_data")
-            due_date = payment_data.get("due_date")
-            send_at = payment_data.get("send_at", None)
+            if 'due_date' in payment_data:
+                due_date_provided = True
+                due_date = payment_data.get("due_date")
+            if 'send_at' in payment_data:
+                send_at_provided = True
+                send_at = payment_data.get("send_at")
             issue_date = payment_data.get("issue_date", None)
             selected_exploitation = payment_data.get("selected_exploitation", None)
             exploitation = None
@@ -89,10 +97,34 @@ class GenerateInvoiceBudgetView(APIView):
                     exploitation = Exploitation.objects.get(id=selected_exploitation)
                 except:
                     pass
-        if not due_date:
-            due_date = (timezone.now() + timedelta(days=30)).date()
+        # New budgets need a default due_date; conversions keep the budget dates
+        # unless payment_data explicitly overrides them.
+        if not due_date and is_budget:
+            try:
+                due_days = int(ConfigProject.objects.get(token='budget_due_date_days').value)
+            except (ConfigProject.DoesNotExist, TypeError, ValueError):
+                due_days = 60
+            due_date = (timezone.now() + timedelta(days=due_days)).date()
+            due_date_provided = True
             
         
+        # Titular triat per a un pressupost encara no confirmat. En refacturar, el
+        # titular nou pot arribar dins de redo_option (motiu "holder").
+        holder_id = request.data.get('holder_id') or None
+        if holder_id and not is_budget:
+            return Response({'error': 'El titular només es pot canviar en un pressupost no confirmat.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not holder_id and is_budget and redo_option:
+            holder_id = redo_option.get("new_holder") or None
+        holder = None
+        previous_holder = None
+        if holder_id:
+            try:
+                holder = Person.objects.filter(id=int(holder_id)).first()
+            except (TypeError, ValueError):
+                holder = None
+            if not holder:
+                return Response({'error': 'El titular seleccionat no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
+
         if redo_budget:
             print("redo_budget")
             """ budget = self.updatePaymentBudget(redo_budget, payment_type, payment_bank, company_bank, electronic_data)
@@ -101,6 +133,10 @@ class GenerateInvoiceBudgetView(APIView):
             return Response({'invoice': invoice_serialized}, status=status.HTTP_200_OK) """
             try:
                 budget = Invoice.objects.get(id=redo_budget)
+                # Regenerar sense triar titular no ha de perdre el que s'havia canviat al
+                # panell d'edició. La refacturació (redo_option) té la seva pròpia lògica.
+                if not holder and not redo_option and budget.person_id:
+                    previous_holder = budget.person
                 budget.delete()
             except Invoice.DoesNotExist:
                 pass
@@ -161,7 +197,6 @@ class GenerateInvoiceBudgetView(APIView):
                 Invoice.objects.filter(contract_termination=contract_termination_request, type__token=budget_type_token).delete()
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
                 invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
-            print("invoice")
         
         elif entity == "connection_request":
             connection_request = ConnectionRequest.objects.get(id=object_id)
@@ -182,7 +217,6 @@ class GenerateInvoiceBudgetView(APIView):
                 } """
                 # invoice = invoice_connection_generate(None, object_id, 'SOL·LICITUD D\'ESCOMESA', payment_type, payment_bank, company_bank, is_budget, electronic_data)
                 invoice = generate_empty_invoice(None, connection_request, connection_request.person, 'SOL·LICITUD D\'ESCOMESA', payment_data, connection_request.exploitation)
-            print("invoice")
         
         elif entity == "invoice":
             if is_budget:
@@ -193,10 +227,9 @@ class GenerateInvoiceBudgetView(APIView):
         elif entity == "contract_request":
             contract_request = ContractRequest.objects.get(id=object_id)
             
-            new_holder_id = None
+            new_holder_id = holder.id if holder else None
             if redo_option:
                 reason = redo_option.get("reason")
-                new_holder_id = redo_option.get("new_holder", None)
             # Save bill_cut_reading if provided in the request and propagate to terminations
             bill_cut_reading = request.data.get('bill_cut_reading', None)
             if bill_cut_reading is not None:
@@ -230,12 +263,13 @@ class GenerateInvoiceBudgetView(APIView):
                     electronic_data, is_budget, company_bank,
                     company_id=payment_data.get('company_id') if payment_data else None,
                     category_id=payment_data.get('category_id') if payment_data else None,
-                    new_holder=new_holder_id)
+                    new_holder=new_holder_id,
+                    payment_data=payment_data)
         elif entity == "contract":
             contract = Contract.objects.get(id=object_id)
             title = 'Facturació'
             refactor_invoice_token = None
-            new_holder_id = None
+            new_holder_id = holder.id if holder else None
             recalc_strategy = "current"
             
             if redo_option: # or top_invoice_token:
@@ -248,7 +282,6 @@ class GenerateInvoiceBudgetView(APIView):
                 #         'leak_consum': {}
                 #     }
                 reason = redo_option.get("reason")
-                new_holder_id = redo_option.get("new_holder", None)
                 title = redo_option.get("title", 'Refacturació')
                 refactor_invoice_token = redo_option.get("invoice_token")
                 requested_strategy = redo_option.get("recalculation_strategy")
@@ -332,9 +365,7 @@ class GenerateInvoiceBudgetView(APIView):
                     biller = None
                     first_reading = og_readings[0] if og_readings else None
                     supply_point = getattr(first_reading, "supply_point", None)
-                    prop = getattr(supply_point, "property", None)
-                    route_position = getattr(prop, "route_position", None)
-                    route = getattr(route_position, "route", None)
+                    route = effective_route(supply_point)
                     biller = getattr(route, "biller", None)
                 else:
                     biller = billing.biller
@@ -422,9 +453,7 @@ class GenerateInvoiceBudgetView(APIView):
                 biller = None
                 first_reading = readings[0] if readings else None
                 supply_point = getattr(first_reading, "supply_point", None)
-                prop = getattr(supply_point, "property", None)
-                route_position = getattr(prop, "route_position", None)
-                route = getattr(route_position, "route", None)
+                route = effective_route(supply_point)
                 biller = getattr(route, "biller", None)
                     
                 period_type = biller.period_type if biller else 'trimestral'
@@ -455,6 +484,15 @@ class GenerateInvoiceBudgetView(APIView):
                 
             return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not holder and previous_holder and is_budget and invoice.person_id != previous_holder.id:
+            holder = previous_holder
+        if holder and is_budget:
+            try:
+                apply_holder_to_budget(invoice, holder)
+            except ValueError:
+                transaction.set_rollback(True)
+                return Response({'error': 'El titular només es pot canviar en un pressupost no confirmat.'}, status=status.HTTP_400_BAD_REQUEST)
+
         disconnect_payment_signals()
         if issue_date:
             if isinstance(issue_date, str):
@@ -464,8 +502,10 @@ class GenerateInvoiceBudgetView(APIView):
                     invoice.issue_date = parsed_issue_date
             else:
                 invoice.issue_date = issue_date
-        invoice.due_date = due_date
-        invoice.send_at = send_at
+        if due_date_provided:
+            invoice.due_date = due_date
+        if send_at_provided:
+            invoice.send_at = send_at
 
         invoice.save()
         reconnect_payment_signals()
@@ -475,9 +515,7 @@ class GenerateInvoiceBudgetView(APIView):
 
     def updatePaymentBudget(self, redo_budget, payment_type, payment_bank, company_bank, electronic_data):
         try:
-            print("updating payment budget")
             payment_type_instance = PaymentType.objects.get(id = payment_type)
-            print("payment type")
             payment_bank_instance = PersonBank.objects.get(id = payment_bank) if payment_bank else None
             payment_comp_bank_instance = CompanyBank.objects.get(id = company_bank) if company_bank else None
             iban = None

@@ -32,6 +32,6 @@ logs
 .vscode
 
 .watchmanconfig
-# Registre del deploy generat per scripts/record_deploy.sh al servidor
+# Informació del deploy, generada en construir la imatge (veure el Dockerfile)
 public/deploy-info.json
 DEPLOYS.md

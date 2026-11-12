@@ -19,3 +19,10 @@ CLAUDE.md
 .claude/settings.local.json
 
 dev.sh
+
+# Plugins de client (codi propi). No entren al repositori públic ni a la imatge.
+# Els README sí: són la convenció de com ha de ser un plugin.
+/plugins/*
+!/plugins/README.md
+!/plugins/README.es.md
+!/plugins/README.en.md

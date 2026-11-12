@@ -38,6 +38,25 @@ from billing.models import CommitmentDepositStatus, GeneralPaymentMandateLog, In
 from logger.models import LogContractTotalMembers
 from contract.utils.contract_service import get_contract_housing_units, log_contract_phones_change
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
+from service.utils.route_scope import effective_route
+
+
+def serialize_contract_show_price_rates(contract):
+    """Tarifes del contracte tal com les mostra la pestanya de tarifes (agrupades per punt
+    de subministrament). Compartit amb el serializer del contracte fixat perquè les dues
+    vistes rebin el mateix format."""
+    from pricing.serializers.price_rate_serializer import PriceRateSerializer
+    contract_price_rates = contract.price_rates.all().order_by('price_rate__product__position')
+    return [
+        {
+            'id': cr_price_rate.id,
+            'price_rate': PriceRateSerializer(cr_price_rate.price_rate).data,
+            'supply_point': SupplyPointMinimalSerializer(cr_price_rate.supply_point).data,
+            'is_bop_reference': cr_price_rate.is_bop_reference,
+        }
+        for cr_price_rate in contract_price_rates
+    ]
+
 
 class ContractObservationSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(required=False, allow_null=True)
@@ -160,6 +179,8 @@ class ContractSerializer(serializers.ModelSerializer):
     incidents = serializers.SerializerMethodField()
     # Incidència oberta d'un tipus que bloqueja les ofertes comercials (art. 16.2)
     blocking_incident = serializers.SerializerMethodField()
+    # Domiciliació anul·lada per un retorn SEPA de compte invàlid, pendent de revisar
+    invalid_account_payment_alert = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
     total_in_commitment_deposits = serializers.SerializerMethodField()
@@ -203,7 +224,7 @@ class ContractSerializer(serializers.ModelSerializer):
         try:
             period_type = ['mensual','bimestral','trimestral','semestral','anual']
             period_jumps = [1,2,3,6,12]
-            biller_period = obj.supply_point_default.property.route_position.route.biller.period_type
+            biller_period = effective_route(obj.supply_point_default).biller.period_type
             return period_jumps[period_type.index(biller_period)] * 30
         except:
             return None
@@ -314,19 +335,7 @@ class ContractSerializer(serializers.ModelSerializer):
         return PriceRateSerializer(registration_price_rates, many=True, read_only=True).data
     
     def get_show_price_rates(self, obj):
-        from pricing.serializers.price_rate_serializer import PriceRateSerializer
-        contract_price_rates = obj.price_rates.all().order_by('price_rate__product__position')
-        serialized_price_rates = []
-        for cr_price_rate in contract_price_rates:
-            serialized_price_rate = {
-                'id': cr_price_rate.id,
-                'price_rate': PriceRateSerializer(cr_price_rate.price_rate).data,
-                'supply_point': SupplyPointMinimalSerializer(cr_price_rate.supply_point).data,
-                'is_bop_reference': cr_price_rate.is_bop_reference,
-            }
-            serialized_price_rates.append(serialized_price_rate)
-        
-        return serialized_price_rates
+        return serialize_contract_show_price_rates(obj)
     
     def get_active_contract_termination(self, obj):
         from contract.models import ContractTerminationRequest
@@ -355,6 +364,11 @@ class ContractSerializer(serializers.ModelSerializer):
         vulnerability_requests = obj.vulnerability_requests.filter(status__token=vulnerability_pending_token)
         return vulnerability_requests.count() > 0
     
+    def get_invalid_account_payment_alert(self, obj):
+        """Avís de domiciliació anul·lada per un retorn SEPA de compte invàlid, o None."""
+        from billing.utils.sepa_invalid_account_service import invalid_account_payment_alert
+        return invalid_account_payment_alert(obj)
+
     def get_blocking_incident(self, obj):
         from notification.utils.incident_utils import blocking_incident
         incident = blocking_incident(obj)
@@ -375,7 +389,11 @@ class ContractSerializer(serializers.ModelSerializer):
         
         pending_claim = ConfigProject.objects.get(token='claim_request_status_pending_token').value
         accepted_claim = ConfigProject.objects.get(token='claim_request_status_accepted_token').value
-        claim_requests = ClaimRequest.objects.filter(payments__contract=obj, status__token__in=[pending_claim, accepted_claim])
+        claim_requests = ClaimRequest.objects.filter(
+            payments__contract=obj, 
+            payments__is_excluded=False,
+            status__token__in=[pending_claim, accepted_claim],
+            )
         return claim_requests.count() > 0
     
     def get_calendar_tasks(self, obj):
@@ -396,8 +414,9 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def get_invoices_count(self, obj):
         invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
-        request_invoices = Invoice.objects.filter(contract_request=obj.contract_request, is_active=True, type__token=invoice_type_token, contract_request__isnull=False)
-        unique_invoices = list(set(request_invoices.values_list('id', flat=True)) | set(obj.invoices.filter(is_active=True, type__token=invoice_type_token).values_list('id', flat=True)))
+        # Mateix abast que la pestanya de factures del contracte (sense les excloses)
+        request_invoices = Invoice.objects.filter(contract_request=obj.contract_request, is_active=True, is_excluded=False, type__token=invoice_type_token, contract_request__isnull=False)
+        unique_invoices = list(set(request_invoices.values_list('id', flat=True)) | set(obj.invoices.filter(is_active=True, is_excluded=False, type__token=invoice_type_token).values_list('id', flat=True)))
         return len(unique_invoices)
 
     def get_general_invoices_count(self, obj):
@@ -1304,14 +1323,16 @@ class ContractWithPaymentsSerializer(serializers.ModelSerializer):
         return representation
     
     def get_expired_invoices(self, obj):
-        expired_status = InvoiceStatus.objects.get(token=ConfigProject.objects.get(token='invoice_status_expired_token').value)
+        from claimrequest.utils.claim_request_service import claimable_invoice_status_q
+
         invoice_filters = Q(contract=obj)
 
         extra_invoice_ids = (self.context.get('extra_invoices_by_contract') or {}).get(obj.id)
         if extra_invoice_ids:
             invoice_filters |= Q(id__in=extra_invoice_ids)
 
-        invoices = Invoice.objects.filter(invoice_filters, status=expired_status)
+        # Mateix criteri que la cerca: vençudes i confirmades amb el rebut retornat
+        invoices = Invoice.objects.filter(invoice_filters).filter(claimable_invoice_status_q()).distinct()
 
         return_fee_invoice_ids = self.context.get('exclude_return_fee_invoice_ids')
         if return_fee_invoice_ids:

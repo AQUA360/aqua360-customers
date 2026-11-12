@@ -24,6 +24,7 @@ from pricing.models import PriceRate
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, ClaimRequestStatus, ClaimRequestStep, VulnerabilityRequest, VulnerabilityRequestStatus
 from claimrequest.utils.claim_request_service import (
     claim_letter_address,
+    claimable_invoice_status_q,
     closed_termination_tokens,
     contract_from_finished_request,
     is_claimable_contract,
@@ -33,6 +34,7 @@ from contract.models import Contract
 from contract.serializers.contract_serializer import ContractWithPaymentsSerializer
 from notification.models import Notification
 from service.models import Exploitation, Company
+from service.utils.route_scope import effective_route_q
 from django.template.loader import render_to_string
 from xhtml2pdf import pisa
 from service.serializers.company_serializer import CompanySerializer
@@ -49,6 +51,8 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
         
         claim_step = ClaimRequestStep.objects.get(id=step_id)
         document_type = claim_step.document_type
+        if not document_type:
+            return {"status": "error", "message": "Claim step has no document type"}
         now_date = datetime.now().date()
         # Objecte date, no string: les plantilles hi apliquen |date:"j F Y" i el
         # filtre `date` de Django sobre un string retorna cadena buida, de manera
@@ -151,7 +155,7 @@ def generate_claim_document_pdf(claim_request_id, contract_id, step_id, joined_p
             try:
                 joined_payment_status_cancelled_token = ConfigProject.objects.get(token='joined_payment_status_cancelled_token').value
                 joined_payment = JoinedPayment.objects.get(id=joined_payment_id)
-                if joined_payment.status.token == joined_payment_status_cancelled_token:
+                if joined_payment.status and joined_payment.status.token == joined_payment_status_cancelled_token:
                     joined_payment = None
                 else:
                     original_payments = joined_payment.payments.filter(claim_requests__claim_step__isnull=True).distinct()
@@ -372,9 +376,9 @@ def _build_claim_request_filters(payload):
     if client_types:
         contract_filters &= Q(client_type__id__in=client_types)
     if zones:
-        contract_filters &= Q(supply_point_default__property__route_position__route__route_zone__id__in=zones)
+        contract_filters &= effective_route_q('route__route_zone__id__in', zones, prefix='supply_point_default__')
     if reading_batch_templates:
-        contract_filters &= Q(supply_point_default__property__route_position__route__reading_batch_template__id__in=reading_batch_templates)
+        contract_filters &= effective_route_q('route__reading_batch_template__id__in', reading_batch_templates, prefix='supply_point_default__')
     if contract_statuses:
         # Es poden triar les baixes expressament per consultar-ne el deute. Crear-hi
         # una gestió, en canvi, no: ho talla el serializer de l'alta.
@@ -436,18 +440,10 @@ def _build_claim_request_filters(payload):
     annotation_filters = Q()
     annotation_filters &= Q(invoices__payments__status__in=payment_statuses)
 
-    expired_status_token = ConfigProject.objects.get(token='invoice_status_expired_token').value
-    invoice_status_filter = Q(invoices__status__token=expired_status_token)
-    if remittance_return_payment_ids is not None:
-        # Des d'una devolució SEPA també es poden reclamar els pagaments retornats
-        # encara que la factura no hagi vençut (continua confirmada fins a la data de venciment)
-        confirmed_status_token = ConfigProject.objects.get(token='invoice_status_confirmed_token').value
-        returned_status_token = ConfigProject.objects.get(token='payment_status_returned_token').value
-        invoice_status_filter |= Q(
-            invoices__status__token=confirmed_status_token,
-            invoices__payments__status__token=returned_status_token,
-        )
-    annotation_filters &= invoice_status_filter
+    # Els pagaments retornats es poden reclamar encara que la factura no hagi
+    # vençut: en processar la devolució la factura torna a Confirmada fins a la
+    # data de venciment, i fins llavors no passa a Vençuda.
+    annotation_filters &= claimable_invoice_status_q('invoices__')
 
     if date_start and date_start != "":
         annotation_filters &= Q(invoices__payments__payment_date__gte=date_start)

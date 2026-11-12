@@ -5,8 +5,10 @@ from contract.models import (
     ContractDataChange,
     ContractLog,
     ContractObservation,
+    ContractRequestType,
     ContractStatus,
     ContractTerminationRequest,
+    ContractTerminationType,
     PaymentType,
 )
 from pricing.models import PriceRate
@@ -22,11 +24,25 @@ from billing.models import (
 )
 from billing.utils.payment_service import get_status_map
 from decouple import config
-from coredata.models import ConfigProject, Person, PersonAddress, PersonBank, PersonContact, Country
+from coredata.models import (
+    ConfigProject,
+    Country,
+    IdentificationType,
+    Person,
+    PersonAddress,
+    PersonBank,
+    PersonContact,
+)
+from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from django.utils import timezone
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.db import transaction
+from django.db.models import Count, Value
+from django.db.models.functions import Replace, Upper
 from django.utils.dateparse import parse_date
 import logging
+import re
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -747,6 +763,17 @@ class InvoicePDFSerializer(serializers.ModelSerializer):
 
     def get_due_date_formatted(self, obj):
         return obj.due_date.strftime("%d/%m/%Y") if obj.due_date else ""
+
+
+def _validated_procedure_iban(value):
+    """Normalitza l'IBAN d'un tràmit (sense espais, en majúscules) i, si no és
+    buit, en valida el format i el dígit de control (mòdul 97 i, per a `ES`,
+    els dígits de control interns) amb el validador comú del PA. Un IBAN buit
+    es deixa passar: l'obligatorietat per a domiciliació es comprova a part."""
+    iban = (value or "").replace(" ", "").upper()
+    if iban and not is_valid_iban(iban):
+        raise serializers.ValidationError("Invalid IBAN.")
+    return iban
 
 
 def mask_iban(iban):
@@ -1639,6 +1666,57 @@ class InvoiceStatusDictionarySerializer(serializers.ModelSerializer):
         fields = ("token", "name")
 
 
+class PriceRateDictionarySerializer(serializers.ModelSerializer):
+    """Entrada de tarifa dins el diccionari de tipus de sol·licitud
+    (`token`, `name`).
+
+    `name` es resol igual que als tràmits: si el de la tarifa és genèric
+    ("GENERAL") o buit, s'usa el del producte associat. La vista ha de fer
+    `select_related("product")` per evitar consultes per tarifa.
+    """
+
+    name = serializers.SerializerMethodField()
+
+    def get_name(self, instance):
+        """Return the tariff name, falling back to its product name for blank or
+        case-insensitive "GENERAL" names; retain the original if no product exists."""
+        return ProcedureTariffDictionarySerializer._resolved_name(instance)
+
+    class Meta:
+        model = PriceRate
+        fields = ("token", "name")
+
+
+class ContractRequestTypeDictionarySerializer(serializers.ModelSerializer):
+    """Entrada del diccionari de tipus de sol·licitud de contracte.
+
+    Les llistes de tarifes llegeixen els atributs `active_*` que la vista
+    precarrega amb `Prefetch(to_attr=...)` (només tarifes actives), de manera
+    que no hi ha consultes addicionals per tipus.
+    """
+
+    registration_tariffs = PriceRateDictionarySerializer(
+        source="active_registration_tariffs", many=True, read_only=True
+    )
+    water_tariffs = PriceRateDictionarySerializer(
+        source="active_water_tariffs", many=True, read_only=True
+    )
+    change_of_name_tariffs = PriceRateDictionarySerializer(
+        source="active_change_of_name_tariffs", many=True, read_only=True
+    )
+
+    class Meta:
+        model = ContractRequestType
+        fields = (
+            "token",
+            "name",
+            "has_persons",
+            "registration_tariffs",
+            "water_tariffs",
+            "change_of_name_tariffs",
+        )
+
+
 class ProcedureTariffDictionarySerializer(serializers.Serializer):
     """Tarifa de tràmit amb el seu cost (fix o variable per calibre).
 
@@ -1723,12 +1801,12 @@ class ProcedureTariffDictionarySerializer(serializers.Serializer):
 
     @staticmethod
     def _resolved_name(instance):
-        """`name` del tràmit: si el de la tarifa és genènic ("GENERAL") o
-        buit, es resol el del producte associat (p. ex.
+        """`name` del tràmit: si el de la tarifa és genènic ("GENERAL"),
+        buit o només espais, es resol el del producte associat (p. ex.
         "DCHOS.ACOMETIDA...", "CONTADOR - ALTA PUNTO SUMINISTRO"); si no, es
         manté el de la tarifa."""
         name = instance.name
-        if name and name.strip().upper() != "GENERAL":
+        if name and name.strip() and name.strip().upper() != "GENERAL":
             return name
         product = instance.product
         return product.name if product else name
@@ -2044,11 +2122,178 @@ class ReturnRequestResponseSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
-class ContractProcedureRequestSerializer(serializers.Serializer):
+_PERSON_DNI_SEPARATORS = re.compile(r"[\s.\-]+")
+
+
+def _normalize_person_dni(value):
+    """Normalitza un DNI/NIF per comparar-lo amb les dades heretades de la BD:
+    ignora espais, guions i punts i el passa a majúscules."""
+    return _PERSON_DNI_SEPARATORS.sub("", value or "").upper()
+
+
+_PERSON_DNI_SQL_SEPARATORS = ("-", ".", " ", "\t", "\n", "\r", "\xa0")
+
+
+def _normalized_dni_expression(field):
+    """Expressió SQL equivalent a `_normalize_person_dni` per al camp indicat:
+    elimina guions, punts i espais (inclosos tabuladors, salts de línia i
+    espais no separables) i passa el resultat a majúscules."""
+    expression = field
+    for separator in _PERSON_DNI_SQL_SEPARATORS:
+        expression = Replace(expression, Value(separator), Value(""))
+    return Upper(expression)
+
+
+def _resolve_contract_procedure_person(dni):
+    """Resol una persona a partir del DNI normalitzat.
+
+    Replica la resolució de `PersonDataOVView`: primer `Person.token` i, si no
+    hi ha coincidència, el DNI de la compte bancària (`PersonBank.dni`), que és
+    com s'identifiquen els pagadors. El token de la persona també ha de coincidir
+    amb el DNI. Així l'OV rep el mateix resultat que en el preomplert de
+    `GET /ov/person-data/`.
+    """
+    person_id = (
+        Person.objects.annotate(
+            normalized_token=_normalized_dni_expression("token"),
+            contact_count=Count("contacts"),
+        )
+        .filter(normalized_token=dni)
+        .order_by("-contact_count", "id")
+        .values_list("id", flat=True)
+        .first()
+    )
+
+    if person_id is None:
+        person_id = (
+            PersonBank.objects.annotate(
+                normalized_dni=_normalized_dni_expression("dni"),
+                normalized_token=_normalized_dni_expression("person__token"),
+                contact_count=Count("person__contacts"),
+            )
+            .filter(normalized_dni=dni, normalized_token=dni, person__isnull=False)
+            .order_by("-contact_count", "id")
+            .values_list("person_id", flat=True)
+            .first()
+        )
+
+    if person_id is None:
+        return None
+    return Person.objects.filter(pk=person_id).first()
+
+
+NEW_HOLDER_REQUIRED_MESSAGE = "This field is required when the holder does not exist."
+NEW_HOLDER_FIELD_MAX_LENGTHS = {
+    "holder_name": 255,
+    "holder_surname": 255,
+    "holder_phone": 20,
+    "holder_email": 255,
+    "holder_identification_type_token": 255,
+}
+NEW_HOLDER_TEXT_FIELDS = tuple(NEW_HOLDER_FIELD_MAX_LENGTHS)
+
+
+class ProcedureNewHolderSerializer(serializers.Serializer):
+    """Camps per donar d'alta el titular d'un tràmit quan el `holder_dni` no
+    correspon a cap `Person` existent.
+
+    Si el DNI ja existeix, els camps `holder_*` són opcionals i s'ignoren (no
+    modifiquen la persona existent). Si no existeix, nom, cognoms, telèfon i
+    correu són obligatoris (els cognoms no ho són per a persones jurídiques) i
+    el tipus d'identificació, si s'omet, és el marcat per defecte.
+
+    `_validate_holder` deixa a `attrs` la persona resolta (`holder`, o `None`
+    si s'ha de crear) i, per a titulars nous, `identification_type`.
+    """
+
+    # Sense `max_length` ni `EmailField`: el format i la llargada només es
+    # validen per a titulars nous (a `_validate_holder`), perquè per a un
+    # titular existent aquests camps s'ignoren.
+    holder_name = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+    holder_surname = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+    holder_phone = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+    holder_email = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+    holder_is_juridic = serializers.BooleanField(required=False, default=False)
+    holder_identification_type_token = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+
+    def _validate_holder(self, attrs):
+        """Resolve the holder and return field errors for a new holder.
+
+        Set attrs["holder"] to the existing Person, or None when it does not
+        exist (or the normalized DNI is blank, which the views reject). For a
+        new holder, require name, surname (unless juridic), phone and email,
+        and set attrs["identification_type"] from the token or the default.
+        Length and email format are only checked for a new holder.
+        """
+        for field in NEW_HOLDER_TEXT_FIELDS:
+            if attrs.get(field) is not None:
+                attrs[field] = attrs[field].strip()
+
+        dni = _normalize_person_dni(attrs.get("holder_dni"))
+        holder = _resolve_contract_procedure_person(dni) if dni else None
+        attrs["holder"] = holder
+        if holder is not None or not dni:
+            return {}
+
+        errors = {}
+        required = ["holder_name", "holder_phone", "holder_email"]
+        if not attrs.get("holder_is_juridic"):
+            required.insert(1, "holder_surname")
+        for field in required:
+            if not attrs.get(field):
+                errors[field] = [NEW_HOLDER_REQUIRED_MESSAGE]
+        for field, max_length in NEW_HOLDER_FIELD_MAX_LENGTHS.items():
+            if len(attrs.get(field) or "") > max_length:
+                errors[field] = [
+                    f"Ensure this field has no more than {max_length} characters."
+                ]
+        if attrs.get("holder_email") and "holder_email" not in errors:
+            try:
+                validate_email(attrs["holder_email"])
+            except DjangoValidationError:
+                errors["holder_email"] = ["Enter a valid email address."]
+
+        type_token = attrs.get("holder_identification_type_token")
+        if type_token and "holder_identification_type_token" not in errors:
+            identification_type = (
+                IdentificationType.objects.filter(token=type_token)
+                .order_by("id")
+                .first()
+            )
+            if identification_type is None:
+                errors["holder_identification_type_token"] = [
+                    "Unknown identification type."
+                ]
+        elif type_token:
+            identification_type = None
+        else:
+            identification_type = (
+                IdentificationType.objects.filter(is_default=True)
+                .order_by("position", "id")
+                .first()
+            )
+        attrs["identification_type"] = identification_type
+        return errors
+
+
+class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     """Sol·licitud d'alta de contracte enviada per l'OV.
 
     El `tariff_token` és la tarifa que l'OV ha mostrat i cobrat a l'abonat, i
     és la font de veritat de la tarifa de la sol·licitud (`ContractRequest`).
+
+    Si `holder_dni` no existeix, els camps `holder_*` permeten crear el
+    titular (vegeu `ProcedureNewHolderSerializer`).
     """
 
     holder_dni = serializers.CharField(max_length=255)
@@ -2084,10 +2329,17 @@ class ContractProcedureRequestSerializer(serializers.Serializer):
         return value
 
     def validate_iban(self, value):
-        return (value or "").replace(" ", "").upper()
+        return _validated_procedure_iban(value)
 
     def validate_iban_holder_dni(self, value):
         return (value or "").upper()
+
+    def validate(self, attrs):
+        """Return attrs with the holder resolved; raise new-holder errors."""
+        errors = self._validate_holder(attrs)
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
 
 class ContractProcedureResponseSerializer(serializers.Serializer):
@@ -2099,6 +2351,217 @@ class ContractProcedureResponseSerializer(serializers.Serializer):
     person = serializers.DictField()
     supply_point = serializers.DictField()
     payment = serializers.DictField()
+    created_at = serializers.DateTimeField()
+
+
+class ContractTerminationProcedureRequestSerializer(serializers.Serializer):
+    """Petició de baixa de contracte des de l'OV.
+
+    Camps: `contract_token`, `holder_dni`, `observation` (text lliure, es
+    desa com a observació de la baixa) i `reason_token` opcional (token del
+    `ContractTerminationType`, el "Motiu" del PA; si falta s'usa el tipus per
+    defecte). No s'accepten lectures, fotos, dates ni dades de contacte (la
+    lectura de tall la registra el personal de camp i la data de sol·licitud
+    és la de recepció). Qualsevol altra clau s'ignora.
+
+    El tipus triat es resol sense restringir per `is_change_of_name` i es
+    deixa a `validated_data["termination_type"]` (o `None` si no s'ha indicat).
+    """
+
+    contract_token = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(max_length=255)
+    observation = serializers.CharField(max_length=1000, required=False, allow_blank=True, allow_null=True)
+    reason_token = serializers.CharField(
+        max_length=255
+    )
+
+    def validate(self, attrs):
+        """Add the resolved termination type to attrs and return it.
+
+        Raise ValidationError on reason_token if a nonblank token is unknown.
+        A blank or absent token yields None when this method is called directly;
+        normal field validation requires a nonblank reason_token.
+        """
+        reason_token = (attrs.get("reason_token") or "").strip()
+        termination_type = None
+        if reason_token:
+            termination_type = (
+                ContractTerminationType.objects.filter(token=reason_token)
+                .order_by("id")
+                .first()
+            )
+            if termination_type is None:
+                raise serializers.ValidationError(
+                    {"reason_token": ["Unknown termination reason."]}
+                )
+        attrs["termination_type"] = termination_type
+        return attrs
+
+
+class ContractTerminationProcedureResponseSerializer(serializers.Serializer):
+    """Sol·licitud de baixa de contracte creada (estat per defecte)."""
+
+    contract_termination_token = serializers.CharField()
+    contract_token = serializers.CharField()
+    status = serializers.DictField()
+    type = serializers.DictField()
+    created_at = serializers.DateTimeField()
+
+
+CONTRACT_CHANGE_BANK_FIELDS = (
+    "iban",
+    "iban_holder_name",
+    "iban_holder_dni",
+    "iban_holder_swift",
+)
+
+
+class ContractChangeOutgoingSerializer(serializers.Serializer):
+    """Bloc `outgoing` del canvi de nom: contracte actual i el seu titular.
+
+    `reason_token` és opcional: si s'indica, és el `ContractTerminationType`
+    de la baixa (qualsevol tipus existent, sense restringir per
+    `is_change_of_name`) i es deixa a `validated_data["termination_type"]`.
+    Si s'omet, és nul o buit, `termination_type` és `None` i la vista usa el
+    tipus de baixa de canvi de nom.
+    """
+
+    contract_token = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(max_length=255)
+    reason_token = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    observation = serializers.CharField(
+        max_length=1000, required=False, allow_blank=True, allow_null=True
+    )
+
+    def validate(self, attrs):
+        """Return attrs with termination_type resolved from reason_token.
+
+        Missing, null, or blank tokens yield None for the view's fallback.
+        Any existing termination type is accepted, including change-of-name
+        types. Raise ValidationError on reason_token for an unknown token.
+        """
+        reason_token = (attrs.get("reason_token") or "").strip()
+        termination_type = None
+        if reason_token:
+            termination_type = (
+                ContractTerminationType.objects.filter(token=reason_token)
+                .order_by("id")
+                .first()
+            )
+            if termination_type is None:
+                raise serializers.ValidationError(
+                    {"reason_token": ["Unknown termination reason."]}
+                )
+        attrs["termination_type"] = termination_type
+        return attrs
+
+
+class ContractChangeIncomingSerializer(ProcedureNewHolderSerializer):
+    """Bloc `incoming` del canvi de nom: nou titular, tipus de tràmit i forma
+    de pagament. Les dades bancàries només són obligatòries per a
+    domiciliació. No hi ha camps de tarifa: s'hereten del contracte actual.
+
+    Si `holder_dni` no existeix, els camps `holder_*` permeten crear el nou
+    titular (vegeu `ProcedureNewHolderSerializer`).
+
+    Deixa resolts a `validated_data` `procedure_type`, `payment_type` i
+    `holder` (o `None` si s'ha de crear).
+    """
+
+    holder_dni = serializers.CharField(max_length=255)
+    procedure_type_token = serializers.CharField(max_length=255)
+    payment_type_token = serializers.CharField(max_length=255)
+    iban = serializers.CharField(
+        max_length=34, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_dni = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    iban_holder_swift = serializers.CharField(
+        max_length=11, required=False, allow_blank=True, allow_null=True
+    )
+    language = serializers.CharField(
+        max_length=2, required=False, allow_blank=True, allow_null=True
+    )
+    observation = serializers.CharField(
+        max_length=1000, required=False, allow_blank=True, allow_null=True
+    )
+
+    def validate_language(self, value):
+        """Return the language unchanged, allowing blank or null values.
+
+        Raise ValidationError for a nonempty code absent from settings.LANGUAGES.
+        """
+        if value and value not in dict(settings.LANGUAGES):
+            raise serializers.ValidationError("Unsupported language.")
+        return value
+
+    def validate_iban(self, value):
+        """Remove ASCII spaces and uppercase the IBAN; return "" for null values.
+
+        Raise ValidationError if a nonempty IBAN fails the format/checksum check.
+        """
+        return _validated_procedure_iban(value)
+
+    def validate_iban_holder_dni(self, value):
+        """Uppercase the bank account holder's DNI; return "" for null values."""
+        return (value or "").upper()
+
+    def validate(self, attrs):
+        """Return attrs with the procedure type, payment type and holder resolved.
+
+        Require all four bank fields for DIRECT_DEBIT, and the personal fields
+        when the holder does not exist. Raise ValidationError with
+        field-specific errors for unknown types or missing fields.
+        """
+        errors = self._validate_holder(attrs)
+        procedure_type = ContractRequestType.objects.filter(
+            token=attrs["procedure_type_token"], is_active=True
+        ).first()
+        if procedure_type is None:
+            errors["procedure_type_token"] = ["Procedure type not found."]
+        payment_type = PaymentType.objects.filter(
+            token=attrs["payment_type_token"]
+        ).first()
+        if payment_type is None:
+            errors["payment_type_token"] = ["Payment type not found."]
+        elif payment_type.token == "DIRECT_DEBIT":
+            for field in CONTRACT_CHANGE_BANK_FIELDS:
+                if not attrs.get(field):
+                    errors[field] = ["This field is required for direct debit."]
+        if errors:
+            raise serializers.ValidationError(errors)
+        attrs["procedure_type"] = procedure_type
+        attrs["payment_type"] = payment_type
+        return attrs
+
+
+class ContractChangeProcedureRequestSerializer(serializers.Serializer):
+    """Petició de canvi de nom des de l'OV, en dos blocs: `outgoing`
+    (contracte i titular actuals, motiu de la baixa) i `incoming` (nou
+    titular). Els errors de validació surten niats per bloc (p. ex.
+    `{"incoming": {"iban": [...]}}`)."""
+
+    outgoing = ContractChangeOutgoingSerializer()
+    incoming = ContractChangeIncomingSerializer()
+
+
+class ContractChangeProcedureResponseSerializer(serializers.Serializer):
+    """Sol·licituds creades per un canvi de nom: la baixa del contracte actual
+    i l'alta (canvi de nom) del nou titular, enllaçades entre si."""
+
+    contract_request_token = serializers.CharField()
+    contract_termination_token = serializers.CharField()
+    contract_token = serializers.CharField()
+    contract_request_status = serializers.DictField()
+    contract_termination_status = serializers.DictField()
+    procedure_type = serializers.DictField()
+    termination_type = serializers.DictField()
     created_at = serializers.DateTimeField()
 
 

@@ -24,6 +24,12 @@ from service.utils.meter_bulk_update_service import (
     apply_updates,
     build_preview,
 )
+from service.utils.meter_bulk_change_service import (
+    MeterBulkChangeError,
+    MeterBulkChangeValidationError,
+    apply_changes,
+    build_preview as build_change_preview,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -336,16 +342,62 @@ class MeterViewSet(viewsets.ModelViewSet):
         """Confirma i aplica l'update massiva de Meter (re-upload del mateix fitxer)."""
         return self._bulk_update_from_file(request, apply=True)
 
+    def _bulk_change_from_file(self, request, *, apply):
+        uploaded = request.FILES.get('file') or request.data.get('file')
+        if not uploaded:
+            return Response(
+                {"error": "Cal enviar el fitxer al camp 'file' (CSV o Excel)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            result = (
+                apply_changes(uploaded, request.user) if apply
+                else build_change_preview(uploaded)
+            )
+        except MeterBulkChangeValidationError as exc:
+            logger.warning("Bulk change validation failed: %s", exc)
+            return Response(
+                {"error": exc.public_message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except MeterBulkChangeError as exc:
+            logger.exception("Bulk change processing failed: %s", exc)
+            return Response(
+                {"error": "S'ha produït un error en processar el fitxer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='bulk-change/preview',
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def bulk_change_preview(self, request):
+        """Previsualitza el canvi massiu de comptadors des de CSV/Excel."""
+        return self._bulk_change_from_file(request, apply=False)
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='bulk-change/confirm',
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def bulk_change_confirm(self, request):
+        """Aplica el canvi massiu de comptadors (re-upload del mateix fitxer)."""
+        return self._bulk_change_from_file(request, apply=True)    
+
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
         # POST custom: DjangoModelPermissions demanaria add_meter; aquí cal change_meter
-        if self.action in ('bulk_update_preview', 'bulk_update_confirm'):
+        if self.action in ('bulk_update_preview', 'bulk_update_confirm', 'bulk_change_preview', 'bulk_change_confirm'):
             return [IsAuthenticated()]
         return super().get_permissions()
 
     def check_permissions(self, request):
         super().check_permissions(request)
-        if self.action in ('bulk_update_preview', 'bulk_update_confirm'):
+        if self.action in ('bulk_update_preview', 'bulk_update_confirm', 'bulk_change_preview', 'bulk_change_confirm'):
             if not request.user.has_perm('service.change_meter'):
                 self.permission_denied(request)

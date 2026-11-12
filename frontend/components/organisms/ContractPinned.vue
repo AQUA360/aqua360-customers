@@ -1,10 +1,12 @@
 <script setup>
+import ContractInvalidAccountAlert from '~/components/molecules/ContractInvalidAccountAlert.vue';
 import { useFixedObjectsStore } from '~/stores/useFixedObjects';
 import { useToast } from 'vue-toastification';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
-import FieldDetail from '~/components/atoms/FieldDetail.vue';
-import H1 from '~/components/atoms/H1.vue';
-import PinnedContractBasicInfo from '~/components/molecules/PinnedContractBasicInfo.vue';
+import { formatDateTime } from '~/utils/date';
+import H1Region from '~/components/atoms/H1Region.vue';
+import AppLoading from '~/components/atoms/AppLoading.vue';
+import ContractDetail from '~/components/molecules/ContractDetail.vue';
 import { checkPermission } from '~/middleware/permission';
 import ContractActionsDropdown from '~/components/molecules/ContractActionsDropdown.vue';
 import ContractTabs from '~/components/organisms/ContractTabs.vue';
@@ -29,9 +31,11 @@ import PriceIntervalRegion from './PriceIntervalRegion.vue';
 import CalendarTaskEdit from '../molecules/CalendarTaskEdit.vue';
 import PiggyBankRegion from './PiggyBankRegion.vue';
 import ContractDebtRegion from './ContractDebtRegion.vue';
+import EstimatedBagRegion from './EstimatedBagRegion.vue';
 import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
+import { useContractInvoicesByPeriod } from '~/composables/useContractInvoicesByPeriod';
 
 const { $ContractApiService, $InvoiceApiService, $LoggerApiService, $VulnerabilityRequestApiService, $ConfigProjectApiService } = useNuxtApp();
 const fixedObjectsStore = useFixedObjectsStore();
@@ -75,7 +79,7 @@ const objectPermissions = ref({});
 
 const allowSelectSupplyPointFraud = ref(false);
 
-const invoices = ref([])
+const invoicesByPeriod = useContractInvoicesByPeriod(() => contract.value.id)
 const general_invoices = ref([])
 const invoiceTypeToken = ref(null)
 const invoicesLoading = ref(false)
@@ -111,6 +115,14 @@ const updateOrderCount = (num) => {
 const updateCallRegisterCount = (num) => {
     call_register_number.value = num;
 }
+const updateIncidentCount = (num) => {
+    if (contract.value) contract.value.incidents = num;
+}
+const updateBonificationVariableChangeCount = (num) => {
+    bonVarChangesNumber.value = num;
+}
+
+const supplyCutAlert = computed(() => contract.value?.supply_point_default?.supply_cut_alert || null);
 
 const getContractData = async (load = true) => {
     loading.value = load;
@@ -200,19 +212,8 @@ const getPersonIds = (data) => {
 
 const getInvoices = async () => {
     invoicesLoading.value = true;
-    invoices.value = []
     try {
-        const result = await $InvoiceApiService.getInvoicesFromContract(contract.value.id, false, true);
-        invoices.value = result.results;
-        if (contract.value.request_invoices.length > 0) {
-            contract.value.request_invoices.forEach(reqInvoice => {
-                if (!invoices.value.some(inv => inv.id === reqInvoice.id)) {
-                    invoices.value.push(reqInvoice);
-                }
-            });
-        }
-    } catch (error) {
-        console.log(error);
+        await invoicesByPeriod.load();
     } finally {
         invoicesLoading.value = false;
     }
@@ -234,9 +235,7 @@ const getGeneralInvoices = async () => {
 // Update a single invoice's PDF document in-place so the "send" button reactivates
 // without reloading the whole invoice list.
 const onInvoicePdfGenerated = ({ id, invoice_file }) => {
-    const invoiceId = parseInt(id);
-    const item = (invoices.value || []).find(inv => inv.id === invoiceId);
-    if (item) item.invoice_file = invoice_file;
+    invoicesByPeriod.updateInvoiceFile({ id, invoice_file });
 }
 
 const getExpiredVariables = async () => {
@@ -310,10 +309,25 @@ const pinObject = async () => {
             is_pinned: false
         }
         fixedObjectsStore.clearCurrentPinnedContract();
-        router.push(`/contract/contracts/`);
+        // As a region (NavTopPinned panel) just close it; as a full page leave it.
+        if (props.isSubRegion) {
+            emit('close');
+        } else {
+            router.push(`/contract/contracts/`);
+        }
         await $ContractApiService.save(save_date)
     } catch (error) {
         console.error(error)
+    }
+}
+
+// Full page only: it can be reached from the top bar link or a direct URL, so go back when
+// there is an in-app previous page and fall back to the contract list otherwise.
+const closeFullPage = () => {
+    if (window.history.state?.back) {
+        router.back();
+    } else {
+        router.push('/contract/contracts/');
     }
 }
 
@@ -534,11 +548,8 @@ const setActiveTab = (tab) => {
 
 <template>
   <div class="region__content h-full">
-    <div v-if="loading">
-      <div class="flex justify-center items-center h-full min-h-[400px]">
-        <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
-        <span class="ml-2">{{ $t('common.loading') }}...</span>
-      </div>
+    <div v-if="loading" class="h-full min-h-[400px]">
+      <AppLoading :text="$t('common.loading')" />
     </div>
     <div v-else-if="objectPermissions?.can_view" class="pr-2 relative pb-24 transition-all duration-500 ease"
       :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': showRegion }">
@@ -546,94 +557,44 @@ const setActiveTab = (tab) => {
             :message="t('confirmation_text_block.confirm_delete_contract')"
             :expected-phrase="t('confirmation_phrase_block.delete_contract')" @confirm="deleteContract" />
 
-        <div class="flex justify-between items-center mb-1">
-            <H1 v-if="!contract" class="flex items-center gap-2">
-                <div class="flex items-center justify-center w-5 h-5 rounded-full border border-sky-500">
-                    <abbr
-                        :title="fixedObjectsStore?.currentPinnedContract?.holder_is_juridic ? t('contract_block.juridic_person') : t('common.physical_person')"
-                        class="flex items-center justify-center">
-                        <Icon
-                            :name="fixedObjectsStore?.currentPinnedContract?.holder_is_juridic ? 'fa6-solid:building' : 'fa6-solid:user'"
-                            class="text-sky-500 w-3 h-3" />
-                    </abbr>
-                </div>
-                <AtomsVulnerabilityCheck v-if="fixedObjectsStore?.currentPinnedContract?.holder_vulnerability_level > 0"
-                    :vulnerability_level="fixedObjectsStore?.currentPinnedContract?.holder_vulnerability_level"
-                    :small="true" class="mr-1" />
-                <span>
-                    {{ fixedObjectsStore?.currentPinnedContract?.holder_full }}
+        <!-- Same header as ContractRegion so the pinned contract looks like the contract region -->
+        <div class="flex justify-between relative">
+            <div class="flex items-center mb-3 gap-5">
+                <H1Region>{{ $t('contract') }}</H1Region>
+                <!-- Reclamació oberta d'un tipus que bloqueja les ofertes comercials -->
+                <span v-if="contract?.blocking_incident" class="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700"
+                    :title="contract.blocking_incident.name">
+                    <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
                 </span>
-                <!-- <div class="flex items-center justify-center w-5 h-5 rounded-full border border-sky-500 bg-sky-50">
-                    <abbr
-                        :title="fixedObjectsStore?.currentPinnedContract?.holder_is_juridic ? t('contract_block.juridic_person') : t('common.physical_person')"
-                        class="flex items-center justify-center">
-                        <Icon
-                            :name="fixedObjectsStore?.currentPinnedContract?.holder_is_juridic ? 'fa6-solid:building' : 'fa6-solid:user'"
-                            class="text-sky-500 w-3 h-3" />
-                    </abbr>
-                </div> -->
-            </H1>
-            <H1 v-else class="flex items-center gap-2">
-                <div class="flex items-center gap-2">
-                    <AtomsVulnerabilityCheck v-if="contract?.holder?.vulnerability_level > 0"
-                        :vulnerability_level="contract?.holder?.vulnerability_level" :small="true" class="mr-1" />
-                    <span class="">
-                        {{ contract?.holder.full_name }}
-                    </span>
-                </div>
-                <button class="text-sky-500 hover:no-underline underline hover:text-sky-600"
-                    @click="showDetail('PersonRegion', contract?.holder.id)">
-                    ({{ contract?.holder.token }})
-                </button>
-                <div class="flex items-center justify-center w-5 h-5 rounded-full border border-sky-500 bg-sky-50">
-                    <abbr
-                        :title="fixedObjectsStore?.currentPinnedContract?.holder_is_juridic ? t('contract_block.juridic_person') : t('common.physical_person')"
-                        class="flex items-center justify-center">
-                        <Icon
-                            :name="fixedObjectsStore?.currentPinnedContract?.holder_is_juridic ? 'fa6-solid:building' : 'fa6-solid:user'"
-                            class="text-sky-500 w-3 h-3" />
-                    </abbr>
-                </div>
-            </H1>
-            <div class="flex flex-row-reverse items-center gap-2">
-                <H1>
-                    <Icon name="fa6-solid:file-contract" class="w-4 h-4 text-slate-500" />
-                    {{ fixedObjectsStore?.currentPinnedContract?.token }}
-                </H1>
-                <div v-if="contract" class="flex items-center gap-0">
-                    <button @click="pinObject" class="flex items-center justify-center px-2 py-[5px]">
+            </div>
+
+            <div v-if="contract">
+                <div class="flex items-center gap-0" style="margin-right: 40px;">
+                    <button @click="pinObject" class="flex items-center justify-center px-4 py-[5px]"
+                        :title="t('contract_block.unpin_contract')">
                         <Icon name="ic:sharp-push-pin" class="w-4 h-4 text-red-500 hover:bg-red-900" />
                     </button>
-                    <button @click="checkObject" class="group flex items-center justify-center px-4 py-[5px]">
-                        <Icon :name="isChecked ?
-                            'fa6-solid:flag' : 'fa6-regular:flag'" class="w-3.5 h-3.5" :class="{
-                                'text-red-500 group-hover:bg-red-900': isChecked,
-                                'text-slate-500 group-hover:text-sky-500': !isChecked
-                            }" />
+                    <button @click="checkObject" class="group flex items-center justify-center px-4 py-[5px]"
+                        :title="isChecked ? t('contract_block.unfollow_contract') : t('contract_block.follow_contract')">
+                        <Icon :name="isChecked ? 'fa6-solid:flag' : 'fa6-regular:flag'" class="w-3.5 h-3.5" :class="{
+                            'text-red-500 group-hover:bg-red-900': isChecked,
+                            'text-slate-500 group-hover:text-sky-500': !isChecked
+                        }" />
+                    </button>
+                    <button v-if="!isSubRegion" @click="closeFullPage" :title="t('common.close')"
+                        class="flex items-center justify-center px-4 py-[5px] text-slate-500 hover:text-sky-500">
+                        <Icon name="fa6-solid:xmark" class="w-4 h-4" />
                     </button>
                 </div>
-            </div>
-        </div>
-        <div class="flex justify-between items-center mb-3">
-            <div class="flex items-center gap-2">
-                <span>
-                    <AtomsColorBadge :value="contract?.status?.name" :color="contract?.status?.color" />
-                </span>
 
-                <h3 class="font medium">
-                    {{ contract?.supply_point_default?.address_complete }}
-                </h3>
-            </div>
-            <div v-if="objectPermissions.can_change" class="grid grid-cols-2 gap-2 relative">
-                <span></span>
-                <ContractActionsDropdown :contract="contract" :canChange="objectPermissions.can_change"
-                    :terminatedStatusToken="terminatedStatusToken" :personIds="person_ids"
-                    @show-detail="showDetail" @change="getContractData(false)"
+                <ContractActionsDropdown v-if="objectPermissions.can_change" :contract="contract"
+                    :canChange="objectPermissions.can_change" :terminatedStatusToken="terminatedStatusToken"
+                    :personIds="person_ids" @show-detail="showDetail" @change="getContractData(false)"
                     @delete-click="showDeleteContractConfirmation" />
             </div>
         </div>
 
-        <div v-if="contract" class="overflow-y-auto scrollbar-hide">
+        <div v-if="contract">
 
             <div v-if="new_call" class="fixed inset-0 z-50 flex items-center justify-center">
                 <div class="bg-white rounded-lg shadow-xl p-6 max-w-3xl w-full mx-4 my-auto relative">
@@ -677,17 +638,37 @@ const setActiveTab = (tab) => {
                 </div>
             </div>
 
-            <div class="mb-3">
-                <div v-if="contract?.blocking_incident" class="mb-2 text-xs px-2 py-1 rounded bg-red-100 text-red-700"
-                  :title="contract.blocking_incident.name">
-                  <Icon name="fa6-solid:ban" class="mr-1" />{{ $t('incident_block.commercial_block') }} ({{ contract.blocking_incident.token }})
+            <div v-if="supplyCutAlert" role="alert" class="mb-2">
+                <div class="flex items-center gap-3 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 shadow-sm">
+                    <div class="flex h-4 w-4 shrink-0 items-center justify-center text-amber-700">
+                        <Icon name="fa6-solid:scissors" class="text-sm" />
+                    </div>
+                    <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span class="text-sm font-semibold text-amber-900 leading-snug">
+                            {{ $t('service_block.supply_with_cut') }}
+                        </span>
+                        <span class="text-sm text-amber-800 leading-snug">
+                            {{ supplyCutAlert.status_name }}
+                            ({{ supplyCutAlert.temporary ? $t('service_block.cut_temporary') : $t('service_block.cut_indefinite') }})
+                        </span>
+                        <span v-if="supplyCutAlert.date_end" class="text-sm text-amber-800 leading-snug">
+                            &middot; {{ $t('service_block.until') }} {{ formatDateTime(supplyCutAlert.date_end) }}
+                        </span>
+                    </div>
                 </div>
-                <PinnedContractBasicInfo :contract="contract" @show-detail="showDetail" @new-call="startCall" />
             </div>
+
+            <ContractInvalidAccountAlert :alert="contract?.invalid_account_payment_alert" />
+
+            <ContractDetail :data="contract" :isSubRegion="isSubRegion" :isSubRegionOpen="isSubRegionOpen"
+                :canChange="objectPermissions.can_change" :showDebtDetail="true" :showBailTab="true"
+                @show-subregion="showDetail" @change="handleChange" @new-call="startCall"
+                @update-active-tab="setActiveTab" />
 
             <ContractTabs
                 :contract="contract"
                 :isPinned="true"
+                :canChange="objectPermissions.can_change"
                 :isSubRegion="isSubRegion"
                 :activeTab="activeTab"
                 :observationNumber="observationNumber"
@@ -707,7 +688,7 @@ const setActiveTab = (tab) => {
                 :contract_logs="contract_logs"
                 :expired_variables="expired_variables"
                 :expired_bonifications="expired_bonifications"
-                :invoices="invoices"
+                :invoices-by-period="invoicesByPeriod"
                 :invoices_count="contract ? contract.invoices_count : 0"
                 :general_invoices="general_invoices"
                 :invoicesLoading="invoicesLoading"
@@ -772,6 +753,8 @@ const setActiveTab = (tab) => {
                 :isSubRegion="true" @changed="handleChange" @show-subregion="handleSubRegionEvent" />
             <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" @changed="getContractData(false)" @show-subregion="handleSubRegionEvent" />
+            <EstimatedBagRegion v-if="showRegionDetailComponent === 'EstimatedBagRegion'" :id="parseInt(regionDetailId)"
+                :isSubRegion="true" />
             <AddReading v-if="showRegionDetailComponent === 'AddReading'" :contract="contract"
                 :contract_ids="[contract.id]" :isSubRegion="true" />
             <AddInvoiceBudget v-if="showRegionDetailComponent === 'AddInvoiceBudget'" :isSubRegion="true"

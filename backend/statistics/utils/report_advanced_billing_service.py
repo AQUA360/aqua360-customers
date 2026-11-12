@@ -3,6 +3,7 @@ from django.db.models import Sum, Q, Count, F, Min, Max
 from billing.models import Invoice, InvoiceLineItem
 from contract.models import Contract, ContractStatus
 from service.models import Exploitation, SupplyPoint
+from service.utils.route_scope import effective_route, effective_route_field_expr, effective_route_q, effective_route_select_related
 from pricing.models import Product, ProductOrigin, LineItemType, BillingPeriod
 from coredata.models import ConfigProject
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, save_report, jump_row
@@ -99,7 +100,7 @@ def generate_detailed_typology_periodicity_report(request, black_fill, white_bol
             prod_name=Coalesce(F('product_name'), F('price_rate__product__name'), F('product__name')),
             rate_name=Coalesce(F('price_rate__name'), F('price_rate_name')),
             use_type_name=F('invoice__contract__use_type__name'),
-            periodicity=F('invoice__contract__supply_point_default__property__route_position__route__biller__period_type')
+            periodicity=effective_route_field_expr('route__biller__period_type', 'invoice__contract__supply_point_default__')
         ).annotate(
             total_base=Sum('price'),
             total_tax=Sum('tax_price'),
@@ -175,7 +176,7 @@ def generate_detailed_typology_periodicity_report(request, black_fill, white_bol
             prod_name=Coalesce(F('product_name'), F('price_rate__product__name'), F('product__name')),
             rate_name=Coalesce(F('price_rate__name'), F('price_rate_name')),
             use_type_name=F('invoice__contract__use_type__name'),
-            periodicity=F('invoice__contract__supply_point_default__property__route_position__route__biller__period_type')
+            periodicity=effective_route_field_expr('route__biller__period_type', 'invoice__contract__supply_point_default__')
         ).annotate(
             total_val=Sum(F('price') + F('tax_price'))
         ).order_by('invoice__issue_date')
@@ -231,8 +232,6 @@ def generate_detailed_typology_periodicity_report(request, black_fill, white_bol
 
         route_lines_data = line_items.values(
             'invoice_id',
-            'invoice__contract__supply_point_default__property__route_position__route__token',
-            'invoice__contract__supply_point_default__property__route_position__route__name',
             'product__token',
             'product_name',
             'price_rate__product__name',
@@ -243,13 +242,15 @@ def generate_detailed_typology_periodicity_report(request, black_fill, white_bol
             'line_item_type__name',
             'units',
             'price',
-            'tax_price'
+            'tax_price',
+            route_token=effective_route_field_expr('route__token', 'invoice__contract__supply_point_default__'),
+            route_name=effective_route_field_expr('route__name', 'invoice__contract__supply_point_default__'),
         )
         
         route_groups = {}
         for item in route_lines_data:
-            r_token = item['invoice__contract__supply_point_default__property__route_position__route__token'] or _("Sense ruta")
-            r_name = item['invoice__contract__supply_point_default__property__route_position__route__name'] or _("Sense nom de ruta")
+            r_token = item['route_token'] or _("Sense ruta")
+            r_name = item['route_name'] or _("Sense nom de ruta")
             
             if r_token not in route_groups:
                 route_groups[r_token] = {
@@ -1593,8 +1594,8 @@ def generate_complex_route_report(request, black_fill, white_bold_font):
 
         # Optimize queries with select_related and prefetch_related
         invoices = invoices.select_related(
-            'contract__supply_point_default__property__route_position__route',
-            'contract_termination__contract__supply_point_default__property__route_position__route',
+            *effective_route_select_related('contract__supply_point_default__'),
+            *effective_route_select_related('contract_termination__contract__supply_point_default__'),
             'contract__use_type', 'contract__category',
             'origin'
         ).prefetch_related(
@@ -1625,13 +1626,12 @@ def generate_complex_route_report(request, black_fill, white_bold_font):
                 contract = inv.contract_termination.contract
 
             route_obj = None
-            if contract and contract.supply_point_default and contract.supply_point_default.property and contract.supply_point_default.property.route_position and contract.supply_point_default.property.route_position.route:
-                route_obj = contract.supply_point_default.property.route_position.route
+            if contract and effective_route(contract.supply_point_default):
+                route_obj = effective_route(contract.supply_point_default)
             elif inv.connection:
                 # Fallback for invoices billed directly to a Connection
-                sp = SupplyPoint.objects.filter(connection=inv.connection, property__route_position__route__isnull=False).select_related('property__route_position__route').first()
-                if sp and sp.property and sp.property.route_position and sp.property.route_position.route:
-                    route_obj = sp.property.route_position.route
+                sp = SupplyPoint.objects.filter(effective_route_q('route__isnull', False), connection=inv.connection).select_related(*effective_route_select_related()).first()
+                route_obj = effective_route(sp)
 
             if route_obj:
                 route_name = f"{route_obj.name or route_obj.token or 'Sense Ruta'}"

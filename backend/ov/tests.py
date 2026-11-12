@@ -12,6 +12,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
@@ -36,10 +37,12 @@ from coredata.models import (
     City,
     ConfigProject,
     Country,
+    IdentificationType,
     Person,
     PersonAddress,
     PersonBank,
     PersonContact,
+    PersonPiggyBank,
     PostalCode,
     Street,
     StreetNumber,
@@ -53,7 +56,12 @@ from contract.models import (
     ContractRequestStatus,
     ContractRequestType,
     ContractStatus,
+    ContractTerminationRequest,
+    ContractTerminationRequestObservation,
+    ContractTerminationStatus,
+    ContractTerminationType,
     PaymentType,
+    Variable,
 )
 from documentmanager.models import Document
 from logger.models import LogContractRequestStatus, LogIncidentStatusChange
@@ -80,14 +88,18 @@ from service.models import (
     SupplyPoint,
 )
 from ov.throttles import (
+    ContractChangeProcedureThrottle,
     ContractProcedureThrottle,
+    ContractTerminationProcedureThrottle,
     PaymentReceiptThrottle,
     PersonDataThrottle,
     QuickPayThrottle,
     ReturnRequestThrottle,
 )
 from ov.views import (
+    ContractChangeProcedureOVView,
     ContractProcedureOVView,
+    ContractTerminationProcedureOVView,
     InvoiceReturnRequestOVView,
     PaymentReceiptOVView,
     PersonDataOVView,
@@ -1492,6 +1504,48 @@ class DictionaryEndpointsTests(TestCase):
         cls.invoice_status_first = InvoiceStatus.objects.create(
             token="0", name="Pagada", position=1
         )
+        # Creats desordenats per verificar l'ordre alfabètic per `name`.
+        cls.crt_b = ContractRequestType.objects.create(
+            token="dict-test-b", name="Zeta tipus", is_active=True
+        )
+        cls.crt_a = ContractRequestType.objects.create(
+            token="dict-test-a",
+            name="Alfa tipus",
+            is_active=True,
+            has_persons=True,
+        )
+        ContractRequestType.objects.create(
+            token="dict-test-off", name="Beta inactiu", is_active=False
+        )
+        rate_reg = PriceRate.objects.create(
+            token="dict-rate-reg", name="Alta", is_active=True
+        )
+        rate_water = PriceRate.objects.create(
+            token="dict-rate-water", name="Aigua", is_active=True
+        )
+        rate_cn = PriceRate.objects.create(
+            token="dict-rate-cn", name="Canvi de nom", is_active=True
+        )
+        rate_off = PriceRate.objects.create(
+            token="dict-rate-off", name="Inactiva", is_active=False
+        )
+        product_general = Product.objects.create(name="Producte alta general")
+        product_blank = Product.objects.create(name="Producte alta buit")
+        rate_general = PriceRate.objects.create(
+            token="dict-rate-general",
+            name="GENERAL",
+            is_active=True,
+            product=product_general,
+        )
+        rate_blank = PriceRate.objects.create(
+            token="dict-rate-blank", name="  ", is_active=True, product=product_blank
+        )
+        cls.crt_b.registration_price_rates.set([rate_general, rate_blank])
+        cls.crt_a.registration_price_rates.set([rate_reg, rate_off])
+        cls.crt_a.price_rates.set([rate_water, rate_off])
+        cls.crt_a.change_of_name_registration_price_rates.set(
+            [rate_cn, rate_off]
+        )
         cls.origin_recurring = ProductOrigin.objects.create(
             id=1, token="aigua", name="Subministrament periòdic"
         )
@@ -1825,6 +1879,95 @@ class DictionaryEndpointsTests(TestCase):
 
         self.assertEqual(tariffs["TR-FIXED"]["name"], "Tarifa B")
 
+    def _request_types_by_token(self):
+        response = self.client.get(
+            reverse("contract-request-types-dictionary-ov")
+        )
+        self.assertEqual(response.status_code, 200)
+        return response, {
+            item["token"]: item
+            for item in response.data
+            if item["token"].startswith("dict-test-")
+        }
+
+    def test_contract_request_types_returns_only_active_ordered_by_name(self):
+        response, ours = self._request_types_by_token()
+
+        self.assertEqual(list(ours), ["dict-test-a", "dict-test-b"])
+        self.assertNotIn("dict-test-off", ours)
+        self.assertEqual(
+            set(response.data[0]),
+            {
+                "token",
+                "name",
+                "has_persons",
+                "registration_tariffs",
+                "water_tariffs",
+                "change_of_name_tariffs",
+            },
+        )
+        names = [item["name"] or "" for item in response.data]
+        self.assertEqual(names, sorted(names))
+
+    def test_contract_request_types_return_has_persons(self):
+        _, ours = self._request_types_by_token()
+
+        self.assertIs(ours["dict-test-a"]["has_persons"], True)
+        self.assertIs(ours["dict-test-b"]["has_persons"], False)
+
+    def test_contract_request_types_return_active_tariffs_by_relation(self):
+        _, ours = self._request_types_by_token()
+        populated = ours["dict-test-a"]
+
+        self.assertEqual(
+            [dict(r) for r in populated["registration_tariffs"]],
+            [{"token": "dict-rate-reg", "name": "Alta"}],
+        )
+        self.assertEqual(
+            [dict(r) for r in populated["water_tariffs"]],
+            [{"token": "dict-rate-water", "name": "Aigua"}],
+        )
+        self.assertEqual(
+            [dict(r) for r in populated["change_of_name_tariffs"]],
+            [{"token": "dict-rate-cn", "name": "Canvi de nom"}],
+        )
+
+    def test_contract_request_types_without_tariffs_return_empty_lists(self):
+        _, ours = self._request_types_by_token()
+        empty = ours["dict-test-b"]
+
+        self.assertEqual(empty["water_tariffs"], [])
+        self.assertEqual(empty["change_of_name_tariffs"], [])
+
+    def test_contract_request_types_resolve_generic_tariff_names_from_product(
+        self,
+    ):
+        _, ours = self._request_types_by_token()
+
+        self.assertEqual(
+            [dict(r) for r in ours["dict-test-b"]["registration_tariffs"]],
+            [
+                {"token": "dict-rate-blank", "name": "Producte alta buit"},
+                {"token": "dict-rate-general", "name": "Producte alta general"},
+            ],
+        )
+
+    def test_contract_request_types_query_count_does_not_grow(self):
+        url = reverse("contract-request-types-dictionary-ov")
+
+        with CaptureQueriesContext(connection) as before:
+            self.client.get(url)
+        extra = ContractRequestType.objects.create(
+            token="dict-test-c", name="Gamma tipus", is_active=True
+        )
+        extra.registration_price_rates.set(
+            PriceRate.objects.filter(token="dict-rate-reg")
+        )
+        with CaptureQueriesContext(connection) as after:
+            self.client.get(url)
+
+        self.assertEqual(len(before), len(after))
+
     def test_dictionary_endpoints_require_authentication(self):
         anonymous = APIClient()
 
@@ -1833,6 +1976,7 @@ class DictionaryEndpointsTests(TestCase):
             "payment-types-dictionary-ov",
             "invoice-statuses-dictionary-ov",
             "procedure-tariffs-dictionary-ov",
+            "contract-request-types-dictionary-ov",
         ):
             with self.subTest(endpoint=name):
                 self.assertEqual(anonymous.get(reverse(name)).status_code, 401)
@@ -3791,6 +3935,28 @@ class InvoiceReturnRequestOVTests(TestCase):
         )
 
 
+NEW_HOLDER_DNI = "00000000T"
+NEW_HOLDER_REQUIRED = "This field is required when the holder does not exist."
+NEW_HOLDER_FIELDS = {
+    "holder_name": "Nova",
+    "holder_surname": "Titular Prova",
+    "holder_phone": "600000000",
+    "holder_email": "titular.nou@example.com",
+}
+
+
+def _new_holder_identification_types():
+    """Create the default `dni` and a `nie` identification type for tests."""
+    IdentificationType.objects.update(is_default=False)
+    dni_type, _ = IdentificationType.objects.update_or_create(
+        token="dni", defaults={"name": "DNI", "is_default": True}
+    )
+    nie_type, _ = IdentificationType.objects.update_or_create(
+        token="nie", defaults={"name": "NIE", "is_default": False}
+    )
+    return dni_type, nie_type
+
+
 class ContractProcedureOVTests(TestCase):
     """`POST /ov/procedures/contract/` — crea una sol·licitud d'alta de
     contracte (`ContractRequest`) en estat esborrany, sense crear cap
@@ -3862,6 +4028,7 @@ class ContractProcedureOVTests(TestCase):
         cls.other_holder = Person.objects.create(
             token="11111111A", name="Bernat", surname="Prova"
         )
+        cls.dni_type, cls.nie_type = _new_holder_identification_types()
 
         cls.property = Property.objects.create(
             token="PROP-1", name="Finca 1", is_active=True
@@ -3895,6 +4062,9 @@ class ContractProcedureOVTests(TestCase):
         )
 
     def setUp(self):
+        # El throttle (35/min) usa la cache per defecte, que persisteix entre
+        # tests: sense netejar-la, la classe sencera esgota el límit.
+        cache.clear()
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
@@ -4100,6 +4270,15 @@ class ContractProcedureOVTests(TestCase):
             1,
         )
 
+    def test_other_holder_open_request_blocks(self):
+        existing = ContractRequest.objects.create(
+            token="OTHER-HOLDER", supply_point_default=self.supply_point,
+            status=self.default_status, is_active=True,
+        )
+        response = self._post()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["contract_request_token"], existing.token)
+
     def test_cancelled_request_does_not_block(self):
         ContractRequest.objects.create(
             token="CR-CANCELLED",
@@ -4114,22 +4293,215 @@ class ContractProcedureOVTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
 
-    def test_unknown_person_returns_404(self):
-        response = self._post(holder_dni="99999999Z")
+    def test_existing_holder_with_only_dni_does_not_create_person(self):
+        """An existing holder needs only the DNI and no Person is created."""
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        person_count = Person.objects.count()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+
+    def test_existing_holder_ignores_new_holder_fields(self):
+        """Personal fields sent for an existing holder do not modify it."""
+
+        response = self._post(**NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+        self.holder.refresh_from_db()
+        self.assertEqual(self.holder.name, "Anna")
+        self.assertEqual(self.holder.surname, "Prova")
+        self.assertFalse(PersonContact.objects.filter(person=self.holder).exists())
+
+    def test_unknown_holder_without_personal_data_returns_400(self):
+        """An unknown DNI without personal data returns 400 per missing field."""
+
+        request_count = ContractRequest.objects.count()
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI)
+
+        self.assertEqual(response.status_code, 400)
+        for field in ("holder_name", "holder_surname", "holder_phone", "holder_email"):
+            self.assertEqual(response.data[field], [NEW_HOLDER_REQUIRED])
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_bank_account_dni_cannot_resolve_a_different_holder(self):
+        """A bank account DNI of another person is treated as a new holder."""
+
         PersonBank.objects.create(
-            person=self.holder, dni="99999999Z", iban="ES9121000418450200051332"
+            person=self.holder, dni=NEW_HOLDER_DNI, iban="ES9121000418450200051332"
         )
         request_count = ContractRequest.objects.count()
 
-        response = self._post(holder_dni="99999999Z")
+        response = self._post(holder_dni=NEW_HOLDER_DNI)
+
+        # The bank DNI does not identify the holder: it is treated as new.
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("holder_name", response.data)
+        self.assertEqual(ContractRequest.objects.count(), request_count)
+
+    def test_unknown_holder_with_personal_data_creates_and_links_person(self):
+        """An unknown DNI with full data creates the Person and links it."""
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.name, "Nova")
+        self.assertEqual(person.surname, "Titular Prova")
+        self.assertFalse(person.is_juridic)
+        self.assertEqual(person.identification_type, self.dni_type)
+        self.assertTrue(person.dni_validated)
+        self.assertIsNotNone(person.piggy_bank)
+        self.assertEqual(person.piggy_bank.token, NEW_HOLDER_DNI)
+        contact = PersonContact.objects.get(person=person)
+        self.assertEqual(contact.phone, "600000000")
+        self.assertEqual(contact.email, "titular.nou@example.com")
+        self.assertTrue(contact.is_default)
+        self.assertTrue(contact.is_active)
+
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.person, person)
+        self.assertEqual(request_obj.holder, person)
+        self.assertEqual(request_obj.payment.IBAN.person, person)
+        self.assertEqual(response.data["person"]["token"], NEW_HOLDER_DNI)
+        self.assertEqual(response.data["person"]["name"], "Nova")
+
+    def test_new_holder_dni_is_normalized(self):
+        """The new holder is stored with the normalized DNI as token."""
+
+        response = self._post(
+            holder_dni="00.000.000-t", **NEW_HOLDER_FIELDS
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_holder_explicit_identification_type(self):
+        """An explicit identification type token is stored on the new holder."""
+
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            holder_identification_type_token="nie",
+            **NEW_HOLDER_FIELDS,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.identification_type, self.nie_type)
+        self.assertFalse(person.dni_validated)
+
+    def test_new_holder_unknown_identification_type_returns_400(self):
+        """An unknown identification type token returns 400."""
+
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            holder_identification_type_token="unknown",
+            **NEW_HOLDER_FIELDS,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["holder_identification_type_token"],
+            ["Unknown identification type."],
+        )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_juridic_holder_does_not_need_surname(self):
+        """A legal-entity new holder can omit the surname."""
+
+        fields = dict(NEW_HOLDER_FIELDS, holder_surname="", holder_is_juridic=True)
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertTrue(person.is_juridic)
+        self.assertIsNone(person.surname)
+
+    def test_new_holder_invalid_email_returns_400(self):
+        """An invalid email for a new holder returns 400."""
+
+        fields = dict(NEW_HOLDER_FIELDS, holder_email="not-an-email")
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("holder_email", response.data)
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_existing_holder_ignores_invalid_new_holder_fields(self):
+        """Invalid personal fields are ignored for an existing holder."""
+
+        response = self._post(
+            holder_email="not-an-email", holder_phone="9" * 30
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+
+    def test_new_holder_too_long_phone_returns_400(self):
+        """A phone longer than the model allows returns 400 for a new holder."""
+
+        fields = dict(NEW_HOLDER_FIELDS, holder_phone="9" * 21)
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["holder_phone"],
+            ["Ensure this field has no more than 20 characters."],
+        )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_existing_token_with_whitespace_is_not_duplicated(self):
+        """A stored token with whitespace still matches, so no duplicate is created."""
+
+        legacy = Person.objects.create(token="22222222\tj", name="Llegat")
+        person_count = Person.objects.count()
+
+        response = self._post(holder_dni="22222222J", **NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        self.assertEqual(self._created_request(response).holder, legacy)
+
+    def test_new_holder_not_created_when_request_is_rejected(self):
+        """A request rejected before the transaction creates no Person."""
+
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            property_token="PROP-UNKNOWN",
+            **NEW_HOLDER_FIELDS,
+        )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_holder_rolled_back_when_creation_fails(self):
+        """A downstream failure rolls back the new Person and related rows."""
+
+        request_count = ContractRequest.objects.count()
+
+        with patch.object(
+            LogContractRequestStatus.objects,
+            "create",
+            side_effect=RuntimeError("downstream failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(holder_dni=NEW_HOLDER_DNI, **NEW_HOLDER_FIELDS)
+
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertFalse(
+            PersonContact.objects.filter(token__startswith=NEW_HOLDER_DNI).exists()
+        )
+        self.assertFalse(
+            PersonPiggyBank.objects.filter(token=NEW_HOLDER_DNI).exists()
+        )
         self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_unknown_or_inactive_property_returns_404(self):
@@ -4213,6 +4585,16 @@ class ContractProcedureOVTests(TestCase):
                 with self.subTest(field=field, value=value):
                     response = self._post(**{field: value})
                     self.assertEqual(response.status_code, 400)
+
+    def test_invalid_iban_returns_400(self):
+        for iban in ("X", "ES9121000418450200051333"):
+            with self.subTest(iban=iban):
+                response = self._post(iban=iban)
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"iban": ["Invalid IBAN."]})
+        self.assertFalse(PersonBank.objects.exists())
+        self.assertFalse(ContractRequest.objects.exists())
 
     def test_direct_debit_requires_bank_fields(self):
         response = self._post(
@@ -4465,4 +4847,1475 @@ class BillingPeriodsViewTests(TestCase):
         self.assertEqual(
             [(i["period_code"], i["month_from"], i["month_to"]) for i in semiannual],
             [("1S", 1, 6), ("2S", 7, 12)],
+        )
+
+
+class ContractTerminationProcedureOVTests(TestCase):
+    """`POST /ov/procedures/contract-termination/` — sol·licitud de baixa:
+    només el titular, contracte actiu, sense lectures ni bloqueig per deute,
+    estat i tipus per defecte i protecció contra duplicats."""
+
+    URL_NAME = "contract-termination-procedure-ov"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-termination-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_termination_cancelled_token", "-1"),
+            ("contract_terminated_status", "-1"),
+            # Requerit pel senyal existent en desar baixes amb estat pendent.
+            ("order_status_completed_token", "3"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+
+        # Aïlla el test de qualsevol estat/tipus per defecte preexistent.
+        ContractTerminationStatus.objects.update(is_default=False)
+        ContractTerminationType.objects.update(is_default=False)
+        cls.draft = ContractTerminationStatus.objects.create(
+            token="1", name="Esborrany", is_default=True
+        )
+        cls.pending = ContractTerminationStatus.objects.create(
+            token="2", name="Pendent"
+        )
+        cls.completed = ContractTerminationStatus.objects.create(
+            token="3", name="Finalitzat"
+        )
+        cls.cancelled = ContractTerminationStatus.objects.create(
+            token="-1", name="Cancel·lat"
+        )
+        # Tipus de canvi de nom marcat per defecte: no s'ha d'escollir mai.
+        ContractTerminationType.objects.create(
+            token="4",
+            name="Baixa per canvi de titular",
+            is_default=True,
+            is_change_of_name=True,
+        )
+        cls.client_type = ContractTerminationType.objects.create(
+            token="1", name="Petició del client", is_default=True
+        )
+        cls.ex_officio_type = ContractTerminationType.objects.create(
+            token="2", name="Baixa d'ofici"
+        )
+        cls.change_of_name_type = ContractTerminationType.objects.create(
+            token="5", name="Canvi de nom antic", is_change_of_name=True
+        )
+
+        cls.active_status, _ = ContractStatus.objects.update_or_create(
+            token="1", defaults={"name": "Actiu"}
+        )
+        cls.terminated_status, _ = ContractStatus.objects.update_or_create(
+            token="-1", defaults={"name": "Baixa"}
+        )
+
+        cls.holder = Person.objects.create(
+            token="12345678Z", name="Titular", surname="Prova"
+        )
+        cls.other = Person.objects.create(
+            token="87654321Y", name="Altra", surname="Persona"
+        )
+        cls.contract = Contract.objects.create(
+            token="CT-TERM-1",
+            holder=cls.holder,
+            status=cls.active_status,
+            is_active=True,
+        )
+        cls.inactive_contract = Contract.objects.create(
+            token="CT-TERM-OFF",
+            holder=cls.holder,
+            status=cls.active_status,
+            is_active=False,
+        )
+        cls.terminated_contract = Contract.objects.create(
+            token="CT-TERM-DONE",
+            holder=cls.holder,
+            status=cls.terminated_status,
+            is_active=True,
+        )
+        cls.no_holder_contract = Contract.objects.create(
+            token="CT-TERM-NOHOLDER", status=cls.active_status, is_active=True
+        )
+        cls.null_status_contract = Contract.objects.create(
+            token="CT-TERM-NOSTATUS", holder=cls.holder, is_active=True
+        )
+
+    def setUp(self):
+        # El throttle (35/min) usa la cache per defecte, que persisteix entre
+        # tests: sense netejar-la, la classe sencera esgota el límit.
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, **overrides):
+        payload = {
+            "contract_token": self.contract.token,
+            "holder_dni": self.holder.token,
+            "reason_token": self.client_type.token,
+            "observation": "Canvi de domicili",
+        }
+        payload.update(overrides)
+        return self.client.post(reverse(self.URL_NAME), payload, format="json")
+
+    def _assert_not_found_without_side_effects(self, response):
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, {"error": "Contract not found"})
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+        self.assertFalse(ContractTerminationRequestObservation.objects.exists())
+
+    # --- èxit -------------------------------------------------------------
+
+    def test_creates_draft_termination_request(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(response.data["contract_token"], "CT-TERM-1")
+        self.assertEqual(
+            response.data["status"], {"token": "1", "name": "Esborrany"}
+        )
+        self.assertEqual(
+            response.data["type"], {"token": "1", "name": "Petició del client"}
+        )
+        self.assertIsNotNone(response.data["created_at"])
+        self.assertEqual(
+            set(response.data),
+            {
+                "contract_termination_token",
+                "contract_token",
+                "status",
+                "type",
+                "created_at",
+            },
+        )
+        self.assertEqual(termination.contract, self.contract)
+        self.assertEqual(termination.person, self.holder)
+        self.assertEqual(termination.status, self.draft)
+        self.assertEqual(termination.type, self.client_type)
+        self.assertIsNotNone(termination.requested_at)
+        self.assertIsNone(termination.approved_at)
+        self.assertTrue(termination.is_active)
+        self.assertTrue(termination.token)
+
+    def test_does_not_change_contract_state(self):
+        self._post()
+
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.status, self.active_status)
+        self.assertIsNone(self.contract.termination_date)
+        self.assertTrue(self.contract.is_active)
+
+    def test_stores_observation_text(self):
+        response = self._post(observation="  Text de la baixa  ")
+
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        observation = termination.observations.get()
+        self.assertEqual(observation.observation, "Text de la baixa")
+        self.assertEqual(observation.status_name, "Esborrany")
+        self.assertEqual(observation.user, self.user)
+        self.assertTrue(observation.is_active)
+
+    def test_holder_dni_is_normalized(self):
+        response = self._post(holder_dni=" 12.345-678 z ")
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_readings_and_extra_fields_are_ignored(self):
+        readings_before = Reading.objects.count()
+
+        response = self._post(
+            reading=1234,
+            readings=[{"reading_value": 99}],
+            photo="data:image/png;base64,AAAA",
+            termination_date="2030-01-01",
+            contact_email="someone@example.com",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertFalse(termination.readings.exists())
+        self.assertFalse(termination.bill_cut_reading)
+        self.assertEqual(Reading.objects.count(), readings_before)
+
+    def test_unpaid_invoices_do_not_block_the_request(self):
+        unpaid, _ = InvoiceStatus.objects.update_or_create(
+            token="-1", defaults={"name": "Vencida"}
+        )
+        # `bulk_create` evita els senyals de facturació, aliens a aquest test.
+        Invoice.objects.bulk_create(
+            [Invoice(token="TERM-UNPAID", contract=self.contract, status=unpaid)]
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(
+            Invoice.objects.filter(contract_termination__isnull=False).exists()
+        )
+
+    def test_contract_without_status_is_not_treated_as_terminated(self):
+        response = self._post(contract_token=self.null_status_contract.token)
+
+        self.assertEqual(response.status_code, 201)
+
+    # --- concurrència i atomicitat ---------------------------------------
+
+    def test_contract_row_is_locked_before_checking_duplicates(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        contract_table = Contract._meta.db_table
+        locking = [
+            q["sql"]
+            for q in queries.captured_queries
+            if "FOR UPDATE" in q["sql"] and contract_table in q["sql"]
+        ]
+        self.assertEqual(len(locking), 1)
+        lock_index = next(
+            i
+            for i, q in enumerate(queries.captured_queries)
+            if q["sql"] == locking[0]
+        )
+        termination_table = ContractTerminationRequest._meta.db_table
+        duplicate_check_index = next(
+            i
+            for i, q in enumerate(queries.captured_queries)
+            if q["sql"].lstrip().upper().startswith("SELECT")
+            and f'FROM "{termination_table}"' in q["sql"]
+        )
+        self.assertLess(lock_index, duplicate_check_index)
+
+    def test_failure_rolls_back_the_termination_request(self):
+        with patch(
+            "ov.views.ContractTerminationRequestObservation.objects.create",
+            side_effect=RuntimeError("boom"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post()
+
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    # --- reason_token -----------------------------------------------------
+
+    def test_explicit_reason_token_selects_the_type(self):
+        response = self._post(reason_token="2")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.data["type"], {"token": "2", "name": "Baixa d'ofici"}
+        )
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(termination.type, self.ex_officio_type)
+        self.assertEqual(termination.status, self.draft)
+
+    def test_reason_token_accepts_change_of_name_types(self):
+        for token in ("5", "4"):
+            with self.subTest(token=token):
+                ContractTerminationRequest.objects.all().delete()
+
+                response = self._post(reason_token=token)
+
+                self.assertEqual(response.status_code, 201)
+                termination = ContractTerminationRequest.objects.get(
+                    token=response.data["contract_termination_token"]
+                )
+                self.assertEqual(termination.type.token, token)
+                self.assertTrue(termination.type.is_change_of_name)
+
+    def test_unknown_reason_token_returns_400(self):
+        response = self._post(reason_token="NOPE")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data, {"reason_token": ["Unknown termination reason."]}
+        )
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+        self.assertFalse(ContractTerminationRequestObservation.objects.exists())
+
+    def test_reason_token_does_not_need_a_default_type(self):
+        ContractTerminationType.objects.update(is_default=False)
+
+        response = self._post(reason_token="2")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["type"]["token"], "2")
+
+    def test_observation_is_stored_with_explicit_reason_token(self):
+        response = self._post(reason_token="2", observation="Detall concret")
+
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(
+            termination.observations.get().observation, "Detall concret"
+        )
+
+    # --- 404 uniforme -----------------------------------------------------
+
+    def test_unknown_contract_returns_404(self):
+        self._assert_not_found_without_side_effects(
+            self._post(contract_token="CT-UNKNOWN")
+        )
+
+    def test_inactive_contract_returns_404(self):
+        self._assert_not_found_without_side_effects(
+            self._post(contract_token=self.inactive_contract.token)
+        )
+
+    def test_holder_mismatch_returns_404(self):
+        self._assert_not_found_without_side_effects(
+            self._post(holder_dni=self.other.token)
+        )
+
+    def test_contract_without_holder_returns_404(self):
+        self._assert_not_found_without_side_effects(
+            self._post(contract_token=self.no_holder_contract.token)
+        )
+
+    # --- 409 --------------------------------------------------------------
+
+    def test_terminated_contract_returns_409(self):
+        response = self._post(contract_token=self.terminated_contract.token)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data, {"error": "Contract already terminated"})
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_open_termination_returns_409_with_its_token(self):
+        for open_status in (self.draft, self.pending, None):
+            with self.subTest(status=getattr(open_status, "token", None)):
+                ContractTerminationRequest.objects.all().delete()
+                existing = ContractTerminationRequest.objects.create(
+                    token="CTR-OPEN",
+                    contract=self.contract,
+                    status=open_status,
+                    is_active=True,
+                )
+
+                response = self._post()
+
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(
+                    response.data,
+                    {
+                        "error": "Contract termination already exists",
+                        "contract_termination_token": existing.token,
+                    },
+                )
+                self.assertEqual(ContractTerminationRequest.objects.count(), 1)
+
+    def test_closed_or_inactive_terminations_do_not_block(self):
+        for closed_status, is_active in (
+            (self.completed, True),
+            (self.cancelled, True),
+            (self.pending, False),
+        ):
+            with self.subTest(status=closed_status.token, is_active=is_active):
+                ContractTerminationRequest.objects.all().delete()
+                ContractTerminationRequest.objects.create(
+                    token="CTR-CLOSED",
+                    contract=self.contract,
+                    status=closed_status,
+                    is_active=is_active,
+                )
+
+                response = self._post()
+
+                self.assertEqual(response.status_code, 201)
+
+    def test_closed_tokens_fall_back_when_config_is_missing(self):
+        ConfigProject.objects.filter(
+            token__in=[
+                "contract_termination_completed_token",
+                "contract_termination_cancelled_token",
+            ]
+        ).delete()
+        ContractTerminationRequest.objects.create(
+            token="CTR-CANCELLED",
+            contract=self.contract,
+            status=self.cancelled,
+            is_active=True,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+
+    # --- validació i configuració -----------------------------------------
+
+    def test_missing_or_blank_fields_return_400(self):
+        for field in ("contract_token", "holder_dni", "reason_token"):
+            for value in (None, "", "   "):
+                with self.subTest(field=field, value=value):
+                    payload = {
+                        "contract_token": self.contract.token,
+                        "holder_dni": self.holder.token,
+                        "reason_token": self.client_type.token,
+                        "observation": "Motiu",
+                    }
+                    if value is None:
+                        payload.pop(field)
+                    else:
+                        payload[field] = value
+
+                    response = self.client.post(
+                        reverse(self.URL_NAME), payload, format="json"
+                    )
+
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn(field, response.data)
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_dni_with_only_separators_returns_400(self):
+        response = self._post(holder_dni="-.-")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {"error": "DNI is required"})
+
+    def test_observation_longer_than_1000_chars_returns_400(self):
+        response = self._post(observation="x" * 1001)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("observation", response.data)
+
+    def test_old_reason_field_is_no_longer_accepted(self):
+        response = self.client.post(
+            reverse(self.URL_NAME),
+            {
+                "contract_token": self.contract.token,
+                "holder_dni": self.holder.token,
+                "reason": "Motiu antic",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("reason_token", response.data)
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_missing_default_status_returns_500(self):
+        ContractTerminationStatus.objects.update(is_default=False)
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract termination could not be created"}
+        )
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    # --- seguretat i encaminament -----------------------------------------
+
+    def test_requires_authentication(self):
+        response = APIClient().post(
+            reverse(self.URL_NAME),
+            {
+                "contract_token": self.contract.token,
+                "holder_dni": self.holder.token,
+                "observation": "Motiu",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            ContractTerminationProcedureOVView.throttle_classes,
+            [ContractTerminationProcedureThrottle],
+        )
+        self.assertEqual(
+            ContractTerminationProcedureThrottle.scope,
+            "ov_procedures_contract_termination",
+        )
+        self.assertEqual(ContractTerminationProcedureThrottle.rate, "35/min")
+
+    def test_route_does_not_shadow_other_procedures(self):
+        self.assertEqual(
+            reverse(self.URL_NAME), "/ov/procedures/contract-termination/"
+        )
+        self.assertIs(
+            resolve(reverse(self.URL_NAME)).func.view_class,
+            ContractTerminationProcedureOVView,
+        )
+        self.assertIs(
+            resolve(reverse("contract-procedure-ov")).func.view_class,
+            ContractProcedureOVView,
+        )
+
+def test_omitted_observation_succeeds(self):
+        ContractTerminationRequest.objects.all().delete()
+        payload = {
+            "contract_token": self.contract.token,
+            "holder_dni": self.holder.token,
+            "reason_token": self.client_type.token,
+        }
+        response = self.client.post(
+            reverse(self.URL_NAME), payload, format="json"
+        )
+        self.assertEqual(response.status_code, 201)
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertFalse(termination.observations.exists())
+
+class ContractChangeProcedureOVTests(TestCase):
+    """`POST /ov/procedures/contract-change/` — canvi de nom: baixa del
+    contracte actual i sol·licitud d'alta del nou titular, enllaçades, en una
+    sola transacció i amb les tarifes periòdiques heretades."""
+
+    URL_NAME = "contract-change-procedure-ov"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-change-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_termination_cancelled_token", "-1"),
+            ("contract_terminated_status", "-1"),
+            ("contract_active_token", "1"),
+            ("order_status_completed_token", "3"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+
+        ContractRequestStatus.objects.update(is_default=False)
+        cls.request_draft, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.request_cancelled, _ = ContractRequestStatus.objects.update_or_create(
+            token="-1", defaults={"name": "Cancel·lat", "is_default": False}
+        )
+
+        ContractTerminationStatus.objects.update(is_default=False)
+        cls.termination_draft = ContractTerminationStatus.objects.create(
+            token="1", name="Esborrany", is_default=True
+        )
+        cls.termination_pending = ContractTerminationStatus.objects.create(
+            token="2", name="Pendent"
+        )
+        cls.termination_cancelled = ContractTerminationStatus.objects.create(
+            token="-1", name="Cancel·lat"
+        )
+        cls.change_reason = ContractTerminationType.objects.create(
+            token="4",
+            name="Baixa per canvi de titular",
+            is_change_of_name=True,
+            position=4,
+        )
+        cls.client_reason = ContractTerminationType.objects.create(
+            token="1", name="Petició del client", is_default=True, position=1
+        )
+
+        cls.procedure_type, _ = ContractRequestType.objects.update_or_create(
+            token="change-domestic",
+            defaults={"name": "Domèstic", "is_active": True},
+        )
+        ContractRequestType.objects.update_or_create(
+            token="change-off", defaults={"name": "Inactiu", "is_active": False}
+        )
+        cls.registration_rate = PriceRate.objects.create(
+            token="CH-REG", name="Drets d'alta", is_active=True
+        )
+        cls.change_registration_rate = PriceRate.objects.create(
+            token="CH-REG-CN", name="Drets canvi de nom", is_active=True
+        )
+        cls.order_type = OrderType.objects.create(token="CH-OT", name="Alta")
+        cls.change_order_type = OrderType.objects.create(
+            token="CH-OT-CN", name="Canvi de nom"
+        )
+        cls.procedure_type.registration_price_rates.set([cls.registration_rate])
+        cls.procedure_type.change_of_name_registration_price_rates.set(
+            [cls.change_registration_rate]
+        )
+        cls.procedure_type.order_types.set([cls.order_type])
+        cls.procedure_type.change_of_name_order_types.set([cls.change_order_type])
+
+        cls.direct_debit, _ = PaymentType.objects.update_or_create(
+            token="DIRECT_DEBIT", defaults={"name": "Domiciliació bancària"}
+        )
+        cls.cash, _ = PaymentType.objects.update_or_create(
+            token="CASH", defaults={"name": "Efectiu"}
+        )
+
+        cls.active_status, _ = ContractStatus.objects.update_or_create(
+            token="1", defaults={"name": "Actiu"}
+        )
+        cls.terminated_status, _ = ContractStatus.objects.update_or_create(
+            token="-1", defaults={"name": "Baixa"}
+        )
+
+        cls.outgoing_holder = Person.objects.create(
+            token="12345678Z", name="Sortint", surname="Prova"
+        )
+        cls.incoming_holder = Person.objects.create(
+            token="87654321Y", name="Entrant", surname="Prova"
+        )
+        cls.dni_type, cls.nie_type = _new_holder_identification_types()
+
+        cls.supply_point = SupplyPoint.objects.create(
+            token="SP-CHANGE", is_active=True
+        )
+        cls.contract = Contract.objects.create(
+            token="CT-CHANGE-1",
+            holder=cls.outgoing_holder,
+            status=cls.active_status,
+            supply_point_default=cls.supply_point,
+            is_active=True,
+        )
+        cls.contract.supply_points.set([cls.supply_point])
+
+        water = PriceRate.objects.create(
+            token="CH-WATER", name="Aigua", is_active=True
+        )
+        old_rate = PriceRate.objects.create(
+            token="CH-OLD", name="Antiga", is_active=False
+        )
+        cls.water = water
+        cls.active_cpr = ContractPriceRate.objects.create(
+            token="CPR-OUTGOING",
+            supply_point=cls.supply_point,
+            price_rate=water,
+            is_active=True,
+            is_bop_reference=True,
+        )
+        inactive_cpr = ContractPriceRate.objects.create(
+            supply_point=cls.supply_point, price_rate=water, is_active=False
+        )
+        inactive_rate_cpr = ContractPriceRate.objects.create(
+            supply_point=cls.supply_point, price_rate=old_rate, is_active=True
+        )
+        cls.contract.price_rates.set(
+            [cls.active_cpr, inactive_cpr, inactive_rate_cpr]
+        )
+
+        Variable.objects.create(
+            token="VR-HOUSING", name="Habitatges", value="2", contract=cls.contract
+        )
+        Variable.objects.create(
+            token="VR-ACA", name="ACA", value="1", contract=cls.contract
+        )
+
+        cls.inactive_contract = Contract.objects.create(
+            token="CT-CHANGE-OFF",
+            holder=cls.outgoing_holder,
+            status=cls.active_status,
+            supply_point_default=cls.supply_point,
+            is_active=False,
+        )
+        cls.no_holder_contract = Contract.objects.create(
+            token="CT-CHANGE-NOHOLDER",
+            status=cls.active_status,
+            supply_point_default=cls.supply_point,
+            is_active=True,
+        )
+        cls.terminated_contract = Contract.objects.create(
+            token="CT-CHANGE-DONE",
+            holder=cls.outgoing_holder,
+            status=cls.terminated_status,
+            supply_point_default=cls.supply_point,
+            is_active=True,
+        )
+        cls.no_supply_point_contract = Contract.objects.create(
+            token="CT-CHANGE-NOSP",
+            holder=cls.outgoing_holder,
+            status=cls.active_status,
+            is_active=True,
+        )
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _payload(self, outgoing=None, incoming=None):
+        payload = {
+            "outgoing": {
+                "contract_token": self.contract.token,
+                "holder_dni": self.outgoing_holder.token,
+                "reason_token": self.change_reason.token,
+                "observation": "Venda de l'habitatge",
+            },
+            "incoming": {
+                "holder_dni": self.incoming_holder.token,
+                "procedure_type_token": self.procedure_type.token,
+                "payment_type_token": "DIRECT_DEBIT",
+                "iban": "es91 2100 0418 4502 0005 1332",
+                "iban_holder_name": "Entrant Prova",
+                "iban_holder_dni": "87654321y",
+                "iban_holder_swift": "CAIXESBBXXX",
+                "language": "ca",
+                "observation": "Nou titular",
+            },
+        }
+        payload["outgoing"].update(outgoing or {})
+        payload["incoming"].update(incoming or {})
+        return payload
+
+    def _post(self, payload=None, **blocks):
+        return self.client.post(
+            reverse(self.URL_NAME),
+            payload if payload is not None else self._payload(**blocks),
+            format="json",
+        )
+
+    def _assert_nothing_created(self):
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+        self.assertFalse(
+            ContractRequest.objects.filter(is_change_of_name=True).exists()
+        )
+        self.assertFalse(PersonBank.objects.exists())
+        self.assertFalse(GeneralPayment.objects.exists())
+
+    # --- èxit -------------------------------------------------------------
+
+    def test_creates_linked_termination_and_change_of_name_request(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(response.data["contract_token"], "CT-CHANGE-1")
+        self.assertEqual(
+            response.data["contract_request_status"],
+            {"token": "1", "name": "Esborrany"},
+        )
+        self.assertEqual(
+            response.data["contract_termination_status"],
+            {"token": "1", "name": "Esborrany"},
+        )
+        self.assertEqual(
+            response.data["termination_type"],
+            {"token": "4", "name": "Baixa per canvi de titular"},
+        )
+        self.assertEqual(
+            response.data["procedure_type"],
+            {"token": "change-domestic", "name": "Domèstic"},
+        )
+        self.assertIsNotNone(response.data["created_at"])
+
+        self.assertEqual(termination.contract, self.contract)
+        self.assertEqual(termination.person, self.outgoing_holder)
+        self.assertEqual(termination.type, self.change_reason)
+        self.assertEqual(termination.status, self.termination_draft)
+        self.assertIsNotNone(termination.requested_at)
+
+        self.assertTrue(contract_request.is_change_of_name)
+        self.assertFalse(contract_request.keep_same_code)
+        self.assertEqual(contract_request.person, self.incoming_holder)
+        self.assertEqual(contract_request.holder, self.incoming_holder)
+        self.assertEqual(contract_request.type, self.procedure_type)
+        self.assertEqual(contract_request.status, self.request_draft)
+        self.assertEqual(contract_request.supply_point_default, self.supply_point)
+        self.assertEqual(
+            list(contract_request.supply_points.all()), [self.supply_point]
+        )
+        self.assertEqual(contract_request.language, "ca")
+        self.assertEqual(
+            list(contract_request.contract_termination_requests.all()),
+            [termination],
+        )
+
+    def test_inherits_only_active_consumption_tariffs(self):
+        response = self._post()
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        inherited = list(contract_request.price_rates.all())
+        self.assertEqual(len(inherited), 1)
+        self.assertEqual(inherited[0].price_rate, self.water)
+        self.assertEqual(inherited[0].supply_point, self.supply_point)
+        self.assertTrue(inherited[0].is_active)
+        self.assertTrue(inherited[0].is_bop_reference)
+
+    def test_inherited_tariffs_are_independent_copies(self):
+        response = self._post()
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        clone = contract_request.price_rates.get()
+        self.assertNotEqual(clone.pk, self.active_cpr.pk)
+        self.assertFalse(
+            self.contract.price_rates.filter(pk=clone.pk).exists()
+        )
+
+        # Modificar la còpia no altera la tarifa del contracte anterior.
+        clone.is_bop_reference = False
+        clone.is_active = False
+        clone.save()
+        self.active_cpr.refresh_from_db()
+        self.assertTrue(self.active_cpr.is_bop_reference)
+        self.assertTrue(self.active_cpr.is_active)
+        self.assertEqual(self.active_cpr.token, "CPR-OUTGOING")
+        self.assertEqual(
+            self.contract.price_rates.filter(is_active=True).count(), 2
+        )
+
+    def test_editing_inherited_rates_preserves_contract_bop(self):
+        from contract.serializers.contract_request_serializer import ContractRequestSaveSerializer
+        from contract.utils.contract_service import get_contract_tarifa_bop
+        from pricing.models import BillingRange, Publication
+
+        publication = Publication.objects.create(boe_number="BOP-ORIGINAL")
+        billing_range = BillingRange.objects.create(publication=publication)
+        rate = self.active_cpr.price_rate
+        rate.billing_range_active = billing_range
+        rate.save()
+        self.active_cpr.is_bop_reference = True
+        self.active_cpr.save()
+        response = self._post()
+        request_obj = ContractRequest.objects.get(token=response.data["contract_request_token"])
+        serializer = ContractRequestSaveSerializer(request_obj, data={
+            "price_rates_ids": [{"price_rate": {"id": rate.pk}, "supply_point": {"id": self.supply_point.pk}}],
+        }, partial=True, context={"request": type("Request", (), {"user": self.user})()})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        inherited = request_obj.price_rates.get()
+        self.assertNotEqual(inherited.pk, self.active_cpr.pk)
+        self.assertTrue(inherited.is_bop_reference)
+        self.assertEqual(get_contract_tarifa_bop(self.contract), "BOP-ORIGINAL")
+        self.assertEqual(get_contract_tarifa_bop(request_obj), "BOP-ORIGINAL")
+        replacement_publication = Publication.objects.create(boe_number="BOP-NEW")
+        replacement_range = BillingRange.objects.create(publication=replacement_publication)
+        inherited.price_rate = PriceRate.objects.create(
+            token="NEW-BOP-RATE", billing_range_active=replacement_range,
+        )
+        inherited.save()
+        self.assertEqual(get_contract_tarifa_bop(self.contract), "BOP-ORIGINAL")
+        self.assertEqual(get_contract_tarifa_bop(request_obj), "BOP-NEW")
+        self.active_cpr.refresh_from_db()
+        self.assertTrue(self.active_cpr.is_bop_reference)
+
+    def test_uses_change_of_name_registration_rates_and_order_types(self):
+        response = self._post()
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(
+            list(contract_request.registration_price_rates.all()),
+            [self.change_registration_rate],
+        )
+        self.assertEqual(
+            list(contract_request.order_types.all()), [self.change_order_type]
+        )
+
+    def test_copies_transferable_variables(self):
+        response = self._post()
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(
+            list(contract_request.variables.values_list("name", flat=True)),
+            ["Habitatges"],
+        )
+
+    def test_creates_payment_with_masked_bank_data_for_direct_debit(self):
+        response = self._post()
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        payment = contract_request.payment
+        self.assertEqual(payment.type, self.direct_debit)
+        self.assertEqual(payment.IBAN.person, self.incoming_holder)
+        self.assertEqual(payment.IBAN.iban, "ES9121000418450200051332")
+        self.assertEqual(payment.IBAN.dni, "87654321Y")
+
+    def test_non_direct_debit_does_not_need_bank_data(self):
+        response = self._post(
+            incoming={
+                "payment_type_token": "CASH",
+                "iban": None,
+                "iban_holder_name": None,
+                "iban_holder_dni": None,
+                "iban_holder_swift": None,
+            }
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(PersonBank.objects.exists())
+        self.assertEqual(GeneralPayment.objects.get().type, self.cash)
+
+    def test_records_observations_and_status_log(self):
+        response = self._post()
+
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        observation = termination.observations.get()
+        self.assertEqual(observation.observation, "Venda de l'habitatge")
+        self.assertEqual(observation.status_name, "Esborrany")
+        self.assertEqual(observation.user, self.user)
+        log = LogContractRequestStatus.objects.get(
+            object__token=response.data["contract_request_token"]
+        )
+        self.assertEqual(log.current_status, self.request_draft)
+        self.assertEqual(log.observation, "Nou titular")
+        self.assertEqual(log.user, self.user)
+
+    def test_outgoing_observation_is_optional(self):
+        response = self._post(outgoing={"observation": None})
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(ContractTerminationRequestObservation.objects.exists())
+
+    def test_does_not_change_the_outgoing_contract(self):
+        self._post()
+
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.status, self.active_status)
+        self.assertEqual(self.contract.holder, self.outgoing_holder)
+        self.assertIsNone(self.contract.termination_date)
+        self.assertEqual(self.contract.token, "CT-CHANGE-1")
+
+    # --- 400 niats --------------------------------------------------------
+
+    def test_unknown_reason_token_is_reported_on_outgoing(self):
+        response = self._post(outgoing={"reason_token": "NOPE"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data, {"outgoing": {"reason_token": ["Unknown termination reason."]}}
+        )
+        self._assert_nothing_created()
+
+    def test_unknown_or_inactive_procedure_type_is_reported_on_incoming(self):
+        for token in ("NOPE", "change-off"):
+            with self.subTest(token=token):
+                response = self._post(incoming={"procedure_type_token": token})
+
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("procedure_type_token", response.data["incoming"])
+        self._assert_nothing_created()
+
+    def test_unknown_payment_type_is_reported_on_incoming(self):
+        response = self._post(incoming={"payment_type_token": "NOPE"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("payment_type_token", response.data["incoming"])
+
+    def test_invalid_iban_is_reported_on_incoming(self):
+        for iban in (
+            "X",
+            "ES9121000418450200051333",  # dígit de control incorrecte
+            "ES91 2100 0418 4502 0005 133",  # longitud incorrecta
+            "ZZ9121000418450200051332",  # país desconegut
+            "ES91210004184502000513A2",  # caràcter no numèric
+        ):
+            with self.subTest(iban=iban):
+                response = self._post(incoming={"iban": iban})
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.data, {"incoming": {"iban": ["Invalid IBAN."]}}
+                )
+        self._assert_nothing_created()
+
+    def test_valid_iban_with_spaces_is_accepted(self):
+        response = self._post(
+            incoming={"iban": "es91 2100 0418 4502 0005 1332"}
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_direct_debit_requires_bank_fields_on_incoming(self):
+        response = self._post(incoming={"iban": "", "iban_holder_swift": None})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            set(response.data["incoming"]), {"iban", "iban_holder_swift"}
+        )
+        self._assert_nothing_created()
+
+    def test_missing_blocks_and_fields_return_nested_errors(self):
+        response = self._post(payload={})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(set(response.data), {"outgoing", "incoming"})
+
+        for block, field in (
+            ("outgoing", "contract_token"),
+            ("outgoing", "holder_dni"),
+            ("incoming", "holder_dni"),
+            ("incoming", "procedure_type_token"),
+            ("incoming", "payment_type_token"),
+        ):
+            with self.subTest(block=block, field=field):
+                payload = self._payload()
+                payload[block].pop(field)
+
+                response = self._post(payload=payload)
+
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.data[block])
+        self._assert_nothing_created()
+
+    def test_same_holder_on_both_sides_returns_400(self):
+        response = self._post(incoming={"holder_dni": "12345678-z"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("holder_dni", response.data["incoming"])
+        self._assert_nothing_created()
+
+    # --- reason_token opcional ---------------------------------------------
+
+    def test_omitted_reason_token_uses_change_of_name_type(self):
+        for value in ("omit", None, "", "   "):
+            with self.subTest(reason_token=value):
+                ContractTerminationRequest.objects.all().delete()
+                ContractRequest.objects.filter(is_change_of_name=True).delete()
+                payload = self._payload()
+                if value == "omit":
+                    payload["outgoing"].pop("reason_token")
+                else:
+                    payload["outgoing"]["reason_token"] = value
+
+                response = self._post(payload=payload)
+
+                self.assertEqual(response.status_code, 201)
+                termination = ContractTerminationRequest.objects.get(
+                    token=response.data["contract_termination_token"]
+                )
+                self.assertEqual(termination.type, self.change_reason)
+                self.assertTrue(termination.type.is_change_of_name)
+                self.assertEqual(response.data["termination_type"]["token"], "4")
+
+    def test_explicit_reason_token_still_wins(self):
+        response = self._post(outgoing={"reason_token": "1"})
+
+        self.assertEqual(response.status_code, 201)
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(termination.type, self.client_reason)
+
+    def test_missing_change_of_name_type_returns_500(self):
+        ContractTerminationType.objects.filter(is_change_of_name=True).update(
+            is_change_of_name=False
+        )
+
+        response = self._post(outgoing={"reason_token": None})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract change could not be created"}
+        )
+        self._assert_nothing_created()
+
+    # --- 404 --------------------------------------------------------------
+
+    def test_unknown_incoming_holder_without_personal_data_returns_400(self):
+        """An unknown incoming DNI without data returns nested 400 errors."""
+
+        response = self._post(incoming={"holder_dni": NEW_HOLDER_DNI})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("outgoing", response.data)
+        for field in ("holder_name", "holder_surname", "holder_phone", "holder_email"):
+            self.assertEqual(
+                response.data["incoming"][field], [NEW_HOLDER_REQUIRED]
+            )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self._assert_nothing_created()
+
+    def test_existing_incoming_holder_does_not_create_person(self):
+        """An existing incoming holder is reused and not modified."""
+
+        person_count = Person.objects.count()
+
+        response = self._post(incoming=NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(contract_request.holder, self.incoming_holder)
+        self.incoming_holder.refresh_from_db()
+        self.assertEqual(self.incoming_holder.name, "Entrant")
+
+    def test_unknown_incoming_holder_with_personal_data_creates_person(self):
+        """An unknown incoming DNI with full data creates and links the Person."""
+
+        response = self._post(
+            incoming=dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+        )
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.name, "Nova")
+        self.assertEqual(person.surname, "Titular Prova")
+        self.assertEqual(person.identification_type, self.dni_type)
+        self.assertEqual(person.piggy_bank.token, NEW_HOLDER_DNI)
+        contact = PersonContact.objects.get(person=person)
+        self.assertEqual(contact.phone, "600000000")
+        self.assertEqual(contact.email, "titular.nou@example.com")
+        self.assertTrue(contact.is_default)
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertTrue(contract_request.is_change_of_name)
+        self.assertEqual(contract_request.person, person)
+        self.assertEqual(contract_request.holder, person)
+        self.assertEqual(contract_request.payment.IBAN.person, person)
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(termination.person, self.outgoing_holder)
+
+    def test_existing_incoming_holder_ignores_invalid_email(self):
+        """An invalid email is ignored for an existing incoming holder."""
+
+        response = self._post(incoming={"holder_email": "not-an-email"})
+
+        self.assertEqual(response.status_code, 201)
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(contract_request.holder, self.incoming_holder)
+
+    def test_new_incoming_holder_invalid_email_returns_nested_400(self):
+        """An invalid email for a new incoming holder returns nested 400."""
+
+        response = self._post(
+            incoming=dict(
+                NEW_HOLDER_FIELDS,
+                holder_dni=NEW_HOLDER_DNI,
+                holder_email="not-an-email",
+            )
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["incoming"]["holder_email"],
+            ["Enter a valid email address."],
+        )
+        self._assert_nothing_created()
+
+    def test_unknown_incoming_identification_type_returns_nested_400(self):
+        """An unknown identification type returns nested 400 under incoming."""
+
+        response = self._post(
+            incoming=dict(
+                NEW_HOLDER_FIELDS,
+                holder_dni=NEW_HOLDER_DNI,
+                holder_identification_type_token="unknown",
+            )
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["incoming"]["holder_identification_type_token"],
+            ["Unknown identification type."],
+        )
+        self._assert_nothing_created()
+
+    def test_new_incoming_holder_not_created_on_contract_404_or_409(self):
+        """Contract 404/409 inside the transaction leave no new Person."""
+
+        incoming = dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+        for outgoing, expected in (
+            ({"contract_token": "CT-UNKNOWN"}, 404),
+            ({"contract_token": self.terminated_contract.token}, 409),
+        ):
+            with self.subTest(outgoing=outgoing):
+                response = self._post(outgoing=outgoing, incoming=incoming)
+
+                self.assertEqual(response.status_code, expected)
+                self.assertFalse(
+                    Person.objects.filter(token=NEW_HOLDER_DNI).exists()
+                )
+                self._assert_nothing_created()
+
+    def test_new_incoming_holder_rolled_back_when_creation_fails(self):
+        """A downstream failure rolls back the new incoming holder."""
+
+        with patch(
+            "ov.views._create_procedure_payment",
+            side_effect=RuntimeError("downstream failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(
+                    incoming=dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+                )
+
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertFalse(
+            PersonContact.objects.filter(token__startswith=NEW_HOLDER_DNI).exists()
+        )
+        self.assertFalse(
+            PersonPiggyBank.objects.filter(token=NEW_HOLDER_DNI).exists()
+        )
+        self._assert_nothing_created()
+
+    def test_outgoing_contract_errors_return_uniform_404(self):
+        for outgoing in (
+            {"contract_token": "CT-UNKNOWN"},
+            {"contract_token": self.inactive_contract.token},
+            {"contract_token": self.no_holder_contract.token},
+            {"holder_dni": "11111111H"},
+        ):
+            with self.subTest(outgoing=outgoing):
+                response = self._post(outgoing=outgoing)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.data, {"error": "Contract not found"})
+        self._assert_nothing_created()
+
+    # --- 409 --------------------------------------------------------------
+
+    def test_terminated_contract_returns_409(self):
+        response = self._post(
+            outgoing={"contract_token": self.terminated_contract.token}
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data, {"error": "Contract already terminated"})
+        self._assert_nothing_created()
+
+    def test_open_termination_returns_409(self):
+        existing = ContractTerminationRequest.objects.create(
+            token="CTR-OPEN",
+            contract=self.contract,
+            status=self.termination_pending,
+            is_active=True,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.data,
+            {
+                "error": "Contract termination already exists",
+                "contract_termination_token": existing.token,
+            },
+        )
+        self.assertEqual(ContractTerminationRequest.objects.count(), 1)
+
+    def test_open_contract_request_on_supply_point_returns_409(self):
+        existing = ContractRequest.objects.create(
+            token="CR-OPEN",
+            status=self.request_draft,
+            supply_point_default=self.supply_point,
+            is_active=True,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.data,
+            {
+                "error": "Contract request already exists",
+                "contract_request_token": existing.token,
+            },
+        )
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_secondary_supply_point_open_request_blocks(self):
+        existing = ContractRequest.objects.create(
+            token="CR-SECONDARY", status=self.request_draft, is_active=True,
+        )
+        existing.supply_points.add(self.supply_point)
+        response = self._post()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["contract_request_token"], existing.token)
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_cancelling_request_cancels_linked_termination(self):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from contract.views.contract_request_view import ContractRequestViewSet
+        from contract.models import BailStatus
+
+        response = self._post()
+        request_obj = ContractRequest.objects.get(token=response.data["contract_request_token"])
+        for token, value in (
+            ("contract_request_cancel_token", "-1"),
+            ("bail_status_pending_token", "PENDING"),
+            ("bail_status_unreturned_token", "UNRETURNED"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+        BailStatus.objects.get_or_create(token="UNRETURNED")
+        request = APIRequestFactory().patch("/", {"status": self.request_cancelled.pk}, format="json")
+        force_authenticate(request, user=self.user)
+        with patch("contract.views.contract_request_view.ContractRequestSerializer") as read_serializer:
+            read_serializer.return_value.data = {}
+            result = ContractRequestViewSet.as_view(
+                {"patch": "partial_update"}, permission_classes=[]
+            )(request, pk=request_obj.pk)
+        self.assertEqual(result.status_code, 200)
+        termination = request_obj.contract_termination_requests.get()
+        self.assertEqual(termination.status, self.termination_cancelled)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.status, self.active_status)
+
+    def test_cancelling_request_without_linked_termination(self):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from contract.views.contract_request_view import ContractRequestViewSet
+
+        request_obj = ContractRequest.objects.create(
+            token="CR-NO-TERMINATION", status=self.request_draft,
+        )
+        request = APIRequestFactory().patch("/", {"status": self.request_cancelled.pk}, format="json")
+        force_authenticate(request, user=self.user)
+        with patch("contract.views.contract_request_view.ContractRequestSerializer") as read_serializer:
+            read_serializer.return_value.data = {}
+            result = ContractRequestViewSet.as_view(
+                {"patch": "partial_update"}, permission_classes=[]
+            )(request, pk=request_obj.pk)
+        self.assertEqual(result.status_code, 200)
+        request_obj.refresh_from_db()
+        self.assertEqual(request_obj.status, self.request_cancelled)
+        self.assertFalse(ContractTerminationRequest.objects.exists())
+
+    def test_linked_termination_processed_without_outgoing_supply_points(self):
+        from contract.utils.contract_service import check_contract_terminations
+
+        self.contract.supply_points.clear()
+        response = self._post()
+        self.assertEqual(response.status_code, 201)
+        request_obj = ContractRequest.objects.get(token=response.data["contract_request_token"])
+        new_contract = Contract.objects.create(token="NEW-CONTRACT")
+        new_contract.supply_points.add(self.supply_point)
+        for token, value in (
+            ("contract_termination_pending_status", "2"),
+            ("contract_termination_draft", "1"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+        check_contract_terminations(new_contract, request_obj)
+        self.contract.refresh_from_db()
+        termination = request_obj.contract_termination_requests.get()
+        self.assertEqual(termination.status, self.termination_pending)
+        # El contracte de sortida no passa a baixa fins que es finalitza la baixa
+        self.assertEqual(self.contract.status, self.active_status)
+
+    def test_closed_requests_and_terminations_do_not_block(self):
+        ContractRequest.objects.create(
+            token="CR-CANCELLED",
+            status=self.request_cancelled,
+            supply_point_default=self.supply_point,
+            is_active=True,
+        )
+        ContractTerminationRequest.objects.create(
+            token="CTR-CANCELLED",
+            contract=self.contract,
+            status=self.termination_cancelled,
+            is_active=True,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_contract_without_supply_point_returns_409(self):
+        response = self._post(
+            outgoing={"contract_token": self.no_supply_point_contract.token}
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data, {"error": "Contract has no supply point"})
+        self._assert_nothing_created()
+
+    # --- concurrència i atomicitat ---------------------------------------
+
+    def test_contract_row_is_locked_before_conflict_checks(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        captured = [q["sql"] for q in queries.captured_queries]
+        contract_table = Contract._meta.db_table
+        termination_table = ContractTerminationRequest._meta.db_table
+        lock_index = next(
+            i
+            for i, sql in enumerate(captured)
+            if "FOR UPDATE" in sql and f'FROM "{contract_table}"' in sql
+        )
+        conflict_index = next(
+            i
+            for i, sql in enumerate(captured)
+            if sql.lstrip().upper().startswith("SELECT")
+            and f'FROM "{termination_table}"' in sql
+        )
+        self.assertLess(lock_index, conflict_index)
+
+    def test_late_failure_rolls_back_every_record(self):
+        with patch(
+            "ov.views.LogContractRequestStatus.objects.create",
+            side_effect=RuntimeError("boom"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post()
+
+        self._assert_nothing_created()
+        self.assertFalse(ContractTerminationRequestObservation.objects.exists())
+        self.assertFalse(
+            Variable.objects.filter(contract_request__isnull=False).exists()
+        )
+
+    def test_missing_default_status_returns_500(self):
+        ContractTerminationStatus.objects.update(is_default=False)
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract change could not be created"}
+        )
+        self._assert_nothing_created()
+
+    # --- seguretat i encaminament -----------------------------------------
+
+    def test_requires_authentication(self):
+        response = APIClient().post(
+            reverse(self.URL_NAME), self._payload(), format="json"
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self._assert_nothing_created()
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            ContractChangeProcedureOVView.throttle_classes,
+            [ContractChangeProcedureThrottle],
+        )
+        self.assertEqual(
+            ContractChangeProcedureThrottle.scope, "ov_procedures_contract_change"
+        )
+        self.assertEqual(ContractChangeProcedureThrottle.rate, "35/min")
+
+    def test_route_does_not_shadow_other_procedures(self):
+        self.assertEqual(reverse(self.URL_NAME), "/ov/procedures/contract-change/")
+        self.assertIs(
+            resolve(reverse(self.URL_NAME)).func.view_class,
+            ContractChangeProcedureOVView,
+        )
+        self.assertIs(
+            resolve(reverse("contract-procedure-ov")).func.view_class,
+            ContractProcedureOVView,
         )

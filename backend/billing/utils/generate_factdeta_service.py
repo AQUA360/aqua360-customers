@@ -44,13 +44,13 @@ def _load_factdeta_config():
     )
 
 
-def generate_factdeta_document(exploitations, invoices, is_alta = False):
+def generate_factdeta_document(exploitations, invoices, is_alta = False, line_items_q=None):
     config = _load_factdeta_config()
     company = Company.objects.get(vat=config.main_company_token)
     if is_alta:
         files = generate_factdeta_alta_document(exploitations, invoices, config, company)
     else:
-        files = generate_factdeta_normal_document(exploitations, invoices, config, company)
+        files = generate_factdeta_normal_document(exploitations, invoices, config, company, line_items_q)
     return files
 
 def generate_factdeta_alta_document(exploitations, invoices, config, company):
@@ -554,7 +554,9 @@ def _empty_canon():
     }
 
 
-def _compute_domestic(canon, variable_lines):
+def classify_domestic_lines(variable_lines):
+    """Línies variables d'una factura domèstica repartides en fuita, tarifa social 0 i trams (1-4).
+    Retorna (lines_by_tram, social_lines, leak_lines, unclassified_trams)."""
     leak_lines = [line for line in variable_lines if _is_leak_line(line)]
     # Tarifa social amb tarifa 0 (consum per sota del límit del primer tram): en ús domèstic
     # només el bo social deixa el cànon a 0, encara que la línia no porti l'ajust de tarifa social
@@ -573,8 +575,7 @@ def _compute_domestic(canon, variable_lines):
         _dec(line.price_unit) for line in tram_lines
         if not (line.interval and 1 <= line.interval <= DOMESTIC_TRAMS)
     })
-    if no_interval_prices and (known_trams or len(no_interval_prices) > len(free_trams)):
-        canon['unclassified_trams'] = True
+    unclassified_trams = bool(no_interval_prices and (known_trams or len(no_interval_prices) > len(free_trams)))
     fallback_trams = {
         price: free_trams[min(index, len(free_trams) - 1)] for index, price in enumerate(no_interval_prices)
     }
@@ -584,6 +585,11 @@ def _compute_domestic(canon, variable_lines):
         tram = line.interval if line.interval and 1 <= line.interval <= DOMESTIC_TRAMS else fallback_trams[_dec(line.price_unit)]
         lines_by_tram[tram].append(line)
 
+    return lines_by_tram, social_lines, leak_lines, unclassified_trams
+
+
+def _compute_domestic(canon, variable_lines):
+    lines_by_tram, social_lines, leak_lines, canon['unclassified_trams'] = classify_domestic_lines(variable_lines)
     canon['trams'] = [_concept(lines_by_tram[tram]) for tram in range(1, DOMESTIC_TRAMS + 1)]
     canon['social'] = (_sum(social_lines, 'units'), ZERO, ZERO)
     canon['leak'] = _concept(leak_lines)
@@ -927,14 +933,23 @@ def _load_factdeta_baixa_context(config, invoices):
     )
 
 
-def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
-    contract = invoice.contract or (invoice.contract_termination.contract if invoice.contract_termination else None)
-    supply_point = None
-    if contract:
-        supply_point = contract.supply_point_default or contract.supply_points.first()
-    meter = supply_point.meter if supply_point else None
-    person = invoice.person or (contract.holder if contract else None)
+def _invoice_contract(invoice):
+    return invoice.contract or (invoice.contract_termination.contract if invoice.contract_termination else None)
 
+
+def is_alta_invoice(invoice):
+    """Factura d'alta: no va al FACTDETA en baixa (mateix criteri que el filtre del fitxer)."""
+    if invoice.used_aca:
+        return invoice.used_aca == ALTA_USE_ACA
+    contract = _invoice_contract(invoice)
+    return bool(contract and contract.use_aca == ALTA_USE_ACA)
+
+
+def factdeta_invoice_canon(invoice, aca_lines, config, context):
+    """Tipus de tarifa, cànon (volums i imports) i volum consumit d'una factura tal com es declaren.
+    `config` ha de portar part_fixa_token i tarifa_social_token; `context`, el de
+    _load_factdeta_baixa_context."""
+    contract = _invoice_contract(invoice)
     is_fire = bool(contract and contract.id in context.fire_contract_ids)
     variable_lines = [line for line in aca_lines if not _is_part_fixa(line, config.part_fixa_token)]
     use_aca = invoice.used_aca or (contract.use_aca if contract else None)
@@ -950,6 +965,47 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     consumed_volume = _dec(invoice.real_consumption if invoice.real_consumption is not None else invoice.consumption)
     if (cancelled or canon['billed_volume'] < 0) and consumed_volume > 0:
         consumed_volume = -consumed_volume
+    return SimpleNamespace(
+        contract=contract, variable_lines=variable_lines, tariff_type=tariff_type, canon=canon,
+        social_line_ids=social_line_ids, cancelled=cancelled, consumed_volume=consumed_volume,
+    )
+
+
+def factdeta_invoice_volumes(invoices, lines_by_invoice, part_fixa_token, tarifa_social_token):
+    """Volums (m³) de cada factura amb el mateix càlcul que el FACTDETA en baixa, per a la Declaració ACA:
+    tipus de tarifa, consumit (el real de la factura), facturat, trams domèstics sense i amb tarifa social
+    (la fuita, al primer tram) i tarifa social 0. No hi entren les factures d'alta."""
+    config = SimpleNamespace(part_fixa_token=part_fixa_token, tarifa_social_token=tarifa_social_token)
+    invoices = [invoice for invoice in invoices if not is_alta_invoice(invoice)]
+    context = _load_factdeta_baixa_context(config, invoices)
+    volumes = []
+    for invoice in invoices:
+        data = factdeta_invoice_canon(invoice, lines_by_invoice.get(invoice.id, []), config, context)
+        trams = {False: [ZERO] * DOMESTIC_TRAMS, True: [ZERO] * DOMESTIC_TRAMS}
+        social_zero = ZERO
+        if data.tariff_type == 'D':
+            lines_by_tram, social_lines, leak_lines, _unclassified = classify_domestic_lines(data.variable_lines)
+            lines_by_tram[1] = lines_by_tram[1] + leak_lines
+            for tram in range(1, DOMESTIC_TRAMS + 1):
+                for line in lines_by_tram[tram]:
+                    trams[line.id in data.social_line_ids][tram - 1] += _dec(line.units)
+            social_zero = _sum(social_lines, 'units')
+        volumes.append(SimpleNamespace(
+            invoice=invoice, tariff_type=data.tariff_type, consumed=data.consumed_volume,
+            billed=data.canon['billed_volume'], trams=trams[False], social_trams=trams[True], social_zero=social_zero,
+        ))
+    return volumes
+
+
+def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
+    data = factdeta_invoice_canon(invoice, aca_lines, config, context)
+    contract, tariff_type, canon, cancelled = data.contract, data.tariff_type, data.canon, data.cancelled
+    social_line_ids, consumed_volume = data.social_line_ids, data.consumed_volume
+    supply_point = None
+    if contract:
+        supply_point = contract.supply_point_default or contract.supply_points.first()
+    meter = supply_point.meter if supply_point else None
+    person = invoice.person or (contract.holder if contract else None)
 
     billing_system = _billing_system(invoice, meter, config)
     period_start, period_end = _consumption_period(invoice)
@@ -1000,13 +1056,16 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
     }
 
 
-def generate_factdeta_normal_document(exploitations, invoices, config, company):
+def generate_factdeta_normal_document(exploitations, invoices, config, company, line_items_q=None):
     """Un fitxer FDCCCC_MMMMMM_AAAA.txt per municipi (explotació) i any de facturació, amb un
-    registre de detall per factura amb cànon, inclosos els usos exempts i els abonaments."""
+    registre de detall per factura amb cànon, inclosos els usos exempts i els abonaments.
+    `line_items_q` tria les línies de cànon: per defecte les actives; amb els mesos de la Declaració
+    ACA ja presentats, les que s'hi van declarar."""
+    if line_items_q is None:
+        line_items_q = Q(is_active=True)
     files = []
     aca_invoices = invoices.filter(
-        _aca_lines_q(config.aca_product_token, 'line_items__product__token'),
-        line_items__is_active=True,
+        id__in=InvoiceLineItem.objects.filter(_aca_lines_q(config.aca_product_token), line_items_q).values('invoice_id'),
         type_final=config.invoice_type,
     ).exclude(
         status__token=config.invoice_token_pending,
@@ -1068,8 +1127,8 @@ def generate_factdeta_normal_document(exploitations, invoices, config, company):
             lines_by_invoice = defaultdict(list)
             for line in InvoiceLineItem.objects.filter(
                 _aca_lines_q(config.aca_product_token),
+                line_items_q,
                 invoice_id__in=[invoice.id for invoice in year_invoices],
-                is_active=True,
             ).select_related(
                 'line_item_type__article', 'line_item_type__quantity',
             ).prefetch_related('adjustments__adjustment__conditions').distinct():

@@ -9,7 +9,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast();
-const { $BillerApiService, $BillingApiService } = useNuxtApp();
+const { $BillerApiService, $BillingApiService, $ExploitationApiService } = useNuxtApp();
 const objectPermissions = ref(null);
 
 const props = defineProps({
@@ -91,6 +91,8 @@ const billerType = ref('all');
 
 const token = ref('')
 const name = ref('')
+const exploitations = ref([])
+const exploitation = ref(null)
 
 const routes = ref([]);
 const editingRoutes = ref(false);
@@ -115,6 +117,32 @@ const removeRoute = (item) => {
   routes.value = routes.value.filter(r => r.id != item.id);
 }
 
+const loadExploitations = async () => {
+  const all = [];
+  let page = 1;
+  let response;
+  do {
+    response = await $ExploitationApiService.getData('', page, 'name', false);
+    all.push(...(response.results || []));
+    page += 1;
+  } while (response.next);
+
+  exploitations.value = all.map(item => ({
+    label: item.name || item.token,
+    code: item.id,
+  }));
+}
+
+const preselectExploitation = () => {
+  const stored = localStorage.getItem('exploitation');
+  const match = exploitations.value.find(item => String(item.code) === String(stored));
+  if (match) {
+    exploitation.value = match;
+  } else if (exploitations.value.length === 1) {
+    exploitation.value = exploitations.value[0];
+  }
+}
+
 const save = async () => {
 
   const routeIds = routes.value.map(r => r.id);
@@ -125,6 +153,7 @@ const save = async () => {
     name: name.value,
     period_type: type.value.code,
     initial_month: month.value.code,
+    exploitation: exploitation.value?.code || null,
     route_ids: routeIds
   }
 
@@ -170,6 +199,19 @@ const loadData = async () => {
 
   is_active.value = res.is_active;
 
+  const currentExploitation = exploitations.value.find(item => String(item.code) === String(res.exploitation));
+  if (currentExploitation) {
+    exploitation.value = currentExploitation;
+  } else if (res.exploitation) {
+    exploitation.value = {
+      label: res.exploitation_name || res.exploitation_token || String(res.exploitation),
+      code: res.exploitation,
+    };
+    exploitations.value = [...exploitations.value, exploitation.value];
+  } else {
+    exploitation.value = null;
+  }
+
   loading.value = false;
 }
 
@@ -179,10 +221,12 @@ onMounted(async() => {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
   }
+  await loadExploitations();
   if (props.id) {
     loadData();
   }
   else {
+    preselectExploitation();
     loading.value = false;
   }
 });
@@ -223,6 +267,11 @@ const updateSelected = (e) => {
         <div class="mb-4">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.name') }}</label>
           <input type="text" v-model="name" class="input" :disabled="!is_active" />
+        </div>
+        <div class="mb-2 col-span-2">
+          <label for="exploitation" class="block text-sm font-medium text-slate-500 mb-2">{{ t('exploitation') }}</label>
+          <v-select id="exploitation" class="block w-full mr-2" v-model="exploitation" :disabled="!is_active"
+            :options="exploitations" :clearable="true" />
         </div>
         <div class="mb-2">
           <div class="flex">

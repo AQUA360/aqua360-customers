@@ -102,6 +102,12 @@ class BillingDocumentDownloadAdmin(admin.ModelAdmin):
 
 admin.site.register(BillingDocumentDownload, BillingDocumentDownloadAdmin)
 
+class UnpaidFeeRunAdmin(admin.ModelAdmin):
+    list_display = ('id', 'created_at', 'created_by', 'status', 'invoice_count', 'finished_at')
+    list_filter = ('status',)
+
+admin.site.register(UnpaidFeeRun, UnpaidFeeRunAdmin)
+
 class BillingBatchAdmin(admin.ModelAdmin):
     list_display = ('id', 'token', 'created_at', 'updated_at')
     list_filter = ('created_at', 'updated_at')

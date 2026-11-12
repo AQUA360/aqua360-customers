@@ -6,7 +6,7 @@ from contract.serializers.bail_serializer import BailMinimalSerializer
 from contract.serializers.bonification_serializer import BonificationSerializer
 from contract.serializers.contract_clause_serializer import ContractClauseSerializer
 from contract.serializers.contract_price_rate_serializer import ContractPriceRateSerializer
-from contract.serializers.contract_serializer import ContractObservationSerializer
+from contract.serializers.contract_serializer import ContractObservationSerializer, serialize_contract_show_price_rates
 from contract.serializers.contract_surrogation_serializer import ContractSurrogationSerializer
 from contract.serializers.contract_tenant_change_serializer import ContractTenantChangeSerializer
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
@@ -20,9 +20,10 @@ from coredata.serializers import PersonContactSerializer, PersonSerializer, Pers
 from billing.serializers.general_payment_serializer import GeneralPaymentSerializer
 from contract.serializers.contract_data_change_serializer import ContractDataChangeSerializer
 from contract.serializers.variable_serializer import VariableSerializer
-from contract.utils.contract_service import get_contract_housing_units
+from contract.utils.contract_service import get_contract_housing_units, get_contract_tarifa_bop
 from contract.serializers.contract_representative_serializer import ContractRepresentativeSerializer
 from service.serializers.supply_point_serializer import SupplyPointSerializer
+from service.serializers.company_serializer import CompanyMinimalSerializer
 from auth.serializers import UserMinimalSerializer
 from django.db.models import Sum
 
@@ -69,6 +70,7 @@ class PinnedContractSerializer(serializers.ModelSerializer):
     supply_point_default = SupplyPointSerializer(read_only=True, required=False, allow_null=True)
     supply_points = serializers.SerializerMethodField()
     status = ContractStatusSerializer(read_only=True, required=False, allow_null=True)
+    company = CompanyMinimalSerializer(read_only=True, required=False, allow_null=True)
     
     use_type = ContractUseTypeSerializer(read_only=True, required=False, allow_null=True)
     client_type = ContractClientTypeSerializer(read_only=True, required=False, allow_null=True)
@@ -100,6 +102,7 @@ class PinnedContractSerializer(serializers.ModelSerializer):
     registration_price_rates = serializers.SerializerMethodField()
     price_rates = serializers.SerializerMethodField()
     show_price_rates = serializers.SerializerMethodField()
+    tarifa_bop = serializers.SerializerMethodField()
     bonifications = BonificationSerializer(many=True, read_only=True, required=False, allow_null=True)
     
     user_checked = UserMinimalSerializer(many=True, read_only=True, required=False, allow_null=True)
@@ -123,6 +126,8 @@ class PinnedContractSerializer(serializers.ModelSerializer):
     incidents = serializers.SerializerMethodField()
     # Incidència oberta d'un tipus que bloqueja les ofertes comercials (art. 16.2)
     blocking_incident = serializers.SerializerMethodField()
+    # Domiciliació anul·lada per un retorn SEPA de compte invàlid, pendent de revisar
+    invalid_account_payment_alert = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
     housing_units = serializers.SerializerMethodField()
@@ -181,12 +186,16 @@ class PinnedContractSerializer(serializers.ModelSerializer):
         return ContractPriceRateSerializer(price_rates, many=True, read_only=True).data
     
     def get_show_price_rates(self, obj):
-        from pricing.serializers.price_rate_serializer import PriceRateSerializer
-        contract_price_rates = obj.price_rates.all().order_by('price_rate__product__position')
-        price_rates = [price_rate.price_rate for price_rate in contract_price_rates]
-        price_rates = list(set(price_rates))
-        return PriceRateSerializer(price_rates, many=True, read_only=True).data
+        return serialize_contract_show_price_rates(obj)
+
+    def get_tarifa_bop(self, obj):
+        return get_contract_tarifa_bop(obj)
     
+    def get_invalid_account_payment_alert(self, obj):
+        """Avís de domiciliació anul·lada per un retorn SEPA de compte invàlid, o None."""
+        from billing.utils.sepa_invalid_account_service import invalid_account_payment_alert
+        return invalid_account_payment_alert(obj)
+
     def get_blocking_incident(self, obj):
         from notification.utils.incident_utils import blocking_incident
         incident = blocking_incident(obj)

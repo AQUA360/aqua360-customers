@@ -87,6 +87,9 @@ export const useSidebarStore = defineStore('sidebar', {
     togglePinnedContract() {
       this.isPinnedContractOpen = !this.isPinnedContractOpen;
     },
+    openPinnedContract() {
+      this.isPinnedContractOpen = true;
+    },
     closePinnedContract() {
       this.isPinnedContractOpen = false;
     },

@@ -10,7 +10,7 @@ from billing.models import Invoice, InvoiceType, Reading, ReadingBatch, ReadingB
 from coredata.models import MainPermission
 from dashboard.cards.base import period_range
 from dashboard.defaults import DEFAULT_LAYOUT
-from dashboard.models import UserDashboard
+from dashboard.models import UserDashboard, UserSidebarLayout
 from order.models import Order, OrderStatus
 
 LAYOUT_URL = '/dashboard/layout/'
@@ -254,3 +254,80 @@ class TestLayoutValidation(DashboardTestCase):
 
         response = self.client.put(LAYOUT_URL, {'layout': [{'key': ['calendar']}]}, format='json')
         self.assertEqual(response.status_code, 400)
+
+
+SIDEBAR_URL = '/dashboard/sidebar/'
+
+
+class TestSidebarLayout(DashboardTestCase):
+
+    def test_default_when_not_customised(self):
+        """Without a saved layout the user gets an empty one flagged as default."""
+        response = self.client.get(SIDEBAR_URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['is_default'])
+        self.assertEqual(response.data['layout'], {
+            'sections': {'hidden': [], 'order': []}, 'folded': [], 'items': {}, 'favorites': [], 'recent': [],
+        })
+
+    def test_save_and_read_per_user(self):
+        """The layout is saved for the session user only."""
+        layout = {
+            'sections': {'hidden': ['pricing'], 'order': ['billing', 'contract']},
+            'folded': ['service'],
+            'items': {'billing': {'hidden': ['bails'], 'order': ['invoices', 'billing']}},
+            'favorites': ['billing/invoices', 'contract/contracts'],
+            'recent': ['contract/persons', 'billing/invoices'],
+        }
+        response = self.client.put(SIDEBAR_URL, {'layout': layout}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['is_default'])
+        self.assertEqual(response.data['layout'], layout)
+
+        response = self.client.get(SIDEBAR_URL)
+        self.assertFalse(response.data['is_default'])
+        self.assertEqual(response.data['layout'], layout)
+
+        other = APIClient()
+        other.force_authenticate(self.basic)
+        self.assertTrue(other.get(SIDEBAR_URL).data['is_default'])
+
+    def test_invalid_values_are_normalised(self):
+        """Non-string, repeated or too long keys are dropped instead of stored."""
+        layout = {
+            'sections': {'hidden': ['pricing', 'pricing', 3, None, 'x' * 100], 'order': 'billing'},
+            'folded': {'service': True},
+            'items': {'billing': {'hidden': ['bails', {'a': 1}]}, 'y' * 100: {'hidden': ['a']}, 'orders': 'x'},
+            'favorites': ['billing/invoices', 'billing/invoices', 7, 'z' * 100],
+            'recent': ['a/1', 'a/1', 'a/2', 'a/3', 'a/4', 'a/5', 'a/6'],
+            'unknown': 'ignored',
+        }
+        response = self.client.put(SIDEBAR_URL, {'layout': layout}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['layout'], {
+            'sections': {'hidden': ['pricing'], 'order': []},
+            'folded': [],
+            'items': {
+                'billing': {'hidden': ['bails'], 'order': []},
+                'orders': {'hidden': [], 'order': []},
+            },
+            'favorites': ['billing/invoices'],
+            'recent': ['a/1', 'a/2', 'a/3', 'a/4', 'a/5'],
+        })
+
+    def test_layout_must_be_an_object(self):
+        """A layout that is not an object is rejected."""
+        response = self.client.put(SIDEBAR_URL, {'layout': ['pricing']}, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_reset(self):
+        """Deleting the layout goes back to the default menu."""
+        self.client.put(SIDEBAR_URL, {'layout': {'folded': ['service']}}, format='json')
+        response = self.client.delete(SIDEBAR_URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['is_default'])
+        self.assertFalse(UserSidebarLayout.objects.filter(user=self.admin).exists())
+
+    def test_requires_authentication(self):
+        """Anonymous users cannot read or save a sidebar layout."""
+        self.assertIn(APIClient().get(SIDEBAR_URL).status_code, (401, 403))

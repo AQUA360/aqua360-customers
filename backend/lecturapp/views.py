@@ -20,6 +20,7 @@ from billing.models import ReaderAlert, ReadingBatch, Reading
 from contract.models import Contract
 from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint, SupplyPointPlacement
+from service.utils.route_scope import effective_route_position
 from .serializers import RouteAppSerializer, ReadingBatchAppSerializer
 from .tasks import process_reading_batch_routes_detailed
 
@@ -228,11 +229,9 @@ def reading_batch_routes(request, reading_batch_id):
     # Use select_related and prefetch_related to optimize query
     reading_batch = get_object_or_404(
         ReadingBatch.objects.prefetch_related(
-            'routes__positions__properties__supply_points__meter',
-            'routes__positions__properties__supply_points__contracts',
-            'routes__positions__properties__supply_points__address',
-            'routes__positions__properties__supply_points__placement',
-            'routes__positions__properties__supply_points__cluster_nozzle__cluster',
+            # RouteAppSerializer només fa servir les posicions prefetchades; les
+            # finques i punts de cada posició es calculen per ruta efectiva.
+            'routes__positions',
             'fix_meters'
         ).select_related('status'),
         id=reading_batch_id
@@ -254,7 +253,7 @@ def reading_batch_routes(request, reading_batch_id):
             
             sp = meter.supply_points.first()
             property = sp.property
-            position = property.route_position
+            position = effective_route_position(sp)
             
             # Check if position already exists
             existing_position = next((p for p in positions if p['id'] == position.id), None)
@@ -323,8 +322,14 @@ def reading_batch_routes(request, reading_batch_id):
 def reading_batch_routes_detailed(request, reading_batch_id):
     """Get all reading batches with detailed information - ASYNC WITH CELERY & PROGRESS"""
     
+    # Els comptadors deshabilitats (d'una altra ruta, punts de baixa, comptadors
+    # inactius) només s'envien a les versions de l'app que els saben mostrar:
+    # les anteriors els tractarien com a comptadors per llegir.
+    include_disabled_meters = request.GET.get('include_disabled_meters') in ('1', 'true')
+
     # Start the Celery task
-    task = process_reading_batch_routes_detailed.delay(reading_batch_id)
+    task = process_reading_batch_routes_detailed.delay(
+        reading_batch_id, include_disabled_meters=include_disabled_meters)
     
     return JsonResponse({
         'status': 'processing',

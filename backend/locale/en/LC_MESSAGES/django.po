@@ -557,6 +557,9 @@ msgstr "No price rates"
 msgid "Contract"
 msgstr "Contract"
 
+msgid "Customer"
+msgstr "Customer"
+
 #: billing/utils/billing_service.py
 msgid "Creation date"
 msgstr "Creation date"
@@ -4325,3 +4328,7 @@ msgstr "Debt and balance per contract at a date"
 #: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
 msgid "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola i el deute pendent (pagaments pendents, processats, vençuts, retornats o en morositat) a la data indicada."
 msgstr "For each contract with a balance or debt, the positive wallet balance and the outstanding debt (pending, processed, overdue, returned or defaulted payments) on the given date."
+
+#: billing/utils/payment_remittance_lock_service.py
+msgid "This remittance has already been sent and can no longer be modified."
+msgstr "This remittance has already been sent and can no longer be modified."

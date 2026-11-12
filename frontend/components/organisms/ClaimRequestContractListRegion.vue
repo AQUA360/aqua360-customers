@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import { useNuxtApp } from '#app';
 import { formatMoney } from '~/utils/money';
 import Date from '~/components/atoms/Date.vue';
 import ColorBadge from '~/components/atoms/ColorBadge.vue';
+import Pagination from '~/components/molecules/Pagination.vue';
 import ContractRegion from './ContractRegion.vue';
 import InvoiceRegion from './InvoiceRegion.vue';
 
@@ -20,7 +21,9 @@ const props = defineProps({
 const { t } = useI18n();
 const toast = useToast();
 const emit = defineEmits(['close', 'show-detail', 'change']);
-const { $ClaimRequestApiService } = useNuxtApp();
+const { $ClaimRequestApiService, $ConfigProjectApiService } = useNuxtApp();
+
+const PER_PAGE = 25;
 
 const loading = ref(false);
 const searchQuery = ref('');
@@ -29,36 +32,49 @@ const localContracts = ref([]);
 const expandedContracts = ref(new Set());
 const hideExcluded = ref(true);
 const showVulnerable = ref(false);
+const onlyWithPaidPayments = ref(false);
 const loadingContractId = ref(null);
+const page = ref(1);
+const paymentStatusPaidToken = ref(null);
 
 const showRegion = ref(false);
 const isSubRegionOpen = ref(false);
 const showRegionDetailComponent = ref(null);
 const regionDetailId = ref(null);
 
-// Funcions per gestionar els contractes expandits
+const isClaimPaymentPaid = (claimPayment) =>
+  Boolean(
+    paymentStatusPaidToken.value
+    && claimPayment?.payment?.status?.token === paymentStatusPaidToken.value
+  );
+
+const getContractPaidPayments = (contract) =>
+  (contract.claim_payments || []).filter(isClaimPaymentPaid);
+
+const getContractAmount = (contract) =>
+  (contract.claim_payments || []).reduce(
+    (acc, curr) => (curr.payment ? acc + parseFloat(curr.payment.amount) : acc),
+    0
+  );
+
 const toggleContract = (contractId) => {
   if (expandedContracts.value.has(contractId)) {
-    expandedContracts.value.delete(contractId)
+    expandedContracts.value.delete(contractId);
   } else {
-    expandedContracts.value.add(contractId)
+    expandedContracts.value.add(contractId);
   }
-}
+};
 
-const isContractExpanded = (contractId) => {
-  return expandedContracts.value.has(contractId)
-}
+const isContractExpanded = (contractId) => expandedContracts.value.has(contractId);
 
-// Funció per mostrar detalls
 const showDetail = (component, id) => {
   closeAllRegions();
   showRegionDetailComponent.value = component;
   regionDetailId.value = id;
   showRegion.value = true;
   emit('show-detail', true);
-}
+};
 
-// Carregar els contractes associats a la reclamació
 const loadContracts = async () => {
   loading.value = true;
   try {
@@ -72,11 +88,9 @@ const loadContracts = async () => {
   }
 };
 
-// Filtrar els contractes basats en la cerca i l'estat d'exclusió
 const filteredContracts = computed(() => {
   let contracts = localContracts.value.results || [];
-  
-  // Filtrar per exclusió
+
   if (hideExcluded.value) {
     contracts = contracts.filter(contract => !contract.is_excluded);
   }
@@ -86,27 +100,63 @@ const filteredContracts = computed(() => {
   } else {
     contracts = contracts.filter(contract => contract.holder_vulnerability_level == 0);
   }
-  
-  // Filtrar per cerca
+
+  if (onlyWithPaidPayments.value) {
+    contracts = contracts.filter(contract => getContractPaidPayments(contract).length > 0);
+  }
+
   if (!searchQuery.value) return contracts;
-  
+
   const query = searchQuery.value.toLowerCase();
   return contracts.filter(contract => {
     const fullName = `${contract.holder_name} ${contract.holder_surname}`.toLowerCase();
     const holderToken = contract.holder_token?.toLowerCase() || '';
     const contractToken = contract.token?.toLowerCase() || '';
-    
-    return fullName.includes(query) || 
-           holderToken.includes(query) || 
-           contractToken.includes(query);
+
+    return fullName.includes(query)
+      || holderToken.includes(query)
+      || contractToken.includes(query);
   });
 });
 
-// Exporta els contractes que es veuen al llistat (amb la cerca i els filtres aplicats).
-const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
-  filteredContracts.value.map(c => c.id), { claim_request_id: props.request.id });
+const pagination = computed(() => {
+  const total = filteredContracts.value.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE) || 1);
+  const isFiltered = Boolean(
+    searchQuery.value
+    || !hideExcluded.value
+    || showVulnerable.value
+    || onlyWithPaidPayments.value
+  );
 
-// Excloure un contracte i els seus pagaments
+  return {
+    page: Math.min(page.value, totalPages),
+    perPage: PER_PAGE,
+    total,
+    totalPages,
+    isFiltered
+  };
+});
+
+const paginatedContracts = computed(() => {
+  const start = (pagination.value.page - 1) * PER_PAGE;
+  return filteredContracts.value.slice(start, start + PER_PAGE);
+});
+
+watch(
+  [searchQuery, hideExcluded, showVulnerable, onlyWithPaidPayments],
+  () => { page.value = 1; }
+);
+
+const handlePageChange = (newPage) => {
+  page.value = newPage;
+};
+
+const exportFilteredContracts = () => $ClaimRequestApiService.exportContracts(
+  filteredContracts.value.map(c => c.id),
+  { claim_request_id: props.request.id }
+);
+
 const excludeContract = async (contractId) => {
   if (!confirm(t('confirmation_text_block.confirm_exclude_contract'))) return;
 
@@ -117,9 +167,7 @@ const excludeContract = async (contractId) => {
       contract_id: contractId
     });
     toast.success(t('informative_block.info_exclude_correct'));
-    // Recarreguem els contractes
     await loadContracts();
-    // Notifiquem el canvi al pare sense mostrar loading
     emit('change', false);
   } catch (error) {
     toast.error(t('common.error'));
@@ -129,16 +177,15 @@ const excludeContract = async (contractId) => {
   }
 };
 
-
 const closeAllRegions = () => {
   showRegion.value = false;
-  showRegionDetailComponent.value = null
-  regionDetailId.value = null
+  showRegionDetailComponent.value = null;
+  regionDetailId.value = null;
   emit('show-detail', false);
 };
 
-// Carregar els contractes al iniciar
 onMounted(async () => {
+  paymentStatusPaidToken.value = await $ConfigProjectApiService.get('payment_status_paid_token');
   await loadContracts();
   searchInput.value?.focus();
 });
@@ -153,47 +200,40 @@ onMounted(async () => {
         <AtomsDownloadXlsxButton :columns="[]" :server-export-fn="exportFilteredContracts"
           :disabled="loading || !filteredContracts.length"
           :export-name="[$t('common.contracts'), request?.token].filter(Boolean).join(' – ')" />
-        <!-- <button @click="$emit('close')" class="text-gray-500 hover:text-gray-700">
-          <Icon name="fa6-solid:xmark" class="text-xl" />
-        </button> -->
       </div>
-  
+
       <div class="mb-4 space-y-4">
         <div class="relative">
           <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Icon name="fa6-solid:magnifying-glass" class="text-gray-400" />
           </div>
-          <input
-            ref="searchInput"
-            v-model="searchQuery"
-            type="text"
+          <input ref="searchInput" v-model="searchQuery" type="text"
             :placeholder="`${$t('dashboard.search')} ${$t('common.name')}, ${$t('common.identificator')}  ${$t('common.or')} ${$t('contract')}`"
-            class="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-          />
+            class="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500" />
         </div>
-  
-        <div class="flex items-center gap-5">
+
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
           <label class="inline-flex items-center">
-            <input
-              type="checkbox"
-              v-model="hideExcluded"
-              class="form-checkbox h-4 w-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
-            />
-            <span class="ml-2 text-sm text-gray-700">{{ $t('common.show') }} {{ $t('contract_block.excluded_contracts') }}</span>
+            <input type="checkbox" v-model="hideExcluded"
+              class="form-checkbox h-4 w-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500" />
+            <span class="ml-2 text-sm text-gray-700">{{ $t('common.hide') }} {{ $t('contract_block.excluded_contracts')
+              }}</span>
           </label>
           <label class="inline-flex items-center">
-            <input
-              type="checkbox"
-              v-model="showVulnerable"
-              class="form-checkbox h-4 w-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
-            />
-            <span class="ml-2 text-sm text-gray-700">{{ $t('common.show') }} {{ $t('contract_block.vulnerables') }}</span>
+            <input type="checkbox" v-model="showVulnerable"
+              class="form-checkbox h-4 w-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500" />
+            <span class="ml-2 text-sm text-gray-700">{{ $t('common.show') }} {{ $t('contract_block.vulnerables')
+              }}</span>
+          </label>
+          <label class="inline-flex items-center">
+            <input type="checkbox" v-model="onlyWithPaidPayments"
+              class="form-checkbox h-4 w-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500" />
+            <span class="ml-2 text-sm text-gray-700">{{ $t('claim_block.with_paid_payments') }}</span>
           </label>
         </div>
       </div>
-  
-      <!-- afegim comptadors -->
-      <div class="flex gap-3 items-center mb-4" v-if="!loading">
+
+      <div class="flex gap-3 items-center mb-4 text-sm text-gray-700" v-if="!loading">
         <div>
           {{ $t('common.contracts') }}: {{ localContracts.count }}
         </div>
@@ -204,80 +244,127 @@ onMounted(async () => {
           {{ $t('billing_block.excluded_multiple') }}: {{ localContracts.count_excluded }}
         </div>
       </div>
-  
+
       <div class="flex-1 overflow-y-auto">
         <div v-if="loading && !localContracts.results?.length" class="flex justify-center items-center h-full">
           <Icon name="fa6-solid:spinner" class="animate-spin text-2xl" />
         </div>
-        <div v-else>
-          <div class="divide-y divide-gray-200 h-[70vh] overflow-y-auto">
-            <div v-for="(contract, index) in filteredContracts" :key="contract.id" class="bg-white">
-              <div class="px-4 py-3 flex justify-between items-center hover:bg-gray-50 relative"
-                :class="{ 
-                  'bg-white': index % 2 !== 0 && !contract.is_excluded, 
-                  'bg-sky-50': index % 2 === 0 && !contract.is_excluded,
-                  'bg-red-50': contract.is_excluded
-                }">
-                <div v-if="loadingContractId === contract.id" 
-                  class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
+        <div v-else class="flex flex-col h-[70vh]">
+          <div class="flex-1 overflow-y-auto divide-y divide-gray-200 border border-gray-200 rounded-md">
+            <div
+              class="sticky top-0 z-10 px-3 py-2 bg-slate-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <div
+                class="grid grid-cols-[28px_minmax(100px,1.1fr)_minmax(90px,0.9fr)_minmax(140px,1.6fr)_36px_88px_72px_100px_40px] gap-x-2 items-center">
+                <span></span>
+                <span>{{ $t('contract') }}</span>
+                <span>{{ $t('common.identificator') }}</span>
+                <span>{{ $t('common.name') }}</span>
+                <span></span>
+                <span>{{ $t('common.amount') }}</span>
+                <span>{{ $t('billing_block.payments') }}</span>
+                <span>{{ $t('common.status') }}</span>
+                <span></span>
+              </div>
+            </div>
+
+            <div v-if="!paginatedContracts.length" class="px-4 py-10 text-center text-sm text-gray-500">
+              {{ $t('common.no_results') }}
+            </div>
+
+            <div v-for="(contract, index) in paginatedContracts" :key="contract.id" class="bg-white">
+              <div class="px-3 py-3 relative hover:bg-gray-50" :class="{
+                'bg-white': index % 2 !== 0 && !contract.is_excluded,
+                'bg-sky-50': index % 2 === 0 && !contract.is_excluded,
+                'bg-red-50': contract.is_excluded
+              }">
+                <div v-if="loadingContractId === contract.id"
+                  class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
                   <Icon name="fa6-solid:spinner" class="animate-spin text-xl text-sky-600" />
                 </div>
-  
-                <div class="flex items-center space-x-3">
-                  <button @click="toggleContract(contract.id)" 
-                    class="text-gray-500 hover:text-gray-700"
+
+                <div
+                  class="grid grid-cols-[28px_minmax(100px,1.1fr)_minmax(90px,0.9fr)_minmax(140px,1.6fr)_36px_88px_72px_100px_40px] gap-x-2 items-center">
+                  <button @click="toggleContract(contract.id)" class="text-gray-500 hover:text-gray-700"
                     :disabled="loadingContractId === contract.id"
                     :title="`${$t('common.expand')}/${$t('common.collapse')} ${$t('contract')}`">
                     <Icon
                       :name="isContractExpanded(contract.id) ? 'fa6-solid:chevron-down' : 'fa6-solid:chevron-right'" />
                   </button>
-                  <div>
-                    <div class="grid grid-cols-[100px,100px,200px,50px,80px,80px,1fr] gap-2">
-                      <button @click="showDetail('ContractRegion', contract.id)"
-                        class="text-sky-500 hover:text-sky-700 underline text-left"
-                        :title="`${$t('common.show')} ${$t('common.details')}`">
-                        {{ contract.token }}
-                      </button>
-                      <span>{{ contract.holder_token }}</span>
-                      <span>{{ contract.holder_name }} {{ contract.holder_surname }}</span>
-                      <AtomsVulnerabilityCheck v-if="contract.holder_vulnerability_level" :vulnerability_level="contract.holder_vulnerability_level" :small="true" />
-                      <span v-else></span>
-                      <span>{{ formatMoney(contract.claim_payments.reduce((acc, curr) => curr.payment? acc + parseFloat(curr.payment.amount) : acc, 0)) }} €</span>
-                      <ColorBadge :color="contract.status?.color" :value="contract.status?.name" />
-                      <span></span>
-                    </div>
-                    <div class="text-sm text-gray-500 mt-1 grid grid-cols-[100px,1fr] gap-2">
-                      <span class="mr-2">{{ $t('billing_block.payments') }}: {{ contract.claim_payments.length }}</span>
-                      <span>
-                        <abbr v-if="contract.use_type && contract.use_type.name" :title="$t('common.usage_type')" class="mr-2">{{ contract.use_type.name }}</abbr>
-                        <abbr v-if="contract.client_type && contract.client_type.name" :title="$t('contract_block.client_type')" class="mr-2">{{ contract.client_type.name }}</abbr>
-                        <abbr v-if="contract.category && contract.category.name" :title="$t('contract_block.category')" class="mr-2">{{ contract.category.name }}</abbr>
-                        <abbr v-if="contract.debt_management && contract.debt_management.name" :title="$t('contract_block.debt_management')" class="mr-2">{{ contract.debt_management.name }}</abbr>
-                      </span>
+
+                  <div class="min-w-0">
+                    <button @click="showDetail('ContractRegion', contract.id)"
+                      class="text-sky-500 hover:text-sky-700 underline text-left truncate block max-w-full"
+                      :title="`${$t('common.show')} ${$t('common.details')}`">
+                      {{ contract.token }}
+                    </button>
+                    <div class="text-xs text-gray-500 mt-0.5 truncate">
+                      <abbr v-if="contract.use_type?.name" :title="$t('common.usage_type')" class="mr-1">{{
+                        contract.use_type.name }}</abbr>
+                      <abbr v-if="contract.client_type?.name" :title="$t('contract_block.client_type')" class="mr-1">{{
+                        contract.client_type.name }}</abbr>
+                      <abbr v-if="contract.category?.name" :title="$t('contract_block.category')" class="mr-1">{{
+                        contract.category.name }}</abbr>
+                      <abbr v-if="contract.debt_management?.name" :title="$t('contract_block.debt_management')">{{
+                        contract.debt_management.name }}</abbr>
                     </div>
                   </div>
+
+                  <span class="truncate">{{ contract.holder_token }}</span>
+
+                  <span class="truncate" :title="`${contract.holder_name} ${contract.holder_surname}`">
+                    {{ contract.holder_name }} {{ contract.holder_surname }}
+                  </span>
+
+                  <div class="flex justify-center">
+                    <AtomsVulnerabilityCheck v-if="contract.holder_vulnerability_level"
+                      :vulnerability_level="contract.holder_vulnerability_level" :small="true" />
+                  </div>
+
+                  <span class="tabular-nums whitespace-nowrap">{{ formatMoney(getContractAmount(contract)) }} €</span>
+
+                  <span class="text-sm text-gray-700 whitespace-nowrap" :title="getContractPaidPayments(contract).length
+                    ? `${getContractPaidPayments(contract).length} ${$t('reports_block.collected').toLowerCase()}`
+                    : undefined">
+                    {{ contract.claim_payments.length }}
+                    <span v-if="getContractPaidPayments(contract).length" class="text-emerald-700">
+                      /{{ getContractPaidPayments(contract).length }}
+                    </span>
+                  </span>
+
+                  <div class="min-w-0">
+                    <ColorBadge :color="contract.status?.color" :value="contract.status?.name" />
+                  </div>
+
+                  <div class="flex justify-end">
+                    <button v-if="!contract.is_excluded" @click="excludeContract(contract.id)"
+                      class="p-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 rounded"
+                      :disabled="loadingContractId === contract.id"
+                      :title="`${$t('billing_block.exclude')} ${$t('contract')}`">
+                      <Icon name="fa6-solid:ban" />
+                    </button>
+                    <span v-else class="p-1.5 text-red-600" :title="$t('billing_block.excluded')">
+                      <Icon name="fa6-solid:ban" />
+                    </span>
+                  </div>
                 </div>
-                <button v-if="!contract.is_excluded" 
-                  @click="excludeContract(contract.id)" 
-                  class="flex items-center gap-2 text-red-600 hover:text-red-900 text-lg"
-                  :disabled="loadingContractId === contract.id"
-                  :title="`${$t('billing_block.exclude')} ${$t('contract')}`">
-                  <Icon name="fa6-solid:ban" /> <span class="text-sm">{{ $t('billing_block.exclude') }} {{ $t('contract') }}</span>
-                </button>
-                <span v-else class="text-red-600 text-sm">{{ $t('billing_block.excluded') }}</span>
               </div>
               <div v-if="isContractExpanded(contract.id)" class="px-4 py-2 bg-gray-50">
                 <table class="min-w-full divide-y divide-gray-200">
                   <thead>
                     <tr>
-                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('invoice') }}</th>
-                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.due_date') }}</th>
-                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.amount') }}</th>
-                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.status') }}</th>
+                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('invoice') }}
+                      </th>
+                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{
+                        $t('common.due_date') }}</th>
+                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.amount')
+                        }}</th>
+                      <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.status')
+                        }}</th>
                     </tr>
                   </thead>
                   <tbody class="bg-white divide-y divide-gray-200">
-                    <tr v-for="claimPayment in contract.claim_payments" :key="claimPayment.id">
+                    <tr v-for="claimPayment in contract.claim_payments" :key="claimPayment.id"
+                      :class="{ 'bg-emerald-50': isClaimPaymentPaid(claimPayment) }">
                       <td class="px-3 py-1 whitespace-nowrap">
                         <button @click="showDetail('InvoiceRegion', claimPayment.payment.invoice_id)"
                           class="text-sm text-sky-600 hover:text-sky-900 underline"
@@ -290,16 +377,22 @@ onMounted(async () => {
                         <span v-else>-</span>
                       </td>
                       <td class="px-3 py-1 whitespace-nowrap">
-                        <span class="text-sm text-gray-900">{{ formatMoney(claimPayment.payment ? claimPayment.payment.amount : 0) }} €</span>
+                        <span class="text-sm text-gray-900">{{ formatMoney(claimPayment.payment ?
+                          claimPayment.payment.amount : 0) }} €</span>
                       </td>
                       <td class="px-3 py-1 whitespace-nowrap">
-                        <ColorBadge :color="claimPayment.payment ? claimPayment.payment.status.color : 'gray'" :value="claimPayment.payment ? claimPayment.payment.status.name : '-' " />
+                        <ColorBadge :color="claimPayment.payment ? claimPayment.payment.status.color : 'gray'"
+                          :value="claimPayment.payment ? claimPayment.payment.status.name : '-'" />
                       </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </div>
+          </div>
+
+          <div class="border-t border-gray-100 pt-2 mt-2" v-if="filteredContracts.length > 0">
+            <Pagination :pagination="pagination" @update:page="handlePageChange" />
           </div>
         </div>
       </div>
@@ -313,13 +406,10 @@ onMounted(async () => {
         </button>
       </div>
       <div class="px-10">
-        <!-- Subregions aqui -->
         <ContractRegion v-if="showRegionDetailComponent === 'ContractRegion'" :id="regionDetailId"
-          :isSubRegion="true"/>
-        <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'" :id="regionDetailId"
-          :isSubRegion="true"/>
-        <!-- /end Subregions aqui -->
+          :isSubRegion="true" />
+        <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'" :id="regionDetailId" :isSubRegion="true" />
       </div>
     </div>
   </div>
-</template> 
+</template>

@@ -183,7 +183,9 @@ const createEmpty = () => {
   clusterAddressExtra.value = null;
   clusterNbNozzles.value = 1;
   clusterCadastral.value = null;
-  nozzlesBD.value = [
+  // Una bateria nova encara no té boquilles a BD: la llista de la pantalla va a part de la còpia desada
+  nozzlesBD.value = [];
+  nozzles.value = [
     {
       position: 1,
       diameter: selected_connection.value?.diameter?.name || cluster.value?.connection?.diameter?.name,
@@ -204,7 +206,6 @@ const createEmpty = () => {
       }
     }
   ]
-  nozzles.value = nozzlesBD.value;
   isLoading.value = false;
 }
 
@@ -425,6 +426,59 @@ const isValid = () => {
   return true;
 }
 
+// Una boquilla desada que ja té punt de subministrament no s'ha de reaprofitar per a un punt nou:
+// si se'n canvia la destinació, la columna o la fila, es demana confirmació abans de desar.
+// Es mira també el punt que tenia en carregar-la: si s'ha desvinculat, en desar se'n crearia un de nou.
+const linkedSupplyPoint = (nozzle, original) =>
+  nozzle.supplyPoint?.id ? nozzle.supplyPoint : (original?.supplyPoint?.id ? original.supplyPoint : null);
+
+const confirmLinkedNozzleChanges = () => {
+  const sameValue = (a, b) => (a ?? '').toString() === (b ?? '').toString();
+  const changed = [];
+  for (const nozzle of nozzles.value) {
+    if (!nozzle.id) continue;
+    const original = nozzlesBD.value.find(n => n.id === nozzle.id);
+    const supplyPoint = linkedSupplyPoint(nozzle, original);
+    if (!original || !supplyPoint) continue;
+    if (!sameValue(nozzle.destination, original.destination)
+      || !sameValue(nozzle.col, original.col)
+      || !sameValue(nozzle.row, original.row)) {
+      changed.push(supplyPoint);
+    }
+  }
+  if (changed.length === 0) return true;
+  const tokens = changed.map(sp => sp.token).join(', ');
+  return confirm(t('service_block.linked_nozzle_change_confirm', { tokens }));
+}
+
+// Valors desats d'una boquilla: els vincles immediats només desen el punt, i els canvis
+// pendents de columna, fila o destinació passen per la confirmació en desar la bateria.
+const storedNozzle = (nozzle) => nozzlesBD.value.find(n => n.id === nozzle.id) || nozzle;
+
+// Desa de seguida el vincle d'una boquilla de BD amb un punt. La resta de camps s'envien amb els
+// valors desats (la destinació, la calculada si n'hi ha) i s'actualitza la còpia desada.
+const saveNozzleLink = async (nozzle, supplyPoint, destination = undefined) => {
+  const stored = storedNozzle(nozzle);
+  const savedDestination = destination ?? stored.destination;
+  await $ClusterNozzleApiService.save({
+    id: nozzle.id,
+    cluster: cluster.value?.id,
+    token: stored.token,
+    position: stored.position,
+    status: stored.status?.id ?? stored.status,
+    type: stored.type?.id ?? stored.type,
+    diameter: stored.diameter,
+    destination: savedDestination,
+    col: stored.col,
+    row: stored.row,
+    supply_point_id: supplyPoint.id,
+  });
+  const index = nozzlesBD.value.findIndex(n => n.id === nozzle.id);
+  if (index !== -1) {
+    nozzlesBD.value.splice(index, 1, { ...nozzlesBD.value[index], destination: savedDestination, supplyPoint });
+  }
+}
+
 // Funció per guardar el cluster
 const saveCluster = async () => {
   // Forcem el blur de l'input actiu perquè es propagui (@change) qualsevol valor
@@ -435,6 +489,10 @@ const saveCluster = async () => {
 
   attemptedSave.value = true;
   if (!isValid()) {
+    return;
+  }
+
+  if (!confirmLinkedNozzleChanges()) {
     return;
   }
 
@@ -547,6 +605,10 @@ const saveCluster = async () => {
   try {
     const response = await $ClusterApiService.save(data);
     console.log("0. response cluster data", response)
+    // Es guarda l'id de seguida: si el desat falla més endavant, en reintentar no es crea una altra bateria
+    if (response?.id && !cluster.value?.id) {
+      cluster.value = { ...(cluster.value || {}), id: response.id };
+    }
     
     let street = response.address_street
     if (street) {
@@ -557,7 +619,8 @@ const saveCluster = async () => {
       // mirem si existeix a nozzlesBD
 
       console.log("1. nozzle.value.map",nozzle, nozzle.position)
-      const index = nozzlesBD.value.findIndex((n) => n.id == nozzle.id);
+      // Només per id real: una boquilla nova (sense id) no ha de coincidir amb cap altra sense id
+      const index = nozzle.id ? nozzlesBD.value.findIndex((n) => n.id == nozzle.id) : -1;
       console.log("2. index",index)
       const nozzleBD = nozzlesBD.value[index];
 
@@ -609,8 +672,9 @@ const saveCluster = async () => {
           };
           nozzle.supplyPoint = await $SupplyPointApiService.save(spData);
         } catch (error) {
+          // S'atura el desat: si no, la boquilla es desaria sense punt i es mostraria el desat correcte
           console.error('Error creant automàticament el punt de subministrament de la boquilla', nozzle.position, error);
-          toast.error(t('common.error_save'));
+          throw error;
         }
       }
 
@@ -638,7 +702,15 @@ const saveCluster = async () => {
       }
       delete data.supplyPoint;
       // si existeix, actualitzem, si no creem
-      await $ClusterNozzleApiService.save(data);
+      const savedNozzle = await $ClusterNozzleApiService.save(data);
+      // La còpia desada reflecteix el que ja és a BD: si el desat falla més endavant, en reintentar
+      // no es duplica la boquilla i la confirmació compara amb els valors realment desats
+      if (nozzleBD) {
+        nozzlesBD.value.splice(index, 1, { ...nozzle });
+      } else if (savedNozzle?.id) {
+        nozzle.id = savedNozzle.id;
+        nozzlesBD.value.push({ ...nozzle });
+      }
     } // end for nozzles
 
     // Eliminem les boquilles de la BD que s'han tret de la llista (per id, no per índex,
@@ -651,6 +723,7 @@ const saveCluster = async () => {
     nozzlesBD.value = nozzlesBD.value.filter(n => !removedNozzles.includes(n));
     console.log("9. nozzlesBD.value",nozzlesBD.value)
 
+    toast.success(t('common.saved_successfully'));
     emits('saved', response);
 
     if (props.allowNavigation) {
@@ -658,7 +731,9 @@ const saveCluster = async () => {
     }
 
   } catch (error) {
+    // Sense avís, l'usuari no sap que les boquilles a partir de la que ha fallat no s'han desat
     console.error(error);
+    toast.error(t('common.error_save'));
   } finally {
     saving.value = false;
   }
@@ -770,19 +845,7 @@ const onSupplyPointSelected = async (supplyPoint) => {
       // si la boquilla ja existeix a BD, guardem el vincle immediatament
       if (updatedNozzle.id) {
         try {
-          await $ClusterNozzleApiService.save({
-            id: updatedNozzle.id,
-            cluster: cluster.value?.id,
-            token: updatedNozzle.token,
-            position: updatedNozzle.position,
-            status: updatedNozzle.status?.id ?? updatedNozzle.status,
-            type: updatedNozzle.type?.id ?? updatedNozzle.type,
-            diameter: updatedNozzle.diameter,
-            destination: updatedNozzle.destination,
-            col: updatedNozzle.col,
-            row: updatedNozzle.row,
-            supply_point_id: supplyPoint.id,
-          });
+          await saveNozzleLink(updatedNozzle, supplyPoint);
           toast.success(t('common.saved_successfully'));
         } catch (error) {
           console.error('Error vinculant el punt de subministrament:', error);
@@ -804,19 +867,10 @@ const onSupplyPointCreated = async (supplyPoint) => {
       // Si la boquilla ja existeix a BD, vinculem el punt de subministrament acabat de crear/editar immediatament
       if (updatedNozzle.id) {
         try {
-          await $ClusterNozzleApiService.save({
-            id: updatedNozzle.id,
-            cluster: cluster.value?.id,
-            token: updatedNozzle.token,
-            position: updatedNozzle.position,
-            status: updatedNozzle.status?.id ?? updatedNozzle.status,
-            type: updatedNozzle.type?.id ?? updatedNozzle.type,
-            diameter: updatedNozzle.diameter,
-            destination: updateDestination(supplyPoint.address || {}),
-            col: updatedNozzle.col,
-            row: updatedNozzle.row,
-            supply_point_id: supplyPoint.id,
-          });
+          const destination = updateDestination(supplyPoint.address || {});
+          await saveNozzleLink(updatedNozzle, supplyPoint, destination);
+          // La destinació desada passa també a la pantalla, perquè desar la bateria no la torni enrere
+          nozzles.value.splice(index, 1, { ...updatedNozzle, destination });
           toast.success(t('common.saved_successfully'));
         } catch (error) {
           console.error('Error vinculant el punt de subministrament amb la bateria:', error);
@@ -945,19 +999,9 @@ const createNewLocalSupplyPoint = async () => {
     // Si la boquilla ja existeix a BD, vinculem el punt de subministrament acabat de crear immediatament
     if (updatedNozzle.id) {
       try {
-        await $ClusterNozzleApiService.save({
-          id: updatedNozzle.id,
-          cluster: cluster.value?.id,
-          token: updatedNozzle.token,
-          position: updatedNozzle.position,
-          status: updatedNozzle.status?.id ?? updatedNozzle.status,
-          type: updatedNozzle.type?.id ?? updatedNozzle.type,
-          diameter: updatedNozzle.diameter,
-          destination: updateDestination(address),
-          col: updatedNozzle.col,
-          row: updatedNozzle.row,
-          supply_point_id: response.id,
-        });
+        const destination = updateDestination(address);
+        await saveNozzleLink(updatedNozzle, response, destination);
+        nozzles.value.splice(index, 1, { ...updatedNozzle, destination });
       } catch (error) {
         console.error('Error vinculant el punt de subministrament amb la bateria:', error);
         toast.error(t('common.error_save'));

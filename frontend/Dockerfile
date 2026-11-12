@@ -33,6 +33,19 @@ ENV NUXT_PUBLIC_EXPLOITATION_SITES=${NUXT_PUBLIC_EXPLOITATION_SITES}
 # aquesta màquina i el build mor amb "heap out of memory". Amb 3.15 no hi arribava.
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
+# Informació del deploy (versió, commit i data del build) per al NavSidebar, servida a
+# /deploy-info.json. La passa .github/workflows/imatges.yml; el context del build no porta .git.
+# S'escriu abans del build perquè Nitro només serveix els fitxers de public/ que hi troba en
+# compilar. Sense args (build al servidor) només es registra la data del build.
+ARG APP_VERSION=
+ARG GIT_COMMIT=
+ARG GIT_COMMIT_DATE=
+ARG GIT_BRANCH=
+ARG BUILD_DATE=
+RUN APP_VERSION="$APP_VERSION" GIT_COMMIT="$GIT_COMMIT" GIT_COMMIT_DATE="$GIT_COMMIT_DATE" \
+    GIT_BRANCH="$GIT_BRANCH" BUILD_DATE="$BUILD_DATE" \
+    node scripts/write-deploy-info.mjs public/deploy-info.json
+
 RUN npm run build
 
 FROM node:22-bookworm-slim

@@ -21,6 +21,7 @@ from django.db.models import Count, Exists, OuterRef, Q
 from billing.models import Billing, BillingStatus, Invoice, InvoiceStatus, Payment, Reading, ReadingBatch
 from billing.tasks import process_billing_batch, process_invoice_documents
 from billing.utils.payment_service import (
+    check_claim_payments_for_paid_invoice,
     disconnect_payment_signals,
     get_status_map,
     log_invoice_status,
@@ -28,6 +29,8 @@ from billing.utils.payment_service import (
 )
 from coredata.models import ConfigProject
 from billing.utils.reading_filters import PENDING_READING_FILTER
+from service.models import SupplyPoint
+from service.utils.route_scope import routes_supply_points_q
 
 
 class Command(BaseCommand):
@@ -327,6 +330,7 @@ class Command(BaseCommand):
                     invoice.save(update_fields=['status'])
                     log_invoice_status(invoice, paid_invoice_status, user)
                     marked += 1
+                check_claim_payments_for_paid_invoice(invoice, user)
         finally:
             reconnect_payment_signals()
 
@@ -339,10 +343,9 @@ class Command(BaseCommand):
             return 0
 
         billing_supply_point_ids = set(
-            billing.routes.values_list(
-                'positions__properties__supply_points__id',
-                flat=True,
-            ).distinct()
+            SupplyPoint.objects.filter(
+                routes_supply_points_q(billing.routes.all())
+            ).values_list('id', flat=True)
         )
         billing_supply_point_ids.discard(None)
 

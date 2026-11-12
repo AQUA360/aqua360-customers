@@ -4,10 +4,12 @@ import { useToast } from 'vue-toastification';
 import H1 from '~/components/atoms/H1.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import { usePermissions } from '~/middleware/permission';
+import { useConfigStore } from '~/stores/useConfigStore';
 import { formatDate } from '~/utils/date';
 
 const { t } = useI18n();
 const toast = useToast();
+const configStore = useConfigStore();
 const {
   $ConfigProjectApiService,
   $ConfiglistApiService,
@@ -257,15 +259,6 @@ const resolveConfigRawValue = (raw) => {
   return raw;
 };
 
-const parseConfigBool = (value) => {
-  const resolved = resolveConfigRawValue(value);
-  return resolved === true
-    || resolved === 'True'
-    || resolved === 'true'
-    || resolved === 1
-    || resolved === '1';
-};
-
 const optionLabel = (option) => {
   if (!option) return '';
   if (option.token && option.name) return `${option.token} - ${option.name}`;
@@ -292,8 +285,8 @@ const selectedProduct = computed(() => {
 const canShowLineItems = computed(() => useAca.value && !!selectedProduct.value);
 
 const parseUseAcaFromConfigs = (allConfigs) => {
-  const useAcaConfig = (allConfigs ?? []).find((item) => item.token === 'uses_aca');
-  useAca.value = useAcaConfig != null ? parseConfigBool(useAcaConfig.value) : false;
+  const orgConfig = (allConfigs ?? []).find((item) => item.token === 'public_org_type');
+  useAca.value = String(orgConfig?.value ?? '').trim().toLowerCase() === 'aca';
 };
 
 const normalizeConfigAcaItem = (item) => ({
@@ -305,10 +298,10 @@ const normalizeConfigAcaItem = (item) => ({
 });
 
 const ensureUseAcaConfig = async (allConfigs) => {
-  if (allConfigs?.some((item) => item.token === 'uses_aca')) return allConfigs;
+  if (allConfigs?.some((item) => item.token === 'public_org_type')) return allConfigs;
 
   try {
-    const filtered = await $ConfigProjectApiService.getAll('uses_aca');
+    const filtered = await $ConfigProjectApiService.getAll('public_org_type');
     if (!Array.isArray(filtered) || !filtered.length) return allConfigs;
 
     const merged = [...(allConfigs ?? [])];
@@ -459,7 +452,7 @@ const applyFillResult = (result) => {
 
 const handleFillSkipped = (result) => {
   if (!result?.skipped) return false;
-  if (result.reason === 'uses_aca_disabled') {
+  if (result.reason === 'public_org_type_disabled') {
     toast.error(t('settings_block.aca_fill_skipped_disabled'));
   }
   applyFillResult(result);
@@ -691,6 +684,17 @@ const saveConfig = async () => {
     console.log("activeConfigRows")
     console.log(activeConfigRows.value)
 
+    // El toggle d'ACA ara es desa a `public_org_type` ('aca' o buit).
+    const orgTypeValue = useAca.value ? 'aca' : '';
+    const configResponse = await $ConfigProjectApiService.bulkUpdateValues([
+      { token: 'public_org_type', value: orgTypeValue },
+    ]);
+    if (configResponse?.errors?.length) {
+      toast.error(configResponse.errors[0].detail || t('common.error'));
+      return;
+    }
+    configStore.publicOrgType = orgTypeValue;
+
     const response = await $ConfigAcaApiService.updateConfigs(
       {"active_config_rows": activeConfigRows.value}
     )
@@ -709,11 +713,7 @@ const saveConfig = async () => {
 };
 
 const saveLineItemArticle = async (lineItem) => {
-  const articleId = lineItemArticles.value[lineItem.id];
-  if (!articleId) {
-    toast.error(t('settings_block.aca_select_article_code'));
-    return;
-  }
+  const articleId = lineItemArticles.value[lineItem.id] || null;
 
   savingLineItemId.value = lineItem.id;
   try {
@@ -725,6 +725,9 @@ const saveLineItemArticle = async (lineItem) => {
       is_fix: false,
       article_id: articleId,
     });
+    lineItem.article = articleId
+      ? (articles.value.find((article) => article.id === articleId) ?? lineItem.article)
+      : null;
     toast.success(t('common.correct_save'));
   } catch (error) {
     console.error(error);
@@ -816,21 +819,22 @@ onBeforeUnmount(() => {
                   <v-select v-if="row.token_type === 'VariableType'" v-model="row.variable_types"
                     :options="variableTypes" :get-option-label="optionLabel" multiple track-by="id"
                     :close-on-select="false" :disabled="savingConfig" :placeholder="t('None')"
-                    class="w-full min-w-[14rem] text-sm" />
+                    class="w-full min-w-[14rem] text-sm" append-to-body />
 
                   <v-select v-else-if="row.token_type === 'ContractUseType'" v-model="row.contract_use_types"
                     :options="contractUseTypes" :get-option-label="optionLabel" multiple track-by="id"
                     :close-on-select="false" :disabled="savingConfig" :placeholder="t('None')"
-                    class="w-full min-w-[14rem] text-sm" />
+                    class="w-full min-w-[14rem] text-sm" append-to-body />
 
                   <v-select v-else-if="row.token_type === 'Product'" v-model="row.products" :options="products"
                     :get-option-label="optionLabel" multiple track-by="id" :close-on-select="false"
-                    :disabled="savingConfig" :placeholder="t('None')" class="w-full min-w-[14rem] text-sm" />
+                    :disabled="savingConfig" :placeholder="t('None')" class="w-full min-w-[14rem] text-sm"
+                    append-to-body />
 
                   <v-select v-else-if="row.token_type === 'PriceRate'" v-model="row.price_rates" :options="priceRates"
                     :get-option-label="optionLabel" multiple track-by="id" :close-on-select="false"
                     :disabled="savingConfig || !selectedProduct" :placeholder="t('None')"
-                    class="w-full min-w-[14rem] text-sm" />
+                    class="w-full min-w-[14rem] text-sm" append-to-body />
 
                   <span v-else class="text-slate-400">—</span>
                 </td>
@@ -1046,3 +1050,10 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style>
+/* El menú va al body: si es queda dins el contenidor amb overflow, obre un segon scroll. */
+body > ul.vs__dropdown-menu {
+  z-index: 10050;
+}
+</style>

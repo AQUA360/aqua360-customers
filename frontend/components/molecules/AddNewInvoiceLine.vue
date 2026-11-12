@@ -56,7 +56,7 @@ const getProducts = async (page = 1, search = '') => {
     
     response.results.forEach(item => {
         products.value.push({
-            label: `${item.name} (${item.exploitation.name})`,
+            label: item.exploitation?.name ? `${item.name} (${item.exploitation.name})` : item.name,
             value: item.id
         })
     });

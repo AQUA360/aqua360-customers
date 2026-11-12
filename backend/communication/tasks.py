@@ -9,7 +9,8 @@ from celery import states
 from billing.models import Invoice, PaymentRemittance
 from billing.utils.payment_pdf_service import generate_report_payment_pdf
 from claimrequest.models import ClaimRequest
-from communication.models import Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
+from communication.models import CANCELLED_STATUS_TOKEN, Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
+from communication.utils.communication_process_service import finish_process_if_done
 from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file, validate_letter_contract_companies, invoices_attached_to_email
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
@@ -126,16 +127,13 @@ def send_communications_task(process_id=None, communication_ids=None, batch_size
                     }
                     Notification.objects.create(**notification_save)
                     try:
-                        if all(communication.status.token == comm_sent_token for communication in process.communications.all()):
-                            status_finalized_token = ConfigProject.objects.get(token='communication_process_status_finalized_token').value
-                            status_current = CommunicationProcessStatus.objects.get(token=status_finalized_token)
-                        else:
+                        # Si s'ha anul·lat mentre s'enviava, es queda anul·lat
+                        if not finish_process_if_done(process) and process.status.token != CANCELLED_STATUS_TOKEN:
                             status_current_token = ConfigProject.objects.get(
                                 token="communication_process_status_current_token"
                             ).value
-                            status_current = CommunicationProcessStatus.objects.get(token=status_current_token)
-                        process.status = status_current
-                        process.save()
+                            process.status = CommunicationProcessStatus.objects.get(token=status_current_token)
+                            process.save()
                     except (ConfigProject.DoesNotExist, CommunicationProcessStatus.DoesNotExist) as e:
                         print(f"Error updating process status: {str(e)}")
                 except Exception as e:
@@ -293,6 +291,9 @@ def _create_claim_step_communication_file(
     invoice and payment slip (created separately) are unaffected by
     `attach_claim_documents`.
     """
+    if not claim_request.current_step.document_type_id:
+        # Pas sense tipus de document (p. ex. només genera ordre): no hi ha document de pas a adjuntar
+        return None
     pdf_args = [claim_request.id, contract.id, claim_request.current_step.id]
     if joined_payment_id is not None:
         pdf_args.append(joined_payment_id)
@@ -418,8 +419,9 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
 
                 joined_payment_ids = joined_payments if add_joined_payments else [None]
                 for joined_payment_id in joined_payment_ids:
-                    claim_com_files.append(
-                        _create_claim_step_communication_file(
+                    # Un error en un contracte no ha d'impedir desar els documents de la resta
+                    try:
+                        claim_file = _create_claim_step_communication_file(
                             claim_request,
                             contract,
                             comm,
@@ -428,7 +430,11 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                             attach_claim_documents,
                             joined_payment_id,
                         )
-                    )
+                    except Exception as e:
+                        print(f"Error generating claim step document for contract {contract.id}: {str(e)}")
+                        claim_file = None
+                    if claim_file:
+                        claim_com_files.append(claim_file)
                     counter += 1
                 processed_contracts += 1
                 

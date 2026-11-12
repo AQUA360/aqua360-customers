@@ -20,6 +20,7 @@ from coredata.models import ConfigProject
 from service.models import Exploitation, Meter, Route, SupplyPoint
 from service.serializers.route_serializer import RouteListSerializer
 from service.utils.route_positions_service import route_count_total_readings
+from service.utils.route_scope import effective_route, effective_route_q, effective_route_select_related
 from django.contrib.auth.models import Group
 from billing.tasks import create_billings
 from pricing.models import ProductOrigin
@@ -36,6 +37,11 @@ from billing.models import (
     Reading
 )
 from billing.serializers.billing_serializer import BillingListSerializer, BillingSerializer
+from django.db import transaction
+from django.utils.translation import gettext as _
+from billing.utils.billing_process_errors import (
+  build_contract_error, dedupe_contract_readings, no_invoice_generated_error, remove_billing_process_errors, upsert_billing_process_error,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -162,7 +168,7 @@ class BillingViewSet(viewsets.ModelViewSet):
         'anual': 12,
       }
       interval = PERIOD_TYPE_INTERVAL.get(biller.period_type, 3)
-      today = timezone.now().date()
+      today = timezone.localdate()
 
       # El token/name de `create_billings` (billing/tasks.py) porta el mes/any en que
       # es va CREAR el lot (`current_month`/`current_year` del moment d'execucio), no
@@ -224,7 +230,7 @@ class BillingViewSet(viewsets.ModelViewSet):
       # no només l'actual), ja sigui per lectures dins del rang o, si no en té, per
       # data d'emissió dins del rang.
       route_contracts = Contract.objects.filter(
-        supply_points__property__route_position__route__biller=biller,
+        effective_route_q('route__biller', biller, prefix='supply_points__'),
         created_at__date__lte=last_end_reading,
       ).filter(billable_status_filter).distinct()
 
@@ -276,7 +282,9 @@ class BillingViewSet(viewsets.ModelViewSet):
         else all_missing_contracts
       ).select_related(
         'status',
-        'supply_point_default__property__route_position__route__biller'
+        *effective_route_select_related('supply_point_default__'),
+        'supply_point_default__route_position__route__biller',
+        'supply_point_default__property__route_position__route__biller',
       )
 
       filtered_contract_ids = list(filtered_contracts.values_list('id', flat=True))
@@ -322,9 +330,15 @@ class BillingViewSet(viewsets.ModelViewSet):
       ).exclude(
         supply_points__isnull=True
       ).filter(
-        Q(supply_points__property__isnull=True) |
-        Q(supply_points__property__route_position__isnull=True) |
-        Q(supply_points__property__route_position__route__isnull=True)
+        # Algun punt sense ruta efectiva (ni pròpia ni de la finca)
+        Q(supply_points__route_position__isnull=False, supply_points__route_position__route__isnull=True) |
+        (
+          Q(supply_points__route_position__isnull=True) & (
+            Q(supply_points__property__isnull=True) |
+            Q(supply_points__property__route_position__isnull=True) |
+            Q(supply_points__property__route_position__route__isnull=True)
+          )
+        )
       ).values_list('id', flat=True).distinct())
 
       contract_ids_with_price_rates = set(Contract.objects.filter(
@@ -454,8 +468,9 @@ class BillingViewSet(viewsets.ModelViewSet):
               missing_reasons.append('unprocessed_invoice')
     if contract.id in no_route_contract_ids:
       missing_reasons.append('no_route')
-    if contract.supply_point_default and contract.supply_point_default.property and contract.supply_point_default.property.route_position and contract.supply_point_default.property.route_position.route and contract.supply_point_default.property.route_position.route.biller and contract.supply_point_default.property.route_position.route.biller != billing.biller:
-      missing_reasons.append({'current_route': contract.supply_point_default.property.route_position.route.biller.name})
+    current_route = effective_route(contract.supply_point_default)
+    if current_route and current_route.biller and current_route.biller != billing.biller:
+      missing_reasons.append({'current_route': current_route.biller.name})
     if contract.id not in contract_ids_with_price_rates:
       missing_reasons.append('no_price_rate')
     if contract.id not in contract_ids_with_meters:
@@ -494,6 +509,7 @@ class BillingViewSet(viewsets.ModelViewSet):
           billing_missing=billing,
           missing_start=start_date,
           missing_end=end_date,
+          exploitation=billing.biller.exploitation if billing.biller_id else None,
         )
         new_reading_batch.fix_meters.set(meters)
         
@@ -667,6 +683,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -752,6 +769,7 @@ class BillingViewSet(viewsets.ModelViewSet):
                   billing_missing=billing,
                   missing_start=start_date,
                   missing_end=end_date,
+                  exploitation=billing.biller.exploitation if billing.biller_id else None,
               )
 
       first_start_reading = ref_batch.missing_start if ref_batch and ref_batch.missing_start else (reading_dates['min_previous'] or reading_dates['min_reading'])
@@ -788,6 +806,7 @@ class BillingViewSet(viewsets.ModelViewSet):
 
   @action(detail=True, methods=['post'], url_path='process-contract')
   def process_contract(self, request, pk=None):
+      """Factura un contracte a la facturació; si falla, desa el motiu a `process_errors`."""
       billing = self.get_object()
       contract_id = request.data.get('contract_id')
       if not contract_id:
@@ -801,104 +820,133 @@ class BillingViewSet(viewsets.ModelViewSet):
       from billing.utils.reading_service import fanout_general_meter_readings
       fanout_general_meter_readings(billing)
 
-      # Find readings for this contract under current billing
-      contract_readings = list(billing.readings.filter(
-          contract=contract,
-          is_control=False,
-          is_active=True,
-          is_close=False
-      ).select_related('contract', 'contract__status', 'supply_point', 'meter', 'batch', 'billing').exclude(
-          invoices__type_final='F'
-      ).order_by('reading_date').distinct())
-
-      if not contract_readings:
-          return Response({"error": "No active readings associated with this billing lot for the contract."}, status=status.HTTP_400_BAD_REQUEST)
-
-      # Deduplicate to avoid more than 1 reading for the same contract & meter
-      set_added_readings = set()
-      filtered_readings = []
-      for reading in contract_readings:
-          if (contract.token, reading.meter.code) in set_added_readings:
-              continue
-          set_added_readings.add((contract.token, reading.meter.code))
-          filtered_readings.append(reading)
-
-      period_type = billing.biller.period_type
-      PERIOD_MONTHS_MAP = {
-          'trimestral': 90,
-          'semestral': 180,
-          'bimestral': 60,
-          'quadrimestral': 120,
-          'anual': 360,
-          'mensual': 30,
-      }
-      period_days = PERIOD_MONTHS_MAP.get(period_type, 90)
-      period_months = period_days / 30
-
-      # Generate invoice
-      from billing.utils.invoice_service import generate_consumption_invoice_multiple
-      from billing.models import InvoiceWarning
-      from statistics.utils.billing_amount_average import is_high_amount_for_period
-
-      billing_batch = billing.billing_batches.first()
-      invoice = generate_consumption_invoice_multiple(
-          contract=contract,
-          readings=filtered_readings,
-          title=billing.name,
-          billing=billing,
-          billing_batch=billing_batch,
-          period_months=period_months
-      )
-
-      if not invoice:
-          return Response({"error": "Failed to generate invoice (no meter or date mismatch)."}, status=status.HTTP_400_BAD_REQUEST)
-
-      # Set general contracts if general invoice exists
-      if contract.general_invoice:
-          general_invoice = contract.general_invoice
-          general_contracts = list(Contract.objects.filter(general_invoice=general_invoice))
-          invoice.general_contracts.set(general_contracts)
-
-      # Apply warning checks
+      # Tot en una transacció: si falla, no queda res a mitges i l'error es desa a la
+      # facturació perquè l'usuari en vegi el motiu i el pugui tornar a processar.
       try:
-          invoice_warning_negative = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_negative').value).first()
-          invoice_warning_zero = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_zero').value).first()
-          invoice_warning_bank_missing = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_bank_missing').value).first()
-          invoice_warning_payment_missing = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_payment_missing').value).first()
-          invoice_warning_simplified_over_400 = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_simplified_over_400').value).first()
-          invoice_warning_high_amount = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_high_amount').value).first()
-      except Exception:
-          invoice_warning_negative = None
-          invoice_warning_zero = None
-          invoice_warning_bank_missing = None
-          invoice_warning_payment_missing = None
-          invoice_warning_simplified_over_400 = None
-          invoice_warning_high_amount = None
+          with transaction.atomic():
+              # Find readings for this contract under current billing
+              contract_readings = list(billing.readings.filter(
+                  contract=contract,
+                  is_control=False,
+                  is_active=True,
+                  is_close=False
+              ).select_related('contract', 'contract__status', 'supply_point', 'meter', 'batch', 'billing').exclude(
+                  invoices__type_final='F'
+              ).order_by('reading_date').distinct())
 
-      warning = None
-      if invoice.total_final <= 0:
-          warning = invoice_warning_negative
-      elif invoice.total_final == 0:
-          warning = invoice_warning_zero
-      elif invoice.payment_type is None:
-          warning = invoice_warning_payment_missing
-      elif invoice.payment_type.token == 'DIRECT_DEBIT' and invoice.payment_bank is None:
-          warning = invoice_warning_bank_missing
-      elif invoice.simplified and invoice.total_final >= 400:
-          warning = invoice_warning_simplified_over_400
-      elif invoice.total_final and invoice_warning_high_amount:
-          if is_high_amount_for_period(invoice.total_final, [contract], invoice.billing_period_year, invoice.billing_period_month, exclude_invoice_id=invoice.id):
-              warning = invoice_warning_high_amount
+              if not contract_readings:
+                  return Response({"error": _("El contracte no té lectures pendents de facturar en aquesta facturació.")}, status=status.HTTP_400_BAD_REQUEST)
 
-      if warning:
-          invoice.warning = warning
-          invoice.save(update_fields=['warning'])
+              # Valida les lectures i en deixa una per comptador
+              filtered_readings = dedupe_contract_readings(contract, contract_readings)
 
-      # Double check it is associated to billing
-      invoice.billing = billing
-      invoice.save()
+              period_type = billing.biller.period_type
+              PERIOD_MONTHS_MAP = {
+                  'trimestral': 90,
+                  'semestral': 180,
+                  'bimestral': 60,
+                  'quadrimestral': 120,
+                  'anual': 360,
+                  'mensual': 30,
+              }
+              period_days = PERIOD_MONTHS_MAP.get(period_type, 90)
+              period_months = period_days / 30
+
+              # Generate invoice
+              from billing.utils.invoice_service import generate_consumption_invoice_multiple
+              from billing.models import InvoiceWarning
+              from statistics.utils.billing_amount_average import is_high_amount_for_period
+
+              billing_batch = billing.billing_batches.first()
+              invoice = generate_consumption_invoice_multiple(
+                  contract=contract,
+                  readings=filtered_readings,
+                  title=billing.name,
+                  billing=billing,
+                  billing_batch=billing_batch,
+                  period_months=period_months
+              )
+
+              if not invoice:
+                  raise no_invoice_generated_error()
+
+              # Set general contracts if general invoice exists
+              if contract.general_invoice:
+                  general_invoice = contract.general_invoice
+                  general_contracts = list(Contract.objects.filter(general_invoice=general_invoice))
+                  invoice.general_contracts.set(general_contracts)
+
+              # Apply warning checks
+              try:
+                  invoice_warning_negative = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_negative').value).first()
+                  invoice_warning_zero = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_zero').value).first()
+                  invoice_warning_bank_missing = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_bank_missing').value).first()
+                  invoice_warning_payment_missing = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_payment_missing').value).first()
+                  invoice_warning_simplified_over_400 = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_simplified_over_400').value).first()
+                  invoice_warning_high_amount = InvoiceWarning.objects.filter(token=ConfigProject.objects.get(token='invoice_warning_high_amount').value).first()
+              except Exception:
+                  invoice_warning_negative = None
+                  invoice_warning_zero = None
+                  invoice_warning_bank_missing = None
+                  invoice_warning_payment_missing = None
+                  invoice_warning_simplified_over_400 = None
+                  invoice_warning_high_amount = None
+
+              warning = None
+              if invoice.total_final <= 0:
+                  warning = invoice_warning_negative
+              elif invoice.total_final == 0:
+                  warning = invoice_warning_zero
+              elif invoice.payment_type is None:
+                  warning = invoice_warning_payment_missing
+              elif invoice.payment_type.token == 'DIRECT_DEBIT' and invoice.payment_bank is None:
+                  warning = invoice_warning_bank_missing
+              elif invoice.simplified and invoice.total_final >= 400:
+                  warning = invoice_warning_simplified_over_400
+              elif invoice.total_final and invoice_warning_high_amount:
+                  if is_high_amount_for_period(invoice.total_final, [contract], invoice.billing_period_year, invoice.billing_period_month, exclude_invoice_id=invoice.id):
+                      warning = invoice_warning_high_amount
+
+              if warning:
+                  invoice.warning = warning
+                  invoice.save(update_fields=['warning'])
+
+              # Double check it is associated to billing
+              invoice.billing = billing
+              invoice.save()
+      except Exception as exc:
+          logger.exception("No s'ha pogut facturar el contracte %s", contract.id)
+          entry = build_contract_error(contract, exc)
+          upsert_billing_process_error(billing.id, entry)
+          return Response(
+              {"error": entry['message'], "code": entry['code'], "hint": entry['hint']},
+              status=status.HTTP_400_BAD_REQUEST,
+          )
+
+      remove_billing_process_errors(billing.id, [contract.id])
 
       return Response({"id": invoice.id, "message": "Contract processed individually and invoice created."}, status=status.HTTP_200_OK)
+
+  @action(detail=True, methods=['get'], url_path='process-errors')
+  def process_errors(self, request, pk=None):
+      """Contractes que no s'han pogut facturar en el darrer processat, amb el motiu."""
+      billing = self.get_object()
+      return Response(billing.process_errors or [])
+
+  @action(detail=True, methods=['post'], url_path='dismiss-process-errors')
+  def dismiss_process_errors(self, request, pk=None):
+      """Treu de la llista els errors dels contractes indicats (p. ex. si no s'han de facturar)."""
+      billing = self.get_object()
+      contract_ids = request.data.get('contract_ids')
+      if not contract_ids or not isinstance(contract_ids, list):
+          return Response({"error": "contract_ids list is required."}, status=status.HTTP_400_BAD_REQUEST)
+      try:
+          contract_ids = [int(c) for c in contract_ids]
+      except (TypeError, ValueError):
+          return Response({"error": "contract_ids must be integers."}, status=status.HTTP_400_BAD_REQUEST)
+      remove_billing_process_errors(billing.id, contract_ids)
+      billing.refresh_from_db(fields=['process_errors'])
+      return Response(billing.process_errors or [])
 
   @action(detail=True, methods=['post'], url_path='process-selected')
   def process_selected(self, request, pk=None):
@@ -950,13 +998,7 @@ class BillingBadgesView(views.APIView):
       # Validar les dades rebudes
       response = []
       exploitation_id = request.query_params.get('exploitation')
-      try:
-        exploitation = Exploitation.objects.get(id=exploitation_id)
-      except Exception as e:
-        print(e)
-        pass
-        
-      
+
       default_status = BillingStatus.objects.get(is_default=True)
       processed_status_token = ConfigProject.objects.get(token='billing_batch_processed').value
       processed_status = BillingStatus.objects.get(token=processed_status_token)
@@ -966,19 +1008,9 @@ class BillingBadgesView(views.APIView):
       
       
       
-      # Filter by exploitation if provided
       if exploitation_id:
-          default_billings = default_billings.filter(
-              Q(invoices__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__isnull=True)
-          ).distinct()
-          
-          active_billings = active_billings.filter(
-              Q(invoices__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__id=exploitation_id) |
-              Q(routes__positions__properties__supply_points__connection__exploitation__isnull=True)
-          ).distinct()
+          default_billings = default_billings.filter(biller__exploitation_id=exploitation_id)
+          active_billings = active_billings.filter(biller__exploitation_id=exploitation_id)
       
       if active_billings:
         total = 0
@@ -1115,7 +1147,8 @@ class StartBillingView(views.APIView):
         routes = biller.routes.all()
         billing.routes.set(routes)
       else:
-        routes = Route.objects.filter(is_active = True).all()
+        from billing.utils.exploitation_scope import routes_for_exploitation
+        routes = routes_for_exploitation(biller.exploitation_id)
         billing.routes.set(routes)
       billing.save()
 

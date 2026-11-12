@@ -124,6 +124,84 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   };
 
+  const settingsBase = `${apiHost}/send-batch/`;
+
+  const getSettings = async () => {
+    return $apiManager.fetch(`${settingsBase}settings/`, 'GET');
+  };
+
+  const ensureDefaults = async () => {
+    return $apiManager.fetch(`${settingsBase}settings/`, 'POST', JSON.stringify({}), {
+      'Content-Type': 'application/json',
+    });
+  };
+
+  const listProviders = async () => {
+    return $apiManager.fetch(`${settingsBase}provider/`, 'GET');
+  };
+
+  const createProvider = async (payload) => {
+    return $apiManager.fetch(
+      `${settingsBase}provider/`,
+      'POST',
+      JSON.stringify(payload),
+      { 'Content-Type': 'application/json' },
+    );
+  };
+
+  const updateProvider = async (id, payload) => {
+    return $apiManager.fetch(
+      `${settingsBase}provider/${id}/`,
+      'PATCH',
+      JSON.stringify(payload),
+      { 'Content-Type': 'application/json' },
+    );
+  };
+
+  const listTypes = async () => {
+    return $apiManager.fetch(`${settingsBase}type/`, 'GET');
+  };
+
+  const createType = async (payload) => {
+    return $apiManager.fetch(
+      `${settingsBase}type/`,
+      'POST',
+      JSON.stringify(payload),
+      { 'Content-Type': 'application/json' },
+    );
+  };
+
+  const updateType = async (id, payload) => {
+    return $apiManager.fetch(
+      `${settingsBase}type/${id}/`,
+      'PATCH',
+      JSON.stringify(payload),
+      { 'Content-Type': 'application/json' },
+    );
+  };
+
+  const listStatuses = async () => {
+    return $apiManager.fetch(`${settingsBase}status/`, 'GET');
+  };
+
+  const createStatus = async (payload) => {
+    return $apiManager.fetch(
+      `${settingsBase}status/`,
+      'POST',
+      JSON.stringify(payload),
+      { 'Content-Type': 'application/json' },
+    );
+  };
+
+  const updateStatus = async (id, payload) => {
+    return $apiManager.fetch(
+      `${settingsBase}status/${id}/`,
+      'PATCH',
+      JSON.stringify(payload),
+      { 'Content-Type': 'application/json' },
+    );
+  };
+
   nuxtApp.provide(provideName, {
     getAllBatches,
     getBatchDetail,
@@ -134,5 +212,16 @@ export default defineNuxtPlugin(nuxtApp => {
     retrySend,
     checkStatus,
     getPermissions,
+    getSettings,
+    ensureDefaults,
+    listProviders,
+    createProvider,
+    updateProvider,
+    listTypes,
+    createType,
+    updateType,
+    listStatuses,
+    createStatus,
+    updateStatus,
   });
 });
