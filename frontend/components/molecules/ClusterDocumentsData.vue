@@ -76,22 +76,28 @@ const isImage = (filename) => getMimeType(filename || '').startsWith('image/');
 const previewUrl = ref(null);
 const previewName = ref('');
 const previewCloseButton = ref(null);
-// Si el component es desmunta mentre es baixa una foto, no se'n crea l'URL
-let unmounted = false;
-const closePreview = () => {
+// Número de la darrera foto demanada: en tancar la previsualització, demanar-ne
+// una altra o desmuntar el component, les respostes anteriors s'ignoren
+let previewRequestId = 0;
+const revokePreview = () => {
     if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
     previewUrl.value = null;
     previewName.value = '';
 }
+const closePreview = () => {
+    previewRequestId++;
+    revokePreview();
+}
 
 const printDoc = async (document_id, document_name) => {
+    const requestId = isImage(document_name) ? ++previewRequestId : null;
     try {
         const file = await $DocumentManagerApiService.viewDocument(document_id);
         const mimeType = getMimeType(document_name || '');
         const blob = new Blob([file], { type: mimeType });
         if (isImage(document_name)) {
-            if (unmounted) return;
-            closePreview();
+            if (requestId !== previewRequestId) return;
+            revokePreview();
             previewUrl.value = URL.createObjectURL(blob);
             previewName.value = document_name;
             nextTick(() => previewCloseButton.value?.focus());
@@ -160,7 +166,6 @@ const onPreviewKeydown = (event) => {
 onMounted(() => window.addEventListener('keydown', onPreviewKeydown));
 
 onBeforeUnmount(() => {
-    unmounted = true;
     window.removeEventListener('keydown', onPreviewKeydown);
     closePreview();
 });
