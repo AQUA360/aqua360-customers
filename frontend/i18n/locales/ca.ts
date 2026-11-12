@@ -795,6 +795,7 @@ export default {
     deploy_frontend: 'Frontend',
     deploy_backend: 'Backend',
     deploy_unknown: 'Sense informació del desplegament',
+    deploy_mismatch: 'Frontend i backend en versions diferents',
     system: 'Sistema',
     show: 'Mostrar',
     showing: 'Mostrant',

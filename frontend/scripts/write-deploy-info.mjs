@@ -17,10 +17,14 @@ if (!out) {
 const env = (name) => (process.env[name] || '').trim();
 const commitFull = env('GIT_COMMIT');
 
+const builtAt = env('BUILD_DATE') || new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
 const info = {
     repo: 'aqua360-customers',
     component: 'frontend',
-    deployed_at: env('BUILD_DATE') || new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    // La data del desplegament la dona el backend (historial); fins aleshores, la del build.
+    deployed_at: builtAt,
+    built_at: builtAt,
     commit: commitFull.slice(0, 8),
     commit_full: commitFull,
     commit_date: env('GIT_COMMIT_DATE'),

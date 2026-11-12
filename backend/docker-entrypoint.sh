@@ -13,6 +13,8 @@ done
 python manage.py fix_document_sign_migration_history
 python manage.py migrate --noinput
 python manage.py run_pending_scripts
+# Data real del desplegament al client (no la del build): no ha d'aturar l'arrencada.
+python manage.py record_deploy || true
 if [ "${COLLECTSTATIC_ON_STARTUP:-1}" = "1" ]; then
   python manage.py collectstatic --noinput
 fi
