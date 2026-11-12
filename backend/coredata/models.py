@@ -1,5 +1,6 @@
 # coredata/models.py
 from django.db import models
+from django.utils import timezone
 from django.contrib.auth.models import User
 from documentmanager.models import Document
 from coredata.utils.validators_utils import is_valid_dni
@@ -599,3 +600,30 @@ class ExecutedScript(models.Model):
 
     def __str__(self):
         return f"{self.app_label}.{self.name}"
+
+class DeployRecord(models.Model):
+    """Historial dels desplegaments d'aquesta instal·lació.
+
+    Cada vegada que el backend o el frontend s'executa amb una versió diferent
+    de l'anterior se'n desa un registre: la data del registre és la del
+    desplegament al client (la de la imatge és la del build, que pot ser d'uns
+    dies abans). Ho escriu `customers.deploy_info.record_deploy`.
+    """
+    COMPONENT_CHOICES = (
+        ("backend", "Backend"),
+        ("frontend", "Frontend"),
+    )
+
+    component = models.CharField(max_length=20, choices=COMPONENT_CHOICES)
+    release = models.CharField(max_length=100, blank=True, default="")
+    commit = models.CharField(max_length=40, blank=True, default="")
+    branch = models.CharField(max_length=100, blank=True, default="")
+    built_at = models.DateTimeField(null=True, blank=True)
+    deployed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-deployed_at", "-id"]
+        indexes = [models.Index(fields=["component", "-deployed_at"])]
+
+    def __str__(self):
+        return f"{self.component} {self.release or self.commit} ({self.deployed_at:%Y-%m-%d %H:%M})"

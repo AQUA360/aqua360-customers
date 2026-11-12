@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ConfigProject,Address, Street, StreetType, Person, City, Province, PostalCode, PersonBank, PersonAddress, PersonCNAE, Bank, PersonContact, Country, CNAE, StreetNumber, CallRegister, IdentificationType, Holiday
+from .models import ConfigProject,Address, Street, StreetType, Person, City, Province, PostalCode, PersonBank, PersonAddress, PersonCNAE, Bank, PersonContact, Country, CNAE, StreetNumber, CallRegister, IdentificationType, Holiday, DeployRecord
         
 @admin.register(ConfigProject)
 class ConfigProjectAdmin(admin.ModelAdmin):
@@ -77,3 +77,10 @@ class IdentificationTypeAdmin(admin.ModelAdmin):
 @admin.register(Holiday)
 class HolidayAdmin(admin.ModelAdmin):
     list_display = ('date', 'name', 'exploitation')
+
+
+@admin.register(DeployRecord)
+class DeployRecordAdmin(admin.ModelAdmin):
+    list_display = ('deployed_at', 'component', 'release', 'commit', 'branch', 'built_at')
+    list_filter = ('component',)
+    search_fields = ('release', 'commit')

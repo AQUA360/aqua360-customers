@@ -46,8 +46,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.CODI }}
-          # Historial i etiquetes complets: `git describe --tags` dona la versió de les imatges
-          # de branca (per exemple, v1.152.01-5-gabcdef12).
+          # Historial i etiquetes complets: `git describe --tags` dona la darrera release de les
+          # imatges de branca.
           fetch-depth: 0
 
       # Etiqueta també amb el commit: HelpAsset, en actualitzar, busca la imatge del commit que
@@ -65,7 +65,9 @@ jobs:
           echo "date=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
           echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           if [ "$ESDEVENIMENT" = "push" ]; then
-            echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+            # Imatge de branca: la darrera release i la branca (el NavSidebar mostra
+            # «v1.152.01 + develop (abcdef12)»).
+            echo "version=$(git describe --tags --abbrev=0 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
             echo "branch=$BRANCA" >> "$GITHUB_OUTPUT"
           else
             echo "version=$VERSIO" >> "$GITHUB_OUTPUT"
