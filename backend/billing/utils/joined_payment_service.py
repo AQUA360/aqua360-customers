@@ -19,7 +19,7 @@ from billing.models import JoinedPayment, Payment, PaymentRemittance, PaymentSta
 from billing.serializers.payment_serializer import PaymentListSerializer
 from billing.utils.barcode_service import generate_barcode, get_payments_company_bank
 from billing.utils.invoice_service import get_use_exploitation_token_for_payment
-from billing.utils.payment_service import check_claim_payments_for_paid_invoice, disconnect_payment_signals, generate_payment_movement, log_payment_status, reconnect_payment_signals
+from billing.utils.payment_service import check_claim_payments_for_paid_invoice, check_paid_claim_requests_for_payments, disconnect_payment_signals, generate_payment_movement, log_payment_status, reconnect_payment_signals
 from contract.models import Contract, PaymentType
 from contract.serializers.contract_serializer import ContractMinimalListSerializer
 from coredata.models import ConfigProject, Person
@@ -291,6 +291,10 @@ def mark_payments_as_paid(joined_payment, user, payment_origin = None):
                 check_claim_payments_for_paid_invoice(payment.invoice, user)
             finally:
                 reconnect_payment_signals()
+
+    # Assegura finalitzar/cancel·lar reclamacions també si algun flux ha deixat
+    # els signals desconnectats o la factura encara no consta com a pagada.
+    check_paid_claim_requests_for_payments(payments)
 
 class _TemplatePayments(list):
     """Llista de pagaments que les plantilles poden recórrer amb `payments.all`."""

@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 
 from celery.result import AsyncResult
 from django.http import QueryDict
+from billing.utils.payment_service import check_paid_claim_request
+from coredata.models import ConfigProject
 from claimrequest.tasks import obtain_claim_request_data
 from ..models import ClaimRequest, ClaimRequestPayment
 from ..serializers.claim_request_save_serializer import ExcludeContractSerializer
@@ -86,6 +88,12 @@ class ExcludeContractViewSet(APIView):
             
             # Actualitzem el camp is_excluded a True
             updated_count = claim_payments.update(is_excluded=True)
+            
+            try:
+                payment_status_paid_token = ConfigProject.objects.get(token="payment_status_paid_token").value
+                check_paid_claim_request(claim_request, payment_status_paid_token)
+            except Exception as e:
+                print(f"Error checking paid claim request: {e}")
             
             # Creem un log de l'acció
             from order.middleware import get_current_user

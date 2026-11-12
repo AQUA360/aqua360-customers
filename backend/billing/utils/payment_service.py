@@ -561,7 +561,7 @@ def check_claim_payments_for_paid_invoice(invoice, user=None):
     if not invoice.payments.filter(status__token=paid_payment_token).exists():
         return
 
-    from claimrequest.models import ClaimRequestPayment, VulnerabilityRequest, VulnerabilityRequestStatus
+    from claimrequest.models import ClaimRequestPayment, VulnerabilityRequest, VulnerabilityRequestStatus, ClaimRequest
     from logger.models import LogClaimRequestContractChange
 
     user = get_acting_user(user)
@@ -572,6 +572,7 @@ def check_claim_payments_for_paid_invoice(invoice, user=None):
     vulnerable_status_approved = VulnerabilityRequestStatus.objects.get(
         token=ConfigProject.objects.get(token='vulnerability_request_status_accepted_token').value
     )
+
     excluded_contracts = set()
 
     for claim_payment in claim_payments:
@@ -615,6 +616,66 @@ def check_claim_payments_for_paid_invoice(invoice, user=None):
             amount_paid=invoice.total_final,
             user=user,
         )
+
+    claim_requests = ClaimRequest.objects.filter(payments__in=claim_payments).distinct()
+    for claim_request in claim_requests:
+        check_paid_claim_request(claim_request, paid_payment_token)
+
+
+def check_paid_claim_requests_for_payments(payments):
+    """
+    Recalcula l'estat de les reclamacions lligades als pagaments indicats
+    (finalitzada si tots estan pagats, cancel·lada si ja no en queda cap d'actiu).
+    """
+    if not payments:
+        return
+    paid_payment_token = ConfigProject.objects.get(token='payment_status_paid_token').value
+    from claimrequest.models import ClaimRequest
+    claim_requests = ClaimRequest.objects.filter(payments__payment__in=payments).distinct()
+    for claim_request in claim_requests:
+        check_paid_claim_request(claim_request, paid_payment_token)
+
+
+def check_paid_claim_request(claim_request, paid_payment_token):
+    """
+    Actualitza l'estat de la reclamació després d'un cobrament o exclusió:
+    - cancel·lada si tots els pagaments estan exclosos
+    - finalitzada si tots els no exclosos estan pagats
+    Es pot cridar amb els signals desconnectats.
+    """
+    if not claim_request or not claim_request.status or not paid_payment_token:
+        return
+    from claimrequest.models import ClaimRequestStatus
+    try:
+        claim_request_status_finalized_token = ConfigProject.objects.get(token='claim_request_status_finalized_token').value
+        claim_request_status_cancelled_token = ConfigProject.objects.get(token='claim_request_status_cancelled_token').value
+        claim_request_status_finalized = ClaimRequestStatus.objects.get(token=claim_request_status_finalized_token)
+        claim_request_status_cancelled = ClaimRequestStatus.objects.get(token=claim_request_status_cancelled_token)
+    except Exception:
+        logger.error("Error getting claim request status")
+        return
+
+    if claim_request.status.token == claim_request_status_finalized_token:
+        return
+    if claim_request.status.token == claim_request_status_cancelled_token:
+        return
+
+    try:
+        # Tots exclosos (p. ex. vulnerabilitat / exclusió manual) → cancel·lar
+        if not claim_request.payments.filter(is_excluded=False).exists():
+            claim_request.status = claim_request_status_cancelled
+            claim_request.save(update_fields=['status'])
+            return
+
+        # Tots els pagaments actius estan pagats → finalitzar
+        if not claim_request.payments.filter(is_excluded=False).exclude(
+            payment__status__token=paid_payment_token
+        ).exists():
+            claim_request.status = claim_request_status_finalized
+            claim_request.save(update_fields=['status'])
+
+    except Exception:
+        logger.error("Error checking paid claim request")
 
 
 def disconnect_payment_signals():
