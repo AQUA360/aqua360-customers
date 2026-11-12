@@ -292,7 +292,7 @@ def mark_payments_as_paid(joined_payment, user, payment_origin = None):
             finally:
                 reconnect_payment_signals()
 
-    # Assegura finalitzar/cancel·lar reclamacions també si algun flux ha deixat
+    # Assegura finalitzar reclamacions també si algun flux ha deixat
     # els signals desconnectats o la factura encara no consta com a pagada.
     check_paid_claim_requests_for_payments(payments)
 

@@ -625,7 +625,7 @@ def check_claim_payments_for_paid_invoice(invoice, user=None):
 def check_paid_claim_requests_for_payments(payments):
     """
     Recalcula l'estat de les reclamacions lligades als pagaments indicats
-    (finalitzada si tots estan pagats, cancel·lada si ja no en queda cap d'actiu).
+    (finalitzada si tots els actius estan pagats o ja no en queda cap d'actiu).
     """
     if not payments:
         return
@@ -639,7 +639,7 @@ def check_paid_claim_requests_for_payments(payments):
 def check_paid_claim_request(claim_request, paid_payment_token):
     """
     Actualitza l'estat de la reclamació després d'un cobrament o exclusió:
-    - cancel·lada si tots els pagaments estan exclosos
+    - finalitzada si tots els pagaments estan exclosos
     - finalitzada si tots els no exclosos estan pagats
     Es pot cridar amb els signals desconnectats.
     """
@@ -650,7 +650,6 @@ def check_paid_claim_request(claim_request, paid_payment_token):
         claim_request_status_finalized_token = ConfigProject.objects.get(token='claim_request_status_finalized_token').value
         claim_request_status_cancelled_token = ConfigProject.objects.get(token='claim_request_status_cancelled_token').value
         claim_request_status_finalized = ClaimRequestStatus.objects.get(token=claim_request_status_finalized_token)
-        claim_request_status_cancelled = ClaimRequestStatus.objects.get(token=claim_request_status_cancelled_token)
     except Exception:
         logger.error("Error getting claim request status")
         return
@@ -661,14 +660,9 @@ def check_paid_claim_request(claim_request, paid_payment_token):
         return
 
     try:
-        # Tots exclosos (p. ex. vulnerabilitat / exclusió manual) → cancel·lar
-        if not claim_request.payments.filter(is_excluded=False).exists():
-            claim_request.status = claim_request_status_cancelled
-            claim_request.save(update_fields=['status'])
-            return
-
-        # Tots els pagaments actius estan pagats → finalitzar
-        if not claim_request.payments.filter(is_excluded=False).exclude(
+        active_payments = claim_request.payments.filter(is_excluded=False)
+        # Tots exclosos, o tots els actius pagats → finalitzar
+        if not active_payments.exists() or not active_payments.exclude(
             payment__status__token=paid_payment_token
         ).exists():
             claim_request.status = claim_request_status_finalized
