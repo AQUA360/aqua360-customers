@@ -6,6 +6,13 @@ def _customer_name(person):
     return full_name or None
 
 
+def _connect_id(connection):
+    if not connection:
+        return None
+    code_gis = (connection.code_gis or "").strip()
+    return code_gis or str(connection.id)
+
+
 def map_abonat(contract, *, active_status_token=None):
     """Payload equivalent a `vw_abonats_aqua360`, resolt des dels models Django."""
     supply_point = contract.supply_point_default
@@ -34,5 +41,5 @@ def map_abonat(contract, *, active_status_token=None):
         ),
         "customer": _customer_name(contract.holder),
         "cadastral_ref": supply_point.cadastral if supply_point else None,
-        "connect_id": str(connection.id) if connection else None,
+        "connect_id": _connect_id(connection),
     }
