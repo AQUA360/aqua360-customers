@@ -3,12 +3,14 @@ from datetime import date
 from django.test import TestCase
 
 from billing.filter.invoice_filter import InvoiceFilter
-from billing.models import Biller, Billing, Invoice, InvoiceStatus, InvoiceType, Reading
+from billing.models import (
+    Biller, Billing, Invoice, InvoiceStatus, InvoiceType, Payment, PaymentMovement, PaymentStatus, Reading,
+)
 from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
 from billing.utils.invoice_list_queryset import invoice_list_queryset
 from billing.utils.invoice_period import (
     EXPIRED, NO_PERIOD, PAID, PENDING, SETTLED, invoice_billing_cycles, invoice_payment_states,
-    invoice_relations_map, period_year_counts,
+    invoice_payment_summaries, invoice_relations_map, period_year_counts,
 )
 from contract.models import Contract, ContractRequest
 from coredata.models import ConfigProject
@@ -263,3 +265,99 @@ class InvoicePaymentStateTests(ContractInvoicePeriodsBase):
             'paid': PAID, 'expired': EXPIRED, 'cancelled': SETTLED, 'dropped': SETTLED,
             'pending': PENDING, 'overdue': EXPIRED,
         })
+
+
+class InvoicePaymentSummaryTests(ContractInvoicePeriodsBase):
+    """Columna «Estat de pagament»: estat del cobrament i retorns bancaris de cada factura."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for token, value in (('payment_status_cancelled_token', 'P-CANCELLED'),
+                             ('payment_status_returned_token', 'P-RETURNED')):
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
+        cls.payment_statuses = {
+            token: PaymentStatus.objects.create(token=token, name=token.title(), color='#000')
+            for token in ('P-PENDING', 'P-PAID', 'P-RETURNED', 'P-CANCELLED')
+        }
+
+    def payment(self, invoice, status, **kwargs):
+        # bulk_create: sense els senyals de canvi d'estat del pagament (necessiten més configuració)
+        return Payment.objects.bulk_create([
+            Payment(invoice=invoice, status=self.payment_statuses[status], **kwargs)])[0]
+
+    def returned(self, payment, movement_date, **kwargs):
+        PaymentMovement.objects.bulk_create([PaymentMovement(
+            payment=payment, current_status=self.payment_statuses['P-RETURNED'],
+            movement_date=movement_date, is_positive=False, **kwargs)])
+
+    def summary(self, invoice):
+        return invoice_payment_summaries([invoice])[invoice.id]
+
+    def test_returned_and_paid_again_keeps_the_return(self):
+        invoice = self.invoice('RETURNED-PAID')
+        payment = self.payment(invoice, 'P-PAID')
+        self.returned(payment, date(2026, 3, 5))
+        self.returned(payment, date(2026, 4, 5))
+
+        summary = self.summary(invoice)
+
+        self.assertEqual(summary['payment_status']['token'], 'P-PAID')
+        self.assertEqual(summary['returned_at'], date(2026, 4, 5))
+        self.assertEqual(summary['returned_count'], 2)
+
+    def test_returned_before_the_due_date(self):
+        invoice = self.invoice('RETURNED', due_date=date(2099, 1, 1))
+        self.returned(self.payment(invoice, 'P-RETURNED'), date(2026, 3, 5))
+
+        summary = self.summary(invoice)
+
+        self.assertEqual(summary['payment_status']['token'], 'P-RETURNED')
+        self.assertEqual(summary['returned_count'], 1)
+
+    def test_cancelled_return_and_inactive_payment_do_not_count(self):
+        invoice = self.invoice('CANCELLED-RETURN')
+        payment = self.payment(invoice, 'P-PAID')
+        self.returned(payment, date(2026, 3, 5), is_active=False)
+        self.returned(self.payment(invoice, 'P-PENDING', is_active=False), date(2026, 3, 6))
+
+        summary = self.summary(invoice)
+
+        self.assertEqual(summary['payment_status']['token'], 'P-PAID')
+        self.assertIsNone(summary['returned_at'])
+        self.assertEqual(summary['returned_count'], 0)
+
+    def test_cancelled_payment_is_skipped_unless_it_is_the_only_one(self):
+        replaced = self.invoice('REPLACED')
+        self.payment(replaced, 'P-PENDING')
+        self.payment(replaced, 'P-CANCELLED')
+        only_cancelled = self.invoice('ONLY-CANCELLED')
+        self.payment(only_cancelled, 'P-CANCELLED')
+        without_payments = self.invoice('NO-PAYMENTS')
+
+        summaries = invoice_payment_summaries([replaced, only_cancelled, without_payments])
+
+        self.assertEqual(summaries[replaced.id]['payment_status']['token'], 'P-PENDING')
+        self.assertEqual(summaries[only_cancelled.id]['payment_status']['token'], 'P-CANCELLED')
+        self.assertIsNone(summaries[without_payments.id]['payment_status'])
+
+    def test_two_queries_whatever_the_number_of_invoices(self):
+        invoices = [self.invoice(f'MANY-{index}') for index in range(5)]
+        for invoice in invoices:
+            self.returned(self.payment(invoice, 'P-PAID'), date(2026, 3, 5))
+
+        # Configuració, cobraments i retorns
+        with self.assertNumQueries(3):
+            invoice_payment_summaries(invoices)
+
+    def test_invoice_lists_send_the_summary_only_when_asked(self):
+        invoice = self.invoice('LISTED')
+        self.returned(self.payment(invoice, 'P-PAID'), date(2026, 3, 5))
+        queryset = invoice_list_queryset().filter(id=invoice.id)
+
+        with_summary = InvoiceMinimalSerializer(queryset, many=True, context={'with_payment_summary': True}).data[0]
+        without_summary = InvoiceMinimalSerializer(queryset, many=True).data[0]
+
+        self.assertEqual(with_summary['payment_summary']['payment_status']['token'], 'P-PAID')
+        self.assertEqual(with_summary['payment_summary']['returned_at'], date(2026, 3, 5))
+        self.assertNotIn('payment_summary', without_summary)

@@ -180,6 +180,56 @@ def invoice_payment_states(invoices, today):
     return states
 
 
+
+def invoice_payment_summaries(invoices):
+    """{id: estat del cobrament i retorns} per a la columna «Estat de pagament» de la llista del contracte.
+
+    - `payment_status`: estat del darrer cobrament actiu que no està anul·lat (o del darrer, si
+      tots ho estan), amb el color de la taula mestra.
+    - `returned_at` i `returned_count`: data del darrer retorn bancari i nombre de retorns, encara
+      que després s'hagi tornat a cobrar. Compten els moviments de retorn actius.
+
+    Tres consultes (configuració, cobraments i retorns), sigui quin sigui el nombre de factures.
+    """
+    from billing.models import Payment, PaymentMovement
+    from coredata.models import ConfigProject
+
+    ids = [invoice.id for invoice in invoices]
+    summaries = {id: {'payment_status': None, 'returned_at': None, 'returned_count': 0} for id in ids}
+    if not ids:
+        return summaries
+    config = dict(ConfigProject.objects.filter(
+        token__in=['payment_status_cancelled_token', 'payment_status_returned_token'],
+    ).values_list('token', 'value'))
+    cancelled_token = config.get('payment_status_cancelled_token')
+    returned_token = config.get('payment_status_returned_token')
+
+    payments = defaultdict(list)
+    for payment in (Payment.objects.filter(invoice_id__in=ids, is_active=True)
+                    .select_related('status').order_by('created_at', 'id')):
+        payments[payment.invoice_id].append(payment)
+    for invoice_id, invoice_payments in payments.items():
+        live = [payment for payment in invoice_payments
+                if not (payment.status and payment.status.token == cancelled_token)]
+        status = (live or invoice_payments)[-1].status
+        if status:
+            summaries[invoice_id]['payment_status'] = {
+                'name': status.name, 'color': status.color, 'token': status.token,
+            }
+
+    if returned_token:
+        for invoice_id, movement_date, timestamp in PaymentMovement.objects.filter(
+            payment__invoice_id__in=ids, payment__is_active=True,
+            is_active=True, current_status__token=returned_token,
+        ).values_list('payment__invoice_id', 'movement_date', 'timestamp'):
+            summary = summaries[invoice_id]
+            returned_at = movement_date or (timestamp.date() if timestamp else None)
+            summary['returned_count'] += 1
+            if returned_at and (summary['returned_at'] is None or returned_at > summary['returned_at']):
+                summary['returned_at'] = returned_at
+    return summaries
+
+
 def cycle_year(cycle):
     return cycle['end_year'] if cycle else NO_PERIOD
 

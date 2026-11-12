@@ -610,14 +610,14 @@ watch(isJuridic, () => {
           </div>
         </div>
         <div class="mb-2">
-          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.name') }}</label>
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ isJuridic ? t('common.name_social') : t('common.name') }}</label>
           <input type="text" v-model="name" class="input"
             :class="{ 'invalid': attemptedSave && name == '' || attemptedSave && name == null }" />
         </div>
-        <div class="mb-2">
+        <div v-if="!isJuridic" class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.surname') }}</label>
-          <input :disabled="isJuridic" type="text" v-model="surname" class="input"
-            :class="{ 'invalid': attemptedSave && !isJuridic && (surname == '' || surname == null) }" />
+          <input type="text" v-model="surname" class="input"
+            :class="{ 'invalid': attemptedSave && (surname == '' || surname == null) }" />
         </div>
         <div v-if="isJuridic" class="mb-2">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('billing_block.current_record') }} {{

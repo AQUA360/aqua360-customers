@@ -17,7 +17,7 @@ SELECT
   c.status_id = 2 AS contract_active,
   concat_ws(' '::text, p.name, p.surname) AS customer,
   sp.cadastral::text AS cadastral_ref,
-  cn.id::text AS connect_id
+  COALESCE(NULLIF(btrim(cn.code_gis), ''), cn.id::text) AS connect_id
 FROM
   contract_contract c
   LEFT JOIN coredata_person p ON p.id = c.holder_id
