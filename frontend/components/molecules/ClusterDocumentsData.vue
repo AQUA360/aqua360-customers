@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, computed } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useToast } from 'vue-toastification';
 import FieldDetail from '../atoms/FieldDetail.vue';
 
@@ -38,6 +38,7 @@ const getDocTypes = async () => {
     try {
         const data = await $ConfiglistApiService.getData('service/cluster-documentation-type');
         doc_types.value = Array.isArray(data) ? data : (data.results || []);
+        if (!selected_doc_type.value) selected_doc_type.value = defaultDocType();
     } catch (error) {
         console.error('Error getting doc types:', error);
         doc_types.value = [];
@@ -45,6 +46,9 @@ const getDocTypes = async () => {
         loading_doc_types.value = false;
     }
 }
+
+// Tipus per defecte (p. ex. «Fotos») preseleccionat al desplegable
+const defaultDocType = () => doc_types.value.find(d => d.is_default)?.id || '';
 
 const getMimeType = (filename) => {
     const ext = filename.split('.').pop().toLowerCase();
@@ -66,11 +70,28 @@ const getMimeType = (filename) => {
     return mimeTypes[ext] || 'application/octet-stream';
 }
 
+const isImage = (filename) => getMimeType(filename || '').startsWith('image/');
+
+// Foto de la bateria oberta en gran (les imatges es veuen, la resta es descarrega)
+const previewUrl = ref(null);
+const previewName = ref('');
+const closePreview = () => {
+    if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+    previewUrl.value = null;
+    previewName.value = '';
+}
+
 const printDoc = async (document_id, document_name) => {
     try {
         const file = await $DocumentManagerApiService.viewDocument(document_id);
         const mimeType = getMimeType(document_name || '');
         const blob = new Blob([file], { type: mimeType });
+        if (isImage(document_name)) {
+            closePreview();
+            previewUrl.value = URL.createObjectURL(blob);
+            previewName.value = document_name;
+            return;
+        }
         const downloadLink = document.createElement('a');
         const downloadUrl = URL.createObjectURL(blob);
         downloadLink.href = downloadUrl;
@@ -114,7 +135,7 @@ const inputOther = async () => {
         console.error('Error saving document:', error);
     } finally {
         loading_file.value = false;
-        selected_doc_type.value = '';
+        selected_doc_type.value = defaultDocType();
         doc_file.value = null;
     }
 }
@@ -126,6 +147,8 @@ const handleDocumentUpdate = (file) => {
 onMounted(async () => {
     await getDocTypes();
 });
+
+onBeforeUnmount(closePreview);
 </script>
 
 <template>
@@ -169,7 +192,8 @@ onMounted(async () => {
                 class="grid grid-cols-[1fr,25px] gap-x-2 items-center">
                 <button @click="printDoc(d.file?.id || d.id, d.file?.document_name || d.document_name)"
                     class="button-default w-full flex gap-3 items-center mb-2">
-                    <Icon name="fa6-regular:file" class="text-slate-500" />
+                    <Icon :name="isImage(d.file?.document_name || d.document_name) ? 'fa6-regular:image' : 'fa6-regular:file'"
+                        class="text-slate-500" />
                     <span class="font-semibold">
                         {{ d.type ? (d.type.list_name || d.type.name) : (d.cluster_type?.list_name || d.cluster_type?.name) }}
                     </span>
@@ -187,6 +211,19 @@ onMounted(async () => {
             <span class="footering text-slate-500 p-2">
                 {{ t('common.no_data_found') }}
             </span>
+        </div>
+
+        <div v-if="previewUrl" class="fixed inset-0 z-50 flex items-center justify-center">
+            <div class="absolute inset-0 bg-black/60" @click="closePreview"></div>
+            <div class="relative bg-white rounded-lg shadow-lg max-w-3xl w-[90vw] max-h-[90vh] p-2">
+                <button :title="t('common.close')"
+                    class="absolute top-2 right-2 w-8 h-8 bg-slate-600 text-white rounded-full flex items-center justify-center hover:bg-slate-500"
+                    @click="closePreview">
+                    <Icon name="fa6-solid:xmark" />
+                </button>
+                <img :src="previewUrl" :alt="previewName" class="block max-h-[80vh] w-auto object-contain mx-auto" />
+                <div class="px-2 pt-2 text-sm text-slate-600">{{ previewName }}</div>
+            </div>
         </div>
     </div>
 </template>

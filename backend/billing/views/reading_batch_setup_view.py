@@ -1,3 +1,6 @@
+import base64
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework import viewsets
@@ -17,6 +20,44 @@ from billing.utils.reading_batch_service import (
 )
 from service.serializers.supply_point_serializer import SupplyPointContractsSerializer, SupplyPointMinimalContractsSerializer, SupplyPointMinimalSerializer
 from billing.permissions import ReadingPermission
+from billing.utils.reading_filters import PENDING_READING_FILTER
+
+logger = logging.getLogger(__name__)
+
+
+def encode_photo(photo):
+    try:
+        with photo.open('rb') as f:
+            return 'data:image/jpeg;base64,' + base64.b64encode(f.read()).decode('utf-8')
+    except Exception:
+        logger.exception("No s'ha pogut llegir la foto de la lectura")
+        return None
+
+
+def get_photo_readings(reading_batch, supply_points):
+    """Lectures pendents del lot amb foto dels supply points de la pàgina."""
+    readings = reading_batch.readings.filter(
+        is_control=False, supply_point__in=supply_points,
+    ).filter(PENDING_READING_FILTER).exclude(
+        Q(photo__isnull=True) | Q(photo='')
+    ).select_related(
+        'supply_point__address', 'meter', 'contract__holder', 'reader_alert',
+    ).order_by('supply_point_id', 'id')
+    return [{
+        'id': reading.id,
+        'supply_point_id': reading.supply_point_id,
+        'supply_point_token': reading.supply_point.token,
+        'address': str(reading.supply_point.address) if reading.supply_point.address else None,
+        'contract_id': reading.contract_id,
+        'contract_token': reading.contract.token if reading.contract else None,
+        'holder': reading.contract.holder.name if reading.contract and reading.contract.holder else None,
+        'meter_code': reading.meter.code if reading.meter else None,
+        'reading_value': reading.reading_value,
+        'reading_date': reading.reading_date,
+        'reader_alert': reading.reader_alert.name if reading.reader_alert else None,
+        'photo': encode_photo(reading.photo),
+    } for reading in readings]
+
 
 class ReadingBatchSetupViewSet(viewsets.ViewSet):
 
@@ -89,6 +130,9 @@ class ReadingBatchSetupViewSet(viewsets.ViewSet):
                         'address': sp['address_complete'],
                         'reading_value': readings_objects.get(sp['id']).reading_value if readings_objects.get(sp['id']) else None
                     } for sp in serialized_supply_points]
+                elif filter == 'photo':
+                    # Galeria: una entrada per cada lectura del lot amb foto
+                    response = get_photo_readings(reading_batch, paginated_queryset)
                 else:
                     response = SupplyPointMinimalContractsSerializer(paginated_queryset, many=True).data
 

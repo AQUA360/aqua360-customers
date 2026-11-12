@@ -65,6 +65,10 @@ const numReadingsWithRemoteReader = ref(0)
 const numReadingsWithRemoteAlert = ref(0)
 const numReadingsInactiveSupplyPoints = ref(0)
 const numNoRouteSupplyPoints = ref(0)
+const numReadingsWithPhoto = ref(0)
+
+// Foto ampliada de la galeria de lectures amb foto
+const selectedPhoto = ref(null)
 
 const showingDetailId = ref(0)
 const subRegionId = ref(0)
@@ -221,6 +225,10 @@ const openDetail = (filter) => {
       title.value = 'readings_inactive_supplypoints';
       search_filter.value = 'inactive_sp'
       break;
+    case 'photo':
+      title.value = 'readings_with_photo';
+      search_filter.value = 'photo'
+      break;
     case 'no_route':
       title.value = 'no_route_supply_points_count';
       search_filter.value = 'no_route'
@@ -284,6 +292,7 @@ const loadData = async () => {
     numReadingsWithRemoteAlert.value = counters.value.readings_with_remote_alerts;
     numReadingsInactiveSupplyPoints.value = counters.value.readings_inactive_supplypoints;
     numNoRouteSupplyPoints.value = counters.value.no_route_supply_points_count || 0;
+    numReadingsWithPhoto.value = counters.value.readings_with_photo || 0;
     estimateReadingsTaskId.value = props.estimateReadingsTaskId;
     //emit('allowContinue', numReadingWithoutReadingValue.value > 0);
     setupData();
@@ -441,6 +450,20 @@ watch(() => props.estimateReadingsTaskId, () => {
                 :title="t('billing_block.view_alert_readings')"
                 @click="emit('show-subregion', { type: 'reader-alerts' })">
                 <Icon name="fa6-solid:triangle-exclamation" class="w-4 h-4 text-red-500" />
+              </div>
+            </li>
+            <li class="flex justify-between items-center p-4 pl-8 relative group">
+              <span class="font-bold">{{ t('readings_with_photo') }}:</span>
+              <span v-if="numReadingsWithPhoto > 0"
+                class="inline-flex items-center bg-sky-300 text-slate-700 text-sm rounded-full px-2 py-1 ml-2 mr-3">{{
+                  numReadingsWithPhoto }}</span>
+              <span v-else class="inline-flex items-center text-slate-700 text-sm px-2 ml-2 mr-3">
+                -
+              </span>
+              <div v-if="numReadingsWithPhoto > 0"
+                class="w-10 cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-150 bg-gradient-to-r from-transparent to-slate-300 h-full absolute top-0 right-0 flex items-center justify-center"
+                @click="openDetail('photo')">
+                <Icon name="fa6-solid:camera" class="w-4 h-4 text-slate-500" />
               </div>
             </li>
             <li class="flex justify-between items-center p-4 pl-8 relative group">
@@ -833,6 +856,56 @@ watch(() => props.estimateReadingsTaskId, () => {
             </div>
           </div>
         </div>
+        <div v-else-if="search_filter == 'photo'" class="px-10 flex flex-col h-full">
+          <H1>{{ t(title) }}</H1>
+          <span class="input-group flex flex-start items-center gap-2 w-80 mb-4">
+            <Icon name="fa6-solid:magnifying-glass" class="text-slate-500" />
+            <input v-model="searchInput" @input="handleSearch" id="searchInput" type="text" name="search"
+              :placeholder="$t('contract_block.search_by_token')"
+              class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0" autocomplete="off" />
+          </span>
+          <div class="flex-1 overflow-y-auto pb-24" @scroll="loadMoreOnScroll">
+            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+              <div v-for="reading in showReadings" :key="reading.id"
+                class="border border-gray-200 rounded-md bg-white overflow-hidden flex flex-col">
+                <button v-if="reading.photo" class="block bg-slate-100 h-48" :title="t('common.view')"
+                  @click="selectedPhoto = reading">
+                  <img :src="reading.photo" alt="Photo" loading="lazy" class="w-full h-full object-cover" />
+                </button>
+                <div v-else class="h-48 bg-slate-100 flex items-center justify-center text-slate-400">
+                  <Icon name="fa6-solid:image" class="w-8 h-8" />
+                </div>
+                <div class="p-2 text-sm flex flex-col gap-1 min-w-0">
+                  <div class="flex items-center justify-between gap-2">
+                    <a v-if="reading.contract_id" href="#" class="text-sky-600 font-bold hover:underline truncate"
+                      @click.prevent="openRegion({ entity: 'contract', id: reading.contract_id })">
+                      {{ reading.contract_token }}
+                    </a>
+                    <a v-else href="#" class="text-sky-600 font-bold hover:underline truncate"
+                      @click.prevent="openRegion({ entity: 'supply_point', id: reading.supply_point_id })">
+                      {{ reading.supply_point_token }}
+                    </a>
+                    <span class="font-semibold whitespace-nowrap">{{ reading.reading_value ?? '-' }}</span>
+                  </div>
+                  <abbr :title="reading.address" class="truncate no-underline text-slate-600">{{ reading.address }}</abbr>
+                  <div class="flex items-center justify-between gap-2 text-xs text-slate-500">
+                    <span class="truncate">{{ reading.meter_code }}</span>
+                    <AtomsDate v-if="reading.reading_date" :date="reading.reading_date" />
+                  </div>
+                  <span v-if="reading.reader_alert" class="text-xs font-semibold text-amber-600 truncate">
+                    {{ reading.reader_alert }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="loadingReadings || loadingMore" class="text-center py-4 flex items-center justify-center">
+              <Icon name="fa6-solid:spinner" class="animate-spin mr-2" />
+              {{ $t('common.loading') }}...
+            </div>
+            <div v-if="!loadingReadings && showReadings.length === 0" class="text-center py-8 text-sm text-slate-400">
+              {{ $t('common.no_records') }}
+            </div>
+          </div>
+        </div>
         <div v-else-if="search_filter == 'no_route'" class="px-10 flex flex-col h-full">
           <MoleculesNoRouteSupplyPointsList :batchId="batch_id" :title="title" @openRegion="openRegion" />
         </div>
@@ -849,6 +922,24 @@ watch(() => props.estimateReadingsTaskId, () => {
           <OrganismsPersonRegion v-if="subRegionEntity == 'person'" :id="subRegionId" :isSubRegion="true" />
           <OrganismsContractRegion v-if="subRegionEntity == 'contract'" :id="subRegionId" :isSubRegion="true" />
           <OrganismsSupplyPointRegion v-if="subRegionEntity == 'supply_point'" :id="subRegionId" :isSubRegion="true" />
+        </div>
+      </div>
+      <!-- Foto ampliada de la galeria -->
+      <div v-if="selectedPhoto" class="fixed inset-0 z-50 flex items-center justify-center">
+        <div class="absolute inset-0 bg-black/60" @click="selectedPhoto = null"></div>
+        <div class="relative bg-white rounded-lg shadow-lg max-w-3xl w-[90vw] max-h-[90vh] p-2">
+          <button :title="t('common.close')"
+            class="absolute top-2 right-2 w-8 h-8 bg-slate-600 text-white rounded-full flex items-center justify-center hover:bg-slate-500"
+            @click="selectedPhoto = null">
+            <Icon name="fa6-solid:xmark" />
+          </button>
+          <img :src="selectedPhoto.photo" alt="Photo" class="block max-h-[75vh] w-auto object-contain mx-auto" />
+          <div class="px-2 pt-2 text-sm text-slate-600 flex flex-wrap gap-x-4">
+            <span class="font-bold">{{ selectedPhoto.contract_token || selectedPhoto.supply_point_token }}</span>
+            <span>{{ selectedPhoto.address }}</span>
+            <span>{{ selectedPhoto.meter_code }}</span>
+            <span>{{ selectedPhoto.reading_value ?? '-' }}</span>
+          </div>
         </div>
       </div>
       <EstimateReadingsDialog :show="showEstimateReadingsDialog" :defaultReadingDate="reading_date"

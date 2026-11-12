@@ -161,6 +161,7 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
                 "readings_without_reading_value": count_setup_filter('no_reading_value'),
                 "readings_remote_reading": count_setup_filter('remote_reader'),
                 "readings_inactive_supplypoints": count_setup_filter('inactive_sp'),
+                "readings_with_photo": count_setup_filter('photo'),
                 "no_route_supply_points_count": no_route_supply_points_count,
             }
 
