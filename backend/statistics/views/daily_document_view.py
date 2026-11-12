@@ -120,7 +120,8 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             # the UI uses submission_result.ok / submission_status for success vs warnings.
             return Response(payload, status=status.HTTP_200_OK)
         except SubmissionError as e:
-            return Response({'error': str(e)}, status=e.status_code)
+            logger.exception("Submission error while submitting daily document")
+            return Response({'error': "No s'ha pogut completar l'enviament del document."}, status=e.status_code)
         except Exception:
             logger.exception("Error submitting daily document")
             return Response(
