@@ -36,6 +36,7 @@ import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
 import { useContractInvoicesByPeriod } from '~/composables/useContractInvoicesByPeriod';
+import { providePinnedContractScope } from '~/composables/usePinnedContractLayer';
 
 const { $ContractApiService, $InvoiceApiService, $LoggerApiService, $VulnerabilityRequestApiService, $ConfigProjectApiService } = useNuxtApp();
 const fixedObjectsStore = useFixedObjectsStore();
@@ -43,6 +44,9 @@ const { t } = useI18n();
 const toast = useToast();
 const route = useRoute();
 const router = useRouter();
+// Lets the regions below keep their z-index while this panel is open (see usePinnedContractLayer)
+providePinnedContractScope();
+
 const props = defineProps({
     id: Number,
     isSubRegion: {
