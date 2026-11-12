@@ -13,6 +13,7 @@ import logging
 from io import BytesIO
 
 from django.conf import settings
+from django.core.exceptions import RequestDataTooBig
 from django.core.files.base import ContentFile
 from django.db.models import Q
 from django.http import JsonResponse
@@ -28,8 +29,14 @@ logger = logging.getLogger(__name__)
 
 PHOTO_TOKEN = 'photos'
 THUMBNAIL_SIZE = (300, 300)
-MAX_PHOTO_BYTES = 10 * 1024 * 1024
-IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
+# L'app ja comprimeix les fotos a uns 200 KB. El màxim queda per sota del límit de
+# cos de Django (DATA_UPLOAD_MAX_MEMORY_SIZE, 2,5 MiB) un cop codificat en base64.
+MAX_PHOTO_BYTES = 1536 * 1024
+IMAGE_MIME_TYPES = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.gif': 'image/gif', '.webp': 'image/webp',
+}
+IMAGE_EXTENSIONS = tuple(IMAGE_MIME_TYPES)
 
 
 def _property_clusters(property_id):
@@ -41,12 +48,16 @@ def _property_clusters(property_id):
     ).prefetch_related('nozzles').order_by('token', 'id')
 
 
+def _is_image(photo_file):
+    return (photo_file.file.document_name or '').lower().endswith(IMAGE_EXTENSIONS)
+
+
 def _photo_files(cluster):
     """Documents actius de la bateria que són imatges (per extensió del nom)."""
     files = ClusterDocumentationFile.objects.filter(
         cluster=cluster, is_active=True, file__isnull=False, file__is_active=True,
     ).select_related('file', 'type').order_by('-created_at', '-id')
-    return [f for f in files if (f.file.document_name or '').lower().endswith(IMAGE_EXTENSIONS)]
+    return [f for f in files if _is_image(f)]
 
 
 def _serialize_photo(photo_file):
@@ -104,8 +115,17 @@ def _thumbnail(data):
     return buffer.getvalue()
 
 
+def _to_jpeg(data):
+    """Foto rebuda de l'app (qualsevol format d'imatge) desada sempre com a JPEG."""
+    image = ImageOps.exif_transpose(Image.open(BytesIO(data)))
+    buffer = BytesIO()
+    image.convert('RGB').save(buffer, 'JPEG', quality=85)
+    return buffer.getvalue()
+
+
 def _data_url(data, name):
-    mime = 'image/png' if name.lower().endswith('.png') else 'image/jpeg'
+    extension = name.lower()[name.rfind('.'):] if '.' in name else ''
+    mime = IMAGE_MIME_TYPES.get(extension, 'image/jpeg')
     return f'data:{mime};base64,' + base64.b64encode(data).decode('utf-8')
 
 
@@ -126,7 +146,8 @@ def cluster_photo(request, cluster_id, photo_id):
         id=photo_id, cluster_id=cluster_id, cluster__is_active=True,
         is_active=True, file__isnull=False, file__is_active=True,
     ).select_related('file').first()
-    if not photo_file:
+    # Només imatges: per aquí no es poden llegir altres documents de la bateria
+    if not photo_file or not _is_image(photo_file):
         return JsonResponse({'error': 'Photo not found'}, status=404)
     name = photo_file.file.document_name or ''
     try:
@@ -149,17 +170,24 @@ def upload_cluster_photo(request, cluster_id):
         return JsonResponse({'error': 'Cluster not found'}, status=404)
 
     try:
-        photo = (json.loads(request.body or b'{}').get('photo') or '').strip()
+        body = request.body
+    except RequestDataTooBig:
+        return JsonResponse({'error': 'Photo too large'}, status=413)
+    try:
+        photo = (json.loads(body or b'{}').get('photo') or '').strip()
         if photo.startswith('data:'):
-            photo = photo.split(',', 1)[1]
+            photo = photo.partition(',')[2]
         data = base64.b64decode(photo, validate=True)
     except (ValueError, binascii.Error, AttributeError):
         return JsonResponse({'error': 'Invalid photo'}, status=400)
-    if not data or len(data) > MAX_PHOTO_BYTES:
-        return JsonResponse({'error': 'Invalid photo size'}, status=400)
+    if not data:
+        return JsonResponse({'error': 'Invalid photo'}, status=400)
+    if len(data) > MAX_PHOTO_BYTES:
+        return JsonResponse({'error': 'Photo too large'}, status=413)
     try:
         Image.open(BytesIO(data)).verify()
-    except (UnidentifiedImageError, OSError, SyntaxError):
+        data = _to_jpeg(data)
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
         return JsonResponse({'error': 'Invalid photo'}, status=400)
 
     photo_type = (

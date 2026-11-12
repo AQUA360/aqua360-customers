@@ -9,16 +9,23 @@ from django.test import TestCase, override_settings
 from PIL import Image
 
 from lecturapp.models import ReadingOperator
+from django.core.files.base import ContentFile
+
+from documentmanager.utils.main_utils import upload_document
 from service.models import Cluster, ClusterDocumentationFile, ClusterNozzle, Property, SupplyPoint
 
 STORAGE = tempfile.mkdtemp()
 SERVICES = {**settings.DOCUMENT_MANAGER_SERVICES, 'connection': 'hdd'}
 
 
-def jpeg_base64(size=(1200, 900)):
+def image_base64(size=(1200, 900), fmt='JPEG'):
     buffer = io.BytesIO()
-    Image.new('RGB', size, 'green').save(buffer, 'JPEG')
-    return 'data:image/jpeg;base64,' + base64.b64encode(buffer.getvalue()).decode()
+    Image.new('RGB', size, 'green').save(buffer, fmt)
+    return f'data:image/{fmt.lower()};base64,' + base64.b64encode(buffer.getvalue()).decode()
+
+
+def jpeg_base64(size=(1200, 900)):
+    return image_base64(size)
 
 
 def decode_image(data_url):
@@ -90,3 +97,30 @@ class LecturappClusterPhotosTests(TestCase):
     def test_cal_estar_autenticat(self):
         response = self.client.get(f'/lecturapp/properties/{self.property.id}/clusters/')
         self.assertEqual(response.status_code, 401)
+
+    def test_no_dona_documents_que_no_son_imatges(self):
+        document = upload_document(
+            ContentFile(b'%PDF-1.4 informe', name='informe.pdf'), 'CLUSTER', 'CLUSTER',
+            self.cluster.id, self.cluster.token, '', 'hdd', 'informe.pdf',
+        )
+        pdf = ClusterDocumentationFile.objects.create(cluster=self.cluster, file=document)
+        response = self.client.get(f'/lecturapp/clusters/{self.cluster.id}/photos/{pdf.id}/', **self.headers)
+        self.assertEqual(response.status_code, 404)
+
+    def test_desa_les_fotos_sempre_en_jpeg(self):
+        photo = self._upload(self.cluster, image_base64(fmt='PNG')).json()
+        self.assertTrue(photo['name'].endswith('.jpg'))
+        original = self.client.get(f'/lecturapp/clusters/{self.cluster.id}/photos/{photo["id"]}/', **self.headers).json()['photo']
+        self.assertTrue(original.startswith('data:image/jpeg;base64,'))
+        self.assertEqual(decode_image(original).format, 'JPEG')
+
+    def test_rebutja_data_url_sense_contingut_i_fotos_massa_grans(self):
+        self.assertEqual(self._upload(self.cluster, 'data:').status_code, 400)
+        too_large = base64.b64encode(b'x' * (1600 * 1024)).decode()
+        self.assertEqual(self._upload(self.cluster, too_large).status_code, 413)
+        self.assertFalse(ClusterDocumentationFile.objects.exists())
+
+    def test_cos_per_sobre_del_limit_de_django_respon_413(self):
+        with self.settings(DATA_UPLOAD_MAX_MEMORY_SIZE=1000):
+            response = self._upload(self.cluster, jpeg_base64())
+        self.assertEqual(response.status_code, 413)
