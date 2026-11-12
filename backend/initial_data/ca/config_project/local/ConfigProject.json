@@ -3142,5 +3142,17 @@
             "value": "AC01,AC04,AC06,AC13,AG01,BE06,MD07",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 265,
+        "fields": {
+            "created_at": "2026-11-12T00:00:00.000Z",
+            "updated_at": "2026-11-12T00:00:00.000Z",
+            "token": "invoice_chart_bar_color",
+            "name": "Color de les barres del gràfic de la factura (hex, p. ex. #e7a225). Buit: es fan servir els colors de la factura. Amb valor, les barres usen aquest color i el gràfic no porta fons.",
+            "value": "",
+            "file": "BILLING"
+        }
     }
 ]

@@ -82,6 +82,20 @@ watch(() => props.data, (newData) => {
 
 const availableReport = computed(() => localData.value?.available_report || null);
 
+const submissionChannel = computed(() => availableReport.value?.submission_channel || null);
+
+const submissionTitle = computed(() => {
+  const channel = submissionChannel.value;
+  if (!channel) return null;
+  const specific = `statistics_block.submission.channels.${channel}.title`;
+  if (te(specific)) return t(specific);
+  return t('statistics_block.submission.title');
+});
+
+const notifyUsers = computed(() => localData.value?.notify_users || []);
+const notifyGroups = computed(() => localData.value?.notify_groups || []);
+const hasNotifyTargets = computed(() => notifyUsers.value.length > 0 || notifyGroups.value.length > 0);
+
 const reportDescription = computed(() => {
   const report = availableReport.value;
   if (!report?.description) return '';
@@ -165,7 +179,39 @@ const fieldLabel = (field) => {
           <span class="text-xs text-slate-500">{{ t('statistics_block.create_without_data_help') }}</span>
         </div>
       </FieldDetail>
+
+      <FieldDetail v-if="hasNotifyTargets" class="col-span-2" :label="t('statistics_block.notify_targets')">
+        <div class="flex flex-wrap gap-1.5 mt-0.5">
+          <span v-for="user in notifyUsers" :key="`u-${user.id}`"
+            class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">
+            {{ user.username }}
+          </span>
+          <span v-for="group in notifyGroups" :key="`g-${group.id}`"
+            class="rounded bg-sky-50 border border-sky-200 px-1.5 py-0.5 text-[11px] text-sky-800">
+            {{ group.name }}
+          </span>
+        </div>
+      </FieldDetail>
     </div>
+
+    <section v-if="submissionChannel"
+      class="mb-3 overflow-hidden rounded-md border border-sky-200 bg-sky-50">
+      <div class="flex">
+        <div class="w-1 shrink-0 bg-sky-700" aria-hidden="true" />
+        <div class="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-sky-700 text-white">
+            <Icon name="fa6-solid:paper-plane" class="text-sm" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-800">
+              {{ t('statistics_block.submission_configured') }}
+            </span>
+            <p class="mt-0.5 text-sm font-semibold text-slate-900">{{ submissionTitle }}</p>
+            <p class="mt-0.5 text-xs text-slate-500">{{ t('statistics_block.submission_configured_help') }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section v-if="availableReport" id="daily_report__box"
       class="mb-3 overflow-hidden rounded-md border border-slate-200 bg-white">
