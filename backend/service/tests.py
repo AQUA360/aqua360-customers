@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.db import connection
 from django.test import TestCase
 from django.utils import timezone
+from django.utils.translation import gettext
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from coredata.models import Address
@@ -20,7 +21,6 @@ class TestMeterLog(TestCase):
     def test_meter_create_and_update_logs(self):
         from service.middleware import set_current_user
         from service.models import MeterLog
-        from rest_framework.test import APIRequestFactory, force_authenticate
         from service.views.meter_view import MeterViewSet
 
         set_current_user(self.user)
@@ -53,14 +53,16 @@ class TestMeterLog(TestCase):
         self.assertEqual(len(logs_data), 2)  # One for create, one for status update
         
         # Check update log serialization format
-        update_log_data = next(item for item in logs_data if item['field_name'] == 'status_name')
-        self.assertEqual(update_log_data['operation_token'], 'update')
-        self.assertEqual(update_log_data['old_value'], 'Actiu')
-        self.assertEqual(update_log_data['new_value'], 'Baixa')
+        # El serializer tradueix camp, operació i valors a l'idioma actiu: es compara
+        # amb el text traduït perquè el test no depengui dels catàlegs compilats.
+        update_log_data = next(item for item in logs_data if item['field_name'] == gettext('status_name'))
+        self.assertEqual(update_log_data['operation_token'], gettext('update'))
+        self.assertEqual(update_log_data['old_value'], gettext('Actiu'))
+        self.assertEqual(update_log_data['new_value'], gettext('Baixa'))
         self.assertEqual(update_log_data['user']['username'], 'testuser')
 
         # Check create log serialization format
-        create_log_data = next(item for item in logs_data if item['operation_token'] == 'create')
+        create_log_data = next(item for item in logs_data if item['operation_token'] == gettext('create'))
         self.assertIsNone(create_log_data['field_name'])
         self.assertIsNone(create_log_data['old_value'])
         self.assertIsNone(create_log_data['new_value'])
