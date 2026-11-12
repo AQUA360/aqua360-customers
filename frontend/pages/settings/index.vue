@@ -318,6 +318,7 @@ const settingsSections = computed(() => {
       ],
       master: [
         list(lbl('common.doc', 'common.statuses'), 'statistics/daily-document-status', true, false, false, true),
+        list(lbl('common.doc', 'statistics_block.submission_statuses'), 'statistics/daily-document-submission-status', true, false, false, true),
       ],
     },
     {
