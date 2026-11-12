@@ -44,9 +44,6 @@ const { t } = useI18n();
 const toast = useToast();
 const route = useRoute();
 const router = useRouter();
-// Lets the regions below keep their z-index while this panel is open (see usePinnedContractLayer)
-providePinnedContractScope();
-
 const props = defineProps({
     id: Number,
     isSubRegion: {
@@ -54,6 +51,9 @@ const props = defineProps({
         default: false,
     },
 });
+// Only as the NavTopPinned panel (isSubRegion): its regions keep their z-index while the panel
+// is open. As a full page it is page content and must stay below the panel (see usePinnedContractLayer)
+if (props.isSubRegion) providePinnedContractScope();
 const emit = defineEmits(['close']);
 
 const firstReload = ref(true)
