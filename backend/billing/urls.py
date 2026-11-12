@@ -200,6 +200,7 @@ urlpatterns = [
     path('payment-remittance-return/export/', GenericExportView.as_view(entity='payment_remittance_return'), name='payment-remittance-return-export'),
     path('', include(router.urls)),
     path('reading-batch/setup/<int:id>/', ReadingBatchSetupViewSet.as_view({'get': 'retrieve'}), name='reading-batch-setup'),
+    path('reading-batch/setup/<int:id>/photo/<int:reading_id>/', ReadingBatchSetupViewSet.as_view({'get': 'photo'}), name='reading-batch-setup-photo'),
     path('reading-batch/estimate-readings/<int:id>/', ReadingBatchEstimateViewSet.as_view({'put': 'estimate_readings'}), name='reading-batch-estimate-readings'),
     path('reading-batch/<int:id>/revert/', ReadingBatchRevertView.as_view(http_method_names=['post']), name='reading-batch-revert'),
     path('billing-batch/summary', BillingBatchSummaryView.as_view(http_method_names=['post','get']), name='billing-batch-summary'),

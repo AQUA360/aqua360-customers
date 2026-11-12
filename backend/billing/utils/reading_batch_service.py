@@ -170,8 +170,17 @@ SETUP_FILTERS = (
     'no_reading_value',
     'remote_reader',
     'inactive_sp',
-    'photo',
 )
+
+
+def get_photo_readings_queryset(reading_batch):
+    """
+    Lectures pendents de facturar del lot amb foto (sense les de control).
+    Font única per al comptador «Lectures amb foto» i per a la galeria.
+    """
+    return reading_batch.readings.filter(is_control=False).filter(
+        PENDING_READING_FILTER
+    ).exclude(Q(photo__isnull=True) | Q(photo='')).distinct()
 
 
 def get_setup_filter_supply_point_ids(reading_batch, filter_key, active_contract_token=None):
@@ -201,8 +210,6 @@ def get_setup_filter_supply_point_ids(reading_batch, filter_key, active_contract
         readings = readings.filter(
             meter__has_remote_reading=True, meter__force_manual_reading=False
         )
-    elif filter_key == 'photo':
-        readings = readings.exclude(Q(photo__isnull=True) | Q(photo=''))
     elif filter_key == 'inactive_sp':
         supply_active_token = ConfigProject.objects.get(
             token='supply_point_status_activate_token'

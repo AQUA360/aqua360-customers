@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import debounce from 'lodash.debounce';
 import _ from 'lodash';
@@ -67,8 +67,39 @@ const numReadingsInactiveSupplyPoints = ref(0)
 const numNoRouteSupplyPoints = ref(0)
 const numReadingsWithPhoto = ref(0)
 
-// Foto ampliada de la galeria de lectures amb foto
+// Foto ampliada de la galeria de lectures amb foto: es mostra la miniatura
+// mentre es carrega l'original
 const selectedPhoto = ref(null)
+const selectedPhotoSrc = ref('')
+const loadingPhoto = ref(false)
+const photoCloseButton = ref(null)
+
+const openPhoto = async (reading) => {
+  selectedPhoto.value = reading;
+  selectedPhotoSrc.value = reading.thumbnail;
+  loadingPhoto.value = true;
+  nextTick(() => photoCloseButton.value?.focus());
+  try {
+    const response = await $ReadingBatchApiService.getSetupReadingPhoto(batch_id.value, reading.id);
+    if (selectedPhoto.value?.id === reading.id && response?.photo) {
+      selectedPhotoSrc.value = response.photo;
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    if (selectedPhoto.value?.id === reading.id) loadingPhoto.value = false;
+  }
+}
+
+const closePhoto = () => {
+  selectedPhoto.value = null;
+  selectedPhotoSrc.value = '';
+  loadingPhoto.value = false;
+}
+
+const onPhotoKeydown = (event) => {
+  if (event.key === 'Escape' && selectedPhoto.value) closePhoto();
+}
 
 const showingDetailId = ref(0)
 const subRegionId = ref(0)
@@ -344,7 +375,10 @@ const debouncedGetData = debounce(() => {
 
 const { fetchFireUsageTypeTokens, isFireContract } = useFireUsageTypeTokens();
 
+onBeforeUnmount(() => window.removeEventListener('keydown', onPhotoKeydown));
+
 onMounted(async () => {
+  window.addEventListener('keydown', onPhotoKeydown);
   loadData();
   loadRemoteAlerts();
   await fetchFireUsageTypeTokens();
@@ -868,9 +902,9 @@ watch(() => props.estimateReadingsTaskId, () => {
             <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
               <div v-for="reading in showReadings" :key="reading.id"
                 class="border border-gray-200 rounded-md bg-white overflow-hidden flex flex-col">
-                <button v-if="reading.photo" class="block bg-slate-100 h-48" :title="t('common.view')"
-                  @click="selectedPhoto = reading">
-                  <img :src="reading.photo" alt="Photo" loading="lazy" class="w-full h-full object-cover" />
+                <button v-if="reading.thumbnail" class="block bg-slate-100 h-48" :title="t('common.view')"
+                  @click="openPhoto(reading)">
+                  <img :src="reading.thumbnail" alt="Photo" class="w-full h-full object-cover" />
                 </button>
                 <div v-else class="h-48 bg-slate-100 flex items-center justify-center text-slate-400">
                   <Icon name="fa6-solid:image" class="w-8 h-8" />
@@ -925,15 +959,19 @@ watch(() => props.estimateReadingsTaskId, () => {
         </div>
       </div>
       <!-- Foto ampliada de la galeria -->
-      <div v-if="selectedPhoto" class="fixed inset-0 z-50 flex items-center justify-center">
-        <div class="absolute inset-0 bg-black/60" @click="selectedPhoto = null"></div>
+      <div v-if="selectedPhoto" class="fixed inset-0 z-50 flex items-center justify-center" role="dialog"
+        aria-modal="true" :aria-label="t('common.photo')">
+        <div class="absolute inset-0 bg-black/60" @click="closePhoto"></div>
         <div class="relative bg-white rounded-lg shadow-lg max-w-3xl w-[90vw] max-h-[90vh] p-2">
           <button :title="t('common.close')"
             class="absolute top-2 right-2 w-8 h-8 bg-slate-600 text-white rounded-full flex items-center justify-center hover:bg-slate-500"
-            @click="selectedPhoto = null">
+            ref="photoCloseButton" @click="closePhoto">
             <Icon name="fa6-solid:xmark" />
           </button>
-          <img :src="selectedPhoto.photo" alt="Photo" class="block max-h-[75vh] w-auto object-contain mx-auto" />
+          <img :src="selectedPhotoSrc" alt="Photo" class="block max-h-[75vh] w-auto object-contain mx-auto" />
+          <div v-if="loadingPhoto" class="absolute top-3 left-3 text-slate-500">
+            <Icon name="fa6-solid:spinner" class="animate-spin" />
+          </div>
           <div class="px-2 pt-2 text-sm text-slate-600 flex flex-wrap gap-x-4">
             <span class="font-bold">{{ selectedPhoto.contract_token || selectedPhoto.supply_point_token }}</span>
             <span>{{ selectedPhoto.address }}</span>

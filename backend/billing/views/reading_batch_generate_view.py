@@ -18,7 +18,8 @@ from service.models import Meter, SupplyPoint
 from billing.utils.reading_filters import PENDING_READING_FILTER, BILLED_READING_FILTER
 from billing.utils.reading_batch_return import ReturnToPendingError, return_reading_batch_to_pending
 from billing.utils.reading_batch_service import (
-    count_supply_point_meters, get_batch_supply_counts, get_setup_filter_supply_point_ids,
+    count_supply_point_meters, get_batch_supply_counts, get_photo_readings_queryset,
+    get_setup_filter_supply_point_ids,
 )
 from service.utils.route_scope import (
     effective_route_select_related, reading_batch_supply_points_q, without_route_q,
@@ -161,7 +162,7 @@ class ReadingBatchSummaryView(viewsets.ViewSet):
                 "readings_without_reading_value": count_setup_filter('no_reading_value'),
                 "readings_remote_reading": count_setup_filter('remote_reader'),
                 "readings_inactive_supplypoints": count_setup_filter('inactive_sp'),
-                "readings_with_photo": count_setup_filter('photo'),
+                "readings_with_photo": get_photo_readings_queryset(batch).count(),
                 "no_route_supply_points_count": no_route_supply_points_count,
             }
 

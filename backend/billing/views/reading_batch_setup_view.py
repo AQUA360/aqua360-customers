@@ -1,5 +1,8 @@
 import base64
 import logging
+from io import BytesIO
+
+from PIL import Image, ImageOps
 
 from rest_framework import status
 from rest_framework.decorators import action
@@ -16,38 +19,44 @@ from service.models import SupplyPoint
 from service.utils.route_scope import effective_route_select_related
 from billing.utils.reading_batch_service import (
     SETUP_FILTERS,
+    get_photo_readings_queryset,
     get_setup_filter_supply_point_ids,
 )
 from service.serializers.supply_point_serializer import SupplyPointContractsSerializer, SupplyPointMinimalContractsSerializer, SupplyPointMinimalSerializer
 from billing.permissions import ReadingPermission
-from billing.utils.reading_filters import PENDING_READING_FILTER
 
 logger = logging.getLogger(__name__)
 
 
-def encode_photo(photo):
+# Mida màxima de les miniatures de la galeria de lectures amb foto
+PHOTO_THUMBNAIL_SIZE = (400, 400)
+
+
+def encode_photo(photo, thumbnail=False):
+    """Foto de la lectura en base64; amb thumbnail=True, reduïda per a la galeria."""
     try:
         with photo.open('rb') as f:
-            return 'data:image/jpeg;base64,' + base64.b64encode(f.read()).decode('utf-8')
+            if not thumbnail:
+                data = f.read()
+            else:
+                image = ImageOps.exif_transpose(Image.open(f))
+                image.thumbnail(PHOTO_THUMBNAIL_SIZE)
+                buffer = BytesIO()
+                image.convert('RGB').save(buffer, 'JPEG', quality=75)
+                data = buffer.getvalue()
+        return 'data:image/jpeg;base64,' + base64.b64encode(data).decode('utf-8')
     except Exception:
         logger.exception("No s'ha pogut llegir la foto de la lectura")
         return None
 
 
-def get_photo_readings(reading_batch, supply_points):
-    """Lectures pendents del lot amb foto dels supply points de la pàgina."""
-    readings = reading_batch.readings.filter(
-        is_control=False, supply_point__in=supply_points,
-    ).filter(PENDING_READING_FILTER).exclude(
-        Q(photo__isnull=True) | Q(photo='')
-    ).select_related(
-        'supply_point__address', 'meter', 'contract__holder', 'reader_alert',
-    ).order_by('supply_point_id', 'id')
-    return [{
+def serialize_photo_reading(reading):
+    """Targeta de la galeria: dades de la lectura i miniatura de la foto."""
+    return {
         'id': reading.id,
         'supply_point_id': reading.supply_point_id,
-        'supply_point_token': reading.supply_point.token,
-        'address': str(reading.supply_point.address) if reading.supply_point.address else None,
+        'supply_point_token': reading.supply_point.token if reading.supply_point else None,
+        'address': str(reading.supply_point.address) if reading.supply_point and reading.supply_point.address else None,
         'contract_id': reading.contract_id,
         'contract_token': reading.contract.token if reading.contract else None,
         'holder': reading.contract.holder.name if reading.contract and reading.contract.holder else None,
@@ -55,8 +64,8 @@ def get_photo_readings(reading_batch, supply_points):
         'reading_value': reading.reading_value,
         'reading_date': reading.reading_date,
         'reader_alert': reading.reader_alert.name if reading.reader_alert else None,
-        'photo': encode_photo(reading.photo),
-    } for reading in readings]
+        'thumbnail': encode_photo(reading.photo, thumbnail=True),
+    }
 
 
 class ReadingBatchSetupViewSet(viewsets.ViewSet):
@@ -77,6 +86,22 @@ class ReadingBatchSetupViewSet(viewsets.ViewSet):
             
             filter = request.query_params.get('readings')
             search = request.query_params.get('search')
+            if filter == 'photo':
+                # Galeria: es pagina per lectures, igual que el comptador del resum
+                readings = get_photo_readings_queryset(reading_batch).select_related(
+                    'supply_point__address', 'meter', 'contract__holder', 'reader_alert',
+                ).order_by('supply_point_id', 'id')
+                if search:
+                    readings = readings.filter(
+                        Q(contract__token__icontains=search) |
+                        Q(contract__holder__name__icontains=search) |
+                        Q(supply_point__address__address_search__icontains=search)
+                    )
+                paginator = PageNumberPagination()
+                paginator.page_size = 30
+                page = paginator.paginate_queryset(readings, request)
+                return paginator.get_paginated_response([serialize_photo_reading(r) for r in page])
+
             active_contract = ConfigProject.objects.get(token='contract_active_token').value
             
             response = []
@@ -130,9 +155,6 @@ class ReadingBatchSetupViewSet(viewsets.ViewSet):
                         'address': sp['address_complete'],
                         'reading_value': readings_objects.get(sp['id']).reading_value if readings_objects.get(sp['id']) else None
                     } for sp in serialized_supply_points]
-                elif filter == 'photo':
-                    # Galeria: una entrada per cada lectura del lot amb foto
-                    response = get_photo_readings(reading_batch, paginated_queryset)
                 else:
                     response = SupplyPointMinimalContractsSerializer(paginated_queryset, many=True).data
 
@@ -151,3 +173,15 @@ class ReadingBatchSetupViewSet(viewsets.ViewSet):
                 {"error": "el lot de lectura no existeix"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+    def photo(self, request, id=None, reading_id=None):
+        """Foto original d'una lectura de la galeria, per ampliar-la."""
+        # Només lectures de la galeria d'aquest lot (pendents, amb foto)
+        reading_batch = ReadingBatch.objects.filter(id=id).first()
+        reading = get_photo_readings_queryset(reading_batch).filter(
+            id=reading_id
+        ).first() if reading_batch else None
+        photo = encode_photo(reading.photo) if reading else None
+        if not photo:
+            return Response({"error": "foto no disponible"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'id': reading.id, 'photo': photo})

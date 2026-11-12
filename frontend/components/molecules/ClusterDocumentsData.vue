@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
 import { useToast } from 'vue-toastification';
 import FieldDetail from '../atoms/FieldDetail.vue';
 
@@ -75,6 +75,9 @@ const isImage = (filename) => getMimeType(filename || '').startsWith('image/');
 // Foto de la bateria oberta en gran (les imatges es veuen, la resta es descarrega)
 const previewUrl = ref(null);
 const previewName = ref('');
+const previewCloseButton = ref(null);
+// Si el component es desmunta mentre es baixa una foto, no se'n crea l'URL
+let unmounted = false;
 const closePreview = () => {
     if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
     previewUrl.value = null;
@@ -87,9 +90,11 @@ const printDoc = async (document_id, document_name) => {
         const mimeType = getMimeType(document_name || '');
         const blob = new Blob([file], { type: mimeType });
         if (isImage(document_name)) {
+            if (unmounted) return;
             closePreview();
             previewUrl.value = URL.createObjectURL(blob);
             previewName.value = document_name;
+            nextTick(() => previewCloseButton.value?.focus());
             return;
         }
         const downloadLink = document.createElement('a');
@@ -148,7 +153,17 @@ onMounted(async () => {
     await getDocTypes();
 });
 
-onBeforeUnmount(closePreview);
+const onPreviewKeydown = (event) => {
+    if (event.key === 'Escape' && previewUrl.value) closePreview();
+}
+
+onMounted(() => window.addEventListener('keydown', onPreviewKeydown));
+
+onBeforeUnmount(() => {
+    unmounted = true;
+    window.removeEventListener('keydown', onPreviewKeydown);
+    closePreview();
+});
 </script>
 
 <template>
@@ -213,10 +228,11 @@ onBeforeUnmount(closePreview);
             </span>
         </div>
 
-        <div v-if="previewUrl" class="fixed inset-0 z-50 flex items-center justify-center">
+        <div v-if="previewUrl" class="fixed inset-0 z-50 flex items-center justify-center" role="dialog"
+            aria-modal="true" :aria-label="previewName">
             <div class="absolute inset-0 bg-black/60" @click="closePreview"></div>
             <div class="relative bg-white rounded-lg shadow-lg max-w-3xl w-[90vw] max-h-[90vh] p-2">
-                <button :title="t('common.close')"
+                <button :title="t('common.close')" ref="previewCloseButton"
                     class="absolute top-2 right-2 w-8 h-8 bg-slate-600 text-white rounded-full flex items-center justify-center hover:bg-slate-500"
                     @click="closePreview">
                     <Icon name="fa6-solid:xmark" />
