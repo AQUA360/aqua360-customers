@@ -21,6 +21,8 @@ const searchInputEl = ref(null);
 const hasFocusedSearch = ref(false);
 const filter_status = ref([]);
 const selectedFilters = ref([]);
+// Només comptadors que no són a cap punt de subministrament.
+const onlyFree = ref(false);
 const sortBy = ref('token');
 const sortDesc = ref(false);
 const selectedItems = ref([]);
@@ -71,7 +73,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = 'code', 
   pending.value = true;
   error.value = null;
   try {
-    const data = await $MeterApiService.getData(searchQuery, filters, page, sort, desc, false, props.exclude);
+    const data = await $MeterApiService.getData(searchQuery, filters, page, sort, desc, onlyFree.value, props.exclude);
 
     items.value = data.results;
     Object.assign(pagination.value, {
@@ -79,7 +81,7 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = 'code', 
       totalPages: Math.ceil(data.count / pagination.value.perPage),
       previous: data.previous,
       next: data.next,
-      isFiltered: String(searchQuery).trim() !== '' || filters.length > 0
+      isFiltered: String(searchQuery).trim() !== '' || filters.length > 0 || onlyFree.value
     });
     
     nextTick(() => {
@@ -144,6 +146,7 @@ const handleSort = (key) => {
 const resetFilters = () => {
   searchInput.value = '';
   selectedFilters.value = [];
+  onlyFree.value = false;
   pagination.value.page = 1;
   getData();
 };
@@ -207,6 +210,10 @@ const handleSubRegionEvent = (event) => {
         </label>
       </span>
 
+      <label class="text-slate-800 text-base flex items-center gap-1">
+        <input type="checkbox" v-model="onlyFree" @change="handleFilterChange" /> {{ $t('service_block.only_free_meters') }}
+      </label>
+
       <span>
         <button id="filterReset" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
           @click="resetFilters" title="reset"><Icon name="fa6-solid:rotate-right" class="text-slate-500" /></button>
@@ -215,11 +222,12 @@ const handleSubRegionEvent = (event) => {
     <div id="list"
       style="overflow-y: auto; width: calc(-295px + 100vw); max-width: 100%; min-height: calc(100vh - 200px); max-height: calc(100vh - 200px);">
       <div
-        class="heading grid grid-cols-[1fr,1fr,1fr,1fr] gap-3 text-base border-b items-center">
+        class="heading grid grid-cols-[1fr,1fr,2fr,1fr,1fr] gap-3 text-base border-b items-center">
         <TableHeader :label="$t('common.code')" sortKey="code" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('common.status')" sortKey="status_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
+        <TableHeader :label="$t('supply_point')" :sortable="false" />
         <TableHeader :label="$t('service_block.short_install_date')" sortKey="installation_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
         <TableHeader :label="$t('service_block.short_uninstall_date')" sortKey="uninstallation_at" :currentSortBy="sortBy"
@@ -236,11 +244,15 @@ const handleSubRegionEvent = (event) => {
       </div>
       <div v-else>
         <div v-for="item in items" :key="item.id" @click="itemClicked(item)"
-          class="grid cursor-pointer grid-cols-[1fr,1fr,1fr,1fr] gap-3 text-base border-b items-center bg-white mr-3"
+          class="grid cursor-pointer grid-cols-[1fr,1fr,2fr,1fr,1fr] gap-3 text-base border-b items-center bg-white mr-3"
           :class="{ 'bg-yellow-50':selectedItems.includes(item.id) }">
           <span :class="{'selected':selectedItems.includes(item.id)}" class="p-1 text-nowrap transition-all duration-200"> {{ item.code }} </span>
           <span :class="{'selected':selectedItems.includes(item.id)}" class="p-1 text-nowrap transition-all duration-200">
             <AtomsColorBadge :value="item.status_name" :color="item.status_color"></AtomsColorBadge>
+          </span>
+          <span class="p-1 truncate" :title="item.supply_point || item.supply_point_token || ''">
+            <template v-if="item.supply_point_token">{{ item.supply_point_token }}<span v-if="item.supply_point" class="text-slate-500"> · {{ item.supply_point }}</span></template>
+            <span v-else class="text-slate-400">-</span>
           </span>
           <span :class="{'selected':selectedItems.includes(item.id)}" class="p-1 text-nowrap transition-all duration-200">{{ item.installation_at ? formatDate(item.installation_at) : '-' }}</span>
           <span :class="{'selected':selectedItems.includes(item.id)}" class="p-1 text-nowrap transition-all duration-200">{{ item.uninstallation_at ? formatDate(item.uninstallation_at) : '-' }}</span>

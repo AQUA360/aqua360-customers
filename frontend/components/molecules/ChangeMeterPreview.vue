@@ -6,6 +6,7 @@ import H1Region from '~/components/atoms/H1Region.vue';
 const { t } = useI18n();
 const toast = useToast();
 const { $OrderApiService } = useNuxtApp();
+const { confirmAssignments } = useMeterReassignConfirm();
 
 const props = defineProps({
   id: { type: Number, required: true }, // Order id
@@ -37,11 +38,16 @@ const readyToApply = computed(() =>
 
 const applying = ref(false);
 
+// Altres punts on és ara el comptador nou: aplicar-ho el traurà d'allà.
+const assignedTo = computed(() => data.value?.meter_new?.assigned_to || []);
+
 const applyChangeMeter = async () => {
   if (!readyToApply.value || applying.value) return;
+  const confirmReassign = assignedTo.value.length > 0;
+  if (confirmReassign && !confirmAssignments(data.value.meter_new?.meter?.code, assignedTo.value)) return;
   applying.value = true;
   try {
-    const result = await $OrderApiService.applyChangeMeter(props.id);
+    const result = await $OrderApiService.applyChangeMeter(props.id, { confirm_reassign: confirmReassign });
     if (result?.applied) {
       toast.success(t('order_block.change_meter_applied_ok'));
       emit('applied');
@@ -114,7 +120,20 @@ const applyChangeMeter = async () => {
           </div>
         </div>
 
-        <div v-if="data.meter_new?.exists"
+        <div v-if="data.meter_new?.exists && assignedTo.length"
+          class="mt-3 flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
+          <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5" />
+          <div>
+            <div>{{ t('order_block.meter_new_assigned') }}</div>
+            <ul class="mt-1 list-disc pl-4">
+              <li v-for="a in assignedTo" :key="a.supply_point_id">
+                {{ a.supply_point_token }}<span v-if="a.address"> · {{ a.address }}</span>
+                <span v-for="c in a.contracts" :key="c.id"> · {{ c.token }}<span v-if="c.holder"> ({{ c.holder }})</span></span>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div v-else-if="data.meter_new?.exists"
           class="mt-3 flex items-center gap-2 text-sm text-green-700">
           <Icon name="fa6-solid:circle-check" />
           <span>{{ t('order_block.meter_exists') }}</span>

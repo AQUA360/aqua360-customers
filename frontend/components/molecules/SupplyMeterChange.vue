@@ -15,6 +15,7 @@ const toast = useToast();
 const { permissions, loading } = usePermissions();
 
 const { $MeterApiService, $ReadingApiService, $SupplyPointApiService } = useNuxtApp();
+const { checkMeterReassign } = useMeterReassignConfirm();
 
 const props = defineProps({
   id: Number, // SP
@@ -138,10 +139,28 @@ const saveNewMeter = async function () {
     return;
   }
 
-  const confirmMessage = props.meter_id ? t('confirmation_text_block.confirm_change_meter') : t('confirmation_text_block.confirm_add_meter');
-  if (!confirm(confirmMessage)) return;
-
   saving.value = true;
+
+  // Si el comptador nou és a un altre punt, l'avís detallat substitueix la confirmació genèrica.
+  let confirmReassign = false;
+  try {
+    confirmReassign = await checkMeterReassign(selectedMeter.value, props.id);
+  } catch (error) {
+    console.error(error);
+    saving.value = false;
+    return;
+  }
+  if (confirmReassign === null) {
+    saving.value = false;
+    return;
+  }
+  if (!confirmReassign) {
+    const confirmMessage = props.meter_id ? t('confirmation_text_block.confirm_change_meter') : t('confirmation_text_block.confirm_add_meter');
+    if (!confirm(confirmMessage)) {
+      saving.value = false;
+      return;
+    }
+  }
 
   try {
     const save_data = {
@@ -151,7 +170,8 @@ const saveNewMeter = async function () {
       change_date: changeMeterDate.value,
       previous_reading: previous_reading.value,
       new_reading: new_reading.value,
-      origin: t('service_block.meter_change')
+      origin: t('service_block.meter_change'),
+      confirm_reassign: confirmReassign,
     }
 
     const response = await $SupplyPointApiService.saveMeterChange(save_data);

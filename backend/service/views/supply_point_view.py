@@ -23,7 +23,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from ..utils.supply_point_service import supply_point_activate, supply_point_change_address, supply_point_change_meter, supply_point_deactivate, supply_point_change_property
-from service.services.meter_change_service import set_meter_change_dates
+from service.services.meter_change_service import (
+    get_meter_assignments_elsewhere, meter_assigned_response_data,
+    release_meter_from_other_supply_points, set_meter_change_dates,
+)
 from fraud.models import Fraud, FraudStatus
 from coredata.models import ConfigProject
 from service.permissions import SupplyPointPermission
@@ -186,10 +189,13 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         if not supply_point_id or not meter_id:
             return Response({"error": "supply_point_id and meter_id are required"}, status=status.HTTP_400_BAD_REQUEST)
         meter = Meter.objects.get(id=meter_id)
-        if not meter.is_general:
-            supply_points_meter = SupplyPoint.objects.filter(meter=meter)
-            supply_points_meter.update(meter=None)
         supply_point = SupplyPoint.objects.get(id=supply_point_id)
+        # Si el comptador és a un altre punt, no es mou sense confirmació expressa.
+        if not request.data.get('confirm_reassign'):
+            assignments = get_meter_assignments_elsewhere(meter, supply_point.id)
+            if assignments:
+                return Response(meter_assigned_response_data(assignments), status=status.HTTP_409_CONFLICT)
+        release_meter_from_other_supply_points(request.user, meter, supply_point)
         previous_meter = supply_point.meter
         supply_point.meter = meter
         supply_point.save()
@@ -236,10 +242,13 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         meter_status_inactive = MeterStatus.objects.get(token=meter_status_inactive_token)
         
         
-        if not new_meter.is_general:
-            supply_points_meter = SupplyPoint.objects.filter(meter=new_meter)
-            supply_points_meter.update(meter=None)
         supply_point = SupplyPoint.objects.get(id=supply_point_id)
+        # Si el comptador nou és a un altre punt, no es mou sense confirmació expressa.
+        if not request.data.get('confirm_reassign'):
+            assignments = get_meter_assignments_elsewhere(new_meter, supply_point.id)
+            if assignments:
+                return Response(meter_assigned_response_data(assignments), status=status.HTTP_409_CONFLICT)
+        release_meter_from_other_supply_points(request.user, new_meter, supply_point)
         supply_point.meter = new_meter
         supply_point.save()
         

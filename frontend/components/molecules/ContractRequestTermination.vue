@@ -19,6 +19,7 @@ import ContractTerminationRegion from '../organisms/ContractTerminationRegion.vu
 import { checkPermission } from '~/middleware/permission';
 
 const { $ReadingApiService, $ConfiglistApiService, $ConfigProjectApiService, $ContractTerminationApiService, $OrderApiService, $SupplyPointApiService, $MeterApiService, $ContractRequestApiService, $SmartMeteringApiService } = useNuxtApp();
+const { checkMeterReassign } = useMeterReassignConfirm();
 const { t, te } = useI18n();
 const toast = useToast();
 const props = defineProps({
@@ -683,8 +684,16 @@ const clickDeleteOrder = async (id) => {
 
 const setMeter = async (meter) => {
   console.log('meter', meter);
-  if ((meter.supply_point || meter.supply_point == "") && !meter.is_general) {
-    if (!confirm(t("confirmation_text_block.confirm_assign_meter_with_sp"))) return;
+  // Avís amb on és ara el comptador (punt, contractes i titulars) abans de treure'l d'allà.
+  let confirmReassign = false;
+  if (meter.id != selectedMeter.value) {
+    try {
+      confirmReassign = await checkMeterReassign(meter, props.supply_point.id);
+    } catch (error) {
+      console.error(error);
+      return;
+    }
+    if (confirmReassign === null) return;
   }
   if (meter.id == selectedMeter.value) {
     selectedMeter.value = props.supply_point.meter_id;
@@ -698,7 +707,8 @@ const setMeter = async (meter) => {
   }
   let save_data = {
     supply_point_id: props.supply_point.id,
-    meter_id: selectedMeter.value
+    meter_id: selectedMeter.value,
+    confirm_reassign: confirmReassign,
   }
   saving.value = true;
   try {
