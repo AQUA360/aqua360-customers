@@ -41,6 +41,15 @@ from contract.utils.contract_list_queryset import contract_debt_amounts_by_contr
 from service.utils.route_scope import effective_route
 
 
+def count_contract_invoices(contract):
+    """Nombre de factures de la pestanya de factures del contracte (les del contracte i les de
+    la seva sol·licitud, sense les excloses). Compartit amb el serializer del contracte fixat."""
+    invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
+    request_invoices = Invoice.objects.filter(contract_request=contract.contract_request, is_active=True, is_excluded=False, type__token=invoice_type_token, contract_request__isnull=False)
+    unique_invoices = set(request_invoices.values_list('id', flat=True)) | set(contract.invoices.filter(is_active=True, is_excluded=False, type__token=invoice_type_token).values_list('id', flat=True))
+    return len(unique_invoices)
+
+
 def serialize_contract_show_price_rates(contract):
     """Tarifes del contracte tal com les mostra la pestanya de tarifes (agrupades per punt
     de subministrament). Compartit amb el serializer del contracte fixat perquè les dues
@@ -413,11 +422,7 @@ class ContractSerializer(serializers.ModelSerializer):
         return obj.communications.filter(is_active=True).count()
 
     def get_invoices_count(self, obj):
-        invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
-        # Mateix abast que la pestanya de factures del contracte (sense les excloses)
-        request_invoices = Invoice.objects.filter(contract_request=obj.contract_request, is_active=True, is_excluded=False, type__token=invoice_type_token, contract_request__isnull=False)
-        unique_invoices = list(set(request_invoices.values_list('id', flat=True)) | set(obj.invoices.filter(is_active=True, is_excluded=False, type__token=invoice_type_token).values_list('id', flat=True)))
-        return len(unique_invoices)
+        return count_contract_invoices(obj)
 
     def get_general_invoices_count(self, obj):
         return obj.general_invoices.filter(is_active=True).count()

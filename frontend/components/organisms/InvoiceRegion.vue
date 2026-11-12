@@ -34,6 +34,7 @@ import ModelLogs from '../molecules/ModelLogs.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import InvoicePaymentDetail from '../molecules/InvoicePaymentDetail.vue';
 import TypedConfirmationModal from '../molecules/TypedConfirmationModal.vue';
+import { usePinnedContractCoversPage } from '~/composables/usePinnedContractLayer';
 
 const { permissions, loading } = usePermissions();
 
@@ -56,6 +57,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['show-subregion', 'changed', 'close-subregion', 'update-id', 'pdf-generated']);
+// The subregions are teleported to <body>: they drop below the pinned contract when it is open
+const pinnedContractCoversPage = usePinnedContractCoversPage();
 const router = useRouter();
 const { $VerifactuApiService, $InvoiceApiService, $ConfigProjectApiService, $PersonApiService, $ContractApiService, $PaymentApiService, $ContractRequestApiService, $ConnectionRequestApiService, $ContractTerminationRequestApiService, $apiManager, $DocumentManagerApiService, $CommitmentDepositApiService } = useNuxtApp();
 const pending = ref(true);
@@ -971,8 +974,10 @@ const handleRefactor = async () => {
 
     <Teleport to="body">
       <div v-if="SubRegion == true && showRegionDetailComponent != 'PersonBankSelect'" role="region" id="subregion"
-        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden shadow-2xl fixed top-0 right-0 w-[48vw] z-50"
+        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden shadow-2xl fixed top-0 right-0 w-[48vw]"
         :class="{
+          'z-40': pinnedContractCoversPage,
+          'z-50': !pinnedContractCoversPage,
           'translate-x-0': SubRegion,
           'translate-x-full': !SubRegion,
         }">
@@ -1028,8 +1033,10 @@ const handleRefactor = async () => {
 
   <Teleport to="body">
     <div v-if="showRegionDetailComponent == 'PersonBankSelect'" role="region" id="right_page"
-      class="fixed top-0 right-0 w-[95%] h-[100vh] border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white overflow-y-auto overflow-x-hidden z-[100]"
+      class="fixed top-0 right-0 w-[95%] h-[100vh] border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white overflow-y-auto overflow-x-hidden"
       :class="{
+        'z-40': pinnedContractCoversPage,
+        'z-[100]': !pinnedContractCoversPage,
         'translate-x-0': showRegionDetailComponent == 'PersonBankSelect',
         'translate-x-full': showRegionDetailComponent != 'PersonBankSelect',
       }">
