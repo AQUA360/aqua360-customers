@@ -825,11 +825,49 @@ class MeterDetailByTokenOVView(RetrieveAPIView):
         return contract
 
 
+def _contract_readings(contract):
+    """Readings that belong to `contract`, within its active timeframe.
+
+    Ownership comes from `Reading.contract`, never from the shared meter or
+    supply point, so readings of previous (or later) contracts on the same
+    supply point are never exposed, and readings of a replaced meter during
+    the contract are still included. When the contract has a registration or
+    termination date, readings outside that range are excluded too.
+    """
+    queryset = Reading.objects.filter(contract=contract)
+    if contract.registration_date:
+        queryset = queryset.filter(reading_date__gte=contract.registration_date)
+    if contract.termination_date:
+        queryset = queryset.filter(reading_date__lte=contract.termination_date)
+    return queryset
+
+
+def _contract_billed_readings(queryset, contract):
+    """Restrict `queryset` to readings billed in an invoice of `contract`.
+
+    A reading must belong to the contract and be linked to one of its own
+    invoices; inconsistent links to another contract's invoices are ignored.
+    Only the contract's invoices are prefetched, so the `period` never comes
+    from another contract's invoice.
+    """
+    return (
+        queryset.filter(invoices__contract=contract)
+        .distinct()
+        .select_related("previous_reading")
+        .prefetch_related(
+            Prefetch("invoices", queryset=Invoice.objects.filter(contract=contract))
+        )
+        .order_by("-reading_date", "-id")
+    )
+
+
 class ConsumptionHistoryOVView(APIView):
     """GET /ov/consumptions/?contract_token=<token>[&date_from=&date_to=&page=&page_size=]
 
-    Historial de consumos del contador del contrato en nomenclatura HF
-    (`{any}-{q}T`). Devuelve el envoltorio estándar DRF
+    Historial de consumos facturados del contrato en nomenclatura HF
+    (`{any}-{q}T`). Solo incluye lecturas del propio contrato y de su periodo
+    de vigencia (nunca las de contratos anteriores o posteriores del mismo
+    punto de suministro o contador). Devuelve el envoltorio estándar DRF
     `{count, next, previous, results}` (esquema `ConsumptionHistoryResponse`).
     """
 
@@ -844,19 +882,11 @@ class ConsumptionHistoryOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contract = (
-            Contract.objects.select_related("supply_point_default__meter")
-            .filter(token=contract_token)
-            .first()
-        )
+        contract = Contract.objects.filter(token=contract_token).first()
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
-
-        meter = (
-            contract.supply_point_default.meter if contract.supply_point_default else None
-        )
 
         date_from_raw = request.query_params.get("date_from")
         date_to_raw = request.query_params.get("date_to")
@@ -873,19 +903,8 @@ class ConsumptionHistoryOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if meter:
-            queryset = Reading.objects.filter(meter=meter)
-        else:
-            queryset = Reading.objects.none()
-
-        # Només consums facturats: lectures vinculades a almenys una factura
-        queryset = queryset.filter(invoices__isnull=False).distinct()
-
-        queryset = (
-            queryset.select_related("previous_reading")
-            .prefetch_related("invoices")
-            .order_by("-reading_date", "-id")
-        )
+        # Només consums facturats del propi contracte i del seu període.
+        queryset = _contract_billed_readings(_contract_readings(contract), contract)
         if date_from:
             queryset = queryset.filter(reading_date__gte=date_from)
         if date_to:
@@ -952,7 +971,8 @@ class ConsumptionDownloadOVView(APIView):
     """GET /ov/consumption/{id}/download/?contract_token=<token>[&format=pdf|csv]
 
     Descarga el fichero de una única lectura del historial de consumos. El `id`
-    es el `Reading.id` expuesto por `GET /ov/consumptions/`. CSV real; PDF es
+    es el `Reading.id` expuesto por `GET /ov/consumptions/`; una lectura de
+    otro contrato o fuera del periodo del contrato devuelve 404. CSV real; PDF es
     un stub mientras no se implemente la maquetación.
     """
 
@@ -974,29 +994,15 @@ class ConsumptionDownloadOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contract = (
-            Contract.objects.select_related("supply_point_default__meter")
-            .filter(token=contract_token)
-            .first()
-        )
+        contract = Contract.objects.filter(token=contract_token).first()
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        meter = (
-            contract.supply_point_default.meter if contract.supply_point_default else None
-        )
-        reading = None
-        if meter:
-            reading = (
-                Reading.objects.filter(
-                    pk=id, meter=meter, invoices__isnull=False
-                )
-                .select_related("previous_reading")
-                .prefetch_related("invoices")
-                .first()
-            )
+        reading = _contract_billed_readings(
+            _contract_readings(contract).filter(pk=id), contract
+        ).first()
 
         if not reading:
             return Response(
@@ -1020,7 +1026,9 @@ class ConsumptionsDownloadOVView(APIView):
 
     Descarga el historial de consumos del contrato: solo las lecturas de
     `reading_ids` (filas marcadas) o, si no se indican, todo el conjunto
-    filtrado por `date_from`/`date_to` (botón «Seleccionar todo»). CSV real;
+    filtrado por `date_from`/`date_to` (botón «Seleccionar todo»). Solo se
+    incluyen lecturas del propio contrato y de su periodo de vigencia; un id
+    de otro contrato se trata como desconocido (400). CSV real;
     PDF y ZIP son stubs.
     """
 
@@ -1033,28 +1041,18 @@ class ConsumptionsDownloadOVView(APIView):
         data = serializer.validated_data
 
         contract_token = data["contract_token"]
-        contract = (
-            Contract.objects.select_related("supply_point_default__meter")
-            .filter(token=contract_token)
-            .first()
-        )
+        contract = Contract.objects.filter(token=contract_token).first()
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        meter = (
-            contract.supply_point_default.meter if contract.supply_point_default else None
-        )
         export_format = data.get("format", "pdf")
+        contract_readings = _contract_readings(contract)
 
         if data.get("reading_ids"):
-            if not meter:
-                return Response(
-                    {"reading_ids": ["ID de lectura desconocido"]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            queryset = Reading.objects.filter(meter=meter, pk__in=data["reading_ids"])
+            # Les lectures d'altres contractes compten com a desconegudes.
+            queryset = contract_readings.filter(pk__in=data["reading_ids"])
             found_ids = set(queryset.values_list("pk", flat=True))
             missing_ids = [
                 reading_id
@@ -1072,20 +1070,14 @@ class ConsumptionsDownloadOVView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
-            queryset = Reading.objects.filter(meter=meter) if meter else Reading.objects.none()
+            queryset = contract_readings
             if data.get("date_from"):
                 queryset = queryset.filter(reading_date__gte=data["date_from"])
             if data.get("date_to"):
                 queryset = queryset.filter(reading_date__lte=data["date_to"])
 
         # Només consums facturats: les lectures no facturades s'ometen del fitxer
-        queryset = (
-            queryset.filter(invoices__isnull=False)
-            .distinct()
-            .select_related("previous_reading")
-            .prefetch_related("invoices")
-            .order_by("-reading_date", "-id")
-        )
+        queryset = _contract_billed_readings(queryset, contract)
 
         if export_format == "csv":
             payload = _consumptions_csv(queryset)

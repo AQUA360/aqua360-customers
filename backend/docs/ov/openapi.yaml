@@ -1252,6 +1252,15 @@ paths:
         (cadena `Reading.previous_reading`), insensible a lecturas estimadas y
         cambios de contador que romperían el orden de la serie en el BFF.
 
+        **Alcance por contrato (protección de datos):** solo se incluyen
+        lecturas del propio contrato (`Reading.contract`) facturadas en una
+        factura del mismo contrato y, si el contrato tiene fecha de alta o de
+        baja, con `reading_date` dentro de ese periodo. Nunca se devuelven
+        lecturas de contratos anteriores o posteriores del mismo punto de
+        suministro o contador; un contrato sin lecturas propias facturadas
+        devuelve una lista vacía. Las lecturas de un contador sustituido
+        durante el contrato sí se incluyen.
+
         Paginación de servidor: `count` es el total de filas que cumplen los
         filtros y `next`/`previous` son las URLs de las páginas contiguas
         (`null` en los extremos). `date_from` y `date_to` filtran por la fecha
@@ -1308,8 +1317,9 @@ paths:
 
         El formato se elige con `?format=` (`pdf` por defecto o `csv`).
         Responde `404` si el contrato no existe o si la lectura no existe, no
-        pertenece al contador del contrato o no está facturada (sin factura
-        vinculada).
+        pertenece al contrato (aunque sea del mismo contador o punto de
+        suministro), está fuera de su periodo de alta/baja o no está
+        facturada en una factura del contrato.
       operationId: downloadConsumption
       security:
         - tokenAuth: []
@@ -1347,10 +1357,12 @@ paths:
         no, se aplican `date_from`/`date_to` y se devuelve el conjunto completo
         filtrado, sin límite de página, pensado para «Seleccionar todo».
 
-        Solo se incluyen los consumos ya facturados (lecturas vinculadas a al
-        menos una factura). Los `reading_ids` no facturados se omiten del
-        fichero sin devolver error; un `reading_id` fuera del contador del
-        contrato sigue respondiendo `400`.
+        Solo se incluyen los consumos ya facturados del propio contrato, con
+        el mismo alcance que `GET /ov/consumptions/` (nunca lecturas de otros
+        contratos del mismo punto de suministro o contador). Los `reading_ids`
+        del contrato no facturados se omiten del fichero sin devolver error;
+        un `reading_id` de otro contrato o fuera del periodo del contrato
+        responde `400` como desconocido.
 
         El formato se elige con `format` en el cuerpo (`pdf` por defecto,
         `csv` o `zip`). Responde `404` si el contrato no existe y `400` con
