@@ -3149,6 +3149,18 @@
         "fields": {
             "created_at": "2026-11-12T00:00:00.000Z",
             "updated_at": "2026-11-12T00:00:00.000Z",
+            "token": "invoice_chart_bar_color",
+            "name": "Color de les barres del gràfic de la factura (hex, p. ex. #e7a225). Buit: es fan servir els colors de la factura. Amb valor, les barres usen aquest color i el gràfic no porta fons.",
+            "value": "",
+            "file": "BILLING"
+        }
+    },
+  {
+        "model": "coredata.configproject",
+        "pk": 266,
+        "fields": {
+            "created_at": "2026-11-12T00:00:00.000Z",
+            "updated_at": "2026-11-12T00:00:00.000Z",
             "token": "block_remittance_if_unpaid",
             "name": "Procés de facturació: si el contracte té factures pendents de cobrar, les factures noves passen de domiciliació a Pagament bancari",
             "value": "false",

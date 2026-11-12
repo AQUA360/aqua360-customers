@@ -3149,6 +3149,18 @@
         "fields": {
             "created_at": "2026-11-12T00:00:00.000Z",
             "updated_at": "2026-11-12T00:00:00.000Z",
+            "token": "invoice_chart_bar_color",
+            "name": "Color de las barras del gráfico de la factura (hex, p. ej. #e7a225). Vacío: se usan los colores de la factura. Con valor, las barras usan este color y el gráfico no tiene fondo.",
+            "value": "",
+            "file": "BILLING"
+        }
+    },
+  {
+        "model": "coredata.configproject",
+        "pk": 266,
+        "fields": {
+            "created_at": "2026-11-12T00:00:00.000Z",
+            "updated_at": "2026-11-12T00:00:00.000Z",
             "token": "block_remittance_if_unpaid",
             "name": "Proceso de facturación: si el contrato tiene facturas pendientes de cobro, las facturas nuevas pasan de domiciliación a Pago bancario",
             "value": "false",
