@@ -1,14 +1,37 @@
 import datetime
+from decimal import Decimal, InvalidOperation
+
 from django.db import transaction
+from django.db.models import F
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
 from service.utils.supply_point_service import supply_point_change_meter  # ajusta l'import real si cal
-from billing.models import Reading, EstimatedBagMovement
+from billing.models import EstimatedBag, Reading, EstimatedBagMovement
 
 
 METER_CHANGE_ORIGIN = 'Canvi de comptador'
 # Valor antic (token cru) amb què el flux d'ordres desava l'origen.
 LEGACY_ORDER_CHANGE_METER_ORIGIN = 'order_change_meter'
+
+
+def to_decimal(value):
+    """Valor de lectura/consum com a Decimal (buit o no numèric => 0), sense perdre decimals."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return Decimal(0)
+    try:
+        return Decimal(str(value).strip().replace(',', '.'))
+    except (InvalidOperation, ValueError):
+        return Decimal(0)
+
+
+def add_to_estimated_bag(bag_id, amount):
+    """
+    Suma (o resta, amb amount negatiu) al saldo de la bossa d'estimades amb una
+    expressió de BD, perquè dues actualitzacions simultànies no se sobreescriguin.
+    """
+    EstimatedBag.objects.filter(id=bag_id).update(
+        total_consumption=F('total_consumption') + amount
+    )
 
 
 def get_previous_meter_reading(contract, supply_point, meter, date, exclude_id=None):
@@ -37,8 +60,8 @@ def compute_meter_consumption(reading_value, contract, supply_point, meter, date
     """
     previous = get_previous_meter_reading(contract, supply_point, meter, date, exclude_id)
     if not previous:
-        return 0
-    return max(0, int(reading_value or 0) - int(previous.reading_value or 0))
+        return Decimal(0)
+    return max(Decimal(0), to_decimal(reading_value) - to_decimal(previous.reading_value))
 
 
 def set_meter_change_dates(new_meter, released_meter, change_date):
@@ -134,6 +157,7 @@ class MeterChangeService:
                 contract=contract,
                 supply_point=supply_point,
                 is_control=False,
+                is_active=True,
                 reading_date__lte=date,
             ).order_by('-reading_date', '-id').first()
 
@@ -144,15 +168,17 @@ class MeterChangeService:
 
             # Lectura buida => 0 (lectura inicial per defecte), però s'accepta
             # qualsevol valor inicial diferent de 0.
-            reading_value = int(reading_data.get('reading_value') or 0)
+            reading_value = to_decimal(reading_data.get('reading_value'))
 
             if reading_data.get('calculated_value') is not None:
-                calculated_value = int(reading_data['calculated_value'])
+                calculated_value = to_decimal(reading_data['calculated_value'])
             else:
                 calculated_value = compute_meter_consumption(
                     reading_value, contract, supply_point, meter, date,
                 )
             consumption_days = (date - contract_prev_reading.reading_date).days if contract_prev_reading else 0
+            # Consum estimat ja compensat (i descomptat de la bossa) per la lectura fusionada.
+            merged_estimated_used = Decimal(0)
 
             if (
                 contract_prev_reading
@@ -162,7 +188,8 @@ class MeterChangeService:
                 and not contract_prev_reading.is_close
                 and not contract_prev_reading.previous_reading.is_close
             ):
-                calculated_value = int(contract_prev_reading.calculated_value) + int(calculated_value)
+                calculated_value = to_decimal(contract_prev_reading.calculated_value) + calculated_value
+                merged_estimated_used = to_decimal(contract_prev_reading.estimated_used)
                 consumption_days = int(consumption_days or 0) + int(contract_prev_reading.consumption_days or 0)
                 contract_prev_reading.is_control = True
                 contract_prev_reading.save()
@@ -170,10 +197,14 @@ class MeterChangeService:
 
             # real_consumption es calcula sobre el calculated_value final, tant
             # si s'ha fusionat amb la lectura anterior com si no.
-            used_estimated = None
-            if estimated_bag and estimated_bag.total_consumption > 0:
-                used_estimated = min(estimated_bag.total_consumption, calculated_value)
-            real_consumption = int(calculated_value) - int(used_estimated or 0)
+            # Si s'ha fusionat, només es descompta de la bossa el consum pendent
+            # que la lectura anterior no havia compensat ja.
+            additional_estimated = Decimal(0)
+            pending_consumption = max(Decimal(0), calculated_value - merged_estimated_used)
+            if estimated_bag and to_decimal(estimated_bag.total_consumption) > 0:
+                additional_estimated = min(to_decimal(estimated_bag.total_consumption), pending_consumption)
+            used_estimated = (merged_estimated_used + additional_estimated) or None
+            real_consumption = calculated_value - (used_estimated or Decimal(0))
 
             reading_kwargs = dict(
                 supply_point=supply_point,
@@ -197,13 +228,12 @@ class MeterChangeService:
 
             reading = Reading.objects.create(**reading_kwargs)
 
-            if used_estimated and used_estimated > 0:
+            if additional_estimated > 0:
                 EstimatedBagMovement.objects.create(
-                    amount=used_estimated,
+                    amount=additional_estimated,
                     estimated_bag=estimated_bag,
                     reading=reading,
                     movement_date=date,
                     is_positive=False
                 )
-                estimated_bag.total_consumption -= used_estimated
-                estimated_bag.save()
+                add_to_estimated_bag(estimated_bag.id, -additional_estimated)

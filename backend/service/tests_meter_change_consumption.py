@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
 
-from billing.models import Invoice, Reading
+from billing.models import EstimatedBag, EstimatedBagMovement, Invoice, Reading
 from contract.models import Contract, ContractStatus
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
@@ -109,6 +109,12 @@ class MeterChangeServiceConsumptionTest(MeterChangeConsumptionBase):
         self.assertEqual(close.calculated_value, Decimal(7))
         self.assertEqual(initial.calculated_value, Decimal(0))
 
+    def test_decimal_readings_keep_precision(self):
+        close, _ = self._apply('226.5', None)
+
+        self.assertEqual(close.calculated_value, Decimal('3.50'))
+        self.assertEqual(close.real_consumption, Decimal('3.50'))
+
     def test_merge_with_uninvoiced_previous_reading(self):
         # Lectura no facturada entre la facturada i el canvi: es fusiona.
         pending = Reading.objects.create(
@@ -123,6 +129,33 @@ class MeterChangeServiceConsumptionTest(MeterChangeConsumptionBase):
         self.assertEqual(close.previous_reading, self.prev)
         self.assertEqual(close.calculated_value, Decimal(3))
         self.assertEqual(close.real_consumption, Decimal(3))
+
+    def test_merge_keeps_estimated_already_used(self):
+        # La lectura pendent ja havia compensat 1 m3 amb la bossa d'estimades.
+        bag = EstimatedBag.objects.create(contract=self.contract, supply_point=self.sp, total_consumption=5)
+        Reading.objects.create(
+            contract=self.contract, supply_point=self.sp, meter=self.old_meter,
+            reading_date=datetime.date(2026, 10, 20), reading_value=224, calculated_value=1,
+            estimated_used=1, real_consumption=0, previous_reading=self.prev,
+        )
+        close, _ = self._apply(226, 0)
+
+        bag.refresh_from_db()
+        self.assertEqual(close.calculated_value, Decimal(3))
+        self.assertEqual(close.estimated_used, Decimal(3))
+        self.assertEqual(close.real_consumption, Decimal(0))
+        # Només es descompten els 2 m3 pendents, no els 3 sencers.
+        self.assertEqual(bag.total_consumption, Decimal(3))
+        movement = EstimatedBagMovement.objects.get(reading=close, is_positive=False)
+        self.assertEqual(movement.amount, Decimal(2))
+
+    def test_inactive_previous_reading_is_not_used_as_link(self):
+        self.prev.is_active = False
+        self.prev.save()
+        close, _ = self._apply(226, 0)
+
+        self.assertNotEqual(close.previous_reading, self.prev)
+        self.assertEqual(close.calculated_value, Decimal(48))
 
 
 class FixOrderChangeMeterReadingsCommandTest(MeterChangeConsumptionBase):
@@ -177,3 +210,67 @@ class FixOrderChangeMeterReadingsCommandTest(MeterChangeConsumptionBase):
 
         self.assertIn(f'reading #{self.close.id} has related invoice(s)', output)
         self.assertIn(f'#{invoice.id}', output)
+
+    def _with_estimated_bag(self):
+        """Simula el flux antic: es van descomptar 226 m3 de la bossa d'estimades."""
+        bag = EstimatedBag.objects.create(contract=self.contract, supply_point=self.sp, total_consumption=10)
+        EstimatedBagMovement.objects.create(
+            amount=226, estimated_bag=bag, reading=self.close,
+            movement_date=self.CHANGE_DATE, is_positive=False,
+        )
+        self.close.estimated_used = 226
+        self.close.real_consumption = 0
+        self.close.save()
+        return bag
+
+    def test_apply_returns_excess_estimated_to_bag(self):
+        bag = self._with_estimated_bag()
+
+        self._run('--apply')
+
+        self.close.refresh_from_db()
+        bag.refresh_from_db()
+        self.assertEqual(self.close.estimated_used, Decimal(3))
+        self.assertEqual(self.close.real_consumption, Decimal(0))
+        self.assertEqual(bag.total_consumption, Decimal(233))
+        returned = EstimatedBagMovement.objects.get(reading=self.close, is_positive=True)
+        self.assertEqual(returned.amount, Decimal(223))
+
+    def test_dry_run_does_not_touch_bag(self):
+        bag = self._with_estimated_bag()
+
+        self._run()
+
+        bag.refresh_from_db()
+        self.assertEqual(bag.total_consumption, Decimal(10))
+        self.assertFalse(EstimatedBagMovement.objects.filter(reading=self.close, is_positive=True).exists())
+
+    def test_inactive_previous_reading_is_ignored(self):
+        self.prev.is_active = False
+        self.prev.save()
+
+        self._run('--apply')
+
+        self.close.refresh_from_db()
+        # Lectura anterior activa del mateix comptador: 178 => 226 - 178
+        self.assertEqual(self.close.calculated_value, Decimal(48))
+
+
+class OrderChangeMeterValidationTest(TestCase):
+
+    def test_empty_initial_reading_is_not_missing(self):
+        from order.services.change_meter import OrderChangeMeterValidationService
+
+        mapping = [
+            {'customers_field': 'meter_old', 'form_field': 'old'},
+            {'customers_field': 'reading_old', 'form_field': 'r_old'},
+            {'customers_field': 'meter_new', 'form_field': 'new'},
+            {'customers_field': 'reading_new', 'form_field': 'r_new'},
+        ]
+        service = OrderChangeMeterValidationService(order=None)
+        service._field_mapping = lambda: mapping
+        service._all_answers = lambda: {'old': 'A', 'r_old': '226', 'new': 'B', 'r_new': ''}
+        self.assertEqual(service.validate(), {'can_apply': True, 'missing_fields': []})
+
+        service._all_answers = lambda: {'old': 'A', 'r_old': '', 'new': 'B', 'r_new': ''}
+        self.assertEqual(service.validate()['missing_fields'], ['r_old'])

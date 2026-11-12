@@ -7,6 +7,9 @@ from django.utils import timezone
 from service.services.meter_change_service import MeterChangeService, METER_CHANGE_ORIGIN
 
 
+OPTIONAL_FIELDS = {'reading_new'}
+
+
 def _has_value(value):
     """0 és un valor vàlid; només és buit None o un text en blanc."""
     if value is None:
@@ -63,10 +66,12 @@ class OrderChangeMeterValidationService:
         mapping = self._field_mapping()
         answers = self._all_answers()
 
+        # La lectura inicial del comptador nou és opcional: buida val 0.
         missing = [
             m['form_field']
             for m in mapping
-            if not _has_value(answers.get(m['form_field']))
+            if m.get('customers_field') not in OPTIONAL_FIELDS
+            and not _has_value(answers.get(m['form_field']))
         ]
 
         return {

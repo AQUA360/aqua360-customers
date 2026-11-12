@@ -21,11 +21,9 @@ from billing.models import EstimatedBagMovement, Reading
 from service.services.meter_change_service import (
     LEGACY_ORDER_CHANGE_METER_ORIGIN,
     METER_CHANGE_ORIGIN,
+    add_to_estimated_bag,
+    to_decimal as _dec,
 )
-
-
-def _dec(value):
-    return Decimal(value or 0)
 
 
 class Command(BaseCommand):
@@ -82,7 +80,8 @@ class Command(BaseCommand):
         si no n'hi ha, el consum és 0.
         """
         previous = reading.previous_reading
-        if not previous or previous.meter_id != reading.meter_id:
+        # Una lectura de control fusionada continua sent vàlida si és activa.
+        if not previous or previous.meter_id != reading.meter_id or not previous.is_active:
             previous = self._previous_same_meter(reading)
         if not previous:
             return Decimal(0), None
@@ -214,8 +213,8 @@ class Command(BaseCommand):
             is_positive=True,
         )
         old_total = _dec(bag.total_consumption)
-        bag.total_consumption = old_total + amount
-        bag.save(update_fields=['total_consumption'])
+        add_to_estimated_bag(bag.id, amount)
+        bag.refresh_from_db(fields=['total_consumption'])
         stats['bag_adjusted'] += 1
         self.stdout.write(
             f"     estimated bag #{bag.id}: returned {amount} m3 "
