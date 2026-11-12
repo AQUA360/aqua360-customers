@@ -3,7 +3,11 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-from django.test import SimpleTestCase, override_settings
+from django.contrib.auth.models import User
+from django.test import SimpleTestCase, TestCase, override_settings
+from rest_framework.test import APIClient
+
+from coredata.models import DeployRecord
 
 from customers import deploy_info
 
@@ -85,3 +89,85 @@ class GetDeployInfoTests(SimpleTestCase):
         self.assertEqual(info["source"], "unknown")
         self.assertEqual(info["commit"], "")
         self.assertIsNone(info["deployed_at"])
+
+
+BACKEND_BUILD = {
+    "source": "deploy",
+    "release": "v9.99.00",
+    "commit": "01234567",
+    "commit_full": "0123456789abcdef",
+    "branch": "",
+    "deployed_at": "2026-01-02T04:00:00Z",
+    "built_at": "2026-01-02T04:00:00Z",
+}
+
+
+class RecordDeployTests(TestCase):
+    def test_first_run_of_a_version_is_recorded_once(self):
+        first = deploy_info.record_deploy("backend", BACKEND_BUILD)
+        again = deploy_info.record_deploy("backend", BACKEND_BUILD)
+        self.assertEqual(first, again)
+        record = DeployRecord.objects.get()
+        self.assertEqual(record.release, "v9.99.00")
+        self.assertEqual(record.commit, "0123456789abcdef")
+        self.assertEqual(record.built_at.isoformat(), "2026-01-02T04:00:00+00:00")
+
+    def test_new_version_and_rollback_are_new_deploys(self):
+        deploy_info.record_deploy("backend", BACKEND_BUILD)
+        deploy_info.record_deploy("backend", {**BACKEND_BUILD, "release": "v9.99.01", "commit_full": "abcdef"})
+        deploy_info.record_deploy("backend", BACKEND_BUILD)
+        self.assertEqual(
+            list(DeployRecord.objects.order_by("id").values_list("release", flat=True)),
+            ["v9.99.00", "v9.99.01", "v9.99.00"],
+        )
+
+    def test_components_are_independent(self):
+        deploy_info.record_deploy("backend", BACKEND_BUILD)
+        deploy_info.record_deploy("frontend", BACKEND_BUILD)
+        self.assertEqual(DeployRecord.objects.count(), 2)
+
+    def test_development_and_unknown_are_not_recorded(self):
+        self.assertIsNone(deploy_info.record_deploy("backend", {**BACKEND_BUILD, "source": "git"}))
+        self.assertIsNone(deploy_info.record_deploy("backend", {"source": "build", "release": "", "commit": ""}))
+        self.assertFalse(DeployRecord.objects.exists())
+
+    def test_deploy_date_replaces_build_date(self):
+        info = deploy_info.with_deploy_date("backend", BACKEND_BUILD)
+        record = DeployRecord.objects.get()
+        self.assertEqual(info["deployed_at"], record.deployed_at.isoformat().replace("+00:00", "Z"))
+        self.assertEqual(info["built_at"], "2026-01-02T04:00:00Z")
+        self.assertEqual(BACKEND_BUILD["deployed_at"], "2026-01-02T04:00:00Z")
+
+
+class DeployInfoViewTests(TestCase):
+    url = "/coredata/deploy-info/"
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(User.objects.create_user("deploy-test"))
+
+    def test_get_returns_backend_with_recorded_deploy_date(self):
+        with mock.patch("coredata.views.deploy_info_view.get_deploy_info", return_value=BACKEND_BUILD):
+            response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        record = DeployRecord.objects.get(component="backend")
+        self.assertEqual(response.data["deployed_at"], record.deployed_at.isoformat().replace("+00:00", "Z"))
+
+    def test_post_records_frontend_version(self):
+        payload = {
+            "release": "v9.99.00", "commit": "01234567", "commit_full": "0123456789abcdef",
+            "branch": "develop", "built_at": "2026-01-02T04:00:00Z", "source": "build",
+        }
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, 200)
+        record = DeployRecord.objects.get(component="frontend")
+        self.assertEqual(record.branch, "develop")
+        self.assertEqual(response.data["deployed_at"], record.deployed_at.isoformat().replace("+00:00", "Z"))
+
+    def test_post_rejects_invalid_commit(self):
+        response = self.client.post(self.url, {"commit": "not-a-commit"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(DeployRecord.objects.exists())
+
+    def test_requires_authentication(self):
+        self.assertIn(APIClient().get(self.url).status_code, (401, 403))
