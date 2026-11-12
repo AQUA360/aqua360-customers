@@ -223,7 +223,7 @@ watch(sideIsPinnedContractOpen, (newVal) => {
     <!-- z-[45]: NavTop is rendered before <main>, so any page element with the same z-index
          (table column picker, "..." menus, page regions up to z-40) would be painted on top.
          Stays below the search and the modals (z-50). -->
-    <div role="region" id="right_page"
+    <div role="region" id="right_page" :data-pinned-contract-panel="isContractPinnedOpen || undefined"
         class="fixed h-full border-l border-gray-100 top-0 right-0 transition-all duration-500 w-[40%] z-[45] ease py-2 text-base bg-white overflow-x-hidden overflow-y-auto scrollbar-hide"
         :class="{
             'translate-x-0': showRegion,
