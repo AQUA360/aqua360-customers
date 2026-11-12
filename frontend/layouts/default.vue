@@ -5,14 +5,43 @@ import NavTop from '~/components/organisms/NavTop.vue';
 import NavSidebar from '~/components/organisms/NavSidebar.vue';
 import SideBarSearch from '~/components/organisms/SideBarSearch.vue';
 import NotificationRegion from '~/components/organisms/NotificationRegion.vue';
+import DailyDocumentSubmissionErrorsModal from '~/components/molecules/DailyDocumentSubmissionErrorsModal.vue';
 import { useToast } from 'vue-toastification';
 import { h } from 'vue';
+import { usePinnedContractOverPage } from '~/composables/usePinnedContractLayer';
 
 const sidebarStore = useSidebarStore();
 const notificationArea = ref<HTMLElement | null>(null);
 const toast = useToast();
-const { $GeneralNoteApiService } = useNuxtApp();
+const { $GeneralNoteApiService, $DailyDocumentApiService } = useNuxtApp();
 const { t } = useI18n();
+
+const showSubmissionErrorsModal = ref(false);
+const submissionErrorCount = ref(0);
+
+/** Runs only on layout mount (app entry / F5), not on in-app route changes. */
+const checkDailyDocumentSubmissionErrors = async () => {
+  try {
+    const payload = await $DailyDocumentApiService.checkNewDailyDocuments();
+    sidebarStore.newDailyDocumentsFound(payload);
+    const errors = typeof payload === 'number' ? 0 : (payload?.errors ?? 0);
+    if (!errors) return;
+
+    submissionErrorCount.value = errors;
+    showSubmissionErrorsModal.value = true;
+  } catch (err) {
+    console.error('Error checking daily document submission errors:', err);
+  }
+};
+
+const dismissSubmissionErrorsModal = () => {
+  showSubmissionErrorsModal.value = false;
+};
+
+const confirmSubmissionErrorsModal = () => {
+  showSubmissionErrorsModal.value = false;
+  navigateTo('/statistics/daily-documents/');
+};
 
 const generalNoteToastContent = (username: string, note: string) => h('div', [
   h('div', { class: 'text-xs opacity-75 mb-1' }, username),
@@ -71,12 +100,31 @@ const handleKeydown = (event: KeyboardEvent) => {
 };
 
 
+const pinnedContractOverPage = usePinnedContractOverPage();
+
+const isAbovePage = (element: HTMLElement, pinnedPanel: HTMLElement) => {
+  if (pinnedPanel.contains(element)) return true;
+  // Teleported to <body>: it is above the panel when its top-level layer has a higher z-index
+  let layer = element;
+  while (layer.parentElement && layer.parentElement !== document.body) layer = layer.parentElement;
+  if (layer.contains(pinnedPanel)) return false; // the app root: page content under the panel
+  const pinnedZ = parseInt(getComputedStyle(pinnedPanel).zIndex) || 0;
+  return (parseInt(getComputedStyle(layer).zIndex) || 0) > pinnedZ;
+}
+
 /* Closes the open region furthest to the right (the innermost one when several are open)
    by simulating the click of its region nav button. Closed regions stay in the DOM translated
    off-screen to the right, so a region is open when its right edge is inside the viewport. */
 const closeTopRegion = () => {
   const viewportWidth = window.innerWidth;
-  const openRegions = Array.from(document.querySelectorAll<HTMLElement>('[role="region"]'))
+  // The pinned contract panel covers the page regions: only the regions shown above the page can
+  // be closed, i.e. the panel, its subregions and the ones teleported to <body> above it
+  const pinnedPanel = sidebarStore.isPinnedContractOpen
+    ? document.querySelector<HTMLElement>('[data-pinned-contract-panel]')
+    : null;
+  const allRegions = Array.from(document.querySelectorAll<HTMLElement>('[role="region"]'));
+  const candidates = pinnedPanel ? allRegions.filter((element) => isAbovePage(element, pinnedPanel)) : allRegions;
+  const openRegions = candidates
     .map((element) => ({ element, rect: element.getBoundingClientRect() }))
     .filter(({ rect }) => rect.width > 0 && rect.height > 0 && rect.left < viewportWidth && rect.right <= viewportWidth + 1);
   if (openRegions.length === 0) return;
@@ -126,6 +174,7 @@ onMounted(() => {
 
   checkGeneralNotes();
   generalNotesPollTimer = setInterval(checkGeneralNotes, GENERAL_NOTES_POLL_INTERVAL);
+  checkDailyDocumentSubmissionErrors();
 
   // Downloads queue: resumes the exports still running (and the auto-download of
   // the ones launched from this tab) after a refresh or a new login.
@@ -141,6 +190,12 @@ onUnmounted(() => {
 
 <template>
   <div class="wrapper antialiased h-screen overflow-hidden">
+    <DailyDocumentSubmissionErrorsModal
+      v-model:open="showSubmissionErrorsModal"
+      :error-count="submissionErrorCount"
+      @confirm="confirmSubmissionErrorsModal"
+      @cancel="dismissSubmissionErrorsModal"
+    />
 
     <div class="">
       <SideBarSearch v-if="sidebarStore.isSearchOpen" />
@@ -162,7 +217,11 @@ onUnmounted(() => {
           width: 'calc(100vw - ' + sidebarStore.sidebarWidth + 'px)',
         }">
         <NavTop class="shrink-0" />
-        <main id="page" class="px-4 py-5 pb-0 flex-1 min-h-0 overflow-y-auto">
+        <!-- isolate while the pinned contract is open (or sliding out): page regions with z-index above the pinned
+             panel (z-[45], e.g. the z-[100] ones of claim managements or SEPA) stay below it.
+             Layers the page teleports to <body> use usePinnedContractCoversPage() instead. -->
+        <main id="page" class="px-4 py-5 pb-0 flex-1 min-h-0 overflow-y-auto"
+          :class="{ 'isolate': pinnedContractOverPage }">
           <slot />
         </main>
       </div><!-- end content -->

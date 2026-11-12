@@ -105,6 +105,15 @@ export default defineNuxtPlugin(nuxtApp => {
         throw error;
       }
     }
+
+    const submit = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/submit/`;
+      try {
+        return await $apiManager.fetch(apiUrl, 'POST', {}, { 'Content-Type': 'application/json' });
+      } catch (error) {
+        throw error;
+      }
+    }
   
     const apiService = {
       getAll,
@@ -113,6 +122,7 @@ export default defineNuxtPlugin(nuxtApp => {
       doDelete,
       checkNewDailyDocuments,
       regenerate,
+      submit,
     };
   
     nuxtApp.provide(provideName, apiService);
