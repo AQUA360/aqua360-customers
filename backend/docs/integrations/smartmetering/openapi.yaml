@@ -312,5 +312,5 @@ components:
         connect_id:
           type: string
           nullable: true
-          description: Identificador de la connexió (com a text)
+          description: Codi GIS de la connexió. Si és buit, l'id de la connexió com a text
           example: "12"

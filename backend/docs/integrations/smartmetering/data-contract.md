@@ -31,7 +31,7 @@ El payload replica el contracte de dades de la vista SQL [`vw_abonats_aqua360`](
 | `contract_active` | `true` si `Contract.status.token` = valor de `ConfigProject` `contract_active_token` |
 | `customer` | `holder.name` + `holder.surname` |
 | `cadastral_ref` | `SupplyPoint.cadastral` |
-| `connect_id` | `Connection.id` com a text |
+| `connect_id` | `Connection.code_gis` si en té; si no, `Connection.id` com a text |
 
 Filtres del queryset (com la vista): només `Contract.is_active=true`. Relacions absents → `null` (equivalent als `LEFT JOIN`).
 
