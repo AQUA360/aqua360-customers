@@ -36,6 +36,7 @@ import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
 import { useContractInvoicesByPeriod } from '~/composables/useContractInvoicesByPeriod';
+import { providePinnedContractScope } from '~/composables/usePinnedContractLayer';
 
 const { $ContractApiService, $InvoiceApiService, $LoggerApiService, $VulnerabilityRequestApiService, $ConfigProjectApiService } = useNuxtApp();
 const fixedObjectsStore = useFixedObjectsStore();
@@ -50,6 +51,9 @@ const props = defineProps({
         default: false,
     },
 });
+// Only as the NavTopPinned panel (isSubRegion): its regions keep their z-index while the panel
+// is open. As a full page it is page content and must stay below the panel (see usePinnedContractLayer)
+if (props.isSubRegion) providePinnedContractScope();
 const emit = defineEmits(['close']);
 
 const firstReload = ref(true)
