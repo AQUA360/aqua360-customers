@@ -8,6 +8,8 @@ import { useToast } from 'vue-toastification';
 
 import { formatDate } from '~/utils/date';
 
+import { paymentSummaryText } from '~/utils/invoice-payment-summary';
+
 import IBAN from '../atoms/IBAN.vue';
 
 import SelectorType from '../atoms/SelectorType.vue';
@@ -119,6 +121,16 @@ const invoiceRelations = (item) => INVOICE_RELATIONS
   .map((relation) => ({ key: relation.key, label: t(relation.label), invoice: item[relation.key] }));
 
 // ---------------------------------------------------------
+// PAYMENT STATUS (contract invoices tab)
+// ---------------------------------------------------------
+
+// The contract invoices list sends the payment summary of each invoice:
+// status of the current payment and bank returns, even if paid again later.
+const showPaymentSummary = computed(() =>
+  !props.is_info && (localData.value || []).some((row) => row.payment_summary !== undefined)
+);
+
+// ---------------------------------------------------------
 // XLSX EXPORT
 // ---------------------------------------------------------
 
@@ -151,6 +163,14 @@ const exportColumns = computed(() => {
       value: (row) => row.status_name,
       key: 'status'
     });
+
+    if (showPaymentSummary.value) {
+      cols.push({
+        header: t('billing_block.payment_status_column'),
+        value: (row) => paymentSummaryText(t, row.payment_summary),
+        key: 'payment_status'
+      });
+    }
 
     cols.push({
       header: t('contract_block.holder'),
@@ -205,6 +225,10 @@ const gridTemplateColumns = computed(() => {
     // The title column (info mode) needs more room than the status badge.
     props.is_info ? '200px' : '120px',
   ];
+
+  if (showPaymentSummary.value) {
+    cols.push('140px'); // payment status
+  }
 
   // Holder column only exists outside info mode.
   if (!props.is_info) {
@@ -634,7 +658,14 @@ watch(
       </span>
 
       <span
-        v-else
+        v-if="showPaymentSummary"
+        class="p-2 pl-2 text-slate-900 font-bold"
+      >
+        {{ t('billing_block.payment_status_column') }}
+      </span>
+
+      <span
+        v-if="props.is_info"
         class="p-2 pl-2 text-slate-900 font-bold flex items-center"
       >
         {{ t('common.title') }}
@@ -799,9 +830,19 @@ watch(
 
       </div>
 
+      <!-- Payment status -->
+      <div
+        v-if="showPaymentSummary"
+        class="footering text-slate-500 p-2 w-full min-w-0"
+      >
+
+        <AtomsInvoicePaymentStatus :summary="item.payment_summary" />
+
+      </div>
+
       <!-- Title -->
       <div
-        v-else
+        v-if="props.is_info"
         class="footering text-slate-500 p-2 w-full min-w-0"
       >
 
