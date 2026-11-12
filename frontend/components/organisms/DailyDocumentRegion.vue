@@ -9,7 +9,7 @@ import { checkPermission } from '~/middleware/permission';
 import { formatDate, formatDateTime } from '~/utils/date';
 import { useSidebarStore } from '~/stores/useNavSideBar';
 
-const { t } = useI18n();
+const { t, te } = useI18n();
 const sidebarStore = useSidebarStore();
 const toast = useToast();
 const objectPermissions = ref(null);
@@ -26,6 +26,7 @@ const regenerating_task_id = ref(null);
 const error = ref(null);
 const data = ref(null);
 const cancelling = ref(false);
+const submittingExternal = ref(false);
 const openCancelModal = ref(false);
 const cancelObservation = ref('');
 const completedAt = ref(new Date(Date.now()).toISOString().split('T')[0]);
@@ -53,6 +54,100 @@ const hasNoDataFound = computed(() => !documentId.value && !data.value?.creation
 const isCancelled = computed(() => Boolean(
     data.value?.cancelled_at || data.value?.cancelled_by || data.value?.cancelled_observation
 ));
+
+const submissionChannel = computed(() =>
+    data.value?.template?.available_report?.submission_channel || null
+);
+const hasSubmissionChannel = computed(() => Boolean(submissionChannel.value));
+const canSubmitExternal = computed(() =>
+    Boolean(objectPermissions.value?.can_change)
+    && hasSubmissionChannel.value
+    && Boolean(documentId.value)
+    && !isCancelled.value
+    && !regenerating_task_id.value
+);
+const showSubmissionPanel = computed(() =>
+    (hasSubmissionChannel.value && Boolean(documentId.value) && !isCancelled.value)
+    || Boolean(data.value?.submitted_at || data.value?.submission_status)
+);
+const hasSubmissionResult = computed(() => Boolean(
+    data.value?.submitted_at || data.value?.submission_status
+));
+const hasSubmissionResponse = computed(() => Boolean(data.value?.submission_response));
+
+/** Channel-specific copy with generic fallback: statistics_block.submission(.channels.<ch>).<key> */
+const submissionMsg = (key) => {
+    const channel = submissionChannel.value;
+    if (channel) {
+        const specific = `statistics_block.submission.channels.${channel}.${key}`;
+        if (te(specific)) return t(specific);
+    }
+    return t(`statistics_block.submission.${key}`);
+};
+
+const submissionConfirmMsg = computed(() => {
+    const channel = submissionChannel.value;
+    if (channel) {
+        const specific = `confirmation_text_block.confirm_submit_${channel}`;
+        if (te(specific)) return t(specific);
+    }
+    return t('confirmation_text_block.confirm_submit_external');
+});
+
+const submissionSuccessMsg = computed(() => {
+    const channel = submissionChannel.value;
+    if (channel) {
+        const specific = `success_block.submission_${channel}_ok`;
+        if (te(specific)) return t(specific);
+    }
+    return t('success_block.submission_ok');
+});
+
+const submissionWarningMsg = computed(() => {
+    const channel = submissionChannel.value;
+    if (channel) {
+        const specific = `warning_block.submission_${channel}_with_errors`;
+        if (te(specific)) return t(specific);
+    }
+    return t('warning_block.submission_with_errors');
+});
+
+const submissionStatusToken = computed(() => {
+    const status = data.value?.submission_status;
+    if (!status) return null;
+    return typeof status === 'object' ? (status.token || null) : status;
+});
+const submissionStatusLabel = computed(() => {
+    const status = data.value?.submission_status;
+    if (!status) return null;
+    if (typeof status === 'object' && status.name) return status.name;
+    const token = submissionStatusToken.value;
+    if (!token) return null;
+    const channel = submissionChannel.value;
+    if (channel) {
+        const specific = `statistics_block.submission.channels.${channel}.status_${token}`;
+        if (te(specific)) return t(specific);
+    }
+    const key = `statistics_block.submission.status_${token}`;
+    return te(key) ? t(key) : token;
+});
+const submissionStatusColor = computed(() => {
+    const status = data.value?.submission_status;
+    if (typeof status === 'object' && status.color) return status.color;
+    switch (submissionStatusToken.value) {
+        case 'correct': return 'green';
+        case 'partially_correct': return 'orange';
+        case 'incorrect':
+        case 'error': return 'red';
+        default: return 'slate';
+    }
+});
+const hasSubmissionError = computed(() => {
+    const status = data.value?.submission_status;
+    if (!status) return false;
+    if (typeof status === 'object') return Boolean(status.is_error);
+    return status !== 'pending' && status !== 'correct';
+});
 
 const getData = async (load = true) => {
     pending.value = load;
@@ -160,6 +255,10 @@ const printDocument = async (doc_id) => {
 };
 
 const sendDocument = async () => {
+    if (!objectPermissions.value?.can_change) {
+        toast.error(t('common.no_permissions'));
+        return;
+    }
     if (!completedAt.value) {
         toast.warning(t('warning_block.no_send_date_warning'));
         return;
@@ -184,6 +283,59 @@ const sendDocument = async () => {
         toast.error(t('error_block.send_daily_document_failed'));
     }
 
+};
+
+const submitExternal = async () => {
+    if (!objectPermissions.value?.can_change) {
+        toast.error(t('common.no_permissions'));
+        return;
+    }
+    if (!canSubmitExternal.value || submittingExternal.value) return;
+    if (!confirm(submissionConfirmMsg.value)) return;
+
+    submittingExternal.value = true;
+    try {
+        const response = await $DailyDocumentApiService.submit(props.id);
+        if (response) {
+            const { submission_result, ...documentData } = response;
+            data.value = documentData;
+            if (submission_result?.ok) {
+                toast.success(submissionSuccessMsg.value);
+            } else {
+                toast.warning(submissionWarningMsg.value);
+            }
+            reloadSideBar();
+            emit('changed');
+        }
+    } catch (err) {
+        console.error(err);
+        // api-manager already shows a toast for HTTP errors
+        await getData(false);
+    } finally {
+        submittingExternal.value = false;
+    }
+};
+
+const downloadSubmissionResponse = () => {
+    const xml = data.value?.submission_response;
+    if (!xml) {
+        toast.error(t('error_block.no_document_available'));
+        return;
+    }
+    try {
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+        const link = document.createElement('a');
+        const file_url = URL.createObjectURL(blob);
+        const channel = submissionChannel.value || 'submission';
+        const stamp = (data.value?.submitted_at || '').toString().slice(0, 10).replace(/-/g, '') || 'response';
+        link.href = file_url;
+        link.download = `${channel}_response_${props.id}_${stamp}.xml`;
+        link.click();
+        setTimeout(() => window.URL.revokeObjectURL(file_url), 250);
+    } catch (err) {
+        console.error(err);
+        toast.error(t('error_block.download_failed'));
+    }
 };
 
 const reloadSideBar = async () => {
@@ -360,8 +512,73 @@ watch(() => props.id, () => {
                         <Icon name="fa6-solid:download" class="m-auto w-3.5 h-3.5" />
                     </button>
                 </div>
+
+                <div v-if="showSubmissionPanel"
+                    class="rounded-md border py-2.5 mb-3"
+                    :class="hasSubmissionError ? 'border-red-500 bg-red-50' : 'border-slate-200 bg-white'">
+                    <div class="flex items-center justify-between gap-3 mb-2 mx-3">
+                        <span class="text-[10px] font-semibold uppercase tracking-[0.16em]"
+                            :class="hasSubmissionError ? 'text-red-600' : 'text-slate-500'">
+                            {{ submissionMsg('title') }}
+                            <span v-if="hasSubmissionError" class="relative ml-1.5 inline-flex size-2 align-middle" aria-hidden="true">
+                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                                <span class="relative inline-flex size-2 rounded-full bg-red-500"></span>
+                            </span>
+                        </span>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button v-if="hasSubmissionResponse" type="button"
+                                class="w-8 h-8 rounded-full border border-orange-500 text-orange-500 bg-orange-50 hover:bg-orange-100"
+                                :title="submissionMsg('download_response')"
+                                @click="downloadSubmissionResponse">
+                                <Icon name="fa6-solid:download" class="m-auto w-3.5 h-3.5" />
+                            </button>
+                            <button v-if="canSubmitExternal" type="button" class="button-primary flex items-center gap-2"
+                                :disabled="submittingExternal" @click="submitExternal">
+                                <Icon v-if="submittingExternal" name="fa6-solid:spinner" class="animate-spin" />
+                                <span>{{ submittingExternal ? t('common.processing') : submissionMsg('submit') }}</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="hasSubmissionError"
+                        class="flex items-start gap-2 py-1.5 px-2 bg-red-200 rounded border border-red-200 mb-2">
+                        <Icon name="fa6-solid:triangle-exclamation" class="text-red-600 mt-0.5 shrink-0" />
+                        <div class="min-w-0 flex-1">
+                            <p class="text-red-600 font-bold text-sm">
+                                {{ t('common.error') }}: {{ submissionStatusLabel }}
+                            </p>
+                            <p v-if="data.submission_error" class="text-red-600 font-bold text-sm break-words mt-0.5">
+                                {{ data.submission_error }}
+                            </p>
+                            <p class="text-red-600 font-bold text-xs mt-1">{{ t('statistics_block.submission.error_help') }}</p>
+                        </div>
+                    </div>
+                    <!-- <div v-if="hasSubmissionError"
+                        class="flex items-start gap-2 py-1.5 px-2 bg-red-500 rounded border border-red-500 mb-2">
+                        <Icon name="fa6-solid:triangle-exclamation" class="text-white mt-0.5 shrink-0" />
+                        <div class="min-w-0 flex-1">
+                            <p class="text-white font-bold text-sm">
+                                {{ t('common.error') }}: {{ submissionStatusLabel }}
+                            </p>
+                            <p v-if="data.submission_error" class="text-white font-bold text-sm break-words mt-0.5">
+                                {{ data.submission_error }}
+                            </p>
+                            <p class="text-white font-bold text-xs mt-1">{{ t('statistics_block.submission.error_help') }}</p>
+                        </div>
+                    </div> -->
+                    <div v-if="hasSubmissionResult" class="grid grid-cols-2 gap-2 mx-3">
+                        <FieldDetail v-if="data.submitted_at" :label="submissionMsg('submitted_at')"
+                            :value="formatDateTime(data.submitted_at)" />
+                        <FieldDetail v-if="submissionStatusLabel" :label="submissionMsg('status')">
+                            <AtomsColorBadge :value="submissionStatusLabel" :color="submissionStatusColor" />
+                        </FieldDetail>
+                        <FieldDetail v-if="data.submission_csv" :label="submissionMsg('reference')"
+                            :value="data.submission_csv" class="col-span-2" />
+                    </div>
+                </div>
+
                 <div v-if="!hasCreationError">
-                    <div v-if="!data.completed_at && !isCancelled" class="flex items-end justify-start gap-2 mb-3">
+                    <div v-if="objectPermissions?.can_change && !data.completed_at && !isCancelled"
+                        class="flex items-end justify-start gap-2 mb-3">
                         <AtomsInputDate v-model="completedAt" :label="t('common.send_date')" />
                         <button class="button-primary mb-4" :disabled="!completedAt || regenerating_task_id"
                             @click="sendDocument">

@@ -129,7 +129,7 @@ const isCollapsed = computed(() => sideBarStore.isCollapsed);
 // les seccions; només s'hi passen els que té permís per veure.
 //  - match: tros de ruta que marca l'enllaç com a actiu
 //  - image: imatge en lloc d'icona
-//  - dailyDocumentsBadge: comptador de documents diaris nous
+//  - dailyDocumentsBadge: comptador de documents diaris nous / errors de tramesa
 const menuSections = computed(() => {
   const perms = permissions.value?.permissions || {};
   const sections = [
@@ -633,6 +633,7 @@ onUnmounted(() => {
               <MoleculesNavSidebarLink :item="element.item" :active="isMenuItemActive(element.item)"
                 :icons-only="isCollapsed" favorite :hover-class="hoverClass" :highlight-class="highlightClass"
                 :new-daily-documents="sideBarStore.newDailyDocuments"
+                :daily-document-submission-errors="sideBarStore.dailyDocumentSubmissionErrors"
                 @toggle-favorite="toggleFavorite(element.section.key, element.item.key)" />
             </div>
           </template>
@@ -651,6 +652,7 @@ onUnmounted(() => {
           :active="isMenuItemActive(recent.item)" :icons-only="isCollapsed"
           :favorite="isFavorite(recent.section.key, recent.item.key)" :hover-class="hoverClass"
           :highlight-class="highlightClass" :new-daily-documents="sideBarStore.newDailyDocuments"
+          :daily-document-submission-errors="sideBarStore.dailyDocumentSubmissionErrors"
           @toggle-favorite="toggleFavorite(recent.section.key, recent.item.key)" />
       </MoleculesNavSidebarSection>
 
@@ -669,6 +671,7 @@ onUnmounted(() => {
                   <MoleculesNavSidebarLink :item="item" :active="isMenuItemActive(item)" :icons-only="isCollapsed"
                     :favorite="isFavorite(section.key, item.key)" :hover-class="hoverClass"
                     :highlight-class="highlightClass" :new-daily-documents="sideBarStore.newDailyDocuments"
+                    :daily-document-submission-errors="sideBarStore.dailyDocumentSubmissionErrors"
                     @toggle-favorite="toggleFavorite(section.key, item.key)" />
                 </div>
               </template>

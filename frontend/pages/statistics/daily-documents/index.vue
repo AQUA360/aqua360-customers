@@ -146,6 +146,13 @@ const resetFilters = () => {
   getData();
 };
 
+const hasSubmissionError = (item) => {
+  const status = item?.submission_status;
+  if (!status) return false;
+  if (typeof status === 'object') return Boolean(status.is_error);
+  return status !== 'pending' && status !== 'correct';
+};
+
 onMounted(async () => {
   await getPermissions();
   if (permissions.value?.can_view) {
@@ -240,14 +247,21 @@ watch(() => route.query, () => {
         <div v-for="item in items" :key="item.id" class="gap-3 text-base border-b items-center" :style="gridStyle"
           :class="{
             'bg-yellow-50': item.id === selectedItemId,
-            'bg-slate-100': !item.is_active,
+            'bg-red-50': hasSubmissionError(item) && item.id !== selectedItemId,
+            'bg-slate-100': !item.is_active && !hasSubmissionError(item),
           }">
 
           <span class="p-0">{{ formatDate(item.created_at) }}</span>
           <span>
             <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
               @click="showDetail('DailyDocumentRegion', item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.name }}</abbr>
+              <abbr :title="item.token" class="no-underline flex items-center gap-1.5 min-w-0">
+                <span v-if="hasSubmissionError(item)" class="relative inline-flex size-2 shrink-0" aria-hidden="true">
+                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                  <span class="relative inline-flex size-2 rounded-full bg-red-500"></span>
+                </span>
+                {{ item.name }}
+              </abbr>
               <Icon name="fa6-solid:eye"
                 class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
             </button>

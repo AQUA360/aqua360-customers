@@ -855,6 +855,226 @@ class InvoiceFilterAlignmentTests(TestCase):
         self.assertEqual(response.data, {"error": "Contract not found"})
 
 
+class ConsumptionContractIsolationTests(TestCase):
+    """Protecció de dades: amb contractes consecutius al mateix punt de
+    subministrament i comptador, els endpoints de consums d'un contracte mai
+    retornen lectures d'un altre contracte ni de fora del seu període."""
+
+    OLD_TOKEN = "ISO-OLD"
+    NEW_TOKEN = "ISO-NEW"
+    EMPTY_TOKEN = "ISO-EMPTY"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-consumption-isolation-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            ConfigProject.objects.get_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.status = ContractStatus.objects.create(token="1", name="Activo")
+        cls.sent_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        old_holder = Person.objects.create(token="00000001R", name="Anterior")
+        new_holder = Person.objects.create(token="00000002W", name="Nou")
+
+        cls.meter = Meter.objects.create(code="MTR-ISO-1")
+        cls.replacement_meter = Meter.objects.create(code="MTR-ISO-2")
+        cls.supply_point = SupplyPoint.objects.create(
+            token="99999/9999", meter=cls.replacement_meter
+        )
+        cls.old_contract = Contract.objects.create(
+            token=cls.OLD_TOKEN,
+            status=cls.status,
+            holder=old_holder,
+            supply_point_default=cls.supply_point,
+        )
+        # `update()` evita el senyal de baixa (fiança), aliè a aquest test.
+        Contract.objects.filter(pk=cls.old_contract.pk).update(
+            termination_date=date(2025, 12, 31)
+        )
+        cls.old_contract.refresh_from_db()
+        cls.new_contract = Contract.objects.create(
+            token=cls.NEW_TOKEN,
+            status=cls.status,
+            holder=new_holder,
+            supply_point_default=cls.supply_point,
+            registration_date=date(2026, 1, 1),
+        )
+
+        old_invoice = cls._invoice("ISO-INV-OLD", cls.old_contract, 2025, 6)
+        new_invoice = cls._invoice("ISO-INV-NEW", cls.new_contract, 2026, 3)
+
+        # Lectura de l'anterior titular, facturada al seu contracte.
+        cls.old_reading = cls._reading(
+            cls.old_contract, cls.meter, date(2025, 6, 30), old_invoice
+        )
+        # Lectura de l'anterior titular posterior a la seva baixa.
+        cls.old_after_termination = cls._reading(
+            cls.old_contract, cls.meter, date(2026, 1, 15), old_invoice
+        )
+        # Lectura del nou titular, amb el comptador original.
+        cls.new_reading = cls._reading(
+            cls.new_contract, cls.meter, date(2026, 1, 31), new_invoice
+        )
+        # Lectura del nou titular després del canvi de comptador.
+        cls.new_replacement_reading = cls._reading(
+            cls.new_contract,
+            cls.replacement_meter,
+            date(2026, 3, 31),
+            new_invoice,
+        )
+        # Lectura del nou contracte anterior a la seva data d'alta.
+        cls.new_before_registration = cls._reading(
+            cls.new_contract, cls.meter, date(2025, 12, 15), new_invoice
+        )
+        # Dada incoherent: lectura de l'anterior contracte vinculada a una
+        # factura del nou.
+        cls.old_on_new_invoice = cls._reading(
+            cls.old_contract, cls.meter, date(2026, 2, 15), new_invoice
+        )
+
+        cls.empty_contract = Contract.objects.create(
+            token=cls.EMPTY_TOKEN,
+            status=cls.status,
+            holder=new_holder,
+            supply_point_default=cls.supply_point,
+            registration_date=date(2026, 6, 1),
+        )
+
+    @classmethod
+    def _invoice(cls, token, contract, year, month):
+        """Create a sent invoice of `contract` for the given billing period."""
+        return Invoice.objects.create(
+            token=token,
+            contract=contract,
+            status=cls.sent_status,
+            issue_date=date(year, month, 28),
+            billing_period_year=year,
+            billing_period_month=month,
+        )
+
+    @staticmethod
+    def _reading(contract, meter, reading_date, invoice):
+        """Create a reading of `contract` and bill it in `invoice`."""
+        reading = Reading.objects.create(
+            contract=contract,
+            meter=meter,
+            supply_point=contract.supply_point_default,
+            reading_date=reading_date,
+            reading_value=100.0,
+            real_consumption=10.0,
+        )
+        invoice.readings.add(reading)
+        return reading
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _list_ids(self, contract_token, **params):
+        """Return the reading ids listed for `contract_token`."""
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": contract_token, **params}
+        )
+        self.assertEqual(response.status_code, 200)
+        return [item["id"] for item in response.data["results"]]
+
+    def _csv_ids(self, response):
+        """Return the reading ids contained in a CSV download response."""
+        content = b"".join(response.streaming_content).decode("utf-8")
+        return {int(row["id"]) for row in csv.DictReader(StringIO(content))}
+
+    def test_new_contract_never_lists_previous_contract_readings(self):
+        """The new holder sees only their own readings, including the
+        replacement meter, and nothing before the registration date."""
+        self.assertEqual(
+            self._list_ids(self.NEW_TOKEN),
+            [self.new_replacement_reading.id, self.new_reading.id],
+        )
+
+    def test_date_filter_cannot_reach_previous_contract_readings(self):
+        """A wide date range still never returns previous contract readings."""
+        self.assertEqual(
+            self._list_ids(
+                self.NEW_TOKEN, date_from="2000-01-01", date_to="2099-12-31"
+            ),
+            [self.new_replacement_reading.id, self.new_reading.id],
+        )
+
+    def test_old_contract_excludes_readings_after_termination(self):
+        """The previous contract only lists readings up to its termination."""
+        self.assertEqual(self._list_ids(self.OLD_TOKEN), [self.old_reading.id])
+
+    def test_contract_without_own_readings_returns_empty_list(self):
+        """A contract without own billed readings does not fall back to the
+        supply point or meter history."""
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": self.EMPTY_TOKEN}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_period_comes_from_own_contract_invoice(self):
+        """The period of a reading comes from the contract's own invoice."""
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": self.NEW_TOKEN}
+        )
+
+        self.assertEqual(
+            {item["period"] for item in response.data["results"]}, {"2026-1T"}
+        )
+
+    def test_single_download_of_previous_contract_reading_returns_404(self):
+        """Downloading another contract's reading with the new contract
+        token is not found."""
+        for reading in (self.old_reading, self.old_on_new_invoice):
+            with self.subTest(reading=reading.id):
+                response = self.client.get(
+                    reverse("consumption-download-ov", kwargs={"id": reading.id}),
+                    {"contract_token": self.NEW_TOKEN, "format": "csv"},
+                )
+
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.data, {"error": "Reading not found"})
+
+    def test_bulk_download_with_previous_contract_reading_id_returns_400(self):
+        """A previous contract's reading id is rejected as unknown."""
+        response = self.client.post(
+            reverse("consumptions-download-ov"),
+            {
+                "contract_token": self.NEW_TOKEN,
+                "format": "csv",
+                "reading_ids": [self.new_reading.id, self.old_reading.id],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("reading_ids", response.data)
+
+    def test_bulk_download_all_excludes_previous_contract_readings(self):
+        """The full export only contains the contract's own readings."""
+        response = self.client.post(
+            reverse("consumptions-download-ov"),
+            {"contract_token": self.NEW_TOKEN, "format": "csv"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._csv_ids(response),
+            {self.new_reading.id, self.new_replacement_reading.id},
+        )
+
+
 class ConsumptionBilledFilterTests(TestCase):
     """Phase 2: els endpoints de consums només retornen consums facturats
     (lectures vinculades a almenys una factura)."""
