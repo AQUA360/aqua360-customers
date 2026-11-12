@@ -295,6 +295,11 @@ export default defineNuxtPlugin(nuxtApp => {
       throw error;
     }
   }
+  // Foto original d'una lectura de la galeria «Lectures amb foto» (la llista només porta miniatures)
+  const getSetupReadingPhoto = async (id, readingId) => {
+    const apiUrl = apiHost + '/billing/reading-batch/setup/' + id + '/photo/' + readingId + '/';
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
   const estimateReadings = async (id, data) => {
     let apiUrl = apiHost + '/billing/reading-batch/estimate-readings/' + id + '/';
     try {
@@ -389,6 +394,7 @@ export default defineNuxtPlugin(nuxtApp => {
     update,
     create,
     getSetupReadings,
+    getSetupReadingPhoto,
     createMissingBatch,
     getNoRouteSupplyPoints,
     estimateReadings,

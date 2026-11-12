@@ -120,6 +120,7 @@ export default {
   readings_remote_reading: 'Lectures remotes',
   readings_null: 'Lectures sense valor',
   remote_readings: 'Telelectures',
+  readings_with_photo: 'Lectures amb foto',
   readings_inactive_supplypoints: 'Lectures amb punt subm. inactiu',
   contract: 'Contracte',
   contracts: 'Contractes',
