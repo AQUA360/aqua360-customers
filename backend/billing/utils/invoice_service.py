@@ -977,6 +977,18 @@ def generate_consumption_invoice_multiple(
                 processing_unit_final = electronic_data.get('processing_unit')
                 command_final = electronic_data.get('command')
                 record_final = electronic_data.get('record')
+
+        # Procés de facturació: si el contracte ja deu diners, la factura no es domicilia
+        # (paràmetre `block_remittance_if_unpaid`).
+        blocked_from_payment_type = None
+        if billing:
+            from billing.utils.remittance_block_service import blocked_remittance_payment_type
+            bank_payment_type = blocked_remittance_payment_type(contract_base, payment_type_instance)
+            if bank_payment_type:
+                blocked_from_payment_type = payment_type_instance
+                payment_type_instance = bank_payment_type
+                payment_bank_instance = None
+
         if not exploitation and contract_base.supply_point_default and contract_base.supply_point_default.connection and contract_base.supply_point_default.connection.exploitation:
             exploitation = contract_base.supply_point_default.connection.exploitation
         
@@ -1059,7 +1071,18 @@ def generate_consumption_invoice_multiple(
             return None
 
         invoice = Invoice.objects.create(**data)
-        
+
+        if blocked_from_payment_type:
+            # Que consti a l'historial per què no es domicilia com diu el contracte
+            LogInvoiceDataChange.objects.create(
+                object=invoice,
+                previous_payment_type=blocked_from_payment_type.name,
+                current_payment_type=payment_type_instance.name,
+                observation=_("No es domicilia: el contracte té factures pendents de cobrar"),
+                user=None,
+                timestamp=timezone.now(),
+            )
+
         # =====================================================================
         # NO TOQUIS AQUESTA LINIA -- avis per a programadors I per a IA (Claude)
         # =====================================================================
