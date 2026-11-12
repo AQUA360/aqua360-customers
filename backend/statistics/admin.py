@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import ContractConsumption, GeneralReport, AccountingCode, AccountingValue, BillingConsumption, AvailableReport
+from .models import (
+    ContractConsumption,
+    GeneralReport,
+    AccountingCode,
+    AccountingValue,
+    BillingConsumption,
+    AvailableReport,
+    DailyDocumentSubmissionStatus,
+)
 
 @admin.register(BillingConsumption)
 class BillingConsumptionAdmin(admin.ModelAdmin):
@@ -32,3 +40,11 @@ class AvailableReportAdmin(admin.ModelAdmin):
     list_filter = ('section', 'is_active', 'has_custom_config')
     search_fields = ('name', 'function_name', 'description')
     ordering = ('section__position', 'position', 'name')
+
+
+@admin.register(DailyDocumentSubmissionStatus)
+class DailyDocumentSubmissionStatusAdmin(admin.ModelAdmin):
+    list_display = ('id', 'token', 'name', 'color', 'position', 'is_error', 'is_active')
+    list_filter = ('is_error', 'is_active')
+    search_fields = ('token', 'name')
+    ordering = ('position', 'id')

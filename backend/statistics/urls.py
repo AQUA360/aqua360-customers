@@ -63,6 +63,7 @@ from .views.update_statistics_view import TriggerDailyConsumptionUpdate, Trigger
 from .views.summary_statistics_view import ConsumptionSummaryByUseType, BillingSummaryByUseType
 from .views.daily_activity_view import DailyActivitySummaryView, ReportDailyActivitySummary
 from .views.daily_document_status_view import DailyDocumentStatusViewSet
+from .views.daily_document_submission_status_view import DailyDocumentSubmissionStatusViewSet
 from .views.daily_document_template_view import DailyDocumentTemplateViewSet
 from .views.daily_document_view import DailyDocumentViewSet
 from .views.custom_report_view import CustomReportViewSet
@@ -80,6 +81,7 @@ router.register(r'reading-batch-import-template', ReadingBatchImportTemplateView
 router.register(r'reading-batch-import-column', ReadingBatchImportColumnViewSet)
 router.register(r'available-reports', AvailableReportViewSet)
 router.register(r'daily-document-status', DailyDocumentStatusViewSet)
+router.register(r'daily-document-submission-status', DailyDocumentSubmissionStatusViewSet)
 router.register(r'daily-document-template', DailyDocumentTemplateViewSet)
 router.register(r'daily-document', DailyDocumentViewSet)
 router.register(r'custom-report', CustomReportViewSet, basename='custom-report')
