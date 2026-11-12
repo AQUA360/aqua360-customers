@@ -43,6 +43,10 @@ def compute_due_date(start_date, days_to_complete, is_work_days=False):
 def generate_daily_document(template, current_time, pending_status):
     try:
         from statistics.tasks import ReportNoData
+        from statistics.utils.submission_service import (
+            get_submission_channel,
+            submit_daily_document,
+        )
 
         document = None
         error_message = None
@@ -70,7 +74,7 @@ def generate_daily_document(template, current_time, pending_status):
             is_work_days=bool(template.is_work_days),
         )
 
-        DailyDocument.objects.create(
+        daily_document = DailyDocument.objects.create(
             token=f"{template.token}_{current_time.strftime('%Y%m%d')}",
             name=f"{template.name} {current_time.strftime('%Y/%m/%d')}",
             document_date=current_time.date(),
@@ -81,6 +85,14 @@ def generate_daily_document(template, current_time, pending_status):
             creation_error=error_message,
             no_data_found=no_data_found,
         )
+
+        # Auto-submit when the report file was generated successfully and a channel is configured.
+        if document is not None and not no_data_found and not error_message:
+            if get_submission_channel(daily_document):
+                try:
+                    submit_daily_document(daily_document)
+                except Exception as e:
+                    print(f"Error while submitting daily document {template.name}: {e}")
 
     except Exception as e:
         print(f"Error while generating daily document {template.name}: {e}")
