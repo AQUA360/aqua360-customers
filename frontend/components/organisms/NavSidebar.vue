@@ -26,18 +26,18 @@ const {
   available: deployInfoAvailable,
   frontendLabel: deployFrontendLabel,
   backendLabel: deployBackendLabel,
+  mismatch: deployMismatch,
   load: loadDeployInfo,
 } = useDeployInfo();
 
 const toggleDropdown = () => {
   showDropdown.value = !showDropdown.value;
   showMenuCustomizer.value = false;
-  // La informació del deploy només interessa quan s'obre el desplegable.
-  if (showDropdown.value) loadDeployInfo();
 };
 
 /** En passar-hi el ratolí, la versió, el commit i la data del build de frontend i backend. */
 const deployTooltip = computed(() => [
+  ...(deployMismatch.value ? [t('common.deploy_mismatch')] : []),
   `${t('common.deploy_frontend')}: ${deployFrontendLabel.value}`,
   `${t('common.deploy_backend')}: ${deployBackendLabel.value}`,
 ].join('\n'));
@@ -498,6 +498,9 @@ const handleClickOutside = (event) => {
 
 onMounted(() => {
   getCurrentExploitation();
+  // En carregar, el frontend informa el backend de la seva versió: així queda
+  // registrada la data del desplegament encara que ningú obri el desplegable.
+  loadDeployInfo();
   username.value = localStorage.getItem('user_username') || '';
   document.addEventListener('click', handleClickOutside);
 });
@@ -744,6 +747,11 @@ onUnmounted(() => {
             {{ $t('common.deploy') }}:
             <span class="font-medium text-slate-600">{{ deploySummaryLabel || '—' }}</span>
           </span>
+        </div>
+        <div v-if="deployMismatch" class="px-3 pb-1 flex items-center gap-2 text-xs text-amber-600 cursor-help"
+          :title="deployTooltip">
+          <Icon name="fa6-solid:triangle-exclamation" class="w-4 h-4 shrink-0" />
+          <span class="truncate">{{ $t('common.deploy_mismatch') }}</span>
         </div>
 
         <!-- User Profile Info -->

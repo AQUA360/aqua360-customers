@@ -7,8 +7,11 @@ del build com a build args. El `Dockerfile` executa aquest mòdul
 l'arrel del codi (`BASE_DIR`). Aquí es llegeix per servir-la a
 `/coredata/deploy-info/` i que el frontend la mostri al NavSidebar.
 
-La data de deploy és la del build de la imatge: una imatge és immutable i
-reiniciar el contenidor no la canvia.
+La data del build (`built_at`) és la de la imatge, que pot ser d'uns dies
+abans que s'instal·li al client. La data del desplegament (`deployed_at`) surt
+de l'historial `coredata.DeployRecord`: `record_deploy` hi desa cada versió
+nova la primera vegada que s'executa (el backend, en arrencar el contenidor;
+el frontend, quan el navegador l'informa).
 
 En desenvolupament el fitxer no existeix: s'intenta llegir el commit del git
 local (el `.git` del monorepo és a la carpeta pare i `git -C` el troba) i, si
@@ -16,6 +19,7 @@ tampoc hi ha git, es retornen els camps buits.
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -28,6 +32,8 @@ DEPLOY_INFO_FILENAME = "deploy_info.json"
 REPO_NAME = "aqua360-customers"
 COMPONENT = "backend"
 
+logger = logging.getLogger(__name__)
+
 _cache = None
 _cache_mtime = None
 
@@ -37,6 +43,7 @@ def _empty_info(source):
         "repo": REPO_NAME,
         "component": COMPONENT,
         "deployed_at": None,
+        "built_at": None,
         "commit": "",
         "commit_full": "",
         "commit_date": "",
@@ -61,8 +68,11 @@ def build_from_env(env=None):
     env = os.environ if env is None else env
     commit_full = (env.get("GIT_COMMIT") or "").strip()
     info = _empty_info("build")
+    built_at = (env.get("BUILD_DATE") or "").strip() or _utc_now_iso()
     info.update({
-        "deployed_at": (env.get("BUILD_DATE") or "").strip() or _utc_now_iso(),
+        # Fins que no es registra el desplegament, la data és la del build.
+        "deployed_at": built_at,
+        "built_at": built_at,
         "commit": commit_full[:8],
         "commit_full": commit_full,
         "commit_date": (env.get("GIT_COMMIT_DATE") or "").strip(),
@@ -143,6 +153,8 @@ def get_deploy_info(refresh=False):
         info = _read_json(path)
         if info is not None:
             info.setdefault("source", "deploy")
+            # Al fitxer, `deployed_at` és la data del build de la imatge.
+            info.setdefault("built_at", info.get("deployed_at"))
 
     if info is None:
         info = _from_git(settings.BASE_DIR)
@@ -151,6 +163,65 @@ def get_deploy_info(refresh=False):
         info = _empty_info("unknown")
 
     _cache, _cache_mtime = info, mtime
+    return info
+
+
+def _parse_datetime(value):
+    from django.utils.dateparse import parse_datetime
+
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return parse_datetime(value)
+    except ValueError:
+        return None
+
+
+def record_deploy(component, info):
+    """Desa la versió a l'historial si és nova i en retorna la data del desplegament.
+
+    Una versió és nova si no és la darrera registrada del component: tornar a
+    una versió anterior també és un desplegament. Sense versió ni commit, o en
+    desenvolupament (git local), no es desa res i es retorna None.
+    """
+    if info.get("source") in ("git", "unknown"):
+        return None
+    release = (info.get("release") or "").strip()[:100]
+    commit = (info.get("commit_full") or info.get("commit") or "").strip()[:40]
+    if not release and not commit:
+        return None
+
+    # Aquest mòdul també s'executa en construir la imatge, sense Django configurat.
+    from django.db import DatabaseError, transaction
+    from coredata.models import DeployRecord
+
+    try:
+        with transaction.atomic():
+            last = DeployRecord.objects.select_for_update().filter(component=component).first()
+            if last and last.release == release and last.commit == commit:
+                return last.deployed_at
+            record = DeployRecord.objects.create(
+                component=component,
+                release=release,
+                commit=commit,
+                branch=(info.get("branch") or "").strip()[:100],
+                built_at=_parse_datetime(info.get("built_at")),
+            )
+            return record.deployed_at
+    except DatabaseError:
+        logger.exception("No s'ha pogut desar el desplegament del %s", component)
+        return None
+
+
+def with_deploy_date(component, info):
+    """Còpia de `info` amb `deployed_at` = data del desplegament (de l'historial).
+
+    Si no es pot registrar, es manté la data del build: és la millor que hi ha.
+    """
+    info = dict(info)
+    deployed_at = record_deploy(component, info)
+    if deployed_at is not None:
+        info["deployed_at"] = deployed_at.isoformat().replace("+00:00", "Z")
     return info
 
 
