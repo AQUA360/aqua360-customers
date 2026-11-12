@@ -272,4 +272,4 @@ components:
         connect_id:
           type: string
           nullable: true
-          description: PK de la connexió com a text (`Connection.id`)
+          description: Codi GIS de la connexió (`Connection.code_gis`). Si és buit, PK de la connexió com a text (`Connection.id`)
