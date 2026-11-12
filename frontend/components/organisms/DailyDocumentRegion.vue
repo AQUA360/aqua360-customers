@@ -60,7 +60,8 @@ const submissionChannel = computed(() =>
 );
 const hasSubmissionChannel = computed(() => Boolean(submissionChannel.value));
 const canSubmitExternal = computed(() =>
-    hasSubmissionChannel.value
+    Boolean(objectPermissions.value?.can_change)
+    && hasSubmissionChannel.value
     && Boolean(documentId.value)
     && !isCancelled.value
     && !regenerating_task_id.value
@@ -254,6 +255,10 @@ const printDocument = async (doc_id) => {
 };
 
 const sendDocument = async () => {
+    if (!objectPermissions.value?.can_change) {
+        toast.error(t('common.no_permissions'));
+        return;
+    }
     if (!completedAt.value) {
         toast.warning(t('warning_block.no_send_date_warning'));
         return;
@@ -281,6 +286,10 @@ const sendDocument = async () => {
 };
 
 const submitExternal = async () => {
+    if (!objectPermissions.value?.can_change) {
+        toast.error(t('common.no_permissions'));
+        return;
+    }
     if (!canSubmitExternal.value || submittingExternal.value) return;
     if (!confirm(submissionConfirmMsg.value)) return;
 
@@ -568,7 +577,8 @@ watch(() => props.id, () => {
                 </div>
 
                 <div v-if="!hasCreationError">
-                    <div v-if="!data.completed_at && !isCancelled" class="flex items-end justify-start gap-2 mb-3">
+                    <div v-if="objectPermissions?.can_change && !data.completed_at && !isCancelled"
+                        class="flex items-end justify-start gap-2 mb-3">
                         <AtomsInputDate v-model="completedAt" :label="t('common.send_date')" />
                         <button class="button-primary mb-4" :disabled="!completedAt || regenerating_task_id"
                             @click="sendDocument">

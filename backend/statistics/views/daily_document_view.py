@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
+from auth.permissions import PermissionManager
 from coredata.models import ConfigProject
 from statistics.filters import DailyDocumentFilter
 from statistics.models import DailyDocument
@@ -60,9 +61,22 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
         return qs
     
     def get_permissions(self):
-        if self.action == 'permissions':
+        # Custom write actions check can_change explicitly (POST would otherwise
+        # map to add_* via StatisticsPermission; regenerate is a GET mutation).
+        if self.action in ('permissions', 'submit', 'regenerate_daily_document'):
             return [IsAuthenticated()]
         return super().get_permissions()
+
+    def _can_change_daily_documents(self, request):
+        """Same change scope as general-report permissions (order | payment | billing)."""
+        return any(
+            PermissionManager.get_model_permissions(request.user, model, app)['can_change']
+            for model, app in (
+                ('order', 'order'),
+                ('payment', 'billing'),
+                ('billing', 'billing'),
+            )
+        )
     
     @action(detail=False, methods=['get'], url_path='pending')
     def return_pending_daily_documents(self, request):
@@ -94,6 +108,11 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='regenerate')
     def regenerate_daily_document(self, request, pk=None):
+        if not self._can_change_daily_documents(request):
+            return Response(
+                {'error': 'Insufficient permissions to regenerate daily documents'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             daily_document = DailyDocument.objects.get(id=pk)
             if not daily_document or not daily_document.template:
@@ -107,6 +126,11 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='submit')
     def submit(self, request, pk=None):
         """Submit the daily document via its AvailableReport.submission_channel handler."""
+        if not self._can_change_daily_documents(request):
+            return Response(
+                {'error': 'Insufficient permissions to submit daily documents'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             daily_document = self.get_object()
             result = submit_daily_document(daily_document, user=request.user)
