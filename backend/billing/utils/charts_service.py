@@ -30,6 +30,17 @@ def get_complementary_color(rgb_color):
 def get_darker_color(rgb_color):
     return (rgb_color[0] * 0.85, rgb_color[1] * 0.85, rgb_color[2] * 0.85)
 
+def rgb_from_hex(value):
+    if not isinstance(value, str):
+        return None
+    hex_color = value.strip().lstrip('#')
+    if len(hex_color) < 6:
+        return None
+    try:
+        return tuple(int(hex_color[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    except ValueError:
+        return None
+
 MAX_BARS = 5
 
 def resolve_reading(reading, seen=None):
@@ -261,7 +272,15 @@ def generate_chart(invoice, title, hide_background_and_logos=False):
         base_color = (0.2, 0.4, 0.8)
         bg_color = None
         additional_color = (0.4, 0.6, 0.95)
-    
+
+    # Color de barres propi del projecte. Buit: es fan servir els colors de la factura.
+    chart_bar_color = rgb_from_hex(
+        ConfigProject.objects.filter(token='invoice_chart_bar_color').values_list('value', flat=True).first()
+    )
+    if chart_bar_color:
+        base_color = chart_bar_color
+        bg_color = None
+        additional_color = get_darker_color(base_color)
 
     fig, ax = plt.subplots(figsize=(7, 6))  # Create figure and axis
 
