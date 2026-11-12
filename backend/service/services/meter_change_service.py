@@ -6,6 +6,41 @@ from service.utils.supply_point_service import supply_point_change_meter  # ajus
 from billing.models import Reading, EstimatedBagMovement
 
 
+METER_CHANGE_ORIGIN = 'Canvi de comptador'
+# Valor antic (token cru) amb què el flux d'ordres desava l'origen.
+LEGACY_ORDER_CHANGE_METER_ORIGIN = 'order_change_meter'
+
+
+def get_previous_meter_reading(contract, supply_point, meter, date, exclude_id=None):
+    """
+    Última lectura vàlida del mateix comptador per al contracte i punt de
+    subministrament, amb data <= `date`. El consum s'ha de calcular sempre
+    contra lectures del mateix aparell físic, mai contra les d'un altre comptador.
+    """
+    qs = Reading.objects.filter(
+        contract=contract,
+        supply_point=supply_point,
+        meter=meter,
+        is_control=False,
+        is_active=True,
+        reading_date__lte=date,
+    )
+    if exclude_id:
+        qs = qs.exclude(id=exclude_id)
+    return qs.order_by('-reading_date', '-id').first()
+
+
+def compute_meter_consumption(reading_value, contract, supply_point, meter, date, exclude_id=None):
+    """
+    Consum d'una lectura respecte de l'anterior lectura del mateix comptador.
+    Sense lectura anterior (comptador nou al contracte) el consum és 0.
+    """
+    previous = get_previous_meter_reading(contract, supply_point, meter, date, exclude_id)
+    if not previous:
+        return 0
+    return max(0, int(reading_value or 0) - int(previous.reading_value or 0))
+
+
 def set_meter_change_dates(new_meter, released_meter, change_date):
     """
     Desa la data del canvi com a data d'instal·lació del comptador nou i de
@@ -100,24 +135,23 @@ class MeterChangeService:
                 supply_point=supply_point,
                 is_control=False,
                 reading_date__lte=date,
-            ).order_by('-reading_date').first()
+            ).order_by('-reading_date', '-id').first()
 
             try:
                 estimated_bag = contract.estimated_bags.filter(supply_point=supply_point).first()
             except Exception:
                 estimated_bag = None
 
+            # Lectura buida => 0 (lectura inicial per defecte), però s'accepta
+            # qualsevol valor inicial diferent de 0.
             reading_value = int(reading_data.get('reading_value') or 0)
 
             if reading_data.get('calculated_value') is not None:
                 calculated_value = int(reading_data['calculated_value'])
-            elif contract_prev_reading:
-                calculated_value = max(
-                    0,
-                    reading_value - int(contract_prev_reading.reading_value or 0)
-                )
             else:
-                calculated_value = 0
+                calculated_value = compute_meter_consumption(
+                    reading_value, contract, supply_point, meter, date,
+                )
             consumption_days = (date - contract_prev_reading.reading_date).days if contract_prev_reading else 0
 
             if (
@@ -134,22 +168,25 @@ class MeterChangeService:
                 contract_prev_reading.save()
                 contract_prev_reading = contract_prev_reading.previous_reading
 
+            # real_consumption es calcula sobre el calculated_value final, tant
+            # si s'ha fusionat amb la lectura anterior com si no.
             used_estimated = None
             if estimated_bag and estimated_bag.total_consumption > 0:
-                used_estimated = estimated_bag.total_consumption if estimated_bag.total_consumption < calculated_value else calculated_value
+                used_estimated = min(estimated_bag.total_consumption, calculated_value)
+            real_consumption = int(calculated_value) - int(used_estimated or 0)
 
             reading_kwargs = dict(
                 supply_point=supply_point,
                 contract=contract,
                 meter=meter,
                 reading_date=date,
-                reading_value=reading_data.get('reading_value'),
+                reading_value=reading_data.get('reading_value') or 0,
                 calculated_value=calculated_value,
                 consumption_days=consumption_days,
                 is_close=reading_data.get('is_close'),
                 origin=origin,
                 leak_value=reading_data.get('leak_value'),
-                real_consumption=int(calculated_value) - int(used_estimated or 0),
+                real_consumption=real_consumption,
                 estimated_used=used_estimated,
                 previous_reading=contract_prev_reading,
             )

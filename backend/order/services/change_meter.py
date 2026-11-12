@@ -4,7 +4,7 @@ from coredata.models import ConfigProject
 from ..models import Order
 from service.models import Meter
 from django.utils import timezone
-from service.services.meter_change_service import MeterChangeService
+from service.services.meter_change_service import MeterChangeService, METER_CHANGE_ORIGIN
 
 
 def _has_value(value):
@@ -168,17 +168,19 @@ class OrderChangeMeterValidationService:
             supply_point_id=supply_point.id,
             prev_meter_id=prev_meter.id if prev_meter else None,
             new_meter_id=new_meter.id,
-            origin='order_change_meter',
+            origin=METER_CHANGE_ORIGIN,
             change_date=None,  # cau al fallback date.today() dins MeterChangeService
+            # calculated_value=None => el servei calcula el consum contra
+            # l'última lectura del mateix comptador (no és el valor de lectura).
             previous_reading_data={
                 'reading_value': data.get('reading_old'),
-                'calculated_value': data.get('reading_old'),
+                'calculated_value': None,
                 'is_close': True,
                 'leak_value': 0,
             },
             new_reading_data={
                 'reading_value': data.get('reading_new'),
-                'calculated_value': data.get('reading_new'),
+                'calculated_value': None,
                 'is_close': False,
                 'leak_value': 0,
             },
