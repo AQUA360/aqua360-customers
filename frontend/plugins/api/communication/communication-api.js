@@ -7,7 +7,7 @@ export default defineNuxtPlugin(nuxtApp => {
     const config = useRuntimeConfig();
     const apiHost = config.public.apiHost;
   
-    const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, process_id = null, person_ids = [], is_individual = null, types = [], contract_id = [], date_range = null, exclude_cancelled = false, multi_page = false) => {
+    const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, process_id = null, person_ids = [], is_individual = null, types = [], contract_id = [], date_range = null, exclude_cancelled = false, multi_page = false, incident_id = null) => {
       let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
   
       if (sort) {
@@ -51,6 +51,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
       if (multi_page) {
         apiUrl += `&multi_page=true`;
+      }
+
+      if (incident_id) {
+        apiUrl += `&incident=${incident_id}`;
       }
 
       let exploitation_id = localStorage.getItem('exploitation');
@@ -302,7 +306,7 @@ export default defineNuxtPlugin(nuxtApp => {
     // Server-side XLSX export (async). Mirrors getAll's filters/search/sort but
     // POSTs to `{entity}export/` so the backend builds the full, filter-aware
     // XLSX as a background task, returning `{ task_id }`. Same args as getAll (no page).
-    const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, process_id = null, person_ids = [], is_individual = null, types = [], contract_id = [], date_range = null, columns = [], exclude_cancelled = false, multi_page = false) => {
+    const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, process_id = null, person_ids = [], is_individual = null, types = [], contract_id = [], date_range = null, columns = [], exclude_cancelled = false, multi_page = false, incident_id = null) => {
       let exploitation_id = localStorage.getItem('exploitation');
 
       return $apiManager.exportTable(entity, {
@@ -318,6 +322,7 @@ export default defineNuxtPlugin(nuxtApp => {
           end_date: date_range && date_range.start_date && date_range.end_date ? date_range.end_date : null,
           exclude_cancelled: exclude_cancelled || null,
           multi_page: multi_page || null,
+          incident: incident_id || null,
         }
       });
     }

@@ -2040,6 +2040,16 @@ msgstr "Outbound email"
 
 #: notification/utils/incident_timeline.py
 #, python-format
+msgid "Communication %(token)s"
+msgstr "Communication %(token)s"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Communication %(token)s sent"
+msgstr "Communication %(token)s sent"
+
+#: notification/utils/incident_timeline.py
+#, python-format
 msgid "Report %(token)s"
 msgstr "Report %(token)s"
 

@@ -3341,6 +3341,16 @@ msgstr "Correu enviat"
 
 #: notification/utils/incident_timeline.py
 #, python-format
+msgid "Communication %(token)s"
+msgstr "Comunicació %(token)s"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Communication %(token)s sent"
+msgstr "Comunicació %(token)s enviada"
+
+#: notification/utils/incident_timeline.py
+#, python-format
 msgid "Report %(token)s"
 msgstr "Informe %(token)s"
 
