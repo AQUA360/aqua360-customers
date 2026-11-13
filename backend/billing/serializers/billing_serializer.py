@@ -68,6 +68,15 @@ class BillingSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate(self, attrs):
+        start = attrs.get('period_start', getattr(self.instance, 'period_start', None))
+        end = attrs.get('period_end', getattr(self.instance, 'period_end', None))
+        if start and end and start > end:
+            raise serializers.ValidationError(
+                {'period_end': "La data final del període no pot ser anterior a la d'inici."}
+            )
+        return attrs
+
     def to_representation(self, instance):
         representation = pop_metrics_snapshot(super().to_representation(instance))
         representation['missing_batch'] = ReadingBatchMinimalSerializer(instance.missing_batch.all(), many=True).data if instance.missing_batch.all() else None

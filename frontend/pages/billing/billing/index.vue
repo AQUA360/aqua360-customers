@@ -223,35 +223,66 @@ const PERIOD_LETTERS = {
   semestral: 'S',
 };
 
-const getCurrentPeriodLabel = (periodType) => {
+const INITIAL_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const toIsoDate = (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`;
+
+// Últim cicle tancat del facturador (period_type + initial_month) a data d'avui.
+// Retorna { start, end, number, year } amb les dates en format AAAA-MM-DD.
+const getPreviousCycle = (biller) => {
+  const interval = PERIOD_INTERVALS[biller?.period_type] || 3;
+  const initial = INITIAL_MONTHS.indexOf(biller?.initial_month) + 1 || 1;
   const now = new Date();
-  const monthIndex = now.getMonth() + 1; // 1-12
-  const year = now.getFullYear();
+  const monthIndex = now.getFullYear() * 12 + now.getMonth(); // mes actual (0-11) absolut
+  const position = (((now.getMonth() + 1 - initial) % 12) + 12) % 12 % interval;
+  const currentStart = monthIndex - position;
+  const prevStart = currentStart - interval;
+  const prevEnd = prevStart + interval - 1;
+  const startYear = Math.floor(prevStart / 12);
+  const startMonth = (prevStart % 12) + 1;
+  const endYear = Math.floor(prevEnd / 12);
+  const endMonth = (prevEnd % 12) + 1;
+  const lastDay = new Date(endYear, endMonth, 0).getDate();
+  const number = Math.floor((((startMonth - initial) % 12 + 12) % 12) / interval) + 1;
+  return {
+    start: toIsoDate(startYear, startMonth, 1),
+    end: toIsoDate(endYear, endMonth, lastDay),
+    number,
+    year: startYear,
+  };
+};
 
-  if (periodType === 'anual') {
-    return `${year}`;
+// Codi per defecte: el del cicle tancat (el que es factura), no el del període actual.
+const getClosedPeriodLabel = (biller) => {
+  const cycle = getPreviousCycle(biller);
+  if (biller?.period_type === 'anual') {
+    return `${cycle.year}`;
   }
-
-  const interval = PERIOD_INTERVALS[periodType] || 1;
-  const periodNumber = Math.ceil(monthIndex / interval);
-  const letter = PERIOD_LETTERS[periodType] || 'P';
-
-  return `${letter}${periodNumber}/${year}`;
+  const letter = PERIOD_LETTERS[biller?.period_type] || 'P';
+  return `${letter}${cycle.number}/${cycle.year}`;
 };
 
 // Camps editables del codi i el nom (pas 2 del modal)
 const billerCode = ref('');
 const billerName = ref('');
+const periodStart = ref('');
+const periodEnd = ref('');
 
 // Genera els valors per defecte a partir del facturador seleccionat
 const generateDefaults = (biller) => {
   if (!biller) {
     billerCode.value = '';
     billerName.value = '';
+    periodStart.value = '';
+    periodEnd.value = '';
     return;
   }
   const base = biller.token || biller.name || '';
-  const periodLabel = getCurrentPeriodLabel(biller.period_type);
+  const periodLabel = getClosedPeriodLabel(biller);
+  const cycle = getPreviousCycle(biller);
+  periodStart.value = cycle.start;
+  periodEnd.value = cycle.end;
   billerCode.value = `${base}_${periodLabel}`;
   billerName.value = `Fact.${base}_${periodLabel}`;
 };
@@ -288,6 +319,8 @@ const closeBillerModal = () => {
   selectedBiller.value = null;
   billerCode.value = '';
   billerName.value = '';
+  periodStart.value = '';
+  periodEnd.value = '';
 };
 
 const confirmBillerSelection = async () => {
@@ -300,11 +333,18 @@ const confirmBillerSelection = async () => {
     return;
   }
 
+  if (!periodStart.value || !periodEnd.value || periodStart.value > periodEnd.value) {
+    toast.error(t('billing_block.invalid_period'));
+    return;
+  }
+
   try {
     await $BillingApiService.start(
       selectedBiller.value.id,
       billerCode.value.trim(),
-      billerName.value.trim()
+      billerName.value.trim(),
+      periodStart.value,
+      periodEnd.value
     );
     toast.success(t('billing_block.billing_started') || 'Billing started successfully');
     closeBillerModal();
@@ -316,8 +356,8 @@ const confirmBillerSelection = async () => {
     // }
     resetFilters();
   } catch (err) {
-    error.value = err;
-    toast.error(t('common.error') || 'Error starting billing');
+    // L'avís ja el mostra api-manager; el modal es manté obert per poder corregir i reintentar.
+    console.error(err);
   }
 };
 
@@ -455,6 +495,13 @@ watch(() => route.query, () => {
           <div class="mb-4">
             <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.name') }}</label>
             <input type="text" v-model="billerName" class="input w-full text-base border border-gray-300 rounded p-2" />
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('billing_block.period_to_bill') }}</label>
+            <div class="flex gap-2">
+              <input type="date" v-model="periodStart" :aria-label="t('billing_block.period_start')" class="input w-full text-base border border-gray-300 rounded p-2" />
+              <input type="date" v-model="periodEnd" :aria-label="t('billing_block.period_end')" class="input w-full text-base border border-gray-300 rounded p-2" />
+            </div>
           </div>
         </template>
 

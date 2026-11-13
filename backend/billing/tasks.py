@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 from celery import shared_task, chord, group
 from customers.celery import CURRENT_USER_HEADER
 from billing.utils.barcode_service import generate_barcode
+from billing.utils.biller_period_service import cycle_dates, previous_cycle
 from statistics.utils.report_service import delete_file_later
 from django.core.files.storage import default_storage
 from celery_progress.backend import ProgressRecorder
@@ -2731,13 +2732,18 @@ def create_billings():
           
           default_status = BillingStatus.objects.get(is_default=True)
           
+          period_start, period_end = cycle_dates(
+            previous_cycle(timezone.localdate(), biller)
+          )
           billing = Billing.objects.create(
             status = default_status,
             name = name,
             token = token,
             biller=biller,
+            period_start=period_start,
+            period_end=period_end,
             is_active=True)
-          
+
           pending_status_token = ConfigProject.objects.get(token='billing_batch_pending').value
           pending_status = BillingBatchStatus.objects.get(token=pending_status_token)
           if biller.routes.exists():

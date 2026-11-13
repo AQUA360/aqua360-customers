@@ -6,6 +6,7 @@ l'any). Aquest mòdul resol, a partir d'una data, el cicle que la conté i els
 següents, sense dependre d'un calendari fix de trimestres naturals.
 """
 
+import calendar
 from datetime import date
 
 from django.utils import formats
@@ -90,6 +91,25 @@ def cycle_containing(target_date, period_type=None, initial_month=None):
         'months_label': months_label,
         '_interval': interval,
     }
+
+
+def cycle_dates(cycle):
+    """`(data d'inici, data final)` d'un cicle retornat per `cycle_containing`."""
+    start = date(cycle['year_from'], cycle['month_from'], 1)
+    last_day = calendar.monthrange(cycle['year_to'], cycle['month_to'])[1]
+    return start, date(cycle['year_to'], cycle['month_to'], last_day)
+
+
+def previous_cycle(target_date, biller=None):
+    """Cicle anterior al que conté `target_date` (l'últim cicle tancat)."""
+    period_type = getattr(biller, 'period_type', None)
+    initial_month = getattr(biller, 'initial_month', None)
+
+    current = cycle_containing(target_date, period_type, initial_month)
+    prev_year, prev_month = _add_months(
+        current['year_from'], current['month_from'], -current['_interval']
+    )
+    return cycle_containing(date(prev_year, prev_month, 1), period_type, initial_month)
 
 
 def current_and_next_cycles(target_date, biller=None):
