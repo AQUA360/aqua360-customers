@@ -24,10 +24,13 @@ NON_DEBT_STATUS_TOKENS = {*CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS, '5'}
 
 
 def claim_payment_pending_amount(payment):
-    """Import que encara es deu d'un pagament reclamat, segons el seu estat actual."""
+    """
+    Import que encara es deu d'un pagament reclamat, segons el seu estat actual.
+    Com vw_contract_debt, un import negatiu no resta deute.
+    """
     if not payment.status or payment.status.token in NON_DEBT_STATUS_TOKENS:
         return Decimal('0')
-    return payment.amount
+    return max(payment.amount or Decimal('0'), Decimal('0'))
 
 
 def _payments_in_bulk(payment_ids):

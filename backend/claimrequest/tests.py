@@ -490,6 +490,12 @@ class ClaimContractsExportTests(TestCase):
         Payment.objects.filter(pk=same_invoice_first.pk).update(status=PaymentStatus.objects.get(token='0'))
         self.assertEqual(claimed_debt_by_contract_id(contract_payments), ({}, {}))
 
+        # Un import negatiu no resta deute ni fa comptar la factura.
+        Payment.objects.filter(pk=same_invoice_first.pk).update(
+            status=PaymentStatus.objects.get(token='-1'), amount=-5,
+        )
+        self.assertEqual(claimed_debt_by_contract_id(contract_payments), ({}, {}))
+
     def test_task_error_does_not_expose_exception_details(self):
         from unittest.mock import patch
 
