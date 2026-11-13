@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import H1Region from '~/components/atoms/H1Region.vue';
@@ -11,6 +11,7 @@ import ChangeStatus from '~/components/molecules/ChangeStatus.vue';
 import AddInvoiceBudget from '~/components/molecules/AddInvoiceBudget.vue';
 import OrderMiniDetail from '~/components/molecules/OrderMiniDetail.vue';
 import ConnectionRequestDetail from '~/components/molecules/ConnectionRequestDetail.vue';
+import ConnectionRequestDocumentsData from '~/components/molecules/ConnectionRequestDocumentsData.vue';
 import OrderRegion from '~/components/organisms/OrderRegion.vue';
 import InvoiceRegion from './InvoiceRegion.vue';
 import { useToast } from 'vue-toastification';
@@ -35,6 +36,7 @@ const activeTab = ref('observations');
 const observationNumber = ref(0)
 const logNumber = ref(0)
 const ordersNumber = ref(0)
+const documentNumber = ref(0)
 
 const objectPermissions = ref(null);
 const editingChangeStatus = ref(false);
@@ -52,6 +54,10 @@ const updateLogCount = (num) => {
 
 const updateOrdersCount = (num) => {
   ordersNumber.value = num;
+}
+
+const updateDocuments = (files) => {
+  documentNumber.value = (files || []).length;
 }
 
 const fetchConfigData = async (entity, targetArray) => {
@@ -89,6 +95,7 @@ const getData = async () => {
     const result = await $ConnectionRequestApiService.getDetail(props.id);
 
     data.value = result;
+    updateDocuments(result.documentation_files);
 
   } catch (err) {
     error.value = err;
@@ -155,6 +162,29 @@ const handleClickChangeStatus = () => {
   editingChangeStatus.value = true;
 }
 
+// Només es pot eliminar en esborrany o pendent (el servidor també ho comprova).
+const DELETABLE_STATUS_TOKENS = ['draft', 'pending'];
+const canDelete = computed(() =>
+  objectPermissions.value?.can_delete && DELETABLE_STATUS_TOKENS.includes(data.value?.status?.token)
+);
+
+const remove = async () => {
+  if (!confirm(t('confirmation_text_block.confirm_delete'))) return;
+  try {
+    await $ConnectionRequestApiService.remove(props.id);
+    toast.success(t('common.deleted_successfully'));
+    emit('changed');
+    emit('close-subregion');
+  } catch (err) {
+    const code = err?.response?._data?.error;
+    const messages = {
+      not_deletable_status: 'service_block.connection_request_form.delete_not_allowed_status',
+      has_related_records: 'service_block.connection_request_form.delete_has_related_records',
+    };
+    toast.error(t(messages[code] || 'common.delete_failed'));
+  }
+}
+
 const handleClickModify = () => {
   router.push(`/service/connection-requests/edit/${props.id}`);
 }
@@ -182,12 +212,15 @@ const newOrder = () => {
       :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': SubRegion }">
       <div class="flex justify-between">
         <H1Region class="mb-3">{{ $t('connection_request') }}</H1Region>
-        <div class="relative" v-if="objectPermissions.can_change">
+        <div class="relative" v-if="objectPermissions.can_change || canDelete">
           <OptionsDropdown id="ConnectionRequestRegionOptions">
-            <DropdownOption :name="`${t('common.modify')} ${t('connection_request')}`" 
-            @click="handleClickModify"></DropdownOption>
-            <DropdownOption :name="`${t('common.change')} ${t('common.status')}`" @click="handleClickChangeStatus"></DropdownOption>
-            <DropdownOption :name="t('order_block.new_order')" @click="newOrder"></DropdownOption>
+            <template v-if="objectPermissions.can_change">
+              <DropdownOption :name="`${t('common.modify')} ${t('connection_request')}`" 
+              @click="handleClickModify"></DropdownOption>
+              <DropdownOption :name="`${t('common.change')} ${t('common.status')}`" @click="handleClickChangeStatus"></DropdownOption>
+              <DropdownOption :name="t('order_block.new_order')" @click="newOrder"></DropdownOption>
+            </template>
+            <DropdownOption v-if="canDelete" :name="t('common.delete')" @click="remove"></DropdownOption>
           </OptionsDropdown>
         </div>
       </div>
@@ -218,6 +251,12 @@ const newOrder = () => {
             {{ $t("work_orders") }} ({{ ordersNumber }})
           </a>
         </li>
+        <li class="me-2">
+          <a href="#tab_documents" @click.prevent="setActiveTab('documents')"
+            :class="{ 'text-sky-600 border-sky-600': activeTab === 'documents', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'documents' }">
+            <Icon name="fa6-solid:file" class="display-inline mr-2" /> {{ $t("common.docs") }} ({{ documentNumber }})
+          </a>
+        </li>
       </AtomsTabs>
       <div id="cluster_tabpanels">
         <section v-show="activeTab === 'observations'" role="tabpanel" id="tab_observations"
@@ -239,6 +278,10 @@ const newOrder = () => {
             </button>
           </div>
           <OrderMiniDetail :connection_request_id="props.id" @show-detail="showDetail" @update:count="updateOrdersCount" />
+        </section>
+        <section v-show="activeTab === 'documents'" role="tabpanel" id="tab_documents" class="bg-white antialiased pt-2">
+          <ConnectionRequestDocumentsData v-if="data" :request="data" :readonly="!objectPermissions?.can_change"
+            @update-files="updateDocuments" />
         </section>
       </div>
     </div><!-- end if pending -->

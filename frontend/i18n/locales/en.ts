@@ -1135,6 +1135,8 @@ export default {
   },
   service_block:   {
     connection_request_form: {
+      delete_not_allowed_status: 'Cannot be deleted: the request can only be deleted while draft or pending',
+      delete_has_related_records: 'Cannot be deleted: the request already has a connection, invoices or work orders',
       requester_type: 'Person type',
       requester_types: {
         natural_person: 'Natural person',
