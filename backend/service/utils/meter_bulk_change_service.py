@@ -501,6 +501,9 @@ def apply_changes(uploaded, user):
                         'is_close': False,
                         'leak_value': 0,
                     },
+                    # La previsualització ja avisa (new_meter_assigned) i aplicar el fitxer
+                    # és la confirmació expressa de l'operador.
+                    confirm_reassign=True,
                 )
             changed += 1
             applied_rows.add(item['row'])

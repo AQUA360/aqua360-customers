@@ -9,6 +9,9 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.db import transaction
 from ..services.change_meter import OrderChangeMeterValidationService
+from service.services.meter_change_service import (
+    MeterAssignedElsewhereError, is_reassign_confirmed, meter_assigned_response_data,
+)
 
 from ..models import Order
 from ..serializers.order_serializer import OrderSerializer, OrderListSerializer, OrderSaveSerializer
@@ -203,7 +206,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         service = OrderChangeMeterValidationService(order)
         try:
-            result = service.apply(user=request.user)
+            result = service.apply(
+                user=request.user,
+                confirm_reassign=is_reassign_confirmed(request.data.get('confirm_reassign')),
+            )
+        except MeterAssignedElsewhereError as e:
+            return Response(meter_assigned_response_data(e.assignments), status=status.HTTP_409_CONFLICT)
         except ValueError as e:
             return Response(
                 {'applied': False, 'missing_fields': e.args[0]},

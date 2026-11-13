@@ -564,12 +564,14 @@ class MeterListSerializer(serializers.ModelSerializer):
                 str(supply_point.status.token) if supply_point.status_id and supply_point.status else None
             )
             representation['supply_point'] = str(supply_point.address) if supply_point.address_id else None
+            representation['supply_point_token'] = supply_point.token
         else:
             representation['exploitation_name'] = None
             representation['supply_point_status'] = None
             representation['supply_point_status_color'] = None
             representation['supply_point_status_token'] = None
             representation['supply_point'] = None
+            representation['supply_point_token'] = None
 
         by_meter = self.context.get('last_reading_by_meter')
         if by_meter is not None:
