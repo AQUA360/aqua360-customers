@@ -1,4 +1,5 @@
 from functools import wraps
+from django.core.exceptions import RequestDataTooBig
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import ReadingOperator, Token
@@ -30,7 +31,8 @@ def lecturapp_auth_required(view_func):
             try:
                 data = json.loads(request.body)
                 token = data.get('token')
-            except (json.JSONDecodeError, AttributeError):
+            except (json.JSONDecodeError, AttributeError, RequestDataTooBig):
+                # Cos massa gran: el token es busca a la capçalera i la vista respon
                 pass
         
         # Check for token in headers
