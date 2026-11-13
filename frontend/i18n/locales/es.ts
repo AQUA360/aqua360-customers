@@ -1166,6 +1166,8 @@ export default {
   },
   service_block:   {
     connection_request_form: {
+      delete_not_allowed_status: 'No se puede eliminar: la solicitud solo se puede eliminar en borrador o pendiente',
+      delete_has_related_records: 'No se puede eliminar: la solicitud ya tiene acometida, facturas u órdenes de trabajo',
       requester_type: 'Tipo de persona',
       requester_types: {
         natural_person: 'Persona física',

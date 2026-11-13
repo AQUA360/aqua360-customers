@@ -13,7 +13,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['update-item']);
+const emit = defineEmits(['update-item', 'update-files']);
 
 const { t } = useI18n();
 const toast = useToast();
@@ -30,6 +30,8 @@ const inputKey = ref(0);
 watch(() => props.request?.documentation_files, (newVal) => {
   files.value = newVal || [];
 });
+
+watch(files, (newVal) => emit('update-files', newVal));
 
 // Si no hi ha cap tipus configurat (o no es poden llegir), es permet pujar sense tipus.
 const canUpload = computed(() => docFile.value && (selectedDocType.value || docTypes.value.length === 0));

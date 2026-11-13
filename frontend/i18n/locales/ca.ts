@@ -1166,6 +1166,8 @@ export default {
   },
   service_block:   {
     connection_request_form: {
+      delete_not_allowed_status: 'No es pot eliminar: la sol·licitud només es pot eliminar en esborrany o pendent',
+      delete_has_related_records: 'No es pot eliminar: la sol·licitud ja té escomesa, factures o ordres de treball',
       requester_type: 'Tipus de persona',
       requester_types: {
         natural_person: 'Persona física',
