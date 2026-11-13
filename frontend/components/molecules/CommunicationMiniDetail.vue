@@ -13,6 +13,10 @@ const props = defineProps({
     type: Number,
     default: null
   }, //Contract id
+  incident_id: {
+    type: Number,
+    default: null
+  }, //Incident id
   isSubRegion: {
     type: Boolean,
     default: false
@@ -119,7 +123,7 @@ const getData = async (skip_clear = false, targetPage = pagination.value.page) =
     const result = await $CommunicationApiService.getAll(
       searchQuery.value, [statuses.value], targetPage, null,
       false, props.id, props.person_ids, null,
-      [types.value], props.contract_id, null, false, onlyMultiPage.value
+      [types.value], props.contract_id, null, false, onlyMultiPage.value, props.incident_id
     );
 
     if (skip_clear) localData.value = [];
@@ -206,6 +210,7 @@ const exportCommunications = (columns) => $CommunicationApiService.exportData(
   columns,
   false,
   onlyMultiPage.value,
+  props.incident_id,
 );
 
 const resetFilters = () => {
@@ -235,6 +240,7 @@ onMounted(async () => {
 watch(() => props.reload, async (newVal) => {
   pagination.value.page = 1;
   await getData(true)
+  emit('update:count', pagination.value.total);
 })
 
 watch(() => props.item, (newVal) => {
