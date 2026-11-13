@@ -69,11 +69,17 @@ const pagination = ref({
   isFiltered: false
 });
 
+// Només la darrera cerca actualitza la llista: una resposta antiga que arribi tard
+// (p. ex. sense el filtre «Només lliures») es descarta.
+let requestSeq = 0;
+
 const getData = async (searchQuery = '', filters = [], page = 1, sort = 'code', desc = false) => {
+  const seq = ++requestSeq;
   pending.value = true;
   error.value = null;
   try {
     const data = await $MeterApiService.getData(searchQuery, filters, page, sort, desc, onlyFree.value, props.exclude);
+    if (seq !== requestSeq) return;
 
     items.value = data.results;
     Object.assign(pagination.value, {
@@ -94,9 +100,9 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = 'code', 
       }
     });
   } catch (err) {
-    error.value = err;
+    if (seq === requestSeq) error.value = err;
   } finally {
-    pending.value = false;
+    if (seq === requestSeq) pending.value = false;
   }
 }
 

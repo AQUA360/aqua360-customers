@@ -4071,7 +4071,7 @@ export default {
     confirm_unlink_contract: 'Estás seguro de que queres desvincular a solicitude de contrato?',
     confirm_unlink_tenant: 'Seguro que queres quitar o inquilino deste contrato? ',
     confirm_assign_meter_with_sp: 'Estás seguro de que queres asignar este contador a este punto de subministración? Ten en conta que este contador está actualmente asignado a outro punto de subministración, polo que ao realizar esta acción desvincularase automaticamente da súa ubicación actual.',
-    confirm_reassign_meter: 'O contador {code} xa está noutro punto de subministración:\n{detail}\n\nSe continúas, quitarase dese punto e o seu contrato quedará sen contador. Queres continuar?',
+    confirm_reassign_meter: 'O contador {code} xa está noutro punto de subministración:\n{detail}\n\nSe continúas, quitarase dese punto e os contratos que teña quedarán sen contador. Queres continuar?',
     meter_assignment_line: '- Punto {supply_point} · {address} · Contratos: {contracts}',
     meter_assignment_no_contracts: 'ningún contrato activo',
     confirm_terminate: 'Estás seguro de que queres dar este contrato de baixa?',

@@ -4209,7 +4209,7 @@ supply_cut_actions:   {
     confirm_unlink_contract: '¿Estás seguro de que quieres desvincular la solicitud de contrato?',
     confirm_unlink_tenant: '¿Seguro que quieres quitar el inquilino de este contrato? ',
     confirm_assign_meter_with_sp: '¿Estás seguro de que quieres asignar este contador a este punto de suministro? Ten en cuenta que este contador está actualmente asignado a otro punto de suministro, por lo que al realizar esta acción se desvinculará automáticamente de su ubicación actual.',
-    confirm_reassign_meter: 'El contador {code} ya está en otro punto de suministro:\n{detail}\n\nSi continúas, se quitará de ese punto y su contrato se quedará sin contador. ¿Quieres continuar?',
+    confirm_reassign_meter: 'El contador {code} ya está en otro punto de suministro:\n{detail}\n\nSi continúas, se quitará de ese punto y los contratos que tenga se quedarán sin contador. ¿Quieres continuar?',
     meter_assignment_line: '- Punto {supply_point} · {address} · Contratos: {contracts}',
     meter_assignment_no_contracts: 'ningún contrato activo',
     confirm_terminate: '¿Estás seguro de que quieres dar este contrato de baja?',

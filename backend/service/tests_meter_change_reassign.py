@@ -11,6 +11,7 @@ from logger.models import LogSupplyPointChange
 from service.models import Meter, MeterStatus, SupplyPoint
 from service.services.meter_change_service import (
     MeterAssignedElsewhereError, MeterChangeService, get_meter_assignments_elsewhere,
+    is_reassign_confirmed,
 )
 
 
@@ -53,6 +54,15 @@ class MeterReassignBase(TestCase):
             new_reading_data={},
             confirm_reassign=confirm_reassign,
         )
+
+
+class ReassignConfirmedTest(TestCase):
+
+    def test_only_explicit_yes_confirms(self):
+        for value in (True, 1, 'true', 'True', '1', 'yes', 't'):
+            self.assertTrue(is_reassign_confirmed(value), value)
+        for value in (None, False, 0, '', 'false', 'False', '0', 'no', 'off', [], {}):
+            self.assertFalse(is_reassign_confirmed(value), value)
 
 
 class MeterAssignmentsTest(MeterReassignBase):
@@ -166,6 +176,15 @@ class SupplyPointMeterViewsReassignTest(MeterReassignBase):
         response = self.client.post('/service/supply-point/update-meter/', {
             'supply_point_id': self.target.id, 'meter_id': self.other_meter.id,
         }, format='json')
+
+        self.assertEqual(response.status_code, 409)
+        self.origin.refresh_from_db()
+        self.assertEqual(self.origin.meter_id, self.other_meter.id)
+
+    def test_text_false_is_not_a_confirmation(self):
+        response = self.client.post('/service/supply-point/update-meter/', {
+            'supply_point_id': self.target.id, 'meter_id': self.other_meter.id, 'confirm_reassign': 'false',
+        })
 
         self.assertEqual(response.status_code, 409)
         self.origin.refresh_from_db()

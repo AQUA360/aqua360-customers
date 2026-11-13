@@ -4071,7 +4071,7 @@ export default {
     confirm_unlink_contract: 'Are you sure you want to unlink the contract request?',
     confirm_unlink_tenant: 'Are you sure you want to remove the tenant from this contract?',
     confirm_assign_meter_with_sp: 'Are you sure you want to assign this meter to this supply point? Note that this meter is currently assigned to another supply point, so performing this action will automatically unlink it from its current location.',
-    confirm_reassign_meter: 'Meter {code} is already on another supply point:\n{detail}\n\nIf you continue, it will be removed from that point and its contract will be left without a meter. Do you want to continue?',
+    confirm_reassign_meter: 'Meter {code} is already on another supply point:\n{detail}\n\nIf you continue, it will be removed from that point and any contracts there will be left without a meter. Do you want to continue?',
     meter_assignment_line: '- Point {supply_point} · {address} · Contracts: {contracts}',
     meter_assignment_no_contracts: 'no active contract',
     confirm_terminate: 'Are you sure you want to terminate this contract?',

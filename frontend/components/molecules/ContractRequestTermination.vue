@@ -682,8 +682,13 @@ const clickDeleteOrder = async (id) => {
   }
 }
 
+// Cada clic al llistat és una selecció nova: només s'aplica la darrera, encara que
+// les respostes arribin desordenades.
+let meterSelectionSeq = 0;
+
 const setMeter = async (meter) => {
   console.log('meter', meter);
+  const seq = ++meterSelectionSeq;
   // Avís amb on és ara el comptador (punt, contractes i titulars) abans de treure'l d'allà.
   let confirmReassign = false;
   if (meter.id != selectedMeter.value) {
@@ -693,7 +698,7 @@ const setMeter = async (meter) => {
       console.error(error);
       return;
     }
-    if (confirmReassign === null) return;
+    if (confirmReassign === null || seq !== meterSelectionSeq) return;
   }
   if (meter.id == selectedMeter.value) {
     selectedMeter.value = props.supply_point.meter_id;
@@ -713,7 +718,7 @@ const setMeter = async (meter) => {
   saving.value = true;
   try {
     let response = await $SupplyPointApiService.updateMeter(save_data);
-    if (response) {
+    if (response && seq === meterSelectionSeq) {
       emit('change-sp', response);
       toast.success(t("service_block.meter_assign_to_sp"), {
         position: "top-right",

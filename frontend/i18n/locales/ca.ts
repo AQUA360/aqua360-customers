@@ -4208,7 +4208,7 @@ export default {
     confirm_unlink_contract: 'Segur que vols desvincular la sol·licitud de contracte?',
     confirm_unlink_tenant: 'Segur que vols treure el llogater d\'aquest contracte? ',
     confirm_assign_meter_with_sp: 'Segur que vols assignar aquest comptador a aquest punt de subministrament? Has de tenir en compte que aquest comptador està actualment assignat a un altre punt de subministrament, per tant, al realitzar aquesta acció es desvincularà automàticament de la seva ubicació actual.',
-    confirm_reassign_meter: 'El comptador {code} ja és a un altre punt de subministrament:\n{detail}\n\nSi continues, es traurà d\'aquest punt i el seu contracte es quedarà sense comptador. Vols continuar?',
+    confirm_reassign_meter: 'El comptador {code} ja és a un altre punt de subministrament:\n{detail}\n\nSi continues, es traurà d\'aquest punt i els contractes que hi tingui es quedaran sense comptador. Vols continuar?',
     meter_assignment_line: '- Punt {supply_point} · {address} · Contractes: {contracts}',
     meter_assignment_no_contracts: 'cap contracte actiu',
     confirm_terminate: 'Segur que vols donar aquest contracte de baixa?',

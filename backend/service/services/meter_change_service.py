@@ -88,6 +88,24 @@ def meter_assigned_response_data(assignments):
     }
 
 
+def is_reassign_confirmed(value):
+    """`confirm_reassign` d'una petició: només un sí explícit confirma (un text "false" no)."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value == 1
+    return isinstance(value, str) and value.strip().lower() in ('true', '1', 'yes', 't')
+
+
+def lock_meter(meter_id):
+    """
+    Carrega el comptador bloquejant-ne la fila fins al final de la transacció:
+    les assignacions del mateix comptador van en sèrie i la segona veu la primera
+    (i retorna el 409) en lloc de treure-li el comptador sense avís.
+    """
+    return Meter.objects.select_for_update().get(id=meter_id)
+
+
 def get_meter_assignments_elsewhere(meter, supply_point_id=None):
     """
     Punts de subministrament (diferents de `supply_point_id`) on és ara el
@@ -199,7 +217,7 @@ class MeterChangeService:
             change_date = datetime.date.today()
 
         current_meter = Meter.objects.get(id=prev_meter_id) if prev_meter_id else None
-        new_meter = Meter.objects.get(id=new_meter_id)
+        new_meter = lock_meter(new_meter_id)
 
         active_contract_token = ConfigProject.objects.get(token='contract_active_token').value
         meter_status_active_token = ConfigProject.objects.get(token='meter_status_active_token').value
