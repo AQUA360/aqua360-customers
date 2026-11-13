@@ -1137,6 +1137,8 @@ export default {
     confirm_send_now: 'Are you sure you want to send this communication now?',
     back_to_incident: 'Back to incident',
     go_to_comms_list: 'Go to list',
+    uploading_attachments: 'Uploading attachments…',
+    invalid_emails: 'Invalid email addresses: {emails}',
     add_attachments: 'Add files',
     attachments_help: 'Files will be attached to the communication (email and letter documents).',
     no_attachments: 'No attached files',

@@ -29,11 +29,13 @@ const savedCommunicationId = ref(null);
 const savedCommunication = ref(null);
 const communicationPermissions = ref(null);
 const sending = ref(false);
+const uploadingAttachments = ref(false);
 const sendRequested = ref(false);
 const regionKey = ref(0);
 
 const canSendNow = computed(() =>
-    !!savedCommunication.value?.status?.is_default
+    !uploadingAttachments.value
+    && !!savedCommunication.value?.status?.is_default
     && !!communicationPermissions.value?.can_change
     && !sendRequested.value
 );
@@ -241,11 +243,19 @@ const save = async () => {
         };
         const result = await $CommunicationApiService.save(save_data);
         if (result) {
-            await uploadAttachments(result.id);
-            toast.success(incidentId.value ? t('incident_block.comm_saved_from_incident') : t('customer_service_block.comm_saved'));
+            // Primer es fixa la comunicació desada (també a la URL) perquè una recàrrega la recuperi
+            // encara que els adjunts no hagin acabat de pujar.
             savedCommunicationId.value = result.id;
+            await router.replace({ query: { ...route.query, step: undefined, saved: result.id } });
+            uploadingAttachments.value = attachments.value.length > 0;
+            try {
+                await uploadAttachments(result.id);
+            } finally {
+                uploadingAttachments.value = false;
+            }
+            toast.success(incidentId.value ? t('incident_block.comm_saved_from_incident') : t('customer_service_block.comm_saved'));
             await loadSavedCommunication();
-            router.replace({ query: { ...route.query, step: undefined, saved: result.id } });
+            regionKey.value++;
         }
     } catch (error) {
         console.error(error);
@@ -305,6 +315,9 @@ watch(isOnlyElectronicInvoice, (onlyElectronic) => {
                     <Icon name="fa6-solid:circle-check" class="text-emerald-600" />
                     <span class="font-medium">{{ $t('customer_service_block.comm_saved') }}</span>
                     <span v-if="savedCommunication?.token" class="text-emerald-700">· {{ savedCommunication.token }}</span>
+                    <span v-if="uploadingAttachments" class="flex items-center gap-1 text-emerald-700">
+                        · <Icon name="fa6-solid:spinner" class="animate-spin" /> {{ $t('customer_service_block.uploading_attachments') }}
+                    </span>
                     <span v-if="sendRequested" class="text-emerald-700">· {{ $t('informative_block.info_process_msgs') }}</span>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">

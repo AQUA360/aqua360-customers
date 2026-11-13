@@ -1146,6 +1146,8 @@ export default {
     confirm_send_now: 'Segur que vols enviar aquesta comunicació ara?',
     back_to_incident: 'Tornar a la incidència',
     go_to_comms_list: 'Anar al llistat',
+    uploading_attachments: 'Pujant adjunts…',
+    invalid_emails: 'Adreces de correu no vàlides: {emails}',
     add_attachments: 'Afegir fitxers',
     attachments_help: 'Els fitxers s\'adjuntaran a la comunicació (correu i documents de la carta).',
     no_attachments: 'Cap fitxer adjunt',

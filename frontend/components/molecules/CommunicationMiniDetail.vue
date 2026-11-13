@@ -240,6 +240,7 @@ onMounted(async () => {
 watch(() => props.reload, async (newVal) => {
   pagination.value.page = 1;
   await getData(true)
+  emit('update:count', pagination.value.total);
 })
 
 watch(() => props.item, (newVal) => {

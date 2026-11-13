@@ -450,7 +450,7 @@ onMounted(async () => {
           :isSubRegion="true" />
         <SupplyCutRegion v-if="showRegionDetailComponent === 'SupplyCutRegion'" :id="parseInt(regionDetailId)" />
         <CommunicationRegion v-if="showRegionDetailComponent === 'CommunicationRegion'" :id="regionDetailId"
-          :isSubRegion="true" @changed="communicationReload = !communicationReload" />
+          :isSubRegion="true" @changed="communicationReload = !communicationReload; timelineReload = !timelineReload" />
         <IncidentCallEdit v-if="showRegionDetailComponent === 'IncidentCallEdit'" :incident="data"
           @changed="onCallChanged" />
       </div>

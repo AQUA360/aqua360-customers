@@ -1137,6 +1137,8 @@ export default {
     confirm_send_now: 'Seguro que queres enviar esta comunicación agora?',
     back_to_incident: 'Volver á incidencia',
     go_to_comms_list: 'Ir ao listado',
+    uploading_attachments: 'Subindo adxuntos…',
+    invalid_emails: 'Enderezos de correo non válidos: {emails}',
     add_attachments: 'Engadir ficheiros',
     attachments_help: 'Os ficheiros adxuntaranse á comunicación (correo e documentos da carta).',
     no_attachments: 'Ningún ficheiro adxunto',

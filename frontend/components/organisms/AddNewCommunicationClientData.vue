@@ -1,5 +1,6 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'vue-toastification';
 import AppLoading from '../atoms/AppLoading.vue';
 import PersonSearch from '~/components/organisms/PersonSearch.vue';
 import AddContracts from '~/components/molecules/AddContracts.vue';
@@ -8,6 +9,7 @@ import SelectorType from '../atoms/SelectorType.vue';
 import ContractDetail from '../molecules/ContractDetail.vue';
 
 const { t } = useI18n();
+const toast = useToast();
 const { $ConfiglistApiService, $PersonApiService, $CommunicationApiService, $ContractApiService } = useNuxtApp();
 
 const ELECTRONIC_INVOICE_TOKEN = 'electronic_inv';
@@ -523,7 +525,21 @@ const initEmailChoice = () => {
 // Triar un correu l'afegeix al camp de text (separat per ';') si no hi és; "Altres" buida el camp
 // i hi posa el focus per escriure'n un a mà. Per treure'n un, s'esborra del camp.
 const emailInput = ref(null);
+// Valida cada adreça separada per ';'. Si n'hi ha alguna d'incorrecta, es manté el text perquè
+// es pugui corregir (no com v-validate-email, que buida el camp i el deixa desincronitzat).
+const EMAIL_REGEX = /^[^\s@;]+@[^\s@;]+\.[^\s@;]+$/;
+const emailInvalid = ref(false);
+const validateEmailList = () => {
+    const emails = (selectedEmail.value || '').split(';').map(email => email.trim()).filter(Boolean);
+    const invalid = emails.filter(email => !EMAIL_REGEX.test(email));
+    emailInvalid.value = invalid.length > 0;
+    if (emailInvalid.value) {
+        toast.error(t('customer_service_block.invalid_emails', { emails: invalid.join(', ') }));
+    }
+};
+
 const onEmailChoiceChange = (value) => {
+    emailInvalid.value = false;
     emailChoice.value = value;
     if (value === OTHER_EMAIL) {
         selectedEmailId.value = null;
@@ -868,9 +884,11 @@ onMounted(async () => {
                                     </option>
                                     <option :value="OTHER_EMAIL">{{ $t('customer_service_block.other_email') }}</option>
                                 </select>
-                                <input ref="emailInput" type="text" v-model="selectedEmail" @input="emitChange()"
+                                <input ref="emailInput" type="text" v-model="selectedEmail" @input="emailInvalid = false; emitChange()"
+                                    @blur="validateEmailList"
                                     :disabled="!selectedCommunicationTypes.map(t => t.token).includes('email')"
-                                    v-validate-email class="input h-9 w-full rounded-lg border-slate-300 text-sm"
+                                    class="input h-9 w-full rounded-lg text-sm"
+                                    :class="emailInvalid ? 'border-red-500' : 'border-slate-300'"
                                     :placeholder="$t('customer_service_block.type_email')" aria-label="Email input" />
                             </div>
                         </div>

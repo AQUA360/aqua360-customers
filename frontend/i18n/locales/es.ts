@@ -1146,6 +1146,8 @@ export default {
     confirm_send_now: '¿Seguro que quieres enviar esta comunicación ahora?',
     back_to_incident: 'Volver a la incidencia',
     go_to_comms_list: 'Ir al listado',
+    uploading_attachments: 'Subiendo adjuntos…',
+    invalid_emails: 'Direcciones de correo no válidas: {emails}',
     add_attachments: 'Añadir archivos',
     attachments_help: 'Los archivos se adjuntarán a la comunicación (correo y documentos de la carta).',
     no_attachments: 'Ningún archivo adjunto',
