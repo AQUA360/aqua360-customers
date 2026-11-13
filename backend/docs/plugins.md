@@ -13,7 +13,7 @@ Les integracions que viatgen amb el producte (Giswater, Odoo, smart metering) se
 | Carregador | `customers/plugins.py` |
 | Activació | `PLUGINS` al `.env`, afegit a `INSTALLED_APPS` des de `customers/settings.py` |
 | Rutes | `customers/urls.py` munta `/<app>/` només si el plugin té `urls.py` |
-| Imatge del servidor | `BACKEND_IMAGE` i `docker-compose.image.yml` (backend, worker, beat i consumidor GMAO) |
+| Imatge del servidor | La pública, `ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION}` |
 | Codi del plugin | Fora del repositori: `/plugins/` és al `.gitignore` |
 
 `PLUGINS` és una llista separada per comes. El procés no arrenca si un nom no es pot importar. Sense la variable, no es carrega cap plugin.
@@ -32,23 +32,20 @@ COPY exemple /opt/plugins/exemple
 ENV PYTHONPATH=/opt/plugins
 ```
 
-`PLUGINS` es defineix en engegar el contenidor, al `.env`. No va a la imatge: si es treu del `.env`, no queda cap valor anterior.
+El `FROM` de cada plugin és sempre aquesta imatge pública. Un plugin no és la base d'un altre. El servidor també continua executant-la: el backend, el worker, el beat, el consumidor GMAO i el frontend. `CUSTOMERS_VERSION` és l'única etiqueta. No es defineix una imatge alternativa del backend.
 
-`docker compose build` i `up --build` etiqueten la imatge pública local (`ghcr.io/aqua360/aqua360-customers-backend` amb `CUSTOMERS_VERSION` o `local-<stack>`). Per consumir una imatge privada sense que aquesta compilació la reetiqueti, el `.env` ha de dir:
+`PLUGINS` es llegeix en engegar el contenidor. No es grava a la imatge. Al `.env`, cada plugin declara el seu registre sense etiqueta:
 
 ```dotenv
-BACKEND_IMAGE=ghcr.io/exemple/backend-amb-plugin:v1.152.00
-COMPOSE_FILE=docker-compose.yml:docker-compose.image.yml
-PLUGINS=exemple
+CUSTOMERS_VERSION=v1.152.00
+PLUGINS=exemple,altre
+PLUGIN_IMAGE_exemple=ghcr.io/exemple/plugin-exemple
+PLUGIN_IMAGE_altre=ghcr.io/exemple/plugin-altre
 ```
 
-`docker-compose.image.yml` posa `BACKEND_IMAGE` al backend, al worker, al beat i al consumidor GMAO, i en treu el `build`. `CUSTOMERS_VERSION` continua triant el frontend.
+`PLUGIN_IMAGE_<nom>` el fa servir el pas que copia `/opt/plugins/<nom>` sobre la imatge pública abans d'engegar. Dins d'un valor del `.env`, `${CUSTOMERS_VERSION}` no s'expandeix. `docker-compose.image.yml` no forma part d'aquest desplegament.
 
-El desplegament continua sent `docker compose pull && docker compose up -d`. Sense `docker-compose.image.yml` es fa servir la imatge pública. El frontend no canvia: un plugin que només reacciona a senyals no hi afegeix pantalles, perquè el frontend ja va compilat.
-
-Quan surt una release nova del producte, es reconstrueix la imatge del plugin amb el `FROM` d'aquella etiqueta. El worker, el beat i el consumidor GMAO han de fer servir la mateixa imatge que el backend; el fitxer d'imatge els la posa tots.
-
-Posar `PLUGINS` amb la imatge pública fa que el procés no arrenqui: el paquet no hi és.
+El frontend no canvia: un plugin que només reacciona a senyals no hi afegeix pantalles, perquè ja va compilat. Quan surt una release nova del producte, es reconstrueix la imatge de cada plugin amb el `FROM` d'aquella etiqueta, i es torna a copiar sobre la pública. El worker, el beat i el consumidor GMAO han d'arrencar la mateixa imatge que el backend, amb el codi dels plugins a dins. Si hi falta, el procés no arrenca.
 
 ## Contracte d'un plugin
 

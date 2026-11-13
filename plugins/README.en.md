@@ -105,30 +105,20 @@ ENV PYTHONPATH=/opt/plugins
 
 <!-- coderabbit-ai-generated-section:v1:b344fee3635c16e0f17b092c4c8b4f4f54f6992766fb93b4e11d1261199e99f9 -->
 
-From the plugin repository, build the image by explicitly passing the `CUSTOMERS_VERSION` build argument. Replace `<versió>` with a published backend tag that contains the loader; also replace the placeholder in the private image tag:
+The `FROM` is always the product's public image. A plugin is never the base of another: when there are several, they are all copied onto that public image.
 
-```bash
-docker build --build-arg CUSTOMERS_VERSION="<versió>" -t "ghcr.io/exemple/backend-amb-plugin:v<versió>" .
-```
+The server keeps running `ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION}`. That choice applies to the backend, the worker, beat, the GMAO consumer, and the frontend. No variable replaces this image. `BACKEND_IMAGE` and `docker-compose.image.yml` are not how a plugin is deployed.
 
-When a new product release is published, rebuild this image with the new base version. In the client’s `.env`, replace `<versió>` with a published frontend version compatible with the private backend:
-
-<!-- /coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated-section:v1:74fc40de8083a34d19e7024b42a05da5b4093afbfdef82a24b55ea16c46a4146 -->
+The `.env` lists the plugins and each one's registry, without a tag. The tag is `CUSTOMERS_VERSION`. Inside a `.env` value that reference is not expanded.
 
 ```dotenv
-COMPOSE_FILE=docker-compose.yml:docker-compose.image.yml
 CUSTOMERS_VERSION=<versió>
-BACKEND_IMAGE=ghcr.io/exemple/backend-amb-plugin:v<versió>
-PLUGINS=exemple
+PLUGINS=exemple,altre
+PLUGIN_IMAGE_exemple=ghcr.io/exemple/plugin-exemple
+PLUGIN_IMAGE_altre=ghcr.io/exemple/plugin-altre
 ```
 
-<!-- /coderabbit-ai-generated:v1 -->
-
-`docker-compose.image.yml` sets `BACKEND_IMAGE` on the backend, the worker, beat, and the GMAO consumer, and removes their `build`. The frontend stays on the public image: a plugin that only reacts to signals does not add screens, because the frontend is already compiled.
+`PLUGINS` is what Django reads. `PLUGIN_IMAGE_<nom>` is what the step that, before start, copies `/opt/plugins/<nom>` from each image onto the public one uses. If that code is not in the image that starts, the process does not start. A plugin that only reacts to signals does not add screens: the frontend is already compiled.
 
 <!-- coderabbit-ai-generated:v1 -->
 
