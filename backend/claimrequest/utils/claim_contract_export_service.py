@@ -19,6 +19,47 @@ from coredata.models import ConfigProject
 from service.models import SupplyCut
 from service.utils.supply_cut_service import closed_status_tokens
 
+# La vista vw_contract_debt també exclou els pagaments cobrats en saldo ('5').
+NON_DEBT_STATUS_TOKENS = {*CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS, '5'}
+
+
+def claim_payment_pending_amount(payment):
+    """
+    Import que encara es deu d'un pagament reclamat, segons el seu estat actual.
+    Com vw_contract_debt, un import negatiu no resta deute.
+    """
+    if not payment.status or payment.status.token in NON_DEBT_STATUS_TOKENS:
+        return Decimal('0')
+    return max(payment.amount or Decimal('0'), Decimal('0'))
+
+
+def _payments_in_bulk(payment_ids):
+    payments = {}
+    payment_queryset = Payment.objects.select_related('status', 'invoice')
+    for start in range(0, len(payment_ids), 500):
+        payments.update(payment_queryset.in_bulk(payment_ids[start:start + 500]))
+    return payments
+
+
+def claimed_debt_by_contract_id(contract_payments):
+    """
+    Factures i import que es reclamen de cada contracte: els pagaments de la gestió
+    no exclosos que encara són deute (`contract_payments`: llista de
+    [contract_id, payment_id, is_excluded]). Quadra amb el full de factures.
+    """
+    payments = _payments_in_bulk([payment_id for _, payment_id, _ in contract_payments])
+    invoices_by_contract, amount_by_contract = {}, {}
+    for contract_id, payment_id, is_excluded in contract_payments:
+        payment = payments.get(payment_id)
+        if is_excluded or not payment:
+            continue
+        pending_amount = claim_payment_pending_amount(payment)
+        if not pending_amount:
+            continue
+        invoices_by_contract.setdefault(contract_id, set()).add(payment.invoice_id or f'payment-{payment.id}')
+        amount_by_contract[contract_id] = amount_by_contract.get(contract_id, Decimal('0')) + pending_amount
+    return {contract_id: len(invoices) for contract_id, invoices in invoices_by_contract.items()}, amount_by_contract
+
 
 def unpaid_invoices_count_by_contract_id(contract_ids):
     """
@@ -78,9 +119,10 @@ def claim_contracts_export_queryset():
     )
 
 
-def claim_contracts_export_columns(contract_ids):
+def claim_contracts_export_columns(contract_ids, contract_payments=()):
     debt_by_contract = contract_debt_amounts_by_contract_id(contract_ids)
     unpaid_by_contract = unpaid_invoices_count_by_contract_id(contract_ids)
+    claimed_invoices_by_contract, claimed_debt_by_contract = claimed_debt_by_contract_id(contract_payments)
 
     def meter_code(contract):
         supply_point = contract.supply_point_default
@@ -106,7 +148,9 @@ def claim_contracts_export_columns(contract_ids):
         ('holder_nif', _('NIF'), lambda c: c.holder.token or '' if c.holder else ''),
         ('supply_address', _('Adreça subministrament'), lambda c: _supply_point_address(c.supply_point_default)),
         ('unpaid_invoices', _('Factures impagades'), lambda c: unpaid_by_contract.get(c.id, 0)),
+        ('claimed_invoices', _('Factures reclamades'), lambda c: claimed_invoices_by_contract.get(c.id, 0)),
         ('debt', _('Deute total'), lambda c: debt_by_contract.get(c.id, Decimal('0'))),
+        ('claimed_debt', _('Deute reclamat'), lambda c: claimed_debt_by_contract.get(c.id, Decimal('0'))),
         ('meter', _('Comptador'), meter_code),
         ('meter_general', _('Comptador general'), meter_is_general),
         ('placement', _('Ubicació'), supply_point_placement),
@@ -136,10 +180,7 @@ def claim_invoices_export_rows(contract_payments):
         'supply_point_default__address__city',
         'supply_point_default__address__country',
     ).in_bulk(contract_ids)
-    payments = {}
-    payment_queryset = Payment.objects.select_related('status', 'invoice')
-    for start in range(0, len(payment_ids), 500):
-        payments.update(payment_queryset.in_bulk(payment_ids[start:start + 500]))
+    payments = _payments_in_bulk(payment_ids)
 
     payments_by_contract = {contract_id: [] for contract_id in contract_ids}
     for contract_id, payment_id, is_excluded in contract_payments:
@@ -158,17 +199,9 @@ def claim_invoices_export_rows(contract_payments):
 
 
 def claim_invoices_export_columns():
-    # La vista vw_contract_debt també exclou els pagaments cobrats en saldo ('5').
-    non_debt_status_tokens = {*CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS, '5'}
-
     def invoice_number(payment):
         invoice = payment.invoice
         return invoice.serie_final or invoice.token or '' if invoice else ''
-
-    def pending_amount(payment):
-        if not payment.status or payment.status.token in non_debt_status_tokens:
-            return Decimal('0')
-        return payment.amount
 
     return [
         ('contract', _('Contracte'), lambda row: row[0].token or ''),
@@ -179,7 +212,7 @@ def claim_invoices_export_columns():
         ('invoice_date', _('Data factura'), lambda row: _format_date(row[1].invoice.issue_date) if row[1].invoice else ''),
         ('due_date', _('Data venciment'), lambda row: _format_date(row[1].due_date)),
         ('invoice_total', _('Import factura'), lambda row: row[1].invoice.total_final if row[1].invoice else None),
-        ('pending_amount', _('Import pendent'), lambda row: pending_amount(row[1])),
+        ('pending_amount', _('Import pendent'), lambda row: claim_payment_pending_amount(row[1])),
         ('payment_status', _('Estat pagament'), lambda row: row[1].status.name or '' if row[1].status else ''),
         ('excluded', _('Exclosa'), lambda row: _('Sí') if row[2] else _('No')),
     ]
