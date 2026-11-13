@@ -682,9 +682,11 @@ const clickDeleteOrder = async (id) => {
   }
 }
 
-// Cada clic al llistat és una selecció nova: només s'aplica la darrera, encara que
-// les respostes arribin desordenades.
+// Cada clic al llistat és una selecció nova: una comprovació antiga no s'aplica.
+// Els desaments es compten a part: un clic cancel·lat no ha d'amagar el desament
+// anterior, només un desament posterior el substitueix.
 let meterSelectionSeq = 0;
+let meterSaveSeq = 0;
 
 const setMeter = async (meter) => {
   console.log('meter', meter);
@@ -715,10 +717,11 @@ const setMeter = async (meter) => {
     meter_id: selectedMeter.value,
     confirm_reassign: confirmReassign,
   }
+  const saveSeq = ++meterSaveSeq;
   saving.value = true;
   try {
     let response = await $SupplyPointApiService.updateMeter(save_data);
-    if (response && seq === meterSelectionSeq) {
+    if (response && saveSeq === meterSaveSeq) {
       emit('change-sp', response);
       toast.success(t("service_block.meter_assign_to_sp"), {
         position: "top-right",
@@ -749,6 +752,7 @@ const handleMeterCreated = async (meter) => {
       supply_point_id: props.supply_point.id,
       meter_id: meter.id
     }
+    ++meterSaveSeq;
     let response = await $SupplyPointApiService.updateMeter(save_data);
     if (response) {
       emit('change-sp', response);
