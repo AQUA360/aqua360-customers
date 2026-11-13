@@ -689,6 +689,8 @@ let meterSelectionSeq = 0;
 let meterSaveSeq = 0;
 
 const setMeter = async (meter) => {
+  // Un desament alhora: si n'hi ha un en curs, el clic s'ignora.
+  if (saving.value) return;
   console.log('meter', meter);
   const seq = ++meterSelectionSeq;
   // Avís amb on és ara el comptador (punt, contractes i titulars) abans de treure'l d'allà.
@@ -752,6 +754,8 @@ const handleMeterCreated = async (meter) => {
       supply_point_id: props.supply_point.id,
       meter_id: meter.id
     }
+    // El comptador creat substitueix qualsevol selecció o desament pendent.
+    ++meterSelectionSeq;
     ++meterSaveSeq;
     let response = await $SupplyPointApiService.updateMeter(save_data);
     if (response) {
