@@ -96,6 +96,23 @@ def filter_contract_queryset_by_positive_balance(queryset, has_positive_balance)
     return queryset.exclude(positive)
 
 
+def filter_contract_queryset_by_pending_termination(queryset, pending_termination):
+    """Contractes amb (o sense) una sol·licitud de baixa oberta.
+
+    Mateix criteri que l'avís active_contract_termination del llistat: compta qualsevol
+    sol·licitud que no estigui anul·lada ni finalitzada.
+    """
+    cancelled_token, completed_token = _termination_status_tokens()
+    open_request = Exists(
+        ContractTerminationRequest.objects.filter(contract=OuterRef('pk')).exclude(
+            status__token__in=[cancelled_token, completed_token]
+        )
+    )
+    if pending_termination:
+        return queryset.filter(open_request)
+    return queryset.exclude(open_request)
+
+
 def annotate_contract_list_expired_invoices(queryset):
     """Optional heavy annotation — only for serializers that expose expired_invoices."""
     expired_token = ConfigProject.objects.get(token='invoice_status_expired_token').value
