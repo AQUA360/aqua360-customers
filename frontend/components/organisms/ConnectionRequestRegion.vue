@@ -23,6 +23,8 @@ const { permissions, loading } = usePermissions();
 
 const props = defineProps({
   id: Number, // ID de l'element
+  // Només des del llistat de sol·licituds: dins d'un altre panell (ordre, escomesa, factura) no té sentit.
+  allowDelete: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['accept', 'show-subregion', 'changed', 'close-subregion']);
@@ -165,16 +167,18 @@ const handleClickChangeStatus = () => {
 // Només es pot eliminar en esborrany o pendent (el servidor també ho comprova).
 const DELETABLE_STATUS_TOKENS = ['draft', 'pending'];
 const canDelete = computed(() =>
-  objectPermissions.value?.can_delete && DELETABLE_STATUS_TOKENS.includes(data.value?.status?.token)
+  props.allowDelete && objectPermissions.value?.can_delete && DELETABLE_STATUS_TOKENS.includes(data.value?.status?.token)
 );
 
 const remove = async () => {
   if (!confirm(t('confirmation_text_block.confirm_delete'))) return;
   try {
-    await $ConnectionRequestApiService.remove(props.id);
+    const deletedId = props.id;
+    await $ConnectionRequestApiService.remove(deletedId);
     toast.success(t('common.deleted_successfully'));
     emit('changed');
-    emit('close-subregion');
+    // Si mentrestant s'ha obert una altra sol·licitud, no se li tanca el panell.
+    if (props.id === deletedId) emit('close-subregion');
   } catch (err) {
     const code = err?.response?._data?.error;
     const messages = {

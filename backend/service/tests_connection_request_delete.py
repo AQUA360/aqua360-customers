@@ -5,11 +5,13 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from billing.models import Invoice
 from coredata.models import ConfigProject
+from documentmanager.models import Document
 from logger.models import LogConnectionRequestStatus
 from order.models import Order
 from service.models import (
     Connection,
     ConnectionRequest,
+    ConnectionRequestDocumentationFile,
     ConnectionRequestObservation,
     ConnectionRequestStatus,
 )
@@ -89,3 +91,14 @@ class ConnectionRequestDeleteTest(TestCase):
         response = self._delete(obj, user=User.objects.create(username='viewer'))
         self.assertEqual(response.status_code, 403)
         self.assertTrue(ConnectionRequest.objects.filter(pk=obj.pk).exists())
+
+    def test_documents_are_deactivated(self):
+        obj = self._request()
+        document = Document.objects.create(entity='CONNECTION_REQUEST', entity_id=obj.pk, service='hdd')
+        ConnectionRequestDocumentationFile.objects.create(connection_request=obj, file=document)
+        other = Document.objects.create(entity='CONNECTION_REQUEST', entity_id=obj.pk + 1000, service='hdd')
+        self.assertEqual(self._delete(obj).status_code, 204)
+        document.refresh_from_db()
+        other.refresh_from_db()
+        self.assertFalse(document.is_active)
+        self.assertTrue(other.is_active)

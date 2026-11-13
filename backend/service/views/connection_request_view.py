@@ -82,6 +82,7 @@ class ConnectionRequestViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         from billing.models import Invoice
+        from documentmanager.models import Document
         from logger.models import LogConnectionRequestStatus
         from order.models import Order
 
@@ -96,6 +97,10 @@ class ConnectionRequestViewSet(viewsets.ModelViewSet):
                     or Order.objects.filter(connection_request=instance, is_active=True).exists()):
                 return Response({'error': 'has_related_records'}, status=status.HTTP_400_BAD_REQUEST)
             LogConnectionRequestStatus.objects.filter(object=instance).delete()
+            # Com l'esborrat de documents del gestor documental: es desactiven, no s'esborra el fitxer.
+            Document.objects.filter(
+                id__in=instance.documentation_files.filter(file__isnull=False).values('file_id')
+            ).update(is_active=False)
             instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
