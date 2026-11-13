@@ -84,7 +84,7 @@ class ReadingSerializer(serializers.ModelSerializer):
         invoices = instance.invoices.all().exclude(status__token__in=[invoice_pending_status, invoice_cancelled_status])
         if invoices.count() > 0:
             used_invoice = invoices.order_by('-created_at').first()
-            return { 'id': used_invoice.id, 'token': used_invoice.token, 'number': used_invoice.number, 'status': used_invoice.status.token, 'serie_final': used_invoice.serie_final }
+            return { 'id': used_invoice.id, 'token': used_invoice.token, 'number': used_invoice.number, 'status': used_invoice.status.token if used_invoice.status else None, 'serie_final': used_invoice.serie_final }
         return None
 
     

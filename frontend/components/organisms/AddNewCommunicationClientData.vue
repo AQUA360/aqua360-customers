@@ -1,5 +1,6 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'vue-toastification';
 import AppLoading from '../atoms/AppLoading.vue';
 import PersonSearch from '~/components/organisms/PersonSearch.vue';
 import AddContracts from '~/components/molecules/AddContracts.vue';
@@ -8,6 +9,7 @@ import SelectorType from '../atoms/SelectorType.vue';
 import ContractDetail from '../molecules/ContractDetail.vue';
 
 const { t } = useI18n();
+const toast = useToast();
 const { $ConfiglistApiService, $PersonApiService, $CommunicationApiService, $ContractApiService } = useNuxtApp();
 
 const ELECTRONIC_INVOICE_TOKEN = 'electronic_inv';
@@ -22,7 +24,13 @@ const loadingExtraInformation = ref(false);
 const companiesConfig = ref([]);
 const selectedCompanyConfig = ref(null);
 const selectedCompanyConfigEmail = ref(null);
-const dueDate = ref(null);
+// Data d'enviament: avui per defecte (data local, no UTC).
+const todayLocal = () => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+const dueDate = ref(todayLocal());
 const communicationTypes = ref([]);
 const selectedCommunicationTypes = ref([]);
 const communicationUseTypes = ref([]);
@@ -37,6 +45,12 @@ const selectedAddress = ref(null);
 const selectedAddressId = ref(null);
 const selectedEmail = ref(null);
 const selectedEmailId = ref(null);
+// Opció triada al desplegable de correu: l'id d'un contacte de la persona o OTHER_EMAIL per escriure'n un.
+const OTHER_EMAIL = '__other__';
+const emailChoice = ref(null);
+// El mateix per a l'adreça postal: l'id d'una adreça de la persona o OTHER_ADDRESS per escriure-la.
+const OTHER_ADDRESS = '__other__';
+const addressChoice = ref(null);
 const selectedPhone = ref(null);
 const selectedPhoneId = ref(null);
 const accountingOffice = ref(null);
@@ -148,6 +162,8 @@ const cleanData = (only_contact = false) => {
     selectedAddressId.value = null;
     selectedEmail.value = null;
     selectedEmailId.value = null;
+    emailChoice.value = null;
+    addressChoice.value = null;
     selectedPhone.value = null;
     selectedPhoneId.value = null;
     accountingOffice.value = null;
@@ -311,6 +327,9 @@ const getClientData = async () => {
             }
         }
 
+        initEmailChoice();
+        initAddressChoice();
+
         clientData.value = {
             addresses: [...clientAddresses.value],
             emails: [...clientEmails.value],
@@ -334,6 +353,13 @@ const getContractPersons = () => {
 
     const addPerson = (role, id, token, fullName, vulnerabilityLevel = 0) => {
         if (!id) return;
+        // Si la mateixa persona té més d'un rol (p. ex. titular i propietari), només surt un cop
+        // amb els rols junts.
+        const existing = contractPersons.value.find(person => person.id === id);
+        if (existing) {
+            existing.roleLabel = `${existing.roleLabel} · ${t(`contract_block.${role}`)}`;
+            return;
+        }
         contractPersons.value.push({
             id,
             token,
@@ -469,19 +495,110 @@ watch(selectedPhoneId, (newVal) => {
     emitChange();
 });
 
-watch(selectedEmailId, (newVal) => {
-    if (!newVal) return;
-    const email = clientEmails.value.find((e) => e.value === newVal);
-    selectedEmail.value = email?.label ? email.label : null;
-    emitChange();
-});
+// Correus reals de la persona (sense l'entrada buida de "sense correu").
+const personEmails = computed(() => clientEmails.value.filter(email => email.value !== ''));
+// El <select> retorna el valor com a text: es compara com a text amb els ids de la llista.
+const findPersonEmail = (id) => personEmails.value.find(email => String(email.value) === String(id)) ?? null;
 
-watch(selectedAddressId, (newVal) => {
-    if (!newVal) return;
-    const address = clientAddresses.value.find((a) => a.value === newVal);
-    selectedAddress.value = address?.label ? address.label : null;
+// Preselecció: el correu preferent del contracte si és de la persona; si no, el primer que tingui.
+// El camp de text mostra el correu triat i es pot editar (p. ex. afegir-ne un altre separat per ';').
+// Si el preferent no és a la llista, es posa a "Altres" amb el correu al camp.
+const initEmailChoice = () => {
+    const preferred = selectedEmail.value?.trim();
+    if (preferred) {
+        const match = personEmails.value.find(email => email.label.trim().toLowerCase() === preferred.toLowerCase());
+        emailChoice.value = match ? match.value : OTHER_EMAIL;
+        selectedEmailId.value = match ? match.value : null;
+        selectedEmail.value = preferred;
+    } else if (personEmails.value.length > 0) {
+        emailChoice.value = personEmails.value[0].value;
+        selectedEmailId.value = emailChoice.value;
+        selectedEmail.value = personEmails.value[0].label;
+    } else {
+        emailChoice.value = OTHER_EMAIL;
+        selectedEmailId.value = null;
+        selectedEmail.value = '';
+    }
     emitChange();
-});
+};
+
+// Triar un correu l'afegeix al camp de text (separat per ';') si no hi és; "Altres" buida el camp
+// i hi posa el focus per escriure'n un a mà. Per treure'n un, s'esborra del camp.
+const emailInput = ref(null);
+// Valida cada adreça separada per ';'. Si n'hi ha alguna d'incorrecta, es manté el text perquè
+// es pugui corregir (no com v-validate-email, que buida el camp i el deixa desincronitzat).
+const EMAIL_REGEX = /^[^\s@;]+@[^\s@;]+\.[^\s@;]+$/;
+const emailInvalid = ref(false);
+const validateEmailList = () => {
+    const emails = (selectedEmail.value || '').split(';').map(email => email.trim()).filter(Boolean);
+    const invalid = emails.filter(email => !EMAIL_REGEX.test(email));
+    emailInvalid.value = invalid.length > 0;
+    if (emailInvalid.value) {
+        toast.error(t('customer_service_block.invalid_emails', { emails: invalid.join(', ') }));
+    }
+};
+
+const onEmailChoiceChange = (value) => {
+    emailInvalid.value = false;
+    emailChoice.value = value;
+    if (value === OTHER_EMAIL) {
+        selectedEmailId.value = null;
+        selectedEmail.value = '';
+        nextTick(() => emailInput.value?.focus());
+    } else {
+        const option = findPersonEmail(value);
+        emailChoice.value = option?.value ?? value;
+        selectedEmailId.value = option?.value ?? null;
+        const label = option?.label ?? null;
+        const current = (selectedEmail.value || '').split(';').map(email => email.trim()).filter(Boolean);
+        if (label && !current.some(email => email.toLowerCase() === label.toLowerCase())) {
+            current.push(label);
+        }
+        selectedEmail.value = current.join(';');
+    }
+    emitChange();
+};
+
+// Adreces reals de la persona (sense l'entrada buida de "sense adreça").
+const personAddresses = computed(() => clientAddresses.value.filter(address => address.value !== ''));
+
+// Preselecció: l'adreça preferent del contracte si és de la persona; si no, la primera que tingui.
+// El camp de text mostra l'adreça triada i es pot editar.
+const initAddressChoice = () => {
+    const preferred = selectedAddress.value?.trim();
+    if (preferred) {
+        const match = personAddresses.value.find(address => address.label.trim().toLowerCase() === preferred.toLowerCase());
+        addressChoice.value = match ? match.value : OTHER_ADDRESS;
+        selectedAddressId.value = match ? match.value : null;
+        selectedAddress.value = preferred;
+    } else if (personAddresses.value.length > 0) {
+        addressChoice.value = personAddresses.value[0].value;
+        selectedAddressId.value = addressChoice.value;
+        selectedAddress.value = personAddresses.value[0].label;
+    } else {
+        addressChoice.value = OTHER_ADDRESS;
+        selectedAddressId.value = null;
+        selectedAddress.value = '';
+    }
+    emitChange();
+};
+
+// Una carta va a una sola adreça: triar-ne una la posa al camp de text; "Altres" el buida per escriure-la.
+const addressInput = ref(null);
+const onAddressChoiceChange = (value) => {
+    addressChoice.value = value;
+    if (value === OTHER_ADDRESS) {
+        selectedAddressId.value = null;
+        selectedAddress.value = '';
+        nextTick(() => addressInput.value?.focus());
+    } else {
+        const option = personAddresses.value.find(address => String(address.value) === String(value)) ?? null;
+        addressChoice.value = option?.value ?? value;
+        selectedAddressId.value = option?.value ?? null;
+        selectedAddress.value = option?.label ?? '';
+    }
+    emitChange();
+};
 
 watch([selectedCompanyConfig, selectedCompanyConfigEmail, selectedCommunicationUseType, dueDate, selectedAddress, selectedEmail, selectedPhone, accountingOffice, managingBody, processingUnit], () => {
     emitChange();
@@ -716,21 +833,28 @@ onMounted(async () => {
                             <p class="text-xs font-semibold uppercase tracking-wide">{{ $t('common.address') }}</p>
                             <Icon name="ph:map-pin-duotone" class="text-lg" />
                         </div>
-                        <div class="grid gap-2 text-slate-600 md:grid-cols-[minmax(0,1fr),220px]">
-                            <input type="text" v-model="selectedAddress"
-                                class="input h-9 rounded-lg border-slate-300 text-sm"
-                                :disabled="!selectedCommunicationTypes.map(t => t.token).includes('letter')"
-                                :placeholder="$t('customer_service_block.select_address')" aria-label="Address input" />
-                            <select v-model="selectedAddressId"
-                                class="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-700 focus:border-slate-500 focus:outline-none"
-                                :disabled="!selectedCommunicationTypes.map(t => t.token).includes('letter')"
-                                id="contact_address">
-                                <option value="" selected="selected">--{{ $t('customer_service_block.select_address') }}
-                                </option>
-                                <option v-for="address in clientAddresses" :value="address.value" :key="address.value">
-                                    {{ address.label }}
-                                </option>
-                            </select>
+                        <div class="space-y-2 text-slate-600">
+                            <p v-if="personAddresses.length === 0"
+                                class="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
+                                <Icon name="fa6-solid:circle-exclamation" class="shrink-0" />
+                                {{ $t('customer_service_block.no_person_addresses') }}
+                            </p>
+                            <div class="grid gap-2" :class="{ 'md:grid-cols-[minmax(0,1fr),minmax(0,2fr)]': personAddresses.length > 0 }">
+                                <select v-if="personAddresses.length > 0" id="contact_address" :value="addressChoice"
+                                    @change="onAddressChoiceChange($event.target.value)"
+                                    :disabled="!selectedCommunicationTypes.map(t => t.token).includes('letter')"
+                                    :aria-label="$t('customer_service_block.select_address')"
+                                    class="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-700 focus:border-slate-500 focus:outline-none">
+                                    <option v-for="address in personAddresses" :value="address.value" :key="address.value">
+                                        {{ address.label }}
+                                    </option>
+                                    <option :value="OTHER_ADDRESS">{{ $t('customer_service_block.other_email') }}</option>
+                                </select>
+                                <input ref="addressInput" type="text" v-model="selectedAddress" @input="emitChange()"
+                                    class="input h-9 w-full rounded-lg border-slate-300 text-sm"
+                                    :disabled="!selectedCommunicationTypes.map(t => t.token).includes('letter')"
+                                    :placeholder="$t('customer_service_block.type_address')" aria-label="Address input" />
+                            </div>
                         </div>
                     </section>
 
@@ -743,21 +867,30 @@ onMounted(async () => {
                             <Icon name="ph:envelope-duotone" class="text-lg" />
                         </div>
                         
-                        <div class="grid gap-2 text-slate-600 md:grid-cols-[minmax(0,1fr),220px]">
-                            <input type="text" v-model="selectedEmail" @input="selectedEmailId = null; emitChange()"
-                                :disabled="!selectedCommunicationTypes.map(t => t.token).includes('email')"
-                                v-validate-email class="input h-9 rounded-lg border-slate-300 text-sm"
-                                :placeholder="$t('customer_service_block.select_email')" aria-label="Email input" />
-                            <select v-model="selectedEmailId"
-                                :disabled="!selectedCommunicationTypes.map(t => t.token).includes('email')"
-                                class="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-700 focus:border-slate-500 focus:outline-none"
-                                id="contact_email">
-                                <option value="" selected="selected">--{{ $t('customer_service_block.select_email') }}
-                                </option>
-                                <option v-for="email in clientEmails" :value="email.value" :key="email.value">
-                                    {{ email.label }}
-                                </option>
-                            </select>
+                        <div class="space-y-2 text-slate-600">
+                            <p v-if="personEmails.length === 0"
+                                class="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
+                                <Icon name="fa6-solid:circle-exclamation" class="shrink-0" />
+                                {{ $t('customer_service_block.no_person_emails') }}
+                            </p>
+                            <div class="grid gap-2" :class="{ 'md:grid-cols-[minmax(0,1fr),minmax(0,2fr)]': personEmails.length > 0 }">
+                                <select v-if="personEmails.length > 0" id="contact_email" :value="emailChoice"
+                                    @change="onEmailChoiceChange($event.target.value)"
+                                    :disabled="!selectedCommunicationTypes.map(t => t.token).includes('email')"
+                                    :aria-label="$t('customer_service_block.recipient_email')"
+                                    class="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-700 focus:border-slate-500 focus:outline-none">
+                                    <option v-for="email in personEmails" :value="email.value" :key="email.value">
+                                        {{ email.label }}
+                                    </option>
+                                    <option :value="OTHER_EMAIL">{{ $t('customer_service_block.other_email') }}</option>
+                                </select>
+                                <input ref="emailInput" type="text" v-model="selectedEmail" @input="emailInvalid = false; emitChange()"
+                                    @blur="validateEmailList"
+                                    :disabled="!selectedCommunicationTypes.map(t => t.token).includes('email')"
+                                    class="input h-9 w-full rounded-lg text-sm"
+                                    :class="emailInvalid ? 'border-red-500' : 'border-slate-300'"
+                                    :placeholder="$t('customer_service_block.type_email')" aria-label="Email input" />
+                            </div>
                         </div>
                     </section>
 

@@ -25,6 +25,8 @@ const icons = {
   report_deleted: 'fa6-solid:trash-can',
   observation: 'fa6-solid:note-sticky',
   task: 'fa6-solid:calendar-check',
+  communication: 'fa6-solid:envelope',
+  communication_sent: 'fa6-solid:paper-plane',
   receipt: 'fa6-solid:file-pdf',
   closed: 'fa6-solid:circle-check',
   deleted: 'fa6-solid:trash-can',
