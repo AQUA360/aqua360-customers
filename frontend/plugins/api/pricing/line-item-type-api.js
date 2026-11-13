@@ -66,6 +66,22 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const getAccountingCatalog = async (exploitationId = null) => {
+      let apiUrl = `${apiHost}${entity}accounting-catalog/`;
+      if (exploitationId) {
+        apiUrl += `?exploitation=${encodeURIComponent(exploitationId)}`;
+      }
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'GET');
+        if (response && Array.isArray(response.results)) {
+          return response;
+        }
+        throw new Error('Error estructura `results` no trobat');
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const getByBillingRange = async (billingRangeId) => {
       let apiUrl = apiHost + entity + '?billing_range=' + billingRangeId;
   
@@ -151,6 +167,7 @@ export default defineNuxtPlugin(nuxtApp => {
     const apiService = {
       getAll,
       exportData,
+      getAccountingCatalog,
       save,
       getDetail,
       getByBillingRange,
