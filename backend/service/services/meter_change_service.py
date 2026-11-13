@@ -7,6 +7,7 @@ from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
 from service.utils.supply_point_service import supply_point_change_meter  # ajusta l'import real si cal
 from billing.models import EstimatedBag, Reading, EstimatedBagMovement
+from logger.models import LogSupplyPointChange
 
 
 METER_CHANGE_ORIGIN = 'Canvi de comptador'
@@ -64,6 +65,109 @@ def compute_meter_consumption(reading_value, contract, supply_point, meter, date
     return max(Decimal(0), to_decimal(reading_value) - to_decimal(previous.reading_value))
 
 
+class MeterAssignedElsewhereError(Exception):
+    """El comptador nou és a un altre punt de subministrament i no s'ha confirmat moure'l."""
+
+    def __init__(self, assignments):
+        super().__init__("Meter assigned to another supply point")
+        self.assignments = assignments
+
+
+METER_ASSIGNED_MESSAGE = (
+    "El comptador ja és a un altre punt de subministrament. "
+    "Cal confirmar que se'l vol treure d'aquell punt."
+)
+
+
+def meter_assigned_response_data(assignments):
+    """Cos de la resposta 409 quan cal confirmar que es mou el comptador."""
+    return {
+        'error': METER_ASSIGNED_MESSAGE,
+        'code': 'meter_assigned',
+        'assignments': assignments,
+    }
+
+
+def is_reassign_confirmed(value):
+    """`confirm_reassign` d'una petició: només un sí explícit confirma (un text "false" no)."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value == 1
+    return isinstance(value, str) and value.strip().lower() in ('true', '1', 'yes', 't')
+
+
+def lock_meter(meter_id):
+    """
+    Carrega el comptador bloquejant-ne la fila fins al final de la transacció:
+    les assignacions del mateix comptador van en sèrie i la segona veu la primera
+    (i retorna el 409) en lloc de treure-li el comptador sense avís.
+    """
+    return Meter.objects.select_for_update().get(id=meter_id)
+
+
+def get_meter_assignments_elsewhere(meter, supply_point_id=None):
+    """
+    Punts de subministrament (diferents de `supply_point_id`) on és ara el
+    comptador, amb els contractes actius de cadascun. Un comptador general pot
+    ser a diversos punts alhora: no compta com a assignat.
+    """
+    if meter is None or meter.is_general:
+        return []
+    supply_points = SupplyPoint.objects.filter(meter=meter).select_related('address')
+    if supply_point_id:
+        supply_points = supply_points.exclude(id=supply_point_id)
+    active_contract_token = ConfigProject.objects.get(token='contract_active_token').value
+
+    assignments = []
+    for supply_point in supply_points.order_by('id'):
+        contracts = supply_point.contracts.filter(
+            status__token=active_contract_token,
+        ).select_related('holder').order_by('id')
+        assignments.append({
+            'supply_point_id': supply_point.id,
+            'supply_point_token': supply_point.token,
+            'address': str(supply_point.address) if supply_point.address_id else None,
+            'contracts': [
+                {
+                    'id': contract.id,
+                    'token': contract.token,
+                    'holder': (
+                        ' '.join(filter(None, [contract.holder.name, contract.holder.surname]))
+                        if contract.holder_id else None
+                    ),
+                }
+                for contract in contracts
+            ],
+        })
+    return assignments
+
+
+def release_meter_from_other_supply_points(user, meter, target_supply_point):
+    """
+    Treu el comptador dels altres punts on era i deixa constància del canvi
+    a l'historial de cadascun (no només al punt on s'assigna).
+    """
+    if meter.is_general:
+        return
+    others = list(SupplyPoint.objects.filter(meter=meter).exclude(id=target_supply_point.id))
+    if not others:
+        return
+    SupplyPoint.objects.filter(id__in=[sp.id for sp in others]).update(meter=None)
+    for supply_point in others:
+        LogSupplyPointChange.objects.create(
+            supply_point=supply_point,
+            user=user,
+            action='meter',
+            field_changed='meter',
+            previous_value=meter.code,
+            current_value=None,
+            previous_related_id=meter.id,
+            current_related_id=None,
+            observation=f"Comptador retirat per assignar-lo al punt {target_supply_point.token}",
+        )
+
+
 def set_meter_change_dates(new_meter, released_meter, change_date):
     """
     Desa la data del canvi com a data d'instal·lació del comptador nou i de
@@ -97,7 +201,12 @@ class MeterChangeService:
 
     @transaction.atomic
     def apply(self, supply_point_id, prev_meter_id, new_meter_id, origin,
-              change_date, previous_reading_data, new_reading_data):
+              change_date, previous_reading_data, new_reading_data,
+              confirm_reassign=False):
+        """
+        Sense `confirm_reassign`, si el comptador nou és a un altre punt no es
+        fa res i es llança MeterAssignedElsewhereError amb on és.
+        """
 
         if isinstance(change_date, str):
             try:
@@ -108,7 +217,7 @@ class MeterChangeService:
             change_date = datetime.date.today()
 
         current_meter = Meter.objects.get(id=prev_meter_id) if prev_meter_id else None
-        new_meter = Meter.objects.get(id=new_meter_id)
+        new_meter = lock_meter(new_meter_id)
 
         active_contract_token = ConfigProject.objects.get(token='contract_active_token').value
         meter_status_active_token = ConfigProject.objects.get(token='meter_status_active_token').value
@@ -116,10 +225,14 @@ class MeterChangeService:
         meter_status_active = MeterStatus.objects.get(token=meter_status_active_token)
         meter_status_inactive = MeterStatus.objects.get(token=meter_status_inactive_token)
 
-        if not new_meter.is_general:
-            SupplyPoint.objects.filter(meter=new_meter).update(meter=None)
-
         supply_point = SupplyPoint.objects.get(id=supply_point_id)
+
+        if not confirm_reassign:
+            assignments = get_meter_assignments_elsewhere(new_meter, supply_point.id)
+            if assignments:
+                raise MeterAssignedElsewhereError(assignments)
+        release_meter_from_other_supply_points(self.user, new_meter, supply_point)
+
         supply_point.meter = new_meter
         supply_point.save()
 
