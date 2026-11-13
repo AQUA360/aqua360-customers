@@ -1,8 +1,7 @@
 from django.http import FileResponse
 from django.conf import settings
-from django.db import transaction
-from django.db.models import Case, Count, F, Prefetch, Q, Value, When
-from django.db.models.functions import Replace, Upper
+from django.db import connection, transaction
+from django.db.models import Case, Count, F, Prefetch, Q, When
 from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
@@ -21,6 +20,7 @@ from coredata.models import (
     PersonAddress,
     PersonBank,
     PersonContact,
+    PersonPiggyBank,
 )
 from coredata.utils.name_utils import generate_token, check_token_exists
 from coredata.utils import name_utils as name_utils_module
@@ -63,6 +63,9 @@ from pricing.models import PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
 from ov.serializers import (
+    _normalize_person_dni,
+    _normalized_dni_expression,
+    _resolve_contract_procedure_person,
     BillingDataOVSerializer,
     BillingContractInvoicesOVSerializer,
     UpdateBillingDataOVSerializer,
@@ -822,11 +825,49 @@ class MeterDetailByTokenOVView(RetrieveAPIView):
         return contract
 
 
+def _contract_readings(contract):
+    """Readings that belong to `contract`, within its active timeframe.
+
+    Ownership comes from `Reading.contract`, never from the shared meter or
+    supply point, so readings of previous (or later) contracts on the same
+    supply point are never exposed, and readings of a replaced meter during
+    the contract are still included. When the contract has a registration or
+    termination date, readings outside that range are excluded too.
+    """
+    queryset = Reading.objects.filter(contract=contract)
+    if contract.registration_date:
+        queryset = queryset.filter(reading_date__gte=contract.registration_date)
+    if contract.termination_date:
+        queryset = queryset.filter(reading_date__lte=contract.termination_date)
+    return queryset
+
+
+def _contract_billed_readings(queryset, contract):
+    """Restrict `queryset` to readings billed in an invoice of `contract`.
+
+    A reading must belong to the contract and be linked to one of its own
+    invoices; inconsistent links to another contract's invoices are ignored.
+    Only the contract's invoices are prefetched, so the `period` never comes
+    from another contract's invoice.
+    """
+    return (
+        queryset.filter(invoices__contract=contract)
+        .distinct()
+        .select_related("previous_reading")
+        .prefetch_related(
+            Prefetch("invoices", queryset=Invoice.objects.filter(contract=contract))
+        )
+        .order_by("-reading_date", "-id")
+    )
+
+
 class ConsumptionHistoryOVView(APIView):
     """GET /ov/consumptions/?contract_token=<token>[&date_from=&date_to=&page=&page_size=]
 
-    Historial de consumos del contador del contrato en nomenclatura HF
-    (`{any}-{q}T`). Devuelve el envoltorio estándar DRF
+    Historial de consumos facturados del contrato en nomenclatura HF
+    (`{any}-{q}T`). Solo incluye lecturas del propio contrato y de su periodo
+    de vigencia (nunca las de contratos anteriores o posteriores del mismo
+    punto de suministro o contador). Devuelve el envoltorio estándar DRF
     `{count, next, previous, results}` (esquema `ConsumptionHistoryResponse`).
     """
 
@@ -841,19 +882,11 @@ class ConsumptionHistoryOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contract = (
-            Contract.objects.select_related("supply_point_default__meter")
-            .filter(token=contract_token)
-            .first()
-        )
+        contract = Contract.objects.filter(token=contract_token).first()
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
-
-        meter = (
-            contract.supply_point_default.meter if contract.supply_point_default else None
-        )
 
         date_from_raw = request.query_params.get("date_from")
         date_to_raw = request.query_params.get("date_to")
@@ -870,19 +903,8 @@ class ConsumptionHistoryOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if meter:
-            queryset = Reading.objects.filter(meter=meter)
-        else:
-            queryset = Reading.objects.none()
-
-        # Només consums facturats: lectures vinculades a almenys una factura
-        queryset = queryset.filter(invoices__isnull=False).distinct()
-
-        queryset = (
-            queryset.select_related("previous_reading")
-            .prefetch_related("invoices")
-            .order_by("-reading_date", "-id")
-        )
+        # Només consums facturats del propi contracte i del seu període.
+        queryset = _contract_billed_readings(_contract_readings(contract), contract)
         if date_from:
             queryset = queryset.filter(reading_date__gte=date_from)
         if date_to:
@@ -949,7 +971,8 @@ class ConsumptionDownloadOVView(APIView):
     """GET /ov/consumption/{id}/download/?contract_token=<token>[&format=pdf|csv]
 
     Descarga el fichero de una única lectura del historial de consumos. El `id`
-    es el `Reading.id` expuesto por `GET /ov/consumptions/`. CSV real; PDF es
+    es el `Reading.id` expuesto por `GET /ov/consumptions/`; una lectura de
+    otro contrato o fuera del periodo del contrato devuelve 404. CSV real; PDF es
     un stub mientras no se implemente la maquetación.
     """
 
@@ -971,29 +994,15 @@ class ConsumptionDownloadOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        contract = (
-            Contract.objects.select_related("supply_point_default__meter")
-            .filter(token=contract_token)
-            .first()
-        )
+        contract = Contract.objects.filter(token=contract_token).first()
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        meter = (
-            contract.supply_point_default.meter if contract.supply_point_default else None
-        )
-        reading = None
-        if meter:
-            reading = (
-                Reading.objects.filter(
-                    pk=id, meter=meter, invoices__isnull=False
-                )
-                .select_related("previous_reading")
-                .prefetch_related("invoices")
-                .first()
-            )
+        reading = _contract_billed_readings(
+            _contract_readings(contract).filter(pk=id), contract
+        ).first()
 
         if not reading:
             return Response(
@@ -1017,7 +1026,9 @@ class ConsumptionsDownloadOVView(APIView):
 
     Descarga el historial de consumos del contrato: solo las lecturas de
     `reading_ids` (filas marcadas) o, si no se indican, todo el conjunto
-    filtrado por `date_from`/`date_to` (botón «Seleccionar todo»). CSV real;
+    filtrado por `date_from`/`date_to` (botón «Seleccionar todo»). Solo se
+    incluyen lecturas del propio contrato y de su periodo de vigencia; un id
+    de otro contrato se trata como desconocido (400). CSV real;
     PDF y ZIP son stubs.
     """
 
@@ -1030,28 +1041,18 @@ class ConsumptionsDownloadOVView(APIView):
         data = serializer.validated_data
 
         contract_token = data["contract_token"]
-        contract = (
-            Contract.objects.select_related("supply_point_default__meter")
-            .filter(token=contract_token)
-            .first()
-        )
+        contract = Contract.objects.filter(token=contract_token).first()
         if not contract:
             return Response(
                 {"error": "Contract not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
-        meter = (
-            contract.supply_point_default.meter if contract.supply_point_default else None
-        )
         export_format = data.get("format", "pdf")
+        contract_readings = _contract_readings(contract)
 
         if data.get("reading_ids"):
-            if not meter:
-                return Response(
-                    {"reading_ids": ["ID de lectura desconocido"]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            queryset = Reading.objects.filter(meter=meter, pk__in=data["reading_ids"])
+            # Les lectures d'altres contractes compten com a desconegudes.
+            queryset = contract_readings.filter(pk__in=data["reading_ids"])
             found_ids = set(queryset.values_list("pk", flat=True))
             missing_ids = [
                 reading_id
@@ -1069,20 +1070,14 @@ class ConsumptionsDownloadOVView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
-            queryset = Reading.objects.filter(meter=meter) if meter else Reading.objects.none()
+            queryset = contract_readings
             if data.get("date_from"):
                 queryset = queryset.filter(reading_date__gte=data["date_from"])
             if data.get("date_to"):
                 queryset = queryset.filter(reading_date__lte=data["date_to"])
 
         # Només consums facturats: les lectures no facturades s'ometen del fitxer
-        queryset = (
-            queryset.filter(invoices__isnull=False)
-            .distinct()
-            .select_related("previous_reading")
-            .prefetch_related("invoices")
-            .order_by("-reading_date", "-id")
-        )
+        queryset = _contract_billed_readings(queryset, contract)
 
         if export_format == "csv":
             payload = _consumptions_csv(queryset)
@@ -1779,24 +1774,6 @@ class PropertiesOVView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
-_PERSON_DNI_SEPARATORS = re.compile(r"[\s.\-]+")
-
-
-def _normalize_person_dni(value):
-    """Normalitza un DNI/NIF per comparar-lo amb les dades heretades de la BD:
-    ignora espais, guions i punts i el passa a majúscules."""
-    return _PERSON_DNI_SEPARATORS.sub("", value or "").upper()
-
-
-def _normalized_dni_expression(field):
-    """Expressió SQL equivalent a `_normalize_person_dni` per al camp indicat:
-    `UPPER(REPLACE(REPLACE(REPLACE(field, '-', ''), '.', ''), ' ', ''))`."""
-    expression = Replace(field, Value("-"), Value(""))
-    expression = Replace(expression, Value("."), Value(""))
-    expression = Replace(expression, Value(" "), Value(""))
-    return Upper(expression)
-
-
 class PersonDataOVView(APIView):
     """GET /ov/person-data/?dni=<DNI>
 
@@ -2364,44 +2341,6 @@ CONTRACT_PROCEDURE_REQUIRED_PAYMENT_FIELDS = (
 )
 
 
-def _resolve_contract_procedure_person(dni):
-    """Resol una persona a partir del DNI normalitzat.
-
-    Replica la resolució de `PersonDataOVView`: primer `Person.token` i, si no
-    hi ha coincidència, el DNI de la compte bancària (`PersonBank.dni`), que és
-    com s'identifiquen els pagadors. El token de la persona també ha de coincidir
-    amb el DNI. Així l'OV rep el mateix resultat que en el preomplert de
-    `GET /ov/person-data/`.
-    """
-    person_id = (
-        Person.objects.annotate(
-            normalized_token=_normalized_dni_expression("token"),
-            contact_count=Count("contacts"),
-        )
-        .filter(normalized_token=dni)
-        .order_by("-contact_count", "id")
-        .values_list("id", flat=True)
-        .first()
-    )
-
-    if person_id is None:
-        person_id = (
-            PersonBank.objects.annotate(
-                normalized_dni=_normalized_dni_expression("dni"),
-                normalized_token=_normalized_dni_expression("person__token"),
-                contact_count=Count("person__contacts"),
-            )
-            .filter(normalized_dni=dni, normalized_token=dni, person__isnull=False)
-            .order_by("-contact_count", "id")
-            .values_list("person_id", flat=True)
-            .first()
-        )
-
-    if person_id is None:
-        return None
-    return Person.objects.filter(pk=person_id).first()
-
-
 def _generate_contract_request_token(is_change_of_name=False):
     """Return a contract request token using the back office generation rules.
 
@@ -2423,6 +2362,58 @@ def _generate_contract_request_token(is_change_of_name=False):
             ContractRequest,
         )
     return generate_contract_request_token()
+
+
+def _lock_procedure_holder_dni(dni):
+    """Take a PostgreSQL transaction advisory lock for the normalized DNI.
+
+    Concurrent procedures for the same new holder wait here until the first
+    transaction ends, so the re-check that follows sees its committed Person.
+    The lock is released at commit or rollback. No-op on other databases.
+    """
+    if connection.vendor != "postgresql":
+        return
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))",
+            [f"ov-procedure-holder:{dni}"],
+        )
+
+
+def _create_procedure_holder(dni, data):
+    """Return the holder for a procedure whose DNI was not found at validation.
+
+    Must be called inside the procedure's transaction so any later error rolls
+    back the new records. A per-DNI lock serializes concurrent creations and
+    the DNI is resolved again under it, to reuse a person created meanwhile. Otherwise create the `Person` (token = normalized DNI),
+    its `PersonPiggyBank` (as the back office does) and one default
+    `PersonContact` with the phone and email from the validated data.
+    """
+    _lock_procedure_holder_dni(dni)
+    holder = _resolve_contract_procedure_person(dni)
+    if holder is not None:
+        return holder
+
+    holder = Person.objects.create(
+        token=dni,
+        name=data.get("holder_name"),
+        surname=data.get("holder_surname") or None,
+        is_juridic=bool(data.get("holder_is_juridic")),
+        identification_type=data.get("identification_type"),
+    )
+    holder.piggy_bank = PersonPiggyBank.objects.create(
+        amount=0, token=dni, is_active=True
+    )
+    holder.save(update_fields=["piggy_bank"])
+    PersonContact.objects.create(
+        token=f"{dni}_CONTACT_1",
+        person=holder,
+        phone=data.get("holder_phone"),
+        email=data.get("holder_email"),
+        is_default=True,
+        is_active=True,
+    )
+    return holder
 
 
 def _create_procedure_payment(holder, payment_type, bank_fields):
@@ -2475,12 +2466,14 @@ class ContractProcedureOVView(APIView):
     def post(self, request):
         """Create a request in the default status with payment and tariff records.
 
-        Return 201 with request details and a masked IBAN. Invalid input or an
-        ambiguous supply point returns 400; missing people, properties, supply
-        points, or dictionary entries return 404. An existing open request for
-        the supply point returns 409; a missing default status
-        returns 500. Exceptions during creation propagate and roll back the
-        transaction's writes.
+        Return 201 with request details and a masked IBAN. When the holder DNI
+        does not exist, the holder is created inside the transaction from the
+        `holder_*` fields. Invalid input, missing new-holder fields or an
+        ambiguous supply point returns 400; missing properties, supply points,
+        or dictionary entries return 404. An existing open request for the
+        supply point returns 409; a missing default status returns 500.
+        Exceptions during creation propagate and roll back the transaction's
+        writes, including a newly created holder.
         """
         serializer = ContractProcedureRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -2496,12 +2489,9 @@ class ContractProcedureOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        holder = _resolve_contract_procedure_person(holder_dni)
-        if holder is None:
-            return Response(
-                {"error": "Person not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        # `None` when the DNI does not exist: the serializer has already
+        # required the personal fields and the holder is created below.
+        holder = data["holder"]
 
         prop = Property.objects.filter(
             token=data["property_token"], is_active=True
@@ -2606,6 +2596,8 @@ class ContractProcedureOVView(APIView):
         }
 
         with transaction.atomic():
+            if holder is None:
+                holder = _create_procedure_holder(holder_dni, data)
             person_bank, general_payment = _create_procedure_payment(
                 holder, payment_type, bank_fields
             )
@@ -2940,13 +2932,16 @@ class ContractChangeProcedureOVView(APIView):
     Com al PA, la sol·licitud hereta les tarifes periòdiques actives del
     contracte actual, rep les tarifes d'alta i tipus d'ordre de canvi de nom del
     tipus de tràmit i copia les variables traspassables. Atenció al client la
-    valida i la finalitza; en crear el nou contracte, la baixa s'activa i el
-    contracte actual es dona de baixa (`check_contract_terminations`).
+    valida i la finalitza; en crear el nou contracte, la baixa passa a pendent
+    (`check_contract_terminations`) i el contracte actual es dona de baixa en
+    finalitzar-la.
 
     Només el titular actual la pot demanar: contracte inexistent, inactiu,
     sense titular o d'un altre titular retornen el mateix 404. El contracte es
     bloqueja abans de comprovar conflictes; qualsevol error desfà tots els
-    registres creats.
+    registres creats. Si el DNI entrant no existeix, el nou titular es crea
+    amb els camps `incoming.holder_*` dins la mateixa transacció, després de
+    les comprovacions de 404/409.
     """
 
     permission_classes = [IsAuthenticated]
@@ -2959,7 +2954,9 @@ class ContractChangeProcedureOVView(APIView):
         create payment records and a status log. An omitted termination reason
         uses the change-of-name type ordered first by position (nulls last),
         then ID. Return 201 with both request tokens and their status details.
-        Invalid input returns 400, missing people or a contract/holder mismatch
+        An unknown incoming DNI creates the new holder from the `incoming`
+        `holder_*` fields inside the transaction. Invalid input (including
+        missing new-holder fields) returns 400, a contract/holder mismatch
         returns 404, conflicts return 409, and missing default statuses or a
         fallback termination type returns 500. Exceptions during creation
         propagate and roll back the transaction's writes.
@@ -2986,11 +2983,9 @@ class ContractChangeProcedureOVView(APIView):
         if dni_errors:
             return Response(dni_errors, status=status.HTTP_400_BAD_REQUEST)
 
-        incoming_holder = _resolve_contract_procedure_person(incoming_dni)
-        if incoming_holder is None:
-            return Response(
-                {"error": "Person not found"}, status=status.HTTP_404_NOT_FOUND
-            )
+        # `None` when the incoming DNI does not exist: it is created inside the
+        # transaction, after the checks that return early (and commit).
+        incoming_holder = incoming["holder"]
 
         request_status = ContractRequestStatus.objects.filter(
             is_default=True
@@ -3076,6 +3071,8 @@ class ContractChangeProcedureOVView(APIView):
                     user=request.user,
                 )
 
+            if incoming_holder is None:
+                incoming_holder = _create_procedure_holder(incoming_dni, incoming)
             _, general_payment = _create_procedure_payment(
                 incoming_holder,
                 incoming["payment_type"],

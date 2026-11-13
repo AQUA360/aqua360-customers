@@ -4,20 +4,26 @@ import { formatDateTime } from '~/utils/date';
 /**
  * Informació del deploy que s'està executant, per mostrar-la al NavSidebar.
  *
- * Cada repo la genera al servidor amb `scripts/record_deploy.sh` durant el
- * deploy (data del deploy + commit desplegat):
+ * La versió, el commit i la data del build es generen en construir cada imatge
+ * (veure `.github/workflows/imatges.yml` i els Dockerfile):
  *
  *  - frontend: `public/deploy-info.json`, servit a `/deploy-info.json`
  *  - backend:  `deploy_info.json`, servit a `/coredata/deploy-info/`
  *
- * En desenvolupament el fitxer del frontend no existeix (no hi ha hagut
- * deploy) i el backend respon amb el commit del git local i `deployed_at`
- * buit; en aquest cas no es mostra res que no sigui cert.
+ * La data del desplegament al client (`deployed_at`) la dona el backend, de
+ * l'historial de versions que s'hi han executat: la del frontend, quan aquest
+ * li envia la seva versió (POST a `/coredata/deploy-info/`).
+ *
+ * En desenvolupament no hi ha build: tots dos responen amb el commit del git
+ * local i `deployed_at` buit (el del frontend, `server/routes/deploy-info.json.ts`);
+ * en aquest cas no es mostra res que no sigui cert.
  */
 
 export interface DeployInfo {
     repo?: string;
+    component?: string;
     deployed_at?: string | null;
+    built_at?: string | null;
     commit?: string;
     commit_full?: string;
     commit_date?: string;
@@ -35,6 +41,26 @@ let inFlight: Promise<void> | null = null;
 
 const hasCommit = (info: DeployInfo | null): boolean => !!info?.commit;
 
+/**
+ * Versió per mostrar: la release o, en una imatge de branca, la darrera release
+ * i la branca (`v1.152.01 + develop (abcdef12)`). Les imatges antigues de branca
+ * porten `git describe` (`v1.152.01-5-gabcdef12`): se'n treu la release.
+ */
+export const versionLabel = (info: DeployInfo | null): string => {
+    if (!info) return '';
+    const release = (info.release || '').replace(/-\d+-g[0-9a-f]+$/, '');
+    if (!info.branch) return release || info.commit || '';
+    const branch = info.commit ? `${info.branch} (${info.commit})` : info.branch;
+    return release ? `${release} + ${branch}` : branch;
+};
+
+/** Frontend i backend són del mateix monorepo: si tots dos tenen commit, han de coincidir. */
+const sameVersion = (a: DeployInfo | null, b: DeployInfo | null): boolean => {
+    if (a?.commit && b?.commit) return a.commit === b.commit;
+    if (a?.release && b?.release) return a.release === b.release;
+    return true;
+};
+
 export function useDeployInfo() {
     const { $apiManager } = useNuxtApp();
     const config = useRuntimeConfig();
@@ -48,6 +74,30 @@ export function useDeployInfo() {
         } catch (error) {
             // Sense deploy (desenvolupament) el fitxer no existeix: no és un error.
             return null;
+        }
+    };
+
+    /** El frontend informa el backend de la seva versió i en rep la data del desplegament. */
+    const reportFrontend = async (info: DeployInfo): Promise<DeployInfo> => {
+        if (info.source === 'git' || (!info.commit && !info.release)) return info;
+        try {
+            const data = await $apiManager.fetch(
+                `${config.public.apiHost}/coredata/deploy-info/`,
+                'POST',
+                {
+                    release: info.release || '',
+                    commit: info.commit || '',
+                    commit_full: info.commit_full || '',
+                    branch: info.branch || '',
+                    built_at: info.built_at || info.deployed_at || null,
+                    source: info.source || 'build',
+                },
+                null,
+                true, // suppressToast
+            );
+            return data?.deployed_at ? { ...info, deployed_at: data.deployed_at } : info;
+        } catch (error) {
+            return info;
         }
     };
 
@@ -71,7 +121,10 @@ export function useDeployInfo() {
         if (inFlight) return inFlight;
 
         inFlight = (async () => {
-            const [fe, be] = await Promise.all([fetchFrontend(), fetchBackend()]);
+            const [fe, be] = await Promise.all([
+                fetchFrontend().then((info) => (info ? reportFrontend(info) : null)),
+                fetchBackend(),
+            ]);
             frontend.value = fe;
             backend.value = be;
             loaded.value = true;
@@ -90,13 +143,25 @@ export function useDeployInfo() {
 
     const deployedAtLabel = computed<string>(() => (deployedAt.value ? formatDateTime(deployedAt.value) : ''));
 
-    /** Hi ha alguna cosa a mostrar (data de deploy o, com a mínim, un commit). */
-    const available = computed<boolean>(() => !!deployedAt.value || hasCommit(frontend.value) || hasCommit(backend.value));
+    /** Versió desplegada (monorepo: una sola versió). Si frontend i backend no coincideixen, `mismatch` ho indica. */
+    const version = computed<string>(() => versionLabel(frontend.value) || versionLabel(backend.value));
 
-    /** Una línia per repo: `frontend develop@fedb14d4 · 07/09/2026 11:54`. */
+    /** Frontend i backend en versions diferents (p. ex. només se n'ha actualitzat un). */
+    const mismatch = computed<boolean>(() => !!frontend.value && !!backend.value && !sameVersion(frontend.value, backend.value));
+
+    /** Línia principal: `v1.152.01 · 07/09/2026 11:54` (el que hi hagi de les dues parts). */
+    const summaryLabel = computed<string>(() => [version.value, deployedAtLabel.value].filter(Boolean).join(' · '));
+
+    /** Hi ha alguna cosa a mostrar (data de deploy, versió o, com a mínim, un commit). */
+    const available = computed<boolean>(() => !!deployedAt.value || !!version.value || hasCommit(frontend.value) || hasCommit(backend.value));
+
+    /** Una línia per part: `v1.152.01 (fedb14d4) · 07/09/2026 11:54`. */
     const describe = (info: DeployInfo | null): string => {
-        if (!info || !info.commit) return '—';
-        const parts = [info.branch ? `${info.branch}@${info.commit}` : info.commit];
+        if (!info || (!info.commit && !info.release && !info.deployed_at)) return '—';
+        const parts: string[] = [];
+        const label = versionLabel(info);
+        // En una imatge de release, el commit hi va entre parèntesis; en una de branca ja hi és.
+        if (label) parts.push(!info.branch && info.commit && label !== info.commit ? `${label} (${info.commit})` : label);
         if (info.deployed_at) parts.push(formatDateTime(info.deployed_at));
         else if (info.commit_date) parts.push(formatDateTime(info.commit_date));
         return parts.join(' · ');
@@ -112,7 +177,10 @@ export function useDeployInfo() {
         load,
         deployedAt,
         deployedAtLabel,
+        version,
+        summaryLabel,
         available,
+        mismatch,
         frontendLabel,
         backendLabel,
     };

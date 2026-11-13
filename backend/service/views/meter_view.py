@@ -19,6 +19,7 @@ from service.serializers.meter_serializer import (
     MeterLogSerializer,
 )
 from service.filters.meter_filter import MeterFilter
+from service.services.meter_change_service import get_meter_assignments_elsewhere
 from service.utils.meter_bulk_update_service import (
     MeterBulkUpdateError,
     apply_updates,
@@ -192,6 +193,19 @@ class MeterViewSet(viewsets.ModelViewSet):
             'meter': {'id': meter.id, 'code': meter.code} if meter else None,
         })
     
+    @action(detail=True, methods=['get'], url_path='assignments')
+    def assignments(self, request, pk=None):
+        """Punts de subministrament on és ara el comptador, tret de `supply_point`.
+
+        La fa servir el canvi de comptador per avisar abans de treure'l d'un altre punt.
+        """
+        meter = self.get_object()
+        try:
+            supply_point_id = int(request.query_params.get('supply_point') or 0) or None
+        except (TypeError, ValueError):
+            return Response({'error': 'Punt de subministrament no vàlid.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'assignments': get_meter_assignments_elsewhere(meter, supply_point_id)})
+
     @action(detail=True, methods=['put'], url_path='status')
     def status_update(self, request, pk=None):
         try:
@@ -357,7 +371,7 @@ class MeterViewSet(viewsets.ModelViewSet):
         except MeterBulkChangeValidationError as exc:
             logger.warning("Bulk change validation failed: %s", exc)
             return Response(
-                {"error": "El fitxer no és vàlid o conté errors de validació."},
+                {"error": exc.public_message},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except MeterBulkChangeError as exc:

@@ -8,7 +8,14 @@ from django.utils import timezone
 from billing.models import Invoice, InvoiceStatus, Payment, PaymentStatus
 from billing.filter.invoice_filter import InvoiceFilter
 from coredata.models import ConfigProject
-from billing.utils.payment_service import generate_payment_movement, log_payment_status, log_invoice_status, disconnect_payment_signals, reconnect_payment_signals
+from billing.utils.payment_service import (
+    check_claim_payments_for_paid_invoice,
+    generate_payment_movement,
+    log_payment_status,
+    log_invoice_status,
+    disconnect_payment_signals,
+    reconnect_payment_signals,
+)
 from billing.utils.invoice_service import get_invoice_status
 
 class InvoiceManageMassivelyViewSet(APIView):
@@ -89,6 +96,8 @@ class InvoiceManageMassivelyViewSet(APIView):
                     invoice.status = paid_invoice_status
                     invoice.left_to_pay = 0
                     invoice.save()
+                    # Signals desconnectats: cal sincronitzar reclamacions a mà
+                    check_claim_payments_for_paid_invoice(invoice, user)
                     updated_count += 1
         finally:
             reconnect_payment_signals()

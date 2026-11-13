@@ -21,16 +21,20 @@ from auth.permissions import PermissionManager
 from billing.filter.invoice_filter import InvoiceFilter
 from billing.models import Invoice, InvoiceLog, InvoiceStatus, InvoiceSuppressionReason, Payment, PaymentStatus, PaymentType, RejectMotive, PaymentMovement
 from billing.serializers.invoice_serializer import InvoiceFullSerializer, InvoiceLogSerializer, InvoiceMinimalSerializer
-from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals, log_payment_status, generate_payment_movement
-from billing.utils.invoice_service import get_electronic_invoices_data, return_invoice, log_invoice_data_change, change_status_logger
+from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals, log_payment_status, generate_payment_movement, save_negative_invoice_to_piggy_bank
+from billing.utils.invoice_service import apply_invoice_payment_method, get_electronic_invoices_data, return_invoice, log_invoice_data_change, change_status_logger
 from billing.utils.invoice_list_queryset import invoice_list_queryset
+from billing.utils.invoice_period import period_year_counts
 from billing.utils.invoice_suppression_service import suppress_invoice
+from communication.permissions import CommunicationProcessChangePermission
+from communication.utils.communication_process_service import add_reading_to_communication_process, filter_readings_by_active_process
 from coredata.models import ConfigProject, PersonAddress, PersonPiggyBankMovement
 from contract.models import PiggyBankMovement, Contract
 from service.models import CompanyBank
 from coredata.utils.name_utils import generate_token
 from billing.views.epayment_document_generate_view import generate_xml
 from statistics.utils.report_service import delete_file_later
+from django.db import transaction
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,9 +55,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
       queryset = invoice_list_queryset()
     else:
       queryset = super().get_queryset()
-    if self.action == 'list' and 'is_excluded' not in self.request.query_params:
+    if self.action in ('list', 'period_years') and 'is_excluded' not in self.request.query_params:
         return queryset.filter(is_excluded=False)
     return queryset
+
+  @action(detail=False, methods=['get'], url_path='period-years')
+  def period_years(self, request):
+    """Anys del període facturat amb factures, amb els mateixos filtres que la llista."""
+    queryset = self.filter_queryset(self.get_queryset())
+    return Response(period_year_counts(queryset))
   
   def get_serializer_class(self):
     
@@ -67,6 +77,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
   def get_serializer_context(self):
     context = super().get_serializer_context()
     context['request'] = self.request
+    # Columna «Estat de pagament» de les llistes de factures
+    context['with_payment_summary'] = self.action == 'list'
     return context
    
   @action(detail=True, methods=['put'], url_path='return')
@@ -101,7 +113,6 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     payment_type =PaymentType.objects.get(id=payment_type_final)
     invoice_status_paid_token = ConfigProject.objects.get(token='invoice_status_paid_token').value
-    payment_status_paid_token = PaymentStatus.objects.get(token=ConfigProject.objects.get(token='payment_status_paid_token').value)
 
     # Canviar el mètode d'un cobrament ja fet no genera cap moviment, i la comptabilitat continuaria
     # dient el mètode original: primer s'ha de fer el retorn i tornar-la a pagar pel mètode nou
@@ -128,28 +139,13 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         payment_bank_final = company_bank.iban
         payment_swift_final = company_bank.swift
 
+    # Sense comptes a l'empresa, a les transferències no es pot quedar el compte d'empresa que tenia abans
+    extra = {'company_bank': company_bank} if payment_type.token == 'BANK_TRANSFER' else {}
     disconnect_payment_signals()
-
-    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
-
-    invoice.payment_bank_final = payment_bank_final
-    # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor
-    invoice.payment_swift_final = payment_swift_final
-    invoice.payment_type_final = payment_type.name
-    invoice.payment_type_token_final = payment_type.token
-    if payment_type.token == 'BANK_TRANSFER':
-      # Sense comptes a l'empresa, no es pot quedar el compte d'empresa que tenia abans
-      invoice.payment_company_bank = company_bank
-    # invoice.payment_type = payment_type
-    invoice.save()
-
-    payments = invoice.payments.exclude(status__token=payment_status_paid_token.token).distinct()
-    payments.update(
-        payment_type=payment_type.name,
-        payment_type_token=payment_type.token,
-        payment_bank=payment_bank_final,
-        payment_swift=payment_swift_final)
-    reconnect_payment_signals()
+    try:
+      apply_invoice_payment_method(user, invoice, payment_type, payment_bank_final, payment_swift_final, **extra)
+    finally:
+      reconnect_payment_signals()
     return Response({'message': 'Invoice updated successfully'}, status=status.HTTP_200_OK)
    
   @action(detail=True, methods=['put'], url_path='change-dates')
@@ -563,6 +559,108 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     task = generate_massive_invoice_download.delay(invoice_ids, base_url, in_zip)
     return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
 
+  @action(detail=False, methods=['get'], url_path='unpaid-fees/config')
+  def unpaid_fees_config(self, request):
+    """Si l'operació de despeses d'impagat està activa i la tarifa que es proposa per defecte."""
+    from billing.models import UnpaidFeeRun
+    from billing.utils.unpaid_fee_service import (
+        active_run, default_unpaid_fee_price_rate, is_unpaid_fee_operation_enabled, serialize_run)
+    enabled = is_unpaid_fee_operation_enabled()
+    if not enabled:
+        return Response({"enabled": False, "default_price_rates": [], "running_run": None, "last_run": None})
+    price_rate = default_unpaid_fee_price_rate()
+    # Primer l'actiu: si s'ha interromput, es tanca i passa a ser el darrer.
+    running_run = active_run()
+    last_run = UnpaidFeeRun.objects.exclude(status=UnpaidFeeRun.STATUS_RUNNING).select_related('created_by').first()
+    return Response({
+        "enabled": enabled,
+        "default_price_rates": [{"id": price_rate.id, "token": price_rate.token, "name": price_rate.name}] if price_rate else [],
+        # Per reprendre el seguiment si es torna a la pantalla amb el procés en marxa.
+        "running_run": serialize_run(running_run),
+        "last_run": serialize_run(last_run),
+    }, status=status.HTTP_200_OK)
+
+  @action(detail=False, methods=['post'], url_path='unpaid-fees/generate')
+  def unpaid_fees_generate(self, request):
+    """Crea les despeses d'impagat de les factures filtrades, llevat de les excloses.
+
+    Els filtres van a la query string, com a la llista.
+    """
+    from django.db import IntegrityError, transaction
+    from billing.models import UnpaidFeeRun
+    from billing.tasks import generate_unpaid_fee_invoices_task
+    from billing.utils.unpaid_fee_service import (
+        active_run, eligible_invoices, finish_run, is_unpaid_fee_operation_enabled, serialize_run)
+    from pricing.models import PriceRate
+    if not is_unpaid_fee_operation_enabled():
+        return Response({"error": _("Operation not enabled")}, status=status.HTTP_403_FORBIDDEN)
+
+    def conflict():
+        return Response({"error": _("Another process is running"), "running_run": serialize_run(active_run())},
+                        status=status.HTTP_409_CONFLICT)
+
+    if active_run():
+        return conflict()
+
+    price_rate_ids = sorted({int(v) for v in request.data.get('price_rate_ids') or [] if str(v).isdigit()})
+    if not price_rate_ids:
+        return Response({"error": _("Select at least one fee")}, status=status.HTTP_400_BAD_REQUEST)
+    if PriceRate.objects.filter(id__in=price_rate_ids).count() != len(price_rate_ids):
+        return Response({"error": _("Fee not found")}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Els filtres del client trien; la condició d'impagat la imposa sempre el servidor.
+    queryset = eligible_invoices(self.filter_queryset(Invoice.objects.filter(is_active=True, is_excluded=False)))
+    excluded_ids = [int(v) for v in request.data.get('excluded_ids') or [] if str(v).isdigit()]
+    if excluded_ids:
+        queryset = queryset.exclude(id__in=excluded_ids)
+
+    invoice_ids = list(queryset.values_list('id', flat=True).distinct())
+    if not invoice_ids:
+        return Response({"error": _("No invoices found")}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        with transaction.atomic():
+            run = UnpaidFeeRun.objects.create(invoice_count=len(invoice_ids), created_by=request.user)
+            run.price_rates.set(price_rate_ids)
+    except IntegrityError:
+        return conflict()
+
+    try:
+        task = generate_unpaid_fee_invoices_task.delay(
+            invoice_ids, price_rate_ids, run_id=run.id, excluded_ids=excluded_ids)
+    except Exception:
+        # Si la tasca hagués arribat a la cua, en arrencar veurà l'execució tancada i no farà res.
+        logger.exception("Despeses d'impagat: no s'ha pogut encuar l'execució %s", run.id)
+        finish_run(run.id, error='Task could not be queued')
+        return Response({"error": _("The process could not be started")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    # Només el task_id: si la tasca ja ha acabat, no se'n trepitja l'estat.
+    UnpaidFeeRun.objects.filter(id=run.id).update(task_id=task.id)
+    return Response({"task_id": task.id, "count": len(invoice_ids)}, status=status.HTTP_202_ACCEPTED)
+
+  @action(detail=True, methods=['post'], url_path='add-to-communication-process',
+          permission_classes=[IsAuthenticated, CommunicationProcessChangePermission])
+  def add_to_communication_process(self, request, pk=None):
+    """
+    Afegeix a un procés de comunicació (esborrany) les lectures no de control de la factura
+    que encara no siguin en cap procés no anul·lat. No envia res.
+    Les lectures sense punt de subministrament o sense connexió se salten (`skipped_count`).
+    """
+    invoice = self.get_object()
+    readings = invoice.readings.filter(is_control=False)
+    if not readings.exists():
+      return Response({'error': _('La factura no té lectures')}, status=status.HTTP_400_BAD_REQUEST)
+    pending = list(filter_readings_by_active_process(readings, active=False).select_related('supply_point__connection'))
+    addable = [r for r in pending if r.supply_point and r.supply_point.connection]
+    with transaction.atomic():
+      for reading in addable:
+        add_reading_to_communication_process(reading, request.user)
+    return Response({
+      'has_possible_leak_comm': filter_readings_by_active_process(readings).exists(),
+      'added_count': len(addable),
+      'skipped_count': len(pending) - len(addable),
+      'status': 'ok'
+    })
+
   @action(detail=True, methods=['post'], url_path='recalculate-smart')
   def recalculate_smart(self, request, pk=None):
     from billing.utils.recalculate_invoice_service import recalculate_invoice_smart
@@ -576,6 +674,27 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     except Exception as e:
         logger.exception("Error inesperat")
         return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+
+  @action(detail=True, methods=['put'], url_path='save-to-piggy-bank')
+  @transaction.atomic
+  def save_to_piggy_bank(self, request, pk=None):
+    """
+    Factura negativa (no payoff): abona l'import al saldo i marca els pagaments
+    amb payment_status_piggy_token. La factura queda pagada.
+    """
+    invoice = Invoice.objects.select_for_update().get(pk=self.get_object().pk)
+    try:
+        save_negative_invoice_to_piggy_bank(invoice, request.user)
+    except ValueError as e:
+        logger.warning("Cannot save invoice %s to piggy bank: %s", invoice.id, str(e))
+        return Response({"error": _("Unable to save amount to piggy bank.")}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        logger.exception("Unexpected error saving invoice %s to piggy bank", invoice.id)
+        return Response({"error": _("Unable to save amount to piggy bank.")}, status=status.HTTP_400_BAD_REQUEST)
+
+    invoice.refresh_from_db()
+    serializer = InvoiceFullSerializer(invoice, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
   @action(detail=False, methods=['get'], url_path='permissions')
 

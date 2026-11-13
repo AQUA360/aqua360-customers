@@ -61,15 +61,49 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.ubuntu.txt
       - name: Llibreries del sistema
+        # Si els miralls d'apt no responen, que falli aviat en lloc de quedar-se penjat
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libpq-dev libcairo2-dev \
-            libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev pkg-config gettext \
-            postgresql-client
+          apt_opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          apt_llest=""
+          # Actualitza l'índex un sol cop. Si el DNS del runner no resol els miralls
+          # d'Ubuntu, es fan servir DNS públics; si tot i així falla, s'atura de seguida.
+          resol_miralls() {
+            timeout 10 getent hosts azure.archive.ubuntu.com >/dev/null \
+              && timeout 10 getent hosts archive.ubuntu.com >/dev/null
+          }
+          prepara_apt() {
+            [ -n "$apt_llest" ] && return 0
+            if ! resol_miralls; then
+              echo "::warning::El DNS del runner no resol els miralls d'Ubuntu; es fan servir DNS públics"
+              interficie=$(ip route show default | awk '{print $5; exit}')
+              sudo resolvectl dns "$interficie" 1.1.1.1 8.8.8.8
+              sudo resolvectl flush-caches
+              resol_miralls || echo "::warning::Tampoc es resolen amb DNS públics"
+            fi
+            if ! sudo apt-get "${apt_opts[@]}" update --error-on=any; then
+              echo "::error::No es pot actualitzar l'índex d'apt: els miralls d'Ubuntu no responen"
+              return 1
+            fi
+            apt_llest=1
+          }
+          instal_la() {
+            prepara_apt && sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends "$@"
+          }
+          # Només s'instal·la el que la imatge del runner no porta
+          paquets=(libpq-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev
+                   pkg-config gettext postgresql-client)
+          falten=()
+          for paquet in "${paquets[@]}"; do
+            dpkg -s "$paquet" >/dev/null 2>&1 || falten+=("$paquet")
+          done
+          if [ ${#falten[@]} -gt 0 ]; then
+            instal_la "${falten[@]}"
+          fi
           # El servidor de proves és PostgreSQL 16. Si el runner porta un client
           # més nou i el paquet del 16 existeix, el posem davant al PATH.
           if ! pg_dump --version | grep -q ' 16\.'; then
-            sudo apt-get install -y --no-install-recommends postgresql-client-16 \
+            instal_la postgresql-client-16 \
               && echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH" \
               && export PATH="/usr/lib/postgresql/16/bin:$PATH" \
               || echo "Segueix el client ja instal·lat: $(pg_dump --version)"

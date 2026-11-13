@@ -84,6 +84,35 @@ def filter_contract_queryset_by_debt(queryset, has_debt):
     return queryset.filter(Q(token__isnull=True) | ~Q(token__in=tokens_with_debt))
 
 
+def filter_contract_queryset_by_positive_balance(queryset, has_positive_balance):
+    """Contractes amb (o sense) saldo positiu a la guardiola (PiggyBank.amount > 0).
+
+    Fa servir el mateix camp que el llistat mostra com a total_piggy_bank. Un contracte
+    sense guardiola compta com a "sense saldo positiu".
+    """
+    positive = Q(piggy_bank__amount__gt=0)
+    if has_positive_balance:
+        return queryset.filter(positive)
+    return queryset.exclude(positive)
+
+
+def filter_contract_queryset_by_pending_termination(queryset, pending_termination):
+    """Contractes amb (o sense) una sol·licitud de baixa oberta.
+
+    Mateix criteri que l'avís active_contract_termination del llistat: compta qualsevol
+    sol·licitud que no estigui anul·lada ni finalitzada.
+    """
+    cancelled_token, completed_token = _termination_status_tokens()
+    open_request = Exists(
+        ContractTerminationRequest.objects.filter(contract=OuterRef('pk')).exclude(
+            status__token__in=[cancelled_token, completed_token]
+        )
+    )
+    if pending_termination:
+        return queryset.filter(open_request)
+    return queryset.exclude(open_request)
+
+
 def annotate_contract_list_expired_invoices(queryset):
     """Optional heavy annotation — only for serializers that expose expired_invoices."""
     expired_token = ConfigProject.objects.get(token='invoice_status_expired_token').value

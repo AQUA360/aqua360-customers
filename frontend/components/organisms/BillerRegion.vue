@@ -113,6 +113,7 @@ const editBiller = function (id) {
         <div role="row" class="grid grid-cols-2">
           <FieldDetail :label='$t("common.code")' :value=data.token></FieldDetail>
           <FieldDetail :label='$t("common.name")' :value=data.name></FieldDetail>
+          <FieldDetail :label="$t('exploitation')" :value="data.exploitation_name || '—'"></FieldDetail>
         </div>
         <hr class="my-2" />
         <div role="row" class="grid grid-cols-2">

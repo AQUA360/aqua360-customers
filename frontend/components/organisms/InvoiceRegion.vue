@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
@@ -34,6 +34,7 @@ import ModelLogs from '../molecules/ModelLogs.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import InvoicePaymentDetail from '../molecules/InvoicePaymentDetail.vue';
 import TypedConfirmationModal from '../molecules/TypedConfirmationModal.vue';
+import { usePinnedContractCoversPage } from '~/composables/usePinnedContractLayer';
 
 const { permissions, loading } = usePermissions();
 
@@ -56,6 +57,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['show-subregion', 'changed', 'close-subregion', 'update-id', 'pdf-generated']);
+// The subregions are teleported to <body>: they drop below the pinned contract when it is open
+const pinnedContractCoversPage = usePinnedContractCoversPage();
 const router = useRouter();
 const { $VerifactuApiService, $InvoiceApiService, $ConfigProjectApiService, $PersonApiService, $ContractApiService, $PaymentApiService, $ContractRequestApiService, $ConnectionRequestApiService, $ContractTerminationRequestApiService, $apiManager, $DocumentManagerApiService, $CommitmentDepositApiService } = useNuxtApp();
 const pending = ref(true);
@@ -73,6 +76,7 @@ const status_irrecoverable_token = ref(null);
 const status_endowment_token = ref(null);
 const status_commitment_token = ref(null);
 const status_canceled_token = ref(null);
+const status_payoff_token = ref(null);
 const invoice_token = ref(null)
 const origin_reading = ref(null)
 
@@ -142,6 +146,7 @@ const getData = async (load = true) => {
     status_commitment_token.value = await $ConfigProjectApiService.get('invoice_status_commitment_token');
     invoice_token.value = await $ConfigProjectApiService.get('invoice_type_invoice_token');
     status_canceled_token.value = await $ConfigProjectApiService.get('invoice_status_cancelled_token');
+    status_payoff_token.value = await $ConfigProjectApiService.get('invoice_status_payoff_token');
     const result = await $InvoiceApiService.getDetail(invoiceId.value);
     data.value = result;
 
@@ -453,6 +458,33 @@ const onPersonBankSelected = function (bank) {
   }
 }
 
+const canSaveToPiggyBank = computed(() => {
+  if (!data.value) return false;
+  const total = Number(data.value.total_final);
+  if (!(total < 0)) return false;
+  const statusToken = data.value.status?.token;
+  if (!statusToken) return false;
+  return statusToken !== status_payoff_token.value
+    && statusToken !== status_paid_token.value
+    && statusToken !== status_pending_token.value
+    && statusToken !== status_canceled_token.value;
+});
+
+const saveToPiggyBank = async () => {
+  if (!confirm(t("confirmation_text_block.confirm_save_amount_in_piggy_bank"))) return;
+  try {
+    const response = await $InvoiceApiService.saveToPiggyBank(invoiceId.value);
+    if (response) {
+      toast.success(t("common.correct_save"));
+      await getData(false);
+      emit('changed');
+    }
+  } catch (error) {
+    console.error(error);
+    toast.error(error?.data?.error || t("common.error"));
+  }
+};
+
 const passToPending = async () => {
 
   if (!confirm(t("confirmation_text_block.confirm_pass_pending"))) return
@@ -633,7 +665,8 @@ const handleRefactor = async () => {
           </DropdownOption>
           <DropdownOption
             v-if="data.status?.token != status_pending_token && data.status?.token != status_canceled_token"
-            :disabled="allow_changes"
+            :disabled="allow_changes || canSaveToPiggyBank"
+            :title="canSaveToPiggyBank ? t('informative_block.info_negative_invoice_piggy_bank_only') : undefined"
             :name="`${t('common.generate')} ${t('billing_block.payment').toLowerCase()}`"
             @click="modalsRef?.openDateModalForPayment(data.due_date)">
             <Icon name="fa6-solid:credit-card" class="display-inline mr-2" /> {{ `${t('common.generate')}
@@ -681,6 +714,11 @@ const handleRefactor = async () => {
               <Icon name="fa6-solid:check" class="display-inline mr-2" /> {{ `${t('common.confirm')}
               ${t('invoice').toLowerCase()}` }}
             </DropdownOption>
+            <DropdownOption v-if="canSaveToPiggyBank" :disabled="allow_changes"
+              :name="t('billing_block.save_amount_in_piggy_bank')" @click="saveToPiggyBank">
+              <Icon name="fa6-solid:piggy-bank" class="display-inline mr-2" />
+              {{ t('billing_block.save_amount_in_piggy_bank') }}
+            </DropdownOption>
             <DropdownOption
               :disabled="data.status?.token == status_pending_token || data.status?.token == status_canceled_token || data.return_invoice != null || data.returned_invoice != null || allow_changes"
               :name="`${t('billing_block.return')} ${t('invoice').toLowerCase()}`" @click="modalsRef?.openLiquidate()">
@@ -689,7 +727,10 @@ const handleRefactor = async () => {
             </DropdownOption>
             <DropdownOption v-if="data.status?.token != status_pending_token && data.status?.token != status_paid_token
               && data.status?.token != status_endowment_token
-              && data.status?.token != status_commitment_token" :disabled="allow_changes" :name="`${$t('claim_block.new_commitment_deposit')}`"
+              && data.status?.token != status_commitment_token"
+              :disabled="allow_changes || canSaveToPiggyBank"
+              :title="canSaveToPiggyBank ? t('informative_block.info_negative_invoice_piggy_bank_only') : undefined"
+              :name="`${$t('claim_block.new_commitment_deposit')}`"
               @click="getInvoiceInCommitment">
               <Icon name="fa6-solid:hand-holding-dollar" class="display-inline mr-2" /> {{
                 $t('claim_block.new_commitment_deposit') }}
@@ -933,8 +974,10 @@ const handleRefactor = async () => {
 
     <Teleport to="body">
       <div v-if="SubRegion == true && showRegionDetailComponent != 'PersonBankSelect'" role="region" id="subregion"
-        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden shadow-2xl fixed top-0 right-0 w-[48vw] z-50"
+        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden shadow-2xl fixed top-0 right-0 w-[48vw]"
         :class="{
+          'z-40': pinnedContractCoversPage,
+          'z-50': !pinnedContractCoversPage,
           'translate-x-0': SubRegion,
           'translate-x-full': !SubRegion,
         }">
@@ -990,8 +1033,10 @@ const handleRefactor = async () => {
 
   <Teleport to="body">
     <div v-if="showRegionDetailComponent == 'PersonBankSelect'" role="region" id="right_page"
-      class="fixed top-0 right-0 w-[95%] h-[100vh] border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white overflow-y-auto overflow-x-hidden z-[100]"
+      class="fixed top-0 right-0 w-[95%] h-[100vh] border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white overflow-y-auto overflow-x-hidden"
       :class="{
+        'z-40': pinnedContractCoversPage,
+        'z-[100]': !pinnedContractCoversPage,
         'translate-x-0': showRegionDetailComponent == 'PersonBankSelect',
         'translate-x-full': showRegionDetailComponent != 'PersonBankSelect',
       }">

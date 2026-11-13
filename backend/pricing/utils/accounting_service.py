@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from datetime import datetime
 from io import BytesIO
 import json
@@ -143,7 +143,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     #   reversal (+ additional lines) and the bank payment line are emitted.
     #
     # OUTPUT ORDER: invoice -> undeclare -> payment-restore -> lineitem ->
-    #   payment have -> payment.
+    #   payment pairs (have then payment, grouped by register_key).
     # Within invoices, lines with both taxes and subtotals come first.
     # is_default pricings stay first inside that group.
     #
@@ -246,6 +246,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     line_name=entry.get('line_name'),
                     movement_date=entry.get('movement_date'),
                     declare_as=entry.get('declare_as') or 'have',
+                    register_key=entry.get('register_key'),
                 )
                 if debt_line:
                     payment_debt_lines.extend(_expand_with_additional_lines(
@@ -283,6 +284,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     line_name=entry.get('line_name'),
                     movement_date=entry.get('movement_date'),
                     declare_as=entry.get('declare_as') or 'have',
+                    register_key=entry.get('register_key'),
                 )
                 if debt_line:
                     payment_debt_lines.extend(_expand_with_additional_lines(
@@ -318,6 +320,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 line_name=entry.get('line_name'),
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
+                register_key=entry.get('register_key'),
             )
             if counter_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -339,6 +342,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 line_name=entry.get('line_name'),
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
+                register_key=entry.get('register_key'),
             )
             if counter_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -373,6 +377,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 line_name=entry.get('line_name'),
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
+                register_key=entry.get('register_key'),
             )
             if debt_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -384,13 +389,32 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     undeclare_lines.sort(key=lambda line: 0 if line.get('is_invoice') else 1)
     payment_restore_lines.sort(key=lambda line: 0 if line.get('is_invoice') else 1)
 
+    # One register per invoice declaration (clients + taxes + lineitems).
+    # Payments already carry register_key so each movement/counterpart pair is unique.
+    for line in invoice_lines:
+        line['register_key'] = (
+            'invoice',
+            line.get('invoice_category') or _INVOICE_CATEGORY_NORMAL,
+        )
+    for line in lineitem_lines:
+        line['register_key'] = ('invoice', _INVOICE_CATEGORY_NORMAL)
+    for line in undeclare_lines:
+        line['register_key'] = (
+            'undeclare',
+            line.get('invoice_category') or _INVOICE_CATEGORY_NORMAL,
+        )
+    for line in payment_restore_lines:
+        line['register_key'] = (
+            'restore',
+            line.get('invoice_category') or _INVOICE_CATEGORY_NORMAL,
+        )
+
     return (
         invoice_lines
         + undeclare_lines
         + payment_restore_lines
         + lineitem_lines
-        + payment_debt_lines
-        + payment_lines
+        + _interleave_payment_register_lines(payment_debt_lines, payment_lines)
     )
 
 
@@ -766,8 +790,15 @@ def _additional_line_concept_token(additional_line, total):
     return concept_token
 
 
-def _additional_line_title(additional_line, detail_name=None):
-    name = _optional_text(additional_line.declared_as) or _optional_text(additional_line.name)
+def _additional_line_title(additional_line, detail_name=None, is_return=False):
+    if is_return:
+        name = (
+            _optional_text(getattr(additional_line, 'declared_as_return', None))
+            or _optional_text(additional_line.declared_as)
+            or _optional_text(additional_line.name)
+        )
+    else:
+        name = _optional_text(additional_line.declared_as) or _optional_text(additional_line.name)
     detail_name = _optional_text(detail_name)
     if not detail_name:
         return name
@@ -819,10 +850,14 @@ def _build_additional_line_from_parent(parent_line, additional_line):
     extra.pop('declare_as', None)
     extra.pop('undeclare_override_declare_as', None)
     extra.pop('undeclare_override_sign', None)
+    is_return = bool(parent_line.get('undeclared')) or total < 0 or subtotal < 0
     extra.update({
         'accounting_concept': _additional_line_concept_token(additional_line, total),
         'accounting_pricing': additional_line.token,
-        'accounting_pricing_name': _additional_line_title(additional_line),
+        'accounting_pricing_name': _additional_line_title(
+            additional_line,
+            is_return=is_return,
+        ),
         'name': concept.name,
         'category': concept.category,
         'iva': _flip_iva_values(parent_line.get('iva'), negative=flip),
@@ -1001,20 +1036,31 @@ def _expand_with_additional_lines(accounting_pricing, lines):
     return expanded
 
 
-def _line_title(accounting_pricing, detail_name=None):
+def _line_title(accounting_pricing, detail_name=None, is_return=False):
     """declared_as is the line title. When empty, the line keeps name.
 
+    On returns/undeclares, declared_as_return overrides when set.
     detail_name is appended for splits such as invoice origin or payment type.
     """
-    name = _optional_text(accounting_pricing.declared_as) or _optional_text(accounting_pricing.name)
+    if is_return:
+        name = (
+            _optional_text(getattr(accounting_pricing, 'declared_as_return', None))
+            or _optional_text(accounting_pricing.declared_as)
+            or _optional_text(accounting_pricing.name)
+        )
+    else:
+        name = (
+            _optional_text(accounting_pricing.declared_as)
+            or _optional_text(accounting_pricing.name)
+        )
     detail_name = _optional_text(detail_name)
     if not detail_name:
         return name
     return f"{name} {detail_name}".strip()
 
 
-def _invoice_line_name(accounting_pricing, origin_name):
-    return _line_title(accounting_pricing, origin_name)
+def _invoice_line_name(accounting_pricing, origin_name, is_return=False):
+    return _line_title(accounting_pricing, origin_name, is_return=is_return)
 
 
 def _payment_detail_name(payment_type_name=None, origin_name=None):
@@ -1106,6 +1152,7 @@ def _get_invoice_category_line(
     elif add_taxes:
         total = _sum_iva_values(iva_values, 'tax')
 
+    is_return = bool(undeclared) or _as_float(total) < 0 or _as_float(subtotal) < 0
     line = {
         'accounting_concept': _line_concept_token(
             accounting_pricing,
@@ -1114,7 +1161,11 @@ def _get_invoice_category_line(
             return_category=return_category,
         ),
         'accounting_pricing': accounting_pricing.token,
-        'accounting_pricing_name': _invoice_line_name(accounting_pricing, origin_name),
+        'accounting_pricing_name': _invoice_line_name(
+            accounting_pricing,
+            origin_name,
+            is_return=is_return,
+        ),
         'name': concept.name,
         'exploitation': accounting_pricing.exploitation,
         'category': concept.category,
@@ -1324,6 +1375,7 @@ def _get_lineitem_category_line(accounting_pricing, bucket, iva_accounting = Non
     if _as_float(subtotal) == 0 and _as_float(total) == 0:
         return None
 
+    is_return = _as_float(total) < 0 or _as_float(subtotal) < 0
     return {
         'accounting_concept': _line_concept_token(
             accounting_pricing,
@@ -1331,7 +1383,10 @@ def _get_lineitem_category_line(accounting_pricing, bucket, iva_accounting = Non
             return_category='lineitem',
         ),
         'accounting_pricing': accounting_pricing.token,
-        'accounting_pricing_name': _line_title(accounting_pricing),
+        'accounting_pricing_name': _line_title(
+            accounting_pricing,
+            is_return=is_return,
+        ),
         'name': concept.name,
         'return_category': 'lineitem',
         'exploitation': accounting_pricing.exploitation,
@@ -1431,6 +1486,7 @@ def _payment_spec(accounting_pricing):
         ),
         'category': _normalize_invoice_category(accounting_pricing.invoice_category),
         'name': _line_title(accounting_pricing),
+        'return_name': _line_title(accounting_pricing, is_return=True),
         # Optional override: payment have lands on this pricing instead of invoice.
         'counterpart_pricing_id': (
             accounting_pricing.counterpart_accounting_pricing_id
@@ -1791,6 +1847,19 @@ def _load_payment_rows(movements):
     return rows
 
 
+def _select_invoice_debt_spec(matched):
+    """Pick the clients account for a payment counterpart from matched specs."""
+    mains = [spec for spec in matched if spec['has_taxes_and_subtotals']]
+    if mains:
+        best_level = max(spec['level'] for spec in mains)
+        best = [spec for spec in mains if spec['level'] == best_level]
+        best.sort(key=lambda spec: (spec['exploitation_id'] is None, spec['id']))
+        return [best[0]]
+    if len(matched) == 1:
+        return matched
+    return []
+
+
 def _invoice_debt_specs(specs_by_category, row, category=None):
     """Original invoice accounts that take this payment as have.
 
@@ -1802,6 +1871,11 @@ def _invoice_debt_specs(specs_by_category, row, category=None):
     land on that clients account too. Piggy-bank payments use AccountingConfig
     counter pricing instead of invoice matching.
 
+    Payment defaults can still match when no same-exploitation payment
+    pricing exists, so if no clients account matches that exploitation,
+    fall back to the best clients account of the same category ignoring
+    exploitation. That keeps the bank line and its 430 counterpart paired.
+
     category overrides the row invoice_category (used when an
     endowment/irrecoverable collection falls back to a normal payment).
     """
@@ -1812,15 +1886,17 @@ def _invoice_debt_specs(specs_by_category, row, category=None):
     lookup_category = category if category is not None else row['invoice_category']
     specs = specs_by_category.get(lookup_category, ())
     matched = [spec for spec in specs if _invoice_matches_spec(spec, row)]
-    mains = [spec for spec in matched if spec['has_taxes_and_subtotals']]
-    if mains:
-        best_level = max(spec['level'] for spec in mains)
-        best = [spec for spec in mains if spec['level'] == best_level]
-        best.sort(key=lambda spec: (spec['exploitation_id'] is None, spec['id']))
-        return [best[0]]
-    if len(matched) == 1:
-        return matched
-    return []
+    selected = _select_invoice_debt_spec(matched)
+    if selected:
+        return selected
+
+    # Same filters as _invoice_matches_spec, but allow another exploitation's
+    # clients account when payment default already accepted this movement.
+    matched = [
+        spec for spec in specs
+        if _invoice_matches_spec({**spec, 'exploitation_id': None}, row)
+    ]
+    return _select_invoice_debt_spec(matched)
 
 
 def _merge_invoice_amount_groups(target, source):
@@ -1974,6 +2050,55 @@ def _payment_origin_detail(spec, row):
     return origin, _payment_origin_label(origin)
 
 
+def _payment_register_key(
+    payment_pricing_id,
+    movement_date,
+    type_key,
+    payment_type_name,
+    origin_key,
+    movement_declare_as,
+):
+    """Stable id shared by a payment line and its counterpart/counter lines."""
+    return (
+        'payment',
+        payment_pricing_id,
+        str(movement_date or ''),
+        type_key,
+        payment_type_name or '',
+        origin_key,
+        movement_declare_as,
+    )
+
+
+def _interleave_payment_register_lines(debt_lines, payment_lines):
+    """Keep each payment have next to its matching payment/counter line.
+
+    Register numbers are assigned in file order, so pairing by register_key
+    here makes each movement appear as consecutive lines with the same
+    register (clients/have first, then the payment account).
+    """
+    groups = OrderedDict()
+
+    def _append(line, side):
+        key = line.get('register_key')
+        if key is None:
+            key = ('line', id(line))
+        if key not in groups:
+            groups[key] = {'debt': [], 'payment': []}
+        groups[key][side].append(line)
+
+    for line in debt_lines:
+        _append(line, 'debt')
+    for line in payment_lines:
+        _append(line, 'payment')
+
+    interleaved = []
+    for group in groups.values():
+        interleaved.extend(group['debt'])
+        interleaved.extend(group['payment'])
+    return interleaved
+
+
 def _payment_origin_names(invoice_specs_by_category):
     if not any(
         spec.get('separate_by_origin')
@@ -2046,10 +2171,19 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             invoice_id = counterpart_pricing_id
 
         if not spec['grouped_lines']:
+            register_key = _payment_register_key(
+                spec['id'],
+                row['movement_date'],
+                default_type_key,
+                payment_type_name,
+                None,
+                movement_declare_as,
+            )
             bucket_entry = {
                 'movement_date': row['movement_date'],
                 'total': amount,
                 'payment_type_name': payment_type_name,
+                'register_key': register_key,
             }
             if movement_declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
                 bucket_entry['declare_as'] = movement_declare_as
@@ -2064,6 +2198,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     None,
                     None,
                     'have',
+                    movement_declare_as,
                 )] += amount
             elif (
                 row.get('is_piggybank')
@@ -2080,6 +2215,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     None,
                     counter_declare_as,
                     spec['id'],
+                    movement_declare_as,
                 )] += amount
             continue
 
@@ -2108,6 +2244,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 origin_key,
                 origin_name,
                 'have',
+                movement_declare_as,
             )] += amount
         elif (
             row.get('is_piggybank')
@@ -2124,6 +2261,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 origin_name,
                 counter_declare_as,
                 spec['id'],
+                movement_declare_as,
             )] += amount
 
     for pricing_id, groups in grouped_totals.items():
@@ -2135,10 +2273,19 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_name,
             declare_as,
         ), total in groups.items():
+            detail_name = _payment_detail_name(payment_type_name, origin_name)
             bucket_entry = {
                 'movement_date': movement_date,
                 'total': total,
-                'payment_type_name': _payment_detail_name(payment_type_name, origin_name),
+                'payment_type_name': detail_name,
+                'register_key': _payment_register_key(
+                    pricing_id,
+                    movement_date,
+                    _payment_type_id,
+                    payment_type_name,
+                    _origin_key,
+                    declare_as,
+                ),
             }
             if declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
                 bucket_entry['declare_as'] = declare_as
@@ -2154,17 +2301,29 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         _origin_key,
         origin_name,
         declare_as,
+        movement_declare_as,
     ), total in debt_totals.items():
         spec = specs_by_id[payment_id]
+        title_base = (
+            spec.get('return_name') if total < 0 else spec.get('name')
+        ) or ''
         debt_entries[invoice_id].append({
             'total': total,
             'movement_date': movement_date,
             'line_name': _payment_line_name(
-                spec.get('name') or '',
+                title_base,
                 _payment_detail_name(payment_type_name, origin_name),
             ),
             'payment_pricing_id': payment_id,
             'declare_as': declare_as,
+            'register_key': _payment_register_key(
+                payment_id,
+                movement_date,
+                _type_key,
+                payment_type_name,
+                _origin_key,
+                movement_declare_as,
+            ),
         })
     for entries in debt_entries.values():
         entries.sort(key=lambda entry: (
@@ -2184,17 +2343,29 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         origin_name,
         declare_as,
         payment_id,
+        movement_declare_as,
     ), total in counter_totals.items():
         spec = specs_by_id.get(payment_id) or {}
+        title_base = (
+            spec.get('return_name') if total < 0 else spec.get('name')
+        ) or ''
         counter_entries[counter_pricing_id].append({
             'total': total,
             'movement_date': movement_date,
             'line_name': _payment_line_name(
-                spec.get('name') or '',
+                title_base,
                 _payment_detail_name(payment_type_name, origin_name),
             ),
             'payment_pricing_id': payment_id,
             'declare_as': declare_as,
+            'register_key': _payment_register_key(
+                payment_id,
+                movement_date,
+                _type_key,
+                payment_type_name,
+                _origin_key,
+                movement_declare_as,
+            ),
         })
     for entries in counter_entries.values():
         entries.sort(key=lambda entry: (
@@ -2284,6 +2455,7 @@ def _get_payment_category_lines(accounting_pricing, bucket_entries, iva_accounti
             'accounting_pricing_name': _line_title(
                 accounting_pricing,
                 entry.get('payment_type_name'),
+                is_return=total_amount < 0,
             ),
             'name': concept.name,
             'exploitation': accounting_pricing.exploitation,
@@ -2302,6 +2474,8 @@ def _get_payment_category_lines(accounting_pricing, bucket_entries, iva_accounti
         # Piggy-bank rules may force a column; otherwise pricing.declare_as applies.
         if entry.get('declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
             line['declare_as'] = entry['declare_as']
+        if entry.get('register_key') is not None:
+            line['register_key'] = entry['register_key']
         lines.append(line)
     return lines
 
@@ -2313,6 +2487,7 @@ def _get_payment_debt_line(
     line_name=None,
     movement_date=None,
     declare_as='have',
+    register_key=None,
 ):
     """Counterpart line for a payment (invoice have, or piggy-bank counter)."""
     if total is None:
@@ -2347,6 +2522,8 @@ def _get_payment_debt_line(
     }
     if movement_date is not None:
         line['movement_date'] = movement_date
+    if register_key is not None:
+        line['register_key'] = register_key
     return line
 
 
@@ -2356,9 +2533,12 @@ def generate_general_accounting(request):
     request_date = request.data.get('start_date')
     date = datetime.strptime(request_date, "%Y-%m-%d")
     last_document = None
-    
+
     date_str = date.strftime("%Y%m%d")
-    doc_number = str(int(last_document.token) + 1) if last_document else '158429'
+    doc_number = date.strftime("%y%m%d")
+    # Per-declaration register: YMMDD1, YMMDD2, ... (e.g. 610311, 610312).
+    next_register_number = int(f"{date.year % 10}{date.strftime('%m%d')}1")
+    register_numbers_by_key = {}
     
     invoice_type_invoice_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
     invoice_status_pending_token = ConfigProject.objects.get(token='invoice_status_pending_token').value
@@ -2441,7 +2621,7 @@ def generate_general_accounting(request):
             # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 34")
         
-        line_content += '60' # DEFAULT FOR THE MOMENT
+        line_content += '70' # DEFAULT FOR THE MOMENT
         
         title_total = 30
         title = normalize_text(line.get('accounting_pricing_name'), title_total)
@@ -2479,9 +2659,22 @@ def generate_general_accounting(request):
         line_content += accounting_account
         
         line_content += '01'
-        
-        line_content += repeat_to_at_least_length(' ', 6-len_doc_number)
-        line_content += str(doc_number)
+
+        register_key = line.get('register_key')
+        if register_key is None:
+            register_key = ('line', id(line))
+        if register_key not in register_numbers_by_key:
+            register_numbers_by_key[register_key] = next_register_number
+            last_document = next_register_number
+            next_register_number += 1
+        register_number = register_numbers_by_key[register_key]
+        register_number_str = str(register_number)
+        if len(register_number_str) > 6:
+            raise Exception(
+                f"Register number {register_number} exceeds 6 characters"
+            )
+        line_content += repeat_to_at_least_length(' ', 6 - len(register_number_str))
+        line_content += register_number_str
         
         if len(line_content) != 116:
             # print(line_content)
@@ -2541,7 +2734,10 @@ def generate_general_accounting(request):
                 iva_amount != 0
                 or (int(float(iva_value)) == 0 and iva_base_total != 0)
             ) and has_iva
-            line_content += '1' if show_iva else ' '
+            if show_iva:
+                line_content += '2' if int(float(iva_value)) == 0 else '1'
+            else:
+                line_content += ' '
             line_content += repeat_to_at_least_length(' ', len_iva_value-len(iva_value_str))
             line_content += iva_value_str
             line_content += repeat_to_at_least_length(' ', len_percentage-len(iva_str))
@@ -2734,6 +2930,7 @@ def bulk_save_accounting_pricing(data, user):
                 token_return_payment = _optional_text(item.get('token_return_payment')) or None
                 token_return_lineitem = _optional_text(item.get('token_return_lineitem')) or None
                 declared_as = _optional_text(item.get('declared_as')) or None
+                declared_as_return = _optional_text(item.get('declared_as_return')) or None
                 declare_as = _normalize_declare_as(item.get('declare_as'), fallback=_DECLARE_DEBT)
                 declare_sign = _normalize_sign(item.get('declare_sign'), fallback=_SIGN_POSITIVE)
                 return_declare_as = _normalize_declare_as(
@@ -2798,6 +2995,7 @@ def bulk_save_accounting_pricing(data, user):
                         accounting_pricing_saved.token_return_lineitem = token_return_lineitem
                         if declared_as:
                             accounting_pricing_saved.declared_as = declared_as
+                        accounting_pricing_saved.declared_as_return = declared_as_return
                         accounting_pricing_saved.declare_as = declare_as
                         accounting_pricing_saved.declare_sign = declare_sign
                         accounting_pricing_saved.return_declare_as = return_declare_as
@@ -2845,6 +3043,7 @@ def bulk_save_accounting_pricing(data, user):
                             token_return_lineitem=token_return_lineitem,
                             name=name,
                             declared_as=declared_as,
+                            declared_as_return=declared_as_return,
                             declare_as=declare_as,
                             declare_sign=declare_sign,
                             return_declare_as=return_declare_as,
@@ -2888,6 +3087,7 @@ def bulk_save_accounting_pricing(data, user):
                     accounting_pricing_saved.token_return_lineitem = token_return_lineitem
                     accounting_pricing_saved.name = name
                     accounting_pricing_saved.declared_as = declared_as
+                    accounting_pricing_saved.declared_as_return = declared_as_return
                     accounting_pricing_saved.declare_as = declare_as
                     accounting_pricing_saved.declare_sign = declare_sign
                     accounting_pricing_saved.return_declare_as = return_declare_as

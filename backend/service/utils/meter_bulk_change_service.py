@@ -30,12 +30,15 @@ Decisions:
 import datetime
 import io
 import logging
+import math
 import re
 from collections import Counter, defaultdict
 
 import pandas as pd
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
 from coredata.models import ConfigProject
@@ -49,8 +52,9 @@ OPTIONAL_COLUMNS = [
     'create_new_meter', 'change_date', 'supply_point',
     'caliber', 'has_remote_reading', 'comm_technology',
 ]
-# TODO: comprovar que és un valor vàlid de Reading.origin (a ordres es fa servir 'order_change_meter')
-ORIGIN = 'bulk_change_meter'
+# Reading.origin és text lliure que el frontend mostra tal qual (el canvi manual
+# desa 'Canvi de comptador'); el "(i)" distingeix els canvis fets amb el canvi massiu.
+ORIGIN = 'Canvi de comptador (i)'
 
 TRUE_VALUES = {'si', 'sí', 's', 'yes', 'y', 'true', '1'}
 FALSE_VALUES = {'no', 'n', 'false', '0'}
@@ -61,7 +65,28 @@ class MeterBulkChangeError(Exception):
 
 
 class MeterBulkChangeValidationError(MeterBulkChangeError):
-    """Validació del fitxer amb un diagnòstic segur per a l’API."""
+    """Validació del fitxer amb un diagnòstic segur per a l’API.
+
+    `public_message` només conté text escrit per nosaltres; és l'únic que
+    pot arribar a l'usuari.
+    """
+
+    def __init__(self, public_message):
+        super().__init__(public_message)
+        self.public_message = public_message
+
+
+class MeterBulkChangeRowError(ValueError):
+    """Error de validació d'una fila amb un missatge segur per mostrar.
+
+    Hereta de ValueError perquè els parsers la llancen on abans hi havia
+    ValueError. Qualsevol altre ValueError (intern de Python, pandas...) es
+    continua mostrant amb un missatge genèric.
+    """
+
+    def __init__(self, public_message):
+        super().__init__(public_message)
+        self.public_message = public_message
 
 
 # --------------------------------------------------------------------------- #
@@ -79,8 +104,10 @@ def _read_file(uploaded):
             raise MeterBulkChangeValidationError("Format no admès. Useu .csv, .xlsx o .xls.")
     except MeterBulkChangeError:
         raise
-    except Exception as exc:
-        raise MeterBulkChangeError(f"No s'ha pogut llegir el fitxer: {exc}")
+    except Exception:
+        logger.exception("No s'ha pogut llegir el fitxer del canvi massiu de comptadors")
+        raise MeterBulkChangeValidationError(
+            "No s'ha pogut llegir el fitxer. Comproveu que sigui un CSV o Excel vàlid.")
 
     df.columns = [str(c).strip().lower() for c in df.columns]
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
@@ -96,15 +123,17 @@ def _cell(raw, column):
 
 def _parse_reading(value, label):
     if value == '':
-        raise ValueError(f"Falta {label}.")
+        raise MeterBulkChangeRowError(f"Falta {label}.")
     try:
         number = float(value.replace(',', '.'))
     except ValueError:
-        raise ValueError(f"{label} no és un número vàlid: '{value}'.")
+        raise MeterBulkChangeRowError(f"{label} no és un número vàlid: '{value}'.")
+    if not math.isfinite(number):
+        raise MeterBulkChangeRowError(f"{label} no és un número vàlid: '{value}'.")
     if number != int(number):
-        raise ValueError(f"{label} ha de ser un enter.")
+        raise MeterBulkChangeRowError(f"{label} ha de ser un enter.")
     if number < 0:
-        raise ValueError(f"{label} no pot ser negativa.")
+        raise MeterBulkChangeRowError(f"{label} no pot ser negativa.")
     return int(number)
 
 
@@ -117,9 +146,9 @@ def _parse_date(value):
         else:
             parsed = pd.to_datetime(value, dayfirst=True).date()
     except Exception:
-        raise ValueError(f"Data no vàlida: '{value}'.")
+        raise MeterBulkChangeRowError(f"Data no vàlida: '{value}'.")
     if parsed > datetime.date.today():
-        raise ValueError("La data del canvi no pot ser futura.")
+        raise MeterBulkChangeRowError("La data del canvi no pot ser futura.")
     return parsed
 
 
@@ -132,7 +161,7 @@ def _parse_bool(value, label):
         return True
     if normalized in FALSE_VALUES:
         return False
-    raise ValueError(f"{label} ha de ser 'si' o 'no' (valor rebut: '{value}').")
+    raise MeterBulkChangeRowError(f"{label} ha de ser 'si' o 'no' (valor rebut: '{value}').")
 
 
 # --------------------------------------------------------------------------- #
@@ -168,10 +197,11 @@ def _resolve_choice(field_name, value, label):
     options = []
     for lookup in ('name', 'token'):
         if lookup in model_fields:
-            options = list(model.objects.values_list(lookup, flat=True)[:12])
+            ordering = ('position', 'id') if 'position' in model_fields else ('id',)
+            options = list(model.objects.order_by(*ordering).values_list(lookup, flat=True)[:60])
             break
     hint = f" Valors vàlids: {', '.join(str(o) for o in options)}." if options else ''
-    raise ValueError(f"{label} '{value}' no existeix.{hint}")
+    raise MeterBulkChangeRowError(f"{label} '{value}' no existeix.{hint}")
 
 
 def _build_new_meter_data(r):
@@ -184,7 +214,7 @@ def _build_new_meter_data(r):
 
     if r['comm_technology']:
         if has_remote is False:
-            raise ValueError("comm_technology informat però has_remote_reading és 'no'.")
+            raise MeterBulkChangeRowError("comm_technology informat però has_remote_reading és 'no'.")
         data['comm_technology'] = _resolve_choice(
             'comm_technology', r['comm_technology'], 'Tipus de comunicació')
         if has_remote is None:
@@ -213,7 +243,7 @@ def _validate_new_meter(code, data, status):
         meter.full_clean()
     except ValidationError as exc:
         details = '; '.join(f"{k}: {', '.join(v)}" for k, v in exc.message_dict.items())
-        raise ValueError(f"No es pot crear el comptador {code}: {details}")
+        raise MeterBulkChangeRowError(f"No es pot crear el comptador {code}: {details}")
 
 
 # --------------------------------------------------------------------------- #
@@ -275,6 +305,9 @@ def _analyse(uploaded):
             initial_reading = _parse_reading(r['initial_reading'], 'initial_reading')
             change_date = _parse_date(r['change_date'])
             create_flag = bool(_parse_bool(r['create_new_meter'], 'create_new_meter'))
+        except MeterBulkChangeRowError as exc:
+            error(r, exc.public_message)
+            continue
         except ValueError:
             logger.exception("Bulk change validation error while parsing row %s.", r.get('row'))
             error(r, "Valor invàlid en un o més camps de la fila.")
@@ -310,6 +343,9 @@ def _analyse(uploaded):
                 if active_status is None:
                     active_status = _get_active_status()
                 _validate_new_meter(new_code, meter_data, active_status)
+            except MeterBulkChangeRowError as exc:
+                error(r, exc.public_message)
+                continue
             except ValueError:
                 logger.exception("Bulk change validation error while building new meter data for row %s.", r.get('row'))
                 error(r, "Valor invàlid en les dades del nou comptador.")
@@ -422,7 +458,9 @@ def apply_changes(uploaded, user):
     if any(item['create_meter'] is not None for item in analysis['ready']):
         if not user.has_perm('service.add_meter'):
             raise PermissionDenied()
+    executed_at = timezone.localtime(timezone.now())
     changed, created, failed = 0, 0, []
+    applied_rows, created_rows = set(), set()
 
     for item in analysis['ready']:
         try:
@@ -463,13 +501,19 @@ def apply_changes(uploaded, user):
                         'is_close': False,
                         'leak_value': 0,
                     },
+                    # La previsualització ja avisa (new_meter_assigned) i aplicar el fitxer
+                    # és la confirmació expressa de l'operador.
+                    confirm_reassign=True,
                 )
             changed += 1
+            applied_rows.add(item['row'])
             if item['create_meter'] is not None:
                 created += 1
+                created_rows.add(item['row'])
         except Exception:
             logger.exception("Canvi massiu de comptador fallit (fila %s)", item['row'])
-            failed.append({'row': item['row'], 'code': item['code'], 'message': "No s'ha pogut aplicar el canvi de comptador."})
+            failed.append({'row': item['row'], 'code': item['code'],
+                           'message': "No s'ha pogut aplicar el canvi de comptador."})
 
     result = _serialize(analysis)
     result['errors'] = result['errors'] + failed
@@ -479,4 +523,49 @@ def apply_changes(uploaded, user):
         'failed': len(failed),
         'errors': len(result['errors']),
     })
+
+    # Registre d'auditoria: no ha de fer fallar la resposta si els canvis ja s'han aplicat
+    try:
+        log = _save_audit(uploaded, user, analysis, result, applied_rows, created_rows, executed_at)
+        result['audit'] = {
+            'log_id': log.id,
+            'report_url': log.report_file.url if log.report_file else None,
+        }
+    except Exception:
+        logger.exception("No s'ha pogut desar el registre del canvi massiu de comptadors")
+        result['audit'] = None
     return result
+
+
+def _save_audit(uploaded, user, analysis, result, applied_rows, created_rows, executed_at):
+    """Desa qui, quan i amb quin fitxer, més l'informe Excel generat."""
+    from service.models import MeterBulkChangeLog
+    from service.utils.meter_bulk_change_report import build_report
+
+    filename = getattr(uploaded, 'name', '') or 'fitxer'
+    user_label = (user.get_full_name() or user.get_username()) if user else '-'
+
+    report_bytes = build_report(
+        analysis=analysis, result=result,
+        applied_rows=applied_rows, created_rows=created_rows,
+        user_label=user_label, filename=filename, executed_at=executed_at,
+    )
+
+    stats = result['stats']
+    log = MeterBulkChangeLog(
+        user=user if getattr(user, 'pk', None) else None,
+        original_filename=filename[:255],
+        total_rows=stats.get('total_rows', 0),
+        changed=stats.get('changed', 0),
+        created=stats.get('created', 0),
+        failed=stats.get('failed', 0),
+        stats=stats,
+    )
+    uploaded.seek(0)
+    log.source_file.save(filename, uploaded, save=False)
+    log.report_file.save(
+        f"informe_canvi_comptadors_{executed_at:%Y%m%d_%H%M%S}.xlsx",
+        ContentFile(report_bytes), save=False,
+    )
+    log.save()
+    return log

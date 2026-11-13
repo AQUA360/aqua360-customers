@@ -128,6 +128,9 @@ msgstr "Sin tarifas"
 msgid "Contract"
 msgstr "Contrato"
 
+msgid "Customer"
+msgstr "Abonado"
+
 #: billing/utils/billing_service.py:47
 msgid "Creation date"
 msgstr "Fecha creación"
@@ -3361,6 +3364,16 @@ msgstr "Correo enviado"
 
 #: notification/utils/incident_timeline.py
 #, python-format
+msgid "Communication %(token)s"
+msgstr "Comunicación %(token)s"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Communication %(token)s sent"
+msgstr "Comunicación %(token)s enviada"
+
+#: notification/utils/incident_timeline.py
+#, python-format
 msgid "Report %(token)s"
 msgstr "Informe %(token)s"
 
@@ -6345,3 +6358,11 @@ msgstr "Para cada contrato con saldo o deuda, el saldo positivo de la hucha y la
 #: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
 msgid "Descarregar Excel"
 msgstr "Descargar Excel"
+
+#: billing/utils/payment_remittance_lock_service.py
+msgid "This remittance has already been sent and can no longer be modified."
+msgstr "Esta remesa ya se ha enviado y no se puede modificar."
+
+#: billing/views/invoice_view.py
+msgid "La factura no té lectures"
+msgstr "La factura no tiene lecturas"

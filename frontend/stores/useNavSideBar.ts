@@ -13,6 +13,7 @@ export const useSidebarStore = defineStore('sidebar', {
     newNotifications: 0,
     newGeneralNotes: 0,
     newDailyDocuments: 0,
+    dailyDocumentSubmissionErrors: 0,
     // S'incrementa quan es creen o modifiquen tasques, perquè el comptador del menú es refresqui
     tasksVersion: 0,
   }),
@@ -70,8 +71,14 @@ export const useSidebarStore = defineStore('sidebar', {
     newGeneralNotesFound(generalNotesFound: number){
       this.newGeneralNotes = generalNotesFound;
     },
-    newDailyDocumentsFound(dailyDocumentsFound: number){
-      this.newDailyDocuments = dailyDocumentsFound;
+    newDailyDocumentsFound(payload: number | { pending?: number; errors?: number }){
+      if (typeof payload === 'number') {
+        this.newDailyDocuments = payload;
+        this.dailyDocumentSubmissionErrors = 0;
+        return;
+      }
+      this.newDailyDocuments = payload?.pending ?? 0;
+      this.dailyDocumentSubmissionErrors = payload?.errors ?? 0;
     },
     /** Signal task mutations so sidebar counters reload. */
     tasksChanged() {
@@ -79,6 +86,9 @@ export const useSidebarStore = defineStore('sidebar', {
     },
     togglePinnedContract() {
       this.isPinnedContractOpen = !this.isPinnedContractOpen;
+    },
+    openPinnedContract() {
+      this.isPinnedContractOpen = true;
     },
     closePinnedContract() {
       this.isPinnedContractOpen = false;

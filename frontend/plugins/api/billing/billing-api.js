@@ -396,13 +396,15 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
-  const start = async (billerId = null, token = null, name = null) => {
+  const start = async (billerId = null, token = null, name = null, periodStart = null, periodEnd = null) => {
     let apiUrl = apiHost + '/billing/start';
     const params = [];
   
     if (billerId) params.push(`biller_id=${billerId}`);
     if (token) params.push(`token=${encodeURIComponent(token)}`);
     if (name) params.push(`name=${encodeURIComponent(name)}`);
+    if (periodStart) params.push(`period_start=${encodeURIComponent(periodStart)}`);
+    if (periodEnd) params.push(`period_end=${encodeURIComponent(periodEnd)}`);
   
     apiUrl += params.length > 0 ? `?${params.join('&')}` : '/';
   
@@ -476,6 +478,17 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Contractes que no s'han pogut facturar en el darrer processat (motiu i què cal revisar)
+  const getProcessErrors = async (billingId) => {
+    const apiUrl = `${apiHost}/billing/billing/${billingId}/process-errors/`;
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
+
+  const dismissProcessErrors = async (billingId, contractIds) => {
+    const apiUrl = `${apiHost}/billing/billing/${billingId}/dismiss-process-errors/`;
+    return await $apiManager.fetch(apiUrl, 'POST', { contract_ids: contractIds }, { 'Content-Type': 'application/json' });
+  }
+
   const processSelectedContracts = async (billingId, contractIds) => {
     let apiUrl = `${apiHost}/billing/billing/${billingId}/process-selected/`;
     try {
@@ -546,6 +559,8 @@ export default defineNuxtPlugin(nuxtApp => {
     addToBatch,
     processContract,
     processSelectedContracts,
+    getProcessErrors,
+    dismissProcessErrors,
   };
 
   nuxtApp.provide(provideName, apiService);

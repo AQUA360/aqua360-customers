@@ -1,8 +1,9 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import H1 from '../../components/atoms/H1.vue'
+import Tabs from '~/components/atoms/Tabs.vue';
 import ConfigList from '../../components/organisms/ConfigList.vue';
 import VariableTypeEdit from '../../components/organisms/VariableTypeEdit.vue';
 import OrderReasonEdit from '../../components/organisms/OrderReasonEdit.vue';
@@ -10,6 +11,7 @@ import BailTypeEdit from '../../components/organisms/BailTypeEdit.vue';
 import BankConfigList from '~/components/organisms/BankConfigList.vue';
 import IncidentSettings from '~/components/organisms/IncidentSettings.vue';
 import AccountValuesRegion from '~/components/molecules/AccountValuesRegion.vue';
+import MeterDictionaryList from '~/components/organisms/MeterDictionaryList.vue';
 const { $ConfigProjectApiService } = useNuxtApp();
 import { usePermissions } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
@@ -27,6 +29,7 @@ const toggleRegion = (force) => {
 }
 
 const { permissions, loading } = usePermissions();
+
 const configureColor = ref(false);
 const configureMandatory = ref(false);
 const configureDescription = ref(false);
@@ -66,9 +69,16 @@ const smartMeteringEnabled = computed(() => {
   );
   return Boolean(String(item?.value ?? '').trim());
 });
+// Secció Configuració ACA: només per als projectes que depenen de l'ACA.
+const isAcaOrg = computed(() => {
+  const item = (config_projects.value || []).find(
+    (entry) => entry?.token === 'public_org_type',
+  );
+  return String(item?.value ?? '').trim().toLowerCase() === 'aca';
+});
 const getConfigProject = async () => {
   const response = await $ConfigProjectApiService.getAll();
-  config_projects.value = response;
+  config_projects.value = Array.isArray(response) ? response : [];
 }
 
 // Edició en línia dels valors de configuració interna (ConfigProject)
@@ -109,34 +119,277 @@ const saveConfigProject = async (item) => {
   }
 }
 
-const showConfigVariableTypes = () => {
-  RegionActive.value = 'VariableType';
-  toggleRegion(true);
-}
-
-const showConfigOrderReasons = () => {
-  RegionActive.value = 'OrderReason';
-  toggleRegion(true);
-}
-
-const showConfigBailTypes = () => {
-  RegionActive.value = 'BailType';
-  toggleRegion(true);
-}
-
-const showIncidentSettings = () => {
-  RegionActive.value = 'IncidentSettings';
-  toggleRegion(true);
-}
-
-const showConfigBankList = () => {
-  RegionActive.value = 'Bank';
-  toggleRegion(true);
-}
-
 const showConfigAccountValues = () => {
   RegionActive.value = 'AccountValues';
   toggleRegion(true);
+}
+
+const meterDictionaryKind = ref(null);
+const meterDictionaryTitle = ref('');
+const showMeterDictionary = (title, kind) => {
+  meterDictionaryTitle.value = title;
+  meterDictionaryKind.value = kind;
+  RegionActive.value = 'MeterDictionary';
+  toggleRegion(true);
+}
+
+// Opcions de la pàgina. Cada opció és un enllaç a una pàgina pròpia (`to`), una taula
+// simple editada amb ConfigList (`entity`), un diccionari de comptadors (`dictionaryKind`)
+// o un panell lateral concret (`region`).
+// Les opcions de configuració van a la pestanya General i les taules simples
+// (estats, tipus, motius...) a Taules mestres.
+const list = (label, entity, hasColor = false, hasMandatoryCheck = false, hasDescription = false, blockEdits = false, hasSerieDigits = false, hasChangeOfNameCheck = false) => ({
+  label, entity, options: [hasColor, hasMandatoryCheck, hasDescription, blockEdits, hasSerieDigits, hasChangeOfNameCheck],
+});
+const link = (label, to, visible = true) => ({ label, to, visible });
+const region = (label, regionKey) => ({ label, region: regionKey });
+const meterDictionary = (label, kind) => ({ label, dictionaryKind: kind });
+const lbl = (...keys) => keys.map((key) => t(key)).join(': ');
+
+const settingsSections = computed(() => {
+  const perms = permissions.value?.permissions || {};
+  return [
+    {
+      key: 'service', title: t('service'), visible: perms.view_service,
+      general: [
+        link(lbl('service', 'service_block.exploitations'), '/service/exploitations/'),
+        link(lbl('service', 'service_block.companies'), '/service/companies/'),
+      ],
+      master: [
+        list(lbl('service_block.companies', 'common.type'), 'service/company-type'),
+        list(lbl('common.supply_points', 'common.statuses'), 'service/supply-point-status', true, false, false, true),
+        list(lbl('common.supply_points', 'common.type'), 'service/supply-point-type', false, false, false, true),
+        list(lbl('common.supply_points', 'service_block.supply_source'), 'service/supply-point-source'),
+        list(lbl('common.supply_points', 'service_block.supply_type'), 'service/supply-point-supply-type'),
+        list(lbl('common.supply_points', 'address_block.location'), 'service/supply-point-placement'),
+        list(lbl('common.meters', 'common.statuses'), 'service/meter-status', true, false, false, true),
+        list(lbl('common.meters', 'service_block.calibers'), 'service/meter-caliber'),
+        meterDictionary(lbl('common.meters', 'service_block.manufacturers'), 'manufacturer'),
+        meterDictionary(lbl('common.meters', 'service_block.models'), 'model'),
+        meterDictionary(lbl('common.meters', 'service_block.comm_technologies'), 'comm_technology'),
+        list(t('common.clusters') + ' ' + lbl('service_block.nozzles', 'common.statuses'), 'service/cluster-nozzle-status', true, false, false, true),
+        list(t('common.clusters') + ' ' + lbl('service_block.nozzles', 'common.type'), 'service/cluster-nozzle-type'),
+        list(lbl('common.clusters', 'common.statuses'), 'service/cluster-status', true, false, false, true),
+        list(lbl('common.connections', 'common.statuses'), 'service/connection-status', true, false, false, true),
+        list(lbl('common.connections', 'common.type'), 'service/connection-type'),
+        list(lbl('common.connections', 'service_block.installation_type'), 'service/connection-installation-type', false, false, false, true),
+        list(lbl('common.connections', 'common.usage_type'), 'service/connection-use-type', false, false, false, true),
+        list(lbl('common.connections', 'service_block.valve_type'), 'service/connection-valve-type'),
+        list(lbl('common.connections', 'service_block.diameters'), 'service/connection-diameter'),
+        list(lbl('common.connections', 'service_block.materials'), 'service/connection-material'),
+        list(lbl('common.connections', 'common.documentation'), 'service/connection-documentation-type'),
+        list(lbl('common.clusters', 'common.documentation'), 'service/cluster-documentation-type'),
+        list(lbl('common.connection_requests', 'common.statuses'), 'service/connection-request-status', true, false, false, true),
+        list(lbl('common.connection_requests', 'service_block.connection_request_form.building_type'), 'service/connection-request-building-type'),
+        list(lbl('common.connection_requests', 'service_block.connection_request_form.representative_type'), 'service/connection-request-representative-type'),
+        list(lbl('common.supply_cuts', 'common.statuses'), 'service/supply-cut-status', true, false, false, true),
+      ],
+    },
+    {
+      key: 'addresses', title: t('address_block.addresses'), visible: perms.view_service,
+      general: [
+        link(t('address_block.street_management'), '/service/streets/'),
+      ],
+      master: [
+        list(lbl('address_block.streets', 'common.type'), 'coredata/street-type', false, false, false, true),
+      ],
+    },
+    {
+      key: 'contracting', title: t('contracting'), visible: perms.view_contract,
+      general: [
+        link(lbl('contract_request', 'common.type'), '/contract/contract-request-type/'),
+        link(lbl('contract_block.clauses', 'contract_block.clause_templates'), '/contract/clause-templates/'),
+        link(lbl('bonifications', 'contract_block.bonification_type'), '/contract/bonification-type/'),
+      ],
+      master: [
+        list(lbl('person', 'common.identificator'), 'coredata/identification-type', false, false, false, true),
+        list(lbl('contract', 'common.statuses'), 'contract/contract-status', true, false, false, true),
+        list(lbl('contract', 'common.usage_type'), 'contract/contract-use-type', false, false, false, true),
+        list(lbl('contract', 'contract_block.client_type'), 'contract/contract-client-type'),
+        list(lbl('contract', 'contract_block.representative_type'), 'contract/contract-representative-type'),
+        list(lbl('contract', 'common.documentation'), 'contract/contract-documentation-type'),
+        list(lbl('contract', 'contract_block.category'), 'contract/contract-category'),
+        list(lbl('contract', 'contract_block.surrogation'), 'contract/contract-surrogation-type'),
+        list(lbl('contract', 'contract_block.surrogation') + ' ' + t('common.doc_type').toLowerCase(), 'contract/contract-surrogation-document-type'),
+        list(lbl('contract', 'contract_block.tenant_change') + ' ' + t('common.doc_type').toLowerCase(), 'contract/contract-tenant-change-document-type'),
+        list(lbl('common.aca_documents', 'common.statuses'), 'contract/aca-document-status', true, false, false, true),
+        list(lbl('contract_request', 'common.statuses'), 'contract/contract-request-status', true, false, false, true),
+        list(lbl('contract_termination_request', 'common.type'), 'contract/contract-termination-request-type', false, false, false, false, false, true),
+        list(lbl('contract_termination_request', 'common.statuses'), 'contract/contract-termination-request-status', true, false, false, true),
+        region(lbl('variables', 'contract_block.variable_type'), 'VariableType'),
+        region(lbl('bail', 'billing_block.bail_type'), 'BailType'),
+        region(t('common.banks'), 'Bank'),
+      ],
+    },
+    {
+      key: 'work_orders', title: t('work_orders'), visible: perms.view_order,
+      general: [
+        link(lbl('work_orders', 'common.type'), '/order/order-types/'),
+      ],
+      master: [
+        region(lbl('work_orders', 'order_block.reasons'), 'OrderReason'),
+        list(lbl('work_orders', 'common.statuses'), 'order/order-status', true, false, false, true),
+        list(lbl('work_orders', 'common.priority'), 'order/order-priority', true, false, false, true),
+      ],
+    },
+    {
+      key: 'pricing', title: t('pricing'), visible: perms.view_pricing,
+      general: [
+        link(lbl('pricing', 'pricing_block.billing_ranges'), '/pricing/billing-ranges/'),
+        link(lbl('pricing', 'pricing_block.line_items'), '/pricing/line-item-types/'),
+      ],
+      master: [
+        list(lbl('common.products', 'common.origins'), 'pricing/product-origin', false, false, false, true),
+        list(lbl('taxes', 'common.type'), 'pricing/tax', false, false, false, true),
+        list(lbl('billing', 'pricing_block.periodicity'), 'pricing/billing-period', false, false, false, true),
+      ],
+    },
+    {
+      key: 'billing', title: t('billing'), visible: perms.view_billing,
+      general: [
+        link(t('common.configure') + ' ' + t('billing_block.biller'), '/billing/biller/'),
+        link(t('billing') + ' ' + t('billing_block.invoice_templates'), '/billing/invoice-templates/'),
+        link(lbl('claim_block.claim_payments', 'billing_block.steps'), '/billing/claim-steps/'),
+        link(lbl('vulnerability_request', 'common.type'), '/billing/vulnerability-request-type/'),
+      ],
+      master: [
+        list(lbl('billing', 'common.statuses'), 'billing/billing-status', true, false, false, true),
+        list(lbl('invoices', 'common.statuses'), 'billing/invoice-status', true, false, true, true),
+        list(lbl('payment', 'common.statuses'), 'billing/payment-status', true, false, true, true),
+        list(lbl('billing_block.joined_payment', 'common.statuses'), 'billing/joined-payment-status', true, false, false, true),
+        list(lbl('commitment_deposit', 'common.statuses'), 'billing/commitment-deposit-status', true, false, true, true),
+        list(lbl('claim_block.commitment_payments', 'common.statuses'), 'billing/payment-commitment-status', true, false, true, true),
+        list(lbl('invoices', 'billing_block.series'), 'billing/invoice-serie', false, false, false, true),
+        list(lbl('invoices', 'common.type'), 'billing/invoice-type', false, false, false, true),
+        list(lbl('invoices', 'billing_block.alerts'), 'billing/invoice-warnings', false, false, false, true),
+        list(lbl('invoices', 'common.return_reason'), 'billing/reject-motive', false, false, false, true),
+        list(lbl('claim_block.claim_payments', 'common.statuses'), 'claimrequest/claim-request-status', true, false, false, true),
+        list(lbl('invoices', 'billing_block.categories'), 'billing/invoice-category', false, false, false, false, true),
+      ],
+    },
+    {
+      key: 'readings', title: t('readings'), visible: perms.view_reading,
+      general: [
+        link(t('settings_block.config_reading_batch_template'), '/reading/reading-batch-templates/'),
+        link(t('settings_block.reading_batch_export_file'), '/statistics/reading-batch-export-config'),
+      ],
+      master: [
+        list(lbl('common.reading_batches', 'common.statuses'), 'billing/reading-batch-status', true, false, false, true),
+        list(lbl('billing_block.invoice_alerts', 'common.type'), 'billing/reading-alert-type', true, false, false, true),
+        list(lbl('billing_block.reader_alerts', 'common.type'), 'billing/reader-alert'),
+        list(lbl('billing_block.remote_alerts', 'common.type'), 'billing/remote-reading-alert', false, false, false, true),
+      ],
+    },
+    {
+      key: 'frauds', title: t('common.frauds'), visible: perms.view_service,
+      general: [],
+      master: [
+        list(lbl('common.fraud_mngs', 'common.statuses'), 'fraud/fraud-status', true, false, false, true),
+        list(lbl('common.fraud_mngs', 'common.type'), 'fraud/fraud-type', true, false, false, true),
+      ],
+    },
+    {
+      key: 'communication', title: t('communication'), visible: perms.view_customer_service,
+      general: [
+        link(lbl('communication', 'customer_service_block.comms_templates'), '/communication/message-templates/'),
+      ],
+      master: [
+        list(lbl('communication', 'common.statuses'), 'communication/communication-status', true, false, true, true),
+        list(lbl('communication', 'common.use_type'), 'communication/communication-use-type', false, false, false, true),
+        list(lbl('common.comms_process_detail', 'common.statuses'), 'communication/communication-process-status', true, false, true, true),
+        list(lbl('customer_service_block.comms_templates', 'common.origins'), 'communication/message-origin', false, false, false, true),
+      ],
+    },
+    {
+      key: 'incidents', title: t('common.incidents'), visible: perms.view_customer_service,
+      general: [
+        region(t('incident_settings.title'), 'IncidentSettings'),
+      ],
+      master: [
+        list(lbl('common.incidents', 'common.type'), 'notification/incident-type', true),
+        list(lbl('common.incidents', 'common.statuses'), 'notification/incident-status', true, false, false, true),
+        list(lbl('common.incidents', 'incident_settings.channels'), 'notification/incident-channel'),
+      ],
+    },
+    {
+      key: 'docs', title: t('common.docs'), visible: perms.view_customer_service,
+      general: [
+        link(lbl('common.doc', 'statistics_block.daily_document_templates'), '/statistics/daily-document-templates/'),
+      ],
+      master: [
+        list(lbl('common.doc', 'common.statuses'), 'statistics/daily-document-status', true, false, false, true),
+        list(lbl('common.doc', 'statistics_block.submission_statuses'), 'statistics/daily-document-submission-status', true, false, false, true),
+      ],
+    },
+    {
+      key: 'users', title: t('users'), visible: perms.view_user,
+      general: [
+        link(t('settings_block.mng_groups'), '/user/groups/'),
+        link(t('settings_block.mng_users'), '/user/users/'),
+      ],
+      master: [],
+    },
+    {
+      key: 'settings', title: t('settings_block.settings'), visible: perms.view_user,
+      general: [
+        link(t('settings_block.config_aca'), '/settings/config_aca/', isAcaOrg.value),
+        link(t('pricing_block.accounting'), '/settings/accounting/'),
+        link(t('settings_block.smart_metering_config'), '/settings/smart_metering/', smartMeteringEnabled.value),
+        link(t('settings_block.send_batch_config'), '/settings/send-batch/'),
+      ],
+      master: [],
+    },
+  ].filter((section) => section.visible);
+});
+
+// Cerca sense distingir majúscules ni accents. Si coincideix el títol del bloc, es mostren totes les opcions.
+const searchText = ref('');
+const normalize = (value) => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const matchesSearch = (...values) => {
+  const query = normalize(searchText.value).trim();
+  return !query || values.some((value) => normalize(value).includes(query));
+};
+const sectionsFor = (group) => settingsSections.value
+  .map((section) => {
+    const items = section[group].filter((item) => item.visible !== false);
+    return {
+      ...section,
+      items: matchesSearch(section.title) ? items : items.filter((item) => matchesSearch(item.label)),
+    };
+  })
+  .filter((section) => section.items.length);
+const generalSections = computed(() => sectionsFor('general'));
+const masterSections = computed(() => sectionsFor('master'));
+const filteredConfigProjects = computed(() => config_projects.value.filter(
+  (item) => matchesSearch(item.token, item.name, item.value),
+));
+
+const openItem = (item) => {
+  if (item.entity) {
+    showConfigList(item.label, item.entity, ...item.options);
+  } else if (item.dictionaryKind) {
+    showMeterDictionary(item.label, item.dictionaryKind);
+  } else {
+    RegionActive.value = item.region;
+    toggleRegion(true);
+  }
+}
+
+// Pestanyes de la pàgina. Configuració interna (ConfigProject) només per a l'usuari tècnic.
+const route = useRoute();
+const router = useRouter();
+const settingsTabs = computed(() => [
+  { key: 'general', label: t('settings_block.general'), icon: 'fa6-solid:gear', visible: settingsSections.value.some((section) => section.general.length) },
+  { key: 'master_tables', label: t('settings_block.master_tables'), icon: 'fa6-solid:table-list', visible: settingsSections.value.some((section) => section.master.length) },
+  { key: 'internal', label: t('settings_block.internal_settings'), icon: 'fa6-solid:screwdriver-wrench', visible: Boolean(permissions.value?.can_edit_config_project) },
+].filter((tab) => tab.visible));
+// La pestanya activa surt sempre de la URL (?tab=), també en navegar enrere o endavant.
+const activeTab = computed(() => {
+  const keys = settingsTabs.value.map((tab) => tab.key);
+  return keys.includes(route.query.tab) ? route.query.tab : keys[0];
+});
+const setActiveTab = (key) => {
+  router.replace({ query: { ...route.query, tab: key } });
 }
 
 getConfigProject();
@@ -149,490 +402,45 @@ getConfigProject();
         <H1 class="!mb-0">{{ $t('common.settings') }}</H1>
         <AtomsLanguageSwitcher />
       </div>
-      <h2 class="text-xl my-2 mb-4 font-bold">{{ $t('settings_block.master_tables') }}</h2>
+      <Tabs class="mb-4" list-role="tablist">
+        <li v-for="tab in settingsTabs" :key="tab.key" class="me-2" role="presentation">
+          <a :id="`tab_${tab.key}`" :href="`?tab=${tab.key}`" role="tab" :aria-selected="activeTab === tab.key"
+            :aria-controls="`panel_${tab.key}`" @click.prevent="setActiveTab(tab.key)" :class="{
+            'text-sky-600 border-sky-600': activeTab === tab.key,
+            'hover:text-gray-600 hover:border-gray-300': activeTab !== tab.key,
+          }">
+            <Icon :name="tab.icon" class="display-inline mr-2" />
+            {{ tab.label }}
+          </a>
+        </li>
+      </Tabs>
 
-      <h3 v-if="permissions?.permissions?.view_service" class="text-lg mb-2 font-bold pl-3">{{ $t('service') }}</h3>
-      <ul v-if="permissions?.permissions?.view_service" class="text-base ml-3 pl-6 list-disc mb-4">
+      <div class="relative mb-6 max-w-md">
+        <Icon name="fa6-solid:magnifying-glass" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input v-model="searchText" type="search" class="input !pl-9" :placeholder="t('common.search')" />
+      </div>
 
-        <li class="mb-1">
-          <NuxtLink to="/service/exploitations/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/service/exploitations/') != -1 }">{{ t('service') }}: {{
-              t('service_block.exploitations') }}</NuxtLink>
-        </li>
-        <li class="mb-1">
-          <NuxtLink to="/service/companies/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/service/companies/') != -1 }">{{ t('service') }}: {{
-              t('service_block.companies') }}</NuxtLink>
-        </li>
+      <section v-for="tab in ['general', 'master_tables']" v-show="activeTab === tab" :id="`panel_${tab}`" :key="tab"
+        role="tabpanel" :aria-labelledby="`tab_${tab}`">
+        <div v-for="section in (tab === 'general' ? generalSections : masterSections)" :key="section.key">
+          <h3 class="text-lg mb-2 font-bold pl-3">{{ section.title }}</h3>
+          <ul class="text-base ml-3 pl-6 list-disc mb-4">
+            <li v-for="item in section.items" :key="item.to || item.entity || item.region || item.dictionaryKind" class="mb-1">
+              <NuxtLink v-if="item.to" :to="item.to" class="text-sky-500 underline hover:no-underline">{{ item.label }}
+              </NuxtLink>
+              <button v-else @click="openItem(item)" class="text-sky-500 underline hover:no-underline">{{ item.label
+                }}</button>
+            </li>
+          </ul>
+        </div>
+        <p v-if="!(tab === 'general' ? generalSections : masterSections).length" class="pl-3 text-slate-500">
+          {{ t('common.no_results') }}</p>
+      </section>
 
-        <li class="mb-1"><button
-            @click="showConfigList((t('service_block.companies') + ': ' + t('common.type')), 'service/company-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('service_block.companies') }}: {{ t('common.type')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.supply_points') + ': ' + t('common.statuses')), 'service/supply-point-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.supply_points') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.supply_points') + ': ' + t('common.type')), 'service/supply-point-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.supply_points') }}: {{ t('common.type')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.supply_points') + ': ' + t('service_block.supply_source')), 'service/supply-point-source', false, false, false)"
-            class="text-sky-500 underline hover:no-underlinee">{{ t('common.supply_points') }}: {{
-              t('service_block.supply_source') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.supply_points') + ': ' + t('service_block.supply_type')), 'service/supply-point-supply-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.supply_points') }}: {{
-              t('service_block.supply_type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.supply_points') + ': ' + t('address_block.location')), 'service/supply-point-placement', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.supply_points') }}: {{
-              t('address_block.location') }}</button></li>
-
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.meters') + ': ' + t('common.statuses')), 'service/meter-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.meters') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.meters') + ': ' + t('service_block.calibers')), 'service/meter-caliber', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.meters') }}: {{ t('service_block.calibers')
-            }}</button></li>
-
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.clusters') + ' ' + t('service_block.nozzles') + ': ' + t('common.statuses')), 'service/cluster-nozzle-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.clusters') }} {{ t('service_block.nozzles')
-            }}: {{ t('common.statuses') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.clusters') + ' ' + t('service_block.nozzles') + ': ' + t('common.type')), 'service/cluster-nozzle-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.clusters') }} {{ t('service_block.nozzles')
-            }}: {{ t('common.type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.clusters') + ': ' + t('common.statuses')), 'service/cluster-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.clusters') }}: {{ t('common.statuses')
-            }}</button></li>
-
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('common.statuses')), 'service/connection-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('common.type')), 'service/connection-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{ t('common.type')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('service_block.installation_type')), 'service/connection-installation-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{
-              t('service_block.installation_type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('common.usage_type')), 'service/connection-use-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{ t('common.usage_type')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('service_block.valve_type')), 'service/connection-valve-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{
-              t('service_block.valve_type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('service_block.diameters')), 'service/connection-diameter', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{
-              t('service_block.diameters') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('service_block.materials')), 'service/connection-material', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{
-              t('service_block.materials') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connections') + ': ' + t('common.documentation')), 'service/connection-documentation-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connections') }}: {{
-              t('common.documentation') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.clusters') + ': ' + t('common.documentation')), 'service/cluster-documentation-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.clusters') }}: {{ t('common.documentation')
-            }}</button></li>
-
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connection_requests') + ': ' + t('common.statuses')), 'service/connection-request-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connection_requests') }}: {{
-              t('common.statuses') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connection_requests') + ': ' + t('service_block.connection_request_form.building_type')), 'service/connection-request-building-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connection_requests') }}: {{
-              t('service_block.connection_request_form.building_type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.connection_requests') + ': ' + t('service_block.connection_request_form.representative_type')), 'service/connection-request-representative-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.connection_requests') }}: {{
-              t('service_block.connection_request_form.representative_type') }}</button></li>
-
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.supply_cuts') + ': ' + t('common.statuses')), 'service/supply-cut-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.supply_cuts') }}: {{ t('common.statuses')
-            }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_service" class="text-lg mb-2 font-bold pl-3">{{
-        $t('address_block.addresses') }}</h3>
-      <ul v-if="permissions?.permissions?.view_service" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
-          <NuxtLink to="/service/streets/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/service/streets/') != -1 }">{{
-              t('address_block.street_management') }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('address_block.streets') + ': ' + t('common.type')), 'coredata/street-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('address_block.streets') }}: {{ t('common.type')
-            }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_contract" class="text-lg mb-2 font-bold pl-3">{{ $t('contracting') }}
-      </h3>
-      <ul v-if="permissions?.permissions?.view_contract" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1"><button
-            @click="showConfigList((t('person') + ': ' + t('common.identificator')), 'coredata/identification-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('person') }}: {{ t('common.identificator')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('common.statuses')), 'contract/contract-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('common.statuses') }}</button>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('common.usage_type')), 'contract/contract-use-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('common.usage_type') }}</button>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('contract_block.client_type')), 'contract/contract-client-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('contract_block.client_type')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('contract_block.representative_type')), 'contract/contract-representative-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{
-              t('contract_block.representative_type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('common.documentation')), 'contract/contract-documentation-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('common.documentation')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('contract_block.category')), 'contract/contract-category', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('contract_block.category')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('contract_block.surrogation')), 'contract/contract-surrogation-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('contract_block.surrogation')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('contract_block.surrogation') + ' ' + t('common.doc_type').toLowerCase()), 'contract/contract-surrogation-document-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('contract_block.surrogation') }}
-            {{ t('common.doc_type').toLowerCase() }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract') + ': ' + t('contract_block.tenant_change') + ' ' + t('common.doc_type').toLowerCase()), 'contract/contract-tenant-change-document-type', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract') }}: {{ t('contract_block.tenant_change')
-            }} {{ t('common.doc_type').toLowerCase() }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.aca_documents') + ': ' + t('common.statuses')), 'contract/aca-document-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.aca_documents') }}: {{ t('common.statuses')
-            }}</button></li>
-
-        <li class="mb-1">
-          <NuxtLink to="/contract/contract-request-type/" class="text-sky-500 underline hover:no-underline">{{
-            t('contract_request') }}: {{ t('common.type') }}</NuxtLink>
-        </li>
-        <li class="mb-1">
-          <NuxtLink to="/contract/clause-templates/" class="text-sky-500 underline hover:no-underline">{{
-            t('contract_block.clauses') }}: {{ t('contract_block.clause_templates') }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract_request') + ': ' + t('common.statuses')), 'contract/contract-request-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract_request') }}: {{ t('common.statuses')
-            }}</button></li>
-
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract_termination_request') + ': ' + t('common.type')), 'contract/contract-termination-request-type', false, false, false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract_termination_request') }}: {{
-              t('common.type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('contract_termination_request') + ': ' + t('common.statuses')), 'contract/contract-termination-request-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('contract_termination_request') }}: {{
-              t('common.statuses') }}</button></li>
-
-        <li class="mb-1">
-          <NuxtLink to="/contract/bonification-type/" class="text-sky-500 underline hover:no-underline">{{
-            t('bonifications') }}: {{ t('contract_block.bonification_type') }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button @click="showConfigVariableTypes" class="text-sky-500 underline hover:no-underline">{{
-          t('variables') }}: {{ t('contract_block.variable_type') }}</button></li>
-        <li class="mb-1"><button @click="showConfigBailTypes" class="text-sky-500 underline hover:no-underline">{{
-          t('bail') }}: {{ t('billing_block.bail_type') }}</button></li>
-        <li class="mb-1"><button @click="showConfigBankList" class="text-sky-500 underline hover:no-underline">{{
-          t('common.banks') }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_order" class="text-lg mb-2 font-bold pl-3">{{ $t('work_orders') }}</h3>
-      <ul v-if="permissions?.permissions?.view_order" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
-          <NuxtLink to="/order/order-types/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/order/order-types/') != -1 }">{{ t('work_orders') }}: {{
-              t('common.type') }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button @click="showConfigOrderReasons" class="text-sky-500 underline hover:no-underline">{{
-          t('work_orders') }}: {{ t('order_block.reasons') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('work_orders') + ': ' + t('common.statuses')), 'order/order-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('work_orders') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('work_orders') + ': ' + t('common.priority')), 'order/order-priority', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('work_orders') }}: {{ t('common.priority')
-            }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_pricing" class="text-lg mb-2 font-bold pl-3">{{ $t('pricing') }}</h3>
-      <ul v-if="permissions?.permissions?.view_pricing" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
-          <NuxtLink to="/pricing/billing-ranges/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/pricing/billing-ranges/') != -1 }">{{ (t('pricing')) }}: {{
-              (t('pricing_block.billing_ranges')) }}</NuxtLink>
-        </li>
-        <li class="mb-1">
-          <NuxtLink to="/pricing/line-item-types/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/pricing/line-item-types/') != -1 }">{{ (t('pricing')) }}: {{
-              (t('pricing_block.line_items')) }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.products') + ': ' + t('common.origins')), 'pricing/product-origin', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.products') }}: {{ t('common.origins')
-            }}</button></li>
-        <!-- <li class="mb-1"><button @click="showConfigList($t('Conceptes: Variables de càlcul'), 'pricing/variable-calculation', false, false, false, true)" class="text-sky-500 underline hover:no-underline">{{ $t('Conceptes: Variables de càlcul') }}</button></li> -->
-        <li class="mb-1"><button
-            @click="showConfigList((t('taxes') + ': ' + t('common.type')), 'pricing/tax', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('taxes') }}: {{ t('common.type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('billing') + ': ' + t('pricing_block.periodicity')), 'pricing/billing-period', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('billing') }}: {{ t('pricing_block.periodicity')
-            }}</button></li>
-        <!-- <li class="mb-1"><button @click="showConfigList((t('billing') + ': ' + t('pricing_block.account_code')), 'pricing/article-code', false, false, false, true)" class="text-sky-500 underline hover:no-underline">{{ t('billing') }}: {{ t('pricing_block.account_code') }}</button></li>
-      <li class="mb-1"><NuxtLink to="/pricing/article-codes/" class="text-sky-500 underline hover:no-underline" :class="{ 'bg-slate-200': $route.path.indexOf('/pricing/article-codes/') != -1 }">{{ (t('pricing')) }}: {{ (t('settings_block.config_article_codes')) }}</NuxtLink></li> -->
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_billing" class="text-lg mb-2 font-bold pl-3">{{ $t('billing') }}</h3>
-      <ul v-if="permissions?.permissions?.view_billing" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
-          <NuxtLink to="/billing/biller/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/billing/biller/') != -1 }">{{ $t('common.configure') }} {{
-              $t('billing_block.biller') }}</NuxtLink>
-        </li>
-
-        <!-- <li class="mb-1"><NuxtLink to="/billing/payments/" class="text-sky-500 underline hover:no-underline">{{ $t('Facturació: Pagaments') }}</NuxtLink></li> -->
-        <li class="mb-1"><button
-            @click="showConfigList((t('billing') + ': ' + t('common.statuses')), 'billing/billing-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('billing') }}: {{ t('common.statuses') }}</button>
-        </li>
-        <!-- <li class="mb-1"><NuxtLink to="/pricing/line-item-types/" class="text-sky-500 underline hover:no-underline" :class="{ 'bg-slate-200': $route.path.indexOf('/pricing/line-item-types/') != -1 }">{{ $t('Lots de facturació: Plantilles') }}</NuxtLink></li> -->
-
-        <!-- <li class="mb-1"><button @click="showConfigList($t('Pagaments: Estats'), 'billing/payment-status', true, false, false, true)" class="text-sky-500 underline hover:no-underline">{{ $t('Pagaments: Estats') }}</button></li> -->
-        <li class="mb-1"><button
-            @click="showConfigList((t('invoices') + ': ' + t('common.statuses')), 'billing/invoice-status', true, false, true, true)"
-            class="text-sky-500 underline hover:no-underline">{{ $t('invoices') }}: {{ t('common.statuses') }}</button>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('payment') + ': ' + t('common.statuses')), 'billing/payment-status', true, false, true, true)"
-            class="text-sky-500 underline hover:no-underline">{{ $t('payment') }}: {{ t('common.statuses') }}</button>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('billing_block.joined_payment') + ': ' + t('common.statuses')), 'billing/joined-payment-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ $t('billing_block.joined_payment') }}: {{
-              t('common.statuses') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('commitment_deposit') + ': ' + t('common.statuses')), 'billing/commitment-deposit-status', true, false, true, true)"
-            class="text-sky-500 underline hover:no-underline">{{ $t('commitment_deposit') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('claim_block.commitment_payments') + ': ' + t('common.statuses')), 'billing/payment-commitment-status', true, false, true, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('claim_block.commitment_payments') }}: {{
-              t('common.statuses') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('invoices') + ': ' + t('billing_block.series')), 'billing/invoice-serie', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('invoices') }}: {{ t('billing_block.series')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('invoices') + ': ' + t('common.type')), 'billing/invoice-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('invoices') }}: {{ t('common.type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('invoices') + ': ' + t('billing_block.alerts')), 'billing/invoice-warnings', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('invoices') }}: {{ t('billing_block.alerts')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('invoices') + ': ' + t('common.return_reason')), 'billing/reject-motive', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('invoices') }}: {{ t('common.return_reason')
-            }}</button></li>
-        <!-- <li class="mb-1"><NuxtLink to="/billing/messages/" class="text-sky-500 underline hover:no-underline">{{ $t('Facturació: Missatges') }}</NuxtLink></li> -->
-        <li class="mb-1">
-          <NuxtLink to="/billing/invoice-templates/" class="text-sky-500 underline hover:no-underline">{{ t('billing')
-            }} {{ t('billing_block.invoice_templates') }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('claim_block.claim_payments') + ': ' + t('common.statuses')), 'claimrequest/claim-request-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('claim_block.claim_payments') }}: {{
-              t('common.statuses') }}</button></li>
-        <li class="mb-1">
-          <NuxtLink to="/billing/claim-steps/" class="text-sky-500 underline hover:no-underline">{{
-            $t('claim_block.claim_payments') }}: {{ $t('billing_block.steps') }}</NuxtLink>
-        </li>
-        <!-- <li class="mb-1"><button @click="showConfigList((t('common.reports') + ': ' + t('pricing_block.account_codes')), 'statistics/accounting-code', false, false, false, true)" class="text-sky-500 underline hover:no-underline">{{ t('common.reports') }}: {{ t('pricing_block.account_codes') }}</button></li>
-      <li class="mb-1"><button @click="showConfigAccountValues()" class="text-sky-500 underline hover:no-underline">{{ t('common.reports') }}: {{ t('pricing_block.account_values') }}</button></li> -->
-        <li class="mb-1">
-          <NuxtLink to="/billing/vulnerability-request-type/" class="text-sky-500 underline hover:no-underline">{{
-            t('vulnerability_request') }}: {{ t('common.type') }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('invoices') + ': ' + t('billing_block.categories')), 'billing/invoice-category', false, false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('invoices') }}: {{ t('billing_block.categories')
-            }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_reading" class="text-lg mb-2 font-bold pl-3">{{ $t('readings') }}</h3>
-      <ul v-if="permissions?.permissions?.view_reading" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
-          <NuxtLink to="/reading/reading-batch-templates/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/reading/reading-batch-templates/') != -1 }">{{
-              $t('settings_block.config_reading_batch_template') }}</NuxtLink>
-        </li>
-        <li class="mb-1">
-          <NuxtLink to="/statistics/reading-batch-export-config" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/statistics/reading-batch-export-config') != -1 }">{{
-              $t('settings_block.reading_batch_export_file') }}</NuxtLink>
-        </li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.reading_batches') + ': ' + t('common.statuses')), 'billing/reading-batch-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.reading_batches') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('billing_block.invoice_alerts') + ': ' + t('common.type')), 'billing/reading-alert-type', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('billing_block.invoice_alerts') }}: {{
-              t('common.type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('billing_block.reader_alerts') + ': ' + t('common.type')), 'billing/reader-alert', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('billing_block.reader_alerts') }}: {{
-              t('common.type') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('billing_block.remote_alerts') + ': ' + t('common.type')), 'billing/remote-reading-alert', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('billing_block.remote_alerts') }}: {{
-              t('common.type') }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_service" class="text-lg mb-2 font-bold pl-3">{{ $t('common.frauds') }}
-      </h3>
-      <ul v-if="permissions?.permissions?.view_service" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.fraud_mngs') + ': ' + t('common.statuses')), 'fraud/fraud-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.fraud_mngs') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.fraud_mngs') + ': ' + t('common.type')), 'fraud/fraud-type', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.fraud_mngs') }}: {{ t('common.type')
-            }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_customer_service" class="text-lg mb-2 font-bold pl-3">{{
-        $t('communication') }}</h3>
-      <ul v-if="permissions?.permissions?.view_customer_service" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1"><button
-            @click="showConfigList((t('communication') + ': ' + t('common.statuses')), 'communication/communication-status', true, false, true, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('communication') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('communication') + ': ' + t('common.use_type')), 'communication/communication-use-type', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('communication') }}: {{ t('common.use_type')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.comms_process_detail') + ': ' + t('common.statuses')), 'communication/communication-process-status', true, false, true, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.comms_process_detail') }}: {{
-              t('common.statuses') }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('customer_service_block.comms_templates') + ': ' + t('common.origins')), 'communication/message-origin', false, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('customer_service_block.comms_templates') }}: {{
-              t('common.origins') }}</button></li>
-        <li class="mb-1">
-          <NuxtLink to="/communication/message-templates/" class="text-sky-500 underline hover:no-underline">{{
-            t('communication') }}: {{ t('customer_service_block.comms_templates') }}</NuxtLink>
-        </li>
-        <!-- <li class="mb-1"><NuxtLink to="/communication/communications/" class="text-sky-500 underline hover:no-underline">{{ $t('Comunicacions') }}</NuxtLink></li> -->
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_customer_service" class="text-lg mb-2 font-bold pl-3">{{
-        $t('common.incidents') }}</h3>
-      <ul v-if="permissions?.permissions?.view_customer_service" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.incidents') + ': ' + t('common.type')), 'notification/incident-type', true, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.incidents') }}: {{ t('common.type')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.incidents') + ': ' + t('common.statuses')), 'notification/incident-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.incidents') }}: {{ t('common.statuses')
-            }}</button></li>
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.incidents') + ': ' + t('incident_settings.channels')), 'notification/incident-channel', false, false, false)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.incidents') }}: {{ t('incident_settings.channels') }}</button></li>
-        <li class="mb-1"><button @click="showIncidentSettings()"
-            class="text-sky-500 underline hover:no-underline">{{ t('incident_settings.title') }}</button></li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_customer_service" class="text-lg mb-2 font-bold pl-3">{{
-        $t('common.docs') }}</h3>
-      <ul v-if="permissions?.permissions?.view_customer_service" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1"><button
-            @click="showConfigList((t('common.doc') + ': ' + t('common.statuses')), 'statistics/daily-document-status', true, false, false, true)"
-            class="text-sky-500 underline hover:no-underline">{{ t('common.doc') }}: {{ t('common.statuses') }}</button>
-        </li>
-        <!-- <li class="mb-1"><button @click="showConfigList((t('common.doc') + ': ' + t('common.template')), 'statistics/daily-document-template', true, false, false)" class="text-sky-500 underline hover:no-underline">{{ t('common.doc') }}: {{ t('common.template') }}</button></li> -->
-        <li class="mb-1">
-          <NuxtLink to="/statistics/daily-document-templates/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/statistics/daily-document-templates/') != -1 }">{{
-              t('common.doc') }}: {{ $t('statistics_block.daily_document_templates') }}</NuxtLink>
-        </li>
-      </ul>
-
-      <h3 v-if="permissions?.permissions?.view_user" class="text-lg mb-2 font-bold pl-3">{{ $t('users') }}</h3>
-      <ul v-if="permissions?.permissions?.view_user" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
-          <NuxtLink to="/user/groups/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/user/groups/') != -1 }">{{ $t('settings_block.mng_groups')
-            }}</NuxtLink>
-        </li>
-        <li class="mb-1">
-          <NuxtLink to="/user/users/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/user/users/') != -1 }">{{ $t('settings_block.mng_users') }}
-          </NuxtLink>
-        </li>
-      </ul>
-
-      <h2 v-if="permissions?.permissions?.view_user" class="text-xl my-2 mb-4 font-bold">{{
-        $t('settings_block.settings') }}</h2>
-
-      <ul v-if="permissions?.permissions?.view_user" class="text-base ml-3 pl-6 list-disc mb-4">
-        <li class="mb-1">
-          <NuxtLink to="/settings/config_aca/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/settings/config_aca/') != -1 }">{{
-              t('settings_block.config_aca') }}</NuxtLink>
-        </li>
-        <li class="mb-1">
-          <NuxtLink to="/settings/accounting/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/settings/accounting/') != -1 }">{{
-              t('pricing_block.accounting') }}</NuxtLink>
-        </li>
-        <li v-if="smartMeteringEnabled" class="mb-1">
-          <NuxtLink to="/settings/smart_metering/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/settings/smart_metering/') != -1 }">{{
-              t('settings_block.smart_metering_config') }}</NuxtLink>
-        </li>
-        <li class="mb-1">
-          <NuxtLink to="/settings/send-batch/" class="text-sky-500 underline hover:no-underline"
-            :class="{ 'bg-slate-200': $route.path.indexOf('/settings/send-batch/') != -1 }">{{
-              t('settings_block.send_batch_config') }}</NuxtLink>
-        </li>
-      </ul>
-
-      <details v-if="permissions?.permissions?.view_user" class="text-base  pl-6">
-        <summary class="cursor-pointer">{{ $t('settings_block.internal_settings') }}</summary>
-        <ul v-if="config_projects.length" class="mt-3 ml-3 leading-6">
-          <li v-for="(item, index) in config_projects" :key="index" class="flex gap-3 items-center mb-1">
+      <section v-if="permissions?.can_edit_config_project" v-show="activeTab === 'internal'" id="panel_internal"
+        role="tabpanel" aria-labelledby="tab_internal">
+        <ul v-if="filteredConfigProjects.length" class="ml-3 leading-6">
+          <li v-for="item in filteredConfigProjects" :key="item.token" class="flex gap-3 items-center mb-1">
             <abbr class="font-bold" :title=item.name>{{ item.token }}:</abbr>
             <template v-if="editingConfigToken === item.token">
               <input v-model="editingConfigValue" type="text" class="input !w-auto !py-1 min-w-[12rem]"
@@ -655,7 +463,8 @@ getConfigProject();
             </template>
           </li>
         </ul>
-      </details>
+        <p v-else-if="config_projects.length" class="pl-3 text-slate-500">{{ t('common.no_results') }}</p>
+      </section>
 
     </div>
     <div v-else>
@@ -685,6 +494,8 @@ getConfigProject();
         <BankConfigList v-if="RegionActive == 'Bank'" />
         <IncidentSettings v-if="RegionActive == 'IncidentSettings'" />
         <AccountValuesRegion v-if="RegionActive == 'AccountValues'" @close="toggleRegion(false)" />
+        <MeterDictionaryList v-if="RegionActive == 'MeterDictionary' && meterDictionaryKind" :key="meterDictionaryKind"
+          :kind="meterDictionaryKind" :title="meterDictionaryTitle" />
       </div>
     </div>
   </div>

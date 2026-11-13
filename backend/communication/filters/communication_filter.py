@@ -19,6 +19,7 @@ class CommunicationFilter(filters.FilterSet):
     exclude_cancelled = filters.BooleanFilter(method='filter_exclude_cancelled')
     types = filters.CharFilter(method='filter_type')
     process = filters.CharFilter(field_name='process__id', lookup_expr='exact')
+    incident = filters.NumberFilter(field_name='incident__id', lookup_expr='exact')
     person = filters.CharFilter(method='filter_person')
     contract = filters.CharFilter(method='filter_contract')
     exploitation = filters.NumberFilter(method='filter_exploitation')
@@ -29,7 +30,7 @@ class CommunicationFilter(filters.FilterSet):
     
     class Meta:
         model = Communication
-        fields = ['search', 'process', 'status', 'person', 'is_individual', 'types', 'contract', 'exploitation', 'start_date', 'end_date', 'multi_page']
+        fields = ['search', 'process', 'incident', 'status', 'person', 'is_individual', 'types', 'contract', 'exploitation', 'start_date', 'end_date', 'multi_page']
 
     def filter_multi_page(self, queryset, name, value):
         if value is None:

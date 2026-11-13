@@ -7,12 +7,12 @@ import { formatMoneyWithCurrency } from '~/utils/money';
 import InvoiceRegion from '~/components/organisms/InvoiceRegion.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import AddInvoiceBudget from '~/components/molecules/AddInvoiceBudget.vue';
 import { useToast } from 'vue-toastification';
 import ManageInvoicesPaidRegion from '~/components/organisms/ManageInvoicesPaidRegion.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
+import { paymentSummaryText } from '~/utils/invoice-payment-summary';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -41,6 +41,8 @@ const toggleRegion = (force, isReload = false) => {
 }
 
 const openIndexDropdown = ref(false)
+// Operació «Despeses d'impagat»: només si el projecte la té activada (ConfigProject).
+const unpaidFeesEnabled = ref(false)
 
 const route = useRoute();
 const router = useRouter();
@@ -228,6 +230,7 @@ const exportColumns = computed(() => [
   { header: t('payment_types'), value: (row) => row.payment_type_final, key: 'payment_type' },
   { header: t('common.origin'), value: (row) => row.origin_name, key: 'origin' },
   { header: t('common.status'), value: (row) => row.status_name, key: 'status' },
+  { header: t('billing_block.payment_status_column'), value: (row) => paymentSummaryText(t, row.payment_summary), key: 'payment_status' },
   { header: t('common.due_date'), value: (row) => row.due_date ? formatDate(row.due_date) : '', key: 'due_date' },
 ]);
 
@@ -238,6 +241,36 @@ const exportInvoices = (columns) => $InvoiceApiService.exportData(
   searchInputTotalFinal.value, payment_types.value, searchInputLineItem.value,
   null, null, columns,
 );
+
+/**
+ * Column layout of the invoices table (same behaviour as the contracts table).
+ *
+ * `grow` shares the leftover horizontal space between the text columns (title and
+ * holder). `priority` decides what gets dropped first when the window is too
+ * narrow: 1 is never auto-hidden, 4 goes first. The user can hide, reorder and
+ * resize columns; the layout is remembered per user (see `useTableColumns`).
+ */
+const tableColumns = computed(() => [
+  {
+    key: 'serie', label: t('common.identification'), sortKey: 'serie_final',
+    width: 130, min: 110, priority: 1, removable: false,
+  },
+  { key: 'issue_date', label: t('common.date'), sortKey: 'issue_date', width: 82, min: 78, priority: 2 },
+  { key: 'title', label: t('common.title'), width: 200, grow: 3, min: 120, priority: 3 },
+  { key: 'holder', label: t('contract_block.holder'), sortKey: 'customer_token_final', width: 180, grow: 3, min: 130, priority: 1 },
+  { key: 'contract', label: t('contract'), width: 95, min: 80, priority: 2 },
+  { key: 'total_final', label: t('billing_block.total_invoice'), sortKey: 'total_final', width: 100, min: 85, priority: 2 },
+  { key: 'left_to_pay', label: t('billing_block.total_to_pay'), sortKey: 'left_to_pay', width: 100, min: 85, priority: 1 },
+  { key: 'payment_type', label: t('payment_types'), sortKey: 'payment_type', width: 110, min: 80, grow: 1, priority: 3 },
+  { key: 'origin', label: t('common.origin'), width: 100, min: 80, grow: 1, priority: 4 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 110, min: 90, priority: 1 },
+  { key: 'payment_status', label: t('billing_block.payment_status_column'), width: 150, min: 120, priority: 1 },
+  { key: 'due_date', label: t('common.due_date'), sortKey: 'due_date', width: 82, min: 78, priority: 2 },
+]);
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
 
 const handleSort = (key) => {
   if (sortBy.value === key) {
@@ -394,6 +427,9 @@ onMounted(async () => {
     getFilterOrigin()
     getFilterSerie()
     getFilterPaymentType()
+    $InvoiceApiService.getUnpaidFeesConfig()
+      .then(config => { unpaidFeesEnabled.value = !!config?.enabled })
+      .catch(() => { unpaidFeesEnabled.value = false })
     filtersExtra.value.push(
       { name: t("common.date"), id: "issue_date" },
       { name: t("common.due_date"), id: "due_date" },
@@ -510,6 +546,12 @@ watch(() => route.query, () => {
                 <div class="flex justify-between items-center">
                   {{ $t('billing_block.short_mng_e_invoice') }}
                   <Icon name="fa6-solid:file" class="display-inline mr-2" />
+                </div>
+              </NuxtLink>
+              <NuxtLink v-if="unpaidFeesEnabled" to="/billing/invoice/unpaid-fees" class="button-default">
+                <div class="flex justify-between items-center">
+                  {{ $t('billing_block.unpaid_fee_title') }}
+                  <Icon name="fa6-solid:file-invoice-dollar" class="display-inline mr-2" />
                 </div>
               </NuxtLink>
           </div>
@@ -634,62 +676,61 @@ watch(() => route.query, () => {
     </div>
 
     <DataTable
-      grid-template="120px,90px,220px,150px,100px,100px,100px,80px,100px,120px,90px"
+      table-key="invoices"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :height-offset="240"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="serie_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.date')" sortKey="issue_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.title')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.holder')" sortKey="customer_token_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-        @sort="handleSort" />
-        <TableHeader :label="$t('contract')" :sortable="false" />
-        <TableHeader :label="$t('billing_block.total_invoice')" sortKey="total_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.total_to_pay')" sortKey="left_to_pay" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('payment_types')" sortKey="payment_type" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.origin')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.due_date')" sortKey="due_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-serie="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id, 'InvoiceRegion');">
+          <abbr :title="item.id" class="no-underline truncate">{{ item.serie_final }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id, 'InvoiceRegion');">
-              <abbr :title="item.id" class="no-underline">{{ item.serie_final }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1">{{ formatDate(item.issue_date) }}</span>
-          <span class="p-1">{{ item.title_final }}</span>
-          <span class="p-1"><abbr :title="item.customer_token">{{ item.customer_final }}</abbr></span>
-          <span class="p-1">{{ item.contract_token ? item.contract_token : item.contract_request_token ? item.contract_request_token : item.contract_termination_contract_token ? item.contract_termination_contract_token : '-' }}</span>
+      <template #cell-issue_date="{ item }">{{ formatDate(item.issue_date) }}</template>
 
-          <span class="p-1">{{ formatMoneyWithCurrency(item.total_final) }}</span>
-          <span class="p-1">{{ formatMoneyWithCurrency(item.left_to_pay) }}</span>
-          <span class="p-1 text-sm">{{ item.payment_type_final }}</span>
-          <span class="p-1">{{ item.origin_name }}</span>
-          <span>
-            <AtomsColorBadge :value="item?.status_name" :color="item?.status_color" />
-          </span>
-          <span class="p-1">{{ item.due_date ? formatDate(item.due_date) : '' }}</span>
-        </div><!-- end for items -->
+      <template #cell-title="{ item }">
+        <span class="truncate" :title="item.title_final">{{ item.title_final }}</span>
       </template>
+
+      <template #cell-holder="{ item }">
+        <span class="truncate" :title="item.customer_token">{{ item.customer_final }}</span>
+      </template>
+
+      <template #cell-contract="{ item }">
+        {{ item.contract_token || item.contract_request_token || item.contract_termination_contract_token || '-' }}
+      </template>
+
+      <template #cell-total_final="{ item }">{{ formatMoneyWithCurrency(item.total_final) }}</template>
+      <template #cell-left_to_pay="{ item }">{{ formatMoneyWithCurrency(item.left_to_pay) }}</template>
+
+      <template #cell-payment_type="{ item }">
+        <span class="truncate text-sm" :title="item.payment_type_final">{{ item.payment_type_final }}</span>
+      </template>
+
+      <template #cell-origin="{ item }">
+        <span class="truncate" :title="item.origin_name">{{ item.origin_name }}</span>
+      </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item?.status_name" :color="item?.status_color" />
+      </template>
+
+      <template #cell-payment_status="{ item }">
+        <AtomsInvoicePaymentStatus :summary="item.payment_summary" />
+      </template>
+
+      <template #cell-due_date="{ item }">{{ item.due_date ? formatDate(item.due_date) : '' }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

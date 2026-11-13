@@ -91,7 +91,7 @@ def _property_config():
         return f"{rp.route.token if rp.route else ''} - {rp.position if rp.position is not None else ''}".strip(" -")
 
     available_columns = {
-        "token": (_("Token"), lambda p: p.token or ""),
+        "id": (_("Identificador"), lambda p: p.id),
         "name": (_("Nom"), lambda p: p.name or ""),
         "city": (_("Municipi"), lambda p: p.address_city.name if p.address_city else ""),
         "cadastral": (_("Cadastral"), lambda p: p.cadastral or ""),
@@ -108,7 +108,7 @@ def _property_config():
         available_columns=available_columns,
         default_columns=list(available_columns.keys()),
         document_entity="PROPERTY",
-        default_ordering="token",
+        default_ordering="id",
         service_key="connection",
     )
 
@@ -291,10 +291,11 @@ def _biller_config():
         "period_type": (_("Periodicitat"), lambda b: b.get_period_type_display() if b.period_type else ""),
         "initial_month": (_("Mes inicial"), lambda b: b.get_initial_month_display() if b.initial_month else ""),
         "is_active": (_("Actiu"), lambda b: "Sí" if b.is_active else "No"),
+        "exploitation": (_("Explotació"), lambda b: b.exploitation.name if b.exploitation else ""),
     }
 
     return ExportConfig(
-        queryset=lambda: Biller.objects.all(),
+        queryset=lambda: Biller.objects.select_related('exploitation'),
         filterset_class=BillerFilter,
         permission_classes=[IsAuthenticated, export_permission_class('billing', 'biller')],
         available_columns=available_columns,

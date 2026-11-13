@@ -80,7 +80,8 @@ class BillingQueueActionTests(TestCase):
         first.refresh_from_db()
         second.refresh_from_db()
         self.assertEqual(first.status, 'failed')
-        self.assertIn('broker caigut', first.error_message)
+        self.assertNotIn('broker caigut', first.error_message)
+        self.assertIn('engegar', first.error_message)
         self.assertEqual(second.status, 'running')
 
     # --- kill / skip / restart --------------------------------------------

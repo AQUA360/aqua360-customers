@@ -11,6 +11,7 @@ const objectPermissions = ref(null);
 const { $OrderApiService } = useNuxtApp();
 const route = useRoute();
 const contractId = route.query.contract_id ? Number(route.query.contract_id) : null;
+const connectionRequestId = route.query.connection_request_id ? Number(route.query.connection_request_id) : null;
 onMounted(async () => {
   objectPermissions.value = await checkPermission($OrderApiService);
   if (!objectPermissions.value.can_change) {
@@ -26,7 +27,7 @@ onMounted(async () => {
       <H1>{{ $t('order_block.new_order') }}</H1>
     </div>
     <div class="border m-2 rounded border-gray-300">
-      <OrderEdit :id="null" :contract_id="contractId" />
+      <OrderEdit :id="null" :contract_id="contractId" :connection_request_id="connectionRequestId" />
     </div>
   </div>
 </template>

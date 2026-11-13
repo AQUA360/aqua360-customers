@@ -7,13 +7,23 @@ from rest_framework.response import Response
 from rest_framework.filters import SearchFilter
 from service.permissions import MeterPermission
 from service.utils.meter_dictionary_service import get_or_create_dictionary_value
+from service.views.meter_dictionary_mixin import MeterDictionaryViewSetMixin
 
-class MeterModelViewSet(viewsets.ModelViewSet):
+class MeterModelViewSet(MeterDictionaryViewSetMixin, viewsets.ModelViewSet):
     queryset = MeterModel.objects.all().order_by('name')
     serializer_class = MeterModelSerializer
     permission_classes = [IsAuthenticated, MeterPermission]
     filter_backends = [SearchFilter] 
     search_fields = ['name']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        manufacturer_id = self.request.query_params.get('manufacturer')
+        if manufacturer_id is not None and self.action == 'list':
+            if not manufacturer_id.isdigit():
+                return queryset.none()
+            queryset = queryset.filter(manufacturer_id=manufacturer_id)
+        return queryset
     
     @action(detail=False, methods=['get'])
     def by_manufacturer(self, request):

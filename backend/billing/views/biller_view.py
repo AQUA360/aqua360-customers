@@ -21,10 +21,10 @@ class BillerViewSet(viewsets.ModelViewSet):
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   # filterset_class = InvoiceFilter
   search_fields = ['token','name']
-  ordering_fields = ['token','name']
+  ordering_fields = ['token', 'name', 'exploitation__name', 'period_type', 'initial_month', 'is_active']
 
   def get_queryset(self):
-    qs = Biller.objects.all()
+    qs = Biller.objects.select_related('exploitation')
     exploitation_id = self.request.query_params.get('exploitation')
     if exploitation_id:
       qs = qs.filter(exploitation_id=exploitation_id)

@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.translation import gettext_lazy as _
 
@@ -335,8 +335,16 @@ class Billing(models.Model):
     send_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
+    # Període de consum que factura el lot. Null als lots antics (es dedueix del codi/data de creació).
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+
     # Comptadors fixats en processar la facturació (resum per ruta); null mentre està oberta.
     metrics_snapshot = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
+
+    # Contractes que no s'han pogut facturar en el darrer processat (pre-factures):
+    # [{contract_id, contract_token, code, message, hint, at}]. Es treuen en tornar-los a processar.
+    process_errors = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
     
     class Meta:
         verbose_name = "Billing"
@@ -1047,9 +1055,18 @@ class Payment(models.Model):
     class Meta:
         verbose_name = "Payment"
         verbose_name_plural = "Payments"
-    
+
     def __str__(self):
         return f"Payment {self.token} of {self.amount} for Invoice {self.invoice.token if self.invoice else 'No invoice'}"
+
+    def save(self, *args, **kwargs):
+        """Els pagaments de compromís (sense factura) es desen en la mateixa transacció que
+        el cobrament que en fan els senyals: si el cobrament falla, el pagament no queda pagat
+        i es pot tornar a cobrar."""
+        if self.commitment_deposit_id and not self.invoice_id:
+            with transaction.atomic():
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
 
 class PaymentRemittance(models.Model):
@@ -1408,3 +1425,41 @@ class BillingDocumentDownload(models.Model):
         else:
             origin = f"Billing {self.billing_id}"
         return f"BillingDocumentDownload {self.id} ({self.status}) for {origin}"
+
+class UnpaidFeeRun(models.Model):
+    """Una execució de l'operació «Despeses d'impagat» de la llista de factures.
+
+    Guarda la tasca de Celery perquè, si es surt de la pantalla i s'hi torna,
+    es pugui seguir el procés en curs. També en queda constància de qui l'ha
+    llançat, amb quines tarifes i què ha fet.
+    """
+
+    STATUS_RUNNING = 'running'
+    STATUS_DONE = 'done'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_RUNNING, 'Running'),
+        (STATUS_DONE, 'Done'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_RUNNING)
+    invoice_count = models.PositiveIntegerField(default=0)
+    price_rates = models.ManyToManyField(PriceRate, blank=True, related_name='+')
+    result = models.JSONField(null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        # La base de dades garanteix que només n'hi ha una en curs, encara que
+        # arribin dues peticions alhora.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['status'], condition=models.Q(status='running'), name='unpaid_fee_run_single_running'),
+        ]
+
+    def __str__(self):
+        return f'{self.created_at:%Y-%m-%d %H:%M} ({self.status})'

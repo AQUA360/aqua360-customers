@@ -21,6 +21,8 @@ import ClusterRegion from './ClusterRegion.vue';
 import SupplyCutRegion from './SupplyCutRegion.vue';
 import IncidentCallEdit from '../molecules/IncidentCallEdit.vue';
 import IncidentTimeline from '../molecules/IncidentTimeline.vue';
+import CommunicationMiniDetail from '../molecules/CommunicationMiniDetail.vue';
+import CommunicationRegion from './CommunicationRegion.vue';
 import { formatDateTime } from '~/utils/date';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import { useToast } from 'vue-toastification';
@@ -38,7 +40,7 @@ const props = defineProps({
 const emit = defineEmits(['show-subregion', 'changed', 'close-subregion']);
 
 const router = useRouter();
-const { $IncidentApiService, $ConfigProjectApiService } = useNuxtApp();
+const { $IncidentApiService, $ConfigProjectApiService, $CommunicationApiService } = useNuxtApp();
 const pending = ref(true);
 const error = ref(null);
 const data = ref(null);
@@ -49,6 +51,9 @@ const reportNumber = ref(0)
 const logNumber = ref(0)
 const orderNumber = ref(0)
 const callNumber = ref(0)
+const communicationNumber = ref(0)
+const communicationReload = ref(false)
+const communicationPermissions = ref(null)
 const callReload = ref(false)
 const timelineNumber = ref(0)
 const timelineReload = ref(false)
@@ -77,6 +82,18 @@ const updateOrderCount = (num) => {
 
 const updateCallCount = (num) => {
   callNumber.value = num;
+}
+
+const updateCommunicationCount = (num) => {
+  communicationNumber.value = num;
+}
+
+// Reaprofita l'assistent de comunicacions: hi arriba amb la incidència (i el contracte, si en té)
+// perquè la comunicació quedi vinculada i en tornar es vegi a la pestanya de comunicacions.
+const newCommunication = () => {
+  const query = { incident_id: props.id };
+  if (data.value?.contract?.id) query.contract_id = data.value.contract.id;
+  return navigateTo({ path: '/communication/communications/add', query });
 }
 
 const deleteIncident = async () => {
@@ -215,6 +232,11 @@ onMounted(async () => {
     incidentStatusClosedToken.value = '2';
   });
   await getPermissions();
+  $CommunicationApiService.getPermissions().then(result => {
+    communicationPermissions.value = result;
+  }).catch(() => {
+    communicationPermissions.value = null;
+  });
   if (objectPermissions.value?.can_view) {
     getData();
   } else {
@@ -257,6 +279,9 @@ onMounted(async () => {
           </DropdownOption>
           <DropdownOption v-if="data.contract" :name="t('incident_block.new_call')" @click="showDetail('IncidentCallEdit', props.id)">
             <Icon name="fa6-solid:phone" class="display-inline mr-2" /> {{ t('incident_block.new_call') }}
+          </DropdownOption>
+          <DropdownOption v-if="communicationPermissions?.can_add" :name="t('incident_block.new_comm')" @click="newCommunication">
+            <Icon name="fa6-solid:envelope" class="display-inline mr-2" /> {{ t('incident_block.new_comm') }}
           </DropdownOption>
           <DropdownOption :name="t('incident_block.send_receipt')" @click="sendReceipt">
             <Icon name="fa6-solid:file-pdf" class="display-inline mr-2" /> {{ t('incident_block.send_receipt') }}
@@ -305,6 +330,13 @@ onMounted(async () => {
             :class="{ 'text-sky-600 border-sky-600': activeTab === 'calls', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'calls' }">
             <Icon name="fa6-solid:phone" class="display-inline mr-2" />
             {{ $t('incident_block.calls') }} ({{ callNumber }})
+          </a>
+        </li>
+
+        <li v-if="communicationPermissions?.can_view" class="me-2">
+          <a href="#tab_communications" @click.prevent="setActiveTab('communications')"
+            :class="{ 'text-sky-600 border-sky-600': activeTab === 'communications', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'communications' }">
+            <Icon name="fa6-solid:envelope" class="display-inline mr-2" /> {{ $t('incident_block.comms') }} ({{ communicationNumber }})
           </a>
         </li>
 
@@ -357,6 +389,18 @@ onMounted(async () => {
           @update:count="updateCallCount" :incident="data" :contract="data.contract" />
       </section>
 
+      <section v-if="communicationPermissions?.can_view" v-show="activeTab === 'communications'" role="tabpanel" id="tab_communications" class="bg-white antialiased">
+        <div v-if="objectPermissions?.can_change && communicationPermissions?.can_add" class="flex justify-end mt-2 mb-2">
+          <button type="button" @click="newCommunication" class="button-primary !px-2.5 !py-1 text-xs">
+            <Icon name="fa6-solid:envelope" />
+            <span class="ml-1">{{ t('incident_block.new_comm') }}</span>
+          </button>
+        </div>
+        <CommunicationMiniDetail v-if="data" :incident_id="props.id" :reload="communicationReload"
+          :isSubRegion="isSubRegion" :exportable="false" max_height="40vh"
+          @update:count="updateCommunicationCount" @show-detail="showDetail" />
+      </section>
+
       <section v-show="activeTab === 'timeline'" role="tabpanel" id="tab_timeline" class="bg-white antialiased">
         <IncidentTimeline v-if="data" :id="props.id" :reload="timelineReload" @update:count="(num) => timelineNumber = num" />
       </section>
@@ -405,6 +449,8 @@ onMounted(async () => {
         <ClusterRegion v-if="showRegionDetailComponent === 'ClusterRegion'" :id="parseInt(regionDetailId)"
           :isSubRegion="true" />
         <SupplyCutRegion v-if="showRegionDetailComponent === 'SupplyCutRegion'" :id="parseInt(regionDetailId)" />
+        <CommunicationRegion v-if="showRegionDetailComponent === 'CommunicationRegion'" :id="regionDetailId"
+          :isSubRegion="true" @changed="communicationReload = !communicationReload; timelineReload = !timelineReload" />
         <IncidentCallEdit v-if="showRegionDetailComponent === 'IncidentCallEdit'" :incident="data"
           @changed="onCallChanged" />
       </div>

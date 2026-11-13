@@ -89,7 +89,7 @@ watch(() => props.id, (newId, oldId) => {
           </span>
         </button>
       </div>
-      <FieldDetail :label='$t("common.name")' :value=localData.full_name></FieldDetail>
+      <FieldDetail :label='localData.is_juridic ? $t("common.name_social") : $t("common.name")' :value=localData.full_name></FieldDetail>
       <FieldDetail v-if="localData.is_juridic && localData.current_record" :label='$t("billing_block.current_record")' 
         :value=localData.current_record></FieldDetail>
       <div class="col-span-2 flex items-center gap-2">

@@ -128,6 +128,9 @@ msgstr "Sense tarifes"
 msgid "Contract"
 msgstr "Contracte"
 
+msgid "Customer"
+msgstr "Abonat"
+
 #: billing/utils/billing_service.py:47
 msgid "Creation date"
 msgstr "Data creació"
@@ -3338,6 +3341,16 @@ msgstr "Correu enviat"
 
 #: notification/utils/incident_timeline.py
 #, python-format
+msgid "Communication %(token)s"
+msgstr "Comunicació %(token)s"
+
+#: notification/utils/incident_timeline.py
+#, python-format
+msgid "Communication %(token)s sent"
+msgstr "Comunicació %(token)s enviada"
+
+#: notification/utils/incident_timeline.py
+#, python-format
 msgid "Report %(token)s"
 msgstr "Informe %(token)s"
 
@@ -6301,3 +6314,11 @@ msgstr "Per a cada contracte amb saldo o deute, el saldo positiu de la guardiola
 #: statistics/opscripts/0005_add_wallet_debt_balance_at_date_report.py
 msgid "Descarregar Excel"
 msgstr "Descarregar Excel"
+
+#: billing/utils/payment_remittance_lock_service.py
+msgid "This remittance has already been sent and can no longer be modified."
+msgstr "Aquesta remesa ja s'ha enviat i no es pot modificar."
+
+#: billing/views/invoice_view.py
+msgid "La factura no té lectures"
+msgstr "La factura no té lectures"

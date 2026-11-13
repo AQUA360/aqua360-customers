@@ -37,10 +37,12 @@ from coredata.models import (
     City,
     ConfigProject,
     Country,
+    IdentificationType,
     Person,
     PersonAddress,
     PersonBank,
     PersonContact,
+    PersonPiggyBank,
     PostalCode,
     Street,
     StreetNumber,
@@ -851,6 +853,226 @@ class InvoiceFilterAlignmentTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.data, {"error": "Contract not found"})
+
+
+class ConsumptionContractIsolationTests(TestCase):
+    """Protecció de dades: amb contractes consecutius al mateix punt de
+    subministrament i comptador, els endpoints de consums d'un contracte mai
+    retornen lectures d'un altre contracte ni de fora del seu període."""
+
+    OLD_TOKEN = "ISO-OLD"
+    NEW_TOKEN = "ISO-NEW"
+    EMPTY_TOKEN = "ISO-EMPTY"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-consumption-isolation-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            ConfigProject.objects.get_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.status = ContractStatus.objects.create(token="1", name="Activo")
+        cls.sent_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        old_holder = Person.objects.create(token="00000001R", name="Anterior")
+        new_holder = Person.objects.create(token="00000002W", name="Nou")
+
+        cls.meter = Meter.objects.create(code="MTR-ISO-1")
+        cls.replacement_meter = Meter.objects.create(code="MTR-ISO-2")
+        cls.supply_point = SupplyPoint.objects.create(
+            token="99999/9999", meter=cls.replacement_meter
+        )
+        cls.old_contract = Contract.objects.create(
+            token=cls.OLD_TOKEN,
+            status=cls.status,
+            holder=old_holder,
+            supply_point_default=cls.supply_point,
+        )
+        # `update()` evita el senyal de baixa (fiança), aliè a aquest test.
+        Contract.objects.filter(pk=cls.old_contract.pk).update(
+            termination_date=date(2025, 12, 31)
+        )
+        cls.old_contract.refresh_from_db()
+        cls.new_contract = Contract.objects.create(
+            token=cls.NEW_TOKEN,
+            status=cls.status,
+            holder=new_holder,
+            supply_point_default=cls.supply_point,
+            registration_date=date(2026, 1, 1),
+        )
+
+        old_invoice = cls._invoice("ISO-INV-OLD", cls.old_contract, 2025, 6)
+        new_invoice = cls._invoice("ISO-INV-NEW", cls.new_contract, 2026, 3)
+
+        # Lectura de l'anterior titular, facturada al seu contracte.
+        cls.old_reading = cls._reading(
+            cls.old_contract, cls.meter, date(2025, 6, 30), old_invoice
+        )
+        # Lectura de l'anterior titular posterior a la seva baixa.
+        cls.old_after_termination = cls._reading(
+            cls.old_contract, cls.meter, date(2026, 1, 15), old_invoice
+        )
+        # Lectura del nou titular, amb el comptador original.
+        cls.new_reading = cls._reading(
+            cls.new_contract, cls.meter, date(2026, 1, 31), new_invoice
+        )
+        # Lectura del nou titular després del canvi de comptador.
+        cls.new_replacement_reading = cls._reading(
+            cls.new_contract,
+            cls.replacement_meter,
+            date(2026, 3, 31),
+            new_invoice,
+        )
+        # Lectura del nou contracte anterior a la seva data d'alta.
+        cls.new_before_registration = cls._reading(
+            cls.new_contract, cls.meter, date(2025, 12, 15), new_invoice
+        )
+        # Dada incoherent: lectura de l'anterior contracte vinculada a una
+        # factura del nou.
+        cls.old_on_new_invoice = cls._reading(
+            cls.old_contract, cls.meter, date(2026, 2, 15), new_invoice
+        )
+
+        cls.empty_contract = Contract.objects.create(
+            token=cls.EMPTY_TOKEN,
+            status=cls.status,
+            holder=new_holder,
+            supply_point_default=cls.supply_point,
+            registration_date=date(2026, 6, 1),
+        )
+
+    @classmethod
+    def _invoice(cls, token, contract, year, month):
+        """Create a sent invoice of `contract` for the given billing period."""
+        return Invoice.objects.create(
+            token=token,
+            contract=contract,
+            status=cls.sent_status,
+            issue_date=date(year, month, 28),
+            billing_period_year=year,
+            billing_period_month=month,
+        )
+
+    @staticmethod
+    def _reading(contract, meter, reading_date, invoice):
+        """Create a reading of `contract` and bill it in `invoice`."""
+        reading = Reading.objects.create(
+            contract=contract,
+            meter=meter,
+            supply_point=contract.supply_point_default,
+            reading_date=reading_date,
+            reading_value=100.0,
+            real_consumption=10.0,
+        )
+        invoice.readings.add(reading)
+        return reading
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _list_ids(self, contract_token, **params):
+        """Return the reading ids listed for `contract_token`."""
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": contract_token, **params}
+        )
+        self.assertEqual(response.status_code, 200)
+        return [item["id"] for item in response.data["results"]]
+
+    def _csv_ids(self, response):
+        """Return the reading ids contained in a CSV download response."""
+        content = b"".join(response.streaming_content).decode("utf-8")
+        return {int(row["id"]) for row in csv.DictReader(StringIO(content))}
+
+    def test_new_contract_never_lists_previous_contract_readings(self):
+        """The new holder sees only their own readings, including the
+        replacement meter, and nothing before the registration date."""
+        self.assertEqual(
+            self._list_ids(self.NEW_TOKEN),
+            [self.new_replacement_reading.id, self.new_reading.id],
+        )
+
+    def test_date_filter_cannot_reach_previous_contract_readings(self):
+        """A wide date range still never returns previous contract readings."""
+        self.assertEqual(
+            self._list_ids(
+                self.NEW_TOKEN, date_from="2000-01-01", date_to="2099-12-31"
+            ),
+            [self.new_replacement_reading.id, self.new_reading.id],
+        )
+
+    def test_old_contract_excludes_readings_after_termination(self):
+        """The previous contract only lists readings up to its termination."""
+        self.assertEqual(self._list_ids(self.OLD_TOKEN), [self.old_reading.id])
+
+    def test_contract_without_own_readings_returns_empty_list(self):
+        """A contract without own billed readings does not fall back to the
+        supply point or meter history."""
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": self.EMPTY_TOKEN}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_period_comes_from_own_contract_invoice(self):
+        """The period of a reading comes from the contract's own invoice."""
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": self.NEW_TOKEN}
+        )
+
+        self.assertEqual(
+            {item["period"] for item in response.data["results"]}, {"2026-1T"}
+        )
+
+    def test_single_download_of_previous_contract_reading_returns_404(self):
+        """Downloading another contract's reading with the new contract
+        token is not found."""
+        for reading in (self.old_reading, self.old_on_new_invoice):
+            with self.subTest(reading=reading.id):
+                response = self.client.get(
+                    reverse("consumption-download-ov", kwargs={"id": reading.id}),
+                    {"contract_token": self.NEW_TOKEN, "format": "csv"},
+                )
+
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.data, {"error": "Reading not found"})
+
+    def test_bulk_download_with_previous_contract_reading_id_returns_400(self):
+        """A previous contract's reading id is rejected as unknown."""
+        response = self.client.post(
+            reverse("consumptions-download-ov"),
+            {
+                "contract_token": self.NEW_TOKEN,
+                "format": "csv",
+                "reading_ids": [self.new_reading.id, self.old_reading.id],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("reading_ids", response.data)
+
+    def test_bulk_download_all_excludes_previous_contract_readings(self):
+        """The full export only contains the contract's own readings."""
+        response = self.client.post(
+            reverse("consumptions-download-ov"),
+            {"contract_token": self.NEW_TOKEN, "format": "csv"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._csv_ids(response),
+            {self.new_reading.id, self.new_replacement_reading.id},
+        )
 
 
 class ConsumptionBilledFilterTests(TestCase):
@@ -3933,6 +4155,28 @@ class InvoiceReturnRequestOVTests(TestCase):
         )
 
 
+NEW_HOLDER_DNI = "00000000T"
+NEW_HOLDER_REQUIRED = "This field is required when the holder does not exist."
+NEW_HOLDER_FIELDS = {
+    "holder_name": "Nova",
+    "holder_surname": "Titular Prova",
+    "holder_phone": "600000000",
+    "holder_email": "titular.nou@example.com",
+}
+
+
+def _new_holder_identification_types():
+    """Create the default `dni` and a `nie` identification type for tests."""
+    IdentificationType.objects.update(is_default=False)
+    dni_type, _ = IdentificationType.objects.update_or_create(
+        token="dni", defaults={"name": "DNI", "is_default": True}
+    )
+    nie_type, _ = IdentificationType.objects.update_or_create(
+        token="nie", defaults={"name": "NIE", "is_default": False}
+    )
+    return dni_type, nie_type
+
+
 class ContractProcedureOVTests(TestCase):
     """`POST /ov/procedures/contract/` — crea una sol·licitud d'alta de
     contracte (`ContractRequest`) en estat esborrany, sense crear cap
@@ -4004,6 +4248,7 @@ class ContractProcedureOVTests(TestCase):
         cls.other_holder = Person.objects.create(
             token="11111111A", name="Bernat", surname="Prova"
         )
+        cls.dni_type, cls.nie_type = _new_holder_identification_types()
 
         cls.property = Property.objects.create(
             token="PROP-1", name="Finca 1", is_active=True
@@ -4268,22 +4513,215 @@ class ContractProcedureOVTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
 
-    def test_unknown_person_returns_404(self):
-        response = self._post(holder_dni="99999999Z")
+    def test_existing_holder_with_only_dni_does_not_create_person(self):
+        """An existing holder needs only the DNI and no Person is created."""
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        person_count = Person.objects.count()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+
+    def test_existing_holder_ignores_new_holder_fields(self):
+        """Personal fields sent for an existing holder do not modify it."""
+
+        response = self._post(**NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+        self.holder.refresh_from_db()
+        self.assertEqual(self.holder.name, "Anna")
+        self.assertEqual(self.holder.surname, "Prova")
+        self.assertFalse(PersonContact.objects.filter(person=self.holder).exists())
+
+    def test_unknown_holder_without_personal_data_returns_400(self):
+        """An unknown DNI without personal data returns 400 per missing field."""
+
+        request_count = ContractRequest.objects.count()
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI)
+
+        self.assertEqual(response.status_code, 400)
+        for field in ("holder_name", "holder_surname", "holder_phone", "holder_email"):
+            self.assertEqual(response.data[field], [NEW_HOLDER_REQUIRED])
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_bank_account_dni_cannot_resolve_a_different_holder(self):
+        """A bank account DNI of another person is treated as a new holder."""
+
         PersonBank.objects.create(
-            person=self.holder, dni="99999999Z", iban="ES9121000418450200051332"
+            person=self.holder, dni=NEW_HOLDER_DNI, iban="ES9121000418450200051332"
         )
         request_count = ContractRequest.objects.count()
 
-        response = self._post(holder_dni="99999999Z")
+        response = self._post(holder_dni=NEW_HOLDER_DNI)
+
+        # The bank DNI does not identify the holder: it is treated as new.
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("holder_name", response.data)
+        self.assertEqual(ContractRequest.objects.count(), request_count)
+
+    def test_unknown_holder_with_personal_data_creates_and_links_person(self):
+        """An unknown DNI with full data creates the Person and links it."""
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.name, "Nova")
+        self.assertEqual(person.surname, "Titular Prova")
+        self.assertFalse(person.is_juridic)
+        self.assertEqual(person.identification_type, self.dni_type)
+        self.assertTrue(person.dni_validated)
+        self.assertIsNotNone(person.piggy_bank)
+        self.assertEqual(person.piggy_bank.token, NEW_HOLDER_DNI)
+        contact = PersonContact.objects.get(person=person)
+        self.assertEqual(contact.phone, "600000000")
+        self.assertEqual(contact.email, "titular.nou@example.com")
+        self.assertTrue(contact.is_default)
+        self.assertTrue(contact.is_active)
+
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.person, person)
+        self.assertEqual(request_obj.holder, person)
+        self.assertEqual(request_obj.payment.IBAN.person, person)
+        self.assertEqual(response.data["person"]["token"], NEW_HOLDER_DNI)
+        self.assertEqual(response.data["person"]["name"], "Nova")
+
+    def test_new_holder_dni_is_normalized(self):
+        """The new holder is stored with the normalized DNI as token."""
+
+        response = self._post(
+            holder_dni="00.000.000-t", **NEW_HOLDER_FIELDS
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_holder_explicit_identification_type(self):
+        """An explicit identification type token is stored on the new holder."""
+
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            holder_identification_type_token="nie",
+            **NEW_HOLDER_FIELDS,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.identification_type, self.nie_type)
+        self.assertFalse(person.dni_validated)
+
+    def test_new_holder_unknown_identification_type_returns_400(self):
+        """An unknown identification type token returns 400."""
+
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            holder_identification_type_token="unknown",
+            **NEW_HOLDER_FIELDS,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["holder_identification_type_token"],
+            ["Unknown identification type."],
+        )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_juridic_holder_does_not_need_surname(self):
+        """A legal-entity new holder can omit the surname."""
+
+        fields = dict(NEW_HOLDER_FIELDS, holder_surname="", holder_is_juridic=True)
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertTrue(person.is_juridic)
+        self.assertIsNone(person.surname)
+
+    def test_new_holder_invalid_email_returns_400(self):
+        """An invalid email for a new holder returns 400."""
+
+        fields = dict(NEW_HOLDER_FIELDS, holder_email="not-an-email")
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("holder_email", response.data)
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_existing_holder_ignores_invalid_new_holder_fields(self):
+        """Invalid personal fields are ignored for an existing holder."""
+
+        response = self._post(
+            holder_email="not-an-email", holder_phone="9" * 30
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self._created_request(response).holder, self.holder)
+
+    def test_new_holder_too_long_phone_returns_400(self):
+        """A phone longer than the model allows returns 400 for a new holder."""
+
+        fields = dict(NEW_HOLDER_FIELDS, holder_phone="9" * 21)
+
+        response = self._post(holder_dni=NEW_HOLDER_DNI, **fields)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["holder_phone"],
+            ["Ensure this field has no more than 20 characters."],
+        )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_existing_token_with_whitespace_is_not_duplicated(self):
+        """A stored token with whitespace still matches, so no duplicate is created."""
+
+        legacy = Person.objects.create(token="22222222\tj", name="Llegat")
+        person_count = Person.objects.count()
+
+        response = self._post(holder_dni="22222222J", **NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        self.assertEqual(self._created_request(response).holder, legacy)
+
+    def test_new_holder_not_created_when_request_is_rejected(self):
+        """A request rejected before the transaction creates no Person."""
+
+        response = self._post(
+            holder_dni=NEW_HOLDER_DNI,
+            property_token="PROP-UNKNOWN",
+            **NEW_HOLDER_FIELDS,
+        )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+
+    def test_new_holder_rolled_back_when_creation_fails(self):
+        """A downstream failure rolls back the new Person and related rows."""
+
+        request_count = ContractRequest.objects.count()
+
+        with patch.object(
+            LogContractRequestStatus.objects,
+            "create",
+            side_effect=RuntimeError("downstream failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(holder_dni=NEW_HOLDER_DNI, **NEW_HOLDER_FIELDS)
+
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertFalse(
+            PersonContact.objects.filter(token__startswith=NEW_HOLDER_DNI).exists()
+        )
+        self.assertFalse(
+            PersonPiggyBank.objects.filter(token=NEW_HOLDER_DNI).exists()
+        )
         self.assertEqual(ContractRequest.objects.count(), request_count)
 
     def test_unknown_or_inactive_property_returns_404(self):
@@ -5249,6 +5687,7 @@ class ContractChangeProcedureOVTests(TestCase):
         cls.incoming_holder = Person.objects.create(
             token="87654321Y", name="Entrant", surname="Prova"
         )
+        cls.dni_type, cls.nie_type = _new_holder_identification_types()
 
         cls.supply_point = SupplyPoint.objects.create(
             token="SP-CHANGE", is_active=True
@@ -5708,11 +6147,149 @@ class ContractChangeProcedureOVTests(TestCase):
 
     # --- 404 --------------------------------------------------------------
 
-    def test_unknown_incoming_person_returns_404(self):
-        response = self._post(incoming={"holder_dni": "00000000T"})
+    def test_unknown_incoming_holder_without_personal_data_returns_400(self):
+        """An unknown incoming DNI without data returns nested 400 errors."""
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data, {"error": "Person not found"})
+        response = self._post(incoming={"holder_dni": NEW_HOLDER_DNI})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("outgoing", response.data)
+        for field in ("holder_name", "holder_surname", "holder_phone", "holder_email"):
+            self.assertEqual(
+                response.data["incoming"][field], [NEW_HOLDER_REQUIRED]
+            )
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self._assert_nothing_created()
+
+    def test_existing_incoming_holder_does_not_create_person(self):
+        """An existing incoming holder is reused and not modified."""
+
+        person_count = Person.objects.count()
+
+        response = self._post(incoming=NEW_HOLDER_FIELDS)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Person.objects.count(), person_count)
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(contract_request.holder, self.incoming_holder)
+        self.incoming_holder.refresh_from_db()
+        self.assertEqual(self.incoming_holder.name, "Entrant")
+
+    def test_unknown_incoming_holder_with_personal_data_creates_person(self):
+        """An unknown incoming DNI with full data creates and links the Person."""
+
+        response = self._post(
+            incoming=dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+        )
+
+        self.assertEqual(response.status_code, 201)
+        person = Person.objects.get(token=NEW_HOLDER_DNI)
+        self.assertEqual(person.name, "Nova")
+        self.assertEqual(person.surname, "Titular Prova")
+        self.assertEqual(person.identification_type, self.dni_type)
+        self.assertEqual(person.piggy_bank.token, NEW_HOLDER_DNI)
+        contact = PersonContact.objects.get(person=person)
+        self.assertEqual(contact.phone, "600000000")
+        self.assertEqual(contact.email, "titular.nou@example.com")
+        self.assertTrue(contact.is_default)
+
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertTrue(contract_request.is_change_of_name)
+        self.assertEqual(contract_request.person, person)
+        self.assertEqual(contract_request.holder, person)
+        self.assertEqual(contract_request.payment.IBAN.person, person)
+        termination = ContractTerminationRequest.objects.get(
+            token=response.data["contract_termination_token"]
+        )
+        self.assertEqual(termination.person, self.outgoing_holder)
+
+    def test_existing_incoming_holder_ignores_invalid_email(self):
+        """An invalid email is ignored for an existing incoming holder."""
+
+        response = self._post(incoming={"holder_email": "not-an-email"})
+
+        self.assertEqual(response.status_code, 201)
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        self.assertEqual(contract_request.holder, self.incoming_holder)
+
+    def test_new_incoming_holder_invalid_email_returns_nested_400(self):
+        """An invalid email for a new incoming holder returns nested 400."""
+
+        response = self._post(
+            incoming=dict(
+                NEW_HOLDER_FIELDS,
+                holder_dni=NEW_HOLDER_DNI,
+                holder_email="not-an-email",
+            )
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["incoming"]["holder_email"],
+            ["Enter a valid email address."],
+        )
+        self._assert_nothing_created()
+
+    def test_unknown_incoming_identification_type_returns_nested_400(self):
+        """An unknown identification type returns nested 400 under incoming."""
+
+        response = self._post(
+            incoming=dict(
+                NEW_HOLDER_FIELDS,
+                holder_dni=NEW_HOLDER_DNI,
+                holder_identification_type_token="unknown",
+            )
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["incoming"]["holder_identification_type_token"],
+            ["Unknown identification type."],
+        )
+        self._assert_nothing_created()
+
+    def test_new_incoming_holder_not_created_on_contract_404_or_409(self):
+        """Contract 404/409 inside the transaction leave no new Person."""
+
+        incoming = dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+        for outgoing, expected in (
+            ({"contract_token": "CT-UNKNOWN"}, 404),
+            ({"contract_token": self.terminated_contract.token}, 409),
+        ):
+            with self.subTest(outgoing=outgoing):
+                response = self._post(outgoing=outgoing, incoming=incoming)
+
+                self.assertEqual(response.status_code, expected)
+                self.assertFalse(
+                    Person.objects.filter(token=NEW_HOLDER_DNI).exists()
+                )
+                self._assert_nothing_created()
+
+    def test_new_incoming_holder_rolled_back_when_creation_fails(self):
+        """A downstream failure rolls back the new incoming holder."""
+
+        with patch(
+            "ov.views._create_procedure_payment",
+            side_effect=RuntimeError("downstream failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._post(
+                    incoming=dict(NEW_HOLDER_FIELDS, holder_dni=NEW_HOLDER_DNI)
+                )
+
+        self.assertFalse(Person.objects.filter(token=NEW_HOLDER_DNI).exists())
+        self.assertFalse(
+            PersonContact.objects.filter(token__startswith=NEW_HOLDER_DNI).exists()
+        )
+        self.assertFalse(
+            PersonPiggyBank.objects.filter(token=NEW_HOLDER_DNI).exists()
+        )
         self._assert_nothing_created()
 
     def test_outgoing_contract_errors_return_uniform_404(self):
@@ -5854,7 +6431,8 @@ class ContractChangeProcedureOVTests(TestCase):
         self.contract.refresh_from_db()
         termination = request_obj.contract_termination_requests.get()
         self.assertEqual(termination.status, self.termination_pending)
-        self.assertEqual(self.contract.status, self.terminated_status)
+        # El contracte de sortida no passa a baixa fins que es finalitza la baixa
+        self.assertEqual(self.contract.status, self.active_status)
 
     def test_closed_requests_and_terminations_do_not_block(self):
         ContractRequest.objects.create(

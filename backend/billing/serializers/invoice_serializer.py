@@ -18,8 +18,12 @@ from verifactu.serializers.verifactu_serializer import VerifactuNotificationSeri
 
 from billing.utils.invoice_service import change_status_logger, get_totals
 from billing.utils.invoice_list_queryset import invoice_list_config_tokens
+from billing.utils.invoice_period import (
+    invoice_billing_cycles, invoice_payment_states, invoice_payment_summaries, invoice_relations_map,
+)
 from billing.utils.invoice_suppression_service import invoice_needs_return, suppress_invoice
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
+from communication.utils.communication_process_service import filter_readings_by_active_process
 from coredata.models import ConfigProject
 from pricing.serializers.value_objects_serializer import ProductOriginSerializer
 from service.serializers.company_serializer import CompanySerializer
@@ -151,6 +155,17 @@ class InvoiceMinimalBatchListSerializer(serializers.ListSerializer):
 
         self.child.context['budget_invoice_by_token'] = budget_invoice_by_token
         self.child.context['invoice_list_tokens'] = tokens
+        self.child.context['invoice_relations'] = invoice_relations_map(iterable, tokens['invoice'])
+        request = self.context.get('request')
+        if request is not None and 'period_year' in request.query_params:
+            # Pestanya de factures del contracte: cicle del facturador per agrupar-les
+            self.child.context['billing_cycles'] = invoice_billing_cycles(
+                Invoice.objects.filter(id__in=[obj.id for obj in iterable])
+            )
+            self.child.context['payment_states'] = invoice_payment_states(iterable, datetime.date.today())
+        if self.context.get('with_payment_summary'):
+            # Llistes de factures (principal i del contracte): estat del cobrament i retorns bancaris
+            self.child.context['payment_summaries'] = invoice_payment_summaries(iterable)
         return [self.child.to_representation(item) for item in iterable]
 
 
@@ -167,6 +182,7 @@ class InvoiceMinimalSerializer(serializers.ModelSerializer):
     origin_name = serializers.CharField(read_only=True, source='origin.name')
     status_name = serializers.CharField(read_only=True, source='status.name')
     status_color = serializers.CharField(read_only=True, source='status.color')
+    status_token = serializers.CharField(read_only=True, source='status.token')
     contract_piggy_bank = serializers.SerializerMethodField()
     person_piggy_bank = serializers.SerializerMethodField()
     period_from = serializers.SerializerMethodField()
@@ -231,6 +247,16 @@ class InvoiceMinimalSerializer(serializers.ModelSerializer):
             if invoice:
                 representation['invoice_budget'] = InvoiceIdListSerializer(invoice).data
         representation['excluded_payments'] = any(payment.is_excluded for payment in payments)
+        relations = self.context.get('invoice_relations')
+        if relations is not None:
+            representation.update(relations.get(instance.id, {}))
+        cycles = self.context.get('billing_cycles')
+        if cycles is not None:
+            representation['billing_cycle'] = cycles.get(instance.id)
+            representation['payment_state'] = self.context.get('payment_states', {}).get(instance.id)
+        summaries = self.context.get('payment_summaries')
+        if summaries is not None:
+            representation['payment_summary'] = summaries.get(instance.id)
         
         return representation
     
@@ -293,6 +319,7 @@ class InvoiceMinimalListSerializer(serializers.ModelSerializer):
     use_type_final = serializers.SerializerMethodField()
     
     has_possible_leak_comm = serializers.SerializerMethodField()
+    has_readings = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -318,10 +345,11 @@ class InvoiceMinimalListSerializer(serializers.ModelSerializer):
         return None
 
     def get_has_possible_leak_comm(self, obj):
-        cancelled_token = ConfigProject.objects.get(token='communication_process_status_cancelled_token').value
-        return any([reading.communication_processes.exclude(status__token=cancelled_token).exists() for reading in obj.readings.filter(is_control=False)])
-        # return obj.readings.filter(is_control=False).communication_processes.exclude(status__token=cancelled_token).exists()
-        
+        return filter_readings_by_active_process(obj.readings.filter(is_control=False)).exists()
+
+    def get_has_readings(self, obj):
+        return obj.readings.filter(is_control=False).exists()
+
 class InvoiceSaveSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     class Meta:
         model = Invoice

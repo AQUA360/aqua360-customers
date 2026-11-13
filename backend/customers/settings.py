@@ -58,6 +58,13 @@ FTP_PASSWORD = config("FTP_PASSWORD", default="")
 PFX_PASS = config("PFX_PASS", default="")
 PFX_PATH = config("PFX_PATH", default="")
 
+# AEAT SII (Suministro Inmediato de Información) – facturas emitidas
+SII_ENABLED = config("SII_ENABLED", default=False, cast=bool)
+SII_ENVIRONMENT = config("SII_ENVIRONMENT", default="test")  # test | prod
+SII_USE_SEAL_CERT = config("SII_USE_SEAL_CERT", default=True, cast=bool)
+SII_TIMEOUT = config("SII_TIMEOUT", default=60, cast=int)
+SII_VERIFY_SSL = config("SII_VERIFY_SSL", default=True, cast=bool)
+
 AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
 AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
 AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME", default="")
@@ -169,6 +176,13 @@ def _check_local_apps(apps):
 
 OWN_APPS += _check_local_apps(LOCAL_OWN_APPS)
 EXTRA_APPS += _check_local_apps(LOCAL_EXTRA_APPS)
+
+# Plugins de client, fora d'aquest repositori. El codi es resol des de
+# plugins/<nom>/ al monorepo o des del paquet instal·lat a la imatge.
+from customers.plugins import plugin_app_names
+
+PLUGIN_APPS = plugin_app_names(BASE_DIR, config("PLUGINS", default="", cast=Csv()))
+OWN_APPS += PLUGIN_APPS
 
 
 INSTALLED_APPS = (

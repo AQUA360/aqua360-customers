@@ -102,6 +102,7 @@ class AccountingAdditionalLineNestedSerializer(serializers.ModelSerializer):
             'token_return',
             'name',
             'declared_as',
+            'declared_as_return',
             'accounting_concept',
             'is_negative',
             'declare_as',

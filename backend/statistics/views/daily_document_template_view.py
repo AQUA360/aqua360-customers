@@ -15,6 +15,15 @@ class DailyDocumentTemplateViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     ordering_fields = ['type', 'created_at', 'token', 'name']
     
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action in ('retrieve', 'list'):
+            qs = qs.select_related('available_report', 'available_report__section').prefetch_related(
+                'notify_users',
+                'notify_groups',
+            )
+        return qs
+
     def get_serializer_class(self):
         if self.action == 'list':
             return DailyDocumentTemplateListSerializer

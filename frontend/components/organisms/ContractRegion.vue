@@ -4,6 +4,7 @@ import { ref, resolveDirective, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import { formatDate } from '~/utils/date';
+import ContractInvalidAccountAlert from '~/components/molecules/ContractInvalidAccountAlert.vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import H1Region from '~/components/atoms/H1Region.vue';
@@ -39,6 +40,7 @@ import TypedConfirmationModal from '../molecules/TypedConfirmationModal.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
 import ContractClausesEdit from '../molecules/ContractClausesEdit.vue';
 import { usePermissions } from '~/middleware/permission';
+import { useContractInvoicesByPeriod } from '~/composables/useContractInvoicesByPeriod';
 
 
 const { t } = useI18n();
@@ -94,16 +96,9 @@ const allModifications = computed(() =>
 
 const expired_variables = ref(null)
 const expired_bonifications = ref(null)
-const invoices = ref([])
+const invoicesByPeriod = useContractInvoicesByPeriod(() => props.id)
 const general_invoices = ref([])
 const invoicesLoading = ref(false)
-const invoicesPagination = ref({
-  page: 1,
-  perPage: 50,
-  total: 0,
-  totalPages: 0,
-  isFiltered: true,
-})
 
 const important_observations = ref([])
 const show_important_observations = ref(false)
@@ -292,36 +287,10 @@ const getExpiredVariables = async () => {
 const loadInvoices = async () => {
   invoicesLoading.value = true;
   try {
-    await Promise.all([getInvoices(), getGeneralInvoices()]);
+    await Promise.all([invoicesByPeriod.load(), getGeneralInvoices()]);
   } finally {
     invoicesLoading.value = false;
   }
-}
-
-const getInvoices = async (page = 1) => {
-  invoices.value = []
-  try {
-    const result = await $InvoiceApiService.getInvoicesFromContract(props.id, false, true, page);
-    invoices.value = result.results;
-
-    if (data.value.request_invoices.length > 0) {
-      data.value.request_invoices.forEach(reqInvoice => {
-        if (!invoices.value.some(inv => inv.id === reqInvoice.id)) {
-          invoices.value.push(reqInvoice);
-        }
-      });
-    }
-
-    invoicesPagination.value.page = page;
-    invoicesPagination.value.total = result.count || 0;
-    invoicesPagination.value.totalPages = Math.ceil((result.count || 0) / invoicesPagination.value.perPage);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-const onInvoicesPageChange = (newPage) => {
-  getInvoices(newPage);
 }
 
 const getGeneralInvoices = async () => {
@@ -340,10 +309,9 @@ const getGeneralInvoices = async () => {
 // without reloading the whole invoice list.
 const onInvoicePdfGenerated = ({ id, invoice_file }) => {
   const invoiceId = parseInt(id);
-  [invoices.value, general_invoices.value].forEach(list => {
-    const item = (list || []).find(inv => inv.id === invoiceId);
-    if (item) item.invoice_file = invoice_file;
-  });
+  invoicesByPeriod.updateInvoiceFile({ id, invoice_file });
+  const item = (general_invoices.value || []).find(inv => inv.id === invoiceId);
+  if (item) item.invoice_file = invoice_file;
 }
 
 const getLatestByToken = (items) => {
@@ -456,15 +424,8 @@ watch(() => props.id, async () => {
   // (e.g. opening contracts from ReadingBatchSummary), clear lazy-loaded
   // tab state so invoices/etc. are fetched for the new contract.
   loadedTabs.value = new Set(['observations']);
-  invoices.value = [];
+  invoicesByPeriod.reset();
   general_invoices.value = [];
-  invoicesPagination.value = {
-    page: 1,
-    perPage: invoicesPagination.value.perPage || 50,
-    total: 0,
-    totalPages: 0,
-    isFiltered: true,
-  };
   members_change.value = [];
   contract_phones_logs.value = [];
   contract_logs.value = [];
@@ -572,7 +533,9 @@ const pinObject = async () => {
       save_date.is_checked = true;
       data.value.is_checked = true;
       await nextTick();
-      return router.push(`/contract/contracts/${props.id}/pinned/`);
+      // Open the pinned contract as a region (NavTopPinned panel) instead of navigating to the
+      // full page, so the user stays where they were and can close it.
+      sidebarStore.openPinnedContract();
     }
     handleChange()
   } catch (err) {
@@ -743,14 +706,16 @@ const addWalletBalance = () => {
                 class="px-1 py-1.5 text-xs font-light text-slate-400 bg-white group-hover:bg-slate-100 border border-gray-200 rounded-lg">
                 Ctrl p</kbd>
             </button>
-            <button @click="pinObject" class="flex items-center justify-center px-4 py-[5px]">
+            <button @click="pinObject" class="flex items-center justify-center px-4 py-[5px]"
+              :title="isPinned ? t('contract_block.unpin_contract') : t('contract_block.pin_contract')">
               <Icon name="ic:sharp-push-pin" class="w-4 h-4" :class="{
                 'text-red-500 hover:bg-red-900': isPinned,
                 'text-slate-500 hover:text-sky-500': !isPinned
               }" />
             </button>
 
-            <button @click="checkObject" class="group flex items-center justify-center px-4 py-[5px]">
+            <button @click="checkObject" class="group flex items-center justify-center px-4 py-[5px]"
+              :title="isChecked ? t('contract_block.unfollow_contract') : t('contract_block.follow_contract')">
               <Icon :name="isChecked ? 'fa6-solid:flag' : 'fa6-regular:flag'" class="w-3.5 h-3.5" :class="{
                 'text-red-500 group-hover:bg-red-900': isChecked,
                 'text-slate-500 group-hover:text-sky-500': !isChecked
@@ -787,9 +752,12 @@ const addWalletBalance = () => {
           </div>
         </div>
 
+        <ContractInvalidAccountAlert :alert="data.invalid_account_payment_alert" />
+
         <ContractDetail :data="data" @show-subregion="showDetail" :isSubRegion="isSubRegion"
           :canChange="objectPermissions?.can_change" :isSubRegionOpen="isSubRegionOpen" @change="handleChange"
-          :showImportantObservations="false" :showDebtDetail="true" @new-call="startCall" />
+          :showImportantObservations="false" :showDebtDetail="true" :showBailTab="true"
+          @new-call="startCall" @update-active-tab="setActiveTab" />
 
         <ContractTabs
           :contract="data"
@@ -813,11 +781,10 @@ const addWalletBalance = () => {
           :contract_logs="contract_logs"
           :expired_variables="expired_variables"
           :expired_bonifications="expired_bonifications"
-          :invoices="invoices"
+          :invoices-by-period="invoicesByPeriod"
           :invoices_count="data ? data.invoices_count : 0"
           :general_invoices="general_invoices"
           :invoicesLoading="invoicesLoading"
-          :invoicesPagination="invoicesPagination"
           :person_ids="person_ids"
           :permissions="permissions"
           :canChange="objectPermissions?.can_change"
@@ -829,8 +796,7 @@ const addWalletBalance = () => {
           @update:incident-count="updateIncidentCount"
           @update:communication-count="updateCommunicationCount"
           @update:order-count="updateOrderCount"
-          @update:bonification-variable-change-count="updateBonificationVariableChangeCount"
-          @update-invoices-page="onInvoicesPageChange" />
+          @update:bonification-variable-change-count="updateBonificationVariableChangeCount" />
       </div><!-- end if data -->
     </div><!-- end if pending -->
 

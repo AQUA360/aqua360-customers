@@ -1252,6 +1252,15 @@ paths:
         (cadena `Reading.previous_reading`), insensible a lecturas estimadas y
         cambios de contador que romperían el orden de la serie en el BFF.
 
+        **Alcance por contrato (protección de datos):** solo se incluyen
+        lecturas del propio contrato (`Reading.contract`) facturadas en una
+        factura del mismo contrato y, si el contrato tiene fecha de alta o de
+        baja, con `reading_date` dentro de ese periodo. Nunca se devuelven
+        lecturas de contratos anteriores o posteriores del mismo punto de
+        suministro o contador; un contrato sin lecturas propias facturadas
+        devuelve una lista vacía. Las lecturas de un contador sustituido
+        durante el contrato sí se incluyen.
+
         Paginación de servidor: `count` es el total de filas que cumplen los
         filtros y `next`/`previous` son las URLs de las páginas contiguas
         (`null` en los extremos). `date_from` y `date_to` filtran por la fecha
@@ -1308,8 +1317,9 @@ paths:
 
         El formato se elige con `?format=` (`pdf` por defecto o `csv`).
         Responde `404` si el contrato no existe o si la lectura no existe, no
-        pertenece al contador del contrato o no está facturada (sin factura
-        vinculada).
+        pertenece al contrato (aunque sea del mismo contador o punto de
+        suministro), está fuera de su periodo de alta/baja o no está
+        facturada en una factura del contrato.
       operationId: downloadConsumption
       security:
         - tokenAuth: []
@@ -1347,10 +1357,12 @@ paths:
         no, se aplican `date_from`/`date_to` y se devuelve el conjunto completo
         filtrado, sin límite de página, pensado para «Seleccionar todo».
 
-        Solo se incluyen los consumos ya facturados (lecturas vinculadas a al
-        menos una factura). Los `reading_ids` no facturados se omiten del
-        fichero sin devolver error; un `reading_id` fuera del contador del
-        contrato sigue respondiendo `400`.
+        Solo se incluyen los consumos ya facturados del propio contrato, con
+        el mismo alcance que `GET /ov/consumptions/` (nunca lecturas de otros
+        contratos del mismo punto de suministro o contador). Los `reading_ids`
+        del contrato no facturados se omiten del fichero sin devolver error;
+        un `reading_id` de otro contrato o fuera del periodo del contrato
+        responde `400` como desconocido.
 
         El formato se elige con `format` en el cuerpo (`pdf` por defecto,
         `csv` o `zip`). Responde `404` si el contrato no existe y `400` con
@@ -1895,9 +1907,13 @@ paths:
         una relación M2M que puede contener cero, una o varias tarifas y no
         está relacionada con el catálogo de tarifas activas que expone la OV.
 
-        Se exige que el DNI corresponda a una persona existente, que la
-        propiedad exista y tenga un punto de suministro, y que el tipo de
-        trámite y la tarifa estén activos. Si el pago es por domiciliación
+        Si el DNI corresponde a una persona existente, basta con enviar
+        `holder_dni` y los campos `holder_*` se ignoran. Si no existe, se crea
+        el titular (`Person`, con un contacto con su teléfono y correo) dentro
+        de la misma transacción, y entonces `holder_name`, `holder_surname`
+        (salvo persona jurídica), `holder_phone` y `holder_email` son
+        obligatorios. Se exige que la propiedad exista y tenga un punto de
+        suministro, y que el tipo de trámite y la tarifa estén activos. Si el pago es por domiciliación
         (`DIRECT_DEBIT`) se exigen los datos bancarios. Si la propiedad tiene
         más de un punto de suministro activo debe enviarse `supply_point_token`.
       operationId: requestContractProcedure
@@ -1947,27 +1963,32 @@ paths:
                 created_at: "2026-10-26T09:30:00Z"
         "400":
           description: |
-            Campos obligatorios ausentes o inválidos, datos bancarios
-            incompletos para domiciliación, o propiedad con varios puntos de
-            suministro sin `supply_point_token`.
+            Campos obligatorios ausentes o inválidos, datos personales
+            ausentes o inválidos cuando el DNI no existe (titular nuevo),
+            datos bancarios incompletos para domiciliación, o propiedad con
+            varios puntos de suministro sin `supply_point_token`.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrors"
+              example:
+                holder_name:
+                  - This field is required when the holder does not exist.
+                holder_email:
+                  - This field is required when the holder does not exist.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           description: |
-            No existe la persona (DNI), la propiedad, el punto de suministro,
-            el tipo de trámite, la tarifa o la forma de pago indicados. Los
-            tipos y tarifas inactivos también devuelven `404`.
+            No existe la propiedad, el punto de suministro, el tipo de trámite,
+            la tarifa o la forma de pago indicados. Los tipos y tarifas
+            inactivos también devuelven `404`. Un DNI inexistente no devuelve
+            `404`: se crea el titular (ver los campos `holder_*`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorMessage"
               examples:
-                person:
-                  value: {error: Person not found}
                 property:
                   value: {error: Property not found}
                 supplyPoint:
@@ -2187,8 +2208,11 @@ paths:
           ignoran espacios, puntos, guiones y mayúsculas). Contrato
           inexistente, inactivo, sin titular o de otro titular devuelven el
           mismo `404`.
-        - El nuevo titular (`incoming.holder_dni`) debe existir y ser distinto
-          del actual.
+        - El nuevo titular (`incoming.holder_dni`) debe ser distinto del
+          actual. Si no existe, se crea dentro de la misma transacción con los
+          campos `incoming.holder_*` (`holder_name`, `holder_surname` salvo
+          persona jurídica, `holder_phone` y `holder_email` obligatorios en
+          ese caso); si existe, esos campos se ignoran.
         - **No** se eligen tarifas: la solicitud hereda las tarifas periódicas
           activas del contrato actual; los derechos de alta y los tipos de
           orden son los de cambio de nombre del tipo de trámite. También se
@@ -2255,8 +2279,9 @@ paths:
             Errores de validación anidados por bloque: campos ausentes o
             vacíos, `reason_token`, `procedure_type_token` (inexistente o
             inactivo) o `payment_type_token` desconocidos, datos bancarios
-            incompletos para domiciliación, o mismo titular saliente y
-            entrante.
+            incompletos para domiciliación, datos personales del nuevo
+            titular ausentes o inválidos cuando su DNI no existe, o mismo
+            titular saliente y entrante.
           content:
             application/json:
               schema:
@@ -2268,13 +2293,14 @@ paths:
                 incoming:
                   iban:
                     - This field is required for direct debit.
+                  holder_phone:
+                    - This field is required when the holder does not exist.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           description: |
             El contrato no existe, está inactivo, no tiene titular o su
-            titular no coincide con `outgoing.holder_dni`; o no existe la
-            persona de `incoming.holder_dni`.
+            titular no coincide con `outgoing.holder_dni`.
           content:
             application/json:
               schema:
@@ -2282,8 +2308,6 @@ paths:
               examples:
                 contract:
                   value: {error: Contract not found}
-                person:
-                  value: {error: Person not found}
         "409":
           description: |
             El contrato no admite un cambio de nombre: ya está dado de baja,
@@ -3699,8 +3723,56 @@ components:
       properties:
         holder_dni:
           type: string
-          description: DNI del titular de la solicitud (`Person.token`)
+          description: |
+            DNI del titular de la solicitud (`Person.token`). Si no corresponde
+            a ninguna persona existente, se crea el titular con los campos
+            `holder_*`, que entonces son obligatorios.
           example: "12345678A"
+        holder_name:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Nombre (o razón social) del titular. Obligatorio solo si `holder_dni`
+            no corresponde a ninguna persona existente; si existe, se ignora.
+        holder_surname:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Apellidos del titular. Obligatorio solo si `holder_dni` no existe y
+            `holder_is_juridic` no es `true`; si el DNI existe, se ignora.
+        holder_phone:
+          type: string
+          nullable: true
+          maxLength: 20
+          description: |
+            Teléfono del titular. Obligatorio solo si `holder_dni` no existe; si
+            existe, se ignora.
+        holder_email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 255
+          description: |
+            Correo electrónico del titular. Obligatorio solo si `holder_dni` no
+            existe; si existe, se ignora.
+        holder_is_juridic:
+          type: boolean
+          default: false
+          description: |
+            Indica si el nuevo titular es una persona jurídica (entonces
+            `holder_surname` es opcional). Solo se usa si `holder_dni` no existe.
+        holder_identification_type_token:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Tipo de identificación del nuevo titular (`IdentificationType.token`,
+            p. ej. `dni`, `nie`, `cif`, `passport`, `other`). Opcional: si se omite
+            se usa el tipo marcado por defecto; un token desconocido devuelve `400`.
+            Solo se usa si `holder_dni` no existe.
+          example: dni
         property_token:
           type: string
           description: Token de la propiedad (`Property.token`) obtenido en `/ov/properties/`
@@ -3972,8 +4044,56 @@ components:
         holder_dni:
           type: string
           maxLength: 255
-          description: Documento del nuevo titular (debe existir y ser distinto del actual)
+          description: |
+            Documento del nuevo titular (distinto del actual). Si no
+            corresponde a ninguna persona existente, se crea el titular con los
+            campos `holder_*`, que entonces son obligatorios.
           example: "87654321Y"
+        holder_name:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Nombre (o razón social) del titular. Obligatorio solo si `holder_dni`
+            no corresponde a ninguna persona existente; si existe, se ignora.
+        holder_surname:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Apellidos del titular. Obligatorio solo si `holder_dni` no existe y
+            `holder_is_juridic` no es `true`; si el DNI existe, se ignora.
+        holder_phone:
+          type: string
+          nullable: true
+          maxLength: 20
+          description: |
+            Teléfono del titular. Obligatorio solo si `holder_dni` no existe; si
+            existe, se ignora.
+        holder_email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 255
+          description: |
+            Correo electrónico del titular. Obligatorio solo si `holder_dni` no
+            existe; si existe, se ignora.
+        holder_is_juridic:
+          type: boolean
+          default: false
+          description: |
+            Indica si el nuevo titular es una persona jurídica (entonces
+            `holder_surname` es opcional). Solo se usa si `holder_dni` no existe.
+        holder_identification_type_token:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Tipo de identificación del nuevo titular (`IdentificationType.token`,
+            p. ej. `dni`, `nie`, `cif`, `passport`, `other`). Opcional: si se omite
+            se usa el tipo marcado por defecto; un token desconocido devuelve `400`.
+            Solo se usa si `holder_dni` no existe.
+          example: dni
         procedure_type_token:
           type: string
           maxLength: 255

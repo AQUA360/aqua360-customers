@@ -799,7 +799,10 @@ class ContractDataChange(models.Model):
     requested_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    
+    # Canvi automàtic per un retorn SEPA de compte invàlid: motiu del retorn i forma de pagament creada
+    reject_motive = models.ForeignKey('billing.RejectMotive', on_delete=models.SET_NULL, null=True, blank=True, related_name='contract_data_changes')
+    new_general_payment = models.ForeignKey('billing.GeneralPayment', on_delete=models.SET_NULL, null=True, blank=True, related_name='contract_data_changes')
+
     def __str__(self):
         return f'ContractDataChange {self.token} '
 

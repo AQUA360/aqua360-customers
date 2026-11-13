@@ -27,3 +27,10 @@ class CommunicationDeletePermission(permissions.BasePermission):
 
     def has_permission(self, request, view):
         return request.user.has_perm('communication.delete_communication')
+
+
+class CommunicationProcessChangePermission(permissions.BasePermission):
+    """Accions que modifiquen processos de comunicació (encara que vagin per POST): exigeix `change_communicationprocess`."""
+
+    def has_permission(self, request, view):
+        return request.user.has_perm('communication.change_communicationprocess')

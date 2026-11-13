@@ -5,7 +5,7 @@ from billing.views.reader_alert_view import ReaderAlertAppViewSet
 from notification.views.incident_view import IncidentAppViewSet
 from service.views.route_position_view import RoutePositionAppViewSet
 from service.views.supply_point_placement_view import SupplyPointPlacementAppViewSet
-from . import views
+from . import cluster_views, views
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -29,6 +29,10 @@ urlpatterns = [
     path('reading-batch/<int:reading_batch_id>/routes/detailed/', views.reading_batch_routes_detailed, name='lecturapp-reading-batch-routes-detailed'),
     path('reading-batch/routes/detailed/status/<str:task_id>/', views.reading_batch_routes_detailed_status, name='lecturapp-reading-batch-routes-detailed-status'),
     path('sync-readings/<int:reading_batch_id>/', views.sync_readings, name='lecturapp-sync-readings'),
+    # Bateries de la finca, sota demanda (no van amb la descàrrega del lot)
+    path('properties/<int:property_id>/clusters/', cluster_views.property_clusters, name='lecturapp-property-clusters'),
+    path('clusters/<int:cluster_id>/photos/', cluster_views.upload_cluster_photo, name='lecturapp-cluster-photo-upload'),
+    path('clusters/<int:cluster_id>/photos/<int:photo_id>/', cluster_views.cluster_photo, name='lecturapp-cluster-photo'),
     # Include router URLs (all require authentication)
     path('', include(router.urls)),
 ] 

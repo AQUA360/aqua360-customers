@@ -1,13 +1,14 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, provide } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, provide } from 'vue';
 import { useI18n } from 'vue-i18n';
 import InvoiceSummaryDetail from '~/components/atoms/InvoiceSummaryDetail.vue';
 import DropdownOption from '~/components/atoms/DropdownOption.vue';
 import _ from 'lodash';
 import { useExportJobsStore } from '~/stores/useExportJobs';
+import { useConfigStore } from '~/stores/useConfigStore';
 
 const { t } = useI18n();
-const { $BillingApiService, $ReportsApiService, $apiManager, $DocumentManagerApiService, $ConfigProjectApiService } = useNuxtApp();
+const { $BillingApiService, $ReportsApiService, $apiManager, $DocumentManagerApiService } = useNuxtApp();
 
 const props = defineProps({
   billing_id: Number,
@@ -19,7 +20,8 @@ const emit = defineEmits(['change', 'show-subregion', 'batch_id']);
 const loading = ref(false);
 const billingSummary = ref([])
 
-const usesAca = ref(false);
+const configStore = useConfigStore();
+const isAcaOrg = computed(() => configStore.isAcaOrg);
 // Only used by backends that still answer with a bare `task_id` (no downloads queue).
 const downloadDocCeleryId = ref(null);
 const exportJobsStore = useExportJobsStore();
@@ -64,11 +66,7 @@ const loadPreinvoicesSummary = async () => {
   loading.value = true;
   billingSummary.value = await $BillingApiService.getSummary(props.billing_id)
 
-  try {
-    usesAca.value = await $ConfigProjectApiService.get('uses_aca');
-  } catch (error) {
-    console.error(error);
-  }
+  configStore.fetchPublicOrgType();
 
   loading.value = false;
 }
@@ -234,7 +232,7 @@ onBeforeUnmount(() => {
           <div v-if="showReportsDropdown"
             class="absolute right-0 z-10 mt-1 min-w-[16rem] rounded divide-y divide-gray-100 border border-gray-200 bg-white shadow">
             <ul class="py-1 text-sm text-gray-700">
-              <DropdownOption v-if="usesAca" :name="t('reports_block.no_aca_summary')"
+              <DropdownOption v-if="isAcaOrg" :name="t('reports_block.no_aca_summary')"
                 :disabled="!!downloadDocCeleryId" @click="downloadRegisterAca">
                 <Icon name="fa6-solid:file-excel" class="display-inline mr-2" />
                 {{ $t('common.download') }} {{ $t('reports_block.no_aca_summary') }}

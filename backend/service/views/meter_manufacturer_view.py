@@ -8,10 +8,11 @@ from service.serializers.value_objects_serializer import MeterManufacturerSerial
 from rest_framework.filters import SearchFilter
 from service.permissions import MeterPermission
 from service.utils.meter_dictionary_service import get_or_create_dictionary_value
+from service.views.meter_dictionary_mixin import MeterDictionaryViewSetMixin
 
 logger = logging.getLogger(__name__)
 
-class MeterManufacturerViewSet(viewsets.ModelViewSet):
+class MeterManufacturerViewSet(MeterDictionaryViewSetMixin, viewsets.ModelViewSet):
     queryset = MeterManufacturer.objects.all().order_by('name')
     serializer_class = MeterManufacturerSerializer
     permission_classes = [IsAuthenticated, MeterPermission]

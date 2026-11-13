@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from billing.serializers.reading_batch_serializer import ReadingBatchMinimalSerializer
 from communication.serializers.communication_process_serializer import CommunicationProcessListSerializer
+from coredata.models import ConfigProject
 from service.serializers.route_serializer import RouteListSerializer
 from ..models import Billing, BillingStatus, Invoice, Reading, ReadingBatch
 
@@ -24,7 +25,7 @@ class BillingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Billing
         fields = '__all__'
-        read_only_fields = ['metrics_snapshot']
+        read_only_fields = ['metrics_snapshot', 'process_errors']
 
     def to_representation(self, instance):
         return pop_metrics_snapshot(super().to_representation(instance))
@@ -50,7 +51,7 @@ class BillingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Billing
         fields = '__all__'
-        read_only_fields = ['metrics_snapshot']
+        read_only_fields = ['metrics_snapshot', 'process_errors']
 
     def validate_token(self, value):
         # Evita codis duplicats també en editar (a la creació ja ho valida
@@ -67,6 +68,29 @@ class BillingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Ja existeix una facturació amb el codi '{value}'.")
 
         return value
+
+    def validate(self, attrs):
+        if self.instance and self.instance.status and self.instance.status.token:
+            changed_period_fields = [
+                field for field in ('period_start', 'period_end')
+                if field in attrs and attrs[field] != getattr(self.instance, field)
+            ]
+            if changed_period_fields and ConfigProject.objects.filter(
+                token__in=('billing_batch_processing_documents', 'billing_batch_processed'),
+                value=self.instance.status.token,
+            ).exists():
+                raise serializers.ValidationError({
+                    field: "No es pot modificar el període d'una facturació bloquejada."
+                    for field in changed_period_fields
+                })
+
+        start = attrs.get('period_start', getattr(self.instance, 'period_start', None))
+        end = attrs.get('period_end', getattr(self.instance, 'period_end', None))
+        if start and end and start > end:
+            raise serializers.ValidationError(
+                {'period_end': "La data final del període no pot ser anterior a la d'inici."}
+            )
+        return attrs
 
     def to_representation(self, instance):
         representation = pop_metrics_snapshot(super().to_representation(instance))

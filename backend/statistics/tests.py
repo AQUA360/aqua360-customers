@@ -10,7 +10,7 @@ from coredata.models import ConfigProject
 from pricing.models import ProductOrigin
 from service.models import Exploitation
 from service.serializers.exploitation_serializer import ExploitationSerializer
-from statistics.models import BillingConsumption
+from statistics.models import BillingConsumption, AvailableReport
 from statistics.utils.billing_amount_average import (
     TotalAmountAvgCache,
     get_total_amount_avg,
@@ -239,3 +239,31 @@ class DatedUseTypeTests(TestCase):
             for inv in invoices
         )
         self.assertEqual(resolved, self.expected)
+
+
+class AcaReportsActivationTests(TestCase):
+    """Els informes de l'ACA només estan actius amb `public_org_type == 'aca'`."""
+
+    ACA_REPORTS = ('aca_summary_report', 'factdeta_report')
+
+    def setUp(self):
+        self.reports = [
+            AvailableReport.objects.get_or_create(
+                function_name=function_name, defaults={'name': function_name},
+            )[0]
+            for function_name in self.ACA_REPORTS
+        ]
+
+    def _is_active(self):
+        return {
+            report.function_name: AvailableReport.objects.get(pk=report.pk).is_active
+            for report in self.reports
+        }
+
+    def test_reports_follow_public_org_type(self):
+        config = ConfigProject.objects.create(token='public_org_type', value='aca')
+        self.assertTrue(all(self._is_active().values()))
+
+        config.value = ''
+        config.save()
+        self.assertFalse(any(self._is_active().values()))

@@ -954,6 +954,32 @@ class MeterLog(models.Model):
     def __str__(self):
         return f'MeterLog {self.meter.code}'
 
+class MeterBulkChangeLog(models.Model):
+    """Registre de cada confirmació del canvi massiu de comptadors."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='meter_bulk_change_logs',
+    )
+    original_filename = models.CharField(max_length=255, blank=True, default='')
+    source_file = models.FileField(
+        upload_to='uploads/meter_bulk_change/source/%Y/%m/', null=True, blank=True)
+    report_file = models.FileField(
+        upload_to='uploads/meter_bulk_change/report/%Y/%m/', null=True, blank=True)
+    total_rows = models.IntegerField(default=0)
+    changed = models.IntegerField(default=0)
+    created = models.IntegerField(default=0)
+    failed = models.IntegerField(default=0)
+    stats = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Meter bulk change log"
+        verbose_name_plural = "Meter bulk change logs"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Canvi massiu {self.created_at:%Y-%m-%d %H:%M} ({self.original_filename})"        
+
 class Property(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)

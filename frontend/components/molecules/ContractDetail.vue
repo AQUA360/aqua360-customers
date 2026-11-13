@@ -43,13 +43,18 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // Bail badge switches to the bails tab (the parent must handle it)
+  showBailTab: {
+    type: Boolean,
+    default: false
+  },
   canChange: Boolean
 });
 
 const { $ContractApiService, $ObservationApiService, $ConfigProjectApiService } = useNuxtApp();
 
 const useMultipleCompanies = ref(false);
-const emit = defineEmits(['show-subregion', 'clickChangeTotalPersons', 'change', 'new-call']);
+const emit = defineEmits(['show-subregion', 'clickChangeTotalPersons', 'change', 'new-call', 'update-active-tab']);
 const SubRegion = ref(props.isSubRegionOpen);
 const loading = ref(false)
 
@@ -306,7 +311,6 @@ onMounted(async () => {
     loading.value = true
     getData()
   }
-  console.log('localData', localData.value);
 })
 
 watch(() => props.id, (newValue) => {
@@ -511,7 +515,7 @@ watch(() => props.data, (newValue) => {
         <hr class="my-2" />
         <div role="row" class="mb-2">
           <ContractStatusBadges :contract="localData" :isSubRegion="isSubRegion" :showDebtDetail="showDebtDetail"
-            @show-detail="showDetail" />
+            :showBailTab="showBailTab" @show-detail="showDetail" @show-tab="emit('update-active-tab', $event)" />
         </div>
         <div role="row" class="grid grid-cols-3 gap-x-3">
           <FieldDetail :label="$t('contract_block.client_type')"

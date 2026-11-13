@@ -40,6 +40,33 @@ from contract.utils.contract_service import get_contract_housing_units, log_cont
 from contract.utils.contract_list_queryset import contract_debt_amounts_by_contract_id
 from service.utils.route_scope import effective_route
 
+
+def count_contract_invoices(contract):
+    """Nombre de factures de la pestanya de factures del contracte (les del contracte i les de
+    la seva sol·licitud, sense les excloses). Compartit amb el serializer del contracte fixat."""
+    invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
+    request_invoices = Invoice.objects.filter(contract_request=contract.contract_request, is_active=True, is_excluded=False, type__token=invoice_type_token, contract_request__isnull=False)
+    unique_invoices = set(request_invoices.values_list('id', flat=True)) | set(contract.invoices.filter(is_active=True, is_excluded=False, type__token=invoice_type_token).values_list('id', flat=True))
+    return len(unique_invoices)
+
+
+def serialize_contract_show_price_rates(contract):
+    """Tarifes del contracte tal com les mostra la pestanya de tarifes (agrupades per punt
+    de subministrament). Compartit amb el serializer del contracte fixat perquè les dues
+    vistes rebin el mateix format."""
+    from pricing.serializers.price_rate_serializer import PriceRateSerializer
+    contract_price_rates = contract.price_rates.all().order_by('price_rate__product__position')
+    return [
+        {
+            'id': cr_price_rate.id,
+            'price_rate': PriceRateSerializer(cr_price_rate.price_rate).data,
+            'supply_point': SupplyPointMinimalSerializer(cr_price_rate.supply_point).data,
+            'is_bop_reference': cr_price_rate.is_bop_reference,
+        }
+        for cr_price_rate in contract_price_rates
+    ]
+
+
 class ContractObservationSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(required=False, allow_null=True)
     class Meta:
@@ -161,6 +188,8 @@ class ContractSerializer(serializers.ModelSerializer):
     incidents = serializers.SerializerMethodField()
     # Incidència oberta d'un tipus que bloqueja les ofertes comercials (art. 16.2)
     blocking_incident = serializers.SerializerMethodField()
+    # Domiciliació anul·lada per un retorn SEPA de compte invàlid, pendent de revisar
+    invalid_account_payment_alert = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
     total_in_commitment_deposits = serializers.SerializerMethodField()
@@ -315,19 +344,7 @@ class ContractSerializer(serializers.ModelSerializer):
         return PriceRateSerializer(registration_price_rates, many=True, read_only=True).data
     
     def get_show_price_rates(self, obj):
-        from pricing.serializers.price_rate_serializer import PriceRateSerializer
-        contract_price_rates = obj.price_rates.all().order_by('price_rate__product__position')
-        serialized_price_rates = []
-        for cr_price_rate in contract_price_rates:
-            serialized_price_rate = {
-                'id': cr_price_rate.id,
-                'price_rate': PriceRateSerializer(cr_price_rate.price_rate).data,
-                'supply_point': SupplyPointMinimalSerializer(cr_price_rate.supply_point).data,
-                'is_bop_reference': cr_price_rate.is_bop_reference,
-            }
-            serialized_price_rates.append(serialized_price_rate)
-        
-        return serialized_price_rates
+        return serialize_contract_show_price_rates(obj)
     
     def get_active_contract_termination(self, obj):
         from contract.models import ContractTerminationRequest
@@ -356,6 +373,11 @@ class ContractSerializer(serializers.ModelSerializer):
         vulnerability_requests = obj.vulnerability_requests.filter(status__token=vulnerability_pending_token)
         return vulnerability_requests.count() > 0
     
+    def get_invalid_account_payment_alert(self, obj):
+        """Avís de domiciliació anul·lada per un retorn SEPA de compte invàlid, o None."""
+        from billing.utils.sepa_invalid_account_service import invalid_account_payment_alert
+        return invalid_account_payment_alert(obj)
+
     def get_blocking_incident(self, obj):
         from notification.utils.incident_utils import blocking_incident
         incident = blocking_incident(obj)
@@ -376,7 +398,11 @@ class ContractSerializer(serializers.ModelSerializer):
         
         pending_claim = ConfigProject.objects.get(token='claim_request_status_pending_token').value
         accepted_claim = ConfigProject.objects.get(token='claim_request_status_accepted_token').value
-        claim_requests = ClaimRequest.objects.filter(payments__contract=obj, status__token__in=[pending_claim, accepted_claim])
+        claim_requests = ClaimRequest.objects.filter(
+            payments__contract=obj, 
+            payments__is_excluded=False,
+            status__token__in=[pending_claim, accepted_claim],
+            )
         return claim_requests.count() > 0
     
     def get_calendar_tasks(self, obj):
@@ -396,10 +422,7 @@ class ContractSerializer(serializers.ModelSerializer):
         return obj.communications.filter(is_active=True).count()
 
     def get_invoices_count(self, obj):
-        invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
-        request_invoices = Invoice.objects.filter(contract_request=obj.contract_request, is_active=True, type__token=invoice_type_token, contract_request__isnull=False)
-        unique_invoices = list(set(request_invoices.values_list('id', flat=True)) | set(obj.invoices.filter(is_active=True, type__token=invoice_type_token).values_list('id', flat=True)))
-        return len(unique_invoices)
+        return count_contract_invoices(obj)
 
     def get_general_invoices_count(self, obj):
         return obj.general_invoices.filter(is_active=True).count()

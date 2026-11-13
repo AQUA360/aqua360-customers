@@ -1,0 +1,16 @@
+# Fora d'ús per als plugins. El servidor corre la imatge pública de CUSTOMERS_VERSION
+# i els plugins s'hi copien. No es defineix BACKEND_IMAGE.
+# Es conserva perquè alguna instal·lació antiga encara el carrega amb COMPOSE_FILE.
+services:
+  backend:
+    image: ${BACKEND_IMAGE:?Cal BACKEND_IMAGE}
+    build: !reset null
+  celery-worker:
+    image: ${BACKEND_IMAGE:?Cal BACKEND_IMAGE}
+    build: !reset null
+  celery-beat:
+    image: ${BACKEND_IMAGE:?Cal BACKEND_IMAGE}
+    build: !reset null
+  gmao-consumer:
+    image: ${BACKEND_IMAGE:?Cal BACKEND_IMAGE}
+    build: !reset null

@@ -6,35 +6,38 @@ import { usePermissions } from '~/middleware/permission';
 import { useConfigStore } from '~/stores/useConfigStore';
 import { useExploitationStore } from '~/stores/useExploitationStore';
 import { storeToRefs } from 'pinia';
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { AVAILABLE_LANGUAGES } from '~/utils/languages';
+import { useNavSidebarLayout } from '~/composables/useNavSidebarLayout';
+import Draggable from 'vuedraggable';
 
 const { t, locale } = useI18n();
 const sideBarStore = useSidebarStore();
 const configStore = useConfigStore();
 const exploitationStore = useExploitationStore();
-const { ovEnabled: ovLogsEnabled, documentSignEnabled, sendBatchEnabled } = storeToRefs(configStore);
+const { ovEnabled: ovLogsEnabled, documentSignEnabled, sendBatchEnabled, isAcaOrg } = storeToRefs(configStore);
 const { permissions, loading } = usePermissions();
 const config = useRuntimeConfig();
 const env = config.public.env;
 
 const showDropdown = ref(false);
 const {
-  deployedAtLabel,
+  summaryLabel: deploySummaryLabel,
   available: deployInfoAvailable,
   frontendLabel: deployFrontendLabel,
   backendLabel: deployBackendLabel,
+  mismatch: deployMismatch,
   load: loadDeployInfo,
 } = useDeployInfo();
 
 const toggleDropdown = () => {
   showDropdown.value = !showDropdown.value;
-  // La informació del deploy només interessa quan s'obre el desplegable.
-  if (showDropdown.value) loadDeployInfo();
+  showMenuCustomizer.value = false;
 };
 
-/** Data del deploy i, en passar-hi el ratolí, el commit desplegat de cada repo. */
+/** En passar-hi el ratolí, la versió, el commit i la data del build de frontend i backend. */
 const deployTooltip = computed(() => [
+  ...(deployMismatch.value ? [t('common.deploy_mismatch')] : []),
   `${t('common.deploy_frontend')}: ${deployFrontendLabel.value}`,
   `${t('common.deploy_backend')}: ${deployBackendLabel.value}`,
 ].join('\n'));
@@ -68,6 +71,7 @@ onMounted(loadTasksSummary);
 configStore.fetchOvEnabled();
 configStore.fetchDocumentSignEnabled();
 configStore.fetchSendBatchEnabled();
+configStore.fetchPublicOrgType();
 
 // Environment-based highlight class as a simple ref
 const highlightClass = ref('bg-slate-200');
@@ -121,6 +125,331 @@ const toggleNavSidebar = () => {
 
 const isCollapsed = computed(() => sideBarStore.isCollapsed);
 
+// Seccions i enllaços del menú. L'usuari pot amagar-los, reordenar-los i plegar
+// les seccions; només s'hi passen els que té permís per veure.
+//  - match: tros de ruta que marca l'enllaç com a actiu
+//  - image: imatge en lloc d'icona
+//  - dailyDocumentsBadge: comptador de documents diaris nous / errors de tramesa
+const menuSections = computed(() => {
+  const perms = permissions.value?.permissions || {};
+  const sections = [
+    {
+      key: 'customer_service', id: 'nav-incident', label: t('customer_service'), icon: 'fa6-solid:flag',
+      available: perms.view_customer_service,
+      items: [
+        { key: 'follow_contracts', to: '/contract/follow-contracts/', icon: 'fa6-solid:flag', label: t('customer_service_block.follow_contracts') },
+        { key: 'incidents', to: '/incident/incidents/', icon: 'fa6-solid:bug', label: t('common.incidents') },
+        { key: 'process_communications', to: '/communication/process-communications/', icon: 'fa6-solid:envelopes-bulk', label: t('common.comms_process') },
+        { key: 'communications', to: '/communication/communications/', icon: 'fa6-solid:envelope', label: t('common.comms') },
+        { key: 'ov_logs', to: '/incident/ov-logs/', icon: 'fa6-solid:laptop-file', label: t('common.ov_logs'), available: ovLogsEnabled.value },
+      ],
+    },
+    {
+      key: 'contract', id: 'nav-contract', label: t('contracting'), icon: 'fa6-solid:file-contract',
+      available: perms.view_contract,
+      items: [
+        { key: 'contracts', to: '/contract/contracts/', match: '/contracts/', icon: 'fa6-solid:file-contract', label: t('common.contracts') },
+        { key: 'contract_requests', to: '/contract/contract-requests/', match: '/contract-requests/', icon: 'fa6-solid:file-circle-plus', label: t('contract_requests') },
+        { key: 'contract_terminations', to: '/contract/contract-terminations/', match: '/contract-terminations/', icon: 'fa6-solid:file-circle-xmark', label: t('common.contract_terminations') },
+        { key: 'persons', to: '/contract/persons/', match: '/persons/', icon: 'fa6-solid:users', label: t('common.persons') },
+        { key: 'aca_documents', to: '/contract/aca-documents/', icon: 'fa6-solid:file-lines', label: t('common.aca_documents'), available: isAcaOrg.value },
+        { key: 'document_signs', to: '/contract/document-signs/', icon: 'fa6-solid:signature', label: t('contract_block.document_signs'), available: documentSignEnabled.value },
+      ],
+    },
+    {
+      key: 'readings', id: 'nav-tarificacio', label: t('readings'), icon: 'fa6-solid:file-arrow-up',
+      available: perms.view_reading,
+      items: [
+        { key: 'readings', to: '/reading/readings/', icon: 'fa6-solid:file-arrow-up', label: t('common.enter_readings') },
+        { key: 'reading_batches', to: '/reading/reading-batches/', icon: 'fa6-solid:clipboard-list', label: t('common.reading_batches') },
+      ],
+    },
+    {
+      key: 'billing', id: 'nav-fra', label: t('billing'), icon: 'fa6-solid:file-invoice',
+      available: perms.view_billing,
+      items: [
+        { key: 'billing', to: '/billing/billing/', icon: 'fa6-solid:clipboard', label: t('billing') },
+        { key: 'invoices', to: '/billing/invoice/', icon: 'fa6-solid:file-invoice', label: t('invoices') },
+        { key: 'budgets', to: '/billing/budgets/', icon: 'fa6-solid:calculator', label: t('common.budgets') },
+        { key: 'bails', to: '/billing/bails/', icon: 'fa6-solid:money-bills', label: t('common.bails') },
+        { key: 'wallet_managements', to: '/billing/wallet-managements/', icon: 'fa6-solid:briefcase', label: t('common.wallet_mngs') },
+        { key: 'joined_payments', to: '/billing/joined-payments/', icon: 'fa6-solid:credit-card', label: t('billing_block.joined_payments') },
+        { key: 'transfers', to: '/billing/transfer/', icon: 'fa6-solid:file-export', label: t('common.trf_managements') },
+        { key: 'sepa', to: '/billing/sepa/', icon: 'fa6-solid:file-import', label: t('common.sepa_managements') },
+        { key: 'sepa_returns', to: '/billing/sepa-return/', icon: 'fa6-solid:file-excel', label: t('billing_block.return_sepa_multiple') },
+        { key: 'commitment_deposits', to: '/billing/commitment-deposits/', icon: 'fa6-solid:wallet', label: t('claim_block.pay_commitments') },
+        { key: 'claim_managements', to: '/billing/claim-managements/', icon: 'fa-solid:exclamation-circle', label: t('claim_block.claim_payments') },
+        { key: 'vulnerability_requests', to: '/billing/vulnerability-requests/', icon: 'fa6-solid:shield-halved', label: t('common.vulnerable_reqs') },
+        { key: 'verifactu', to: '/verifactu/batches/', image: '/agencia-tributaria-logo.png', label: 'Verifactu', available: verifactuEnabled },
+        { key: 'send_batches', to: '/integrations/batches/', icon: 'fa6-solid:file-invoice-dollar', label: t('send_batch_block.batches'), available: sendBatchEnabled.value },
+      ],
+    },
+    {
+      key: 'documents', id: 'nav-documents', label: t('common.documentation'), icon: 'fa6-solid:table-list',
+      available: perms.view_customer_service,
+      items: [
+        { key: 'reports', to: '/billing/reports/', icon: 'fa6-solid:table-list', label: t('common.reports') },
+        { key: 'custom_reports', to: '/statistics/custom-reports/', match: '/statistics/custom-reports', icon: 'fa6-solid:table-cells', label: t('custom_report_block.title'), available: perms.view_custom_report || perms.change_custom_report },
+        { key: 'daily_documents', to: '/statistics/daily-documents/', icon: 'fa6-solid:file-signature', label: t('statistics_block.daily_document'), dailyDocumentsBadge: true },
+        { key: 'document_downloads', to: '/billing/document-downloads/', match: '/billing/document-downloads', icon: 'fa6-solid:download', label: t('billing_block.download_history') },
+      ],
+    },
+    {
+      key: 'orders', id: 'nav-orders', label: t('work_orders'), icon: 'fa6-solid:screwdriver-wrench',
+      available: perms.view_order,
+      items: [
+        { key: 'orders', to: '/order/orders/', match: '/orders/', icon: 'fa6-solid:screwdriver-wrench', label: t('common.orders') },
+        { key: 'operators', to: '/order/operators/', match: '/operators/', icon: 'healthicons:construction-worker', label: t('common.operators') },
+      ],
+    },
+    {
+      key: 'service', id: 'nav-subministrament', label: t('service'), icon: 'fa6-solid:street-view',
+      available: perms.view_service,
+      items: [
+        { key: 'supply_points', to: '/service/supplypoints/', match: '/supplypoints/', icon: 'fa6-solid:street-view', label: t('common.supplys') },
+        { key: 'properties', to: '/service/properties/', match: '/properties/', icon: 'fa6-solid:house-chimney', label: t('common.properties') },
+        { key: 'routes', to: '/service/routes/', match: '/routes/', icon: 'fa6-regular:map', label: t('common.routes') },
+        { key: 'meters', to: '/service/meters/', match: '/meters/', icon: 'my-icon:meter-icon-black', label: t('common.meters') },
+        { key: 'clusters', to: '/service/clusters/', match: '/clusters/', icon: 'fa6-solid:list', label: t('common.clusters') },
+        { key: 'connections', to: '/service/connections/', match: '/connections/', icon: 'fa6-solid:plug', label: t('common.connections') },
+        { key: 'connection_requests', to: '/service/connection-requests/', match: '/connection-requests/', icon: 'fa6-solid:plug-circle-plus', label: t('common.connection_requests') },
+        { key: 'supply_cuts', to: '/service/supply-cut/', match: '/supply-cut/', icon: 'fa6-solid:scissors', label: t('common.supply_cuts') },
+        { key: 'frauds', to: '/fraud/frauds/', icon: 'fa6-solid:mask', label: t('common.fraud_mngs') },
+        { key: 'consumption_management', to: '/consumption-management/', icon: 'fa6-solid:droplet', label: t('common.consumption_mngs') },
+      ],
+    },
+    {
+      key: 'pricing', id: 'nav-tarificacio-pricing', label: t('pricing'), icon: 'fa6-solid:tag',
+      available: perms.view_pricing,
+      items: [
+        { key: 'products', to: '/pricing/products/', icon: 'fa6-solid:cube', label: t('common.products') },
+        { key: 'price_rates', to: '/pricing/price-rates/', icon: 'fa6-solid:tag', label: t('common.price_rates') },
+      ],
+    },
+    {
+      key: 'system', id: 'nav-sistema', label: t('common.system'), icon: 'fa6-solid:chart-column',
+      available: perms.view_contract,
+      items: [
+        { key: 'analysis', to: '/statistics/analysis/', icon: 'fa6-solid:chart-column', label: t('statistics_block.analysis_title') },
+      ],
+    },
+  ];
+  return sections
+    .filter((section) => section.available)
+    .map((section) => ({
+      ...section,
+      // Un enllaç sense `available` sempre hi és; amb `available`, només si és cert.
+      items: section.items.filter((item) => !('available' in item) || !!item.available),
+    }))
+    .filter((section) => section.items.length > 0);
+});
+
+const isMenuItemActive = (item) => route.path.indexOf(item.match || item.to) !== -1;
+
+const {
+  sections: orderedMenuSections,
+  visibleSections: visibleMenuSections,
+  isVisible: isMenuSectionVisible,
+  toggleSection: toggleMenuSection,
+  moveSectionTo: moveMenuSectionTo,
+  moveSectionBy: moveMenuSectionBy,
+  isFolded,
+  toggleFolded,
+  setAllFolded,
+  allFolded,
+  orderedItems: orderedMenuItems,
+  visibleItems: visibleMenuItems,
+  isItemVisible: isMenuItemVisible,
+  toggleItem: toggleMenuItem,
+  moveItemTo: moveMenuItemTo,
+  moveItemBy: moveMenuItemBy,
+  favoriteItems,
+  isFavorite,
+  addFavorite,
+  toggleFavorite,
+  moveFavoriteTo,
+  recentItems,
+  recordVisit,
+  isCustomised: isMenuCustomised,
+  resetLayout: resetMenuLayout,
+} = useNavSidebarLayout(menuSections);
+
+// Cada pàgina del menú que es visita passa al davant de Recents.
+watch([() => route.path, menuSections], () => {
+  for (const section of menuSections.value) {
+    const item = section.items.find(isMenuItemActive);
+    if (item) {
+      recordVisit(section.key, item.key);
+      return;
+    }
+  }
+}, { immediate: true });
+
+// --- Arrossegament al menú ----------------------------------------------------
+// Sortable amb `forceFallback`: la còpia que segueix el ratolí és un element
+// nostre (classe `nav-drag-fallback`) i, després d'arrossegar, el clic que
+// tanca el gest no plega la secció ni obre l'enllaç.
+const dragOptions = {
+  animation: 180,
+  forceFallback: true,
+  fallbackOnBody: true,
+  fallbackTolerance: 5,
+  fallbackClass: 'nav-drag-fallback',
+  ghostClass: 'nav-drag-placeholder',
+  delayOnTouchOnly: true,
+  delay: 200,
+};
+
+// Mentre s'arrossega una secció es pleguen totes (només visualment, no es desa)
+// perquè es vegi on anirà.
+const draggingSections = ref(false);
+// Enllaç que s'està arrossegant: { sectionKey, favorite }. Mentre dura es mostra
+// Preferits encara que sigui buit, per poder-l'hi deixar.
+const draggedItem = ref(null);
+const draggingItem = computed(() => !!draggedItem.value);
+
+/** Un enllaç només es pot deixar a la seva secció o, si encara no ho és, a Preferits. */
+const canDropItemIn = (zoneKey) =>
+  !draggedItem.value ||
+  zoneKey === draggedItem.value.sectionKey ||
+  (zoneKey === 'favorites' && !draggedItem.value.favorite);
+
+// Si el ratolí és fora d'on es pot deixar l'enllaç, la còpia que l'acompanya ho indica.
+const markForbiddenDrop = (event) => {
+  const zone = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-nav-drop]');
+  const allowed = !!zone && canDropItemIn(zone.dataset.navDrop);
+  document.querySelector('.nav-drag-fallback')?.classList.toggle('nav-drag-forbidden', !allowed);
+  document.body.classList.toggle('nav-drag-forbidden-cursor', !allowed);
+};
+
+const onItemDragStart = (section, event) => {
+  draggedItem.value = { sectionKey: section.key, favorite: !!event.item?.dataset.favorite };
+  document.addEventListener('pointermove', markForbiddenDrop);
+  document.addEventListener('mousemove', markForbiddenDrop);
+  document.addEventListener('touchmove', markForbiddenTouch, { passive: true });
+};
+
+const markForbiddenTouch = (event) => {
+  if (event.touches?.[0]) markForbiddenDrop(event.touches[0]);
+};
+
+const onItemDragEnd = () => {
+  draggedItem.value = null;
+  document.removeEventListener('pointermove', markForbiddenDrop);
+  document.removeEventListener('mousemove', markForbiddenDrop);
+  document.removeEventListener('touchmove', markForbiddenTouch);
+  document.body.classList.remove('nav-drag-forbidden-cursor');
+};
+
+const onSectionDragStart = (event) => {
+  draggingSections.value = true;
+  // En plegar-se tot, la secció arrossegada pot quedar fora de la vista.
+  nextTick(() => event.item?.scrollIntoView({ block: 'nearest' }));
+};
+
+const onSectionDragEnd = () => {
+  draggingSections.value = false;
+};
+
+/**
+ * vuedraggable informa de la nova posició dins la llista visible; es passa a la
+ * clau que hi havia en aquella posició perquè les seccions o enllaços amagats
+ * conservin el seu lloc a l'ordre complet.
+ */
+const onSectionsChange = ({ moved }) => {
+  if (!moved) return;
+  const target = visibleMenuSections.value[moved.newIndex];
+  if (target) moveMenuSectionTo(moved.element.key, target.key);
+};
+
+const onItemsChange = (section, { moved }) => {
+  if (!moved) return;
+  const target = visibleMenuItems(section)[moved.newIndex];
+  if (target) moveMenuItemTo(section, moved.element.key, target.key);
+};
+
+// Un enllaç arrossegat des d'una secció a Preferits s'hi copia (es queda també a la secció).
+const itemsGroup = { name: 'nav-items', pull: 'clone', put: false };
+const favoritesGroup = {
+  name: 'nav-favorites',
+  pull: false,
+  put: (_to, _from, dragEl) => !dragEl.dataset.favorite,
+};
+
+const onFavoritesChange = ({ moved, added }) => {
+  if (moved) {
+    const target = favoriteItems.value[moved.newIndex];
+    if (target) moveFavoriteTo(moved.element.key, target.key);
+  } else if (added) {
+    // L'element afegit és l'enllaç d'una secció: { key, ..., sectionKey }.
+    const before = favoriteItems.value[added.newIndex];
+    addFavorite(added.element.sectionKey, added.element.key, before?.key);
+  }
+};
+
+/** Enllaços d'una secció per al llistat arrossegable, amb la clau de la secció. */
+const draggableItems = (section) =>
+  visibleMenuItems(section).map((item) => ({ ...item, sectionKey: section.key }));
+
+const showMenuCustomizer = ref(false);
+// Seccions desplegades al panell de personalització per veure'n els enllaços.
+const expandedCustomizerSections = ref([]);
+
+const openMenuCustomizer = () => {
+  showDropdown.value = false;
+  showMenuCustomizer.value = true;
+};
+
+const toggleCustomizerSection = (key) => {
+  expandedCustomizerSections.value = expandedCustomizerSections.value.includes(key)
+    ? expandedCustomizerSections.value.filter((k) => k !== key)
+    : [...expandedCustomizerSections.value, key];
+};
+
+// Arrossegament al panell: una secció entre seccions o un enllaç dins la seva secció.
+const dragged = ref(null); // { sectionKey, itemKey? }
+const dropTarget = ref(null);
+
+const isDragged = (sectionKey, itemKey = null) =>
+  dragged.value?.sectionKey === sectionKey && (dragged.value?.itemKey ?? null) === itemKey;
+
+const isDropTarget = (sectionKey, itemKey = null) =>
+  dropTarget.value?.sectionKey === sectionKey && (dropTarget.value?.itemKey ?? null) === itemKey;
+
+const canDropOn = (sectionKey, itemKey = null) => {
+  if (!dragged.value) return false;
+  const draggingItem = dragged.value.itemKey != null;
+  if (draggingItem !== (itemKey != null)) return false;
+  if (draggingItem && dragged.value.sectionKey !== sectionKey) return false;
+  return !isDragged(sectionKey, itemKey);
+};
+
+const onCustomizerDragStart = (event, sectionKey, itemKey = null) => {
+  dragged.value = { sectionKey, itemKey };
+  event.dataTransfer.effectAllowed = 'move';
+  // Firefox no inicia l'arrossegament sense dades.
+  event.dataTransfer.setData('text/plain', itemKey || sectionKey);
+};
+
+const onCustomizerDragOver = (event, sectionKey, itemKey = null) => {
+  if (!canDropOn(sectionKey, itemKey)) return;
+  event.preventDefault();
+  dropTarget.value = { sectionKey, itemKey };
+};
+
+const onCustomizerDrop = (section, itemKey = null) => {
+  if (canDropOn(section.key, itemKey)) {
+    if (itemKey) moveMenuItemTo(section, dragged.value.itemKey, itemKey);
+    else moveMenuSectionTo(dragged.value.sectionKey, section.key);
+  }
+  onCustomizerDragEnd();
+};
+
+const onCustomizerDragEnd = () => {
+  dragged.value = null;
+  dropTarget.value = null;
+};
+
 const appTitle = computed(() => {
   const name = exploitationStore.current?.name;
   return name ? `Customers - ${name}` : 'Customers';
@@ -159,19 +488,26 @@ const getCurrentExploitation = async () => {
 const dropdownContainer = ref(null);
 
 const handleClickOutside = (event) => {
-  if (showDropdown.value && dropdownContainer.value && !dropdownContainer.value.contains(event.target)) {
+  // composedPath es calcula en llançar el clic: serveix encara que l'element
+  // clicat ja s'hagi tret del DOM (p. ex. el botó de restaurar el menú).
+  if (dropdownContainer.value && !event.composedPath().includes(dropdownContainer.value)) {
     showDropdown.value = false;
+    showMenuCustomizer.value = false;
   }
 };
 
 onMounted(() => {
   getCurrentExploitation();
+  // En carregar, el frontend informa el backend de la seva versió: així queda
+  // registrada la data del desplegament encara que ningú obri el desplegable.
+  loadDeployInfo();
   username.value = localStorage.getItem('user_username') || '';
   document.addEventListener('click', handleClickOutside);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
+  onItemDragEnd();
 });
 
 </script>
@@ -287,481 +623,77 @@ onUnmounted(() => {
 
     <!-- Scrollable Middle Part -->
     <div class="flex-1 overflow-y-auto pr-1 select-none scrollbar-thin">
-      <div v-if="permissions?.permissions?.view_customer_service" id="nav-incident" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('customer_service') }}</div>
-        <NuxtLink to="/contract/follow-contracts/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract/follow-contracts/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('customer_service_block.follow_contracts') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:flag" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('customer_service_block.follow_contracts') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/incident/incidents/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/incident/incidents/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.incidents') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:bug" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.incidents') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/communication/process-communications/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/communication/process-communications/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.comms_process') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:envelopes-bulk" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.comms_process') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/communication/communications/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/communication/communications/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.comms') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:envelope" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.comms') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink v-if="ovLogsEnabled" to="/incident/ov-logs/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/incident/ov-logs/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.ov_logs') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:laptop-file" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.ov_logs') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div v-if="permissions?.permissions?.view_contract" id="nav-contract" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('contracting') }}</div>
-        <NuxtLink to="/contract/contracts/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contracts/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.contracts') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-contract" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.contracts') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/contract/contract-requests/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract-requests/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('contract_requests') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-circle-plus" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('contract_requests') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/contract/contract-terminations/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract-terminations/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.contract_terminations') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-circle-xmark" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.contract_terminations') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/contract/persons/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/persons/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.persons') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:users" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.persons') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/contract/aca-documents/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract/aca-documents/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.aca_documents') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-lines" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.aca_documents') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink v-if="documentSignEnabled" to="/contract/document-signs/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/contract/document-signs/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('contract_block.document_signs') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:signature" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('contract_block.document_signs') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div v-if="permissions?.permissions?.view_reading" id="nav-tarificacio" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('readings') }}</div>
-        <NuxtLink to="/reading/readings/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/reading/readings/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.enter_readings') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-arrow-up" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.enter_readings') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/reading/reading-batches/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/reading/reading-batches/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.reading_batches') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:clipboard-list" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.reading_batches') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div v-if="permissions?.permissions?.view_billing" id="nav-fra" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('billing') }}</div>
-        <NuxtLink to="/billing/billing/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/billing/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('billing') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:clipboard" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('billing') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/invoice/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/invoice/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('invoices') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-invoice" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('invoices') }}</span>
-          </div>
-        </NuxtLink>
-        <!-- <NuxtLink to="/billing/reports/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/reports/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.reports') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-list" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.reports') }}</span>
-          </div>
-        </NuxtLink> -->
-        <NuxtLink to="/billing/budgets/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/budgets/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.budgets') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:calculator" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.budgets') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/bails/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/bails/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.bails') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:money-bills" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.bails') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/wallet-managements/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/wallet-managements/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.wallet_mngs') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:briefcase" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.wallet_mngs') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/joined-payments/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/joined-payments/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('billing_block.joined_payments') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:credit-card" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('billing_block.joined_payments') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/transfer/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/transfer/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.trf_managements') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-export" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.trf_managements') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/sepa/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/sepa/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.sepa_managements') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-import" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.sepa_managements') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/sepa-return/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/sepa-return/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.wallet_mngs') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-excel" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('billing_block.return_sepa_multiple') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/commitment-deposits/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/commitment-deposits/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('claim_block.pay_commitments') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:wallet" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('claim_block.pay_commitments') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/claim-managements/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/claim-managements/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('claim_block.claim_payments') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa-solid:exclamation-circle" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('claim_block.claim_payments') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/vulnerability-requests/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/vulnerability-requests/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.vulnerable_reqs') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:shield-halved" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.vulnerable_reqs') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink v-if="verifactuEnabled" to="/verifactu/batches/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/verifactu/batches/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? 'Verifactu' : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><img src="/agencia-tributaria-logo.png" alt="Agencia Tributaria" class="h-4 grayscale brightness-75 opacity-70" /></span>
-            <span v-show="!isCollapsed" class="truncate">Verifactu</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink v-if="sendBatchEnabled" to="/integrations/batches/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/integrations/batches/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('send_batch_block.batches') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:file-invoice-dollar" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('send_batch_block.batches') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div v-if="permissions?.permissions?.view_customer_service" id="nav-documents" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('common.documentation') }}</div>
-        <NuxtLink to="/billing/reports/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/reports/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.reports') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-list" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.reports') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink v-if="permissions?.permissions?.view_custom_report || permissions?.permissions?.change_custom_report" to="/statistics/custom-reports/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/statistics/custom-reports') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('custom_report_block.title') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:table-cells" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('custom_report_block.title') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/statistics/daily-documents/"
-          class="flex w-full items-center px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, {
-            [highlightClass]: $route.path.indexOf('/statistics/daily-documents/') != -1,
-            'font-[750]': sideBarStore.newDailyDocuments > 0,
-            'font-medium': sideBarStore.newDailyDocuments == 0,
-            'justify-center': isCollapsed
-          }]"
-          :title="isCollapsed ? $t('statistics_block.daily_document') + (sideBarStore.newDailyDocuments ? ` (${sideBarStore.newDailyDocuments})` : '') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="relative flex w-6 shrink-0 justify-center">
-              <Icon name="fa6-solid:file-signature" class="text-slate-500" />
-              <span
-                v-if="sideBarStore.newDailyDocuments > 0"
-                class="pointer-events-none absolute -top-0.5 -right-0.5 flex size-2"
-                aria-hidden="true">
-                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
-                <span class="relative inline-flex size-2 rounded-full bg-sky-500"></span>
-              </span>
-            </span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('statistics_block.daily_document') }}</span>
-            <span v-show="!isCollapsed">({{ sideBarStore.newDailyDocuments }})</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/billing/document-downloads/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/billing/document-downloads') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('billing_block.download_history') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:download" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('billing_block.download_history') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div v-if="permissions?.permissions?.view_order" id="nav-orders" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('work_orders') }}</div>
-        <NuxtLink to="/order/orders/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/orders/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.orders') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:screwdriver-wrench" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.orders') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/order/operators/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/operators/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.operators') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="healthicons:construction-worker" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.operators') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div v-if="permissions?.permissions?.view_service" id="nav-subministrament" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('service') }}</div>
-        <NuxtLink to="/service/supplypoints/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/supplypoints/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.supplys') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:street-view" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.supplys') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/service/properties/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/properties/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.properties') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:house-chimney" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.properties') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/service/routes/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/routes/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.routes') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-regular:map" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.routes') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/service/meters/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/meters/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.meters') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="my-icon:meter-icon-black" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.meters') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/service/clusters/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/clusters/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.clusters') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:list" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.clusters') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/service/connections/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/connections/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.connections') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:plug" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.connections') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/service/connection-requests/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/connection-requests/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.connection_requests') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:plug-circle-plus" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.connection_requests') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/service/supply-cut/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/supply-cut/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.supply_cuts') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:scissors" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.supply_cuts') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/fraud/frauds/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/fraud/frauds/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.fraud_mngs') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:mask" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.fraud_mngs') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/consumption-management/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/consumption-management/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.consumption_mngs') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:droplet" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.consumption_mngs') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div v-if="permissions?.permissions?.view_pricing" id="nav-tarificacio-pricing" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('pricing') }}</div>
-        <NuxtLink to="/pricing/products/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/pricing/products/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.products') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:cube" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.products') }}</span>
-          </div>
-        </NuxtLink>
-        <NuxtLink to="/pricing/price-rates/"
-          class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-          :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/pricing/price-rates/') != -1, 'justify-center': isCollapsed }]"
-          :title="isCollapsed ? $t('common.price_rates') : undefined">
-          <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-            <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:tag" class="text-slate-500" /></span>
-            <span v-show="!isCollapsed" class="truncate">{{ $t('common.price_rates') }}</span>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div id="nav-sistema" class="mb-2">
-        <div v-show="!isCollapsed" class="text-sm text-slate-400 p-1">{{ $t('common.system') }}</div>
-        <div v-if="permissions?.permissions?.view_contract" id="nav-statistics" class="mb-2">
-          <NuxtLink to="/statistics/analysis/"
-            class="flex w-full items-center font-medium px-3 py-2 leading-[14px] text-slate-600 rounded"
-            :class="[hoverClass, { [highlightClass]: $route.path.indexOf('/statistics/analysis/') != -1, 'justify-center': isCollapsed }]"
-            :title="isCollapsed ? $t('statistics_block.analysis_title') : undefined">
-            <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
-              <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:chart-column" class="text-slate-500" /></span>
-              <span v-show="!isCollapsed" class="truncate">{{ $t('statistics_block.analysis_title') }}</span>
+      <!-- Preferits: s'hi pot arrossegar un enllaç de qualsevol secció -->
+      <MoleculesNavSidebarSection v-if="favoriteItems.length || draggingItem" id="nav-favorite-links" data-nav-drop="favorites"
+        class="transition-opacity" :class="{ 'opacity-30': !canDropItemIn('favorites') }"
+        :title="$t('common.favorites')" :folded="isFolded('favorites') || draggingSections" :icons-only="isCollapsed"
+        @toggle="toggleFolded('favorites')">
+        <Draggable :model-value="favoriteItems" item-key="key" :group="favoritesGroup" v-bind="dragOptions"
+          :disabled="isCollapsed" class="min-h-8 rounded" :class="{ 'bg-amber-50 outline-dashed outline-1 outline-amber-300': draggingItem && canDropItemIn('favorites') }"
+          @change="onFavoritesChange">
+          <template #item="{ element }">
+            <div :data-favorite="true">
+              <MoleculesNavSidebarLink :item="element.item" :active="isMenuItemActive(element.item)"
+                :icons-only="isCollapsed" favorite :hover-class="hoverClass" :highlight-class="highlightClass"
+                :new-daily-documents="sideBarStore.newDailyDocuments"
+                :daily-document-submission-errors="sideBarStore.dailyDocumentSubmissionErrors"
+                @toggle-favorite="toggleFavorite(element.section.key, element.item.key)" />
             </div>
-          </NuxtLink>
+          </template>
+        </Draggable>
+        <p v-if="!favoriteItems.length && !isCollapsed" class="px-3 pb-2 text-xs text-slate-400 pointer-events-none">
+          {{ $t('common.drop_here_favorite') }}
+        </p>
+      </MoleculesNavSidebarSection>
+
+      <!-- Recents: les darreres pàgines del menú visitades, de la més nova a la més antiga -->
+      <MoleculesNavSidebarSection v-if="recentItems.length" id="nav-recent-links" data-nav-drop="recent"
+        :title="$t('common.recent')" :folded="isFolded('recent') || draggingSections" :icons-only="isCollapsed"
+        class="transition-opacity" :class="{ 'opacity-30': !canDropItemIn('recent') }"
+        @toggle="toggleFolded('recent')">
+        <MoleculesNavSidebarLink v-for="recent in recentItems" :key="recent.key" :item="recent.item"
+          :active="isMenuItemActive(recent.item)" :icons-only="isCollapsed"
+          :favorite="isFavorite(recent.section.key, recent.item.key)" :hover-class="hoverClass"
+          :highlight-class="highlightClass" :new-daily-documents="sideBarStore.newDailyDocuments"
+          :daily-document-submission-errors="sideBarStore.dailyDocumentSubmissionErrors"
+          @toggle-favorite="toggleFavorite(recent.section.key, recent.item.key)" />
+      </MoleculesNavSidebarSection>
+
+      <Draggable :model-value="visibleMenuSections" item-key="key" v-bind="dragOptions" handle=".nav-section-handle"
+        :disabled="isCollapsed" @start="onSectionDragStart" @end="onSectionDragEnd" @change="onSectionsChange">
+        <template #item="{ element: section }">
+          <MoleculesNavSidebarSection :id="section.id" :title="section.label" :data-nav-drop="section.key"
+            class="transition-opacity" :class="{ 'opacity-30': !canDropItemIn(section.key) }"
+            :folded="isFolded(section.key) || draggingSections" :icons-only="isCollapsed"
+            @toggle="toggleFolded(section.key)">
+            <Draggable :model-value="draggableItems(section)" item-key="key" :group="itemsGroup" v-bind="dragOptions"
+              :disabled="isCollapsed" @start="onItemDragStart(section, $event)" @end="onItemDragEnd"
+              @change="onItemsChange(section, $event)">
+              <template #item="{ element: item }">
+                <div :data-favorite="isFavorite(section.key, item.key) || undefined">
+                  <MoleculesNavSidebarLink :item="item" :active="isMenuItemActive(item)" :icons-only="isCollapsed"
+                    :favorite="isFavorite(section.key, item.key)" :hover-class="hoverClass"
+                    :highlight-class="highlightClass" :new-daily-documents="sideBarStore.newDailyDocuments"
+                    :daily-document-submission-errors="sideBarStore.dailyDocumentSubmissionErrors"
+                    @toggle-favorite="toggleFavorite(section.key, item.key)" />
+                </div>
+              </template>
+            </Draggable>
+          </MoleculesNavSidebarSection>
+        </template>
+      </Draggable>
+
+      <!-- Accés visible a la personalització, sempre al final de les seccions -->
+      <button type="button"
+        class="flex w-full items-center px-3 py-2 leading-[14px] text-sm text-slate-400 rounded hover:text-slate-600"
+        :class="[hoverClass, { 'justify-center': isCollapsed, 'text-slate-600': showMenuCustomizer }]"
+        :title="$t('common.customize_menu')" :aria-expanded="showMenuCustomizer"
+        @click.stop="showMenuCustomizer ? (showMenuCustomizer = false) : openMenuCustomizer()">
+        <div class="flex items-center gap-2 min-w-0 flex-1" :class="{ 'justify-center': isCollapsed }">
+          <span class="flex w-6 shrink-0 justify-center"><Icon name="fa6-solid:sliders" /></span>
+          <span v-show="!isCollapsed" class="truncate">{{ $t('common.customize_menu') }}</span>
         </div>
-      </div>
+      </button>
     </div>
 
     <!-- Fixed Bottom Part -->
@@ -791,6 +723,13 @@ onUnmounted(() => {
           <span>{{ $t('common.settings') }}</span>
         </NuxtLink>
 
+        <!-- Personalitzar el menú lateral -->
+        <button type="button" :aria-expanded="showMenuCustomizer" @click="openMenuCustomizer"
+          class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors w-full text-left">
+          <Icon name="fa6-solid:sliders" class="w-4 h-4 text-slate-500" />
+          <span>{{ $t('common.customize_menu') }}</span>
+        </button>
+
         <div class="border-t border-slate-100 my-1"></div>
 
         <!-- Help button -->
@@ -800,14 +739,19 @@ onUnmounted(() => {
           <span>{{ $t('common.help') }}</span>
         </a>
 
-        <!-- Deploy info: data del deploy i, en hover, els commits desplegats -->
+        <!-- Deploy info: versió i data del deploy i, en hover, el detall de frontend i backend -->
         <div class="px-3 py-2 flex items-center gap-2 text-slate-500 select-none cursor-help"
           :title="deployInfoAvailable ? deployTooltip : $t('common.deploy_unknown')">
           <Icon name="fa6-solid:code-branch" class="w-4 h-4 text-slate-400 shrink-0" />
           <span class="text-xs truncate">
             {{ $t('common.deploy') }}:
-            <span class="font-medium text-slate-600">{{ deployedAtLabel || '—' }}</span>
+            <span class="font-medium text-slate-600">{{ deploySummaryLabel || '—' }}</span>
           </span>
+        </div>
+        <div v-if="deployMismatch" class="px-3 pb-1 flex items-center gap-2 text-xs text-amber-600 cursor-help"
+          :title="deployTooltip">
+          <Icon name="fa6-solid:triangle-exclamation" class="w-4 h-4 shrink-0" />
+          <span class="truncate">{{ $t('common.deploy_mismatch') }}</span>
         </div>
 
         <!-- User Profile Info -->
@@ -826,6 +770,92 @@ onUnmounted(() => {
           <Icon name="fa6-solid:arrow-right-from-bracket" class="w-4 h-4 text-red-500" />
           <span>{{ $t('common.exit') }}</span>
         </button>
+      </div>
+
+      <!-- Personalització del menú: seccions i enllaços visibles, i el seu ordre -->
+      <div v-if="showMenuCustomizer" role="dialog" :aria-label="$t('common.customize_menu')"
+        @keydown.esc="showMenuCustomizer = false"
+        class="absolute bottom-full left-0 mb-2 w-[300px] max-h-[75vh] overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg p-2 z-30 text-sm text-slate-700">
+        <div class="flex items-center justify-between px-1">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">{{ $t('common.customize_menu') }}</span>
+          <button type="button" class="px-1 text-slate-400 hover:text-slate-600" :title="$t('common.close')"
+            @click="showMenuCustomizer = false">
+            <Icon name="fa6-solid:xmark" />
+          </button>
+        </div>
+        <p class="text-xs text-slate-400 px-1 pb-2">{{ $t('common.customize_menu_help') }}</p>
+
+        <div v-for="(section, index) in orderedMenuSections" :key="section.key">
+          <div class="flex items-center gap-1 px-1 py-1 hover:bg-slate-100 rounded"
+            :class="{ 'opacity-50': isDragged(section.key), 'bg-sky-50': isDropTarget(section.key) }"
+            draggable="true" @dragstart="onCustomizerDragStart($event, section.key)"
+            @dragover="onCustomizerDragOver($event, section.key)" @drop.prevent="onCustomizerDrop(section)"
+            @dragend="onCustomizerDragEnd">
+            <Icon name="fa6-solid:grip-vertical" class="text-slate-300 cursor-grab shrink-0"
+              :title="$t('common.drag_to_reorder')" />
+            <label class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer font-medium">
+              <input type="checkbox" :checked="isMenuSectionVisible(section.key)"
+                :disabled="isMenuSectionVisible(section.key) && visibleMenuSections.length <= 1"
+                @change="toggleMenuSection(section.key)" />
+              <Icon :name="section.icon" class="text-slate-500 shrink-0" />
+              <span class="truncate">{{ section.label }}</span>
+            </label>
+            <button type="button" class="px-1 text-slate-400 hover:text-sky-600"
+              :title="$t('common.show_section_links')" :aria-expanded="expandedCustomizerSections.includes(section.key)"
+              @click="toggleCustomizerSection(section.key)">
+              <Icon name="fa6-solid:chevron-right" class="text-xs transition-transform"
+                :class="{ 'rotate-90': expandedCustomizerSections.includes(section.key) }" />
+            </button>
+            <button type="button" class="px-1 text-slate-400 hover:text-sky-600 disabled:opacity-30"
+              :disabled="index === 0" :title="$t('common.move_up')" @click="moveMenuSectionBy(section.key, -1)">
+              <Icon name="fa6-solid:arrow-up" class="text-xs" />
+            </button>
+            <button type="button" class="px-1 text-slate-400 hover:text-sky-600 disabled:opacity-30"
+              :disabled="index === orderedMenuSections.length - 1" :title="$t('common.move_down')"
+              @click="moveMenuSectionBy(section.key, 1)">
+              <Icon name="fa6-solid:arrow-down" class="text-xs" />
+            </button>
+          </div>
+
+          <!-- Enllaços de la secció -->
+          <div v-if="expandedCustomizerSections.includes(section.key)" class="ml-5 pl-1 border-l border-slate-100">
+            <div v-for="(item, itemIndex) in orderedMenuItems(section)" :key="item.key"
+              class="flex items-center gap-1 px-1 py-0.5 hover:bg-slate-100 rounded"
+              :class="{ 'opacity-50': isDragged(section.key, item.key), 'bg-sky-50': isDropTarget(section.key, item.key) }"
+              draggable="true" @dragstart="onCustomizerDragStart($event, section.key, item.key)"
+              @dragover="onCustomizerDragOver($event, section.key, item.key)"
+              @drop.prevent="onCustomizerDrop(section, item.key)" @dragend="onCustomizerDragEnd">
+              <Icon name="fa6-solid:grip-vertical" class="text-slate-300 cursor-grab shrink-0"
+                :title="$t('common.drag_to_reorder')" />
+              <label class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                <input type="checkbox" :checked="isMenuItemVisible(section.key, item.key)"
+                  :disabled="isMenuItemVisible(section.key, item.key) && visibleMenuItems(section).length <= 1"
+                  @change="toggleMenuItem(section, item.key)" />
+                <img v-if="item.image" :src="item.image" alt="" class="h-3.5 shrink-0 grayscale brightness-75 opacity-70" />
+                <Icon v-else :name="item.icon" class="text-slate-500 shrink-0" />
+                <span class="truncate">{{ item.label }}</span>
+              </label>
+              <button type="button" class="px-1 text-slate-400 hover:text-sky-600 disabled:opacity-30"
+                :disabled="itemIndex === 0" :title="$t('common.move_up')" @click="moveMenuItemBy(section, item.key, -1)">
+                <Icon name="fa6-solid:arrow-up" class="text-xs" />
+              </button>
+              <button type="button" class="px-1 text-slate-400 hover:text-sky-600 disabled:opacity-30"
+                :disabled="itemIndex === section.items.length - 1" :title="$t('common.move_down')"
+                @click="moveMenuItemBy(section, item.key, 1)">
+                <Icon name="fa6-solid:arrow-down" class="text-xs" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-100 mt-2 pt-2 flex flex-col items-start gap-1 px-1">
+          <button type="button" class="text-sky-600 hover:underline" @click="setAllFolded(!allFolded)">
+            {{ allFolded ? $t('common.unfold_all_sections') : $t('common.fold_all_sections') }}
+          </button>
+          <button v-if="isMenuCustomised" type="button" class="text-sky-600 hover:underline" @click="resetMenuLayout">
+            {{ $t('common.restore_default_menu') }}
+          </button>
+        </div>
       </div>
 
       <!-- Exploitation Trigger Button -->
@@ -851,6 +881,35 @@ onUnmounted(() => {
 
   </nav>
 </template>
+
+<style>
+/* Còpia que segueix el ratolí en arrossegar (penja del body, per això no és scoped):
+   una secció es mostra plegada, només amb el títol. */
+.nav-drag-fallback {
+  height: auto !important;
+  background: white;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+  opacity: 0.95 !important;
+  list-style: none;
+}
+.nav-drag-fallback [data-nav-section-links] {
+  display: none !important;
+}
+.nav-drag-fallback.nav-drag-forbidden {
+  opacity: 0.45 !important;
+  outline: 1px solid rgb(248 113 113);
+}
+body.nav-drag-forbidden-cursor,
+body.nav-drag-forbidden-cursor * {
+  cursor: not-allowed !important;
+}
+.nav-drag-placeholder {
+  opacity: 0.4;
+  background: rgb(224 242 254);
+  border-radius: 0.375rem;
+}
+</style>
 
 <style scoped>
 /* Integrated custom scrollbar that doesn't stand out */
