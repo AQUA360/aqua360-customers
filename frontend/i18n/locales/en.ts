@@ -3929,6 +3929,8 @@ export default {
     info_bulk_download: 'Download all files with the selected extension',
     info_check_selected_comms: 'By continuing, the selected communications will be saved within the same process and can be managed together',
     info_reading_added_to_communication_process: 'Reading successfully added to a communication process',
+    info_readings_added_to_communication_process: '{n} reading added to a communication process | {n} readings added to a communication process',
+    info_no_readings_added_to_communication_process: "No readings were added: they are already in a communication process or cannot be communicated",
     info_reading_change_logs: 'Log of changes made to the readings of this contract and meter',
     info_select_contracts_from_file: 'Select contracts from the CSV file',
     info_step_expenses_highlight: 'Contracts with a blue background already have the expenses invoice created for this step',

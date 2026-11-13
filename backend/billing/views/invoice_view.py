@@ -26,6 +26,8 @@ from billing.utils.invoice_service import apply_invoice_payment_method, get_elec
 from billing.utils.invoice_list_queryset import invoice_list_queryset
 from billing.utils.invoice_period import period_year_counts
 from billing.utils.invoice_suppression_service import suppress_invoice
+from communication.permissions import CommunicationProcessChangePermission
+from communication.utils.communication_process_service import add_reading_to_communication_process, filter_readings_by_active_process
 from coredata.models import ConfigProject, PersonAddress, PersonPiggyBankMovement
 from contract.models import PiggyBankMovement, Contract
 from service.models import CompanyBank
@@ -634,6 +636,30 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     # Només el task_id: si la tasca ja ha acabat, no se'n trepitja l'estat.
     UnpaidFeeRun.objects.filter(id=run.id).update(task_id=task.id)
     return Response({"task_id": task.id, "count": len(invoice_ids)}, status=status.HTTP_202_ACCEPTED)
+
+  @action(detail=True, methods=['post'], url_path='add-to-communication-process',
+          permission_classes=[IsAuthenticated, CommunicationProcessChangePermission])
+  def add_to_communication_process(self, request, pk=None):
+    """
+    Afegeix a un procés de comunicació (esborrany) les lectures no de control de la factura
+    que encara no siguin en cap procés no anul·lat. No envia res.
+    Les lectures sense punt de subministrament o sense connexió se salten (`skipped_count`).
+    """
+    invoice = self.get_object()
+    readings = invoice.readings.filter(is_control=False)
+    if not readings.exists():
+      return Response({'error': _('La factura no té lectures')}, status=status.HTTP_400_BAD_REQUEST)
+    pending = list(filter_readings_by_active_process(readings, active=False).select_related('supply_point__connection'))
+    addable = [r for r in pending if r.supply_point and r.supply_point.connection]
+    with transaction.atomic():
+      for reading in addable:
+        add_reading_to_communication_process(reading, request.user)
+    return Response({
+      'has_possible_leak_comm': filter_readings_by_active_process(readings).exists(),
+      'added_count': len(addable),
+      'skipped_count': len(pending) - len(addable),
+      'status': 'ok'
+    })
 
   @action(detail=True, methods=['post'], url_path='recalculate-smart')
   def recalculate_smart(self, request, pk=None):

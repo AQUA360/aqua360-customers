@@ -4060,6 +4060,8 @@ export default {
     info_bulk_download: 'Descarrega tots els fitxers amb l\'extensió seleccionada',
     info_check_selected_comms: 'Al continuar, es guardaran les comunicacions seleccionades dins d\'un mateix procés i es podràn gestionar en conjunt',
     info_reading_added_to_communication_process: 'Lectura afegida a un procés de comunicació correctament',
+    info_readings_added_to_communication_process: '{n} lectura afegida a un procés de comunicació | {n} lectures afegides a un procés de comunicació',
+    info_no_readings_added_to_communication_process: "No s'ha afegit cap lectura: ja són en un procés de comunicació o no es poden comunicar",
     info_reading_change_logs: 'Registre de canvis realitzats en les lectures d\'aquest contracte i comptador',
     info_select_contracts_from_file: 'Selecciona els contractes des del fitxer CSV',
     info_step_expenses_highlight: 'Els contractes amb fons blau ja tenen la factura de despeses creada per a aquest pas',

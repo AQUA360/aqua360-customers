@@ -4912,3 +4912,7 @@ msgstr "Descargar Excel"
 #: billing/utils/payment_remittance_lock_service.py
 msgid "This remittance has already been sent and can no longer be modified."
 msgstr "Esta remesa xa se enviou e non se pode modificar."
+
+#: billing/views/invoice_view.py
+msgid "La factura no té lectures"
+msgstr "A factura non ten lecturas"

@@ -6,10 +6,10 @@
     <div class="grid pt-2 gap-2 px-4 divide-gray-200 transition-all rounded-t-lg duration-300 ease-in-out"
       :class="[
         props.rowIndex != null && props.showCheckbox
-          ? 'grid-cols-[48px_40px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_260px]'
+          ? 'grid-cols-[48px_40px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_300px]'
           : props.rowIndex != null
-            ? 'grid-cols-[48px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_260px]'
-            : 'grid-cols-[40px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_260px]',
+            ? 'grid-cols-[48px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_300px]'
+            : 'grid-cols-[40px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_300px]',
         { 'mb-1 pb-2 pt-2 bg-slate-200': props.showDetail, 'bg-slate-100': excluded }
       ]">
       <div v-if="props.rowIndex != null" class="flex items-center justify-end pr-1">
@@ -99,6 +99,11 @@
           @click="toggleHistory" :title="t('common.history')"
         >
           <Icon name="fa6-solid:chart-line" />
+        </button>
+        <button :disabled="!!invoice.has_possible_leak_comm || !invoice.has_readings || loadingCommunication" :title="t('common.send_individual_communication')"
+          class="w-8 h-8 bg-amber-500 text-white rounded-full flex flex-shrink-0 items-center justify-center enabled:hover:bg-amber-600 transition-all duration-200 disabled:opacity-30 ml-1"
+          @click="addToCommunicationProcess">
+          <Icon :name="loadingCommunication ? 'fa6-solid:spinner' : 'fa6-solid:message'" :class="{ 'animate-spin': loadingCommunication }" />
         </button>
         <button v-if="!props.finalized" :disabled="isInvoiceProcessed || loadingExclude"
           class="w-8 h-8 rounded-full flex flex-shrink-0 items-center justify-center transition-all duration-200 disabled:opacity-30 ml-1"
@@ -263,6 +268,26 @@ const exclude = async () => {
     toast.error(t("billing_block.error_exclude_invoice"));
   } finally {
     loadingExclude.value = false;
+  }
+}
+
+const loadingCommunication = ref(false);
+const addToCommunicationProcess = async () => {
+  try {
+    loadingCommunication.value = true;
+    const response = await $InvoiceApiService.addToCommunicationProcess(invoice.value.id);
+    if (response) {
+      invoice.value.has_possible_leak_comm = !!response.has_possible_leak_comm;
+      if (response.added_count > 0) {
+        toast.success(t('informative_block.info_readings_added_to_communication_process', response.added_count));
+      } else {
+        toast.info(t('informative_block.info_no_readings_added_to_communication_process'));
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  } finally {
+    loadingCommunication.value = false;
   }
 }
 

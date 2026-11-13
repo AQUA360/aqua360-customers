@@ -4060,6 +4060,8 @@ export default {
     info_bulk_download: 'Descarga todos los archivos con la extensión seleccionada',
     info_check_selected_comms: 'Al continuar, se guardarán las comunicaciones seleccionadas dentro de un mismo proceso y se podrán gestionar en conjunto',
     info_reading_added_to_communication_process: 'Lectura añadida a un proceso de comunicación correctamente',
+    info_readings_added_to_communication_process: '{n} lectura añadida a un proceso de comunicación | {n} lecturas añadidas a un proceso de comunicación',
+    info_no_readings_added_to_communication_process: "No se ha añadido ninguna lectura: ya están en un proceso de comunicación o no se pueden comunicar",
     info_reading_change_logs: 'Registro de cambios realizados en las lecturas de este contrato y contador',
     info_select_contracts_from_file: 'Selecciona los contratos desde el fichero CSV',
     info_step_expenses_highlight: 'Los contratos con fondo azul ya tienen la factura de gastos creada para este paso',
