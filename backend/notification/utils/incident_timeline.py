@@ -63,6 +63,14 @@ def build_timeline(incident):
         for observation in incident.observations.select_related('user'):
             add(observation.created_at, 'observation', _("Observation"), observation.observation, observation.user)
 
+        for communication in incident.communications.filter(is_active=True).select_related('user', 'person'):
+            recipient = str(communication.person).strip() if communication.person else None
+            detail = ' · '.join(str(item) for item in [communication.type_names, recipient] if item)
+            add(communication.created_at, 'communication',
+                _("Communication %(token)s") % {'token': communication.token}, detail, communication.user)
+            add(communication.sent_at, 'communication_sent',
+                _("Communication %(token)s sent") % {'token': communication.token}, detail)
+
         for task in incident.tasks.all():
             add(task.created_at, 'task', _("Task: %(name)s") % {'name': task.name or '-'},
                 task.set_date.isoformat() if task.set_date else None)

@@ -136,6 +136,11 @@ class CommunicationSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = Communication
         fields = '__all__'
+
+    def validate_incident(self, incident):
+        if incident is not None and not incident.is_active:
+            raise serializers.ValidationError("La incidència no està activa.")
+        return incident
     
     def create(self, validated_data):
         messages_data = validated_data.pop('messages_data', None)
