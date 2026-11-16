@@ -617,6 +617,13 @@ const terminate = async ({ skipConfirm = false } = {}) => {
 
 const terminationCompletedStatus = ref(null);
 const finalizing_termination = ref(false);
+// Modal amb 3 opcions de finalització (sense factura / amb fiança / factura abans)
+const finalizeChoiceOpen = ref(false);
+// Opció 3: esperem factura definitiva abans de tancar la baixa
+const awaitFinalizeAfterInvoice = ref(false);
+const autoOpenBudget = ref(false);
+const invoiceConfirmedForFinalize = ref(false);
+const exitWithoutInvoiceConfirm = ref(null); // { resolve }
 
 // La resposta del save() porta l'estat com a id; la de la sol·licitud, com a objecte
 const terminationFinalized = computed(() => {
@@ -627,29 +634,113 @@ const terminationFinalized = computed(() => {
     : status == terminationCompletedStatus.value.id;
 });
 
-// Finalitza la baixa des de l'alta, sense haver de passar per Baixes de contracte. Queda
-// "sense factura" tret que es facturi la lectura de tall; el pressupost es pot generar després.
-const finalizeTermination = async () => {
+const clearFinalizeBudgetFlow = () => {
+  awaitFinalizeAfterInvoice.value = false;
+  autoOpenBudget.value = false;
+  invoiceConfirmedForFinalize.value = false;
+};
+
+const closeTermination = async ({ ignore_invoice = false } = {}) => {
+  const payload = ignore_invoice ? { ignore_invoice: true } : {};
+  const closed = await $ContractTerminationApiService.close(termination_request.value.id, payload);
+  if (closed?.id) {
+    termination_request.value = { ...termination_request.value, status: closed.status, ignore_invoice: closed.ignore_invoice };
+    toast.success(t('common.correct_finish'));
+    emit('contract-terminated', { contract_termination_request: closed.id });
+  }
+  return closed;
+};
+
+const openTerminationBudgetRegion = () => {
+  autoOpenBudget.value = true;
+  showDetail('ContractTerminationRegion', termination_request.value.id);
+};
+
+const onAutoBudgetOpened = () => {
+  autoOpenBudget.value = false;
+};
+
+// Opció 3: la factura definitiva ja existeix → finalitzar la baixa (retorn de fiança després)
+const onInvoiceConfirmedForFinalize = async () => {
+  if (!awaitFinalizeAfterInvoice.value || invoiceConfirmedForFinalize.value) return;
+  invoiceConfirmedForFinalize.value = true;
+  finalizing_termination.value = true;
+  try {
+    await closeTermination();
+    clearFinalizeBudgetFlow();
+  } catch (error) {
+    console.error('Error finalizing termination after invoice:', error);
+    toast.error(t('contract_block.unexpected_error'));
+    invoiceConfirmedForFinalize.value = false;
+  } finally {
+    finalizing_termination.value = false;
+  }
+};
+
+const askExitWithoutInvoiceConfirm = () => new Promise((resolve) => {
+  exitWithoutInvoiceConfirm.value = { resolve };
+});
+
+const closeExitWithoutInvoiceConfirm = (accepted) => {
+  const pending = exitWithoutInvoiceConfirm.value;
+  exitWithoutInvoiceConfirm.value = null;
+  pending?.resolve(accepted);
+};
+
+// Obre el selector d'opcions de finalització (en lloc del confirm únic anterior)
+const finalizeTermination = () => {
   if (!termination_request.value?.readings?.length && !termination_request.value?.orders?.length) {
     toast.warning(t('contract_block.cut_reading_required_to_finalize'));
     return;
   }
-  if (!confirm(t('confirmation_text_block.confirm_finalize_termination_from_request'))) return;
-  finalizing_termination.value = true;
-  try {
-    const closed = await $ContractTerminationApiService.close(termination_request.value.id, { ignore_invoice: true });
-    if (closed?.id) {
-      termination_request.value = { ...termination_request.value, status: closed.status, ignore_invoice: closed.ignore_invoice };
-      toast.success(t('common.correct_finish'));
-      emit('contract-terminated', { contract_termination_request: closed.id });
+  finalizeChoiceOpen.value = true;
+};
+
+const closeFinalizeChoice = () => {
+  finalizeChoiceOpen.value = false;
+};
+
+// 1: sense factura · 2: baixa abans (fiança a saldo) · 3: factura abans (fiança després)
+const selectFinalizeOption = async (option) => {
+  closeFinalizeChoice();
+  if (option === 'no_invoice') {
+    if (!confirm(t('confirmation_text_block.confirm_finalize_termination_from_request'))) return;
+    finalizing_termination.value = true;
+    try {
+      await closeTermination({ ignore_invoice: true });
+    } catch (error) {
+      console.error('Error finalizing termination:', error);
+      toast.error(t('contract_block.unexpected_error'));
+    } finally {
+      finalizing_termination.value = false;
     }
-  } catch (error) {
-    console.error('Error finalizing termination:', error);
-    toast.error(t('contract_block.unexpected_error'));
-  } finally {
-    finalizing_termination.value = false;
+    return;
   }
-}
+
+  if (option === 'with_bail') {
+    if (!confirm(t('confirmation_text_block.confirm_finalize_termination_with_bail'))) return;
+    finalizing_termination.value = true;
+    try {
+      const closed = await closeTermination();
+      if (closed?.id) {
+        openTerminationBudgetRegion();
+      }
+    } catch (error) {
+      console.error('Error finalizing termination with bail:', error);
+      toast.error(t('contract_block.unexpected_error'));
+    } finally {
+      finalizing_termination.value = false;
+    }
+    return;
+  }
+
+  if (option === 'invoice_first') {
+    if (!confirm(t('confirmation_text_block.confirm_finalize_termination_invoice_first'))) return;
+    invoiceConfirmedForFinalize.value = false;
+    awaitFinalizeAfterInvoice.value = true;
+    openTerminationBudgetRegion();
+  }
+};
 
 // Es pot donar de baixa el contracte actiu des de fora (mateixes condicions que el botó de la card)
 const canTerminate = computed(() => activeContract.value != null && termination_request.value == null
@@ -885,7 +976,17 @@ const showDetail = (component, id) => {
   }
 }
 
-const closeRegion = () => {
+const closeRegion = async () => {
+  // Opció 3: si surten sense confirmar la factura, la baixa no es finalitza (evita retorn de fiança)
+  if (awaitFinalizeAfterInvoice.value && !invoiceConfirmedForFinalize.value && !terminationFinalized.value) {
+    const accepted = await askExitWithoutInvoiceConfirm();
+    if (!accepted) return;
+    clearFinalizeBudgetFlow();
+  } else if (awaitFinalizeAfterInvoice.value && invoiceConfirmedForFinalize.value) {
+    clearFinalizeBudgetFlow();
+  } else {
+    autoOpenBudget.value = false;
+  }
   showRegionComponent.value = null;
   isSubRegionOpen.value = false;
   regionDetailId.value = null;
@@ -1714,10 +1815,123 @@ watch(billCutReading, async (newVal) => {
           <MeterEdit v-if="showRegionComponent === 'CreateMeter'" :supply_point="supply_point" :isSubRegion="true"
             @created="handleMeterCreated" />
           <ContractTerminationRegion v-if="showRegionComponent === 'ContractTerminationRegion'" :id="regionDetailId"
-            @show-subregion="handleSubRegionEvent" :isSubRegionOpen="isSubRegionOpen" />
+            :auto-open-budget="autoOpenBudget" :await-finalize-after-invoice="awaitFinalizeAfterInvoice"
+            :isSubRegionOpen="isSubRegionOpen" @show-subregion="handleSubRegionEvent"
+            @auto-budget-opened="onAutoBudgetOpened" @invoice-confirmed="onInvoiceConfirmedForFinalize" />
         </div>
       </div><!-- /end Regió lateral per formularis -->
     </div>
+
+    <!-- Opcions de finalització de la baixa des de l'alta -->
+    <Teleport to="body">
+      <div v-if="finalizeChoiceOpen">
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-[60]" @click="closeFinalizeChoice" />
+        <div class="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4" role="dialog"
+          aria-modal="true" @click="closeFinalizeChoice">
+          <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-xl relative" @click.stop>
+            <button type="button" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+              :aria-label="t('common.cancel')" @click="closeFinalizeChoice">
+              <Icon name="fa6-solid:xmark" class="text-xl" />
+            </button>
+
+            <h3 class="text-lg font-bold text-slate-800 mb-2 pr-8 flex items-center gap-2">
+              <Icon name="fa6-solid:circle-check" class="text-emerald-600" />
+              {{ t('contract_block.finalize_termination') }}
+            </h3>
+            <p class="text-sm text-slate-600 mb-4">
+              {{ t('contract_block.finalize_termination_choose') }}
+            </p>
+
+            <div class="flex flex-col gap-3">
+              <button type="button" class="text-left px-4 py-3 rounded-lg border-2 border-gray-200 bg-white
+                hover:border-sky-400 hover:bg-sky-50 transition-all duration-150"
+                :disabled="finalizing_termination" @click="selectFinalizeOption('no_invoice')">
+                <div class="flex items-start gap-3">
+                  <Icon name="fa6-solid:ban" class="text-slate-400 mt-0.5 shrink-0" />
+                  <div>
+                    <span class="font-semibold text-sm text-slate-800 block">
+                      {{ t('contract_block.finalize_termination_option_no_invoice') }}
+                    </span>
+                    <span class="text-xs text-slate-500 mt-1 block">
+                      {{ t('contract_block.finalize_termination_option_no_invoice_hint') }}
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              <button type="button" class="text-left px-4 py-3 rounded-lg border-2 border-gray-200 bg-white
+                hover:border-sky-400 hover:bg-sky-50 transition-all duration-150"
+                :disabled="finalizing_termination" @click="selectFinalizeOption('with_bail')">
+                <div class="flex items-start gap-3">
+                  <Icon name="fa6-solid:piggy-bank" class="text-sky-500 mt-0.5 shrink-0" />
+                  <div>
+                    <span class="font-semibold text-sm text-slate-800 block">
+                      {{ t('contract_block.finalize_termination_option_with_bail') }}
+                    </span>
+                    <span class="text-xs text-slate-500 mt-1 block">
+                      {{ t('contract_block.finalize_termination_option_with_bail_hint') }}
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              <button type="button" class="text-left px-4 py-3 rounded-lg border-2 border-gray-200 bg-white
+                hover:border-sky-400 hover:bg-sky-50 transition-all duration-150"
+                :disabled="finalizing_termination" @click="selectFinalizeOption('invoice_first')">
+                <div class="flex items-start gap-3">
+                  <Icon name="fa6-solid:file-invoice-dollar" class="text-amber-500 mt-0.5 shrink-0" />
+                  <div>
+                    <span class="font-semibold text-sm text-slate-800 block">
+                      {{ t('contract_block.finalize_termination_option_invoice_first') }}
+                    </span>
+                    <span class="text-xs text-slate-500 mt-1 block">
+                      {{ t('contract_block.finalize_termination_option_invoice_first_hint') }}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-5">
+              <button type="button" class="button-default" @click="closeFinalizeChoice">
+                {{ t('common.cancel') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Sortida de l'opció 3 sense confirmar la factura -->
+    <Teleport to="body">
+      <div v-if="exitWithoutInvoiceConfirm">
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-[60]" @click="closeExitWithoutInvoiceConfirm(false)" />
+        <div class="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4" role="dialog"
+          aria-modal="true" @click="closeExitWithoutInvoiceConfirm(false)">
+          <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md relative" @click.stop>
+            <button type="button" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+              :aria-label="t('common.cancel')" @click="closeExitWithoutInvoiceConfirm(false)">
+              <Icon name="fa6-solid:xmark" class="text-xl" />
+            </button>
+            <h3 class="text-lg font-bold text-amber-800 mb-3 pr-8 flex items-center gap-2">
+              <Icon name="fa6-solid:triangle-exclamation" class="text-amber-500" />
+              {{ t('contract_block.finalize_termination') }}
+            </h3>
+            <p class="text-sm text-slate-700 leading-relaxed mb-5">
+              {{ t('confirmation_text_block.confirm_exit_finalize_without_invoice') }}
+            </p>
+            <div class="flex justify-end gap-2">
+              <button type="button" class="button-default" @click="closeExitWithoutInvoiceConfirm(false)">
+                {{ t('common.cancel') }}
+              </button>
+              <button type="button" class="button-primary font-bold" @click="closeExitWithoutInvoiceConfirm(true)">
+                {{ t('common.confirm') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Confirmació de lectura inicial: lectures posteriors que passaran al contracte nou -->
     <Teleport to="body">
