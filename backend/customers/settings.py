@@ -419,9 +419,11 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "login": "10/min",
     },
-    # Nombre de proxys de confiança (nginx) davant el backend: DRF en deriva la IP
-    # real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.
-    "NUM_PROXIES": 1,
+    # Nombre de proxys de confiança davant el backend (Cloudflare + nginx): DRF en deriva
+    # la IP real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.
+    # Només és vàlid si nginx i el backend no són accessibles directament, sense passar
+    # per Cloudflare (tallafoc o allow/deny de nginx amb les IPs de Cloudflare).
+    "NUM_PROXIES": 2,
 }
 
 # Optional: Add REST Framework Token Authentication settings if needed

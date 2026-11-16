@@ -15,7 +15,6 @@ from billing.models import Invoice, InvoiceStatus, Payment, PaymentRemittance, P
 from billing.serializers.payment_serializer import PaymentSEPASerializer, PaymentSerializer
 from billing.utils.payment_service import get_payment_SEPA_data, log_payment_status
 from django.db.models import Sum
-import xml.etree.ElementTree as ET
 from django.core.files.base import ContentFile
 from billing.utils.sepa_file_service import generate_xml, generate_xml_payments
 from coredata.models import Bank, ConfigProject
