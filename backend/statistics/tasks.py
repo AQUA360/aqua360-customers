@@ -505,7 +505,29 @@ def run_report_task(self, generator_func_name, report_data, queue_item_id=None):
         if q_item.report.section_id:
           report_data['type_id'] = q_item.report.section_id
 
-    document_id, filename = execute_report(generator_func_name, report_data, task=self)
+    # Versió PDF de presentació: només si l'informe la té activada.
+    wants_pdf = (
+      str(report_data.get('output_format') or '').lower() == 'pdf'
+      and q_item is not None and q_item.report is not None
+      and q_item.report.allow_pdf_export
+    )
+    if wants_pdf:
+      from django.utils.translation import gettext
+      from statistics.utils.report_pdf_service import pdf_export, ReportTooLargeForPdf
+      with override(settings.LANGUAGE_CODE):
+        pdf_title = gettext(q_item.report.name) if q_item.report.name else None
+      with pdf_export(title=pdf_title, filters_display=q_item.filters_display) as pdf_options:
+        try:
+          document_id, filename = execute_report(generator_func_name, report_data, task=self)
+        except Exception:
+          pdf_error = pdf_options.get('error')
+          if isinstance(pdf_error, ReportTooLargeForPdf):
+            raise ReportWarning(str(pdf_error))
+          if pdf_error is not None:
+            raise Exception(str(pdf_error))
+          raise
+    else:
+      document_id, filename = execute_report(generator_func_name, report_data, task=self)
 
     if q_item:
       from django.utils import timezone

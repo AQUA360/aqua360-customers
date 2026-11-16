@@ -3479,6 +3479,7 @@ export default {
     detail: 'Detalle'
   },
   reports_block:   {
+    download_pdf_hint: "Descargar en PDF (versión para presentar)",
     error_queue_action: 'Error al gestionar la tarea de la cola.',
     report_completed_success: 'Informe "{name}" generado correctamente.',
     report_generation_failed: 'Error al generar el informe "{name}".',
