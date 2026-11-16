@@ -135,7 +135,7 @@ class IncidentViewSet(viewsets.ModelViewSet):
   def timeline(self, request, pk=None):
       """Cronologia unificada de la incidència: estats, canvis, trucades, informes i observacions."""
       from notification.utils.incident_timeline import build_timeline
-      return Response(build_timeline(self.get_object()))
+      return Response(build_timeline(self.get_object(), request.user))
 
   @action(detail=True, methods=['post'], url_path='send-receipt')
   def send_receipt(self, request, pk=None):

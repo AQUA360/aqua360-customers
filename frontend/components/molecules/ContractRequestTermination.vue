@@ -19,6 +19,7 @@ import ContractTerminationRegion from '../organisms/ContractTerminationRegion.vu
 import { checkPermission } from '~/middleware/permission';
 
 const { $ReadingApiService, $ConfiglistApiService, $ConfigProjectApiService, $ContractTerminationApiService, $OrderApiService, $SupplyPointApiService, $MeterApiService, $ContractRequestApiService, $SmartMeteringApiService } = useNuxtApp();
+const { checkMeterReassign } = useMeterReassignConfirm();
 const { t, te } = useI18n();
 const toast = useToast();
 const props = defineProps({
@@ -681,10 +682,27 @@ const clickDeleteOrder = async (id) => {
   }
 }
 
+// Cada clic al llistat és una selecció nova: una comprovació antiga no s'aplica.
+// Els desaments es compten a part: un clic cancel·lat no ha d'amagar el desament
+// anterior, només un desament posterior el substitueix.
+let meterSelectionSeq = 0;
+let meterSaveSeq = 0;
+
 const setMeter = async (meter) => {
+  // Un desament alhora: si n'hi ha un en curs, el clic s'ignora.
+  if (saving.value) return;
   console.log('meter', meter);
-  if ((meter.supply_point || meter.supply_point == "") && !meter.is_general) {
-    if (!confirm(t("confirmation_text_block.confirm_assign_meter_with_sp"))) return;
+  const seq = ++meterSelectionSeq;
+  // Avís amb on és ara el comptador (punt, contractes i titulars) abans de treure'l d'allà.
+  let confirmReassign = false;
+  if (meter.id != selectedMeter.value) {
+    try {
+      confirmReassign = await checkMeterReassign(meter, props.supply_point.id);
+    } catch (error) {
+      console.error(error);
+      return;
+    }
+    if (confirmReassign === null || seq !== meterSelectionSeq) return;
   }
   if (meter.id == selectedMeter.value) {
     selectedMeter.value = props.supply_point.meter_id;
@@ -698,12 +716,14 @@ const setMeter = async (meter) => {
   }
   let save_data = {
     supply_point_id: props.supply_point.id,
-    meter_id: selectedMeter.value
+    meter_id: selectedMeter.value,
+    confirm_reassign: confirmReassign,
   }
+  const saveSeq = ++meterSaveSeq;
   saving.value = true;
   try {
     let response = await $SupplyPointApiService.updateMeter(save_data);
-    if (response) {
+    if (response && saveSeq === meterSaveSeq) {
       emit('change-sp', response);
       toast.success(t("service_block.meter_assign_to_sp"), {
         position: "top-right",
@@ -734,6 +754,9 @@ const handleMeterCreated = async (meter) => {
       supply_point_id: props.supply_point.id,
       meter_id: meter.id
     }
+    // El comptador creat substitueix qualsevol selecció o desament pendent.
+    ++meterSelectionSeq;
+    ++meterSaveSeq;
     let response = await $SupplyPointApiService.updateMeter(save_data);
     if (response) {
       emit('change-sp', response);

@@ -11,8 +11,11 @@ def _user(user):
     return user.username if user else None
 
 
-def build_timeline(incident):
-    """Return the incident events sorted by date (most recent first)."""
+def build_timeline(incident, user=None):
+    """Return the incident events sorted by date (most recent first).
+
+    Communications are only included when `user` can view them.
+    """
     from coredata.models import CallRegister
     from logger.models import LogIncidentChange, LogIncidentStatusChange
 
@@ -62,6 +65,17 @@ def build_timeline(incident):
 
         for observation in incident.observations.select_related('user'):
             add(observation.created_at, 'observation', _("Observation"), observation.observation, observation.user)
+
+        can_view_communications = bool(user and user.has_perm('communication.view_communication'))
+        communications = incident.communications.filter(is_active=True).select_related('user', 'person') \
+            if can_view_communications else []
+        for communication in communications:
+            recipient = str(communication.person).strip() if communication.person else None
+            detail = ' · '.join(str(item) for item in [communication.type_names, recipient] if item)
+            add(communication.created_at, 'communication',
+                _("Communication %(token)s") % {'token': communication.token}, detail, communication.user)
+            add(communication.sent_at, 'communication_sent',
+                _("Communication %(token)s sent") % {'token': communication.token}, detail)
 
         for task in incident.tasks.all():
             add(task.created_at, 'task', _("Task: %(name)s") % {'name': task.name or '-'},

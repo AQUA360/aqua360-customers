@@ -105,30 +105,20 @@ ENV PYTHONPATH=/opt/plugins
 
 <!-- coderabbit-ai-generated-section:v1:792eb173d671748ff74117dfd98884216b5c404967df66733c20cc2c8fc5779b -->
 
-Desde el repositorio del plugin, construid la imagen pasando explícitamente el argumento de compilación `CUSTOMERS_VERSION`. Sustituid `<versió>` por una etiqueta publicada del backend que contenga el cargador; sustituid también el marcador de la etiqueta privada:
+El `FROM` es siempre la imagen pública del producto. Un plugin no es nunca la base de otro: si hay más de uno, se copian todos sobre esa pública.
 
-```bash
-docker build --build-arg CUSTOMERS_VERSION="<versió>" -t "ghcr.io/exemple/backend-amb-plugin:v<versió>" .
-```
+El servidor sigue ejecutando `ghcr.io/aqua360/aqua360-customers-backend:${CUSTOMERS_VERSION}`. La elección vale para el backend, el worker, el beat, el consumidor GMAO y el frontend. No hay ninguna variable que sustituya esta imagen. `BACKEND_IMAGE` y `docker-compose.image.yml` no son el despliegue de un plugin.
 
-Cuando sale una release nueva del producto, se reconstruye esta imagen con la nueva versión base. En el `.env` del cliente, sustituid `<versió>` por una versión publicada del frontend compatible con el backend privado:
-
-<!-- /coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated:v1 -->
-
-<!-- coderabbit-ai-generated-section:v1:74fc40de8083a34d19e7024b42a05da5b4093afbfdef82a24b55ea16c46a4146 -->
+En el `.env` se declaran los plugins y el registro de cada uno, sin etiqueta. La etiqueta es `CUSTOMERS_VERSION`. Dentro de un valor del `.env` esta referencia no se expande.
 
 ```dotenv
-COMPOSE_FILE=docker-compose.yml:docker-compose.image.yml
 CUSTOMERS_VERSION=<versió>
-BACKEND_IMAGE=ghcr.io/exemple/backend-amb-plugin:v<versió>
-PLUGINS=exemple
+PLUGINS=exemple,altre
+PLUGIN_IMAGE_exemple=ghcr.io/exemple/plugin-exemple
+PLUGIN_IMAGE_altre=ghcr.io/exemple/plugin-altre
 ```
 
-<!-- /coderabbit-ai-generated:v1 -->
-
-`docker-compose.image.yml` pone `BACKEND_IMAGE` en el backend, en el worker, en el beat y en el consumidor GMAO, y les quita el `build`. El frontend sigue la imagen pública: un plugin que solo reacciona a señales no añade pantallas, porque el frontend ya va compilado.
+`PLUGINS` es lo que lee Django. `PLUGIN_IMAGE_<nom>` es lo que usa el paso que, antes de arrancar, copia `/opt/plugins/<nom>` de cada imagen sobre la pública. Si este código no está en la imagen que arranca, el proceso no arranca. Un plugin que solo reacciona a señales no añade pantallas: el frontend ya va compilado.
 
 <!-- coderabbit-ai-generated:v1 -->
 

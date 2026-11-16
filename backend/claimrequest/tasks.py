@@ -1,4 +1,5 @@
 import base64
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -40,6 +41,8 @@ from xhtml2pdf import pisa
 from service.serializers.company_serializer import CompanySerializer
 from service.utils.exploitation_logo import exploitation_logo_source
 from service.utils.contract_company import build_logo_path, company_colors, contract_company_logo, get_contract_company
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -1123,10 +1126,11 @@ def export_claim_contracts_task(contract_ids, contract_payments=None):
 
     try:
         contract_ids = contract_ids or []
+        contract_payments = contract_payments or []
         file_bytes = build_export_xlsx_bytes_from_sheets([
             (_("Contractes"), iter_objects_by_ids(claim_contracts_export_queryset(), contract_ids),
-             claim_contracts_export_columns(contract_ids)),
-            (_("Factures"), claim_invoices_export_rows(contract_payments or []),
+             claim_contracts_export_columns(contract_ids, contract_payments)),
+            (_("Factures"), claim_invoices_export_rows(contract_payments),
              claim_invoices_export_columns()),
         ])
         filename = f"claim_contracts_{timezone.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}.xlsx"
@@ -1147,9 +1151,10 @@ def export_claim_contracts_task(contract_ids, contract_payments=None):
             "document_id": document.id,
             "document_name": filename,
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("Error generating claim contracts export")
         return {
             "status": "error",
-            "message": f"Error generating claim contracts export: {str(e)}",
+            "message": "Error generating claim contracts export",
         }
 

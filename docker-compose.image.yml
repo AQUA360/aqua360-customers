@@ -1,7 +1,6 @@
-# Imatge privada en lloc de la compilació local. No es carrega sol: al .env,
-# COMPOSE_FILE=docker-compose.yml:docker-compose.image.yml
-# i BACKEND_IMAGE=el nom de la imatge.
-# Treu el build perquè `up --build` no reconstrueixi ni reetiqueti aquesta imatge.
+# Fora d'ús per als plugins. El servidor corre la imatge pública de CUSTOMERS_VERSION
+# i els plugins s'hi copien. No es defineix BACKEND_IMAGE.
+# Es conserva perquè alguna instal·lació antiga encara el carrega amb COMPOSE_FILE.
 services:
   backend:
     image: ${BACKEND_IMAGE:?Cal BACKEND_IMAGE}
