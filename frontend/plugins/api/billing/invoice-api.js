@@ -61,12 +61,19 @@ export default defineNuxtPlugin(nuxtApp => {
         }
       }
 
-      if (issue_date && issue_date.start_date && issue_date.end_date) {
-        query += `&start_issue_date=${issue_date.start_date}&end_issue_date=${issue_date.end_date}`;
+      // Cada límit del rang s'aplica per separat: una sola data també filtra
+      if (issue_date?.start_date) {
+        query += `&start_issue_date=${issue_date.start_date}`;
+      }
+      if (issue_date?.end_date) {
+        query += `&end_issue_date=${issue_date.end_date}`;
       }
 
-      if (due_date && due_date.start_date && due_date.end_date) {
-        query += `&start_due_date=${due_date.start_date}&end_due_date=${due_date.end_date}`;
+      if (due_date?.start_date) {
+        query += `&start_due_date=${due_date.start_date}`;
+      }
+      if (due_date?.end_date) {
+        query += `&end_due_date=${due_date.end_date}`;
       }
 
       if (serie.length > 0) {
