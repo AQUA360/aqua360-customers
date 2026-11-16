@@ -223,6 +223,8 @@ class ContractSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contract
         fields = '__all__'
+        # La posa la sincronització amb l'oficina virtual, no es pot editar.
+        read_only_fields = ['virtual_office_date']
     
     def get_exploitation(self, obj):
         if obj.contract_request_type and obj.contract_request_type.exploitation:
@@ -817,6 +819,7 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
             'contacts',
             'debt_amount',
             'termination_date',
+            'virtual_office_date',
             'is_pinned',
             'is_checked',
             'person_role',

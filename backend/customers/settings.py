@@ -543,6 +543,16 @@ GISWATER_SYNC_SUPPLY_CUTS_MINUTES = config(
     "GISWATER_SYNC_SUPPLY_CUTS_MINUTES", default=60, cast=int
 )
 
+# Oficina virtual: el Customers li demana cada dia quins contractes hi tenen
+# l'alta activa (Contract.virtual_office_date). Vegeu integrations/outbound/ov/sync.py.
+OV_API_BASE_URL = config("OV_API_BASE_URL", default="")
+OV_API_KEY = config("OV_API_KEY", default="")
+OV_API_TIMEOUT = config("OV_API_TIMEOUT", default=60, cast=int)
+OV_ACTIVE_CONTRACTS_ENDPOINT = config("OV_ACTIVE_CONTRACTS_ENDPOINT", default="/api/linked-contracts/")
+OV_SYNC_ENABLED = config("OV_SYNC_ENABLED", default=False, cast=bool)
+OV_SYNC_HOUR = config("OV_SYNC_HOUR", default=4, cast=int)
+OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
+
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")
 SIGNING_CALLBACK_URL = config("SIGNING_CALLBACK_URL", default="")
