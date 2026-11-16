@@ -6,6 +6,7 @@ import debounce from 'lodash.debounce';
 import { formatDate, formatDateTime } from '~/utils/date';
 import Skeleton from '../atoms/Skeleton.vue';
 import { searchValues, foundItemTranslation } from '~/utils/search';
+import { escapeHtmlForPreview, escapeRegExp } from '~/utils/messages';
 import TimeRelative from '~/components/atoms/TimeRelative.vue';
 import { format } from 'date-fns';
 
@@ -179,14 +180,18 @@ const getItemTranslation = (item) => {
 };
 
 
+/** HTML segur del resultat amb el terme cercat ressaltat: el text ve de l'usuari i s'escapa. */
 const highlightedResult = (result) => {
-  /* result_words = result.split(' ')
-  search_words = searchTerm.value.split(' ') */
-  let highlighted = result.toString().replace(new RegExp(searchTerm.value, 'gi'), '<span class="font-extrabold italic">$&</span>')
-  /* for (let word of search_words) {
-    highlighted = highlighted.replace(new RegExp(word, 'gi'), '<span class="font-extrabold italic">$&</span>')
-  } */
-  return highlighted
+  const text = String(result ?? '');
+  const term = searchTerm.value?.trim();
+  if (!term) return escapeHtmlForPreview(text);
+  // Amb el grup de captura, `split` deixa les coincidències a les posicions senars
+  return text
+    .split(new RegExp(`(${escapeRegExp(term)})`, 'gi'))
+    .map((part, index) => index % 2
+      ? `<span class="font-extrabold italic">${escapeHtmlForPreview(part)}</span>`
+      : escapeHtmlForPreview(part))
+    .join('');
 };
 
 
@@ -365,7 +370,7 @@ onMounted(() => {
                     <Icon :name="searchValues[result.entity][1]" size="13px" class="text-md ml-2 mr-1 text-slate-500" />
                     <span class="text-slate-400 text-base px-2 truncate">{{ getItemTranslation(result.found_field) }}: </span>
                     <div class="flex items-center gap-2">
-                      <span v-html="result.found"></span>
+                      <span>{{ result.found }}</span>
                       <span class="text-slate-400 text-xs px-5">
                         {{ t(result.app.toLowerCase()) }} / {{ t(result.entity.replace(/-/g, '_').toLowerCase()) }}
                       </span>
