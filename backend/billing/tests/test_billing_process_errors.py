@@ -163,6 +163,18 @@ class TestProcessBillingBatchErrors(ProcessErrorsBase):
         self.assertNotIn('has no biller', item.error_message)
         self.assertNotIn('has no biller', str(ctx.exception))
 
+    def test_billing_without_contracts_to_bill_leaves_processing(self, _progress, _close):
+        processing, _ = BillingStatus.objects.get_or_create(token='PROCESSING', defaults={'name': 'Processant'})
+        billing = Billing.objects.create(token='FACT-EMPTY', biller=self.biller, status=processing)
+        item = BillingQueue.objects.create(billing=billing, task_type='PRE_INVOICE', status='running')
+
+        process_billing_batch(billing.id, queue_item_id=item.id)
+
+        item.refresh_from_db()
+        billing.refresh_from_db()
+        self.assertEqual(item.status, 'completed')
+        self.assertEqual(billing.status.token, 'PENDING')
+
 
 class TestProcessContractEndpoint(ProcessErrorsBase):
     """Corregit el contracte, es torna a processar i l'error desapareix."""

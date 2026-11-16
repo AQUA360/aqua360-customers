@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import ContractRegion from '~/components/organisms/ContractRegion.vue';
 import ContractRequestRegion from '~/components/organisms/ContractRequestRegion.vue';
@@ -152,6 +151,16 @@ const filteredItems = computed(() => {
   ));
 });
 
+/** Columnes de la taula (DataTable en mode columnes). Cap és ordenable. */
+const tableColumns = computed(() => [
+  { key: 'contract', label: t('contract'), width: 150, min: 110, priority: 1, removable: false },
+  { key: 'otp', label: t('contract_block.document_sign_otp'), width: 200, min: 140, grow: 1, priority: 1 },
+  { key: 'status', label: t('common.status'), width: 140, min: 100, grow: 1, priority: 1 },
+  { key: 'created_at', label: t('common.date'), width: 120, min: 90, priority: 2 },
+  { key: 'signed_at', label: t('contract_block.signed_at'), width: 120, min: 90, priority: 3 },
+  { key: 'actions', label: '', width: 220, min: 160, priority: 1, removable: false, cellClass: 'flex flex-col gap-1 items-stretch' },
+]);
+
 onMounted(async () => {
   await configStore.fetchDocumentSignEnabled();
   if (!configStore.documentSignEnabled) {
@@ -204,57 +213,51 @@ onMounted(async () => {
     </form>
 
     <DataTable
-      grid-template="150px,1fr,1fr,120px,120px,220px"
+      table-key="document-signs"
+      :columns="tableColumns"
+      :items="filteredItems"
       :height-offset="240"
       :pending="pending"
       :error="error"
       :is-empty="filteredItems.length === 0"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('contract')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.document_sign_otp')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" :sortable="false" />
-        <TableHeader :label="$t('common.date')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.signed_at')" :sortable="false" />
-        <TableHeader :label="''" :sortable="false" />
+      <template #cell-contract="{ item }">
+        <button v-if="item.contract || item.contract_request" type="button"
+          class="text-sky-500 underline hover:no-underline text-left"
+          @click="showLinkedEntity(item)">
+          {{ item.contract_token || item.contract_request_token || `#${item.contract_request}` }}
+        </button>
+        <span v-else>-</span>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in filteredItems" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle">
-          <span class="p-1">
-            <button v-if="item.contract || item.contract_request" type="button"
-              class="text-sky-500 underline hover:no-underline text-left"
-              @click="showLinkedEntity(item)">
-              {{ item.contract_token || item.contract_request_token || `#${item.contract_request}` }}
-            </button>
-            <span v-else>-</span>
-          </span>
-          <span class="p-1">
-            {{ item.otp_name }}
-            <span class="text-slate-400 text-xs block">{{ item.otp_email }}</span>
-          </span>
-          <span>
-            <AtomsColorBadge :value="statusLabel(item.status)" :color="statusColor(item.status)" />
-          </span>
-          <span class="p-1">{{ item.created_at ? formatDate(item.created_at) : '-' }}</span>
-          <span class="p-1">{{ item.signed_at ? formatDate(item.signed_at) : '-' }}</span>
-          <span class="p-1 flex flex-col gap-1 items-stretch">
-            <button v-if="downloadUrl(item)" @click="downloadDocument(item)"
-              class="button-default-xs flex items-center gap-1 justify-center">
-              <Icon name="fa6-solid:download" />
-              {{ $t('common.download') }}
-            </button>
-            <button v-else-if="canRequestSigned(item)" @click="requestSignedDocument(item)"
-              :disabled="requestingId === item.id"
-              class="button-default-xs flex items-center gap-1 justify-center">
-              <Icon :name="requestingId === item.id ? 'fa6-solid:spinner' : 'fa6-solid:cloud-arrow-down'"
-                :class="{ 'animate-spin': requestingId === item.id }" />
-              {{ $t('contract_block.document_sign_request_signed') }}
-            </button>
-          </span>
-        </div><!-- end for items -->
+      <template #cell-otp="{ item }">
+        <span class="block min-w-0">
+          <span class="block truncate" :title="item.otp_name">{{ item.otp_name }}</span>
+          <span class="text-slate-400 text-xs block truncate" :title="item.otp_email">{{ item.otp_email }}</span>
+        </span>
+      </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="statusLabel(item.status)" :color="statusColor(item.status)" />
+      </template>
+
+      <template #cell-created_at="{ item }">{{ item.created_at ? formatDate(item.created_at) : '-' }}</template>
+
+      <template #cell-signed_at="{ item }">{{ item.signed_at ? formatDate(item.signed_at) : '-' }}</template>
+
+      <template #cell-actions="{ item }">
+        <button v-if="downloadUrl(item)" @click="downloadDocument(item)"
+          class="button-default-xs flex items-center gap-1 justify-center">
+          <Icon name="fa6-solid:download" />
+          {{ $t('common.download') }}
+        </button>
+        <button v-else-if="canRequestSigned(item)" @click="requestSignedDocument(item)"
+          :disabled="requestingId === item.id"
+          class="button-default-xs flex items-center gap-1 justify-center">
+          <Icon :name="requestingId === item.id ? 'fa6-solid:spinner' : 'fa6-solid:cloud-arrow-down'"
+            :class="{ 'animate-spin': requestingId === item.id }" />
+          {{ $t('contract_block.document_sign_request_signed') }}
+        </button>
       </template>
     </DataTable>
   </div><!-- end wrapper -->

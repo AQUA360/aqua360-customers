@@ -6,7 +6,6 @@ import { formatDate } from '~/utils/date';
 import VerifactuBatchRegion from '~/components/organisms/VerifactuBatchRegion.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -188,6 +187,16 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 150, min: 105, priority: 1, removable: false },
+  { key: 'sent_at', label: t('common.date'), sortKey: 'issue_date', width: 130, min: 90, grow: 1, priority: 2 },
+  { key: 'notifications_count', label: t('billing_block.notifications_count'), width: 130, min: 90, grow: 1, priority: 3 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 130, min: 90, grow: 1, priority: 1 },
+]);
 </script>
 
 <template>
@@ -219,42 +228,31 @@ watch(() => route.query, () => {
     </form>
 
     <DataTable
-      grid-template="150px,1fr,1fr,1fr"
+      v-if="permissions?.can_view"
+      table-key="verifactu-batches"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="permissions?.can_view && items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.date')" sortKey="issue_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.notifications_count')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id, 'VerifactuBatchRegion');">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <template v-if="permissions?.can_view">
-          <div v-for="item in items" :key="item.id"
-            class="gap-3 text-base border-b items-center bg-white"
-            :style="gridStyle"
-            :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-            <span>
-              <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-                @click="showDetail(item.id, 'VerifactuBatchRegion');">
-                <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-                <Icon name="fa6-solid:eye"
-                  class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-              </button>
-            </span>
-            <span class="p-1">{{ formatDate(item.sent_at) }}</span>
-            <span class="p-1">{{ item.verifactu_notifications_count }}</span>
-            <span>
-              <AtomsColorBadge :value="t(`common.verifactu_batch_status.${item?.response_status}`)" :color="statusesColors[item?.response_status]" />
-            </span>
-          </div><!-- end for items -->
-        </template>
+      <template #cell-sent_at="{ item }">{{ formatDate(item.sent_at) }}</template>
+      <template #cell-notifications_count="{ item }">{{ item.verifactu_notifications_count }}</template>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="t(`common.verifactu_batch_status.${item?.response_status}`)" :color="statusesColors[item?.response_status]" />
       </template>
     </DataTable>
     <div id="list__footer">

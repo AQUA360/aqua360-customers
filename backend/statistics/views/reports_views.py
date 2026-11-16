@@ -763,6 +763,20 @@ def without_general_report():
 
 
 def save_report(content, filename, name, type_id, start_date=None, end_date=None):
+    # Si l'informe s'ha demanat en PDF (context pdf_export de run_report_task),
+    # es converteix aquí; l'error queda desat al context perquè arribi a la cua
+    # d'informes encara que el generador capturi l'excepció.
+    from statistics.utils.report_pdf_service import convert_report_content_to_pdf, get_pdf_export_options
+    pdf_options = get_pdf_export_options()
+    if pdf_options is not None:
+        try:
+            content, filename = convert_report_content_to_pdf(
+                content, filename, name, pdf_options, start_date=start_date, end_date=end_date,
+            )
+        except Exception as exc:
+            pdf_options["error"] = exc
+            raise
+
     try:
         buffer = BytesIO()
 

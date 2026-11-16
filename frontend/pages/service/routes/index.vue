@@ -1,12 +1,11 @@
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, nextTick, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import debounce from 'lodash.debounce';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import H1 from '~/components/atoms/H1.vue';
 import RouteRegion from '~/components/organisms/RouteRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -149,6 +148,16 @@ watch(searchInput, () => {
   pagination.value.page = 1;
   handleSearch();
 });
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 130, min: 105, priority: 1, removable: false },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 250, grow: 3, min: 100, priority: 1, removable: false },
+  { key: 'zone', label: t('service_block.zone'), sortKey: 'route_zone', width: 250, grow: 3, min: 100, priority: 2 },
+]);
 </script>
 
 <template>
@@ -184,36 +193,32 @@ watch(searchInput, () => {
     </form>
 
     <DataTable
-      grid-template="1fr,3fr,3fr"
+      table-key="routes"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="t('service_block.zone')" sortKey="route_zone" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500"
+          @click="showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span class="p-0">
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500"
-              @click="showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 text-nowrap">{{ item.name }}</span>
+      <template #cell-name="{ item }">
+        <span class="text-nowrap">{{ item.name }}</span>
+      </template>
 
-          <span>{{ item.zone_name }}</span>
-        </div>
+      <template #cell-zone="{ item }">
+        <span>{{ item.zone_name }}</span>
       </template>
     </DataTable>
 

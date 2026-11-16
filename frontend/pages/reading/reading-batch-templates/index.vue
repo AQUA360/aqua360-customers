@@ -10,7 +10,6 @@ import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ContractRegion from '~/components/organisms/ContractRegion.vue';
 import ContractRequestRegion from '~/components/organisms/ContractRequestRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import { checkPermission } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
@@ -104,6 +103,17 @@ const handleSort = (key) => {
   getData(searchInput.value, [], pagination.value.page, sortBy.value, sortDesc.value);
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 150, min: 105, priority: 1, removable: false },
+  { key: 'name', label: t('common.name'), sortKey: 'issue_date', width: 250, min: 140, grow: 1, priority: 1, removable: false },
+  { key: 'status', label: t('common.status'), sortKey: 'customer_final', width: 150, min: 90, grow: 1, priority: 1 },
+  { key: 'num_routes', label: t('billing_block.route_num'), sortKey: 'num_routes', width: 150, min: 100, grow: 1, priority: 2 },
+]);
+
 const exportColumns = computed(() => [
   { header: t('common.identification'), value: (row) => row.token, key: 'token' },
   { header: t('common.name'), value: (row) => row.name, key: 'name' },
@@ -188,41 +198,31 @@ const handleSubRegionEvent = (event) => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,1fr,1fr,1fr"
+      table-key="reading-batch-templates"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="issue_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="customer_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.route_num')" sortKey="num_routes" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id, 'BillerRegion');">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id, 'BillerRegion');">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1">{{ item.name }}</span>
-          <span class="p-1"> <AtomsColorBadge :value="item.is_active ? t('common.active') : t('common.inactive')" :color="item.is_active ? 'green' : 'red'"/></span>
-          <span class="p-1">{{ item.num_routes }}</span>
-
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">{{ item.name }}</template>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.is_active ? t('common.active') : t('common.inactive')" :color="item.is_active ? 'green' : 'red'"/>
       </template>
+      <template #cell-num_routes="{ item }">{{ item.num_routes }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

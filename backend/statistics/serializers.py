@@ -92,7 +92,7 @@ class AvailableReportSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'is_active', 'function_name', 
             'section', 'section_name', 'section_token', 
             'download_button_name', 'has_custom_config', 'required_fields', 'position',
-            'submission_channel',
+            'submission_channel', 'allow_pdf_export',
         ]
 
     def get_name(self, obj):

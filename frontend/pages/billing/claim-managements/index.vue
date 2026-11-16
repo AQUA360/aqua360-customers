@@ -7,7 +7,6 @@ import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ClaimRequestRegion from '~/components/organisms/ClaimRequestRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
@@ -173,6 +172,25 @@ const handleSort = (key) => {
   getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+  'bg-purple-50': item.is_excluded && !(item.id === selectedItemId.value),
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 150, min: 90, priority: 3 },
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 150, min: 105, priority: 1, removable: false,
+  },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 200, grow: 3, min: 120, priority: 1 },
+  { key: 'step', label: t('billing_block.step'), sortKey: 'step', width: 250, grow: 2, min: 120, priority: 2 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 120, min: 90, priority: 1 },
+  { key: 'total_contracts', label: t('common.contracts'), width: 100, min: 70, priority: 3 },
+  { key: 'total_payments', label: t('billing_block.payments'), width: 100, min: 70, priority: 3 },
+  { key: 'amount', label: t('common.amount'), width: 100, min: 80, priority: 2 },
+]);
+
 const exportColumns = computed(() => [
   { header: t('common.creation_date'), value: (row) => row.created_at ? formatDate(row.created_at) : '', key: 'created_at' },
   { header: t('common.identification'), value: (row) => row.token, key: 'token' },
@@ -269,6 +287,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div class="h-8 w-px bg-gray-300" v-if="filter_status.length"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -312,54 +332,37 @@ watch(() => route.query, () => {
     </div>
 
     <DataTable
-      grid-template="150px,150px,200px,250px,100px,150px,100px,100px,50px"
+      table-key="claim-managements"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :loading="false"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.step')" sortKey="step" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.contracts')" :sortable="false" />
-        <TableHeader :label="$t('billing_block.payments')" :sortable="false" />
-        <TableHeader :label="$t('common.amount')" :sortable="false" />
-        <span></span>
+      <template #cell-created_at="{ item }">{{ item.created_at ? formatDate(item.created_at) : '-' }}</template>
+
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="navigateTo(`/billing/claim-managements/edit/${item.id}`);">
+          <abbr :title="item.id" class="no-underline truncate">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId, 'bg-purple-50': item.is_excluded && !(item.id === selectedItemId) }">
-          <span class="p-1">{{ item.created_at ? formatDate(item.created_at) : '-' }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="navigateTo(`/billing/claim-managements/edit/${item.id}`);">
-              <abbr :title="item.id" class="no-underline truncate">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 truncate">{{ item.name || '-' }}</span>
-          <span class="p-1">{{ item.current_step ? item.current_step.name : '-' }}</span>
-          <span class="p-1">
-            <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
-          </span>
-          <span class="p-1">{{ item.total_contracts }}</span>
-          <span class="p-1">{{ item.total_payments }}</span>
-          <span class="p-1">{{ item.amount? formatMoneyWithCurrency(item.amount) : formatMoneyWithCurrency(0) }}</span>
-
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">{{ item.name || '-' }}</template>
+      <template #cell-step="{ item }">{{ item.current_step ? item.current_step.name : '-' }}</template>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
       </template>
+      <template #cell-total_contracts="{ item }">{{ item.total_contracts }}</template>
+      <template #cell-total_payments="{ item }">{{ item.total_payments }}</template>
+      <template #cell-amount="{ item }">{{ item.amount? formatMoneyWithCurrency(item.amount) : formatMoneyWithCurrency(0) }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

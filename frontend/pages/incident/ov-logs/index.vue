@@ -171,6 +171,9 @@ onMounted(async () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <div class="h-8 w-px bg-gray-300"></div>
+
       <div v-if="showDatePickerDropdown" @click="showDatePickerDropdown = false" class="fixed inset-0 z-40 bg-transparent"></div>
 
       <span class="input-group flex flex-start items-center gap-2 w-80 relative z-50">
@@ -198,13 +201,28 @@ onMounted(async () => {
       :is-empty="permissions?.can_view && items.length === 0"
       @retry="getData">
       <template #header>
-        <TableHeader :label="$t('common.date')" sortKey="timestamp" :currentSortBy="sortBy" :sortDesc="sortDesc"
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.date')" sortKey="timestamp" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
-        <TableHeader :label="$t('common.type')" sortKey="type" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.type')" sortKey="type" :currentSortBy="sortBy" :sortDesc="sortDesc"
         @sort="handleSort" />
-        <TableHeader :label="$t('contract')" />
-        <TableHeader :label="$t('common.app')" />
-        <TableHeader :label="$t('common.details')" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('contract')" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.app')" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.details')" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
       </template>
 
       <template #default="{ gridStyle }">

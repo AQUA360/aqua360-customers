@@ -8,7 +8,6 @@ import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import BillingRegion from '~/components/organisms/BillingRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
 const { t } = useI18n();
@@ -311,6 +310,18 @@ const cancelHideFiltersPopover = () => {
   clearTimeout(hideFiltersTimeout);
 };
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 140, min: 120, priority: 2 },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 250, grow: 2, min: 140, priority: 1, removable: false },
+  { key: 'doc', label: t('common.doc'), width: 150, grow: 1, min: 110, priority: 1 },
+  { key: 'type', label: t('common.type'), sortKey: 'type', width: 150, grow: 1, min: 100, priority: 2 },
+  { key: 'filters', label: t('reports_block.filters'), width: 70, min: 60, priority: 3, cellClass: 'flex items-center' },
+]);
+
 </script>
 
 <template>
@@ -470,52 +481,39 @@ const cancelHideFiltersPopover = () => {
       </span>
     </form>
     <DataTable
-      grid-template="0.5fr,1fr,1fr,0.5fr,0.2fr"
+      table-key="reports"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.doc')" :sortable="false" />
-        <TableHeader :label="$t('common.type')" sortKey="type" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('reports_block.filters')" :sortable="false" />
+      <template #cell-created_at="{ item }">{{ formatDateTime(item.created_at) }}</template>
+      <template #cell-name="{ item }">{{ item.name || item.document_name || (item.type ? item.type.name : '') }}</template>
+
+      <template #cell-doc="{ item }">
+        <button class="group flex justify-between w-full items-center gap-1 text-sky-500 text-left min-w-0"
+          @click="downloadDocument(item.document);">
+          <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 shrink-0 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span class="p-1 truncate">{{ formatDateTime(item.created_at) }}</span>
-          <span class="p-0 truncate" :title="item.name || item.document_name || (item.type ? item.type.name : '')">{{ item.name || item.document_name || (item.type ? item.type.name : '') }}</span>
-          <span class="min-w-0">
-            <button class="group flex justify-between w-full items-center gap-1 p-1 text-sky-500 text-left min-w-0"
-              @click="downloadDocument(item.document);">
-              <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 shrink-0 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-0 truncate" :title="item.type ? item.type.name : t('common.no_type')">{{ item.type ? item.type.name : t('common.no_type') }}</span>
-          <span class="p-1 flex items-center">
-            <button v-if="hasFilters(item)" type="button"
-              class="w-8 h-8 rounded-full flex flex-shrink-0 items-center justify-center transition-all duration-200 bg-slate-100 text-slate-500 hover:bg-slate-200"
-              :title="$t('reports_block.show_filters')"
-              @mouseenter="showFiltersPopover($event, item)" @mouseleave="hideFiltersPopover">
-              <Icon name="fa6-solid:circle-info" />
-            </button>
-            <span v-else class="text-slate-300">-</span>
-          </span>
-          <!-- <span class="p-1">
-            <AtomsProcessColorBadge @refresh="resetFilters" v-if="processingStatusTokens.findIndex(i => i == item.status?.token?.toString()) != -1" :value="item.status?.name" :color="item.status?.color" :taskId="item.task_id"></AtomsProcessColorBadge>
-            <AtomsColorBadge v-else :value="item.status?.name" :color="item.status?.color"></AtomsColorBadge>
-          </span> -->
-        </div><!-- end for items -->
+      <template #cell-type="{ item }">{{ item.type ? item.type.name : t('common.no_type') }}</template>
+
+      <template #cell-filters="{ item }">
+        <button v-if="hasFilters(item)" type="button"
+          class="w-8 h-8 rounded-full flex flex-shrink-0 items-center justify-center transition-all duration-200 bg-slate-100 text-slate-500 hover:bg-slate-200"
+          :title="$t('reports_block.show_filters')"
+          @mouseenter="showFiltersPopover($event, item)" @mouseleave="hideFiltersPopover">
+          <Icon name="fa6-solid:circle-info" />
+        </button>
+        <span v-else class="text-slate-300">-</span>
       </template>
     </DataTable>
     <div id="list__footer">

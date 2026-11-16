@@ -6,7 +6,6 @@ import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import CommunicationProcessRegion from '~/components/organisms/CommunicationProcessRegion.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
@@ -263,6 +262,21 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.date'), sortKey: 'created_at', width: 80, min: 78, priority: 3 },
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 120, min: 105, priority: 1, removable: false, cellClass: 'flex items-center gap-2',
+  },
+  { key: 'description', label: t('common.description'), width: 350, grow: 3, min: 140, priority: 1 },
+  { key: 'type_names', label: t('common.type'), width: 300, grow: 2, min: 120, priority: 2 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 100, priority: 1, removable: false },
+  { key: 'user', label: t('user'), width: 150, min: 90, priority: 3 },
+]);
 </script>
 
 <template>
@@ -282,6 +296,9 @@ watch(() => route.query, () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <div class="h-8 w-px bg-gray-300"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -289,6 +306,9 @@ watch(() => route.query, () => {
             status.name }}
         </label>
       </span>
+
+      <div v-if="filter_status.length" class="h-8 w-px bg-gray-300"></div>
+
       <label class="text-slate-800 text-base flex items-center gap-1">
         <input type="checkbox" v-model="showCancelled" @change="handleFilterChange" /> {{ $t('customer_service_block.show_cancelled_processes') }}
       </label>
@@ -326,73 +346,58 @@ watch(() => route.query, () => {
     </div>
 
     <DataTable
-      grid-template="80px,100px,350px,300px,150px,100px,150px"
+      table-key="process-communications"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.description')" :sortable="false" />
-        <TableHeader :label="$t('common.type')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-        @sort="handleSort" />
-        <TableHeader :label="$t('common.warnings')" :sortable="false" />
-        <TableHeader :label="$t('user')" :sortable="false" />
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+      <template #cell-token="{ item }">
+        <abbr v-if="item.has_electronic_invoices" :title="$t('billing_block.einvoices')">
+          <Icon name="fa6-solid:circle-check" class="text-green-500" />
+        </abbr>
+        <abbr v-if="item.total_rejected_communications > 0" :title="$t('customer_service_block.rejected_communications')">
+          <Icon name="fa6-solid:circle-exclamation" class="text-red-500" />
+        </abbr>
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="item.status_token == draft_status_token ? openDraft(item.id) : showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-
-          <span class="p-0">{{ formatDate(item.created_at) }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="item.status_token == draft_status_token ? openDraft(item.id) : showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 truncate flex justify-between">
-            <span class="truncate">
-              {{ item.status_token == draft_status_token ? `${t('common.draft')} ${item.readings_exploitation?item.readings_exploitation:'' }` : item.description }}
-            </span>
-          </span>
-
-          <span class="p-1 truncate flex justify-between">
-            <span class="truncate">
-              {{ item.type_names }}
-            </span>
-            <!-- <div v-if="item.has_electronic_invoices" class="flex items-center gap-x-1">
-              <Icon name="fa6-solid:circle-check" class="text-green-500" />
-              <span class="text-green-500 font-semibold text-xs">
-                {{ $t('billing_block.einvoices') }}
-              </span>
-            </div> -->
-          </span>
-
-          <span class="p-1">
-            <AtomsProcessColorBadge v-if="item.status_token == processing_status_token" :value="item.status_name" :color="item.status_color" :taskId="item.task_id" @refresh="getData"></AtomsProcessColorBadge>
-            <AtomsColorBadge v-else :color="item.status_color" :value="item.status_name" />
-          </span>
-
-          <span class="p-1 truncate flex items-center gap-x-1">
-            <abbr v-if="item.has_electronic_invoices" :title="$t('billing_block.einvoices')">
-              <Icon name="fa6-solid:circle-check" class="text-green-500" />
-            </abbr>
-            <abbr v-if="item.total_rejected_communications > 0" :title="$t('customer_service_block.rejected_communications')">
-              <Icon name="fa6-solid:circle-exclamation" class="text-red-500" />
-            </abbr>
-          </span>
-          <span class="p-1">{{ item.user_username }}</span>
-        </div><!-- end for items -->
+      <template #cell-description="{ item }">
+        <span class="truncate">
+          {{ item.status_token == draft_status_token ? `${t('common.draft')} ${item.readings_exploitation?item.readings_exploitation:'' }` : item.description }}
+        </span>
       </template>
+
+      <template #cell-type_names="{ item }">
+        <span class="truncate">
+          {{ item.type_names }}
+        </span>
+        <!-- <div v-if="item.has_electronic_invoices" class="flex items-center gap-x-1">
+          <Icon name="fa6-solid:circle-check" class="text-green-500" />
+          <span class="text-green-500 font-semibold text-xs">
+            {{ $t('billing_block.einvoices') }}
+          </span>
+        </div> -->
+      </template>
+
+      <template #cell-status="{ item }">
+        <AtomsProcessColorBadge v-if="item.status_token == processing_status_token" :value="item.status_name" :color="item.status_color" :taskId="item.task_id" @refresh="getData"></AtomsProcessColorBadge>
+        <AtomsColorBadge v-else :color="item.status_color" :value="item.status_name" />
+      </template>
+
+      <template #cell-user="{ item }">{{ item.user_username }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

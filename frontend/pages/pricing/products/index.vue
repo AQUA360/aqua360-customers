@@ -233,6 +233,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div v-if="filter_status.length" class="h-8 w-px bg-gray-300"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -257,19 +259,40 @@ watch(() => route.query, () => {
       :is-empty="items.length === 0"
       @retry="getData">
       <template #header>
-        <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
-        <TableHeader :label="$t('pricing_block.order_priority')" sortKey="order_priority" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('pricing_block.order_priority')" sortKey="order_priority" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
-        <TableHeader :label="$t('exploitation')" :sortable="false" />
-        <TableHeader :label="$t('common.origin')" sortKey="origin" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('exploitation')" :sortable="false" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.origin')" sortKey="origin" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
-        <TableHeader :label="$t('common.related')" sortKey="product_related" :currentSortBy="sortBy" :sortDesc="sortDesc"
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="$t('common.related')" sortKey="product_related" :currentSortBy="sortBy" :sortDesc="sortDesc"
           @sort="handleSort" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
       </template>
 
       <template #default="{ gridStyle }">
