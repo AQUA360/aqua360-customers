@@ -241,7 +241,7 @@ const tableColumns = computed(() => [
 
       <template #cell-name="{ item }">{{ item.name }}</template>
       <template #cell-price_rate="{ item }">{{ item.price_rate?.name }}</template>
-      <template #cell-publication="{ item }"><abbr :title="item.publication.name">{{ item.publication?.token }}</abbr></template>
+      <template #cell-publication="{ item }"><abbr :title="item.publication?.name">{{ item.publication?.token }}</abbr></template>
       <template #cell-start="{ item }">{{ formatDate(item.start) }}</template>
       <template #cell-end="{ item }">
         <template v-if="item.end">{{ formatDate(item.end) }}</template>

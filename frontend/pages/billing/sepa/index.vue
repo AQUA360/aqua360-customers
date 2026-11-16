@@ -283,7 +283,7 @@ const tableColumns = computed(() => [
   { key: 'iban', label: t('common.iban'), width: 230, min: 190, grow: 1, priority: 2 },
   { key: 'total_payments', label: t('billing_block.payments'), width: 80, min: 70, priority: 3 },
   { key: 'total_amount', label: t('billing_block.total_amount'), width: 100, min: 85, priority: 2 },
-  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 110, priority: 1 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 110, priority: 1, removable: false },
   { key: 'desired_send_at', label: t('customer_service_block.sent_to'), sortKey: 'desired_send_at', width: 82, min: 78, priority: 3 },
   { key: 'sent_at', label: t('customer_service_block.sent'), sortKey: 'sent_at', width: 82, min: 78, priority: 3 },
   { key: 'sent_by', label: t('customer_service_block.sent_by'), sortKey: 'sent_by', width: 100, min: 80, priority: 3 },

@@ -334,7 +334,7 @@ const tableColumns = computed(() => [
   { key: 'token', label: t('common.identification'), sortKey: 'token', width: 150, min: 105, priority: 1, removable: false },
   { key: 'name', label: t('common.name'), sortKey: 'name', width: 200, grow: 1, min: 120, priority: 1 },
   { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 150, grow: 1, min: 90, priority: 2 },
-  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, grow: 1, min: 90, priority: 1 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, grow: 1, min: 90, priority: 1, removable: false },
 ]);
 
 </script>

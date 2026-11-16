@@ -274,7 +274,7 @@ const tableColumns = computed(() => [
   },
   { key: 'description', label: t('common.description'), width: 350, grow: 3, min: 140, priority: 1 },
   { key: 'type_names', label: t('common.type'), width: 300, grow: 2, min: 120, priority: 2 },
-  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 100, priority: 1 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 100, priority: 1, removable: false },
   { key: 'user', label: t('user'), width: 150, min: 90, priority: 3 },
 ]);
 </script>
