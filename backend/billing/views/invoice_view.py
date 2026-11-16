@@ -696,6 +696,22 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     serializer = InvoiceFullSerializer(invoice, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
 
+  @action(detail=True, methods=['put'], url_path='mark-for-remittance')
+  def mark_for_remittance(self, request, pk=None):
+    """
+    "Marcar per remesar" des de la factura: marca (o desmarca, amb
+    `marked=false`) els seus pagaments pendents per domiciliació (SEPA).
+    """
+    from billing.utils.remittance_mark_service import set_invoice_marked_for_remittance
+    invoice = self.get_object()
+    marked = str(request.data.get('marked', True)).upper() == 'TRUE'
+    updated = set_invoice_marked_for_remittance(invoice, marked)
+    if marked and not updated:
+        # Sense pagaments pendents per domiciliació, o tots ja en una remesa pendent d'enviar.
+        return Response({"error": _("This invoice has no pending direct debit payments that can be marked for remittance.")}, status=status.HTTP_400_BAD_REQUEST)
+    serializer = InvoiceFullSerializer(invoice, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
   @action(detail=False, methods=['get'], url_path='permissions')
 
   def permissions(self, request):

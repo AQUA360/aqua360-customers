@@ -430,6 +430,17 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    // "Marcar per remesar": marca o desmarca els pagaments pendents per domiciliació de la factura.
+    const markForRemittance = async (id, marked = true) => {
+      const apiUrl = `${apiHost}${entity}${id}/mark-for-remittance/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'PUT', { marked }, { 'Content-Type': 'application/json' });
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const recalculateSmart = async (id) => {
       const apiUrl = `${apiHost}${entity}${id}/recalculate-smart/`;
       try {
@@ -947,6 +958,7 @@ export default defineNuxtPlugin(nuxtApp => {
       returnInvoice,
       passToPending,
       saveToPiggyBank,
+      markForRemittance,
       changePaymentMethod,
       getInvoiceByCustomerToken,
       changeAddress,
