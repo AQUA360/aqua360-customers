@@ -9,12 +9,12 @@ set -euo pipefail
 fail=0
 for dir in "$@"; do
   [ -d "$dir" ] || continue
-  if bad=$(find "$dir" -type d ! -writable -print -quit); then
-    :
-  else
-    status=$?
-    echo "ERROR: no s'ha pogut comprovar $dir (find ha sortit amb codi $status)" >&2
-    exit "$status"
+  # Si find no pot recórrer una carpeta (sense permís de lectura), la comprovació no és fiable:
+  # també compta com a error, amb el missatge de find i la mateixa ordre per arreglar-ho.
+  if ! bad=$(find "$dir" -type d ! -writable -print -quit); then
+    echo "ERROR: no s'ha pogut comprovar tot $dir" >&2
+    fail=1
+    continue
   fi
   if [ -n "$bad" ]; then
     echo "ERROR: l'usuari $(id -un) ($(id -u):$(id -g)) no pot escriure a $bad" >&2
