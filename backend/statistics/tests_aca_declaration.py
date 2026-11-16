@@ -215,3 +215,17 @@ class AcaVolumeTests(TestCase):
         )
         self.assertEqual(set(volumes), {'FC/I'})
         self.assertEqual((volumes['FC/I'].tariff_type, volumes['FC/I'].billed), ('I', Decimal('7')))
+
+    def test_invoices_sheet_uses_summary_volumes(self):
+        import openpyxl
+
+        from statistics.utils.report_billing_service import _add_invoices_to_sheet
+
+        invoice, lines = self.invoice('FC/I', 'D', 7, [(self.general, 7, 0.1, None), (self.specific, 7, 0.2, None)])
+        volumes = {volume.invoice.id: volume for volume in self.volumes((invoice, lines)).values()}
+        sheet = openpyxl.Workbook().active
+        aca_lines = InvoiceLineItem.objects.filter(invoice=invoice).select_related('invoice__status', 'line_item_type__article')
+        _add_invoices_to_sheet(sheet, 0, [invoice], aca_lines, 'part_fixa', volumes_by_invoice=volumes)
+        row = [cell.value for cell in sheet[1]]
+        # Com al resum: industrial i el volum facturat una sola vegada, encara que l'ús de la factura sigui domèstic
+        self.assertEqual((row[0], row[2], row[3], row[8]), ('FC/I', 7, 7, 'I'))
