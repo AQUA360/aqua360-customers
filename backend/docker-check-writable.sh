@@ -24,6 +24,6 @@ done
 
 if [ "$fail" -ne 0 ]; then
   echo "Els volums s'han de passar a l'usuari del contenidor. Al servidor, a la carpeta de l'stack:" >&2
-  echo "  chown -R $(id -u):$(id -g) docker-data/media docker-data/static" >&2
+  echo "  chown -R $(id -u) docker-data/media docker-data/static" >&2
   exit 1
 fi

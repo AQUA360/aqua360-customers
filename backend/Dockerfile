@@ -72,8 +72,8 @@ RUN --mount=type=bind,from=gitinfo,source=/deploy-git.env,target=/tmp/deploy-git
 # host hi puguin casar) només és propietari d'on l'aplicació escriu: media i staticfiles (volums
 # del compose), logs (el crea settings.py en arrencar), locale (compilemessages de l'entrypoint)
 # i /var/lib/celery (estat del celery-beat). El codi queda de root i només de lectura.
-# Els volums muntats d'un servidor que ja funcionava com a root s'han de passar a 1001:1001
-# abans d'arrencar aquesta imatge: `chown -R 1001:1001 docker-data/media docker-data/static`
+# Els volums muntats d'un servidor que ja funcionava com a root s'han de passar a l'usuari 1001
+# abans d'arrencar aquesta imatge: `chown -R 1001 docker-data/media docker-data/static`
 # (docker-check-writable.sh atura l'arrencada amb aquesta ordre si no s'ha fet).
 RUN groupadd --system --gid 1001 app \
     && useradd --system --uid 1001 --gid app --home-dir /home/app --create-home \

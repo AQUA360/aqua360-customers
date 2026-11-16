@@ -32,7 +32,7 @@ Abans d’arrencar Compose, tant en un servidor nou com en una instal·lació ex
 
 ```bash
 sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001:1001 docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 ```
 
 Primera vegada o després de canvis als Dockerfiles o dependències:
@@ -132,7 +132,7 @@ docker compose down -v
 ```bash
 git pull
 sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001:1001 docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -150,7 +150,7 @@ Per fer servir una versió sense construir res al servidor, posar-la al `.env` i
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
 sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001:1001 docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose up -d
 ```
 
@@ -170,28 +170,6 @@ Els servidors es desplieguen amb el playbook `playbooks/AquaCustomersDocker` del
 | `05-copy-backup-to-test` | Còpia diària del darrer backup al servidor de test |
 | `06-restore` | `restore.sh` i neteja de BD antigues (retenció de 3 dies) |
 | `07-readonly-db-user` | Usuari PostgreSQL de només lectura |
-
-Als desplegaments automatitzats, afegeix aquestes tasques amb `become: true` a `01-compose-env`, abans de qualsevol `docker compose up` de `02-git-clone`. Defineix `customers_workdir` amb el directori de l’stack (`/var/www/<exploitation>`). Crear només `docker-data/` no és suficient: Docker crearia com a root els directoris de muntatge inexistents. Aplica les tasques també a les instal·lacions existents. El playbook és al repositori separat `aqua360-customers-deploy` i cal actualitzar-lo allà.
-
-```yaml
-- name: Create application bind mount directories
-  become: true
-  ansible.builtin.file:
-    path: "{{ customers_workdir }}/docker-data/{{ item }}"
-    state: directory
-    mode: '0755'
-  loop: [media, static]
-
-- name: Assign application volume ownership
-  become: true
-  ansible.builtin.file:
-    path: "{{ customers_workdir }}/docker-data/{{ item }}"
-    state: directory
-    owner: '1001'
-    group: '1001'
-    recurse: true
-  loop: [media, static]
-```
 
 Als servidors, els ports del host no són els per defecte (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) i es poden canviar per client a l’inventari (`docker_*_port`) perquè diverses explotacions comparteixin servidor. El `docker-compose.yml` d’aquest repositori és el mateix que desplega el playbook.
 
