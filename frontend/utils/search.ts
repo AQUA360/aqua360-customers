@@ -73,16 +73,20 @@ export const foundItemTranslation = (item: string, language: string = 'en'): { [
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Safe HTML for v-html: escapes the result text (it comes from the database) and then wraps the
- * case-insensitive matches of the search term. The term is matched against the escaped text, so it
- * is escaped the same way first, and treated literally (not as a regular expression).
+ * Safe HTML for v-html: finds the case-insensitive matches of the search term (taken literally, not
+ * as a regular expression) in the original text, which comes from the database, and escapes each
+ * matching and non-matching fragment separately before wrapping the matches. Matching before
+ * escaping keeps the highlight from splitting the entities produced by the escaping (e.g. `&amp;`).
  */
 export const highlightSearchMatch = (text: unknown, term: string | null | undefined): string => {
-  const escapedText = escapeHtmlForPreview(String(text ?? ''));
-  const escapedTerm = escapeHtmlForPreview(String(term ?? '').trim());
-  if (!escapedTerm) return escapedText;
-  return escapedText.replace(
-    new RegExp(escapeRegExp(escapedTerm), 'gi'),
-    '<span class="font-extrabold italic">$&</span>',
-  );
+  const rawText = String(text ?? '');
+  const rawTerm = String(term ?? '').trim();
+  if (!rawTerm) return escapeHtmlForPreview(rawText);
+  // With a capture group, split() keeps the matches at the odd positions.
+  return rawText
+    .split(new RegExp(`(${escapeRegExp(rawTerm)})`, 'gi'))
+    .map((part, index) => (index % 2
+      ? `<span class="font-extrabold italic">${escapeHtmlForPreview(part)}</span>`
+      : escapeHtmlForPreview(part)))
+    .join('');
 };
