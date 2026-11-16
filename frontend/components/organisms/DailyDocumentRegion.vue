@@ -453,6 +453,11 @@ watch(() => props.id, () => {
                         {{ data.name }} ({{ formatDate(data.document_date) }})
                     </label>
                     <div>
+                        <FieldDetail
+                            v-if="data.period_start_date && data.period_end_date && data.period_start_date !== data.period_end_date"
+                            :label="t('billing_block.date_range')"
+                            :value="`${formatDate(data.period_start_date)} - ${formatDate(data.period_end_date)}`"
+                        />
                         <FieldDetail v-if="data.due_date" :label="t('common.due_date')" :value="formatDate(data.due_date)" />
                         <FieldDetail :label="t('common.status')">
                             <AtomsColorBadge :value="data.status?.name" :color="data.status?.color" />

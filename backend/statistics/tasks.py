@@ -831,6 +831,8 @@ def generate_daily_documents(self):
 @shared_task
 def regenerate_daily_document(daily_document_id):
   try:
+    from statistics.utils.daily_document_service import compute_period_range
+
     daily_document = DailyDocument.objects.get(id=daily_document_id)
     current_time = daily_document.document_date
     if not daily_document.template:
@@ -838,11 +840,24 @@ def regenerate_daily_document(daily_document_id):
     document = None
     error_message = None
     no_data_found = False
+
+    period_start = daily_document.period_start_date
+    period_end = daily_document.period_end_date
+    if not period_start or not period_end:
+      period_start, period_end = compute_period_range(daily_document.template, current_time)
+      daily_document.period_start_date = period_start
+      daily_document.period_end_date = period_end
+
+    if period_start == period_end:
+      period_label = period_end.strftime('%Y/%m/%d')
+    else:
+      period_label = f"{period_start.strftime('%Y/%m/%d')} - {period_end.strftime('%Y/%m/%d')}"
+
     try:
       document = execute_available_report(daily_document.template.available_report, {
-        'start_date': current_time.strftime('%Y-%m-%d'),
-        'end_date': current_time.strftime('%Y-%m-%d'),
-        'name': f"{daily_document.template.name} {current_time.strftime('%Y/%m/%d')}",
+        'start_date': period_start.strftime('%Y-%m-%d'),
+        'end_date': period_end.strftime('%Y-%m-%d'),
+        'name': f"{daily_document.template.name} {period_label}",
       })
     except ReportNoData:
       no_data_found = True

@@ -1,3 +1,7 @@
+# IMPORTANT: el backend deriva la IP del client de X-Forwarded-For comptant 2 proxys
+# (NUM_PROXIES=2: Cloudflare + nginx). Només és fiable si nginx i el port del backend
+# només accepten trànsit de Cloudflare (tallafoc o allow/deny amb les IPs de Cloudflare);
+# si algú hi arriba directament, pot falsejar la capçalera i eludir el límit d'intents per IP.
 server {
     listen 443 ssl;
     server_name demo-exploitation.api-customers.example.com;

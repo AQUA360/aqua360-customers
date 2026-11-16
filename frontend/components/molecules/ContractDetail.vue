@@ -77,6 +77,26 @@ const { fetchSupplyPointCutStatusToken, isSupplyPointCut } = useSupplyPointCutSt
 const isContractSupplyCut = computed(() => isSupplyPointCut(localData.value));
 
 // Value of the contract variable configured in `contract_housing_units_variable_type_token`
+// Propietari, llogater i representants, en files amb les mateixes columnes.
+const otherPersons = computed(() => {
+  const rows = [];
+  if (localData.value?.owner) rows.push({ key: 'owner', label: t('contract_block.owner'), person: localData.value.owner });
+  if (localData.value?.tenant) rows.push({ key: 'tenant', label: t('contract_block.tenant'), person: localData.value.tenant });
+  (localData.value?.representatives || []).forEach((representant) => rows.push({
+    key: `representative-${representant.id}`,
+    label: t('contract_block.representative'),
+    person: representant.person,
+    extra: representant.type?.name,
+  }));
+  return rows;
+});
+
+const personName = (person) => {
+  if (!person) return '';
+  if (person.full_name) return person.full_name;
+  return person.is_juridic ? person.name : [person.name, person.surname].filter(Boolean).join(' ');
+};
+
 const hasHousingUnits = computed(() => {
   const value = localData.value?.housing_units;
   return value !== null && value !== undefined && value !== '';
@@ -405,13 +425,11 @@ watch(() => props.data, (newValue) => {
         <FieldDetail v-if="localData.language" :label="t('common.language')"
           :value="languageLabel(localData.language)" />
       </div>
-      <div v-if="localData.termination_date" role="row" class="grid grid-cols-3 gap-x-3">
-        <FieldDetail :label="t('common.termination_date')" :value="formatDate(localData.termination_date)">
+      <div v-if="localData.termination_date || (useMultipleCompanies && localData.company?.alias)" role="row" class="grid grid-cols-3 gap-x-3">
+        <FieldDetail v-if="localData.termination_date" :label="t('common.termination_date')" :value="formatDate(localData.termination_date)">
           <AtomsDate :date="localData.termination_date"></AtomsDate>
         </FieldDetail>
-      </div>
-      <div v-if="useMultipleCompanies && localData.company?.alias" role="row" class="grid grid-cols-3 gap-x-3">
-        <FieldDetail :label="t('company')" :value="localData.company.alias" />
+        <FieldDetail v-if="useMultipleCompanies && localData.company?.alias" :label="t('company')" :value="localData.company.alias" />
       </div>
       <div role="row" class="grid grid-cols-2">
         <FieldDetail :label="$t('contract_block.holder')" :value="localData.holder.full_name" class="mr-5">
@@ -441,6 +459,28 @@ watch(() => props.data, (newValue) => {
               class="mt-auto">
               <Icon name="fa6-solid:triangle-exclamation" class="font-bold text-lg text-sky-500 m-auto" />
             </abbr>
+          </span>
+        </FieldDetail>
+      </div>
+      <!-- Mateixes columnes que titular | punt: el comptador queda sota el punt -->
+      <div v-if="localData.virtual_office_date || localData.supply_point_default?.meter_code" role="row" class="grid grid-cols-2">
+        <FieldDetail v-if="localData.virtual_office_date" class="mr-5" :label="t('contract_block.virtual_office')"
+          :value="formatDate(localData.virtual_office_date)">
+          <span :title="t('contract_block.virtual_office_since')" class="flex items-center gap-1">
+            <Icon name="mdi:laptop-account" class="w-4 h-4 text-sky-600 shrink-0" />
+            <AtomsDate :date="localData.virtual_office_date"></AtomsDate>
+          </span>
+        </FieldDetail>
+        <FieldDetail v-if="localData.supply_point_default?.meter_code" class="col-start-2" :label="$t('meter')">
+          <div v-if="!isSubRegion" class="flex gap-2">
+            <button @click="showDetail('MeterRegion', localData.supply_point_default.meter_id)"
+              class="text-start text-sky-500 underline flex items-center gap-2">
+              {{ localData.supply_point_default.meter_code }}
+            </button>
+            <AtomsRedirectButton :id="localData.supply_point_default.meter_id" :path="'/service/meters/'" />
+          </div>
+          <span v-else>
+            {{ localData.supply_point_default.meter_code }}
           </span>
         </FieldDetail>
       </div>
@@ -484,16 +524,6 @@ watch(() => props.data, (newValue) => {
         </div>
       </div>
 
-      <div v-if="localData.representatives">
-        <div v-for="representant in localData.representatives" class="grid grid-cols-2">
-          <FieldDetail :label="$t('contract_block.representative')" :value="representant.full_name" class="flex mr-5">
-            <AtomsPersonBadge :person="representant.person" class="font-bold" />
-          </FieldDetail>
-          <FieldDetail :label="$t('contract_block.representative_role')" :value="representant.type?.name || null">
-          </FieldDetail>
-        </div>
-      </div>
-
       <!-- <div v-if="!reducedDetail">
         <hr class="my-2" />
         <div role="row" class="grid grid-cols-2">
@@ -526,48 +556,28 @@ watch(() => props.data, (newValue) => {
           <FieldDetail :label="$t('contract_block.category')"
             :value="localData.category ? localData.category?.name : t('contract_block.no_category')"></FieldDetail>
         </div>
-        <div v-if="localData.supply_point_default?.meter_code || hasHousingUnits" role="row" class="grid grid-cols-3 gap-x-3">
-          <FieldDetail v-if="localData.supply_point_default?.meter_code" :label="$t('meter')">
-            <div v-if="!isSubRegion" class="flex gap-2">
-              <button @click="showDetail('MeterRegion', localData.supply_point_default.meter_id)"
-                class="text-start text-sky-500 underline flex items-center gap-2">
-                {{ localData.supply_point_default.meter_code }}
-              </button>
-              <AtomsRedirectButton :id="localData.supply_point_default.meter_id" :path="'/service/meters/'" />
-            </div>
-            <span v-else>
-              {{ localData.supply_point_default.meter_code }}
-            </span>
-          </FieldDetail>
-          <FieldDetail v-if="hasHousingUnits" :label="$t('contract_block.housing_units')"
+        <div v-if="hasHousingUnits" role="row" class="grid grid-cols-3 gap-x-3">
+          <FieldDetail :label="$t('contract_block.housing_units')"
             :value="localData.housing_units" class="col-start-2" />
         </div>
 
-        <div v-if="localData.owner || localData.tenant">
+        <!-- Altres persones del contracte, alineades en columnes: rol | nom | DNI | informació extra -->
+        <div v-if="otherPersons.length">
           <hr class="my-2" />
-          <div class="grid grid-cols-2">
-            <div>
-              <FieldDetail v-if="localData.owner" :label="$t('contract_block.owner')" :value="localData.owner?.token"
-                class="flex mr-5">
-                <!-- <abbr :title="localData.holder.token">{{ localData.holder.full_name }}</abbr> -->
-                <div class=" flex items-center"
-                  :class="{ 'grid grid-cols-[auto,1fr]': localData.owner?.vulnerability_level > 0 }">
-                  <AtomsVulnerabilityCheck v-if="localData.owner?.vulnerability_level > 0"
-                    :vulnerability_level="localData.owner?.vulnerability_level" :small="true" class="mr-1" />
-                  <AtomsPersonBadge :person="localData.owner" class="font-bold" :color="'white'" />
-                </div>
-              </FieldDetail>
-              <FieldDetail v-if="localData.tenant" :label="$t('contract_block.tenant')" :value="localData.tenant?.token"
-                class="flex mr-5">
-                <!-- <abbr :title="localData.holder.token">{{ localData.holder.full_name }}</abbr> -->
-                <div class=" flex items-center"
-                  :class="{ 'grid grid-cols-[auto,1fr]': localData.tenant?.vulnerability_level > 0 }">
-                  <AtomsVulnerabilityCheck v-if="localData.tenant?.vulnerability_level > 0"
-                    :vulnerability_level="localData.tenant?.vulnerability_level" :small="true" class="mr-1" />
-                  <AtomsPersonBadge :person="localData.tenant" class="font-bold" :color="'white'" />
-                </div>
-              </FieldDetail>
-            </div>
+          <div class="grid grid-cols-[120px,minmax(0,2fr),minmax(0,1fr),minmax(0,1.5fr)] gap-x-3 gap-y-1 items-center mb-2">
+            <template v-for="row in otherPersons" :key="row.key">
+              <span class="text-slate-600 truncate" :title="row.label">{{ row.label }}</span>
+              <AtomsPersonBadge :person="row.person" class="font-bold" :color="'white'">
+                <span class="truncate" :title="personName(row.person)">{{ personName(row.person) }}</span>
+              </AtomsPersonBadge>
+              <span class="text-sm text-slate-700 truncate">{{ row.person?.token || '-' }}</span>
+              <span class="flex items-center gap-2 min-w-0 text-sm text-slate-500">
+                <AtomsVulnerabilityCheck v-if="row.person?.vulnerability_level > 0"
+                  :vulnerability_level="row.person.vulnerability_level" :extra_small="true" />
+                <span v-if="row.extra" class="truncate" :title="row.extra">{{ row.extra }}</span>
+              </span>
+            </template>
+          </div>
             <!-- <div v-if="localData?.contract_request_type?.has_persons">
               <div v-if="!isEditingPersons" class="grid grid-cols-2">
                 <FieldDetail :label='$t("common.persons")' :value="(localData.total_persons).toString() || '-'"
@@ -594,8 +604,6 @@ watch(() => props.data, (newValue) => {
                 </FieldDetail>
               </div>
             </div> -->
-          </div>
-
         </div>
 
         <div v-if="showPayment || showCommunication" class="grid grid-cols-2 gap-2">
