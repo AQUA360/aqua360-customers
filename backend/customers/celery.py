@@ -169,7 +169,8 @@ if getattr(settings, "GISWATER_SYNC_SUPPLY_CUTS_ENABLED", False):
 
 if getattr(settings, "OV_SYNC_ENABLED", False):
     beat_schedule["sync-virtual-office-contracts"] = {
-        "task": "integrations.tasks.sync_virtual_office_contracts_task",
+        # Nom amb què el registra el worker (el del mòdul on es defineix la tasca).
+        "task": "integrations.outbound.ov.tasks.sync_virtual_office_contracts_task",
         "schedule": crontab(minute=settings.OV_SYNC_MINUTE, hour=settings.OV_SYNC_HOUR),
     }
 

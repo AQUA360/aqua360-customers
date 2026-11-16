@@ -744,7 +744,15 @@ class ContractSerializer(serializers.ModelSerializer):
                 payment_serializer = GeneralPaymentSerializer(data=payment_data, context=self.context)
             payment_serializer.is_valid(raise_exception=True)
             instance.payment = payment_serializer.save()
-        instance.save()
+        # La data d'alta a l'OV només la toca la sincronització: es pren el valor actual
+        # (perquè l'historial no vegi un canvi fals) i no s'escriu, perquè si la
+        # sincronització la desa mentre s'edita el contracte no es perdi.
+        instance.virtual_office_date = Contract.objects.filter(pk=instance.pk).values_list(
+            'virtual_office_date', flat=True).first()
+        instance.save(update_fields=[
+            field.name for field in Contract._meta.concrete_fields
+            if not field.primary_key and field.name != 'virtual_office_date'
+        ])
         
         if price_rates_ids is not None:
             fill_contract_use_aca(single_contract_id=instance.id)

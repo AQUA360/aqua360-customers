@@ -1,7 +1,9 @@
 import datetime
+import io
 from unittest import mock
 
 from django.db.models.signals import post_save, pre_save
+from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -122,10 +124,10 @@ class SyncTests(TestCase):
     def test_one_failing_contract_does_not_stop_the_rest(self):
         original_write = sync_module.write_virtual_office_date
 
-        def failing_write(contract_id, target):
+        def failing_write(contract_id, *args):
             if contract_id == self.new.pk:
                 raise RuntimeError('error de prova')
-            return original_write(contract_id, target)
+            return original_write(contract_id, *args)
 
         with mock.patch.object(sync_module, 'write_virtual_office_date', failing_write), \
                 self.assertLogs('integrations.outbound.ov.sync', 'ERROR'):
@@ -153,6 +155,15 @@ class SyncTests(TestCase):
 
         self.assertEqual(saved, [])
         self.assertEqual(self.date_of(self.new), D1)
+
+    def test_without_ov_date_keeps_the_date_read_under_lock(self):
+        """Si una altra sincronització ha desat la data mentrestant, no se substitueix per avui."""
+        Contract.objects.filter(pk=self.no_date.pk).update(virtual_office_date=D1)
+
+        key = sync_module.write_virtual_office_date(self.no_date.pk, True, None, timezone.localdate())
+
+        self.assertEqual(key, 'unchanged')
+        self.assertEqual(self.date_of(self.no_date), D1)
 
     def test_list_filter(self):
         Contract.objects.filter(pk=self.new.pk).update(virtual_office_date=D1)
@@ -192,6 +203,22 @@ class ClientAndTaskTests(TestCase):
             result = sync_virtual_office_contracts_task()
         self.assertEqual(result['status'], 'error')
         self.assertNotIn('detall intern', result['message'])
+
+    def test_task_reports_partial_when_some_contracts_fail(self):
+        stats = {'ov_contracts': 2, 'registered': 1, 'updated': 0, 'unregistered': 0, 'unchanged': 0,
+                 'errors': 1, 'not_found_tokens': []}
+        with mock.patch('integrations.outbound.ov.tasks.sync_virtual_office_contracts', return_value=stats):
+            result = sync_virtual_office_contracts_task()
+        self.assertEqual((result['status'], result['errors'], result['registered']), ('partial', 1, 1))
+
+    def test_command_fails_when_some_contracts_fail(self):
+        stats = {'ov_contracts': 1, 'registered': 0, 'updated': 0, 'unregistered': 0, 'unchanged': 0,
+                 'errors': 1, 'not_found_tokens': []}
+        with mock.patch(
+            'integrations.management.commands.sync_virtual_office_contracts.sync_virtual_office_contracts',
+            return_value=stats,
+        ), self.assertRaises(CommandError):
+            call_command('sync_virtual_office_contracts', stdout=io.StringIO())
 
     @override_settings(OV_SYNC_ENABLED=False)
     def test_task_skipped_when_disabled(self):

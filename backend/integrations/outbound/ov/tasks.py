@@ -23,4 +23,5 @@ def sync_virtual_office_contracts_task():
         return {"status": "error", "message": "Error sincronitzant els contractes amb l'oficina virtual"}
 
     stats["not_found"] = len(stats.pop("not_found_tokens"))
-    return {"status": "success", **stats}
+    # Contractes que no s'han pogut desar: queden pendents per a la sincronització següent.
+    return {"status": "partial" if stats["errors"] else "success", **stats}

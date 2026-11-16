@@ -80,13 +80,37 @@ const hiddenIndicators = computed(() =>
 );
 
 // La cel·la del llistat retalla el que en surt: la llista es pinta a <body>.
+// Surt a sota del botó si hi cap i, si no, a sobre; mai fora de la pantalla. Es pot
+// passar el ratolí del botó a la llista sense que es tanqui.
+const GAP = 4;
+const MARGIN = 8;
 const moreButton = ref(null);
+const morePanel = ref(null);
 const morePosition = ref(null);
-const showMore = () => {
-    const rect = moreButton.value?.getBoundingClientRect();
-    if (rect) morePosition.value = { top: `${rect.bottom + 4}px`, left: `${rect.left}px` };
+let hideTimer = null;
+
+const placeMore = () => {
+    const button = moreButton.value?.getBoundingClientRect();
+    const panel = morePanel.value?.getBoundingClientRect();
+    if (!button || !panel) return;
+    const fitsBelow = button.bottom + GAP + panel.height <= window.innerHeight - MARGIN;
+    const top = fitsBelow ? button.bottom + GAP : Math.max(MARGIN, button.top - GAP - panel.height);
+    const left = Math.min(Math.max(MARGIN, button.left), window.innerWidth - MARGIN - panel.width);
+    morePosition.value = { top: `${top}px`, left: `${Math.max(MARGIN, left)}px` };
 }
-const hideMore = () => { morePosition.value = null; }
+const showMore = async () => {
+    clearTimeout(hideTimer);
+    if (morePosition.value) return;
+    // Primer es pinta amagada per poder-la mesurar.
+    morePosition.value = { top: '0px', left: '0px', visibility: 'hidden' };
+    await nextTick();
+    placeMore();
+}
+const hideMore = () => {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { morePosition.value = null; }, 150);
+}
+onBeforeUnmount(() => clearTimeout(hideTimer));
 </script>
 
 <template>
@@ -118,7 +142,8 @@ const hideMore = () => { morePosition.value = null; }
                 </button>
             </span>
             <Teleport to="body">
-                <ul v-if="morePosition" :style="morePosition" role="tooltip"
+                <ul v-if="morePosition" ref="morePanel" :style="morePosition" role="tooltip"
+                    @mouseenter="showMore" @mouseleave="hideMore"
                     class="fixed z-[100] bg-white rounded customers-shadow border border-gray-100 p-2 space-y-1 text-sm text-slate-700">
                     <li v-for="indicator in hiddenIndicators" :key="indicator.key" class="flex items-center gap-2 whitespace-nowrap">
                         <AtomsVulnerabilityCheck v-if="indicator.key === 'vulnerability'"

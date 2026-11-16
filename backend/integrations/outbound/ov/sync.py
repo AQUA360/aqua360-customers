@@ -74,17 +74,22 @@ def extract_active_contracts(data):
     return active
 
 
-def write_virtual_office_date(contract_id, target):
-    """Desa la data i la deixa a l'historial sense passar pels senyals del contracte.
+def write_virtual_office_date(contract_id, is_active_in_ov, ov_date, today):
+    """Posa al dia la data d'alta d'un contracte i la deixa a l'historial.
 
-    Amb `save()` saltarien tots els senyals de Contract, i n'hi ha que fan feina de
-    negoci en cada desament (p. ex. el d'un contracte de baixa retorna les fiances
-    pendents i en genera la factura): una sincronització no ha de disparar-los.
+    Retorna la clau del recompte ("registered", "updated", "unregistered" o "unchanged").
+    La data es decideix amb la fila bloquejada: si mentrestant ha canviat (una altra
+    sincronització), es parteix del valor que hi ha ara i no del llegit abans.
+
+    No fa servir `save()`: saltarien tots els senyals de Contract, i n'hi ha que fan
+    feina de negoci en cada desament (p. ex. el d'un contracte de baixa retorna les
+    fiances pendents i en genera la factura). Una sincronització no ha de disparar-los.
     """
     contract = Contract.objects.select_for_update().only("id", "virtual_office_date").get(pk=contract_id)
     previous = contract.virtual_office_date
+    target = (ov_date or previous or today) if is_active_in_ov else None
     if previous == target:
-        return False
+        return "unchanged"
     Contract.objects.filter(pk=contract_id).update(virtual_office_date=target, updated_at=timezone.now())
     ContractLog.objects.create(
         contract_id=contract_id,
@@ -94,7 +99,9 @@ def write_virtual_office_date(contract_id, target):
         operation_token=str(uuid.uuid4()),
         user=None,
     )
-    return True
+    if target is None:
+        return "unregistered"
+    return "registered" if previous is None else "updated"
 
 
 def sync_virtual_office_contracts(data=None):
@@ -115,29 +122,21 @@ def sync_virtual_office_contracts(data=None):
 
     for contract in contracts.only("id", "token", "virtual_office_date"):
         found_tokens.add(contract.token)
-        if contract.token in active:
-            target = active[contract.token] or contract.virtual_office_date or today
-        else:
-            target = None
-
-        if target == contract.virtual_office_date:
+        is_active_in_ov = contract.token in active
+        if is_active_in_ov and contract.virtual_office_date and active[contract.token] in (None, contract.virtual_office_date):
             stats["unchanged"] += 1
             continue
-
-        if target is None:
-            key = "unregistered"
-        elif contract.virtual_office_date is None:
-            key = "registered"
-        else:
-            key = "updated"
+        if not is_active_in_ov and contract.virtual_office_date is None:
+            stats["unchanged"] += 1
+            continue
         try:
             with transaction.atomic():
-                written = write_virtual_office_date(contract.pk, target)
+                key = write_virtual_office_date(contract.pk, is_active_in_ov, active.get(contract.token), today)
         except Exception:
             logger.exception("Error desant l'alta a l'oficina virtual del contracte %s", contract.pk)
             stats["errors"] += 1
             continue
-        stats[key if written else "unchanged"] += 1
+        stats[key] += 1
 
     stats["not_found_tokens"] = sorted(set(active) - found_tokens)
     return stats
