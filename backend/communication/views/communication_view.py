@@ -34,7 +34,10 @@ class CommunicationViewSet(viewsets.ModelViewSet):
     queryset = super().get_queryset()
     if self.action == 'list':
       from communication.filters.communication_filter import multi_page_invoice_exists
-      queryset = queryset.annotate(has_multi_page_invoice=multi_page_invoice_exists())
+      queryset = queryset.select_related(
+        'person', 'status', 'process', 'use_type', 'user',
+        'address', 'address__address', 'address__address__city',
+      ).annotate(has_multi_page_invoice=multi_page_invoice_exists())
     return queryset
 
   def get_serializer_class(self):
