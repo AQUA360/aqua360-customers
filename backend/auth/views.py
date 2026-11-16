@@ -35,9 +35,16 @@ def check_superuser_target(user, target):
         raise PermissionDenied("You are not allowed to modify a superuser")
 
 
+class LoginIPThrottle(ScopedRateThrottle):
+    """Límit per IP sempre, també si la petició porta un token vàlid (no per usuari)."""
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {'scope': self.scope, 'ident': self.get_ident(request)}
+
+
 class CustomAuthToken(ObtainAuthToken):
     # Límit d'intents per IP (scope "login"); el bloqueig per usuari el fa django-axes
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [LoginIPThrottle]
     throttle_scope = 'login'
 
     def post(self, request, *args, **kwargs):

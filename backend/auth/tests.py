@@ -170,6 +170,23 @@ class LoginBruteForceProtectionTest(TestCase):
         self.assertEqual(codes[:3], [400, 400, 400])
         self.assertEqual(codes[3], 429)
 
+    def test_ip_quota_shared_between_token_and_anonymous_requests(self):
+        from unittest import mock
+        from rest_framework.throttling import ScopedRateThrottle
+        token = self._login('victima', 'correcta').json()['token']
+        from django.core.cache import cache
+        cache.clear()
+        with mock.patch.object(ScopedRateThrottle, 'THROTTLE_RATES', {'login': '3/min'}):
+            codes = []
+            for i in range(4):
+                extra = {'HTTP_AUTHORIZATION': f'Token {token}'} if i % 2 else {}
+                codes.append(self.client.post(
+                    self.url, {'username': f'u{i}', 'password': 'x'},
+                    REMOTE_ADDR='10.0.0.9', **extra,
+                ).status_code)
+        # Amb i sense token comparteixen la mateixa quota per IP
+        self.assertEqual(codes[3], 429)
+
     def test_successful_login_is_not_blocked(self):
         resp = self._login('victima', 'correcta')
         self.assertEqual(resp.status_code, 200)
