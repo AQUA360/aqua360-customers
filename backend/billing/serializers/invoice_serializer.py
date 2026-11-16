@@ -390,6 +390,7 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     payment_in_remittance = serializers.SerializerMethodField()
     remittances = serializers.SerializerMethodField()
     joined_payments = serializers.SerializerMethodField()
+    remittance_mark = serializers.SerializerMethodField()
     
     status_token = serializers.CharField(write_only=True, required=False, allow_null=True)
     delete_payments = serializers.BooleanField(write_only=True, required=False, allow_null=True)
@@ -409,6 +410,10 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
                 return True
         return False
             
+    def get_remittance_mark(self, obj):
+        from billing.utils.remittance_mark_service import invoice_remittance_mark_summary
+        return invoice_remittance_mark_summary(obj)
+
     def get_payment_in_remittance(self, obj):
         # RETURN TRUE IF THERE IS A PAYMENT IN A REMITTANCE PENDING TO BE SENT
         for payment in obj.payments.all():

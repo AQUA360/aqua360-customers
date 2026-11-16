@@ -132,3 +132,70 @@ class UserManagementPermissionTest(TestCase):
         self.client.force_authenticate(self.plain)
         self.assertEqual(self.client.get("/auth/user/permissions/").status_code, 200)
         self.assertEqual(self.client.get("/auth/group/permissions/").status_code, 200)
+
+
+class LoginBruteForceProtectionTest(TestCase):
+    """El login no admet intents il·limitats: límit per IP i bloqueig per usuari."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.user = User.objects.create_user(username='victima', password='correcta')
+        self.url = reverse('login')
+
+    def _login(self, username, password, ip='10.0.0.1'):
+        return self.client.post(
+            self.url, {'username': username, 'password': password},
+            REMOTE_ADDR=ip,
+        )
+
+    def test_user_locked_after_failed_attempts_even_with_correct_password(self):
+        from django.conf import settings
+        for _ in range(settings.AXES_FAILURE_LIMIT):
+            self.assertEqual(self._login('victima', 'incorrecta').status_code, 400)
+        # Des d'una altra IP, l'usuari ja queda bloquejat (també amb la contrasenya bona)
+        self.assertEqual(self._login('victima', 'correcta', ip='10.0.0.2').status_code, 429)
+
+    def test_failed_attempts_are_recorded(self):
+        from axes.models import AccessAttempt
+        self._login('victima', 'incorrecta')
+        self.assertTrue(AccessAttempt.objects.filter(username='victima').exists())
+
+    def test_ip_throttled_across_different_usernames(self):
+        from unittest import mock
+        from rest_framework.throttling import ScopedRateThrottle
+        with mock.patch.object(ScopedRateThrottle, 'THROTTLE_RATES', {'login': '3/min'}):
+            codes = [self._login(f'usuari{i}', 'x').status_code for i in range(4)]
+        self.assertEqual(codes[:3], [400, 400, 400])
+        self.assertEqual(codes[3], 429)
+
+    def test_ip_quota_shared_between_token_and_anonymous_requests(self):
+        from unittest import mock
+        from rest_framework.throttling import ScopedRateThrottle
+        token = self._login('victima', 'correcta').json()['token']
+        from django.core.cache import cache
+        cache.clear()
+        with mock.patch.object(ScopedRateThrottle, 'THROTTLE_RATES', {'login': '3/min'}):
+            codes = []
+            for i in range(4):
+                extra = {'HTTP_AUTHORIZATION': f'Token {token}'} if i % 2 else {}
+                codes.append(self.client.post(
+                    self.url, {'username': f'u{i}', 'password': 'x'},
+                    REMOTE_ADDR='10.0.0.9', **extra,
+                ).status_code)
+        # Amb i sense token comparteixen la mateixa quota per IP
+        self.assertEqual(codes[3], 429)
+
+    def test_successful_login_is_not_blocked(self):
+        resp = self._login('victima', 'correcta')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('token', resp.json())
+
+    def test_admin_login_locks_user(self):
+        from django.conf import settings
+        admin_url = reverse('admin:login')
+        for _ in range(settings.AXES_FAILURE_LIMIT):
+            self.client.post(admin_url, {'username': 'victima', 'password': 'mala'}, REMOTE_ADDR='10.0.0.3')
+        resp = self.client.post(admin_url, {'username': 'victima', 'password': 'correcta'}, REMOTE_ADDR='10.0.0.3')
+        self.assertEqual(resp.status_code, 429)
