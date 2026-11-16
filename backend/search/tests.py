@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
-from rest_framework.authtoken.models import Token
+
+from coredata.models import AuthSessionToken
 
 
 class SearchResultsAuthTest(TestCase):
@@ -12,7 +13,7 @@ class SearchResultsAuthTest(TestCase):
 
     def test_authenticated_request_is_allowed(self):
         user = User.objects.create_user("cerca", "cerca@example.com", "pwd")
-        token = Token.objects.create(user=user)
+        token = AuthSessionToken.create_for(user)
         response = self.client.get(
             "/search/results/", {"q": "zzz-no-results"}, HTTP_AUTHORIZATION=f"Token {token.key}"
         )

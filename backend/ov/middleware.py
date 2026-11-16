@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from rest_framework.authentication import TokenAuthentication
+from coredata.authentication import ExpiringTokenAuthentication
 
 
 class RestrictOVUserMiddleware:
@@ -22,7 +22,7 @@ class RestrictOVUserMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self.auth = TokenAuthentication()
+        self.auth = ExpiringTokenAuthentication()
         # Paths that use their own custom authentication (don't require Django auth)
         self.exempt_paths = ["/got/", "/lecturapp/"]
 
