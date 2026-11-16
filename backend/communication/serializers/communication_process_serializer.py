@@ -386,6 +386,17 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
         validated_data['type_names'] = msg_names
         validated_data['type_tokens'] = msg_tokens
         validated_data['user'] = user
+
+        # Es desa al procés la tria de documents adjunts amb què es creen les comunicacions.
+        has_invoices = fixed_data == 'billing' or bool(attach_invoices)
+        validated_data['attach_letter'] = bool(attach_letter)
+        validated_data['attach_invoices'] = has_invoices
+        validated_data['attach_readings'] = has_invoices and bool(attach_readings)
+        validated_data['attach_reading_invoices'] = bool(attach_reading_invoices)
+        validated_data['attach_claim_documents'] = attach_claim_documents if fixed_data == 'claimrequest' else None
+        validated_data['invoice_email_delivery'] = (
+            invoice_email_delivery if has_invoices or attach_reading_invoices else None
+        )
         
         instance = None
         if og_id:
