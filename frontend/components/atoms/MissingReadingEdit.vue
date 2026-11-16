@@ -50,7 +50,8 @@
         <span>{{ calculated_value ?? '-' }}</span>
       </div>
       <div class="p-3">
-        <input :disabled="disableAll || props.disableAll" type="text" class="input" v-model="alertNote" />
+        <input :disabled="disableAll || props.disableAll" type="text" class="input" v-model="alertNote"
+          :aria-label="t('billing_block.alerts')" />
       </div>
       <div v-if="props.readerAlert" class="p-3">
         <span>{{ translateReaderAlert(supply.last_reader_alert) }}</span>
@@ -238,7 +239,11 @@ const save = async () => {
       add_to_all: true,
       is_control: false,
       is_estimated: false,
-      alert_notes: alertNote.value || null,
+    }
+
+    // Només enviem el comentari si l'usuari n'ha escrit un, per no esborrar el d'una lectura existent
+    if (alertNote.value) {
+      data.alert_notes = alertNote.value;
     }
 
     try {
