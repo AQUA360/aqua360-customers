@@ -4,8 +4,8 @@
       class="grid pt-1 pb-1 gap-2 px-4 divide-gray-200 transition-all rounded-t-lg duration-300 ease-in-out flex items-center"
       :class="{
         'mb-1 pb-2 pt-2 bg-slate-200': props.showDetail,
-        'grid-cols-[1.8fr,1.8fr,2fr,1fr,1.2fr,1fr,0.8fr,1fr,1fr]': !props.readerAlert && !props.remoteAlert,
-        'grid-cols-[1.8fr,1.8fr,1fr,100px,120px,1fr,1fr,1fr,1.5fr,1fr,1fr]': props.readerAlert || props.remoteAlert
+        'grid-cols-[1.8fr,1.8fr,2fr,1fr,1.2fr,1fr,0.8fr,1fr,1.2fr,1fr]': !props.readerAlert && !props.remoteAlert,
+        'grid-cols-[1.8fr,1.8fr,1fr,100px,120px,1fr,1fr,1fr,1.2fr,1.5fr,1fr,1fr]': props.readerAlert || props.remoteAlert
       }">
       <div class="p-3 flex items-center gap-1">
         <div v-if="supply.contracts && supply.contracts.length > 0" class="flex items-center gap-1">
@@ -48,6 +48,9 @@
       </div>
       <div class="p-3">
         <span>{{ calculated_value ?? '-' }}</span>
+      </div>
+      <div class="p-3">
+        <input :disabled="disableAll || props.disableAll" type="text" class="input" v-model="alertNote" />
       </div>
       <div v-if="props.readerAlert" class="p-3">
         <span>{{ translateReaderAlert(supply.last_reader_alert) }}</span>
@@ -235,6 +238,7 @@ const save = async () => {
       add_to_all: true,
       is_control: false,
       is_estimated: false,
+      alert_notes: alertNote.value || null,
     }
 
     try {
