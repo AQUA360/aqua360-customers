@@ -485,6 +485,26 @@ const saveToPiggyBank = async () => {
   }
 };
 
+// "Marcar per remesar": es pot marcar si la factura té pagaments pendents per domiciliació
+// (SEPA) que no siguin ja en una remesa pendent d'enviar; es pot desmarcar si n'hi ha de marcats.
+const canMarkForRemittance = computed(() => !!data.value?.remittance_mark?.can_mark);
+const isMarkedForRemittance = computed(() => (data.value?.remittance_mark?.marked || 0) > 0);
+
+const toggleMarkedForRemittance = async (marked) => {
+  if (!confirm(t(marked ? "confirmation_text_block.confirm_mark_invoice_for_remittance" : "confirmation_text_block.confirm_unmark_invoice_for_remittance"))) return;
+  try {
+    const response = await $InvoiceApiService.markForRemittance(invoiceId.value, marked);
+    if (response) {
+      toast.success(t("common.correct_save"));
+      await getData(false);
+      emit('changed');
+    }
+  } catch (error) {
+    console.error(error);
+    toast.error(error?.data?.error || t("common.error"));
+  }
+};
+
 const passToPending = async () => {
 
   if (!confirm(t("confirmation_text_block.confirm_pass_pending"))) return
@@ -600,6 +620,11 @@ const handleRefactor = async () => {
           <span v-if="data.is_late" class="mx-5 px-2 bg-red-100 text-red-500 text-sm">
             {{ t("billing_block.expired_invoice") }}
           </span>
+          <span v-if="data.remittance_mark?.marked > 0"
+            class="mx-5 px-2 border-l-2 border-sky-500 bg-sky-100 text-sky-600 text-sm">
+            <Icon name="fa6-solid:flag" class="display-inline mr-1" />
+            {{ t("billing_block.marked_for_remittance") }}
+          </span>
           <span v-if="verifactuEnabled && data.type.token == invoice_token && !data.verifactu_invoice"
             class="mx-5 px-2 rounded border border-orange-500 text-orange-500 bg-orange-100 text-sm">
             {{ t("billing_block.unverified_invoice") }}
@@ -713,6 +738,16 @@ const handleRefactor = async () => {
               :name="`${t('common.confirm')} ${t('invoice').toLowerCase()}`" @click="confirmInvoice">
               <Icon name="fa6-solid:check" class="display-inline mr-2" /> {{ `${t('common.confirm')}
               ${t('invoice').toLowerCase()}` }}
+            </DropdownOption>
+            <DropdownOption v-if="canMarkForRemittance" :name="t('billing_block.mark_for_remittance')"
+              @click="toggleMarkedForRemittance(true)">
+              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
+              {{ t('billing_block.mark_for_remittance') }}
+            </DropdownOption>
+            <DropdownOption v-if="isMarkedForRemittance" :name="t('billing_block.unmark_for_remittance')"
+              @click="toggleMarkedForRemittance(false)">
+              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
+              {{ t('billing_block.unmark_for_remittance') }}
             </DropdownOption>
             <DropdownOption v-if="canSaveToPiggyBank" :disabled="allow_changes"
               :name="t('billing_block.save_amount_in_piggy_bank')" @click="saveToPiggyBank">

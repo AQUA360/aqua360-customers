@@ -34,7 +34,8 @@ class PaymentFilter(filters.FilterSet):
             'search', 'invoice', 'is_pending', 'is_debit',
             'origin', 'start_date', 'end_date',
             'status', 'is_excluded', 'type', 'commitment_deposit', 
-            'exploitation', 'return_reason', 'payment_origin'
+            'exploitation', 'return_reason', 'payment_origin',
+            'is_marked_for_remittance',
         ]
 
     def filter_search(self, queryset, name, value):
