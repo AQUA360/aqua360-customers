@@ -1,3 +1,11 @@
+<script>
+// Facturacions per a les quals ja s'ha demanat refrescar sense trobar res actiu a la cua.
+// És compartit entre instàncies perquè, en refrescar, el pare torna a muntar l'etiqueta:
+// si la facturació continua "Processant" sense res a la cua, no es demana un altre refresc
+// (abans el llistat es recarregava sense parar).
+const refreshedWithoutActiveItem = new Set();
+</script>
+
 <script setup>
 import { AppColors } from '~/utils/config';
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
@@ -50,6 +58,17 @@ const setColor = () => {
   colorClass.value = color ? color.class : 'badge-gray';
 };
 
+const refreshBillingOnce = () => {
+  const key = String(props.billingId);
+  if (refreshedWithoutActiveItem.has(key)) {
+    // Ja s'ha refrescat i continua igual: deixem de consultar i no girem més.
+    progress.value = 100;
+    return;
+  }
+  refreshedWithoutActiveItem.add(key);
+  emit('refresh');
+};
+
 const startInterval = async() => {
   clearInterval(itvl)
   pendingPolls = 0;
@@ -77,9 +96,12 @@ const startInterval = async() => {
 
           if (!activeItem) {
             clearInterval(itvl);
-            emit('refresh');
+            refreshBillingOnce();
             return;
           }
+
+          // Hi ha feina a la cua: quan acabi, s'haurà de poder tornar a refrescar.
+          refreshedWithoutActiveItem.delete(String(props.billingId));
 
           // L'endpoint de billing-queue ja retorna `percent`/`status` fets i actualitzats
           // (inclou l'autoreparació via AsyncResult al propi backend), així que no cal
@@ -147,7 +169,11 @@ const startInterval = async() => {
       }
       catch (e) {
         clearInterval(itvl);
-        emit('refresh');
+        if (props.billingId) {
+          refreshBillingOnce();
+        } else {
+          emit('refresh');
+        }
       }
     }, 2000)
 };
