@@ -3481,6 +3481,7 @@ export default {
     detail: 'Detall'
   },
   reports_block:   {
+    download_pdf_hint: "Descarregar en PDF (versió per presentar)",
     error_queue_action: 'Error en gestionar la tasca de la cua.',
     report_completed_success: 'Informe "{name}" generat correctament.',
     report_generation_failed: 'Error al generar l\'informe "{name}".',

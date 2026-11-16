@@ -177,8 +177,8 @@ const model347YearOptions = computed(() => {
 
 
 
-const onDownload = () => {
-  emit('download', props.report, form.value);
+const onDownload = (outputFormat = 'xlsx') => {
+  emit('download', props.report, form.value, outputFormat);
 };
 </script>
 
@@ -370,16 +370,13 @@ const onDownload = () => {
           </div>
         </div>
       </template>
-      <template v-else>
-        <button
-          type="button"
-          class="button-secondary flex items-center gap-2 shadow-sm font-medium"
-          @click="onDownload"
-        >
-          <Icon name="fa6-solid:file-excel" />
-          <span>{{ report.download_button_name || t('common.download') }}</span>
-        </button>
-      </template>
+      <AtomsReportDownloadButton
+        v-else
+        :label="report.download_button_name || t('common.download')"
+        :show-pdf="!!report.allow_pdf_export"
+        :pdf-title="t('reports_block.download_pdf_hint')"
+        @download="onDownload"
+      />
     </div>
   </div>
 </template>

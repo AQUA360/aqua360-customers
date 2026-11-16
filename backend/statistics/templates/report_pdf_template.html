@@ -1,0 +1,131 @@
+{% load i18n %}<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  @page {
+    size: a4 {% if landscape %}landscape{% else %}portrait{% endif %};
+    margin: 1.6cm 1.4cm 1.8cm 1.4cm;
+    @frame footer {
+      -pdf-frame-content: page-footer;
+      bottom: 0.7cm;
+      margin-left: 1.4cm;
+      margin-right: 1.4cm;
+      height: 0.8cm;
+    }
+  }
+
+  body { font-family: Helvetica, Arial, sans-serif; color: #1f2937; font-size: 9pt; }
+
+  /* Capçalera del document */
+  .doc-header { border-bottom: 2px solid {{ colors.accent }}; padding-bottom: 6px; margin-bottom: 10px; }
+  .doc-header td { vertical-align: middle; }
+  .doc-logo { height: 42px; }
+  .doc-company { font-size: 9pt; color: #6b7280; text-align: right; }
+  .doc-title { font-size: 17pt; font-weight: bold; color: {{ colors.accent }}; margin: 0; }
+  .doc-period { font-size: 10pt; color: #374151; margin-top: 2px; }
+
+  /* Filtres aplicats */
+  .filters { background-color: {{ colors.filters_bg }}; padding: 5px 8px; margin-bottom: 12px; font-size: 8pt; color: #475569; }
+  .filters b { color: #1f2937; }
+
+  /* Fulls i títols interns */
+  .sheet-name { font-size: 12pt; font-weight: bold; color: {{ colors.accent }}; margin: 6px 0 4px 0; }
+  .sheet-title { font-size: 10pt; font-weight: bold; color: #1f2937; margin: 0 0 2px 0; }
+  .sheet-subtitle { font-size: 9pt; color: #4b5563; margin: 0 0 2px 0; }
+
+  /* Taules */
+  table.data { width: 100%; margin: 4px 0 14px 0; }
+  table.data th {
+    background-color: {{ colors.accent }}; color: {{ colors.on_accent }}; font-weight: bold;
+    padding: 4px 4px 2px 4px; text-align: left; vertical-align: bottom;
+    border-bottom: 1px solid {{ colors.accent_dark }};
+  }
+  table.data td {
+    padding: 3px 4px 1px 4px; vertical-align: top;
+    border-bottom: 0.5px solid #e5e7eb;
+  }
+  table.data tr.odd td { background-color: {{ colors.odd_bg }}; }
+  table.data tr.total td { font-weight: bold; background-color: {{ colors.total_bg }}; border-top: 1px solid {{ colors.total_border }}; }
+  table.data tr.section td { font-weight: bold; color: {{ colors.accent }}; background-color: {{ colors.section_bg }}; border-bottom: 1px solid {{ colors.accent }}; padding-top: 4px; }
+  table.data tr.subsection td { font-weight: bold; color: #1f2937; background-color: #ffffff; border-bottom: 0.5px solid {{ colors.subsection_border }}; padding-top: 5px; }
+  table.data tr.spacer td { border-bottom: none; font-size: 3pt; padding: 0; }
+  .table-caption { font-size: 11pt; font-weight: bold; color: {{ colors.accent }}; margin: 8px 0 2px 0; }
+  table.data td.num, table.data th.num { text-align: right; }
+
+  #page-footer { font-size: 7pt; color: #9ca3af; }
+</style>
+</head>
+<body>
+
+<table class="doc-header">
+  <tr>
+    <td style="width: 70%;">
+      <p class="doc-title">{{ title }}</p>
+      {% if period %}<p class="doc-period">{{ period }}</p>{% endif %}
+    </td>
+    <td style="width: 30%;" class="doc-company">
+      {% if logo %}<img class="doc-logo" src="{{ logo }}"><br>{% endif %}
+      {% if company_name %}{{ company_name }}{% endif %}
+    </td>
+  </tr>
+</table>
+
+{% if filters %}
+<div class="filters">
+  {% for f in filters %}<b>{{ f.label }}:</b> {{ f.value }}{% if not forloop.last %} &nbsp;&middot;&nbsp; {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+{% for sheet in sheets %}
+  {% if not forloop.first %}<pdf:nextpage />{% endif %}
+  {% if show_sheet_names %}<p class="sheet-name">{{ sheet.name }}</p>{% endif %}
+  {% for line in sheet.titles %}
+    <p class="{% if forloop.first %}sheet-title{% else %}sheet-subtitle{% endif %}">{{ line }}</p>
+  {% endfor %}
+
+  {% for table in sheet.tables %}
+  {% for caption in table.captions %}<p class="table-caption">{{ caption }}</p>{% endfor %}
+  <table class="data" repeat="{{ table.repeat }}" style="font-size: {{ sheet.font_size }}pt;">
+    {% for row in table.header %}
+    {% if row.kind == "section" %}
+    <tr class="section">
+      {% for cell in row.cells %}
+      <td{% if cell.colspan > 1 %} colspan="{{ cell.colspan }}"{% endif %} width="{{ cell.width }}%"{% if cell.numeric %} class="num"{% endif %}>{{ cell.text }}</td>
+      {% endfor %}
+    </tr>
+    {% else %}
+    <tr>
+      {% for cell in row.cells %}
+      <th{% if cell.colspan > 1 %} colspan="{{ cell.colspan }}"{% endif %}{% if cell.rowspan > 1 %} rowspan="{{ cell.rowspan }}"{% endif %} width="{{ cell.width }}%"{% if cell.numeric %} class="num"{% endif %}>{{ cell.text }}</th>
+      {% endfor %}
+    </tr>
+    {% endif %}
+    {% endfor %}
+    {% for row in table.rows %}
+    {% if row.css == "spacer" %}
+    <tr class="spacer"><td colspan="{{ table.column_count }}">&nbsp;</td></tr>
+    {% else %}
+    <tr class="{{ row.css }}{% if not row.css and forloop.counter|divisibleby:2 %} odd{% endif %}">
+      {% for cell in row.cells %}
+      <td{% if cell.colspan > 1 %} colspan="{{ cell.colspan }}"{% endif %}{% if cell.rowspan > 1 %} rowspan="{{ cell.rowspan }}"{% endif %} width="{{ cell.width }}%"{% if cell.numeric %} class="num"{% endif %}>{{ cell.text }}</td>
+      {% endfor %}
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </table>
+  {% endfor %}
+{% endfor %}
+
+<div id="page-footer">
+  <table>
+    <tr>
+      <td style="width: 70%;">{{ title }}{% if company_name %} &middot; {{ company_name }}{% endif %} &middot; {% translate "Generat el" %} {{ generated_at }}</td>
+      <td style="width: 30%; text-align: right;">{% translate "Pàgina" %} <pdf:pagenumber /> {% translate "de" %} <pdf:pagecount /></td>
+    </tr>
+  </table>
+</div>
+
+</body>
+</html>

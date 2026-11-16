@@ -167,11 +167,11 @@
             if (data.status === 'completed' && data.document_url) {
               const link = document.createElement('a');
               link.href = data.document_url;
-              link.download = data.document_name || `report_${reportId}.xlsx`;
+              link.download = data.document_name || `report_${reportId}`;
               link.click();
               toast.success(t('reports_block.report_completed_success', { name: reportName || data.document_name }));
             } else if (data.status === 'completed' && data.document_id) {
-              await downloadQueueDocument(data.document_id, data.document_name || `report_${reportId}.xlsx`);
+              await downloadQueueDocument(data.document_id, data.document_name || `report_${reportId}`);
               toast.success(t('reports_block.report_completed_success', { name: reportName || data.document_name }));
             } else if (data.status === 'warning') {
               toast.warning(data.error_message || t('reports_block.report_generation_failed', { name: reportName }));
@@ -458,7 +458,7 @@
   }, { immediate: true });
 
 
-  const handleReportDownload = async (report, formData) => {
+  const handleReportDownload = async (report, formData, outputFormat = 'xlsx') => {
     // 1. Sincronitzar les dades del formulari local amb els refs globals per mantenir coherència a la interfície
     if (formData.date_range !== undefined) dateRange.value = formData.date_range;
     if (formData.exploitation_id !== undefined) {
@@ -550,7 +550,9 @@
       payment_type_ids: Array.isArray(formData.selected_payment_type_ids) ? formData.selected_payment_type_ids.join(',') : (formData.selected_payment_type_ids || ''),
       version: formData.version || 1,
       account_type: account_type,
-      accounting_type: account_type
+      accounting_type: account_type,
+      // Versió PDF de presentació (només si l'informe la té activada)
+      output_format: (outputFormat === 'pdf' && report.allow_pdf_export) ? 'pdf' : null
     };
 
     // Amb data de tall, el període global no aplica: no s'envia perquè no surti als filtres.
@@ -896,11 +898,12 @@
                               <span class="text-xs text-slate-500">Esperant el seu torn a la cua...</span>
                             </template>
                             <template v-else>
-                              <button class="button-secondary font-medium" 
-                                @click="handleReportDownload(report, {})">
-                                <Icon name="fa6-solid:file-excel" class="mr-2" />
-                                {{ report.download_button_name || t('common.download') }}
-                              </button>
+                              <AtomsReportDownloadButton
+                                :label="report.download_button_name || t('common.download')"
+                                :show-pdf="!!report.allow_pdf_export"
+                                :pdf-title="t('reports_block.download_pdf_hint')"
+                                @download="(fmt) => handleReportDownload(report, {}, fmt)"
+                              />
                             </template>
                          </div>
                        </div>

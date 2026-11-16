@@ -249,6 +249,14 @@ class AvailableReport(models.Model):
     # Resolució d'ordre de visualització
     position = models.IntegerField(default=0, verbose_name="Posició")
 
+    # Permet descarregar l'informe també en PDF (versió de presentació generada
+    # a partir de l'Excel amb la plantilla genèrica report_pdf_template.html).
+    allow_pdf_export = models.BooleanField(
+        default=False,
+        verbose_name="Permet descarregar en PDF",
+        help_text="Si està actiu, el front-end mostra un botó per descarregar l'informe en PDF a més de l'Excel.",
+    )
+
     # Canal d'enviament opcional (null = només descàrrega/revisió).
     # El valor ha de coincidir amb un handler registrat a submission_service
     # (p. ex. 'sii_emitidas').
