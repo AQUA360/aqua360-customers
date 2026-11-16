@@ -173,6 +173,7 @@ def get_sepa_payments_and_batches(request):
     only_excluded = request.data.get('only_excluded', False)
     exclude_contracts_with_pending_invoices = request.data.get('exclude_contracts_with_pending_invoices', False)
     only_contracts_with_pending_invoices = request.data.get('only_contracts_with_pending_invoices', False)
+    only_marked_for_remittance = request.data.get('only_marked_for_remittance', False)
     
     contracts = request.data.get('contracts', [])
     invoices = request.data.get('invoices', [])
@@ -369,6 +370,10 @@ def get_sepa_payments_and_batches(request):
         filters &= Q(is_excluded=True)
     elif not include_excluded:
         filters &= Q(is_excluded=False)
+
+    # Només els pagaments marcats a mà per remesar ("Marcar per remesar").
+    if str(only_marked_for_remittance).upper() == "TRUE":
+        filters &= Q(is_marked_for_remittance=True)
     
     payments = (
         Payment.objects.filter(filters)

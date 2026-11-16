@@ -6,6 +6,8 @@ from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.throttling import ScopedRateThrottle
+from axes.handlers.proxy import AxesProxyHandler
 
 from django.shortcuts import render
 from django.contrib.auth.models import Group, User, Permission
@@ -33,8 +35,26 @@ def check_superuser_target(user, target):
         raise PermissionDenied("You are not allowed to modify a superuser")
 
 
+class LoginIPThrottle(ScopedRateThrottle):
+    """Límit per IP sempre, també si la petició porta un token vàlid (no per usuari)."""
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {'scope': self.scope, 'ident': self.get_ident(request)}
+
+
 class CustomAuthToken(ObtainAuthToken):
+    # Límit d'intents per IP (scope "login"); el bloqueig per usuari el fa django-axes
+    throttle_classes = [LoginIPThrottle]
+    throttle_scope = 'login'
+
     def post(self, request, *args, **kwargs):
+        # Usuari bloquejat per massa intents fallits: 429 explícit (sense validar la contrasenya)
+        credentials = {'username': request.data.get('username')}
+        if not AxesProxyHandler.is_allowed(request._request, credentials):
+            return Response(
+                {'detail': 'Too many failed login attempts. Try again later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
         serializer = self.serializer_class(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
 

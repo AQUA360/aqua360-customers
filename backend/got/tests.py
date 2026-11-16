@@ -1,6 +1,8 @@
 import json
 import os
 import tempfile
+
+from django.core.cache import cache
 from datetime import timedelta
 
 from django.contrib.auth.models import User
@@ -23,6 +25,8 @@ class ViewDocumentFlowTest(TestCase):
     """
 
     def setUp(self):
+        # El login té límit d'intents per IP (cache): cada test comença de zero
+        cache.clear()
         self.storage = tempfile.TemporaryDirectory()
         self.addCleanup(self.storage.cleanup)
         settings_override = override_settings(
