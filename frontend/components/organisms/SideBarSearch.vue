@@ -5,7 +5,7 @@ import { useSidebarStore } from '~/stores/useNavSideBar';
 import debounce from 'lodash.debounce';
 import { formatDate, formatDateTime } from '~/utils/date';
 import Skeleton from '../atoms/Skeleton.vue';
-import { searchValues, foundItemTranslation } from '~/utils/search';
+import { searchValues, foundItemTranslation, highlightSearchMatch } from '~/utils/search';
 import TimeRelative from '~/components/atoms/TimeRelative.vue';
 import { format } from 'date-fns';
 
@@ -179,15 +179,7 @@ const getItemTranslation = (item) => {
 };
 
 
-const highlightedResult = (result) => {
-  /* result_words = result.split(' ')
-  search_words = searchTerm.value.split(' ') */
-  let highlighted = result.toString().replace(new RegExp(searchTerm.value, 'gi'), '<span class="font-extrabold italic">$&</span>')
-  /* for (let word of search_words) {
-    highlighted = highlighted.replace(new RegExp(word, 'gi'), '<span class="font-extrabold italic">$&</span>')
-  } */
-  return highlighted
-};
+const highlightedResult = (result) => highlightSearchMatch(result, searchTerm.value);
 
 
 /* const handleHover = debounce(async (event) => {
@@ -365,7 +357,7 @@ onMounted(() => {
                     <Icon :name="searchValues[result.entity][1]" size="13px" class="text-md ml-2 mr-1 text-slate-500" />
                     <span class="text-slate-400 text-base px-2 truncate">{{ getItemTranslation(result.found_field) }}: </span>
                     <div class="flex items-center gap-2">
-                      <span v-html="result.found"></span>
+                      <span>{{ result.found }}</span>
                       <span class="text-slate-400 text-xs px-5">
                         {{ t(result.app.toLowerCase()) }} / {{ t(result.entity.replace(/-/g, '_').toLowerCase()) }}
                       </span>

@@ -1,3 +1,5 @@
+import { escapeHtmlForPreview } from '~/utils/messages';
+
 export const searchValues = {
   'Supply-Point': ['supplypoints', 'fa6-solid:street-view'],
   'Meter': ['meters', 'my-icon:meter-icon-black'],
@@ -67,3 +69,20 @@ export const foundItemTranslation = (item: string, language: string = 'en'): { [
 };
 
 
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Safe HTML for v-html: escapes the result text (it comes from the database) and then wraps the
+ * case-insensitive matches of the search term. The term is matched against the escaped text, so it
+ * is escaped the same way first, and treated literally (not as a regular expression).
+ */
+export const highlightSearchMatch = (text: unknown, term: string | null | undefined): string => {
+  const escapedText = escapeHtmlForPreview(String(text ?? ''));
+  const escapedTerm = escapeHtmlForPreview(String(term ?? '').trim());
+  if (!escapedTerm) return escapedText;
+  return escapedText.replace(
+    new RegExp(escapeRegExp(escapedTerm), 'gi'),
+    '<span class="font-extrabold italic">$&</span>',
+  );
+};
