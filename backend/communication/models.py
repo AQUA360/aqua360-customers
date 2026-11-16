@@ -247,6 +247,11 @@ class Communication(models.Model):
     #extra documents (relations) to attach to communication
     invoices = models.ManyToManyField('billing.Invoice', blank=True, related_name='communications')
     readings = models.ManyToManyField('billing.Reading', blank=True, related_name='communications')
+
+    # Incidència des de la qual s'ha creat la comunicació (pestanya de comunicacions de la incidència).
+    incident = models.ForeignKey(
+        'notification.Incident', on_delete=models.SET_NULL, null=True, blank=True, related_name='communications'
+    )
     
     always_attach = models.BooleanField(default=False)
     due_date = models.DateTimeField(null=True, blank=True)

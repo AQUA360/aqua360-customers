@@ -15,6 +15,7 @@ const toast = useToast();
 const { permissions, loading } = usePermissions();
 
 const { $MeterApiService, $ReadingApiService, $SupplyPointApiService } = useNuxtApp();
+const { checkMeterReassign } = useMeterReassignConfirm();
 
 const props = defineProps({
   id: Number, // SP
@@ -138,20 +139,42 @@ const saveNewMeter = async function () {
     return;
   }
 
-  const confirmMessage = props.meter_id ? t('confirmation_text_block.confirm_change_meter') : t('confirmation_text_block.confirm_add_meter');
-  if (!confirm(confirmMessage)) return;
-
   saving.value = true;
+  // La confirmació val només per a aquest comptador: si se'n tria un altre mentre
+  // es consulta on és, no es desa.
+  const meter = selectedMeter.value;
+
+  // Si el comptador nou és a un altre punt, l'avís detallat substitueix la confirmació genèrica.
+  let confirmReassign = false;
+  try {
+    confirmReassign = await checkMeterReassign(meter, props.id);
+  } catch (error) {
+    console.error(error);
+    saving.value = false;
+    return;
+  }
+  if (confirmReassign === null || selectedMeter.value?.id !== meter.id) {
+    saving.value = false;
+    return;
+  }
+  if (!confirmReassign) {
+    const confirmMessage = props.meter_id ? t('confirmation_text_block.confirm_change_meter') : t('confirmation_text_block.confirm_add_meter');
+    if (!confirm(confirmMessage) || selectedMeter.value?.id !== meter.id) {
+      saving.value = false;
+      return;
+    }
+  }
 
   try {
     const save_data = {
       supply_point: props.id,
       prev_meter: props.meter_id,
-      new_meter: selectedMeter.value.id,
+      new_meter: meter.id,
       change_date: changeMeterDate.value,
       previous_reading: previous_reading.value,
       new_reading: new_reading.value,
-      origin: t('service_block.meter_change')
+      origin: t('service_block.meter_change'),
+      confirm_reassign: confirmReassign,
     }
 
     const response = await $SupplyPointApiService.saveMeterChange(save_data);
@@ -160,7 +183,7 @@ const saveNewMeter = async function () {
     if (response) {
       console.log("response save success");
       toast.success(t('billing_block.correct_manual_reading'));
-      emit('save', selectedMeter.value);
+      emit('save', meter);
     }
   } catch (error) {
     console.error(error);

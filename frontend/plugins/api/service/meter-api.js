@@ -232,6 +232,13 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Punts de subministrament (tret de supplyPointId) on és ara el comptador.
+  const getAssignments = async (id, supplyPointId = null) => {
+    let apiUrl = `${apiHost}${entity}${id}/assignments/`;
+    if (supplyPointId) apiUrl += `?supply_point=${supplyPointId}`;
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
+
   const checkCode = async (code, excludeId = null) => {
     let apiUrl = `${apiHost}${entity}check-code/?code=${encodeURIComponent(code)}`;
     if (excludeId) apiUrl += `&exclude_id=${excludeId}`;
@@ -391,6 +398,7 @@ export default defineNuxtPlugin(nuxtApp => {
     bulkUpdateConfirm,
     bulkChangePreview,
     bulkChangeConfirm,
+    getAssignments,
     checkCode
   };
 

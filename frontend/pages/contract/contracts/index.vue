@@ -59,6 +59,7 @@ const has_debt = ref(null);
 const filter_has_positive_balance = ref([]);
 const selected_has_positive_balance = ref([]);
 const has_positive_balance = ref(null);
+const only_pending_termination = ref(false);
 
 const variables = ref([]);
 const bonifications = ref([]);
@@ -147,7 +148,7 @@ const getData = async (searchQuery = '', searchAllAddress = '', filters = [], pa
       use_types.value, categories.value, [], debt_management.value, false,
       comm_types.value, searchAllAddress, payment_types.value, [], searchByAddressQuery, totalPersonsMinQuery,
       companies.value, null, null, block_billing.value, has_debt.value, searchEmailQuery, searchIbanQuery, searchMeterQuery,
-      has_positive_balance.value
+      has_positive_balance.value, only_pending_termination.value ? 'true' : null
     );
 
     items.value = data.results;
@@ -589,6 +590,7 @@ const resetFilters = () => {
   selected_has_debt.value = [];
   has_positive_balance.value = null;
   selected_has_positive_balance.value = [];
+  only_pending_termination.value = false;
   searchEmailInput.value = '';
   searchIbanInput.value = '';
   searchMeterInput.value = '';
@@ -702,6 +704,7 @@ const saveSearchState = () => {
     selected_has_debt: selected_has_debt.value,
     has_positive_balance: has_positive_balance.value,
     selected_has_positive_balance: selected_has_positive_balance.value,
+    only_pending_termination: only_pending_termination.value,
     searchEmailInput: searchEmailInput.value,
     searchIbanInput: searchIbanInput.value,
     showEmailSearch: showEmailSearch.value,
@@ -765,6 +768,7 @@ const loadSearchState = () => {
       if (parsed.selected_has_debt !== undefined) selected_has_debt.value = parsed.selected_has_debt;
       if (parsed.has_positive_balance !== undefined) has_positive_balance.value = parsed.has_positive_balance;
       if (parsed.selected_has_positive_balance !== undefined) selected_has_positive_balance.value = parsed.selected_has_positive_balance;
+      if (parsed.only_pending_termination !== undefined) only_pending_termination.value = parsed.only_pending_termination;
       if (parsed.searchEmailInput !== undefined) searchEmailInput.value = parsed.searchEmailInput;
       if (parsed.searchIbanInput !== undefined) searchIbanInput.value = parsed.searchIbanInput;
       if (parsed.showEmailSearch !== undefined) showEmailSearch.value = parsed.showEmailSearch;
@@ -862,6 +866,7 @@ watch(
     block_billing.value, selected_block_billing.value,
     has_debt.value, selected_has_debt.value,
     has_positive_balance.value, selected_has_positive_balance.value,
+    only_pending_termination.value,
     searchEmailInput.value, searchIbanInput.value, showEmailSearch.value, showIbanSearch.value,
     searchMeterInput.value, showMeterSearch.value
   ],
@@ -906,11 +911,19 @@ const tableColumns = computed(() => [
   { key: 'debt_amount', label: t('contract_block.debt_accumulated'), sortKey: 'debt_amount', width: 125, min: 100, priority: 2 },
 ]);
 
-const rowClass = (item) => ({
-  'bg-sky-50': item.is_checked && !item.is_pinned,
-  'bg-yellow-50': item.id === selectedItemId.value,
-  'bg-orange-50': item.is_pinned,
-});
+// A pending termination paints the row with the same red as the debt badge and
+// takes precedence over the other backgrounds; a selected row keeps an outline.
+const rowClass = (item) => {
+  const pendingTermination = Boolean(item.active_contract_termination);
+  const selected = item.id === selectedItemId.value;
+  return {
+    'bg-red-100': pendingTermination,
+    'ring-1 ring-inset ring-yellow-400': pendingTermination && selected,
+    'bg-sky-50': item.is_checked && !item.is_pinned && !pendingTermination,
+    'bg-yellow-50': selected && !pendingTermination,
+    'bg-orange-50': item.is_pinned && !pendingTermination,
+  };
+};
 
 const downloadingExcel = ref(false);
 const excelExportProgress = ref(0);
@@ -954,7 +967,8 @@ const exportExcel = async () => {
       searchEmailInput.value,
       searchIbanInput.value,
       searchMeterInput.value,
-      has_positive_balance.value
+      has_positive_balance.value,
+      only_pending_termination.value ? 'true' : null
     );
 
     if (response && response.task_id) {
@@ -1100,6 +1114,10 @@ watch(() => route.query, async () => {
           class="text-slate-800 text-base flex items-center gap-1">
           <input type="checkbox" v-model="selectedFilters" :value="status.id" @change="handleFilterChange" :disabled="blockSearch" /> {{
             status.name }}
+        </label>
+        <label class="text-slate-800 text-base flex items-center gap-1">
+          <input type="checkbox" v-model="only_pending_termination" @change="handleFilterChange" :disabled="blockSearch" />
+          {{ t('contract_block.pending_termination') }}
         </label>
       </span>
 

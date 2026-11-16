@@ -183,6 +183,11 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Sense toast automàtic: la regió tradueix el codi d'error que torna el servidor.
+  const remove = async (id) => {
+    return await $apiManager.fetch(`${apiHost}${entity}${id}/`, 'DELETE', null, null, true);
+  }
+
   const apiService = {
     getData,
     exportData,
@@ -192,6 +197,7 @@ export default defineNuxtPlugin(nuxtApp => {
     save,
     closeRequest,
     saveFile,
+    remove,
     getPermissions
   };
 

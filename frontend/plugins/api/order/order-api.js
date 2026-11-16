@@ -315,10 +315,10 @@ export default defineNuxtPlugin(nuxtApp => {
           throw error
         }
       }
-            const applyChangeMeter = async (id) => {
+            const applyChangeMeter = async (id, data = {}) => {
         const apiUrl = `${apiHost}${entity}${id}/apply-change-meter/`;
         try {
-          const response = await $apiManager.fetch(apiUrl, 'POST', {}, { 'Content-Type': 'application/json' })
+          const response = await $apiManager.fetch(apiUrl, 'POST', data, { 'Content-Type': 'application/json' })
           return response
         }
         catch (error) {

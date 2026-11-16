@@ -4,7 +4,9 @@ from coredata.models import ConfigProject
 from ..models import Order
 from service.models import Meter
 from django.utils import timezone
-from service.services.meter_change_service import MeterChangeService, METER_CHANGE_ORIGIN
+from service.services.meter_change_service import (
+    MeterChangeService, METER_CHANGE_ORIGIN, get_meter_assignments_elsewhere,
+)
 
 
 OPTIONAL_FIELDS = {'reading_new'}
@@ -144,11 +146,19 @@ class OrderChangeMeterValidationService:
                     if meter_new
                     else None
                 ),
+                # Altres punts on és ara el comptador nou: cal confirmar abans d'aplicar.
+                'assigned_to': (
+                    get_meter_assignments_elsewhere(
+                        meter_new, supply_point.id if supply_point else None
+                    )
+                    if meter_new
+                    else []
+                ),
             },
             'reading_new': mapping.get('reading_new'),
         }
 
-    def apply(self, user):
+    def apply(self, user, confirm_reassign=False):
         """Apply validated meter readings and replacement, then close follow-up tasks."""
         result = self.validate()
         if not result['can_apply']:
@@ -175,6 +185,7 @@ class OrderChangeMeterValidationService:
             new_meter_id=new_meter.id,
             origin=METER_CHANGE_ORIGIN,
             change_date=None,  # cau al fallback date.today() dins MeterChangeService
+            confirm_reassign=confirm_reassign,
             # calculated_value=None => el servei calcula el consum contra
             # l'última lectura del mateix comptador (no és el valor de lectura).
             previous_reading_data={

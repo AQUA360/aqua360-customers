@@ -10,6 +10,7 @@ from billing.models import Invoice, PaymentRemittance
 from billing.utils.payment_pdf_service import generate_report_payment_pdf
 from claimrequest.models import ClaimRequest
 from communication.models import CANCELLED_STATUS_TOKEN, Communication, CommunicationProcessStatus, CommunicationProcess, CommunicationFile, CommunicationStatus, Message, MessageType
+from communication.utils.communication_location import resolve_communication_location
 from communication.utils.communication_process_service import finish_process_if_done
 from communication.utils.communication_service import create_email_template, handle_communication, get_communication_file, validate_letter_contract_companies, invoices_attached_to_email
 from coredata.models import ConfigProject
@@ -983,6 +984,14 @@ def get_communication_process_data(request_data):
     return {"persons": persons, "excluded": excluded}
 
 
+def _export_communication_postal_code(communication):
+    return resolve_communication_location(communication)[0] or ''
+
+
+def _export_communication_city_name(communication):
+    return resolve_communication_location(communication)[1] or ''
+
+
 COMMUNICATION_EXPORT_COLUMNS = {
     "id": (gettext_lazy("ID"), lambda c: c.id),
     "token": (gettext_lazy("Token"), lambda c: c.token or ''),
@@ -992,14 +1001,18 @@ COMMUNICATION_EXPORT_COLUMNS = {
     "status": (gettext_lazy("Status"), lambda c: c.status.name if c.status else ''),
     "used_email": (gettext_lazy("Used Email"), lambda c: c.used_email or ''),
     "used_phones": (gettext_lazy("Used Phones"), lambda c: c.used_phones or ''),
+    "used_address": (gettext_lazy("Used Address"), lambda c: c.used_address or ''),
+    "postal_code": (gettext_lazy("Postal Code"), _export_communication_postal_code),
+    "city_name": (gettext_lazy("City"), _export_communication_city_name),
     "created_at": (gettext_lazy("Created At"), lambda c: c.created_at.strftime('%Y-%m-%d %H:%M:%S') if c.created_at else ''),
     "sent_at": (gettext_lazy("Sent At"), lambda c: c.sent_at.strftime('%Y-%m-%d %H:%M:%S') if c.sent_at else ''),
     "type_names": (gettext_lazy("Type Names"), lambda c: c.type_names or ''),
     "use_type": (gettext_lazy("Use Type"), lambda c: c.use_type.name if c.use_type else ''),
 }
 COMMUNICATION_EXPORT_DEFAULT_COLUMNS = [
-    "id", "token", "process_token", "person_name", "person_token", "status",
-    "used_email", "used_phones", "created_at", "sent_at", "type_names", "use_type",
+    "id", "token", "process_token", "person_name", "status",
+    "used_email", "used_phones", "used_address", "postal_code", "city_name",
+    "created_at", "sent_at", "type_names", "use_type",
 ]
 
 
@@ -1013,7 +1026,10 @@ def export_communications_csv_task(query_params):
 
         base_queryset = Communication.objects.filter(is_active=True).order_by('-created_at', '-status', '-sent_at')
         filterset = CommunicationFilter(data=query_params, queryset=base_queryset)
-        queryset = filterset.qs.select_related('person', 'status', 'process', 'use_type')
+        queryset = filterset.qs.select_related(
+            'person', 'status', 'process', 'use_type',
+            'address', 'address__address', 'address__address__city',
+        )
 
         ordering = (query_params or {}).get('ordering')
         if ordering:

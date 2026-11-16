@@ -23,6 +23,7 @@ from service.utils.route_positions_service import route_count_total_readings
 from service.utils.route_scope import effective_route, effective_route_q, effective_route_select_related
 from django.contrib.auth.models import Group
 from billing.tasks import create_billings
+from billing.utils.biller_period_service import cycle_dates, previous_cycle
 from pricing.models import ProductOrigin
 
 from billing.filter.billing_batch_filter import BillingBatchFilter
@@ -203,6 +204,10 @@ class BillingViewSet(viewsets.ModelViewSet):
       first_start_reading = datetime.date(start_year, start_month, 1)
       last_day_of_end_month = calendar.monthrange(end_year, end_month)[1]
       last_end_reading = datetime.date(end_year, end_month, last_day_of_end_month)
+      # Si el lot té el període definit, preval sobre el càlcul de reserva.
+      if billing.period_start and billing.period_end:
+        first_start_reading = billing.period_start
+        last_end_reading = billing.period_end
       # No es poden generar factures amb dates futures.
       last_end_reading = min(last_end_reading, today)
       response_end_date = last_end_reading
@@ -289,7 +294,7 @@ class BillingViewSet(viewsets.ModelViewSet):
 
       filtered_contract_ids = list(filtered_contracts.values_list('id', flat=True))
 
-      # Motius a partir de l'última lectura elegible sense factura (sense restricció de rang de dates).
+      # Motius a partir de l'última lectura elegible sense factura dins del rang de dates del període.
       contract_reading_stats = {}
       latest_readings = Reading.objects.filter(
         contract_id__in=filtered_contract_ids,
@@ -298,7 +303,8 @@ class BillingViewSet(viewsets.ModelViewSet):
         reading_date__gte=F('contract__created_at'),
         invoices__isnull=True,
       ).filter(
-        reading_date__gte=first_start_reading
+        reading_date__gte=first_start_reading,
+        reading_date__lte=last_end_reading,
         ).order_by('contract_id', '-reading_date', '-id').values('contract_id', 'batch_id', 'billing_id', 'reading_date')
       
       for reading in latest_readings:
@@ -1136,11 +1142,33 @@ class StartBillingView(views.APIView):
           name = f"{base_name}/{counter}"
           counter += 1
 
+      # Període a facturar: opcional; per defecte, l'últim cicle tancat del facturador.
+      raw_start = (request.query_params.get('period_start') or '').strip()
+      raw_end = (request.query_params.get('period_end') or '').strip()
+      if raw_start or raw_end:
+        try:
+          period_start = datetime.date.fromisoformat(raw_start)
+          period_end = datetime.date.fromisoformat(raw_end)
+        except ValueError:
+          return Response(
+            {"error": "El període ha de tenir data d'inici i final vàlides (AAAA-MM-DD)."},
+            status=status.HTTP_400_BAD_REQUEST
+          )
+        if period_start > period_end:
+          return Response(
+            {"error": "La data d'inici del període no pot ser posterior a la final."},
+            status=status.HTTP_400_BAD_REQUEST
+          )
+      else:
+        period_start, period_end = cycle_dates(previous_cycle(timezone.localdate(), biller))
+
       billing = Billing.objects.create(
         status = default_status,
         name = name,
         token = token,
         biller=biller,
+        period_start=period_start,
+        period_end=period_end,
         is_active=True)
 
       if biller.routes.exists():

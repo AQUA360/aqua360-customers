@@ -447,6 +447,11 @@ class ClaimContractsExportTests(TestCase):
 
         contract_rows = list(workbook.worksheets[0].values)
         self.assertEqual(contract_rows[1][:3], ('C-TEST', 'Titular Prova', '00000000T'))
+        # El deute reclamat només compta el pagament no exclòs; el total, tot el deute del contracte.
+        contract_header = contract_rows[0]
+        self.assertEqual(contract_rows[1][contract_header.index('Factures reclamades')], 1)
+        self.assertEqual(contract_rows[1][contract_header.index('Deute reclamat')], 10)
+        self.assertEqual(contract_rows[1][contract_header.index('Factures impagades')], 2)
 
         invoice_rows = list(workbook.worksheets[1].values)
         header = invoice_rows[0]
@@ -456,6 +461,54 @@ class ClaimContractsExportTests(TestCase):
         self.assertEqual(invoice_rows[1][header.index('Data factura')], '01/01/2026')
         self.assertEqual(invoice_rows[1][header.index('Import pendent')], 20)
         self.assertEqual([row[header.index('Exclosa')] for row in invoice_rows[1:]], ['Sí', 'No'])
+
+    def test_claimed_debt_skips_excluded_and_no_longer_pending_payments(self):
+        from decimal import Decimal
+
+        from billing.models import Payment, PaymentStatus
+        from claimrequest.utils.claim_contract_export_service import claimed_debt_by_contract_id
+
+        # Dos pagaments de la mateixa factura (10 i 5) i un d'una altra factura (20).
+        same_invoice_first, same_invoice_second, other_invoice = self.expired_payments()[:3]
+        contract_payments = [
+            [self.contract.id, same_invoice_first.id, False],
+            [self.contract.id, same_invoice_second.id, False],
+            [self.contract.id, other_invoice.id, True],
+        ]
+        self.assertEqual(
+            claimed_debt_by_contract_id(contract_payments),
+            ({self.contract.id: 1}, {self.contract.id: Decimal('15')}),
+        )
+
+        # Si un pagament es cobra després de reclamar-lo, deixa de comptar.
+        Payment.objects.filter(pk=same_invoice_second.pk).update(status=PaymentStatus.objects.get(token='0'))
+        self.assertEqual(
+            claimed_debt_by_contract_id(contract_payments),
+            ({self.contract.id: 1}, {self.contract.id: Decimal('10')}),
+        )
+
+        Payment.objects.filter(pk=same_invoice_first.pk).update(status=PaymentStatus.objects.get(token='0'))
+        self.assertEqual(claimed_debt_by_contract_id(contract_payments), ({}, {}))
+
+        # Un import negatiu no resta deute ni fa comptar la factura.
+        Payment.objects.filter(pk=same_invoice_first.pk).update(
+            status=PaymentStatus.objects.get(token='-1'), amount=-5,
+        )
+        self.assertEqual(claimed_debt_by_contract_id(contract_payments), ({}, {}))
+
+    def test_task_error_does_not_expose_exception_details(self):
+        from unittest.mock import patch
+
+        from claimrequest.tasks import export_claim_contracts_task
+
+        with patch(
+            'claimrequest.utils.claim_contract_export_service.claim_contracts_export_queryset',
+            side_effect=RuntimeError('detall intern'),
+        ), self.assertLogs('claimrequest.tasks', level='ERROR'):
+            result = export_claim_contracts_task([self.contract.id])
+
+        self.assertEqual(result['status'], 'error')
+        self.assertNotIn('detall intern', result['message'])
 
     def post_export(self, data):
         from unittest.mock import patch
