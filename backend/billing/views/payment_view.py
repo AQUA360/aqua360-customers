@@ -4,6 +4,7 @@ from django.db.models import OuterRef, Q, Subquery
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
+from django.utils.translation import gettext as _
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.pagination import PageNumberPagination
@@ -21,6 +22,7 @@ from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import is_rectified_invoice
+from billing.utils.remittance_mark_service import payment_in_pending_remittance
 from billing.utils.sepa_invalid_account_service import get_invalid_account_reject_tokens, handle_invalid_account_return, invalid_account_return_has_changes, is_invalid_account_reject_token
 from billing.utils.payment_service import check_claim_payments_for_paid_invoice, check_paid_claim_requests_for_payments, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals, settle_negative_payment_to_piggy
 from coredata.utils.name_utils import generate_token
@@ -115,6 +117,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        # "Marcar per remesar": no es pot marcar un pagament que ja és en una remesa pendent d'enviar.
+        if (str(request.data.get('is_marked_for_remittance')).upper() == 'TRUE'
+                and not instance.is_marked_for_remittance
+                and payment_in_pending_remittance(instance)):
+            return Response(
+                {"error": _("The payment is already in a remittance pending to be sent.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)

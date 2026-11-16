@@ -1049,6 +1049,9 @@ class Payment(models.Model):
     
     is_excluded = models.BooleanField(default=False)
     is_duplicate = models.BooleanField(default=False)
+    # Marcat a mà per entrar a la propera remesa SEPA: la generació de remeses
+    # pot limitar-se només als pagaments marcats (`only_marked_for_remittance`).
+    is_marked_for_remittance = models.BooleanField(default=False)
     
     is_active = models.BooleanField(default=True)
     
