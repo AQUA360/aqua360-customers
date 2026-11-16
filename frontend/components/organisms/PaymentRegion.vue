@@ -363,6 +363,24 @@ const includePayment = async function () {
   }
 }
 
+// "Marcar per remesar": la generació de remeses SEPA pot limitar-se només als
+// pagaments marcats.
+// No es pot marcar un pagament que ja és en una remesa pendent d'enviar.
+const inPendingRemittance = computed(() => !!data.value?.remittances?.some(remittance => !remittance.sent_at));
+
+const toggleMarkedForRemittance = async function () {
+  const marked = !data.value.is_marked_for_remittance
+  if (!confirm(t(marked ? "confirmation_text_block.confirm_mark_for_remittance" : "confirmation_text_block.confirm_unmark_for_remittance"))) return
+  try {
+    await $PaymentApiService.save({ id: props.id, is_marked_for_remittance: marked })
+    toast.success(t('common.correct_save'))
+    updateSubRegion()
+  } catch (er) {
+    console.error(er)
+    toast.error(er?.data?.error || t('common.error'))
+  }
+}
+
 const individualPayment = async function (type) {
   if (type == 'DIRECT_DEBIT') {
     return navigateTo({
@@ -503,6 +521,11 @@ watch(selectedPaymentDate, () => {
             class=" mx-5 px-2 border-l-2 border-purple-500 bg-purple-100 text-purple-500 text-sm">
             {{ t("informative_block.info_payment_excluded") }}
           </span>
+          <span v-if="data.is_marked_for_remittance"
+            class=" mx-5 px-2 border-l-2 border-sky-500 bg-sky-100 text-sky-600 text-sm">
+            <Icon name="fa6-solid:flag" class="display-inline mr-1" />
+            {{ t("billing_block.marked_for_remittance") }}
+          </span>
         </H1Region>
         <div v-if="objectPermissions?.can_change" class="relative">
           <OptionsDropdown v-if="!((data.status.token === statusPaidToken) ||
@@ -518,6 +541,14 @@ watch(selectedPaymentDate, () => {
               <hr class="my-2" />
             </div>
             <DropdownOption v-if="data.is_excluded" :name="t('billing_block.include')" @click="includePayment">
+            </DropdownOption>
+            <DropdownOption
+              :disabled="!data.is_marked_for_remittance && inPendingRemittance"
+              :title="!data.is_marked_for_remittance && inPendingRemittance ? t('informative_block.info_payment_in_pending_remittance') : undefined"
+              :name="data.is_marked_for_remittance ? t('billing_block.unmark_for_remittance') : t('billing_block.mark_for_remittance')"
+              @click="toggleMarkedForRemittance">
+              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
+              {{ data.is_marked_for_remittance ? t('billing_block.unmark_for_remittance') : t('billing_block.mark_for_remittance') }}
             </DropdownOption>
             <DropdownOption v-if="!mustSaveToPiggyBank" :disabled="!allow_payment"
               :name="t('billing_block.single_pay')"

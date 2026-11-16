@@ -55,6 +55,8 @@ const include_excluded = ref(false)
 // pendents de pagar (vençudes/impagades), sense comptar les de despeses
 // d'impagats. No els treu del llistat: queden a la pestanya "Exclosos".
 const excludeContractsWithPendingInvoices = ref(false)
+// Només els pagaments marcats amb "Marcar per remesar" des de la fitxa del pagament.
+const onlyMarkedForRemittance = ref(false)
 const useRemittanceDate = ref(false)
 // Filtre addicional només SEPA: motius de devolució (RejectMotive) amb mode
 // include (només aquests) o exclude (treure'ls de la remesa).
@@ -173,7 +175,7 @@ const excludedPaymentsSearchData = computed(() => (
 const totalToRemit = computed(() => Math.max(0, (Number(total_invoices.value) || 0) - (Number(total_excluded.value) || 0)))
 
 const computedAllowSearch = computed(() => {
-  const anyEspecificFilter = selectedInvoices.value.length > 0 || selectedContracts.value.length > 0 || filter_send_date_start.value || (filter_send_date_start.value && filter_send_date_end.value);
+  const anyEspecificFilter = onlyMarkedForRemittance.value || selectedInvoices.value.length > 0 || selectedContracts.value.length > 0 || filter_send_date_start.value || (filter_send_date_start.value && filter_send_date_end.value);
   /* if (selectedBilling.value || (selectedExploitation.value && selectedOrigins.value) || anyEspecificFilter) return false; */
   if (selectedBilling.value || selectedExploitation.value || anyEspecificFilter) return false;
   return true;
@@ -207,6 +209,7 @@ const search = async (applyPendingInvoicesExclusion = true) => {
       due_date_start: filter_due_date_start.value,
       due_date_end: filter_due_date_end.value,
       use_remittance_date: useRemittanceDate.value,
+      only_marked_for_remittance: onlyMarkedForRemittance.value,
 
       ...(props.onlySEPA ? {
         reject_motives: selectedRejectMotives.value.map(motive => motive.value),
@@ -311,6 +314,7 @@ const clickFinalize = async () => {
 
       include_excluded: include_excluded.value,
       use_remittance_date: useRemittanceDate.value,
+      only_marked_for_remittance: onlyMarkedForRemittance.value,
       create_doc: true,
 
       ...(props.onlySEPA ? {
@@ -718,6 +722,7 @@ const resetFilters = (reset_all = true) => {
   include_excluded.value = false;
   useRemittanceDate.value = false;
   excludeContractsWithPendingInvoices.value = false;
+  onlyMarkedForRemittance.value = false;
   rejectMotivesMode.value = 'include';
   selectedRejectMotives.value = [];
   paymentsListTab.value = 'included';
@@ -1030,6 +1035,22 @@ watch(selectedContracts, () => {
                   :aria-checked="excludeContractsWithPendingInvoices">
                   <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
                     :class="excludeContractsWithPendingInvoices ? 'translate-x-6' : 'translate-x-1'" />
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between gap-3">
+                <label class="text-xs font-medium text-slate-600">
+                  {{ $t('billing_block.only_marked_for_remittance') }}
+                  <abbr :title="$t('billing_block.info_only_marked_for_remittance')">
+                    <Icon name="fa6-solid:info" class="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
+                  </abbr>
+                </label>
+                <button type="button" @click="onlyMarkedForRemittance = !onlyMarkedForRemittance"
+                  class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full focus:outline-none"
+                  :class="onlyMarkedForRemittance ? 'bg-sky-500' : 'bg-gray-300'" role="switch"
+                  :aria-checked="onlyMarkedForRemittance">
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                    :class="onlyMarkedForRemittance ? 'translate-x-6' : 'translate-x-1'" />
                 </button>
               </div>
 
