@@ -7,7 +7,6 @@ import { formatDate } from '~/utils/date';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import SmartMeteringLoad from '~/components/molecules/SmartMeteringLoad.vue';
 import { useToast } from 'vue-toastification';
@@ -205,6 +204,17 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 150, min: 105, priority: 1, removable: false },
+  { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 150, min: 100, priority: 2 },
+  { key: 'file', label: t('common.file'), sortKey: 'created_at', width: 250, grow: 1, min: 150, priority: 1, removable: false },
+  { key: 'num_readings', label: t('readings'), sortKey: 'num_readings', width: 150, min: 90, priority: 2 },
+]);
+
 </script>
 
 <template>
@@ -252,55 +262,46 @@ watch(() => route.query, () => {
           @click="resetFilters" title="reset"><Icon name="fa6-solid:rotate-right" class="text-slate-500" /></button>
       </span>
     </form>
-    <DataTable
-      grid-template="150px,150px,1fr,150px"
+    <DataTable v-if="permissions?.can_view"
+      table-key="readings"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="permissions?.can_view && items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.file')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('readings')" sortKey="num_readings" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <template v-if="permissions?.can_view">
-          <div v-for="item in items" :key="item.id"
-            class="gap-3 text-base border-b items-center bg-white"
-            :style="gridStyle"
-            :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-            <span>
-              <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-                @click="showDetail(item.id);">
-                <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
-                <Icon name="fa6-solid:eye"
-                  class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-              </button>
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+      <template #cell-file="{ item }">
+        <button class="text-sky-500 hover:text-sky-700 flex items-center gap-2 text-left" @click="downloadFile(item.file)">
+          <span v-if="item.source === 'SMART_METERING'"
+            class="shrink-0 border border-sky-500 rounded-md text-sky-600 text-xs px-1"
+            :title="$t('billing_block.reading_date')">
+            <Icon name="fa6-solid:tower-broadcast" class="mr-1" />{{ $t('billing_block.smart_metering') }} · {{ formatDate(item.reading_date) }}
+            <span
+              class="inline-block max-w-[12rem] truncate align-bottom"
+              :title="smartMeteringScopeText(item.smart_metering_scope_labels)">
+              · {{ smartMeteringScopeText(item.smart_metering_scope_labels) }}
             </span>
-            <span class="p-1">{{ formatDate(item.created_at) }}</span>
-            <button class="text-sky-500 hover:text-sky-700 flex items-center gap-2 text-left" @click="downloadFile(item.file)">
-              <span v-if="item.source === 'SMART_METERING'"
-                class="shrink-0 border border-sky-500 rounded-md text-sky-600 text-xs px-1"
-                :title="$t('billing_block.reading_date')">
-                <Icon name="fa6-solid:tower-broadcast" class="mr-1" />{{ $t('billing_block.smart_metering') }} · {{ formatDate(item.reading_date) }}
-                <span
-                  class="inline-block max-w-[12rem] truncate align-bottom"
-                  :title="smartMeteringScopeText(item.smart_metering_scope_labels)">
-                  · {{ smartMeteringScopeText(item.smart_metering_scope_labels) }}
-                </span>
-              </span>
-              <span class="p-1">{{ item.file?.split('/').pop() }}</span>
-            </button>
-            <span class="p-1">{{ item.num_readings }}</span>
-          </div><!-- end for items -->
-        </template>
+          </span>
+          <span>{{ item.file?.split('/').pop() }}</span>
+        </button>
       </template>
+
+      <template #cell-num_readings="{ item }">{{ item.num_readings }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

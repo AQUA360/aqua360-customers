@@ -8,7 +8,6 @@ import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ReadingBatchRegion from '~/components/organisms/ReadingBatchRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import { useToast } from 'vue-toastification';
 import ReadingBatchSummary from '~/components/molecules/ReadingBatchSummary.vue';
@@ -206,6 +205,25 @@ watch(() => showRegion.value, (newVal) => {
     isSubRegionOpen.value = false;
   }
 })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 130, min: 105, priority: 1, removable: false,
+  },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 200, grow: 3, min: 140, priority: 1 },
+  { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 110, min: 90, priority: 2 },
+  {
+    key: 'status', label: t('common.status'), sortKey: 'status__name',
+    width: 140, min: 100, priority: 1, cellClass: 'flex items-center gap-2',
+  },
+  { key: 'read_contracts', label: t('common.read_contracts_total_contracts'), width: 100, min: 80, priority: 2 },
+  { key: 'num_readings', label: t('common.total_readings'), width: 80, min: 70, priority: 3 },
+  { key: 'num_supplies', label: t('common.total_supply_points'), width: 110, min: 80, priority: 3 },
+]);
 
 </script>
 
@@ -240,63 +258,55 @@ watch(() => showRegion.value, (newVal) => {
     </form>
 
     <DataTable
-      grid-template="1.2fr,1.7fr,1.1fr,1fr,0.7fr,0.5fr,0.8fr"
+      table-key="reading-batches"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status__name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.read_contracts_total_contracts')" :sortable="false" />
-        <TableHeader :label="$t('common.total_readings')" :sortable="false" />
-        <TableHeader :label="$t('common.total_supply_points')" :sortable="false" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-left min-w-0 truncate"
+          @click="showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 flex-shrink-0 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span class="truncate min-w-0">
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-left min-w-0 truncate"
-              @click="showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 flex-shrink-0 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-0 truncate min-w-0" :title="item.name">{{ item.name }}</span>
-          <span class="p-1 truncate min-w-0" :title="formatDate(item.created_at)">{{ formatDate(item.created_at) }}</span>
-          <span class="p-1 flex items-center gap-2 min-w-0">
-            <AtomsColorBadge :value="item.status?.name" :color="item.status?.color" class="truncate"></AtomsColorBadge>
-            <button v-if="item.num_warnings > 0"
-              class="flex-shrink-0 flex items-center gap-1 text-yellow-500 hover:text-yellow-600 transition-colors"
-              @click.stop="showDetail(item.id, 'summary')"
-              :title="t('common.warnings')">
-              <Icon name="fa6-solid:triangle-exclamation" />
-              <span class="text-xs font-bold">{{ item.num_warnings }}</span>
-            </button>
-          </span>
-          <span class="p-1 truncate min-w-0"
-            :title="item.metrics_frozen_at ? t('common.metrics_frozen_at', { date: formatDate(item.metrics_frozen_at) }) : `${item.num_read_contracts || 0} / ${item.num_contracts || 0 }`">
-            <Icon v-if="item.metrics_frozen_at" name="fa6-solid:lock" class="text-xs text-slate-400" />
-            {{ item.num_read_contracts || 0 }} / {{ item.num_contracts || 0 }}
-          </span>
-          <span class="p-1 truncate min-w-0">
-            {{ item.num_readings || 0 }}
-          </span>
-          <span class="p-1 truncate min-w-0">
-            {{ item.num_supplies || 0 }}
-          </span>
-        </div>
+      <template #cell-name="{ item }">
+        <span class="truncate" :title="item.name">{{ item.name }}</span>
       </template>
+
+      <template #cell-created_at="{ item }">
+        <span class="truncate" :title="formatDate(item.created_at)">{{ formatDate(item.created_at) }}</span>
+      </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status?.name" :color="item.status?.color" class="truncate"></AtomsColorBadge>
+        <button v-if="item.num_warnings > 0"
+          class="flex-shrink-0 flex items-center gap-1 text-yellow-500 hover:text-yellow-600 transition-colors"
+          @click.stop="showDetail(item.id, 'summary')"
+          :title="t('common.warnings')">
+          <Icon name="fa6-solid:triangle-exclamation" />
+          <span class="text-xs font-bold">{{ item.num_warnings }}</span>
+        </button>
+      </template>
+
+      <template #cell-read_contracts="{ item }">
+        <span class="truncate"
+          :title="item.metrics_frozen_at ? t('common.metrics_frozen_at', { date: formatDate(item.metrics_frozen_at) }) : `${item.num_read_contracts || 0} / ${item.num_contracts || 0 }`">
+          <Icon v-if="item.metrics_frozen_at" name="fa6-solid:lock" class="text-xs text-slate-400" />
+          {{ item.num_read_contracts || 0 }} / {{ item.num_contracts || 0 }}
+        </span>
+      </template>
+
+      <template #cell-num_readings="{ item }">{{ item.num_readings || 0 }}</template>
+      <template #cell-num_supplies="{ item }">{{ item.num_supplies || 0 }}</template>
     </DataTable>
 
     <div id="list__footer">

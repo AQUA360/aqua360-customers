@@ -8,7 +8,6 @@ import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import MeterRegion from '~/components/organisms/MeterRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import { remoteTypeOptions } from '~/utils/service';
 import DataTable from '~/components/organisms/DataTable.vue';
@@ -459,6 +458,30 @@ const handleBulkUpdateDone = () => {
     searchByAddress.value
   );
 };
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'code', label: t('common.code'), sortKey: 'code',
+    width: 106, min: 95, priority: 1, removable: false,
+  },
+  {
+    key: 'supply_point', label: t('supply_point'), sortKey: 'supply_point_address',
+    width: 200, grow: 3, min: 150, priority: 1, removable: false,
+  },
+  { key: 'exploitation', label: t('common.exploitation'), sortKey: 'exploitation_name', width: 150, grow: 1, min: 100, priority: 3 },
+  { key: 'status', label: t('common.status'), sortKey: 'status_name', width: 120, min: 90, priority: 1 },
+  { key: 'installation_at', label: t('service_block.install_date'), sortKey: 'installation_at', width: 125, min: 95, priority: 2 },
+  { key: 'uninstallation_at', label: t('service_block.short_uninstall_date'), sortKey: 'uninstallation_at', width: 100, min: 90, priority: 3 },
+  { key: 'has_remote_reading', label: t('service_block.telecontrol'), sortKey: 'has_remote_reading', width: 80, min: 70, priority: 3 },
+  { key: 'manufacturer', label: t('service_block.manufacturer'), sortKey: 'manufacturer', width: 100, grow: 1, min: 80, priority: 4 },
+  { key: 'manufacturing_year', label: t('service_block.manufacturing_year'), sortKey: 'manufacturing_year', width: 80, min: 70, priority: 4 },
+  { key: 'comm_technology', label: t('service_block.tech'), sortKey: 'comm_technology', width: 100, min: 80, priority: 4 },
+  { key: 'caliber', label: t('service_block.caliber'), sortKey: 'caliber_token', width: 80, min: 70, priority: 4 },
+]);
+
 </script>
 
 <template>
@@ -504,6 +527,8 @@ const handleBulkUpdateDone = () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <div v-if="filter_status.length" class="h-8 w-px bg-gray-300"></div>
 
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
@@ -590,69 +615,53 @@ const handleBulkUpdateDone = () => {
     </div>
 
     <DataTable
-      grid-template="106px,200px,150px,120px,125px,100px,80px,100px,80px,100px,80px"
+      table-key="meters"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.code')" sortKey="code" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('supply_point')" sortKey="supply_point_address" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('common.exploitation')" sortKey="exploitation_name" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('service_block.install_date')" sortKey="installation_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('service_block.short_uninstall_date')" sortKey="uninstallation_at" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('service_block.telecontrol')" sortKey="has_remote_reading" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('service_block.manufacturer')" sortKey="manufacturer" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('service_block.manufacturing_year')" sortKey="manufacturing_year" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('service_block.tech')" sortKey="comm_technology" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('service_block.caliber')" sortKey="caliber_token" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
+      <template #cell-code="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showSupplyPointRegion(item.id);">
+          <abbr :title="item.code" class="no-underline">{{ item.code }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showSupplyPointRegion(item.id);">
-              <abbr :title="item.code" class="no-underline">{{ item.code }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-0 flex truncate items-center min-w-0" :title="item.supply_point">
-            <AtomsCircleBadge :color="item.supply_point_status_color" class="flex-shrink-0"></AtomsCircleBadge>
-            <span class="truncate ml-1">{{ item.supply_point }}</span>
-          </span>
-          <span class="p-1 truncate text-nowrap" :title="item.exploitation_name || ''">{{ item.exploitation_name || '-' }}</span>
-          <span class="p-1 truncate">
-            <AtomsColorBadge :value="item.status_name" :color="item.status_color"></AtomsColorBadge>
-          </span>
-          <span class="p-1 text-nowrap">{{ item.installation_at ? formatDate(item.installation_at) : '-' }}</span>
-          <span class="p-1 text-nowrap">{{ item.uninstallation_at ? formatDate(item.uninstallation_at) : '-' }}</span>
-          <span class="p-1 text-nowrap">
-            <Icon v-if="item.has_remote_reading" name="fa6-solid:circle-check" class="text-green-500" />
-            <span v-else>-</span>
-          </span>
-          <span class="p-1 text-nowrap">{{ item.manufacturer || '-' }}</span>
-          <span class="p-1 text-nowrap">{{ item.manufacturing_year || '-' }}</span>
-          <span class="p-1 text-nowrap">{{ item.comm_technology || '-' }}</span>
-          <span class="p-1 text-nowrap">{{ item.caliber_token || '-' }}</span>
-        </div><!-- end for items -->
+      <template #cell-supply_point="{ item }">
+        <span class="flex truncate items-center min-w-0" :title="item.supply_point">
+          <AtomsCircleBadge :color="item.supply_point_status_color" class="flex-shrink-0"></AtomsCircleBadge>
+          <span class="truncate ml-1">{{ item.supply_point }}</span>
+        </span>
       </template>
+
+      <template #cell-exploitation="{ item }">
+        <span class="truncate text-nowrap" :title="item.exploitation_name || ''">{{ item.exploitation_name || '-' }}</span>
+      </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name" :color="item.status_color"></AtomsColorBadge>
+      </template>
+
+      <template #cell-installation_at="{ item }">{{ item.installation_at ? formatDate(item.installation_at) : '-' }}</template>
+      <template #cell-uninstallation_at="{ item }">{{ item.uninstallation_at ? formatDate(item.uninstallation_at) : '-' }}</template>
+
+      <template #cell-has_remote_reading="{ item }">
+        <Icon v-if="item.has_remote_reading" name="fa6-solid:circle-check" class="text-green-500" />
+        <span v-else>-</span>
+      </template>
+
+      <template #cell-manufacturer="{ item }">{{ item.manufacturer || '-' }}</template>
+      <template #cell-manufacturing_year="{ item }">{{ item.manufacturing_year || '-' }}</template>
+      <template #cell-comm_technology="{ item }">{{ item.comm_technology || '-' }}</template>
+      <template #cell-caliber="{ item }">{{ item.caliber_token || '-' }}</template>
     </DataTable>
     <div id="list__footer">
         <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

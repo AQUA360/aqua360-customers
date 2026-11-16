@@ -6,7 +6,6 @@ import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DailyDocumentTemplateRegion from '~/components/organisms/DailyDocumentTemplateRegion.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
@@ -167,6 +166,23 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+  'bg-slate-100': !item.is_active,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.date'), sortKey: 'created_at', width: 80, min: 78, priority: 3 },
+  {
+    key: 'name', label: t('common.name'), sortKey: 'name', width: 200, min: 130, grow: 1,
+    priority: 1, removable: false, cellClass: 'flex items-center gap-2',
+  },
+  { key: 'description', label: t('common.description'), width: 280, min: 140, grow: 2, priority: 2 },
+  { key: 'report', label: t('common.report_detail'), width: 260, min: 140, grow: 1, priority: 2 },
+  { key: 'days_to_complete', label: t('common.expires_in'), sortKey: 'days_to_complete', width: 120, min: 90, priority: 2 },
+  { key: 'create_without_data', label: t('statistics_block.create_without_data'), sortKey: 'create_without_data', width: 140, min: 90, priority: 3 },
+]);
 </script>
 
 <template>
@@ -201,47 +217,37 @@ watch(() => route.query, () => {
       </span>
     </form>
 
-    <DataTable grid-template="80px,200px,280px,260px,120px,140px,80px" :pending="pending" :loading="pending" :error="error"
-      :is-empty="items.length === 0" @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.description')" :sortable="false" />
-        <TableHeader :label="$t('common.report_detail')" :sortable="false" />
-        <TableHeader :label="$t('common.expires_in')" sortKey="days_to_complete" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="t('statistics_block.create_without_data')" sortKey="create_without_data"
-          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-        <span></span>
+    <DataTable
+      table-key="daily-document-templates"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
+      :pending="pending"
+      :loading="pending"
+      :error="error"
+      :is-empty="items.length === 0"
+      @sort="handleSort"
+      @retry="getData">
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+      <template #cell-name="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail('DailyDocumentTemplateRegion', item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.name }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
+        <span class="font-bold text-slate-400">{{ item.is_active ? '' : t('common.inactive') }}</span>
       </template>
-
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id" class="gap-3 text-base border-b items-center" :style="gridStyle"
-          :class="{
-            'bg-yellow-50': item.id === selectedItemId,
-            'bg-slate-100': !item.is_active,
-          }">
-
-          <span class="p-0">{{ formatDate(item.created_at) }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail('DailyDocumentTemplateRegion', item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.name }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 truncate">{{ item.description || '-' }}</span>
-          <span class="p-1">{{ item.available_report_name || '-' }}</span>
-          <span class="p-1">{{ item.days_to_complete > 0
-            ? `${item.days_to_complete} ${t('common.days')} ${item.is_work_days ? t('common.work') : t('common.natural')}`
-            : t('common.doe_not_expire') }}</span>
-          <span class="p-1">{{ item.create_without_data ? t('common.yes') : t('common.no') }}</span>
-          <span class="p-1 font-bold text-slate-400">{{ item.is_active ? '' : t('common.inactive') }}</span>
-        </div><!-- end for items -->
+      <template #cell-description="{ item }">
+        <span class="truncate">{{ item.description || '-' }}</span>
       </template>
+      <template #cell-report="{ item }">{{ item.available_report_name || '-' }}</template>
+      <template #cell-days_to_complete="{ item }">{{ item.days_to_complete > 0
+        ? `${item.days_to_complete} ${t('common.days')} ${item.is_work_days ? t('common.work') : t('common.natural')}`
+        : t('common.doe_not_expire') }}</template>
+      <template #cell-create_without_data="{ item }">{{ item.create_without_data ? t('common.yes') : t('common.no') }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

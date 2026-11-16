@@ -1,12 +1,11 @@
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, nextTick, watch, computed } from 'vue';
 import debounce from 'lodash.debounce';
 import { useI18n } from 'vue-i18n';
 import { checkPermission } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import ClauseTemplateEditRegion from '~/components/organisms/ClauseTemplateEditRegion.vue';
 
@@ -135,6 +134,19 @@ const truncate = (text, length = 120) => {
   return text.length > length ? text.substring(0, length) + '...' : text;
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItem.value?.id,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 150, min: 105, priority: 1, removable: false,
+  },
+  { key: 'title', label: t('common.title'), sortKey: 'title', width: 220, min: 140, grow: 1, priority: 1 },
+  { key: 'text', label: t('common.text'), width: 400, min: 200, grow: 2, priority: 2 },
+]);
+
 </script>
 
 <template>
@@ -160,33 +172,29 @@ const truncate = (text, length = 120) => {
       </span>
     </form>
     <DataTable v-if="objectPermissions?.can_view"
-      grid-template="150px,1fr,2fr"
+      table-key="clause-templates"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.title')" sortKey="title" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.text')" :sortable="false" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showEditRegion(item)">
+          <abbr :title="item.token" class="no-underline">{{ item.token || '-' }}</abbr>
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItem?.id }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showEditRegion(item)">
-              <abbr :title="item.token" class="no-underline">{{ item.token || '-' }}</abbr>
-            </button>
-          </span>
-          <span class="p-0">{{ item.title }}</span>
-          <span class="p-0 text-slate-500 text-sm">{{ truncate(item.clause) }}</span>
-        </div><!-- end for items -->
+      <template #cell-title="{ item }">
+        <span class="truncate" :title="item.title">{{ item.title }}</span>
+      </template>
+      <template #cell-text="{ item }">
+        <span class="text-slate-500 text-sm">{{ truncate(item.clause) }}</span>
       </template>
     </DataTable>
     <div id="list__footer">

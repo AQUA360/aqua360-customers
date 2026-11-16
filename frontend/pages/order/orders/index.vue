@@ -8,7 +8,6 @@ import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import OrderRegion from '~/components/organisms/OrderRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
@@ -307,6 +306,30 @@ const handlePageChange = (newPage) => {
   pagination.value.page = newPage;
   getData();
 }
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 80, min: 78, priority: 3 },
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 180, min: 105, priority: 1, removable: false },
+  { key: 'type', label: t('common.type'), sortKey: 'type', width: 120, min: 90, priority: 2 },
+  { key: 'reason', label: t('order_block.reason'), sortKey: 'type', width: 100, min: 80, priority: 3 },
+  { key: 'address', label: t('common.address'), width: 180, min: 120, grow: 2, priority: 1 },
+  { key: 'creator', label: t('common.creator'), sortKey: 'created_by__username', width: 120, min: 90, priority: 3 },
+  {
+    key: 'contract', label: `${t('contract')} / ${t('contract_block.short_contract_request')}`,
+    sortKey: 'related_contract_token', width: 160, min: 110, priority: 2,
+  },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 100, min: 80, priority: 1 },
+  { key: 'dueDateAt', label: t('order_block.scheduled_date'), sortKey: 'dueDateAt', width: 100, min: 90, priority: 3 },
+  { key: 'operators', label: t('common.operators'), sortKey: 'operators', width: 120, min: 90, priority: 3 },
+  { key: 'completed_at', label: t('common.completion'), sortKey: 'completed_at', width: 120, min: 90, priority: 3 },
+  { key: 'priority', label: t('common.priority'), sortKey: 'priority__token', width: 100, min: 80, priority: 3 },
+  { key: 'related', label: t('common.related'), width: 140, min: 100, priority: 3 },
+  { key: 'description', label: t('common.description'), width: 180, min: 120, grow: 3, priority: 2 },
+]);
 
 const handleSort = (key) => {
   if (sortBy.value === key) {
@@ -815,101 +838,104 @@ watch(() => route.query, () => {
     <!-- Desktop Grid View -->
     <div class="hidden md:flex md:flex-col md:overflow-x-auto">
       <DataTable
-        grid-template="80px,180px,120px,100px,180px,120px,160px,80px,100px,120px,120px,100px,140px,180px"
+        table-key="orders"
+        :columns="tableColumns"
+        :items="items"
+        :row-class="rowClass"
+        :current-sort-by="sortBy"
+        :sort-desc="sortDesc"
         :pending="pending"
         :error="error"
         :is-empty="items.length === 0"
+        @sort="handleSort"
         @retry="getData">
-        <template #header>
-          <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy"
-            :sortDesc="sortDesc" @sort="handleSort" />
-          <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-            @sort="handleSort" />
-          <TableHeader :label="$t('common.type')" sortKey="type" :currentSortBy="sortBy" :sortDesc="sortDesc"
-            @sort="handleSort" />
-          <TableHeader :label="$t('order_block.reason')" sortKey="type" :currentSortBy="sortBy" :sortDesc="sortDesc"
-            @sort="handleSort" />
-          <div class="p-1 text-base font-semibold">{{ $t('common.address') }}</div>
-          <TableHeader :label="$t('common.creator')" sortKey="created_by__username" :currentSortBy="sortBy"
-            :sortDesc="sortDesc" @sort="handleSort" />
-          <TableHeader :label="`${$t('contract')} / ${$t('contract_block.short_contract_request')}`"
-            sortKey="related_contract_token" :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-          <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-            @sort="handleSort" />
-          <TableHeader :label="$t('order_block.scheduled_date')" sortKey="dueDateAt" :currentSortBy="sortBy"
-            :sortDesc="sortDesc" @sort="handleSort" />
-          <TableHeader :label="$t('common.operators')" sortKey="operators" :currentSortBy="sortBy" :sortDesc="sortDesc"
-            @sort="handleSort" />
-          <TableHeader :label="$t('common.completion')" sortKey="completed_at" :currentSortBy="sortBy"
-            :sortDesc="sortDesc" @sort="handleSort" />
-          <TableHeader :label="$t('common.priority')" sortKey="priority__token" :currentSortBy="sortBy"
-            :sortDesc="sortDesc" @sort="handleSort" />
-          <div class="p-1 text-base font-semibold">{{ $t('common.related') }}</div>
-          <div class="p-1 text-base font-semibold">{{ $t('common.description') }}</div>
+        <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+        <template #cell-token="{ item }">
+          <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+            @click="showDetail(item.id);">
+            <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          </button>
         </template>
 
-        <template #default="{ gridStyle }">
-          <div v-for="item in items" :key="`desktop-${item.id}`"
-            class="gap-3 text-base border-b items-center bg-white"
-            :style="gridStyle"
-            :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-            <span class="p-1 text-nowrap">{{ formatDate(item.created_at) }}</span>
-            <span>
-              <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-                @click="showDetail(item.id);">
-                <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              </button>
-            </span>
-            <span class="p-1" :title="item.type?.name">{{ item.type?.name }}</span>
-            <span class="p-1" :title="item.reason?.name">{{ item.reason?.name }}</span>
-            <span class="p-1 overflow-hidden text-ellipsis whitespace-nowrap" :title="getAddress(item)">{{
-              getAddress(item) }}</span>
-            <span class="p-1 truncate"
-              :title="item.created_by?.first_name && item.created_by?.last_name ? `${item.created_by.first_name} ${item.created_by.last_name}` : item.created_by?.username">
-              {{ item.created_by?.first_name && item.created_by?.last_name ? `${item.created_by.first_name}
-              ${item.created_by.last_name}` : item.created_by?.username || '-' }}
-            </span>
-            <div class="p-1 flex flex-col overflow-hidden">
-              <template v-if="item.related_contract_token">
-                <div class="font-semibold truncate">{{ item.related_contract_token }}</div>
-                <div class="text-xs text-gray-500 truncate"
-                  v-if="item.contract?.holder || item.supply_point?.contracts?.[0]?.holder">
-                  {{ item.contract?.holder || item.supply_point?.contracts?.[0]?.holder }}
-                </div>
-              </template>
-              <span v-else class="text-gray-400">-</span>
-            </div>
-            <span class="p-1 text-nowrap">
-              <AtomsColorBadge :value="item.status?.name || item.status?.token" :color="item.status?.color" />
-            </span>
-            <span class="p-1 text-nowrap" v-if="item.dueDateAt">{{ formatDate(item.dueDateAt) }}</span>
-            <span class="p-1 text-nowrap" v-else>{{ '-' }}</span>
-            <!-- Operators column -->
-            <span class="p-1 flex flex-wrap gap-1">
-              <AtomsColorBadge v-for="operator in item.operators" :key="operator.id"
-                :value="operator?.name && operator?.surname ? `${operator.name} ${operator.surname}` : operator?.token"
-                color="blue" class="text-xs" />
-              <span v-if="!item.operators || item.operators.length === 0" class="text-gray-400">-</span>
-            </span>
-            <span class="p-1 text-nowrap" v-if="item.completed_at">{{ formatDate(item.completed_at) }}</span>
-            <span class="p-1 text-nowrap" v-else>{{ '-' }}</span>
-            <span class="p-1 text-nowrap" v-if="item.priority">
-              <AtomsColorBadge :value="item.priority?.name" :color="item.priority?.color" />
-            </span>
-            <span class="p-1 text-nowrap" v-else>{{ '-' }}</span>
-            <!-- Consolidated related items column -->
-            <span class="p-1 flex flex-wrap gap-1">
-              <template v-for="badge in getRelatedBadges(item)" :key="badge.type">
-                <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
-                  {{ badge.text }}
-                </span>
-              </template>
-              <span v-if="getRelatedBadges(item).length === 0" class="text-gray-400">-</span>
-            </span>
-            <span class="p-1 overflow-hidden text-ellipsis whitespace-nowrap" :class="{
-              'text-amber-800 bg-amber-50 font-semibold rounded': needsManualReview(item)
-            }" :title="item.description">{{ item.description || '-' }}</span>
-          </div><!-- end for items -->
+        <template #cell-type="{ item }">
+          <span :title="item.type?.name">{{ item.type?.name }}</span>
+        </template>
+
+        <template #cell-reason="{ item }">
+          <span :title="item.reason?.name">{{ item.reason?.name }}</span>
+        </template>
+
+        <template #cell-address="{ item }">
+          <span :title="getAddress(item)">{{ getAddress(item) }}</span>
+        </template>
+
+        <template #cell-creator="{ item }">
+          <span class="truncate"
+            :title="item.created_by?.first_name && item.created_by?.last_name ? `${item.created_by.first_name} ${item.created_by.last_name}` : item.created_by?.username">
+            {{ item.created_by?.first_name && item.created_by?.last_name ? `${item.created_by.first_name}
+            ${item.created_by.last_name}` : item.created_by?.username || '-' }}
+          </span>
+        </template>
+
+        <template #cell-contract="{ item }">
+          <div class="flex flex-col overflow-hidden">
+            <template v-if="item.related_contract_token">
+              <div class="font-semibold truncate">{{ item.related_contract_token }}</div>
+              <div class="text-xs text-gray-500 truncate"
+                v-if="item.contract?.holder || item.supply_point?.contracts?.[0]?.holder">
+                {{ item.contract?.holder || item.supply_point?.contracts?.[0]?.holder }}
+              </div>
+            </template>
+            <span v-else class="text-gray-400">-</span>
+          </div>
+        </template>
+
+        <template #cell-status="{ item }">
+          <AtomsColorBadge :value="item.status?.name || item.status?.token" :color="item.status?.color" />
+        </template>
+
+        <template #cell-dueDateAt="{ item }">
+          <span v-if="item.dueDateAt">{{ formatDate(item.dueDateAt) }}</span>
+          <span v-else>{{ '-' }}</span>
+        </template>
+
+        <!-- Operators column -->
+        <template #cell-operators="{ item }">
+          <span class="flex flex-wrap gap-1">
+            <AtomsColorBadge v-for="operator in item.operators" :key="operator.id"
+              :value="operator?.name && operator?.surname ? `${operator.name} ${operator.surname}` : operator?.token"
+              color="blue" class="text-xs" />
+            <span v-if="!item.operators || item.operators.length === 0" class="text-gray-400">-</span>
+          </span>
+        </template>
+
+        <template #cell-completed_at="{ item }">
+          <span v-if="item.completed_at">{{ formatDate(item.completed_at) }}</span>
+          <span v-else>{{ '-' }}</span>
+        </template>
+
+        <template #cell-priority="{ item }">
+          <AtomsColorBadge v-if="item.priority" :value="item.priority?.name" :color="item.priority?.color" />
+          <span v-else>{{ '-' }}</span>
+        </template>
+
+        <!-- Consolidated related items column -->
+        <template #cell-related="{ item }">
+          <span class="flex flex-wrap gap-1">
+            <template v-for="badge in getRelatedBadges(item)" :key="badge.type">
+              <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+                {{ badge.text }}
+              </span>
+            </template>
+            <span v-if="getRelatedBadges(item).length === 0" class="text-gray-400">-</span>
+          </span>
+        </template>
+
+        <template #cell-description="{ item }">
+          <span :class="{
+            'text-amber-800 bg-amber-50 font-semibold rounded': needsManualReview(item)
+          }" :title="item.description">{{ item.description || '-' }}</span>
         </template>
       </DataTable>
     </div><!-- end desktop grid view -->
