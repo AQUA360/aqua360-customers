@@ -2530,8 +2530,14 @@ def _get_payment_debt_line(
 def generate_general_accounting(request):
     content_file = BytesIO()
     max_characters = 2126
-    request_date = request.data.get('start_date')
-    date = datetime.strptime(request_date, "%Y-%m-%d")
+    request_start = request.data.get('start_date')
+    request_end = request.data.get('end_date') or request_start
+    start_date = datetime.strptime(str(request_start)[:10], "%Y-%m-%d").date()
+    end_date = datetime.strptime(str(request_end)[:10], "%Y-%m-%d").date()
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+    # File header / register numbering use the period end (generation day).
+    date = end_date
     last_document = None
 
     date_str = date.strftime("%Y%m%d")
@@ -2552,16 +2558,23 @@ def generate_general_accounting(request):
     )
     
     invoices = Invoice.objects.filter(
-        issue_date=date, 
+        issue_date__range=(start_date, end_date),
         type_final=invoice_type_invoice_token,
         is_active=True).exclude(
             status__token=invoice_status_pending_token
             ).distinct()
     # print("total invoices: ", invoices.count())
-    endowment_invoices = Invoice.objects.filter(endowment_date=date, is_active=True).distinct()
-    irrecoverable_invoices = Invoice.objects.filter(irrecoverable_date=date, is_active=True).distinct()
+    endowment_invoices = Invoice.objects.filter(
+        endowment_date__range=(start_date, end_date),
+        is_active=True,
+    ).distinct()
+    irrecoverable_invoices = Invoice.objects.filter(
+        irrecoverable_date__range=(start_date, end_date),
+        is_active=True,
+    ).distinct()
     movements = PaymentMovement.objects.filter(
-        timestamp__date=date).exclude(
+        timestamp__date__range=(start_date, end_date),
+    ).exclude(
         previous_status__token = commitment_status_token
         ).exclude(
             payment_type__token = 'BALANCE'

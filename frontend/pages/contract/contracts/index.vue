@@ -59,6 +59,9 @@ const has_debt = ref(null);
 const filter_has_positive_balance = ref([]);
 const selected_has_positive_balance = ref([]);
 const has_positive_balance = ref(null);
+const filter_has_virtual_office = ref([]);
+const selected_has_virtual_office = ref([]);
+const has_virtual_office = ref(null);
 const only_pending_termination = ref(false);
 
 const variables = ref([]);
@@ -148,7 +151,7 @@ const getData = async (searchQuery = '', searchAllAddress = '', filters = [], pa
       use_types.value, categories.value, [], debt_management.value, false,
       comm_types.value, searchAllAddress, payment_types.value, [], searchByAddressQuery, totalPersonsMinQuery,
       companies.value, null, null, block_billing.value, has_debt.value, searchEmailQuery, searchIbanQuery, searchMeterQuery,
-      has_positive_balance.value, only_pending_termination.value ? 'true' : null
+      has_positive_balance.value, only_pending_termination.value ? 'true' : null, has_virtual_office.value
     );
 
     items.value = data.results;
@@ -479,6 +482,13 @@ const handleHasPositiveBalanceChange = (event) => {
   handleSearch();
 }
 
+const handleHasVirtualOfficeChange = (event) => {
+  selected_has_virtual_office.value = event;
+  has_virtual_office.value = event.length > 0 ? event[0].id : null;
+  pagination.value.page = 1;
+  handleSearch();
+}
+
 const handleFiltersChange = (event) => {
   let newFilters = event
     .filter(el => !isFilterShown.value.includes(el.id));
@@ -541,6 +551,10 @@ const checkInAdvacedFilters = (newFilters) => {
     has_positive_balance.value = null;
     selected_has_positive_balance.value = [];
     handleFilterChange();
+  } else if (isFilterShown.value.some(filter => filter.id === 'has_virtual_office') && !newFilters.some(filter => filter.id === 'has_virtual_office')) {
+    has_virtual_office.value = null;
+    selected_has_virtual_office.value = [];
+    handleFilterChange();
   }
 }
 
@@ -590,6 +604,8 @@ const resetFilters = () => {
   selected_has_debt.value = [];
   has_positive_balance.value = null;
   selected_has_positive_balance.value = [];
+  has_virtual_office.value = null;
+  selected_has_virtual_office.value = [];
   only_pending_termination.value = false;
   searchEmailInput.value = '';
   searchIbanInput.value = '';
@@ -704,6 +720,8 @@ const saveSearchState = () => {
     selected_has_debt: selected_has_debt.value,
     has_positive_balance: has_positive_balance.value,
     selected_has_positive_balance: selected_has_positive_balance.value,
+    has_virtual_office: has_virtual_office.value,
+    selected_has_virtual_office: selected_has_virtual_office.value,
     only_pending_termination: only_pending_termination.value,
     searchEmailInput: searchEmailInput.value,
     searchIbanInput: searchIbanInput.value,
@@ -768,6 +786,8 @@ const loadSearchState = () => {
       if (parsed.selected_has_debt !== undefined) selected_has_debt.value = parsed.selected_has_debt;
       if (parsed.has_positive_balance !== undefined) has_positive_balance.value = parsed.has_positive_balance;
       if (parsed.selected_has_positive_balance !== undefined) selected_has_positive_balance.value = parsed.selected_has_positive_balance;
+      if (parsed.has_virtual_office !== undefined) has_virtual_office.value = parsed.has_virtual_office;
+      if (parsed.selected_has_virtual_office !== undefined) selected_has_virtual_office.value = parsed.selected_has_virtual_office;
       if (parsed.only_pending_termination !== undefined) only_pending_termination.value = parsed.only_pending_termination;
       if (parsed.searchEmailInput !== undefined) searchEmailInput.value = parsed.searchEmailInput;
       if (parsed.searchIbanInput !== undefined) searchIbanInput.value = parsed.searchIbanInput;
@@ -798,6 +818,7 @@ onMounted(async () => {
       { name: t("contract_block.block_billing"), id: "block_billing" },
       { name: t("common.debt"), id: "has_debt" },
       { name: t("contract_block.positive_balance"), id: "has_positive_balance" },
+      { name: t("contract_block.virtual_office"), id: "has_virtual_office" },
     );
     filter_total_persons_min.value = [];
     for (let i = 3; i <= 10; i++) {
@@ -822,6 +843,11 @@ onMounted(async () => {
     filter_has_positive_balance.value = [
       { id: 'true', name: t('contract_block.with_positive_balance') },
       { id: 'false', name: t('contract_block.without_positive_balance') },
+    ];
+
+    filter_has_virtual_office.value = [
+      { id: 'true', name: t('contract_block.with_virtual_office') },
+      { id: 'false', name: t('contract_block.without_virtual_office') },
     ];
     
     // Fetch heavy config data in parallel (UI) while first list load starts immediately with active status.
@@ -866,6 +892,7 @@ watch(
     block_billing.value, selected_block_billing.value,
     has_debt.value, selected_has_debt.value,
     has_positive_balance.value, selected_has_positive_balance.value,
+    has_virtual_office.value, selected_has_virtual_office.value,
     only_pending_termination.value,
     searchEmailInput.value, searchIbanInput.value, showEmailSearch.value, showIbanSearch.value,
     searchMeterInput.value, showMeterSearch.value
@@ -886,14 +913,21 @@ watch(
  * can override the selection and drag any column wider — both are remembered
  * per user in localStorage (see `useTableColumns`).
  */
+// Hidrant i tall de subministrament, al costat dels avisos de l'etiqueta del contracte
+// (que decideix quantes icones hi caben).
+const tokenIndicators = (item) => [
+  ...(isFireContract(item) ? [{ key: 'fire', icon: 'mdi:fire-hydrant', iconClass: 'text-red-500', title: t('common.fire_hydrant') }] : []),
+  ...(isSupplyPointCut(item) ? [{ key: 'supply_cut', icon: 'fa6-solid:droplet-slash', iconClass: 'text-red-600', title: t('service_block.active_supply_cut_warning') }] : []),
+];
+
 const tableColumns = computed(() => [
   // Fixed-content columns are kept tight (a date is always 10 characters and a
-  // token 9) so the space they free goes to the two columns that actually get
+  // token 9, plus at most two indicator icons) so the space they free goes to the two columns that actually get
   // truncated: the supply point address and the holder name.
   { key: 'created_at', label: t('common.date'), sortKey: 'created_at', width: 82, min: 78, priority: 3 },
   {
     key: 'token', label: t('common.identification'), sortKey: 'token',
-    width: 118, min: 105, priority: 1, removable: false, cellClass: 'flex items-center gap-2',
+    width: 150, min: 140, priority: 1, removable: false, cellClass: 'flex items-center gap-2',
   },
   {
     key: 'supply_point', label: t('supply_point'), sortKey: 'supply_point_default__address__address_search',
@@ -968,7 +1002,8 @@ const exportExcel = async () => {
       searchIbanInput.value,
       searchMeterInput.value,
       has_positive_balance.value,
-      only_pending_termination.value ? 'true' : null
+      only_pending_termination.value ? 'true' : null,
+      has_virtual_office.value
     );
 
     if (response && response.task_id) {
@@ -1279,6 +1314,14 @@ watch(() => route.query, async () => {
         </template>
       </FilterSelect>
 
+      <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'has_virtual_office')" :options="filter_has_virtual_office"
+        :filters="selected_has_virtual_office" :multiple="false" :placeholder="t('contract_block.virtual_office')"
+        @update:modelValue="handleHasVirtualOfficeChange($event)">
+        <template #icon>
+          <Icon name="fa6-solid:globe" class="text-md ml-2 mr-1" size="10px" />
+        </template>
+      </FilterSelect>
+
       <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'debt_management')"
         :options="filter_debt_management" :filters="selected_debt_management" :multiple="true"
         :placeholder="t(`contract_block.debt_management`)" @update:modelValue="handleDebtManagementChange($event)">
@@ -1331,12 +1374,9 @@ watch(() => route.query, async () => {
           @click="showDetail(item.id);">
           <span class="flex items-center gap-1 min-w-0">
             <abbr :title="item.id" class="no-underline min-w-0">
-              <AtomsContractBadge class="cursor-pointer" :contract="item" :reverse="false" :color="'white'" />
+              <AtomsContractBadge class="cursor-pointer" :contract="item" :reverse="false" :color="'white'"
+                :extra-indicators="tokenIndicators(item)" />
             </abbr>
-            <Icon v-if="isFireContract(item)" name="mdi:fire-hydrant" class="text-red-500 shrink-0"
-              :title="t('common.fire_hydrant')" />
-            <Icon v-if="isSupplyPointCut(item)" name="fa6-solid:droplet-slash" class="text-red-600 shrink-0"
-              :title="t('service_block.active_supply_cut_warning')" />
           </span>
           <Icon name="fa6-solid:eye"
             class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
