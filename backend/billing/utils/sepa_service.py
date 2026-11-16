@@ -1,6 +1,7 @@
 import datetime
-import xml.etree.ElementTree as ET
 from datetime import timedelta, date
+
+import defusedxml.ElementTree as ET
 from billing.models import CommitmentDeposit, DocumentSEPA, Invoice, InvoiceStatus, Payment, PaymentRemittance, PaymentStatus, RejectMotive
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import annotate_rejection_warnings
@@ -488,7 +489,8 @@ def handle_document_sepa(document, company_data, clients_data, msgId, client_doc
         pass # Original File not available
 
     if file_content:
-        root = ET.fromstring(file_content)
+        # External SEPA return file: forbid DTDs/entities (XXE / XML bombs).
+        root = ET.fromstring(file_content, forbid_dtd=True)
         
     namespaces = [
         {
