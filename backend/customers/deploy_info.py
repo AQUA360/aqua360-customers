@@ -2,9 +2,11 @@
 
 Al monorepo les imatges es construeixen a GitHub Actions
 (`.github/workflows/imatges.yml`), que passa la versió, el commit i la data
-del build com a build args. El `Dockerfile` executa aquest mòdul
-(`python -m customers.deploy_info <fitxer>`) per escriure `deploy_info.json` a
-l'arrel del codi (`BASE_DIR`). Aquí es llegeix per servir-la a
+del build com a build args. Quan es construeixen al servidor
+(`docker compose build`), el `Dockerfile` en treu la versió i el commit del
+`.git` del servidor (fitxer `deploy-git.env`). El `Dockerfile` executa aquest
+mòdul (`python -m customers.deploy_info <fitxer> [deploy-git.env]`) per
+escriure `deploy_info.json` a l'arrel del codi (`BASE_DIR`). Aquí es llegeix per servir-la a
 `/coredata/deploy-info/` i que el frontend la mostri al NavSidebar.
 
 La data del build (`built_at`) és la de la imatge, que pot ser d'uns dies
@@ -58,14 +60,37 @@ def _utc_now_iso():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def build_from_env(env=None):
+def read_git_info(path):
+    """Llegeix el `deploy-git.env` que el `Dockerfile` treu del `.git` del servidor.
+
+    Línies `CLAU=valor` (`APP_VERSION`, `GIT_COMMIT`, `GIT_COMMIT_DATE`,
+    `GIT_BRANCH`). Si no hi és o és buit, `{}`.
+    """
+    if not path:
+        return {}
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    info = {}
+    for line in lines:
+        key, sep, value = line.partition("=")
+        if sep:
+            info[key.strip()] = value.strip()
+    return info
+
+
+def build_from_env(env=None, git_info=None):
     """Construeix la informació del deploy a partir dels build args de la imatge.
 
     Variables: `APP_VERSION`, `GIT_COMMIT`, `GIT_COMMIT_DATE`, `GIT_BRANCH` i
-    `BUILD_DATE`. Sense `BUILD_DATE` (build fet al servidor sense els args) es
-    fa servir l'hora actual, que és la del build.
+    `BUILD_DATE`. Sense els args (build fet al servidor) la versió i el commit
+    surten de `git_info` (el `.git` del servidor), sencers i no barrejats amb
+    els args. Sense `BUILD_DATE` es fa servir l'hora actual, que és la del build.
     """
     env = os.environ if env is None else env
+    if not (env.get("GIT_COMMIT") or "").strip() and (git_info or {}).get("GIT_COMMIT"):
+        env = {**git_info, "BUILD_DATE": env.get("BUILD_DATE") or ""}
     commit_full = (env.get("GIT_COMMIT") or "").strip()
     info = _empty_info("build")
     built_at = (env.get("BUILD_DATE") or "").strip() or _utc_now_iso()
@@ -82,9 +107,9 @@ def build_from_env(env=None):
     return info
 
 
-def write_deploy_info(path, env=None):
+def write_deploy_info(path, env=None, git_info_path=None):
     """Escriu `deploy_info.json` (el fa servir el Dockerfile en construir la imatge)."""
-    info = build_from_env(env)
+    info = build_from_env(env, read_git_info(git_info_path))
     Path(path).write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     return info
 
@@ -226,6 +251,6 @@ def with_deploy_date(component, info):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("Ús: python -m customers.deploy_info <fitxer de sortida>")
-    print(json.dumps(write_deploy_info(sys.argv[1])))
+    if len(sys.argv) not in (2, 3):
+        sys.exit("Ús: python -m customers.deploy_info <fitxer de sortida> [deploy-git.env]")
+    print(json.dumps(write_deploy_info(sys.argv[1], git_info_path=sys.argv[2] if len(sys.argv) == 3 else None)))
