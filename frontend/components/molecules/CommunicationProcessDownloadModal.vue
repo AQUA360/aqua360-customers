@@ -76,12 +76,13 @@ const download = () => {
     <div class="fixed inset-0 bg-black bg-opacity-50 h-[150vh] z-40" @click="close"></div>
 
     <div class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto pointer-events-none">
-      <div class="bg-white rounded-lg shadow-xl p-6 max-w-xl w-full mx-4 my-auto relative pointer-events-auto">
+      <div class="bg-white rounded-lg shadow-xl p-6 max-w-xl w-full mx-4 my-auto relative pointer-events-auto"
+        role="dialog" aria-modal="true" aria-labelledby="communication-process-download-title">
         <button @click="close" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700" :disabled="downloading">
           <Icon name="fa6-solid:xmark" class="text-xl" />
         </button>
 
-        <h3 class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+        <h3 id="communication-process-download-title" class="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
           <Icon name="fa6-solid:download" class="text-slate-500" />
           {{ t('customer_service_block.download_docs') }}
         </h3>

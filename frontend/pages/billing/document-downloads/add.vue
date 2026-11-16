@@ -194,7 +194,9 @@ const requestDownload = async () => {
   try {
     const markSent = source.value === 'process' && delivery.value === 'postal'
       && confirm(t('confirmation_text_block.confirm_sent_postal'));
-    const response = await $BillingApiService.requestDocumentDownload(payload());
+    // Es marquen els processos de la petició, encara que mentrestant es canviï la selecció
+    const requestPayload = payload();
+    const response = await $BillingApiService.requestDocumentDownload(requestPayload);
     if (!response?.export_job_id) {
       toast.error(t('common.error_download'));
       return;
@@ -202,8 +204,8 @@ const requestDownload = async () => {
     useExportJobsStore().track(response.export_job_id, t('billing_block.download_new'));
     // Les cartes es marquen com a enviades només si la descàrrega s'ha pogut demanar
     if (markSent) {
-      for (const process of selectedProcesses.value) {
-        await $CommunicationApiService.markAsSent({ process_id: process.value });
+      for (const processId of requestPayload.communication_process_ids) {
+        await $CommunicationApiService.markAsSent({ process_id: processId });
       }
     }
     return navigateTo('/billing/document-downloads/');

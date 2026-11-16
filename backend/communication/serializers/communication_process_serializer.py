@@ -51,7 +51,8 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
         return obj.communications.filter(types__token='electronic_inv').exists()
 
     def get_has_letters(self, obj):
-        return obj.communications.filter(types__token='letter').exists()
+        letter_token = ConfigProject.objects.get(token='message_type_letter_token').value
+        return any(letter_token in (c.type_tokens or '').split(',') for c in obj.communications.all())
 
     def get_has_email(self, obj):
         email_token = ConfigProject.objects.get(token='message_type_email_token').value

@@ -186,6 +186,9 @@ const downloadDocuments = async ({ channel = 'all', includeInvoices = true, mark
       return;
     }
 
+    // El procés que es descarrega, encara que mentrestant se n'obri un altre
+    const processId = data.value.id;
+
     //GET IDS
     const ids = data.value.com_files
       .filter(item => !postal || item.is_postal)
@@ -238,7 +241,7 @@ const downloadDocuments = async ({ channel = 'all', includeInvoices = true, mark
 
     // MARK AS SENT: només si la descàrrega ha anat bé
     if (postal && markSent) {
-      await $CommunicationApiService.markAsSent({ process_id: props.id });
+      await $CommunicationApiService.markAsSent({ process_id: processId });
     }
     showDownloadModal.value = false;
     await getData(false);
