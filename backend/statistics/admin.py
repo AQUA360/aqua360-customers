@@ -36,8 +36,9 @@ class AccountingValueAdmin(admin.ModelAdmin):
 
 @admin.register(AvailableReport)
 class AvailableReportAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'section', 'function_name', 'is_active', 'position')
-    list_filter = ('section', 'is_active', 'has_custom_config')
+    list_display = ('id', 'name', 'section', 'function_name', 'is_active', 'allow_pdf_export', 'position')
+    list_filter = ('section', 'is_active', 'has_custom_config', 'allow_pdf_export')
+    list_editable = ('allow_pdf_export',)
     search_fields = ('name', 'function_name', 'description')
     ordering = ('section__position', 'position', 'name')
 

@@ -7,7 +7,6 @@ import { useToast } from 'vue-toastification';
 import { checkPermission } from '~/middleware/permission';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import StreetRegion from '~/components/organisms/StreetRegion.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -193,6 +192,17 @@ watch(selectedCity, () => {
   pagination.value.page = 1;
   getData(searchInput.value, 1, sortBy.value, sortDesc.value);
 });
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedStreetId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'id', label: t('common.identificator'), sortKey: 'id', width: 100, min: 90, priority: 1, removable: false },
+  { key: 'type', label: t('common.type'), sortKey: 'type__abbreviation', width: 100, min: 70, priority: 2 },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 300, min: 150, grow: 1, priority: 1, removable: false },
+  { key: 'city', label: t('address_block.city'), sortKey: 'city__name', width: 250, min: 120, priority: 2 },
+]);
 </script>
 
 <template>
@@ -216,6 +226,8 @@ watch(selectedCity, () => {
           autocomplete="off" />
       </span>
 
+      <div class="h-8 w-px bg-gray-300"></div>
+
       <span class="w-80 flex items-center gap-2">
         <label for="city-filter" class="text-slate-500 text-sm whitespace-nowrap">{{ $t('address_block.city') }}:</label>
         <v-select
@@ -236,39 +248,33 @@ watch(selectedCity, () => {
     </form>
 
     <DataTable
-      grid-template="100px,100px,1fr,250px"
+      table-key="streets"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identificator')" sortKey="id" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.type')" sortKey="type__abbreviation" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('address_block.city')" sortKey="city__name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-id="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showStreetDetail(item.id);">
+          <abbr :title="item.id" class="no-underline font-mono">{{ item.id }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
-
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white hover:bg-slate-50 transition-colors"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedStreetId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-2 text-sky-500 text-nowrap text-left"
-              @click="showStreetDetail(item.id);">
-              <abbr :title="item.id" class="no-underline font-mono">{{ item.id }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-2 font-mono text-slate-500">{{ item.type_abbreviation || item.type?.abbreviation }}</span>
-          <span class="p-2 font-medium">{{ item.name }}</span>
-          <span class="p-2 text-slate-500">{{ typeof item.city === 'object' ? item.city?.name : (item.city_name || item.city) }}</span>
-        </div><!-- end for items -->
+      <template #cell-type="{ item }">
+        <span class="font-mono text-slate-500">{{ item.type_abbreviation || item.type?.abbreviation }}</span>
+      </template>
+      <template #cell-name="{ item }">
+        <span class="font-medium">{{ item.name }}</span>
+      </template>
+      <template #cell-city="{ item }">
+        <span class="text-slate-500">{{ typeof item.city === 'object' ? item.city?.name : (item.city_name || item.city) }}</span>
       </template>
     </DataTable>
 

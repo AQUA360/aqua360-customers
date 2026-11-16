@@ -7,7 +7,6 @@ import { formatDate } from '~/utils/date';
 import BillingRangeRegion from '~/components/organisms/BillingRangeRegion.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import { checkPermission } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
@@ -163,6 +162,20 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.creation_date'), sortKey: 'created_at', width: 82, min: 78, priority: 3 },
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 130, min: 105, priority: 1, removable: false },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 160, min: 100, grow: 1, priority: 1 },
+  { key: 'price_rate', label: t('price_rate'), sortKey: 'price_rate', width: 160, min: 100, grow: 1, priority: 2 },
+  { key: 'publication', label: t('pricing_block.publication_detail'), sortKey: 'publication', width: 150, min: 100, priority: 2 },
+  { key: 'start', label: t('common.start'), sortKey: 'start', width: 110, min: 90, priority: 2 },
+  { key: 'end', label: t('common.end'), sortKey: 'end', width: 110, min: 90, priority: 2 },
+]);
 </script>
 
 <template>
@@ -188,6 +201,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div class="h-8 w-px bg-gray-300" v-if="filter_status.length"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -204,46 +219,33 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="80px,1fr,1fr,1fr,150px,150px,150px"
+      table-key="billing-ranges"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.creation_date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('price_rate')" sortKey="price_rate" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('pricing_block.publication_detail')" sortKey="publication" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.start')" sortKey="start" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.end')" sortKey="end" :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span class="p-1 text-nowrap">{{ formatDate(item.created_at) }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-            </button>
-          </span>
-          <span class="p-1 text-nowrap">{{ item.name }}</span>
-          <span class="p-1 text-nowrap">{{ item.price_rate?.name }}</span>
-          <span class="p-1 text-nowrap"><abbr :title="item.publication.name">{{ item.publication?.token }}</abbr></span>
-          <span class="p-1 text-nowrap">{{ formatDate(item.start) }}</span>
-          <span class="p-1 text-nowrap" v-if="item.end">{{ formatDate(item.end) }}</span>
-          <span class="p-1 text-nowrap" v-else>{{ ' - ' }}</span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">{{ item.name }}</template>
+      <template #cell-price_rate="{ item }">{{ item.price_rate?.name }}</template>
+      <template #cell-publication="{ item }"><abbr :title="item.publication?.name">{{ item.publication?.token }}</abbr></template>
+      <template #cell-start="{ item }">{{ formatDate(item.start) }}</template>
+      <template #cell-end="{ item }">
+        <template v-if="item.end">{{ formatDate(item.end) }}</template>
+        <template v-else>{{ ' - ' }}</template>
       </template>
     </DataTable>
     <div id="list__footer">

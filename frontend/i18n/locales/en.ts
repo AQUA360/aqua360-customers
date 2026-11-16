@@ -3367,6 +3367,7 @@ export default {
     detail: 'Detail'
   },
   reports_block:   {
+    download_pdf_hint: "Download as PDF (presentation version)",
     error_queue_action: 'Error managing the queue task.',
     report_completed_success: 'Report "{name}" generated successfully.',
     report_generation_failed: 'Error generating report "{name}".',

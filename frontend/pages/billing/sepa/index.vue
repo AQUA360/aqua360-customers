@@ -9,7 +9,7 @@ import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import SEPARemittanceDetail from '~/components/molecules/SEPARemittanceDetail.vue';
 import SepaValidateModal from '~/components/molecules/SepaValidateModal.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
+import DataTable from '~/components/organisms/DataTable.vue';
 import { useSidebarStore } from '~/stores/useNavSideBar';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
@@ -270,6 +270,27 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.creation'), sortKey: 'created_at', width: 82, min: 78, priority: 3 },
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 200, min: 120, priority: 1, removable: false,
+  },
+  { key: 'iban', label: t('common.iban'), width: 230, min: 190, grow: 1, priority: 2 },
+  { key: 'total_payments', label: t('billing_block.payments'), width: 80, min: 70, priority: 3 },
+  { key: 'total_amount', label: t('billing_block.total_amount'), width: 100, min: 85, priority: 2 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 110, priority: 1, removable: false },
+  { key: 'desired_send_at', label: t('customer_service_block.sent_to'), sortKey: 'desired_send_at', width: 82, min: 78, priority: 3 },
+  { key: 'sent_at', label: t('customer_service_block.sent'), sortKey: 'sent_at', width: 82, min: 78, priority: 3 },
+  { key: 'sent_by', label: t('customer_service_block.sent_by'), sortKey: 'sent_by', width: 100, min: 80, priority: 3 },
+  { key: 'doc', label: t('common.doc'), width: 60, min: 50, priority: 2, cellClass: 'flex items-center justify-center' },
+  { key: 'actions', label: t('common.actions'), width: 80, min: 70, priority: 1, cellClass: 'flex items-center justify-center gap-2' },
+]);
+
 </script>
 
 <template>
@@ -331,89 +352,60 @@ watch(() => route.query, () => {
 
     </div>
 
-    <div id="list" class="flex flex-col overflow-hidden" :style="{
-      width: 'calc(100vw - ' + sidebarStore.sidebarWidth + 'px)',
-      maxWidth: '100%',
-      minHeight: 'calc(100vh - 230px)',
-      maxHeight: 'calc(100vh - 230px)',
-    }">
-      <div class="heading flex-shrink-0 bg-white grid gap-3 text-base border-b items-center"
-        style="grid-template-columns: 75px 200px 230px 80px 100px 150px 75px 75px 80px 60px 80px;">
-        <TableHeader :label="$t('common.creation')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.iban')" :sortable="false" />
-        <TableHeader :label="$t('billing_block.payments')" :sortable="false" />
-        <TableHeader :label="$t('billing_block.total_amount')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('customer_service_block.sent_to')" sortKey="desired_send_at" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('customer_service_block.sent')" sortKey="sent_at" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('customer_service_block.sent_by')" sortKey="sent_by" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('common.doc')" :sortable="false" />
-        <TableHeader :label="$t('common.actions')" :sortable="false" />
-      </div>
-      <div class="flex-1 min-h-0 overflow-y-auto"
-        :style="{ width: 'calc(100vw - ' + sidebarStore.sidebarWidth + 'px)', maxWidth: '100%' }">
-        <div v-if="pending">
-          <AppLoading :text="$t('common.loading')" />
-        </div>
-        <div v-else-if="error">
-          <p>Error: {{ error.message }}</p>
-          <p><button @click="getData" class="underline text-sky-500 hover:no-underline">{{ $t('common.load_again')
-              }}</button></p>
-        </div>
-        <div v-else>
-          <div v-for="item in items" :key="item.id" class="grid gap-3 text-base border-b items-center"
-            :class="{ 'bg-yellow-50': item.id === selectedItemId }"
-            style="grid-template-columns: 75px 200px 230px 80px 100px 150px 75px 75px 80px 60px 80px;">
-            <span class="p-1 text-nowrap">{{ formatDate(item.created_at) }}</span>
-            <span>
-              <button
-                class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left truncate"
-                @click="showDetail(item);">
-                <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
-                <Icon name="fa6-solid:eye"
-                  class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-              </button>
-            </span>
-            <span class="p-1 text-nowrap truncate" :title="item.company_bank_iban">{{ item.company_bank_iban ? formatIban(item.company_bank_iban) : '-' }}</span>
-            <span class="p-1">{{ item.total_payments }}</span>
-            <span class="p-1">{{ formatMoneyWithCurrency(item.total_amount) }}</span>
-            <span class="p-1">
-              <AtomsProcessColorBadge v-if="item.status_token == processing_status_token" :value="item.status_name"
-                :color="item.status_color" :taskId="item.task_id" @refresh="getData"></AtomsProcessColorBadge>
-              <AtomsColorBadge v-else :value="item.status_name" :color="item.status_color" />
-            </span>
-            <span class="p-1">{{ item.desired_send_at ? formatDate(item.desired_send_at) : '-' }}</span>
-            <span class="p-1">{{ item.sent_at ? formatDate(item.sent_at) : '-' }}</span>
-            <span class="p-1">{{ item.sent_by_username ? item.sent_by_username : '-' }}</span>
-            <span class="p-1">
-              <button @click="printDocument(item.document)"
-                class="w-5 h-5 rounded-full border border-orange-500 text-orange-500 bg-orange-50 hover:bg-orange-100 mx-auto">
-                <Icon name="fa6-solid:download" class="m-auto w-3 h-3" />
-              </button>
-            </span>
-            <span class="p-1 flex gap-2 justify-center">
-              <button v-if="!item.sent_at" @click.stop="deleteRemittance(item)"
-                class="w-6 h-6 rounded-full border border-red-500 text-red-500 bg-red-50 hover:bg-red-100 transition-colors duration-200"
-                :title="$t('common.delete')">
-                <Icon name="fa6-solid:trash" class="m-auto w-3 h-3" />
-              </button>
-            </span>
-          </div><!-- end for items -->
+    <DataTable
+      table-key="sepa"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
+      :pending="pending"
+      :error="error"
+      :is-empty="items.length === 0"
+      @sort="handleSort"
+      @retry="getData">
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
 
-          <div v-if="items.length === 0" class="my-3">
-            <p class="text-">{{ $t('common.no_records') }}</p>
-          </div>
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
+      </template>
 
-        </div><!-- else no-error no-pending -->
-      </div><!-- scroll area -->
-    </div><!-- end list -->
+      <template #cell-iban="{ item }">
+        <span :title="item.company_bank_iban">{{ item.company_bank_iban ? formatIban(item.company_bank_iban) : '-' }}</span>
+      </template>
+      <template #cell-total_payments="{ item }">{{ item.total_payments }}</template>
+      <template #cell-total_amount="{ item }">{{ formatMoneyWithCurrency(item.total_amount) }}</template>
+
+      <template #cell-status="{ item }">
+        <AtomsProcessColorBadge v-if="item.status_token == processing_status_token" :value="item.status_name"
+          :color="item.status_color" :taskId="item.task_id" @refresh="getData"></AtomsProcessColorBadge>
+        <AtomsColorBadge v-else :value="item.status_name" :color="item.status_color" />
+      </template>
+
+      <template #cell-desired_send_at="{ item }">{{ item.desired_send_at ? formatDate(item.desired_send_at) : '-' }}</template>
+      <template #cell-sent_at="{ item }">{{ item.sent_at ? formatDate(item.sent_at) : '-' }}</template>
+      <template #cell-sent_by="{ item }">{{ item.sent_by_username ? item.sent_by_username : '-' }}</template>
+
+      <template #cell-doc="{ item }">
+        <button @click="printDocument(item.document)"
+          class="w-5 h-5 rounded-full border border-orange-500 text-orange-500 bg-orange-50 hover:bg-orange-100 mx-auto">
+          <Icon name="fa6-solid:download" class="m-auto w-3 h-3" />
+        </button>
+      </template>
+
+      <template #cell-actions="{ item }">
+        <button v-if="!item.sent_at" @click.stop="deleteRemittance(item)"
+          class="w-6 h-6 rounded-full border border-red-500 text-red-500 bg-red-50 hover:bg-red-100 transition-colors duration-200"
+          :title="$t('common.delete')">
+          <Icon name="fa6-solid:trash" class="m-auto w-3 h-3" />
+        </button>
+      </template>
+    </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />
     </div>

@@ -10,7 +10,6 @@ import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ContractRegion from '~/components/organisms/ContractRegion.vue';
 import ContractRequestRegion from '~/components/organisms/ContractRequestRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { checkPermission } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
@@ -160,6 +159,22 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 150, min: 105, priority: 1, removable: false,
+  },
+  { key: 'name', label: t('common.name'), sortKey: 'issue_date', width: 160, grow: 2, min: 110, priority: 1 },
+  { key: 'exploitation', label: t('exploitation'), sortKey: 'exploitation__name', width: 140, grow: 1, min: 100, priority: 2 },
+  { key: 'period_type', label: t('common.range'), sortKey: 'title_final', width: 110, grow: 1, min: 80, priority: 2 },
+  { key: 'initial_month', label: t('billing_block.initial_month'), sortKey: 'origin', width: 110, grow: 1, min: 80, priority: 3 },
+  { key: 'is_active', label: t('common.status'), sortKey: 'customer_final', width: 110, min: 85, priority: 1 },
+  { key: 'action', label: t('billing_block.action'), sortKey: 'total_final', width: 140, grow: 1, min: 100, priority: 2 },
+]);
 </script>
 
 <template>
@@ -191,55 +206,33 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,1fr,1fr,1fr,1fr,1fr,1fr"
+      table-key="billers"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="issue_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('exploitation')" sortKey="exploitation__name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.range')" sortKey="title_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.initial_month')" sortKey="origin" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <!-- <TableHeader :label="$t('Contracte')" sortKey="contract" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('Sol·licitud Contracte')" sortKey="contract" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" /> -->
-        <TableHeader :label="$t('common.status')" sortKey="customer_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.action')" sortKey="total_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id, 'BillerRegion');">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
-
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id, 'BillerRegion');">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1">{{ item.name }}</span>
-          <span class="p-1">{{ item.exploitation_name || '—' }}</span>
-          <span class="p-1">{{ item.period_type }}</span>
-          <span class="p-1">{{ item.initial_month }}</span>
-          <!-- <span class="p-1">{{ item.contract? item.contract.token : '-' }}</span>
-          <span class="p-1">{{ item.contract_request? item.contract_request.token : '-' }}</span> -->
-          <span class="p-1"> <AtomsColorBadge :value="item.is_active ? t('common.active') : t('common.inactive')" :color="item.is_active ? 'green' : 'red'"/></span>
-          <span class="p-1">{{ item.num_routes > 0 ? t('billing_block.by_routes'): t('billing_block.all_supplies') }}</span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">{{ item.name }}</template>
+      <template #cell-exploitation="{ item }">{{ item.exploitation_name || '—' }}</template>
+      <template #cell-period_type="{ item }">{{ item.period_type }}</template>
+      <template #cell-initial_month="{ item }">{{ item.initial_month }}</template>
+      <template #cell-is_active="{ item }">
+        <AtomsColorBadge :value="item.is_active ? t('common.active') : t('common.inactive')" :color="item.is_active ? 'green' : 'red'"/>
       </template>
+      <template #cell-action="{ item }">{{ item.num_routes > 0 ? t('billing_block.by_routes'): t('billing_block.all_supplies') }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

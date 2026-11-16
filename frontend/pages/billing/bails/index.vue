@@ -7,7 +7,6 @@ import { formatDate } from '~/utils/date';
 import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import BailRegion from '~/components/organisms/BailRegion.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
@@ -150,6 +149,25 @@ const onChangeRegion = async () => {
   await getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, selectedContractStatusFilters.value);
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.date'), sortKey: 'created_at', width: 80, min: 78, priority: 3 },
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 120, min: 105, priority: 1, removable: false,
+  },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 90, priority: 1 },
+  { key: 'contract', label: t('contract'), width: 150, min: 90, priority: 2 },
+  { key: 'holder', label: t('contract_block.holder'), width: 200, grow: 3, min: 140, priority: 1 },
+  { key: 'contract_status', label: t('billing_block.contract_status'), width: 120, min: 90, priority: 3 },
+  { key: 'product', label: t('product'), width: 150, grow: 1, min: 100, priority: 2 },
+  { key: 'amount', label: t('common.amount'), sortKey: 'amount', width: 100, min: 80, priority: 2 },
+  { key: 'return_date', label: t('common.returned'), sortKey: 'return_date', width: 150, min: 90, priority: 3 },
+]);
+
 const exportColumns = computed(() => [
   { header: t('common.date'), value: (row) => row.created_at ? formatDate(row.created_at) : '', key: 'created_at' },
   { header: t('common.identification'), value: (row) => row.token, key: 'token' },
@@ -234,6 +252,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div class="h-8 w-px bg-gray-300" v-if="filter_status.length"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -241,6 +261,8 @@ watch(() => route.query, () => {
             status.name }}
         </label>
       </span>
+
+      <div class="h-8 w-px bg-gray-300"></div>
 
       <FilterSelect :plain="true" :options="filter_contract_status" :filters="selectedContractStatuses"
         :multiple="true" :placeholder="$t('billing_block.contract_status')"
@@ -258,55 +280,39 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="80px,120px,150px,150px,200px,80px,150px,100px,150px"
+      table-key="bails"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('contract')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.holder')" :sortable="false" />
-        <TableHeader :label="$t('billing_block.contract_status')" :sortable="false" />
-        <TableHeader :label="$t('product')" :sortable="false" />
-        <TableHeader :label="$t('common.amount')" sortKey="amount" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.returned')" sortKey="return_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-created_at="{ item }">{{ item.created_at ? formatDate(item.created_at) : '-' }}</template>
+
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white group"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span class="p-0">{{ item.created_at ? formatDate(item.created_at) : '-' }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1">
-            <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
-          </span>
-          <span class="p-0">{{ item.contract_token }}</span>
-          <span class="p-0">{{ item.contract_holder }} {{ item.contract_holder_surname }}</span>
-          <span class="p-1">
-            <AtomsColorBadge :value="item.contract_status_name" :color="item.contract_status_color" />
-          </span>
-          <span class="p-0">{{ item.product_name }}</span>
-          <span class="p-0">{{ item.amount }}</span>
-          <span class="p-0">{{ item.return_date ? formatDate(item.return_date) : '-' }}</span>
-        </div>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
       </template>
+      <template #cell-contract="{ item }">{{ item.contract_token }}</template>
+      <template #cell-holder="{ item }">{{ item.contract_holder }} {{ item.contract_holder_surname }}</template>
+      <template #cell-contract_status="{ item }">
+        <AtomsColorBadge :value="item.contract_status_name" :color="item.contract_status_color" />
+      </template>
+      <template #cell-product="{ item }">{{ item.product_name }}</template>
+      <template #cell-amount="{ item }">{{ item.amount }}</template>
+      <template #cell-return_date="{ item }">{{ item.return_date ? formatDate(item.return_date) : '-' }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

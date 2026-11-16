@@ -6,7 +6,6 @@ import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
 import DailyDocumentRegion from '~/components/organisms/DailyDocumentRegion.vue';
@@ -195,6 +194,20 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+  'bg-red-50': hasSubmissionError(item) && item.id !== selectedItemId.value,
+  'bg-slate-100': !item.is_active && !hasSubmissionError(item),
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.date'), sortKey: 'created_at', width: 80, min: 78, priority: 3 },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 200, min: 140, priority: 1, removable: false },
+  { key: 'doc', label: t('common.doc'), width: 300, min: 160, grow: 1, priority: 2 },
+  { key: 'status', label: t('common.status'), width: 100, min: 90, priority: 1 },
+  { key: 'due_date', label: t('common.due_date'), sortKey: 'due_date', width: 80, min: 80, priority: 3 },
+]);
 </script>
 
 <template>
@@ -213,6 +226,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div class="h-8 w-px bg-gray-300" v-if="filter_status.length"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -229,57 +244,56 @@ watch(() => route.query, () => {
       </span>
     </form>
 
-    <DataTable grid-template="80px,200px,300px,100px,80px" :pending="pending" :loading="pending" :error="error"
-      :is-empty="items.length === 0" @retry="refreshData">
-      <template #header>
-        <TableHeader :label="$t('common.date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.doc')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" :sortable="false" />
-        <TableHeader :label="$t('common.due_date')" sortKey="due_date" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <span></span>
+    <DataTable
+      table-key="daily-documents"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
+      :pending="pending"
+      :loading="pending"
+      :error="error"
+      :is-empty="items.length === 0"
+      @sort="handleSort"
+      @retry="refreshData">
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+      <template #cell-name="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail('DailyDocumentRegion', item.id);">
+          <abbr :title="item.token" class="no-underline flex items-center gap-1.5 min-w-0">
+            <span v-if="hasSubmissionError(item)" class="relative inline-flex size-2 shrink-0" aria-hidden="true">
+              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex size-2 rounded-full bg-red-500"></span>
+            </span>
+            {{ item.name }}
+          </abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id" class="gap-3 text-base border-b items-center" :style="gridStyle"
-          :class="{
-            'bg-yellow-50': item.id === selectedItemId,
-            'bg-red-50': hasSubmissionError(item) && item.id !== selectedItemId,
-            'bg-slate-100': !item.is_active && !hasSubmissionError(item),
-          }">
+      <template #cell-doc="{ item }">
+        <span :class="{
+          'text-red-500 font-bold': item.creation_error && !item.document_name,
+          'text-slate-500': item.no_data_found && !item.document_name && !item.creation_error,
+        }">
+          {{
+            item.creation_error && !item.document_name
+              ? `${t('common.error')}: ${item.creation_error}`
+              : item.no_data_found && !item.document_name
+                ? t('statistics_block.no_document_no_data')
+                : item.document_name || '-'
+          }}</span>
+      </template>
 
-          <span class="p-0">{{ formatDate(item.created_at) }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail('DailyDocumentRegion', item.id);">
-              <abbr :title="item.token" class="no-underline flex items-center gap-1.5 min-w-0">
-                <span v-if="hasSubmissionError(item)" class="relative inline-flex size-2 shrink-0" aria-hidden="true">
-                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-                  <span class="relative inline-flex size-2 rounded-full bg-red-500"></span>
-                </span>
-                {{ item.name }}
-              </abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 truncate" :class="{
-            'text-red-500 font-bold': item.creation_error && !item.document_name,
-            'text-slate-500': item.no_data_found && !item.document_name && !item.creation_error,
-          }">
-            {{
-              item.creation_error && !item.document_name
-                ? `${t('common.error')}: ${item.creation_error}`
-                : item.no_data_found && !item.document_name
-                  ? t('statistics_block.no_document_no_data')
-                  : item.document_name || '-'
-            }}</span>
-          <span class="p-1"><AtomsColorBadge :value="item.status_name" :color="item.status_color" /></span>
-          <span class="p-1 font-bold text-slate-400">{{ item.due_date ? formatDate(item.due_date) : t('common.doe_not_expire') }}</span>
-        </div><!-- end for items -->
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
+      </template>
+
+      <template #cell-due_date="{ item }">
+        <span class="font-bold text-slate-400">{{ item.due_date ? formatDate(item.due_date) : t('common.doe_not_expire') }}</span>
       </template>
     </DataTable>
     <div id="list__footer">
