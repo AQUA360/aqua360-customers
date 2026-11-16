@@ -44,6 +44,10 @@ const MAX_PENDING_POLLS = 90;
 // (300 × 2 s). Cada avanç del percentatge torna a començar el compte, així que una tasca
 // llarga que progressa no es talla mai.
 const MAX_STALLED_POLLS = 300;
+// Consultes seguides de la cua d'una facturació que fallen: ens rendim als 10 s (5 × 2 s)
+// i ho mostrem com a error, amb el botó per tornar-ho a provar.
+const MAX_ERROR_POLLS = 5;
+let errorPolls = 0;
 
 const colorClass = ref('badge-gray');
 const progressWidth = computed(() => `${Math.min(Math.max(Number(progress.value), 0), 100)}%`);
@@ -73,6 +77,7 @@ const startInterval = async() => {
   clearInterval(itvl)
   pendingPolls = 0;
   stalledPolls = 0;
+  errorPolls = 0;
   lastPercent = 0;
   error.value = false;
   failedQueueItemId.value = null;
@@ -87,6 +92,7 @@ const startInterval = async() => {
           // finalitzats recentment, l'item d'aquest lot (p.ex. failed) podria quedar
           // fora de la finestra i semblar "no trobat" indefinidament.
           const queueList = await $apiManager.fetch(useRuntimeConfig().public.apiHost + `/billing/billing-queue/?billing_id=${props.billingId}`, 'GET');
+          errorPolls = 0;
           if (queueList && Array.isArray(queueList)) {
             // Agafem el més recent (per created_at) entre pending/running/failed/skipped.
             activeItem = [...queueList]
@@ -168,12 +174,17 @@ const startInterval = async() => {
         }
       }
       catch (e) {
-        clearInterval(itvl);
         if (props.billingId) {
-          refreshBillingOnce();
-        } else {
-          emit('refresh');
+          // Un error puntual no vol dir que la cua hagi acabat: continuem consultant.
+          errorPolls += 1;
+          if (errorPolls >= MAX_ERROR_POLLS) {
+            clearInterval(itvl);
+            error.value = true;
+          }
+          return;
         }
+        clearInterval(itvl);
+        emit('refresh');
       }
     }, 2000)
 };
