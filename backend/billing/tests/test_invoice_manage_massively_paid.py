@@ -194,3 +194,11 @@ class InvoiceManageMassivelyPaidTests(TestCase):
                 self.url, {'saving': False, 'preview_ids': [1, 2]}, format='json')
 
         self.assertEqual(response.status_code, 400)
+
+    def test_save_rejects_fractional_and_boolean_ids(self):
+        invoice = self.invoice('T1')
+
+        for invoice_ids in ([invoice.id + 0.9], [True], ['1.5']):
+            with self.subTest(invoice_ids=invoice_ids):
+                self.assertEqual(self.save(invoice_ids).status_code, 400)
+        self.assertEqual(self.save([str(invoice.id)]).json()['updated_count'], 1)

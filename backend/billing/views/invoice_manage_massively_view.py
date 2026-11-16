@@ -101,12 +101,21 @@ def _skipped_summary(queryset, paid_status, excluded_statuses):
 
 
 def _int_list(value):
+    """Llista d'ids enters; enters o cadenes de dígits, mai decimals ni booleans
+    (int(1.9) o int(True) pagarien la factura 1 en lloc de rebutjar la petició)."""
     if not isinstance(value, list):
         return None
-    try:
-        return [int(item) for item in value]
-    except (TypeError, ValueError):
-        return None
+    ids = []
+    for item in value:
+        if isinstance(item, bool):
+            return None
+        if isinstance(item, int):
+            ids.append(item)
+        elif isinstance(item, str) and item.strip().isdigit():
+            ids.append(int(item.strip()))
+        else:
+            return None
+    return ids
 
 
 def _preview_rows(queryset, invoice_ids):
@@ -221,7 +230,9 @@ class InvoiceManageMassivelyViewSet(APIView):
 
     @staticmethod
     def pay_invoice(invoice, user, today, paid_status, paid_payment_status, skipped_payment_statuses):
-        payments = Payment.objects.filter(
+        # Cobraments bloquejats: si un altre procés els canvia (p. ex. els anul·la), la lectura
+        # espera que acabi i en veu l'estat definitiu abans de decidir si es paguen.
+        payments = Payment.objects.select_for_update().filter(
             invoice=invoice, is_active=True, is_excluded=False,
         ).exclude(status__in=skipped_payment_statuses)
         for payment in payments:
