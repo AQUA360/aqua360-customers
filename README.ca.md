@@ -26,7 +26,20 @@ Edita `.env` si cal. Per exemple, si el port **5432** ja el fa servir un Postgre
 
 Qualsevol variable del `.env` (p. ex. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) arriba als contenidors. Les variables de connexió a la BD i a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) les fixa el propi compose, i la resta tenen valor per defecte a `docker-compose.yml`. `ENV` i `LANGUAGE` s’apliquen al build i a l’execució del frontend.
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:34b86b7b76428c32c45619df42a500c4567d778af6b3db3acae3d9bab2c991f1 -->
+
 ### 3. Construir i arrencar tots els serveis
+
+Abans d’arrencar Compose, tant en un servidor nou com en una instal·lació existent, prepara els volums des del directori del projecte. Executa aquestes ordres com a root (o amb `sudo`); el backend s’executa amb UID/GID `1001:1001`. El canvi recursiu de propietari també cobreix fitxers i subdirectoris creats pels contenidors antics que s’executaven com a root.
+
+```bash
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001:1001 docker-data/media docker-data/static
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Primera vegada o després de canvis als Dockerfiles o dependències:
 
@@ -122,8 +135,14 @@ docker compose down -v
 
 ### Flux recomanat
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:5e6f1fcb5a7e05898da24872b3d32393bfe35903de5b76b3c910028c34ad0de9 -->
+
 ```bash
 git pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001:1001 docker-data/media docker-data/static
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -131,17 +150,27 @@ docker compose up -d celery-worker celery-beat gmao-consumer
 docker compose up -d frontend
 ```
 
+<!-- /coderabbit-ai-generated:v1 -->
+
 ### Imatges construïdes a GitHub
 
 En publicar una release, l’acció `.github/workflows/imatges.yml` construeix les imatges del backend i del frontend i les puja a `ghcr.io/aqua360/aqua360-customers-backend` i `ghcr.io/aqua360/aqua360-customers-frontend` amb l’etiqueta de la release (per exemple, `v1.135.00`) i la del commit. Les imatges només porten el codi d’aquest repositori: la configuració de cada client (`.env`) es llegeix en engegar el contenidor.
 
 Per fer servir una versió sense construir res al servidor, posar-la al `.env` i:
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:a76f41fd1785baf4e63252ee238a39632ab46990f8248d4327ae7b2274f1513c -->
+
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001:1001 docker-data/media docker-data/static
 docker compose up -d
 ```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Tornar enrere és posar la versió anterior i repetir-ho (les migracions no es desfan). Sense `CUSTOMERS_VERSION`, o amb `up --build`, es construeix al servidor com sempre (etiqueta `local-<stack>`, una per stack perquè els stacks d’un mateix servidor no comparteixin imatge).
 
@@ -159,6 +188,34 @@ Els servidors es desplieguen amb el playbook `playbooks/AquaCustomersDocker` del
 | `05-copy-backup-to-test` | Còpia diària del darrer backup al servidor de test |
 | `06-restore` | `restore.sh` i neteja de BD antigues (retenció de 3 dies) |
 | `07-readonly-db-user` | Usuari PostgreSQL de només lectura |
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:20dc78545fc359d336e34f3cc41625e55dad2159ce0c0c6e8ebadf9801b9fa17 -->
+
+Als desplegaments automatitzats, afegeix aquestes tasques amb `become: true` a `01-compose-env`, abans de qualsevol `docker compose up` de `02-git-clone`. Defineix `customers_workdir` amb el directori de l’stack (`/var/www/<exploitation>`). Crear només `docker-data/` no és suficient: Docker crearia com a root els directoris de muntatge inexistents. Aplica les tasques també a les instal·lacions existents. El playbook és al repositori separat `aqua360-customers-deploy` i cal actualitzar-lo allà.
+
+```yaml
+- name: Create application bind mount directories
+  become: true
+  ansible.builtin.file:
+    path: "{{ customers_workdir }}/docker-data/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: [media, static]
+
+- name: Assign application volume ownership
+  become: true
+  ansible.builtin.file:
+    path: "{{ customers_workdir }}/docker-data/{{ item }}"
+    state: directory
+    owner: '1001'
+    group: '1001'
+    recurse: true
+  loop: [media, static]
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Als servidors, els ports del host no són els per defecte (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) i es poden canviar per client a l’inventari (`docker_*_port`) perquè diverses explotacions comparteixin servidor. El `docker-compose.yml` d’aquest repositori és el mateix que desplega el playbook.
 

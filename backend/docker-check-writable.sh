@@ -9,7 +9,13 @@ set -euo pipefail
 fail=0
 for dir in "$@"; do
   [ -d "$dir" ] || continue
-  bad=$(find "$dir" -type d ! -writable -print -quit 2>/dev/null || true)
+  if bad=$(find "$dir" -type d ! -writable -print -quit); then
+    :
+  else
+    status=$?
+    echo "ERROR: no s'ha pogut comprovar $dir (find ha sortit amb codi $status)" >&2
+    exit "$status"
+  fi
   if [ -n "$bad" ]; then
     echo "ERROR: l'usuari $(id -un) ($(id -u):$(id -g)) no pot escriure a $bad" >&2
     fail=1

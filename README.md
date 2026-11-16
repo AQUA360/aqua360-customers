@@ -26,7 +26,20 @@ Edit `.env` if needed. For example, if port **5432** is already used by a system
 
 Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) reaches the containers. The DB and Redis connection variables (`DATABASE_*`, `CELERY_BROKER_URL`) are set by the compose file itself, and the rest have defaults in `docker-compose.yml`. `ENV` and `LANGUAGE` apply to the frontend build and runtime.
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:5b6deac7ebe8f55721ca42f80e7385c611b3a3df9c385c0cc4d2d497b14772a0 -->
+
 ### 3. Build and Start All Services
+
+Before starting Compose, on both a fresh server and an existing installation, prepare the bind mounts from the project directory. Run these commands as root (or with `sudo`); the backend runs as UID/GID `1001:1001`. The recursive ownership change also covers files and subdirectories created by older containers running as root.
+
+```bash
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001:1001 docker-data/media docker-data/static
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 The first time, or after changes to Dockerfiles or dependencies:
 
@@ -122,8 +135,14 @@ docker compose down -v
 
 ### Recommended Flow
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:5e6f1fcb5a7e05898da24872b3d32393bfe35903de5b76b3c910028c34ad0de9 -->
+
 ```bash
 git pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001:1001 docker-data/media docker-data/static
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -131,17 +150,27 @@ docker compose up -d celery-worker celery-beat gmao-consumer
 docker compose up -d frontend
 ```
 
+<!-- /coderabbit-ai-generated:v1 -->
+
 ### Images built on GitHub
 
 When a release is published, the `.github/workflows/imatges.yml` action builds the backend and frontend images and pushes them to `ghcr.io/aqua360/aqua360-customers-backend` and `ghcr.io/aqua360/aqua360-customers-frontend`, tagged with the release (for example, `v1.135.00`) and with the commit. The images only contain this repository's code: each customer's configuration (`.env`) is read when the container starts.
 
 To run a version without building anything on the server, set it in `.env` and:
 
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:a76f41fd1785baf4e63252ee238a39632ab46990f8248d4327ae7b2274f1513c -->
+
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001:1001 docker-data/media docker-data/static
 docker compose up -d
 ```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Rolling back means setting the previous version and repeating (migrations are not undone). Without `CUSTOMERS_VERSION`, or with `up --build`, the server builds as before (`local-<stack>` tag, one per stack so stacks on the same server do not share an image).
 
@@ -159,6 +188,34 @@ Servers are deployed with the `playbooks/AquaCustomersDocker` playbook of the `a
 | `05-copy-backup-to-test` | Daily copy of the latest backup to the test server |
 | `06-restore` | `restore.sh` and cleanup of old databases (3-day retention) |
 | `07-readonly-db-user` | Read-only PostgreSQL user |
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:819535fe0767d4f95e195f47451d77afd9f4f67c297eac6fa024f961ae127317 -->
+
+For automated deployments, add these tasks with `become: true` to `01-compose-env`, before any `docker compose up` in `02-git-clone`. Set `customers_workdir` to the stack directory (`/var/www/<exploitation>`). Creating only `docker-data/` is insufficient: Docker would create missing bind mount directories as root. Apply these tasks to existing installations too. The playbook lives in the separate `aqua360-customers-deploy` repository and must be updated there.
+
+```yaml
+- name: Create application bind mount directories
+  become: true
+  ansible.builtin.file:
+    path: "{{ customers_workdir }}/docker-data/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: [media, static]
+
+- name: Assign application volume ownership
+  become: true
+  ansible.builtin.file:
+    path: "{{ customers_workdir }}/docker-data/{{ item }}"
+    state: directory
+    owner: '1001'
+    group: '1001'
+    recurse: true
+  loop: [media, static]
+```
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 On servers the host ports are not the defaults (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) and can be changed per client in the inventory (`docker_*_port`) so several exploitations can share a server. The `docker-compose.yml` in this repository is the same one the playbook deploys.
 
