@@ -52,6 +52,42 @@ const pagination = ref({
   isFiltered: false
 });
 
+const STORAGE_KEY = 'clustersSearchState';
+let isRestoringState = false;
+
+const saveSearchState = () => {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      searchInput: searchInput.value,
+      searchByAddress: searchByAddress.value,
+      showAddressSearch: showAddressSearch.value,
+      selectedFilters: selectedFilters.value,
+      sortBy: sortBy.value,
+      sortDesc: sortDesc.value,
+      page: pagination.value.page,
+    }));
+  } catch (e) {
+    console.error('Error saving search state', e);
+  }
+};
+
+const loadSearchState = () => {
+  try {
+    const state = sessionStorage.getItem(STORAGE_KEY);
+    if (!state) return;
+    const parsed = JSON.parse(state);
+    if (parsed.searchInput !== undefined) searchInput.value = parsed.searchInput;
+    if (parsed.searchByAddress !== undefined) searchByAddress.value = parsed.searchByAddress;
+    if (parsed.showAddressSearch !== undefined) showAddressSearch.value = parsed.showAddressSearch;
+    if (parsed.selectedFilters !== undefined) selectedFilters.value = parsed.selectedFilters;
+    if (parsed.sortBy !== undefined) sortBy.value = parsed.sortBy;
+    if (parsed.sortDesc !== undefined) sortDesc.value = parsed.sortDesc;
+    if (parsed.page !== undefined) pagination.value.page = parsed.page;
+  } catch (e) {
+    console.error('Error parsing search state', e);
+  }
+};
+
 const getPermissions = async () => {
   error.value = null;
   try {
@@ -139,7 +175,7 @@ const handleSort = (key) => {
     sortBy.value = key;
     sortDesc.value = false;
   }
-  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, searchByAddress.value);
 }
 
 const resetFilters = () => {
@@ -148,6 +184,8 @@ const resetFilters = () => {
   selectedFilters.value = [];
   pagination.value.page = 1;
   showAddressSearch.value = false;
+  sortBy.value = 'token';
+  sortDesc.value = false;
   getData();
 };
 
@@ -156,7 +194,7 @@ const toggleAddressFilter = () => {
 };
 
 const onChangeRegion = (event) => {
-  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, searchByAddress.value);
 }
 
 onMounted(async () => {
@@ -166,7 +204,11 @@ onMounted(async () => {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
   }
-  await getData();
+  isRestoringState = true;
+  loadSearchState();
+  await nextTick(); // let the watchers triggered by the restore run (and be ignored)
+  isRestoringState = false;
+  await getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, searchByAddress.value);
   getFilterStatus();
   checkRouteQuery();
 });
@@ -198,9 +240,18 @@ const showConnectionDetail = (connection_id) => {
 
 // Watch for changes in searchInput and selectedFilters and reset pagination to 1
 watch([searchInput, selectedFilters], () => {
+  if (isRestoringState) return;
   pagination.value.page = 1;
   handleSearch();
 });
+
+// Persist search state so it survives navigating to a cluster and back
+watch(
+  () => [searchInput.value, searchByAddress.value, showAddressSearch.value, selectedFilters.value,
+    sortBy.value, sortDesc.value, pagination.value.page],
+  saveSearchState,
+  { deep: true }
+);
 
 const handleSubRegionEvent = (event) => {
   isSubRegionOpen.value = event;
