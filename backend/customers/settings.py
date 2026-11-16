@@ -421,7 +421,8 @@ REST_FRAMEWORK = {
     },
     # Nombre de proxys de confiança davant el backend (Cloudflare + nginx): DRF en deriva
     # la IP real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.
-    # Només és vàlid si el backend no és accessible directament (sense passar per nginx).
+    # Només és vàlid si nginx i el backend no són accessibles directament, sense passar
+    # per Cloudflare (tallafoc o allow/deny de nginx amb les IPs de Cloudflare).
     "NUM_PROXIES": 2,
 }
 
