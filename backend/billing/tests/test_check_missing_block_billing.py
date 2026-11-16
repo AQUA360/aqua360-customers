@@ -1,9 +1,11 @@
+import datetime
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from billing.models import Biller, Billing
+from billing.models import Biller, Billing, Reading
 from billing.views.billing_view import BillingViewSet
 from contract.models import Contract, ContractStatus, ContractTerminationStatus
 from coredata.models import ConfigProject, Person
@@ -79,3 +81,50 @@ class TestCheckMissingBlockBilling(TestCase):
         listed_ids = {c['contract_id'] for c in data['results']}
         self.assertNotIn(self.contracts['blocked'].id, listed_ids)
         self.assertIn(self.contracts['billable'].id, listed_ids)
+
+    def test_explicit_period_is_used(self):
+        self.billing.period_start = datetime.date(2025, 10, 1)
+        self.billing.period_end = datetime.date(2025, 12, 31)
+        self.billing.save()
+
+        data = self._check_missing()
+
+        self.assertEqual(str(data['start_date']), '2025-10-01')
+        self.assertEqual(str(data['end_date']), '2025-12-31')
+
+    def test_without_period_keeps_legacy_behaviour(self):
+        self.billing.period_start = None
+        self.billing.period_end = None
+        self.billing.save()
+
+        data = self._check_missing()
+
+        self.assertTrue(data['start_date'])
+        self.assertLessEqual(str(data['end_date']), str(timezone.localdate()))
+
+    def test_reading_after_period_is_not_a_reason(self):
+        self.billing.period_start = datetime.date(2025, 10, 1)
+        self.billing.period_end = datetime.date(2025, 12, 31)
+        self.billing.save()
+        contract = self.contracts['billable']
+        Reading.objects.create(
+            contract=contract,
+            reading_date=datetime.date(2026, 1, 15),
+            is_initial=False,
+            is_control=False,
+        )
+        # Les lectures anteriors a `created_at` del contracte no compten, així que
+        # es força la data de creació perquè la lectura de gener sigui elegible.
+        Contract.objects.filter(id=contract.id).update(
+            created_at=datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        )
+
+        data = self._check_missing()
+
+        entry = next(
+            c for c in data['missing_contracts_with_reason']
+            if c['contract_id'] == contract.id
+        )
+        # La lectura de gener és del període següent: no compta, així que el motiu és «sense lectura».
+        self.assertIn('no_reading', entry['missing_reasons'])
+        self.assertNotIn('no_batch', entry['missing_reasons'])

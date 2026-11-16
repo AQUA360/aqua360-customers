@@ -327,7 +327,7 @@ const tableColumns = computed(() => [
       </button>
     </div>
     <div class="pl-10 h-full">
-      <ConnectionRequestRegion v-if="itemDetail" :id="itemDetail" @accept="regionAccept"
+      <ConnectionRequestRegion v-if="itemDetail" :id="itemDetail" allow-delete @accept="regionAccept"
         @show-subregion="handleSubRegionEvent" @changed="onChangeRegion" @close-subregion="toggleRegion(false)"></ConnectionRequestRegion>
     </div>
   </div>

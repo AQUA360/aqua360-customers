@@ -418,7 +418,7 @@ watch(() => props.id, () => {
           </div>
         </div>
 
-        <template v-if="data.documentation_files?.length">
+        <template v-if="data.documentation_files?.length && !isRegion">
           <p class="font-semibold">{{ t(formKey('documents')) }}:</p>
           <div class="px-3 mb-3">
             <ConnectionRequestDocumentsData :request="data" readonly />

@@ -433,6 +433,16 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    const addToCommunicationProcess = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/add-to-communication-process/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'POST');
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const changePaymentMethod = async (data) => {
       const apiUrl = `${apiHost}${entity}${data.id}/change-payment-method/`;
       try {
@@ -945,6 +955,7 @@ export default defineNuxtPlugin(nuxtApp => {
       getLogs,
       getDocuments,
       recalculateSmart,
+      addToCommunicationProcess,
       manageMassivelyPaid,
       sendEmail,
       changeHolder,

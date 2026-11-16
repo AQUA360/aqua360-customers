@@ -335,6 +335,10 @@ class Billing(models.Model):
     send_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
+    # Període de consum que factura el lot. Null als lots antics (es dedueix del codi/data de creació).
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+
     # Comptadors fixats en processar la facturació (resum per ruta); null mentre està oberta.
     metrics_snapshot = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
 

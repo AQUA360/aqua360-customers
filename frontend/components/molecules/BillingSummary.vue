@@ -927,7 +927,7 @@ watch(() => props.load_invoices, (newValue) => {
           </button>
         </div>
         <div
-          class="grid grid-cols-[40px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_260px] gap-2 px-4 border-b border-gray-400 items-center shrink-0 overflow-y-hidden [scrollbar-gutter:stable]">
+          class="grid grid-cols-[40px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_300px] gap-2 px-4 border-b border-gray-400 items-center shrink-0 overflow-y-hidden [scrollbar-gutter:stable]">
           <div class="p-3 flex items-center justify-center">
             <input type="checkbox" :checked="selectedInvoices.length === showInvoices.length && showInvoices.length > 0"
               @change="selectAll" class="w-4 h-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500" />

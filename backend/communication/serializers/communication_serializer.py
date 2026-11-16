@@ -86,6 +86,8 @@ class CommunicationListSerializer(serializers.ModelSerializer):
     use_type_name = serializers.CharField(source='use_type.name', read_only=True)
     process_token = serializers.CharField(source='process.token', read_only=True)
     user_username = serializers.CharField(source='user.username', read_only=True)
+    # postal_code = serializers.SerializerMethodField()
+    # city_name = serializers.SerializerMethodField()
     process_message_ids = serializers.SerializerMethodField()
     message_ids = serializers.SerializerMethodField()
     message_subject = serializers.SerializerMethodField()
@@ -97,8 +99,24 @@ class CommunicationListSerializer(serializers.ModelSerializer):
             'user', 'user_username', 'person_name', 'status_name', 
             'status_color', 'process_token', 'type_names', 'person_token',
             'use_type_name', 'process_message_ids', 'message_ids',
-            'used_email', 'due_date', 'message_subject', 'has_multi_page_invoice'
+            'used_email', 'used_address', #'postal_code', 'city_name',
+            'due_date', 'message_subject', 'has_multi_page_invoice'
             ]
+
+    def _location(self, obj):
+        # Cache per row so postal_code + city_name share one resolution.
+        cache = self.context.setdefault('_communication_location_cache', {})
+        key = obj.pk
+        if key not in cache:
+            from communication.utils.communication_location import resolve_communication_location
+            cache[key] = resolve_communication_location(obj)
+        return cache[key]
+
+    # def get_postal_code(self, obj):
+    #     return self._location(obj)[0]
+
+    # def get_city_name(self, obj):
+    #     return self._location(obj)[1]
 
     def get_has_multi_page_invoice(self, obj):
         # El llistat ja ho anota; si no, es consulta.
@@ -136,6 +154,11 @@ class CommunicationSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = Communication
         fields = '__all__'
+
+    def validate_incident(self, incident):
+        if incident is not None and not incident.is_active:
+            raise serializers.ValidationError("La incidència no està activa.")
+        return incident
     
     def create(self, validated_data):
         messages_data = validated_data.pop('messages_data', None)

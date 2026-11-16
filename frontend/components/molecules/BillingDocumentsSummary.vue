@@ -803,7 +803,7 @@ watch(() => props.load_invoices, (newValue) => {
           </button>
         </div>
         <div
-          class="grid grid-cols-[48px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_260px] gap-2 px-4 border-b border-gray-400 items-center shrink-0 overflow-y-hidden [scrollbar-gutter:stable]">
+          class="grid grid-cols-[48px_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_100px_300px] gap-2 px-4 border-b border-gray-400 items-center shrink-0 overflow-y-hidden [scrollbar-gutter:stable]">
           <span></span>
           <span class="p-3 font-bold truncate">{{ t('common.client') }}</span>
           <span class="p-3 font-bold truncate">{{ t('contract') }}</span>
