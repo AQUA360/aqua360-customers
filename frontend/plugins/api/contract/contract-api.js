@@ -13,7 +13,7 @@ export default defineNuxtPlugin(nuxtApp => {
     client_type_ids = [], use_type_ids = [], category_ids = [],
     product_ids = [], debt_management_types = [], is_checked = false,
     comm_types = [], search_all_address = '', payment_type_ids = [], person_ids = [], search_by_address = '', total_persons_min = null,
-    company_ids = [], holder = null, role = null, block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '', has_positive_balance = null, pending_termination = null) => {
+    company_ids = [], holder = null, role = null, block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '', has_positive_balance = null, pending_termination = null, has_virtual_office = null) => {
     let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
   
     if (role) {
@@ -46,6 +46,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
     if (pending_termination !== null) {
       apiUrl += `&pending_termination=${pending_termination}`;
+    }
+
+    if (has_virtual_office !== null) {
+      apiUrl += `&has_virtual_office=${has_virtual_office}`;
     }
 
     let filtersValues = [];
@@ -550,7 +554,7 @@ export default defineNuxtPlugin(nuxtApp => {
     comm_types = [], search_all_address = '', payment_type_ids = [],
     person_ids = [], search_by_address = '', total_persons_min = null, company_ids = [],
     block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '',
-    has_positive_balance = null, pending_termination = null
+    has_positive_balance = null, pending_termination = null, has_virtual_office = null
   ) => {
     let apiUrl = apiHost + entity + 'export/excel/';
     let queryParams = [];
@@ -641,6 +645,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
     if (pending_termination !== null) {
       queryParams.push(`pending_termination=${pending_termination}`);
+    }
+
+    if (has_virtual_office !== null) {
+      queryParams.push(`has_virtual_office=${has_virtual_office}`);
     }
 
     if (search_email) {

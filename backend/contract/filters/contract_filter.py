@@ -56,6 +56,7 @@ class ContractFilter(filters.FilterSet):
     has_debt = filters.CharFilter(method='filter_has_debt')
     has_positive_balance = filters.CharFilter(method='filter_has_positive_balance')
     pending_termination = filters.CharFilter(method='filter_pending_termination')
+    has_virtual_office = filters.CharFilter(method='filter_has_virtual_office')
     
     class Meta:
         model = Contract
@@ -66,7 +67,7 @@ class ContractFilter(filters.FilterSet):
                   'start_at', 'end_at', 'product', 
                   'is_pinned', 'is_checked', 'is_active', 'exploitation',
                   'communication_type', 'payment_type', 'persons', 'role', 'total_persons_min', 'block_billing',
-                  'has_debt', 'has_positive_balance', 'pending_termination']
+                  'has_debt', 'has_positive_balance', 'pending_termination', 'has_virtual_office']
 
     def filter_queryset(self, queryset):
         queryset = queryset.filter(is_active=True)
@@ -91,6 +92,11 @@ class ContractFilter(filters.FilterSet):
         if value is not None:
             is_blocked = value.lower() == 'true'
             return queryset.filter(block_billing=is_blocked)
+        return queryset
+
+    def filter_has_virtual_office(self, queryset, name, value):
+        if value in ('true', 'false'):
+            return queryset.filter(virtual_office_date__isnull=(value == 'false'))
         return queryset
 
     def filter_has_debt(self, queryset, name, value):
