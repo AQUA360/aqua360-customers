@@ -737,7 +737,7 @@ def convert_report_content_to_pdf(content, filename, title, options=None, start_
     """
     workbook = _load_workbook(content)
     if workbook is None:
-        logger.info("Informe sense format Excel: no es converteix a PDF (%s)", filename)
+        logger.info("Informe sense format Excel: no es converteix a PDF")
         return content, filename
 
     options = options or {}
