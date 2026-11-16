@@ -23,6 +23,7 @@ from billing.utils.invoice_period import (
 )
 from billing.utils.invoice_suppression_service import invoice_needs_return, suppress_invoice
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
+from communication.utils.communication_process_service import filter_readings_by_active_process
 from coredata.models import ConfigProject
 from pricing.serializers.value_objects_serializer import ProductOriginSerializer
 from service.serializers.company_serializer import CompanySerializer
@@ -318,6 +319,7 @@ class InvoiceMinimalListSerializer(serializers.ModelSerializer):
     use_type_final = serializers.SerializerMethodField()
     
     has_possible_leak_comm = serializers.SerializerMethodField()
+    has_readings = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -343,10 +345,11 @@ class InvoiceMinimalListSerializer(serializers.ModelSerializer):
         return None
 
     def get_has_possible_leak_comm(self, obj):
-        cancelled_token = ConfigProject.objects.get(token='communication_process_status_cancelled_token').value
-        return any([reading.communication_processes.exclude(status__token=cancelled_token).exists() for reading in obj.readings.filter(is_control=False)])
-        # return obj.readings.filter(is_control=False).communication_processes.exclude(status__token=cancelled_token).exists()
-        
+        return filter_readings_by_active_process(obj.readings.filter(is_control=False)).exists()
+
+    def get_has_readings(self, obj):
+        return obj.readings.filter(is_control=False).exists()
+
 class InvoiceSaveSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     class Meta:
         model = Invoice

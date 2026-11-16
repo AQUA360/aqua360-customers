@@ -12,7 +12,7 @@ import itertools
 from billing.filter.invoice_filter import InvoiceFilter
 from billing.models import Billing, Invoice, Reading
 from billing.serializers.invoice_serializer import InvoiceMinimalListSerializer
-from communication.models import CommunicationProcess
+from communication.utils.communication_process_service import filter_readings_by_active_process
 from django.shortcuts import get_object_or_404
 from django.db.models import Exists, OuterRef, Q
 from django.utils.translation import gettext as _
@@ -100,14 +100,9 @@ class BillingInvoicesViewSet(generics.ListAPIView):  # Changed to generics.ListA
             queryset = queryset.filter(Q(consumption_days__gt=margin_high) | Q(consumption_days__lt=margin_low))
         
         if has_possible_leak_comm:
-            cancelled_token = ConfigProject.objects.get(token='communication_process_status_cancelled_token').value
-            active_processes = CommunicationProcess.objects.filter(
-                readings=OuterRef('pk')
-            ).exclude(status__token=cancelled_token)
-            readings_with_active_process = Reading.objects.filter(
-                invoices=OuterRef('pk'),
-                is_control=False,
-            ).filter(Exists(active_processes))
+            readings_with_active_process = filter_readings_by_active_process(
+                Reading.objects.filter(invoices=OuterRef('pk'), is_control=False)
+            )
             queryset = queryset.filter(Exists(readings_with_active_process))
 
         return queryset, median, global_count_above_margin

@@ -1156,6 +1156,8 @@ export default {
   },
   service_block:   {
     connection_request_form: {
+      delete_not_allowed_status: 'Non se pode eliminar: a solicitude só se pode eliminar en borrador ou pendente',
+      delete_has_related_records: 'Non se pode eliminar: a solicitude xa ten acometida, facturas ou ordes de traballo',
       requester_type: 'Tipo de persoa',
       requester_types: {
         natural_person: 'Persoa física',
@@ -3951,6 +3953,8 @@ export default {
     info_bulk_download: 'Descarga todos os arquivos coa extensión seleccionada',
     info_check_selected_comms: 'Ao continuar, gardaranse as comunicacións seleccionadas dentro dun mesmo proceso e poderanse xestionar en conxunto',
     info_reading_added_to_communication_process: 'Lectura engadida a un proceso de comunicación correctamente',
+    info_readings_added_to_communication_process: '{n} lectura engadida a un proceso de comunicación | {n} lecturas engadidas a un proceso de comunicación',
+    info_no_readings_added_to_communication_process: "Non se engadiu ningunha lectura: xa están nun proceso de comunicación ou non se poden comunicar",
     info_reading_change_logs: 'Rexistro de cambios realizados nas lecturas deste contrato e contador',
     info_select_contracts_from_file: 'Selecciona os contratos desde o ficheiro CSV',
     info_step_expenses_highlight: 'Os contratos con fondo azul xa teñen a factura de gastos creada para este paso',

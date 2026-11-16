@@ -12,12 +12,16 @@ from django.db.models import Prefetch, F, CharField, Value
 from django.db.models.functions import Concat
 
 from django.conf import settings
+from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
 from documentmanager.utils.main_utils import upload_document
 from service.models import ConnectionRequest, ConnectionRequestObservation, ConnectionDocumentationType, ConnectionRequestDocumentationFile
 from service.serializers.connection_request_serializer import ConnectionRequestSerializer, ConnectionRequestSaveSerializer, ConnectionRequestListSerializer
 from service.filters.connection_request_filter import ConnectionRequestFilter
+
+# Només es pot eliminar una sol·licitud que encara no s'ha tramitat.
+DELETABLE_STATUS_TOKENS = ('draft', 'pending')
 
 class ConnectionRequestViewSet(viewsets.ModelViewSet):
     """
@@ -76,6 +80,30 @@ class ConnectionRequestViewSet(viewsets.ModelViewSet):
         read_serializer = ConnectionRequestSerializer(instance, context=self.get_serializer_context())
         return Response(read_serializer.data)
     
+    def destroy(self, request, *args, **kwargs):
+        from billing.models import Invoice
+        from documentmanager.models import Document
+        from logger.models import LogConnectionRequestStatus
+        from order.models import Order
+
+        with transaction.atomic():
+            instance = ConnectionRequest.objects.select_for_update().get(pk=self.get_object().pk)
+            status_token = instance.status.token if instance.status else None
+            if status_token not in DELETABLE_STATUS_TOKENS:
+                return Response({'error': 'not_deletable_status'}, status=status.HTTP_400_BAD_REQUEST)
+            # Que no quedin escomeses, factures ni ordres sense saber d'on venen.
+            if ((instance.connection and instance.connection.is_active)
+                    or Invoice.objects.filter(connection_request=instance, is_active=True).exists()
+                    or Order.objects.filter(connection_request=instance, is_active=True).exists()):
+                return Response({'error': 'has_related_records'}, status=status.HTTP_400_BAD_REQUEST)
+            LogConnectionRequestStatus.objects.filter(object=instance).delete()
+            # Com l'esborrat de documents del gestor documental: es desactiven, no s'esborra el fitxer.
+            Document.objects.filter(
+                id__in=instance.documentation_files.filter(file__isnull=False).values('file_id')
+            ).update(is_active=False)
+            instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=['put'], url_path='save-file')
     def save_file(self, request, pk=None):
         instance = self.get_object()

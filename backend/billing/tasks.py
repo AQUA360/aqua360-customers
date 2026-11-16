@@ -2397,7 +2397,12 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
 
   if not contract_ids:
     from django.utils import timezone
-    Billing.objects.filter(id=billing.id).update(process_errors=[])
+    # Sense contractes per facturar també es deixa en "Pendent": si es quedés en
+    # "Processant" amb la cua ja completada, el llistat de facturacions no se'n sortiria.
+    pending_status_token = ConfigProject.objects.get(token='billing_batch_pending').value
+    Billing.objects.filter(id=billing.id).update(
+      process_errors=[], status=BillingStatus.objects.get(token=pending_status_token),
+    )
     if queue_item_id:
       _close_billing_queue_item(queue_item_id, self.request.id, status='completed', completed_at=timezone.now())
       

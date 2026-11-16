@@ -1,6 +1,22 @@
+from django.db.models import Exists, OuterRef
+
 from communication.models import CANCELLED_STATUS_TOKEN, CommunicationProcess, CommunicationProcessStatus, CommunicationUseType
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
+
+def _has_active_process():
+    """Exists: la lectura és en algun procés de comunicació no anul·lat."""
+    cancelled_token = ConfigProject.objects.get(token='communication_process_status_cancelled_token').value
+    return Exists(
+        CommunicationProcess.objects.filter(readings=OuterRef('pk')).exclude(status__token=cancelled_token)
+    )
+
+
+def filter_readings_by_active_process(readings, active=True):
+    """Filtra `readings` per si són (active=True) o no (active=False) en algun procés de comunicació no anul·lat. Una sola consulta."""
+    condition = _has_active_process()
+    return readings.filter(condition if active else ~condition)
+
 
 def add_reading_to_communication_process(reading, user):
     print("add_reading_to_communication_process", reading)
