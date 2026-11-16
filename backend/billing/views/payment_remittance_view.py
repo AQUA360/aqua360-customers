@@ -20,6 +20,7 @@ from billing.serializers.payment_remittance_serializer import PaymentRemittanceS
 from billing.serializers.payment_serializer import PaymentSerializer, PaymentSEPASerializer
 from coredata.models import ConfigProject
 from billing.tasks import send_payment_remittances
+from billing.utils.remittance_mark_service import clear_remittance_marks
 from billing.permissions import PaymentPermission
 from billing.utils.payment_remittance_lock_service import (
     is_remittance_sent,
@@ -114,6 +115,8 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 {"detail": f"Expected to update {len(ids)} records, but updated {updated_count}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        # "Marcar per remesar": un cop enviada la remesa, els seus pagaments es desmarquen.
+        clear_remittance_marks(ids)
         # Start background task
         send_payment_remittances.delay(ids, sent_at)
         

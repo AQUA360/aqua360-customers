@@ -130,6 +130,12 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
         if effective_supply_point and getattr(effective_supply_point, 'placement', None):
             meter_placement = str(effective_supply_point.placement)
 
+        # Bec de la bateria del punt de subministrament (posició, columna i fila)
+        nozzle = getattr(effective_supply_point, 'cluster_nozzle', None) if effective_supply_point else None
+        nozzle_position = getattr(nozzle, 'position', None)
+        nozzle_col = getattr(nozzle, 'col', None)
+        nozzle_row = getattr(nozzle, 'row', None)
+
         # Codi per a la fila "Contracte": només el número del contracte real (no escomesa/sol·licitud/punt)
         contract_code = None
         if contract_obj:
@@ -208,6 +214,10 @@ def generate_order_pdf(order, request=None, context=None, save_pdf=True):
             'physical_person': physical_person,
             'subscriber_phone': subscriber_phone,
             'meter_placement': meter_placement,
+            'nozzle': nozzle,
+            'nozzle_position': nozzle_position,
+            'nozzle_col': nozzle_col,
+            'nozzle_row': nozzle_row,
         }
 
         ctx = Context(context_data)

@@ -1,6 +1,8 @@
 import datetime
-import xml.etree.ElementTree as ET
+from xml.etree.ElementTree import SubElement
 
+import defusedxml.ElementTree as ET
+from defusedxml.common import DTDForbidden
 from django.test import SimpleTestCase
 
 from billing.utils.sepa_service import extract_report_data, identify_report_bank, parse_report_creation_date
@@ -37,8 +39,27 @@ def build_report(cre_dt_tm, header_bic="CGUIESBAXXX", creditor_iban="ES003140000
   </OrgnlPmtInfAndSts>
 </CstmrPmtStsRpt>
 </Document>"""
-    root = ET.fromstring(xml.encode("utf-8"))
+    root = ET.fromstring(xml.encode("utf-8"), forbid_dtd=True)
     return root.find(".//pain:CstmrPmtStsRpt", NAMESPACE)
+
+
+SEPA_RETURN_WITH_DTD = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Document [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.03">
+  <CstmrPmtStsRpt>
+    <GrpHdr><MsgId>&xxe;</MsgId><CreDtTm>2026-10-13T14:16:00</CreDtTm></GrpHdr>
+  </CstmrPmtStsRpt>
+</Document>
+"""
+
+
+class TestSepaReturnXmlHardening(SimpleTestCase):
+    def test_dtd_in_sepa_return_is_rejected(self):
+        """External SEPA returns must reject DTDs (same options as production parsers)."""
+        with self.assertRaises(DTDForbidden):
+            ET.fromstring(SEPA_RETURN_WITH_DTD, forbid_dtd=True)
 
 
 class TestIdentifyReportBank(SimpleTestCase):
@@ -53,7 +74,7 @@ class TestIdentifyReportBank(SimpleTestCase):
         # Un deutor amb compte a Caixa Guissona no fa que l'informe d'un altre banc es llegeixi com de Guissona
         report = build_report("2026-09-10T10:00:00", header_bic="CAIXESBBXXX")
         debtor = report.find(".//pain:Dbtr", NAMESPACE)
-        ET.SubElement(debtor, f"{{{NAMESPACE['pain']}}}BICOrBEI").text = "CGUIESBAXXX"
+        SubElement(debtor, f"{{{NAMESPACE['pain']}}}BICOrBEI").text = "CGUIESBAXXX"
         self.assertEqual(identify_report_bank(report, NAMESPACE), "CAIXESBB")
 
     def test_unknown_bank(self):

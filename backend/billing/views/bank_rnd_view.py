@@ -5,7 +5,6 @@ from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-import xml.etree.ElementTree as ET
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from service.models import Exploitation
 from billing.models import BankRNDDocument, CommitmentDeposit, Invoice, InvoiceStatus, JoinedPayment, JoinedPaymentStatus, Payment, PaymentMovement, PaymentStatus

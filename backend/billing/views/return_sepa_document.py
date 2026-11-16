@@ -1,18 +1,21 @@
 # views.py (or wherever your API view is defined)
-from rest_framework.views import APIView
-from rest_framework.response import Response
+import logging
+
+import defusedxml.ElementTree as ET
+from defusedxml.common import DefusedXmlException
 from rest_framework import status
-import xml.etree.ElementTree as ET
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from billing.models import Reading
 from billing.utils.sepa_service import (
-    extract_og_msg_id,
-    getDocumentSEPAPayments,
-    extract_report_data,
-    extract_company_data,
     extract_clients_data,
+    extract_company_data,
+    extract_og_msg_id,
+    extract_report_data,
+    getDocumentSEPAPayments,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +42,9 @@ class ReturnSEPADocument(APIView):
             if isinstance(file_content, bytes):
                 file_content = file_content.decode("utf-8")
                 
-            root = ET.fromstring(file_content)
-            
+            # Uploaded SEPA return file: forbid DTDs/entities (XXE / XML bombs).
+            root = ET.fromstring(file_content, forbid_dtd=True)
+
             namespaces = [
                 {
                     "pain": "urn:iso:std:iso:20022:tech:xsd:pain.002.001.03"
@@ -66,7 +70,7 @@ class ReturnSEPADocument(APIView):
                 {"rejections": rejections, "og_msg_id": og_msg_id}, status=status.HTTP_200_OK
             )
 
-        except ET.ParseError:
+        except (ET.ParseError, DefusedXmlException):
             logger.exception("El fitxer XML de retorn no és vàlid")
             return Response(
                 {"error": "El fitxer XML no és vàlid."},

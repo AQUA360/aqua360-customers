@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 import os
 import re
@@ -197,6 +198,7 @@ INSTALLED_APPS = (
         "django.contrib.sites",
         "django_extensions",
         "msgraphbackend",
+        "axes",  # Bloqueig d'usuaris per intents de login fallits
     ]
     + EXTRA_APPS
     + OWN_APPS
@@ -212,6 +214,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "axes.middleware.AxesMiddleware",  # Resposta de bloqueig (429) d'axes
     # Ha d'anar abans dels middlewares d'usuari actual: resol l'usuari del token DRF
     "ov.middleware.RestrictOVUserMiddleware",
     "contract.middleware.UserMiddleware",
@@ -412,6 +415,15 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
+    # Límit d'intents de login per IP (els scopes s'apliquen amb ScopedRateThrottle)
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "10/min",
+    },
+    # Nombre de proxys de confiança davant el backend (Cloudflare + nginx): DRF en deriva
+    # la IP real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.
+    # Només és vàlid si nginx i el backend no són accessibles directament, sense passar
+    # per Cloudflare (tallafoc o allow/deny de nginx amb les IPs de Cloudflare).
+    "NUM_PROXIES": 2,
 }
 
 # Optional: Add REST Framework Token Authentication settings if needed
@@ -422,6 +434,21 @@ REST_FRAMEWORK.update(
         ),
     }
 )
+
+# django-axes: bloqueig per nom d'usuari després de N intents fallits (login API i /admin/).
+# Els intents es guarden a la base de dades, així que es comparteixen entre workers.
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=15)
+AXES_LOCKOUT_PARAMETERS = ["username"]
+AXES_RESET_ON_SUCCESS = True
+AXES_IPWARE_PROXY_COUNT = REST_FRAMEWORK["NUM_PROXIES"]
+AXES_IPWARE_META_PRECEDENCE_ORDER = ("HTTP_X_FORWARDED_FOR", "REMOTE_ADDR")
+# Resposta HTTP 429 (sense plantilla) quan un usuari queda bloquejat
+AXES_HTTP_RESPONSE_CODE = 429
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -542,6 +569,16 @@ GISWATER_SYNC_SUPPLY_CUTS_ENABLED = config(
 GISWATER_SYNC_SUPPLY_CUTS_MINUTES = config(
     "GISWATER_SYNC_SUPPLY_CUTS_MINUTES", default=60, cast=int
 )
+
+# Oficina virtual: el Customers li demana cada dia quins contractes hi tenen
+# l'alta activa (Contract.virtual_office_date). Vegeu integrations/outbound/ov/sync.py.
+OV_API_BASE_URL = config("OV_API_BASE_URL", default="")
+OV_API_KEY = config("OV_API_KEY", default="")
+OV_API_TIMEOUT = config("OV_API_TIMEOUT", default=60, cast=int)
+OV_ACTIVE_CONTRACTS_ENDPOINT = config("OV_ACTIVE_CONTRACTS_ENDPOINT", default="/api/linked-contracts/")
+OV_SYNC_ENABLED = config("OV_SYNC_ENABLED", default=False, cast=bool)
+OV_SYNC_HOUR = config("OV_SYNC_HOUR", default=4, cast=int)
+OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
 
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")
