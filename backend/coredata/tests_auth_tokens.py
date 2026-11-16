@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.contrib.auth.models import AnonymousUser, Group, User
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -22,6 +23,9 @@ PROTECTED_URL = "/auth/permission/my-permissions/"
 @override_settings(AUTH_TOKEN_IDLE_HOURS=24, AUTH_TOKEN_MAX_AGE_DAYS=7, AUTH_TOKEN_NON_EXPIRING_USERS=[])
 class AuthTokenTests(TestCase):
     def setUp(self):
+        # El login té un límit d'intents per IP a la memòria cau: cada test comença de zero.
+        cache.clear()
+        self.addCleanup(cache.clear)
         self.user = User.objects.create_user("persona", "persona@example.com", "pwd-antiga")
 
     def login(self, username="persona", password="pwd-antiga"):
@@ -118,6 +122,10 @@ class AuthTokenTests(TestCase):
 
 @override_settings(AUTH_TOKEN_NON_EXPIRING_USERS=["integracio"])
 class IntegrationTokenTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
     def test_usuari_per_nom_conserva_el_token_permanent(self):
         user = User.objects.create_user("integracio", "i@example.com", "pwd")
         response = self.client.post(reverse("login"), {"username": "integracio", "password": "pwd"})
