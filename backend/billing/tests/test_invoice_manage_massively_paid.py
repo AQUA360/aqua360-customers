@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from billing.models import (
     Billing, Invoice, InvoiceStatus, InvoiceType, Payment, PaymentMovement, PaymentStatus,
 )
+from billing.views.invoice_manage_massively_view import SKIPPED_PAYMENT_STATUS_TOKENS
 from coredata.models import ConfigProject
 from service.models import Exploitation
 
@@ -38,18 +39,24 @@ class InvoiceManageMassivelyPaidTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        ConfigProject.objects.get_or_create(token='invoice_type_invoice_token', defaults={'value': 'F'})
+        # La base de proves pot portar ja la configuració de les migracions de dades
+        # (p. ex. payment_status_dropped_token = -7): cada estat es resol pel valor configurat,
+        # com fa el codi, i no es dona per fet que el token de l'estat és el nom de la config.
+        def configured(token, default):
+            return ConfigProject.objects.get_or_create(token=token, defaults={'value': default})[0].value
+
         # El senyal de factura pagada el llegeix en crear-ne una de pagada
-        ConfigProject.objects.get_or_create(token='bail_status_returned_token', defaults={'value': 'RETURNED'})
-        cls.invoice_type = InvoiceType.objects.create(token='F', name='Factura')
-        cls.invoice_status = {}
-        for token, name in INVOICE_STATUSES.items():
-            ConfigProject.objects.get_or_create(token=token, defaults={'value': token})
-            cls.invoice_status[token] = InvoiceStatus.objects.create(token=token, name=name)
-        cls.payment_status = {}
-        for token, name in PAYMENT_STATUSES.items():
-            ConfigProject.objects.get_or_create(token=token, defaults={'value': token})
-            cls.payment_status[token] = PaymentStatus.objects.create(token=token, name=name)
+        configured('bail_status_returned_token', 'RETURNED')
+        cls.invoice_type, _ = InvoiceType.objects.get_or_create(
+            token=configured('invoice_type_invoice_token', 'F'), defaults={'name': 'Factura'})
+        cls.invoice_status = {
+            token: InvoiceStatus.objects.get_or_create(token=configured(token, token), defaults={'name': name})[0]
+            for token, name in INVOICE_STATUSES.items()
+        }
+        cls.payment_status = {
+            token: PaymentStatus.objects.get_or_create(token=configured(token, token), defaults={'name': name})[0]
+            for token, name in PAYMENT_STATUSES.items()
+        }
         cls.exploitation = Exploitation.objects.create(name='Explotació A')
         cls.other_exploitation = Exploitation.objects.create(name='Explotació B')
         cls.billing = Billing.objects.create(token='FAC-MASS')
@@ -146,24 +153,23 @@ class InvoiceManageMassivelyPaidTests(TestCase):
 
         self.assertEqual(response.json(), {'updated_count': 0, 'skipped_count': 1, 'error_count': 0})
 
-    def test_save_leaves_cancelled_payments_untouched(self):
+    def test_save_pays_open_payments_and_leaves_closed_ones_untouched(self):
+        """Cada estat de cobrament: els ja pagats, abonats o anul·lats no es toquen ni generen
+        moviment; la resta (pendent, retornat...) queda pagada amb el seu moviment."""
         invoice = self.invoice('T1')
-        pending = self.payment(invoice, 'payment_status_pending_token')
-        returned = self.payment(invoice, 'payment_status_returned_token')
-        cancelled = self.payment(invoice, 'payment_status_cancelled_token')
-        dropped = self.payment(invoice, 'payment_status_dropped_token')
+        payments = {token: self.payment(invoice, token) for token in PAYMENT_STATUSES}
 
-        self.save([invoice.id])
+        response = self.save([invoice.id])
 
+        self.assertEqual(response.json()['updated_count'], 1)
         paid = self.payment_status['payment_status_paid_token']
-        for payment in (pending, returned):
-            payment.refresh_from_db()
-            self.assertEqual(payment.status, paid)
-        cancelled.refresh_from_db()
-        dropped.refresh_from_db()
-        self.assertEqual(cancelled.status, self.payment_status['payment_status_cancelled_token'])
-        self.assertEqual(dropped.status, self.payment_status['payment_status_dropped_token'])
-        self.assertEqual(
-            set(PaymentMovement.objects.filter(payment__invoice=invoice).values_list('payment_id', flat=True)),
-            {pending.id, returned.id},
-        )
+        moved_ids = set(PaymentMovement.objects.filter(payment__invoice=invoice).values_list('payment_id', flat=True))
+        for token, payment in payments.items():
+            with self.subTest(status=token):
+                payment.refresh_from_db()
+                if token in SKIPPED_PAYMENT_STATUS_TOKENS:
+                    self.assertEqual(payment.status, self.payment_status[token])
+                    self.assertNotIn(payment.id, moved_ids)
+                else:
+                    self.assertEqual(payment.status, paid)
+                    self.assertIn(payment.id, moved_ids)
