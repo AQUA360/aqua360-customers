@@ -20,6 +20,12 @@ x-deploy-build-args: &deploy-build-args
   GIT_BRANCH: ${GIT_BRANCH:-}
   BUILD_DATE: ${BUILD_DATE:-}
 
+# En un build local la versió i el commit surten del `.git` del servidor (etapa `gitinfo` dels
+# Dockerfile); els build args, si n'hi ha, manen. En una còpia sense `.git` com a carpeta (p. ex.
+# un worktree, on és un fitxer), CUSTOMERS_GIT_DIR ha d'apuntar a una carpeta buida o al git.
+x-git-context: &git-context
+  gitdir: ${CUSTOMERS_GIT_DIR:-./.git}
+
 # Imatges: cada release es construeix a GitHub (.github/workflows/imatges.yml) i es publica a ghcr.io.
 # Amb CUSTOMERS_VERSION=v1.135.00 al .env, `docker compose pull && docker compose up -d` baixa
 # aquella versió sense construir res. Sense CUSTOMERS_VERSION, o amb `up --build`, es construeix
@@ -62,6 +68,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      additional_contexts: *git-context
       args: *deploy-build-args
     restart: unless-stopped
     env_file:
@@ -96,6 +103,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      additional_contexts: *git-context
       args: *deploy-build-args
     restart: unless-stopped
     entrypoint: ["/app/docker-celery-worker.sh"]
@@ -119,6 +127,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      additional_contexts: *git-context
       args: *deploy-build-args
     restart: unless-stopped
     entrypoint: ["/app/docker-celery-beat.sh"]
@@ -142,6 +151,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      additional_contexts: *git-context
       args:
         <<: *deploy-build-args
         NUXT_PUBLIC_API_HOST: ${NUXT_PUBLIC_API_HOST:-http://localhost:8000}
@@ -168,6 +178,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      additional_contexts: *git-context
       args: *deploy-build-args
     command: python -u manage.py run_gmao_consumer
     # Només per als clients amb GMAO: s'engega amb COMPOSE_PROFILES=gmao al .env. Sense, l'stack
