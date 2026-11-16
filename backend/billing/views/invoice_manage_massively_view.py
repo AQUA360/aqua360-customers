@@ -1,8 +1,6 @@
 import logging
 
-from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -53,7 +51,11 @@ def _payment_statuses(tokens):
 
 
 def _filtered_invoices(data):
-    """Factures que mostra la llista amb els mateixos filtres (sense les condicions del pagament)."""
+    """Factures que mostra la llista amb els mateixos filtres (sense les condicions del pagament).
+
+    La pantalla de factures demana sempre `is_invoice=true`, que filtra per `type__token`:
+    aquí es fa el mateix, de manera que les factures sense tipus tampoc surten a la llista.
+    """
     invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
     queryset = Invoice.objects.filter(
         is_active=True,
@@ -98,6 +100,21 @@ def _skipped_summary(queryset, paid_status, excluded_statuses):
     ]
 
 
+def _int_list(value):
+    if not isinstance(value, list):
+        return None
+    try:
+        return [int(item) for item in value]
+    except (TypeError, ValueError):
+        return None
+
+
+def _preview_rows(queryset, invoice_ids):
+    """Files de la previsualització en l'ordre dels ids confirmats (paginació estable)."""
+    by_id = {invoice.id: invoice for invoice in queryset.filter(id__in=invoice_ids).select_related('status')}
+    return [_preview_row(by_id[invoice_id]) for invoice_id in invoice_ids if invoice_id in by_id]
+
+
 def _preview_row(invoice):
     return {
         'id': invoice.id,
@@ -123,38 +140,39 @@ class InvoiceManageMassivelyViewSet(APIView):
         paid_status, excluded_statuses = _payable_conditions()
         invoices = _payable(filtered, paid_status, excluded_statuses).order_by('issue_date', 'id')
 
-        if not request.data.get('saving', False):
-            return self.summary(request, filtered, invoices, paid_status, excluded_statuses)
-        return self.save(request, invoices, paid_status, excluded_statuses)
+        if request.data.get('saving', False):
+            return self.save(request, filtered, invoices, paid_status, excluded_statuses)
+        if 'preview_ids' in request.data:
+            return self.preview_page(request, filtered)
+        return self.summary(filtered, invoices, paid_status, excluded_statuses)
 
-    def summary(self, request, filtered, invoices, paid_status, excluded_statuses):
-        try:
-            page_number = max(int(request.data.get('page') or 1), 1)
-        except (TypeError, ValueError):
-            page_number = 1
-        paginator = Paginator(invoices.select_related('status'), PREVIEW_PAGE_SIZE)
-        page = paginator.get_page(page_number)
-        total_amount = invoices.aggregate(total=Sum('left_to_pay'))['total'] or 0
+    def summary(self, filtered, invoices, paid_status, excluded_statuses):
+        # Una sola consulta: el recompte, l'import i els ids són del mateix conjunt de factures
+        rows = list(invoices.values_list('id', 'left_to_pay'))
+        invoice_ids = [invoice_id for invoice_id, _ in rows]
         return Response({
-            'count': paginator.count,
-            'total_amount': total_amount,
-            'invoice_ids': list(invoices.values_list('id', flat=True)),
+            'count': len(rows),
+            'total_amount': sum((left_to_pay or 0) for _, left_to_pay in rows),
+            'invoice_ids': invoice_ids,
             'skipped': _skipped_summary(filtered, paid_status, excluded_statuses),
-            'page': page.number,
-            'has_next': page.has_next(),
-            'results': [_preview_row(invoice) for invoice in page.object_list],
+            'page_size': PREVIEW_PAGE_SIZE,
+            'results': _preview_rows(filtered, invoice_ids[:PREVIEW_PAGE_SIZE]),
         })
 
-    def save(self, request, invoices, paid_status, excluded_statuses):
+    def preview_page(self, request, filtered):
+        # Pàgines següents de la confirmació: el client demana els ids del resum inicial,
+        # així la llista no salta files si el conjunt de factures pagables canvia entremig.
+        preview_ids = _int_list(request.data.get('preview_ids'))
+        if preview_ids is None or len(preview_ids) > PREVIEW_PAGE_SIZE:
+            return Response({'detail': 'preview_ids no és vàlid.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'results': _preview_rows(filtered, preview_ids)})
+
+    def save(self, request, filtered, invoices, paid_status, excluded_statuses):
         # Només es paguen les factures que l'usuari ha vist i confirmat; el servidor hi torna a
         # aplicar els filtres i les condicions, de manera que la llista només pot restringir.
-        invoice_ids = request.data.get('invoice_ids')
-        if not isinstance(invoice_ids, list) or not invoice_ids:
+        invoice_ids = _int_list(request.data.get('invoice_ids'))
+        if not invoice_ids:
             return Response({'detail': 'invoice_ids és obligatori.'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            invoice_ids = [int(invoice_id) for invoice_id in invoice_ids]
-        except (TypeError, ValueError):
-            return Response({'detail': 'invoice_ids no és vàlid.'}, status=status.HTTP_400_BAD_REQUEST)
 
         selected_ids = list(invoices.filter(id__in=invoice_ids).values_list('id', flat=True))
         skipped_count = len(set(invoice_ids)) - len(selected_ids)
@@ -174,16 +192,21 @@ class InvoiceManageMassivelyViewSet(APIView):
             for invoice_id in selected_ids:
                 try:
                     with transaction.atomic():
-                        invoice = _payable(
-                            Invoice.objects.select_for_update().filter(id=invoice_id),
-                            paid_status, excluded_statuses,
-                        ).first()
-                        if invoice is None:
-                            # Ha canviat entre la previsualització i la confirmació
-                            skipped_count += 1
-                            continue
-                        self.pay_invoice(invoice, user, today, paid_status, paid_payment_status, skipped_payment_statuses)
+                        invoice = Invoice.objects.select_for_update().filter(id=invoice_id).first()
+                        # Amb la factura bloquejada, es tornen a comprovar tots els filtres i
+                        # condicions: pot haver canviat mentre es pagaven les anteriors.
+                        still_payable = invoice is not None and _payable(
+                            filtered, paid_status, excluded_statuses,
+                        ).filter(id=invoice_id).exists()
+                        if still_payable:
+                            self.pay_invoice(
+                                invoice, user, today, paid_status, paid_payment_status, skipped_payment_statuses,
+                            )
+                    # Es compta fora del bloc: només si la transacció s'ha confirmat
+                    if still_payable:
                         updated_count += 1
+                    else:
+                        skipped_count += 1
                 except Exception:
                     logger.exception('Error marcant com a pagada la factura %s en massa', invoice_id)
                     error_count += 1

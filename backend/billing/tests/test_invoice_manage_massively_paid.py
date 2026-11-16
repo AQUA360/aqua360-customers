@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -173,3 +174,23 @@ class InvoiceManageMassivelyPaidTests(TestCase):
                 else:
                     self.assertEqual(payment.status, paid)
                     self.assertIn(payment.id, moved_ids)
+
+    def test_preview_pages_follow_the_initial_selection(self):
+        invoices = [self.invoice(f'T{n}', issue_date=f'2026-01-0{n}') for n in (1, 2, 3)]
+        with patch('billing.views.invoice_manage_massively_view.PREVIEW_PAGE_SIZE', 1):
+            data = self.summary()
+            self.assertEqual(data['invoice_ids'], [invoice.id for invoice in invoices])
+            self.assertEqual([row['id'] for row in data['results']], [invoices[0].id])
+
+            # La primera es paga entremig: la pàgina següent continua sent la segona factura
+            Invoice.objects.filter(id=invoices[0].id).update(status=self.invoice_status['invoice_status_paid_token'])
+            page = self.summary(preview_ids=data['invoice_ids'][1:2])
+
+        self.assertEqual([row['id'] for row in page['results']], [invoices[1].id])
+
+    def test_preview_page_rejects_more_ids_than_a_page(self):
+        with patch('billing.views.invoice_manage_massively_view.PREVIEW_PAGE_SIZE', 1):
+            response = self.client.post(
+                self.url, {'saving': False, 'preview_ids': [1, 2]}, format='json')
+
+        self.assertEqual(response.status_code, 400)

@@ -25,26 +25,29 @@ const props = defineProps({
 const emit = defineEmits(['save']);
 const { $InvoiceApiService } = useNuxtApp();
 
+const invoice_ids = props.summary.invoice_ids || [];
+const page_size = props.summary.page_size || 50;
 const data = ref([...(props.summary.results || [])]);
-const page = ref(props.summary.page || 1);
+// Les pàgines es demanen pels ids del resum inicial: la llista no salta files si alguna
+// factura deixa de ser pagable mentre es confirma (el servidor la saltarà en desar).
+const next_index = ref(Math.min(page_size, invoice_ids.length));
 const loadingMore = ref(false);
-const allDataLoaded = ref(!props.summary.has_next);
+const allDataLoaded = ref(next_index.value >= invoice_ids.length);
 
 const getData = async () => {
   if (loadingMore.value || allDataLoaded.value) return;
 
   loadingMore.value = true;
   try {
+    const preview_ids = invoice_ids.slice(next_index.value, next_index.value + page_size);
     const response = await $InvoiceApiService.manageMassivelyPaid({
       ...props.filterData,
       saving: false,
-      page: page.value + 1,
+      preview_ids,
     });
-    // Només s'afegeixen les factures que formen part de la confirmació
-    const confirmed_ids = new Set(props.summary.invoice_ids || []);
-    data.value = data.value.concat((response.results || []).filter((item) => confirmed_ids.has(item.id)));
-    page.value = response.page;
-    allDataLoaded.value = !response.has_next;
+    data.value = data.value.concat(response.results || []);
+    next_index.value += preview_ids.length;
+    allDataLoaded.value = next_index.value >= invoice_ids.length;
   } catch (err) {
     console.error(err);
     toast.error(t('common.error_load'));
