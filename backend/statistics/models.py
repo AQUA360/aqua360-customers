@@ -313,6 +313,15 @@ class ReportQueue(models.Model):
 
 
 class DailyDocumentTemplate(models.Model):
+    PERIODICITY_DAILY = 'daily'
+    PERIODICITY_WEEKLY = 'weekly'
+    PERIODICITY_EVERY_X_DAYS = 'every_x_days'
+    PERIODICITY_CHOICES = [
+        (PERIODICITY_DAILY, 'Daily'),
+        (PERIODICITY_WEEKLY, 'Weekly (day of week)'),
+        (PERIODICITY_EVERY_X_DAYS, 'Every X days'),
+    ]
+
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     token = models.CharField(max_length=255, null=True, blank=True)
@@ -323,6 +332,19 @@ class DailyDocumentTemplate(models.Model):
     create_without_data = models.BooleanField(default=False)
     days_to_complete = models.IntegerField(null=True, blank=True)
     is_work_days = models.BooleanField(default=False)
+
+    # How often the document is generated. Default remains daily (single-day range).
+    periodicity = models.CharField(
+        max_length=32,
+        choices=PERIODICITY_CHOICES,
+        default=PERIODICITY_DAILY,
+    )
+    # Python weekday: 0=Monday ... 6=Sunday. Used when periodicity=weekly.
+    weekday = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Interval length in days. Used when periodicity=every_x_days (e.g. 15).
+    interval_days = models.PositiveIntegerField(null=True, blank=True)
+    # Anchor date for every_x_days cycles (generation on anchor, anchor+N, ...).
+    period_anchor_date = models.DateField(null=True, blank=True)
 
     # Users/groups alerted when submission errors appear for documents of this template.
     notify_users = models.ManyToManyField(
@@ -348,6 +370,9 @@ class DailyDocument(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     
     document_date = models.DateField(null=True, blank=True)
+    # Inclusive data window covered by this document (equals document_date for daily).
+    period_start_date = models.DateField(null=True, blank=True)
+    period_end_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     status = models.ForeignKey(DailyDocumentStatus, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_documents')
     template = models.ForeignKey(DailyDocumentTemplate, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_documents')
@@ -359,9 +384,6 @@ class DailyDocument(models.Model):
     cancelled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_daily_documents')
     cancelled_at = models.DateTimeField(null=True, blank=True)
     cancelled_observation = models.TextField(null=True, blank=True)
-    
-    # add periodicity (daily, weekly, monthly)
-    # add day of start in case of NOT daily
     
     document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True)
     creation_error = models.TextField(null=True, blank=True)

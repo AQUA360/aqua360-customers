@@ -96,6 +96,31 @@ const notifyUsers = computed(() => localData.value?.notify_users || []);
 const notifyGroups = computed(() => localData.value?.notify_groups || []);
 const hasNotifyTargets = computed(() => notifyUsers.value.length > 0 || notifyGroups.value.length > 0);
 
+const WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+const periodicityLabel = computed(() => {
+  const value = localData.value?.periodicity || 'daily';
+  if (value === 'weekly') return t('statistics_block.periodicity_weekly');
+  if (value === 'every_x_days') return t('statistics_block.periodicity_every_x_days');
+  return t('statistics_block.periodicity_daily');
+});
+
+const periodicityDetail = computed(() => {
+  const data = localData.value;
+  if (!data) return '';
+  if (data.periodicity === 'weekly' && data.weekday != null) {
+    const key = WEEKDAY_KEYS[data.weekday];
+    return key ? t(`date.${key}`) : '';
+  }
+  if (data.periodicity === 'every_x_days') {
+    const parts = [];
+    if (data.interval_days) parts.push(`${data.interval_days} ${t('common.days')}`);
+    if (data.period_anchor_date) parts.push(formatDate(data.period_anchor_date));
+    return parts.join(' · ');
+  }
+  return '';
+});
+
 const reportDescription = computed(() => {
   const report = availableReport.value;
   if (!report?.description) return '';
@@ -172,6 +197,12 @@ const fieldLabel = (field) => {
       </FieldDetail>
 
       <FieldDetail class="col-span-2" :label='$t("common.description")' :value="localData.description || '-'" />
+
+      <FieldDetail class="col-span-2" :label="t('pricing_block.periodicity')">
+        <div class="flex flex-col gap-0.5">
+          <span>{{ periodicityLabel }}<span v-if="periodicityDetail"> · {{ periodicityDetail }}</span></span>
+        </div>
+      </FieldDetail>
 
       <FieldDetail class="col-span-2" :label="t('statistics_block.create_without_data')">
         <div class="flex flex-col gap-0.5">
