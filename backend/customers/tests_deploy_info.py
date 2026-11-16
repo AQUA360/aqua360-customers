@@ -44,6 +44,54 @@ class BuildFromEnvTests(SimpleTestCase):
         self.assertEqual(data["release"], "v9.99.00")
         self.assertEqual(data["deployed_at"], "2026-01-02T04:00:00Z")
 
+    def test_server_build_takes_version_from_git(self):
+        git_info = {
+            "APP_VERSION": "v9.99.00",
+            "GIT_COMMIT": "fedcba9876543210",
+            "GIT_COMMIT_DATE": "2026-01-02T03:04:05+01:00",
+            "GIT_BRANCH": "",
+        }
+        info = deploy_info.build_from_env({"GIT_COMMIT": "", "BUILD_DATE": "2026-01-02T04:00:00Z"}, git_info)
+        self.assertEqual(info["release"], "v9.99.00")
+        self.assertEqual(info["commit"], "fedcba98")
+        self.assertEqual(info["commit_date"], "2026-01-02T03:04:05+01:00")
+        self.assertEqual(info["branch"], "")
+        self.assertEqual(info["built_at"], "2026-01-02T04:00:00Z")
+        self.assertEqual(info["source"], "build")
+
+    def test_build_args_win_over_git_without_mixing(self):
+        git_info = {"APP_VERSION": "v9.99.00", "GIT_COMMIT": "fedcba9876543210", "GIT_BRANCH": "develop"}
+        info = deploy_info.build_from_env({"GIT_COMMIT": "0123456789abcdef", "APP_VERSION": ""}, git_info)
+        self.assertEqual(info["commit"], "01234567")
+        self.assertEqual(info["release"], "")
+        self.assertEqual(info["branch"], "")
+
+    def test_write_deploy_info_reads_git_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            git_file = Path(tmp) / "deploy-git.env"
+            git_file.write_text(
+                "APP_VERSION=v9.99.00\nGIT_COMMIT=fedcba9876543210\nGIT_COMMIT_DATE=\nGIT_BRANCH=develop\n",
+                encoding="utf-8",
+            )
+            path = Path(tmp) / deploy_info.DEPLOY_INFO_FILENAME
+            deploy_info.write_deploy_info(path, {}, git_info_path=git_file)
+            data = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(data["release"], "v9.99.00")
+        self.assertEqual(data["commit"], "fedcba98")
+        self.assertEqual(data["branch"], "develop")
+
+    def test_missing_or_empty_git_file_records_build_time_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "deploy-git.env"
+            empty.write_text("", encoding="utf-8")
+            for git_file in (empty, Path(tmp) / "no-hi-es.env"):
+                path = Path(tmp) / deploy_info.DEPLOY_INFO_FILENAME
+                deploy_info.write_deploy_info(path, {}, git_info_path=git_file)
+                data = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(data["commit"], "")
+                self.assertEqual(data["release"], "")
+                self.assertTrue(data["built_at"])
+
 
 class GetDeployInfoTests(SimpleTestCase):
     def setUp(self):
