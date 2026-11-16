@@ -165,8 +165,14 @@ watch(searchInput, () => {
       :is-empty="items.length === 0"
       @retry="getData">
       <template #header>
-        <TableHeader :label="t('group')" :sortable="false" />
-        <TableHeader :label="t('users')" :sortable="false" />
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="t('group')" :sortable="false" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
+        <span class="relative flex items-center min-w-0">
+          <TableHeader :label="t('users')" :sortable="false" />
+          <span aria-hidden="true" class="absolute right-[3px] top-[15%] h-[70%] w-[2px] bg-slate-300 pointer-events-none"></span>
+        </span>
       </template>
 
       <template #default="{ gridStyle }">

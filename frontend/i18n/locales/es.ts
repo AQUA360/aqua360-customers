@@ -3185,6 +3185,13 @@ export default {
     accounting_pricing_additional_line_is_negative_hint: 'Invierte el signo respecto a la cuenta padre (y usa el código de retorno cuando corresponda).',
     accounting_settings: 'Configuración contable',
     accounting_settings_description: 'Configura las reglas de declaración del saldo y las cuentas de contrapartida.',
+    accounting_sync_catalog: 'Conceptos a sincronizar',
+    accounting_sync_catalog_description: 'Líneas del tramo de facturación vigente, para pasarlas al proveedor de contabilidad. Cada fila es un concepto con su producto, tarifa, impuesto y artículo.',
+    accounting_sync_download: 'Descargar',
+    accounting_sync_download_xlsx: 'Excel (.xlsx)',
+    accounting_sync_download_json: 'JSON',
+    accounting_sync_count: '{count} conceptos',
+    accounting_sync_load_error: 'No se han podido cargar los conceptos a sincronizar.',
     piggybank_as_negative: 'Tratar los movimientos de saldo como negativos',
     piggybank_as_negative_hint: 'Si está activado, los importes del saldo se mantienen negativos. Si no, siguen el signo configurado abajo (normalmente positivo).',
     include_piggy_status_payments: 'Incluir pagos con estado saldo',
@@ -3481,6 +3488,7 @@ export default {
     detail: 'Detalle'
   },
   reports_block:   {
+    download_pdf_hint: "Descargar en PDF (versión para presentar)",
     error_queue_action: 'Error al gestionar la tarea de la cola.',
     report_completed_success: 'Informe "{name}" generado correctamente.',
     report_generation_failed: 'Error al generar el informe "{name}".',

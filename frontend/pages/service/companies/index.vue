@@ -8,7 +8,6 @@ import CompanyRegion from '~/components/organisms/CompanyRegion.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import { useToast } from 'vue-toastification';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
 const { t } = useI18n();
@@ -107,6 +106,16 @@ const handleSort = (key) => {
   getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'logo', label: t('service_block.logo'), width: 150, min: 70, priority: 2 },
+  { key: 'name', label: t('company'), sortKey: 'name', width: 350, min: 150, priority: 1, removable: false },
+  { key: 'address', label: t('address_block.address'), sortKey: 'address_complete', width: 300, grow: 3, min: 160, priority: 1 },
+]);
+
 const resetFilters = () => {
   searchInput.value = '';
   selectedFilters.value = [];
@@ -165,6 +174,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div v-if="filter_status.length" class="h-8 w-px bg-gray-300"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -179,41 +190,36 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,350px,1fr"
+      table-key="companies"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('service_block.logo')" />
-        <TableHeader :label="$t('company')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('address_block.address')" sortKey="address_complete" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-logo="{ item }">
+        <div class="flex">
+          <div v-if="item.logo" class="w-10 h-10 bg-cover bg-center rounded-md border border-slate-200" :style="{ backgroundImage: `url(${item.logo})` }"></div>
+          <div v-else class="w-10 h-10 bg-slate-100 flex items-center justify-center rounded-md border border-slate-200">
+             <Icon name="fa6-solid:image" class="text-slate-300" />
+          </div>
+        </div>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white mr-3"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <div class="p-1 flex">
-            <div v-if="item.logo" class="w-10 h-10 bg-cover bg-center rounded-md border border-slate-200" :style="{ backgroundImage: `url(${item.logo})` }"></div>
-            <div v-else class="w-10 h-10 bg-slate-100 flex items-center justify-center rounded-md border border-slate-200">
-               <Icon name="fa6-solid:image" class="text-slate-300" />
-            </div>
-          </div>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showCurrentRegion(item.id);">
-              <abbr :title="item.name" class="no-underline">{{ item.alias }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1">{{ item.address_complete }}</span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showCurrentRegion(item.id);">
+          <abbr :title="item.name" class="no-underline">{{ item.alias }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
+
+      <template #cell-address="{ item }">{{ item.address_complete }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

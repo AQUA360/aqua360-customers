@@ -7,7 +7,6 @@ import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import PaymentRegion from '~/components/organisms/PaymentRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import AddSEPAManagement from '~/components/molecules/AddSEPAManagement.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -153,6 +152,20 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+  'bg-purple-50': item.is_excluded && !(item.id === selectedItemId.value),
+});
+
+const tableColumns = computed(() => [
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 150, min: 105, priority: 1, removable: false },
+  { key: 'invoice', label: t('invoice'), sortKey: 'invoice', width: 250, grow: 1, min: 120, priority: 1, removable: false },
+  { key: 'amount', label: t('common.total'), sortKey: 'amount', width: 100, min: 80, priority: 2 },
+  { key: 'due_date', label: t('billing_block.payment'), sortKey: 'due_date', width: 150, min: 100, priority: 2 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 200, min: 100, priority: 1, removable: false, cellClass: 'flex items-center gap-1' },
+  { key: 'payment_date', label: t('billing_block.paid'), sortKey: 'payment_date', width: 110, min: 90, priority: 3 },
+]);
+
 </script>
 
 <template>
@@ -175,6 +188,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div v-if="filter_status.length" class="h-8 w-px bg-gray-300"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -191,59 +206,43 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,250px,100px,150px,100px,100px,100px"
+      table-key="messages"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('invoice')" sortKey="invoice" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.total')" sortKey="amount" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.payment')" sortKey="due_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.paid')" sortKey="payment_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <span></span>
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId, 'bg-purple-50': item.is_excluded && !(item.id === selectedItemId)  }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
+      <template #cell-invoice="{ item }">{{ item.invoice.title_final + ' ' + item.invoice.token }}</template>
 
-          <span class="p-1">{{ item.invoice.title_final + ' ' + item.invoice.token }}</span>
-          <span class="p-1">{{ item.amount }}</span>
+      <template #cell-amount="{ item }">{{ item.amount }}</template>
 
-          <span v-if="!item.is_late"> {{ item.due_date ? formatDate(item.due_date) : '-' }}</span>
-          <span v-else>
-            <AtomsColorBadge :value="formatDate(item.due_date)" :color="'red'">
-            </AtomsColorBadge>
-          </span>
-          <span class="p-1">
-            <AtomsColorBadge :value="item.status?.name" :color="item.status?.color">
-            </AtomsColorBadge>
-          </span>
-          <span class="p-1">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</span>
-          <span class="p-1">
-            <AtomsColorBadge v-if="item.is_excluded" :value="$t('billing_block.excluded')" :color="'purple'" />
-          </span>
-        </div><!-- end for items -->
+      <template #cell-due_date="{ item }">
+        <span v-if="!item.is_late"> {{ item.due_date ? formatDate(item.due_date) : '-' }}</span>
+        <AtomsColorBadge v-else :value="formatDate(item.due_date)" :color="'red'">
+        </AtomsColorBadge>
       </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status?.name" :color="item.status?.color">
+        </AtomsColorBadge>
+        <AtomsColorBadge v-if="item.is_excluded" :value="$t('billing_block.excluded')" :color="'purple'" />
+      </template>
+
+      <template #cell-payment_date="{ item }">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

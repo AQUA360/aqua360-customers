@@ -2990,6 +2990,13 @@ export default {
     accounting_cost_centers_description: 'Manage cost centers to organize and allocate accounting entries.',
     accounting_settings: 'Accounting settings',
     accounting_settings_description: 'Configure piggy bank declaration rules and counter accounts.',
+    accounting_sync_catalog: 'Items to sync',
+    accounting_sync_catalog_description: 'Lines from the current billing range, to send to the accounting provider. Each row is a concept with its product, price rate, tax and article.',
+    accounting_sync_download: 'Download',
+    accounting_sync_download_xlsx: 'Excel (.xlsx)',
+    accounting_sync_download_json: 'JSON',
+    accounting_sync_count: '{count} items',
+    accounting_sync_load_error: 'Could not load the items to sync.',
     piggybank_as_negative: 'Handle piggy bank movements as negative',
     piggybank_as_negative_hint: 'When enabled, piggy bank amounts stay negative. When disabled, amounts follow the sign configured below (usually positive).',
     include_piggy_status_payments: 'Include piggy bank status payments',
@@ -3359,6 +3366,7 @@ export default {
     detail: 'Detail'
   },
   reports_block:   {
+    download_pdf_hint: "Download as PDF (presentation version)",
     error_queue_action: 'Error managing the queue task.',
     report_completed_success: 'Report "{name}" generated successfully.',
     report_generation_failed: 'Error generating report "{name}".',

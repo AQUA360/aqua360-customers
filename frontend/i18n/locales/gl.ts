@@ -2990,6 +2990,13 @@ export default {
     accounting_cost_centers_description: 'Xestiona os centros de custo para organizar e asignar os apuntes contables.',
     accounting_settings: 'Configuración contable',
     accounting_settings_description: 'Configura as regras de declaración do monedero e as contas de contrapartida.',
+    accounting_sync_catalog: 'Conceptos a sincronizar',
+    accounting_sync_catalog_description: 'Liñas do tramo de facturación vixente, para pasalas ao provedor de contabilidade. Cada fila é un concepto co seu produto, tarifa, imposto e artigo.',
+    accounting_sync_download: 'Descargar',
+    accounting_sync_download_xlsx: 'Excel (.xlsx)',
+    accounting_sync_download_json: 'JSON',
+    accounting_sync_count: '{count} conceptos',
+    accounting_sync_load_error: 'Non se puideron cargar os conceptos a sincronizar.',
     piggybank_as_negative: 'Tratar os movementos de monedero como negativos',
     piggybank_as_negative_hint: 'Se está activado, os importes do monedero mantéñense negativos. Se non, seguen o signo configurado abaixo (normalmente positivo).',
     include_piggy_status_payments: 'Incluír pagos con estado monedero',
@@ -3359,6 +3366,7 @@ export default {
     detail: 'Detalle'
   },
   reports_block:   {
+    download_pdf_hint: "Descargar en PDF (versión para presentar)",
     error_queue_action: 'Erro ao xestionar a tarefa da cola.',
     report_completed_success: 'Informe "{name}" xerado correctamente.',
     report_generation_failed: 'Erro ao xerar o informe "{name}".',
