@@ -10,7 +10,6 @@ import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ContractRegion from '~/components/organisms/ContractRegion.vue';
 import ContractRequestRegion from '~/components/organisms/ContractRequestRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
 import AddInvoiceBudget from '~/components/molecules/AddInvoiceBudget.vue';
@@ -299,6 +298,22 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'serie_final', label: t('common.identification'), sortKey: 'serie_final',
+    width: 150, min: 110, priority: 1, removable: false,
+  },
+  { key: 'invoice_budget', label: t('billing_block.final_invoice'), width: 150, min: 110, priority: 2 },
+  { key: 'issue_date', label: t('common.date'), sortKey: 'issue_date', width: 100, min: 90, priority: 2 },
+  { key: 'title', label: t('common.title'), width: 200, grow: 1, min: 120, priority: 1 },
+  { key: 'holder', label: t('contract_block.holder'), width: 200, grow: 1, min: 120, priority: 1 },
+  { key: 'total', label: t('common.total'), sortKey: 'total_final', width: 100, min: 80, priority: 1 },
+  { key: 'origin', label: t('common.origin'), width: 150, grow: 1, min: 100, priority: 3 },
+]);
 </script>
 
 <template>
@@ -375,54 +390,41 @@ watch(() => route.query, () => {
     </div>
 
     <DataTable
-      grid-template="150px,150px,100px,1fr,1fr,100px,1fr"
+      table-key="budgets"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="serie_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.final_invoice')" :sortable="false"/>
-        <TableHeader :label="$t('common.date')" sortKey="issue_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.title')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.holder')" :sortable="false" />
-        <TableHeader :label="$t('common.total')" sortKey="total_final" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.origin')" :sortable="false" />
+      <template #cell-serie_final="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id, 'InvoiceRegion');">
+          <abbr :title="item.id" class="no-underline">{{ item.serie_final }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId}">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id, 'InvoiceRegion');">
-              <abbr :title="item.id" class="no-underline">{{ item.serie_final }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span>
-            <button v-if="item.invoice_budget" class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.invoice_budget.id, 'InvoiceRegion');">
-              <abbr :title="item.id" class="no-underline">{{ item.invoice_budget.serie_final }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-            <span v-else>-</span>
-          </span>
-          <span class="p-1">{{ formatDate(item.issue_date) }}</span>
-          <span class="p-1">{{ item.title_final }}</span>
-          <span class="p-1"><abbr :title="item.customer_token">{{ item.customer_final }}</abbr></span>
-
-          <span class="p-1">{{ formatMoneyWithCurrency(item.total_final) }}</span>
-          <span class="p-1">{{ item.origin_name }}</span>
-        </div><!-- end for items -->
+      <template #cell-invoice_budget="{ item }">
+        <button v-if="item.invoice_budget" class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.invoice_budget.id, 'InvoiceRegion');">
+          <abbr :title="item.id" class="no-underline">{{ item.invoice_budget.serie_final }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
+        <span v-else>-</span>
       </template>
+
+      <template #cell-issue_date="{ item }">{{ formatDate(item.issue_date) }}</template>
+      <template #cell-title="{ item }">{{ item.title_final }}</template>
+      <template #cell-holder="{ item }"><abbr :title="item.customer_token">{{ item.customer_final }}</abbr></template>
+      <template #cell-total="{ item }">{{ formatMoneyWithCurrency(item.total_final) }}</template>
+      <template #cell-origin="{ item }">{{ item.origin_name }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

@@ -6,7 +6,6 @@ import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import MessageTemplateRegion from '~/components/organisms/MessageTemplateRegion.vue';
 import MessageTemplateEdit from '~/components/organisms/MessageTemplateEdit.vue';
@@ -101,6 +100,18 @@ const handleSort = (key) => {
   }
   getData(searchInput.value, [], pagination.value.page, sortBy.value, sortDesc.value);
 }
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.date'), sortKey: 'created_at', width: 90, min: 78, priority: 3 },
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 200, min: 105, priority: 1, removable: false },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 300, min: 140, grow: 3, priority: 1, removable: false },
+  { key: 'origin', label: t('common.origin'), sortKey: 'origin', width: 200, min: 100, grow: 1, priority: 2 },
+  { key: 'templates', label: t('common.templates'), sortKey: 'templates', width: 150, min: 100, priority: 2 },
+]);
 
 const exportColumns = computed(() => [
   { header: t('common.date'), value: (row) => formatDate(row.created_at) },
@@ -199,44 +210,31 @@ watch(() => route.query, () => {
     </form>
 
     <DataTable
-      grid-template="80px,200px,300px,200px,150px"
+      table-key="message-templates"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')"  sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-        @sort="handleSort" />
-        <TableHeader :label="$t('common.origin')" sortKey="origin" :currentSortBy="sortBy" :sortDesc="sortDesc"
-        @sort="handleSort" />
-        <TableHeader :label="$t('common.templates')" sortKey="templates" :currentSortBy="sortBy" :sortDesc="sortDesc"
-        @sort="handleSort" />
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-
-          <span class="p-0">{{ formatDate(item.created_at) }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 truncate">{{ item.name }}</span>
-          <span class="p-1">{{ item.origin_name }}</span>
-          <span class="p-1">{{ item.total_templates }}</span>
-        </div><!-- end for items -->
-      </template>
+      <template #cell-name="{ item }">{{ item.name }}</template>
+      <template #cell-origin="{ item }">{{ item.origin_name }}</template>
+      <template #cell-templates="{ item }">{{ item.total_templates }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

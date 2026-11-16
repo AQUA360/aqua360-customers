@@ -9,7 +9,6 @@ import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import PersonRegion from '~/components/organisms/PersonRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 
 import BonificationTypeRegion from '~/components/organisms/BonificationTypeRegion.vue';
 import BonificationTypeEditRegion from '~/components/organisms/BonificationTypeEditRegion.vue';
@@ -149,6 +148,20 @@ const handleSavedAdd = ( item ) => {
   getData();
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 150, min: 105, priority: 1, removable: false,
+  },
+  { key: 'name', label: t('common.type'), sortKey: 'name', width: 200, min: 120, grow: 1, priority: 1 },
+  { key: 'docs', label: t('common.docs'), width: 120, min: 80, priority: 2 },
+  { key: 'variables', label: t('variables'), width: 120, min: 80, priority: 2 },
+]);
+
 </script>
 
 <template>
@@ -174,38 +187,31 @@ const handleSavedAdd = ( item ) => {
       </span>
     </form>
     <DataTable v-if="objectPermissions?.can_view"
-      grid-template="150px,1fr,1fr,1fr"
+      table-key="bonification-type"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.type')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.docs')" :sortable="false" />
-        <TableHeader :label="$t('variables')" :sortable="false" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-0">{{ item.name }}</span>
-          <span class="p-0">{{ item.bonification_type_documentation_types.length }}</span>
-          <span class="p-0">{{ item.variable_types.length }}</span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">
+        <span class="truncate" :title="item.name">{{ item.name }}</span>
       </template>
+      <template #cell-docs="{ item }">{{ item.bonification_type_documentation_types.length }}</template>
+      <template #cell-variables="{ item }">{{ item.variable_types.length }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

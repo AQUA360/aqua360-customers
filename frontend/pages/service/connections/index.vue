@@ -8,7 +8,6 @@ import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ConnectionRegion from '~/components/organisms/ConnectionRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -366,6 +365,23 @@ watch([searchInput, selectedFilters], () => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 140, min: 105, priority: 1, removable: false,
+  },
+  { key: 'address', label: t('address_block.address'), sortKey: 'address_id', width: 260, grow: 3, min: 160, priority: 1, removable: false },
+  { key: 'status', label: t('common.status'), sortKey: 'status_name', width: 110, min: 90, priority: 1 },
+  { key: 'diameter', label: t('service_block.diameter'), sortKey: 'diameter_name', width: 100, min: 70, priority: 3 },
+  { key: 'use_type', label: t('common.usage'), sortKey: 'use_type_name', width: 110, min: 80, priority: 2 },
+  { key: 'installation_at', label: t('service_block.short_install_date'), sortKey: 'installation_at', width: 110, min: 85, priority: 3 },
+  { key: 'dma', label: t('service_block.dma'), sortKey: 'dma_name', width: 150, grow: 1, min: 90, priority: 2 },
+  { key: 'exploitation', label: t('exploitation'), sortKey: 'exploitation_name', width: 150, grow: 1, min: 90, priority: 2 },
+]);
 </script>
 
 <template>
@@ -388,6 +404,8 @@ watch(() => route.query, () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <div class="h-8 w-px bg-gray-300" v-if="filter_status.length"></div>
 
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
@@ -466,56 +484,47 @@ watch(() => route.query, () => {
 
     </div>
 
-    <DataTable
-      grid-template="2fr,3fr,1fr,1fr,1fr,1fr,2fr,2fr"
+    <DataTable v-if="permissions?.can_view"
+      table-key="connections"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('address_block.address')" sortKey="address_id" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('service_block.diameter')" sortKey="diameter_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.usage')" sortKey="use_type_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('service_block.short_install_date')" sortKey="installation_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('service_block.dma')" sortKey="dma_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('exploitation')" sortKey="exploitation_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+        @click="showConnectionRegion(item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+          class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <template v-if="permissions?.can_view">
-          <div v-for="item in items" :key="item.id"
-            class="gap-3 text-base border-b items-center bg-white"
-            :style="gridStyle"
-            :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-            <span>
-              <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showConnectionRegion(item.id);">
-                <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
-                <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-              </button>
-            </span>
-            <span class="p-1" :title="`${ item.street } ${ item.street_number && item.street_number != 'None' ? ', ' + item.street_number : '' } ${ item.address_extra ? ', '+item.address_extra : '' }`">{{ item.street }} {{ item.street_number && item.street_number != 'None' ? ', ' + item.street_number : '' }}  {{ item.address_extra ? ', '+item.address_extra : '' }}</span>
-            <span class="p-1 text-nowrap">
-              <AtomsColorBadge :value="item.status_name" :color="item.status_color"></AtomsColorBadge>
-            </span>
-            <span class="p-1" :title="item.diameter_name">{{ item.diameter_name }}</span>
-            <span class="p-1" :title="item.use_type_name">{{ item.use_type_name }}</span>
-            <span class="p-1" :title="item.installation_at ? formatDate(item.installation_at) : '-'">{{ item.installation_at ? formatDate(item.installation_at) : '-' }}</span>
-            <span class="p-1 truncate" :title="item.dma_name || item.dma_token">{{ item.dma_name || item.dma_token }}</span>
-            <span class="p-1" :title="item.exploitation_name || item.exploitation_token">{{ item.exploitation_name || item.exploitation_token }}</span>
-          </div><!-- end for items -->
-        </template>
+      <template #cell-address="{ item }">
+        <span :title="`${ item.street } ${ item.street_number && item.street_number != 'None' ? ', ' + item.street_number : '' } ${ item.address_extra ? ', '+item.address_extra : '' }`">{{ item.street }} {{ item.street_number && item.street_number != 'None' ? ', ' + item.street_number : '' }}  {{ item.address_extra ? ', '+item.address_extra : '' }}</span>
+      </template>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name" :color="item.status_color"></AtomsColorBadge>
+      </template>
+      <template #cell-diameter="{ item }">
+        <span :title="item.diameter_name">{{ item.diameter_name }}</span>
+      </template>
+      <template #cell-use_type="{ item }">
+        <span :title="item.use_type_name">{{ item.use_type_name }}</span>
+      </template>
+      <template #cell-installation_at="{ item }">
+        <span :title="item.installation_at ? formatDate(item.installation_at) : '-'">{{ item.installation_at ? formatDate(item.installation_at) : '-' }}</span>
+      </template>
+      <template #cell-dma="{ item }">
+        <span class="truncate" :title="item.dma_name || item.dma_token">{{ item.dma_name || item.dma_token }}</span>
+      </template>
+      <template #cell-exploitation="{ item }">
+        <span :title="item.exploitation_name || item.exploitation_token">{{ item.exploitation_name || item.exploitation_token }}</span>
       </template>
     </DataTable>
     <div id="list__footer">

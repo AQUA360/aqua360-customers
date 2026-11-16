@@ -8,7 +8,6 @@ import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ConnectionRequestRegion from '~/components/organisms/ConnectionRequestRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
 const { t } = useI18n();
@@ -211,6 +210,20 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'id',
+    width: 150, min: 105, priority: 1, removable: false,
+  },
+  { key: 'status', label: t('common.status'), sortKey: 'status_name', width: 150, min: 90, priority: 1 },
+  { key: 'requester', label: t('common.requester'), width: 250, min: 150, priority: 1 },
+  { key: 'connection', label: t('connection'), width: 150, min: 100, priority: 2 },
+  { key: 'location', label: t('address_block.location'), width: 220, grow: 1, min: 140, priority: 1, removable: false },
+]);
 </script>
 
 <template>
@@ -233,6 +246,8 @@ watch(() => route.query, () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <div class="h-8 w-px bg-gray-300" v-if="filter_status.length"></div>
 
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
@@ -260,57 +275,42 @@ watch(() => route.query, () => {
     <div v-if="showAddressSearch" class="mb-2 px-2 flex flex-start gap-2 justify-start items-center">
       <AtomsInputAddressSearch :value="searchByAddress" @change="handleAddressChange" />
     </div>
-    <DataTable
-      grid-template="150px,150px,250px,150px,1fr"
+    <DataTable v-if="permissions?.can_view"
+      table-key="connection-requests"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="id" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.requester')" :sortable="false" />
-        <TableHeader :label="$t('connection')" :sortable="false" />
-        <TableHeader :label="$t('address_block.location')" :sortable="false" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showItemDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template v-if="permissions?.can_view" #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white mr-3"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showItemDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name" :color="item.status_color"></AtomsColorBadge>
+      </template>
 
-          <span class="p-1 text-nowrap">
-            <AtomsColorBadge :value="item.status_name" :color="item.status_color"></AtomsColorBadge>
-          </span>
+      <template #cell-requester="{ item }">
+        <AtomsPersonBadge v-if="item.person" :person="item.person" />
+        <AtomsCompanyBadge v-else-if="item.company" :company="item.company" />
+      </template>
 
-          <span v-if="item.person" class="p-1">
-            <AtomsPersonBadge :person="item.person" />
-          </span>
-          <span v-else-if="item.company" class="p-1">
-            <AtomsCompanyBadge :company="item.company" />
-          </span>
-          <span v-else class="p-1" />
+      <template #cell-connection="{ item }">
+        {{ item.connection_token || t('service_block.connection_not_installed') }}
+      </template>
 
-          <span class="p-1">
-            {{ item.connection_token || t('service_block.connection_not_installed') }}
-          </span>
-
-          <span class="p-1">
-            {{ item.street }} {{ item.street_number && item.street_number != 'None' ? ', ' + item.street_number : '' }}
-          </span>
-
-        </div><!-- end for items -->
+      <template #cell-location="{ item }">
+        {{ item.street }} {{ item.street_number && item.street_number != 'None' ? ', ' + item.street_number : '' }}
       </template>
     </DataTable>
     <div id="list__footer">

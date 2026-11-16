@@ -1,11 +1,11 @@
 <script setup>
+import { computed } from 'vue';
 import debounce from 'lodash.debounce';
 import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
 import SendBatchRegion from '~/components/organisms/SendBatchRegion.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
 import { useConfigStore } from '~/stores/useConfigStore';
@@ -191,6 +191,27 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery();
 }, { immediate: true });
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+  'bg-red-50': item.send_error && item.id !== selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 200, min: 120, priority: 1, removable: false },
+  { key: 'batch_type', label: t('send_batch_block.type'), sortKey: 'batch_type__name', width: 140, min: 100, grow: 1, priority: 2 },
+  { key: 'billing', label: t('send_batch_block.billing'), sortKey: 'billing__token', width: 110, min: 90, priority: 3 },
+  { key: 'sent_at', label: t('send_batch_block.sent_at'), sortKey: 'sent_at', width: 100, min: 90, priority: 2 },
+  { key: 'finished_at', label: t('send_batch_block.finished_at'), sortKey: 'finished_at', width: 100, min: 90, priority: 3 },
+  { key: 'items', label: t('send_batch_block.items'), width: 70, min: 55, priority: 3 },
+  {
+    key: 'summary', label: t('send_batch_block.summary'), width: 140, min: 110, priority: 2,
+    cellClass: 'text-xs flex flex-wrap gap-x-2 gap-y-0.5',
+  },
+  {
+    key: 'status', label: t('common.status'), sortKey: 'status__token', width: 130, min: 100, priority: 1,
+    cellClass: 'flex flex-col items-start gap-1',
+  },
+]);
 </script>
 
 <template>
@@ -218,111 +239,96 @@ watch(() => route.query, () => {
     </form>
 
     <DataTable
-      grid-template="200px,140px,110px,100px,100px,70px,140px,130px"
+      v-if="permissions?.can_view"
+      table-key="send-batches"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="permissions?.can_view && items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('send_batch_block.type')" sortKey="batch_type__name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('send_batch_block.billing')" sortKey="billing__token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('send_batch_block.sent_at')" sortKey="sent_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('send_batch_block.finished_at')" sortKey="finished_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('send_batch_block.items')" :sortable="false" />
-        <TableHeader :label="$t('send_batch_block.summary')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" sortKey="status__token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button
+          class="group flex w-full items-center gap-1 text-sky-500 text-left"
+          @click="showDetail(item.id, 'SendBatchRegion');">
+          <abbr :title="item.token" class="no-underline truncate font-mono text-sm">
+            {{ truncateToken(item.token) }}
+          </abbr>
+          <Icon
+            name="fa6-solid:eye"
+            class="shrink-0 opacity-0 group-hover:opacity-100 text-slate-500 transition-opacity duration-200 ease-in-out" />
+        </button>
+        <div v-if="item.related_batch_token" class="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+          <Icon name="fa6-solid:rotate" class="text-[10px]" />
+          <span>{{ $t('send_batch_block.resend') }}:</span>
+          <abbr :title="item.related_batch_token" class="no-underline font-mono">
+            {{ truncateToken(item.related_batch_token, 16) }}
+          </abbr>
+        </div>
+        <div
+          v-else-if="item.send_error"
+          class="mt-0.5 text-xs text-red-600 truncate"
+          :title="item.send_error">
+          {{ item.send_error }}
+        </div>
       </template>
 
-      <template #default="{ gridStyle }">
-        <template v-if="permissions?.can_view">
-          <div
-            v-for="item in items"
-            :key="item.id"
-            class="gap-3 text-base border-b items-center bg-white"
-            :style="gridStyle"
-            :class="{
-              'bg-yellow-50': item.id === selectedItemId,
-              'bg-red-50': item.send_error && item.id !== selectedItemId,
-            }">
-            <span class="min-w-0 p-1">
-              <button
-                class="group flex w-full items-center gap-1 text-sky-500 text-left"
-                @click="showDetail(item.id, 'SendBatchRegion');">
-                <abbr :title="item.token" class="no-underline truncate font-mono text-sm">
-                  {{ truncateToken(item.token) }}
-                </abbr>
-                <Icon
-                  name="fa6-solid:eye"
-                  class="shrink-0 opacity-0 group-hover:opacity-100 text-slate-500 transition-opacity duration-200 ease-in-out" />
-              </button>
-              <div v-if="item.related_batch_token" class="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                <Icon name="fa6-solid:rotate" class="text-[10px]" />
-                <span>{{ $t('send_batch_block.resend') }}:</span>
-                <abbr :title="item.related_batch_token" class="no-underline font-mono">
-                  {{ truncateToken(item.related_batch_token, 16) }}
-                </abbr>
-              </div>
-              <div
-                v-else-if="item.send_error"
-                class="mt-0.5 text-xs text-red-600 truncate"
-                :title="item.send_error">
-                {{ item.send_error }}
-              </div>
-            </span>
-            <span class="p-1 min-w-0">
-              <div class="truncate" :title="item.batch_type?.name || item.batch_type?.token">
-                {{ item.batch_type?.name || item.batch_type?.token || '-' }}
-              </div>
-              <div
-                v-if="item.batch_type?.provider"
-                class="text-xs text-slate-500 uppercase tracking-wide">
-                {{ item.batch_type.provider.name || item.batch_type.provider.token }}
-              </div>
-            </span>
-            <span class="p-1 font-mono text-sm truncate" :title="item.billing_token || ''">
-              {{ item.billing_token || '-' }}
-            </span>
-            <span class="p-1 text-sm">
-              <template v-if="item.sent_at">{{ formatDate(item.sent_at) }}</template>
-              <span v-else class="text-slate-400">{{ $t('send_batch_block.not_sent') }}</span>
-            </span>
-            <span class="p-1 text-sm">
-              {{ item.finished_at ? formatDate(item.finished_at) : '-' }}
-            </span>
-            <span class="p-1">{{ itemCount(item) }}</span>
-            <span class="p-1 text-xs flex flex-wrap gap-x-2 gap-y-0.5">
-              <span class="text-green-700">
-                {{ $t('send_batch_block.summary_short_ok') }} {{ item.ok_count ?? item.summary?.ok ?? 0 }}
-              </span>
-              <span :class="(item.error_count || 0) > 0 ? 'text-red-600 font-medium' : 'text-slate-500'">
-                {{ $t('send_batch_block.summary_short_error') }} {{ item.error_count || 0 }}
-              </span>
-              <span class="text-slate-500">
-                {{ $t('send_batch_block.summary_short_pending') }} {{ item.pending_count ?? item.summary?.pending ?? 0 }}
-              </span>
-            </span>
-            <span class="p-1 flex flex-col items-start gap-1">
-              <AtomsColorBadge
-                v-if="item.status"
-                :value="item.status.name || t(`send_batch_block.status.${item.status.token}`)"
-                :color="item.status.color || statusColors[item.status.token]" />
-              <span v-else class="text-slate-400 text-sm">-</span>
-              <span
-                v-if="item.instant_status_code"
-                class="text-xs"
-                :class="item.instant_status_code >= 400 ? 'text-red-600' : 'text-slate-400'">
-                HTTP {{ item.instant_status_code }}
-              </span>
-            </span>
-          </div>
-        </template>
+      <template #cell-batch_type="{ item }">
+        <div class="truncate" :title="item.batch_type?.name || item.batch_type?.token">
+          {{ item.batch_type?.name || item.batch_type?.token || '-' }}
+        </div>
+        <div
+          v-if="item.batch_type?.provider"
+          class="text-xs text-slate-500 uppercase tracking-wide">
+          {{ item.batch_type.provider.name || item.batch_type.provider.token }}
+        </div>
+      </template>
+
+      <template #cell-billing="{ item }">
+        <span class="font-mono text-sm truncate" :title="item.billing_token || ''">
+          {{ item.billing_token || '-' }}
+        </span>
+      </template>
+
+      <template #cell-sent_at="{ item }">
+        <template v-if="item.sent_at">{{ formatDate(item.sent_at) }}</template>
+        <span v-else class="text-slate-400">{{ $t('send_batch_block.not_sent') }}</span>
+      </template>
+
+      <template #cell-finished_at="{ item }">
+        {{ item.finished_at ? formatDate(item.finished_at) : '-' }}
+      </template>
+
+      <template #cell-items="{ item }">{{ itemCount(item) }}</template>
+
+      <template #cell-summary="{ item }">
+        <span class="text-green-700">
+          {{ $t('send_batch_block.summary_short_ok') }} {{ item.ok_count ?? item.summary?.ok ?? 0 }}
+        </span>
+        <span :class="(item.error_count || 0) > 0 ? 'text-red-600 font-medium' : 'text-slate-500'">
+          {{ $t('send_batch_block.summary_short_error') }} {{ item.error_count || 0 }}
+        </span>
+        <span class="text-slate-500">
+          {{ $t('send_batch_block.summary_short_pending') }} {{ item.pending_count ?? item.summary?.pending ?? 0 }}
+        </span>
+      </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge
+          v-if="item.status"
+          :value="item.status.name || t(`send_batch_block.status.${item.status.token}`)"
+          :color="item.status.color || statusColors[item.status.token]" />
+        <span v-else class="text-slate-400 text-sm">-</span>
+        <span
+          v-if="item.instant_status_code"
+          class="text-xs"
+          :class="item.instant_status_code >= 400 ? 'text-red-600' : 'text-slate-400'">
+          HTTP {{ item.instant_status_code }}
+        </span>
       </template>
     </DataTable>
     <div id="list__footer">

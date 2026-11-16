@@ -8,7 +8,6 @@ import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import PropertyRegion from '~/components/organisms/PropertyRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
 const { t } = useI18n();
@@ -204,6 +203,19 @@ watch([searchInput], () => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'id', label: t('common.identification'), sortKey: 'id', width: 130, min: 105, priority: 1, removable: false },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 200, grow: 2, min: 100, priority: 1, removable: false },
+  { key: 'city', label: t('address_block.city'), sortKey: 'city_name', width: 180, grow: 1, min: 100, priority: 2 },
+  { key: 'cadastral', label: t('common.cadastral'), sortKey: 'cadastral', width: 150, min: 100, priority: 2 },
+  { key: 'total_supply_points', label: t('common.short_supply_points'), width: 130, min: 80, priority: 3 },
+  { key: 'route', label: t('route'), width: 130, min: 90, priority: 3 },
+  { key: 'route_position', label: t('service_block.route_position'), width: 130, min: 90, priority: 3 },
+]);
 </script>
 
 <template>
@@ -245,45 +257,48 @@ watch(() => route.query, () => {
       <AtomsInputAddressSearch :value="searchByAddress" @change="handleAddressChange" />
     </div>
     <DataTable
-      grid-template="1fr,2fr,2fr,1fr,1fr,1fr,1fr"
+      table-key="properties"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="id" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('address_block.city')" sortKey="city_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.cadastral')" sortKey="cadastral" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.short_supply_points')" :sortable="false" />
-        <TableHeader :label="$t('route')" :sortable="false" />
-        <TableHeader :label="$t('service_block.route_position')" :sortable="false" />
+      <template #cell-id="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showPropertyRegion(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.id }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showPropertyRegion(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.id }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1" :title="item.name">{{ item.name }}</span>
-          <span class="p-1" :title="item.city">{{ item.city }}</span>
-          <span class="p-1" :title="item.cadastral">{{ item.cadastral }}</span>
-          <span class="p-1">{{ item.total_supply_points }}</span>
-          <span class="p-1" :title="item.route?.name">{{ item.route?.name }}</span>
-          <span class="p-1" :title="item.route_position_token">{{ item.route_position_token }}</span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">
+        <span class="truncate" :title="item.name">{{ item.name }}</span>
+      </template>
+
+      <template #cell-city="{ item }">
+        <span class="truncate" :title="item.city">{{ item.city }}</span>
+      </template>
+
+      <template #cell-cadastral="{ item }">
+        <span class="truncate" :title="item.cadastral">{{ item.cadastral }}</span>
+      </template>
+
+      <template #cell-total_supply_points="{ item }">
+        <span>{{ item.total_supply_points }}</span>
+      </template>
+
+      <template #cell-route="{ item }">
+        <span class="truncate" :title="item.route?.name">{{ item.route?.name }}</span>
+      </template>
+
+      <template #cell-route_position="{ item }">
+        <span class="truncate" :title="item.route_position_token">{{ item.route_position_token }}</span>
       </template>
     </DataTable>
     <div id="list__footer">
