@@ -9,14 +9,15 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+import defusedxml.ElementTree as ET
 import requests
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
+from defusedxml.common import DefusedXmlException
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,7 @@ def _local_name(tag: str) -> str:
     return tag
 
 
-def _find_text(root: ET.Element, name: str) -> Optional[str]:
+def _find_text(root, name: str) -> Optional[str]:
     for el in root.iter():
         if _local_name(el.tag) == name and el.text and el.text.strip():
             return el.text.strip()
@@ -129,8 +130,9 @@ def _find_text(root: ET.Element, name: str) -> Optional[str]:
 def parse_sii_response(response_xml: str) -> SiiSubmitResult:
     """Parse AEAT SOAP response into a structured result."""
     try:
-        root = ET.fromstring(response_xml)
-    except ET.ParseError as e:
+        # Untrusted network response: forbid DTDs/entities (XXE / XML bombs).
+        root = ET.fromstring(response_xml, forbid_dtd=True)
+    except (ET.ParseError, DefusedXmlException) as e:
         return SiiSubmitResult(
             ok=False,
             http_status=200,
