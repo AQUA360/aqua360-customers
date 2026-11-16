@@ -752,7 +752,7 @@ watch(() => route.query, () => {
         :isSubRegion="false" :individual="true" :selectedCustom="null"
         @show-subregion="handleSubRegionEvent" @change="refresh" @close-subregion="toggleRegion(false)" />
       <ManageInvoicesPaidRegion v-if="regionComponent === 'ManageInvoicesPaidRegion'" 
-        :filters="{ origin, billing, issue_date, due_date, serie, statuses, searchInput, searchInputTotalFinal, payment_types }"
+        :filters="{ origin, billing, issue_date, due_date, serie, statuses, searchInput, searchInputTotalFinal, payment_types, line_item: searchInputLineItem }"
         @changed="refresh" @close="toggleRegion(false)" />
     </div>
   </div>

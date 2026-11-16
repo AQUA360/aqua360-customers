@@ -648,7 +648,7 @@ watch(() => props.estimateReadingsTaskId, () => {
           </div>
           <div class="overflow-y-auto flex-grow pb-10" @scroll="loadMoreOnScroll">
             <div
-              class="sticky top-0 z-10 grid grid-cols-[1.8fr,1.8fr,2fr,1fr,1.2fr,1fr,0.8fr,1fr,1fr] gap-2 px-4 divide-x divide-gray-200 border-b border-gray-400 items-center bg-white">
+              class="sticky top-0 z-10 grid grid-cols-[1.8fr,1.8fr,2fr,1fr,1.2fr,1fr,0.8fr,1fr,1.2fr,1fr] gap-2 px-4 divide-x divide-gray-200 border-b border-gray-400 items-center bg-white">
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
                 t('contract') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
@@ -665,6 +665,7 @@ watch(() => props.estimateReadingsTaskId, () => {
                 t('billing_block.leak') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
                 t('billing_block.consumption') }}</span>
+              <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{ t('billing_block.alerts') }}</span>
               <span class="p-3 flex items-center gap-2">
                 <button class="button-default flex items-center" :disabled="estimatingReadings"
                   @click="estimateReadings(true)">
@@ -786,7 +787,7 @@ watch(() => props.estimateReadingsTaskId, () => {
           </span>
           <div class="overflow-y-auto flex-grow pb-10" @scroll="loadMoreOnScroll">
             <div
-              class="sticky top-0 z-10 grid grid-cols-[1.8fr,1.8fr,1fr,100px,120px,1fr,1fr,1fr,1.5fr,1fr,1fr] gap-2 px-4 divide-x divide-gray-200 border-b border-gray-400 items-center bg-white">
+              class="sticky top-0 z-10 grid grid-cols-[1.8fr,1.8fr,1fr,100px,120px,1fr,1fr,1fr,1.2fr,1.5fr,1fr,1fr] gap-2 px-4 divide-x divide-gray-200 border-b border-gray-400 items-center bg-white">
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
                 t('contract')
                 }}</span>
@@ -806,6 +807,7 @@ watch(() => props.estimateReadingsTaskId, () => {
                 t('billing_block.leak') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
                 t('billing_block.consumption') }}</span>
+              <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{ t('billing_block.alerts') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
                 t('billing_block.remote_alert') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
@@ -843,7 +845,7 @@ watch(() => props.estimateReadingsTaskId, () => {
           </span>
           <div class="overflow-y-auto flex-grow pb-10" @scroll="loadMoreOnScroll">
             <div
-              class="sticky top-0 z-10 grid grid-cols-[1.8fr,1.8fr,1fr,100px,120px,1fr,1fr,1fr,1.5fr,1fr,1fr] gap-2 px-4 divide-x divide-gray-200 border-b border-gray-400 items-center bg-white">
+              class="sticky top-0 z-10 grid grid-cols-[1.8fr,1.8fr,1fr,100px,120px,1fr,1fr,1fr,1.2fr,1.5fr,1fr,1fr] gap-2 px-4 divide-x divide-gray-200 border-b border-gray-400 items-center bg-white">
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">
                 {{ t('contract') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
@@ -860,6 +862,7 @@ watch(() => props.estimateReadingsTaskId, () => {
                 t('billing_block.leak') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
                 t('billing_block.consumption') }}</span>
+              <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{ t('billing_block.alerts') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">{{
                 t('billing_block.reader_alert') }}</span>
               <span class="p-3 text-xs font-medium uppercase tracking-wider text-gray-400 truncate min-w-0">

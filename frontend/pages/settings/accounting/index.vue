@@ -8,6 +8,7 @@ import AccountingConceptsRegion from '~/components/molecules/AccountingConceptsR
 import AccountingCostCentersRegion from '~/components/molecules/AccountingCostCentersRegion.vue';
 import AccountingConfigRegion from '~/components/molecules/AccountingConfigRegion.vue';
 import AccountingPricingsBox from '~/components/organisms/AccountingPricingsBox.vue';
+import AccountingSyncCatalog from '~/components/organisms/AccountingSyncCatalog.vue';
 import EditAccountingPricing from '~/components/organisms/EditAccountingPricing.vue';
 import { checkPermission } from '~/middleware/permission';
 
@@ -167,6 +168,8 @@ onMounted(async () => {
           :active-exploitation="activeExploitationTab" :show-exploitation="showExploitation"
           @create="openReferenceRegion('EditAccountingPricing', null)"
           @edit="(id) => openReferenceRegion('EditAccountingPricing', id)" />
+
+        <AccountingSyncCatalog :exploitation-id="activeExploitationTab" />
       </div>
     </template>
   </div>
