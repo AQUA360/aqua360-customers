@@ -896,12 +896,16 @@ def fanout_general_meter_readings(billing, readings=None):
     if not meter or meter.sub_meters.exists():
       continue
 
-    # Ensure canonical is attached to this billing
-    if canonical.billing_id != billing.id:
+    # Ensure canonical is attached to this billing. A company billing (biller split by
+    # company) shares it with the other companies' billings: it never takes it from them.
+    if canonical.billing_id != billing.id and (not billing.company_id or canonical.billing_id is None):
       canonical.billing = billing
       canonical.save(update_fields=['billing'])
 
-    targets = _get_general_meter_fanout_targets(meter, active_sp_status, contract_active_token)
+    all_targets = _get_general_meter_fanout_targets(meter, active_sp_status, contract_active_token)
+    targets = all_targets
+    if billing.company_id:
+      targets = [(sp, contract) for sp, contract in all_targets if contract.company_id == billing.company_id]
     if not targets:
       continue
 
@@ -944,7 +948,7 @@ def fanout_general_meter_readings(billing, readings=None):
           canonical.save(update_fields=updates)
         continue
 
-      if canonical.contract_id is None and len(targets) == 1:
+      if canonical.contract_id is None and len(all_targets) == 1 and canonical.billing_id == billing.id:
         # Single target: attach contract/SP to the canonical reading instead of copying
         canonical.contract = contract
         canonical.supply_point = supply_point

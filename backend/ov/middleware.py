@@ -9,6 +9,7 @@ class RestrictOVUserMiddleware:
     - group ``ov`` → only ``/ov/`` (and ``/api/ov/`` if API_URL_PREFIX)
     - group ``giswater`` → only ``/giswater/`` (and ``/api/giswater/``)
     - group ``smartmetering`` → only ``/smartmetering/`` (and ``/api/smartmetering/``)
+    - group ``gmao`` → only ``/gmao/`` (and ``/api/gmao/``)
 
     Other authenticated users are unaffected. Apps with custom auth are exempt.
     """
@@ -18,6 +19,7 @@ class RestrictOVUserMiddleware:
         "ov": ("/ov/",),
         "giswater": ("/giswater/",),
         "smartmetering": ("/smartmetering/",),
+        "gmao": ("/gmao/",),
     }
 
     def __init__(self, get_response):

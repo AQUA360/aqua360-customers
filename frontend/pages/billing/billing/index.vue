@@ -508,6 +508,9 @@ const tableColumns = computed(() => [
               <input type="date" v-model="periodEnd" :aria-label="t('billing_block.period_end')" class="input w-full text-base border border-gray-300 rounded p-2" />
             </div>
           </div>
+          <p v-if="selectedBiller.split_by_company" class="mb-2 rounded border border-sky-200 bg-sky-50 p-2 text-sm text-sky-800">
+            {{ t('billing_block.split_by_company_start_hint') }}
+          </p>
         </template>
 
         <div class="flex justify-end gap-2 mt-6">

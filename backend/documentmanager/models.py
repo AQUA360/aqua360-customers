@@ -22,7 +22,7 @@ class Document(models.Model):
         ('hdd', 'HDD'),
         ('azure', 'Azure'),
         ('cloud', 'Cloud'),
-        ('ftp', 'FTP'),
+        ('sftp', 'SFTP'),
         ('aws', 'AWS'),
         ('alfresco', 'Alfresco'),
     ]
@@ -30,7 +30,7 @@ class Document(models.Model):
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
-        supported_services = ['hdd', 'ftp', 'aws', 'alfresco', 'azure', 'cloud']
+        supported_services = ['hdd', 'sftp', 'aws', 'alfresco', 'azure', 'cloud']
         if self.service not in supported_services:
             raise ValidationError(f"Unsupported service: {self.service}")
         super().save(*args, **kwargs)
@@ -44,6 +44,11 @@ class Document(models.Model):
             if document_id in by_id:
                 documents.append(by_id[document_id])
         return documents
+
+    @property
+    def is_einvoice_xml(self):
+        """XML de factura electrònica: no és un PDF i no es pot ajuntar amb altres PDF."""
+        return self.field == 'EFACTURA' or (self.document_name or '').lower().endswith('.xml')
 
     def __str__(self):
         return self.document_name

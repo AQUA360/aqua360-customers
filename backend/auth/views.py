@@ -5,11 +5,12 @@ from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.throttling import ScopedRateThrottle
 from axes.handlers.proxy import AxesProxyHandler
 
 from django.shortcuts import render
+from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group, User, Permission
 
 from auth.filters import UserFilter, GroupFilter
@@ -48,6 +49,8 @@ class CustomAuthToken(ObtainAuthToken):
     # Límit d'intents per IP (scope "login"); el bloqueig per usuari el fa django-axes
     throttle_classes = [LoginIPThrottle]
     throttle_scope = 'login'
+    # Si s'informa, només els usuaris d'aquest grup obtenen token (logins d'integracions)
+    required_group = None
 
     def post(self, request, *args, **kwargs):
         # Usuari bloquejat per massa intents fallits: 429 explícit (sense validar la contrasenya)
@@ -61,6 +64,12 @@ class CustomAuthToken(ObtainAuthToken):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data['user']
+        if self.required_group and not user.groups.filter(name=self.required_group).exists():
+            # Mateixa resposta que amb credencials incorrectes: no revela si l'usuari existeix
+            raise ValidationError(
+                {'non_field_errors': [_('Unable to log in with provided credentials.')]},
+                code='authorization',
+            )
         token, created = Token.objects.get_or_create(user=user)
 
         return Response({
@@ -84,9 +93,10 @@ class UserViewSet(viewsets.ModelViewSet):
         check_user_management_permission(self.request, self.action, "users")
         return super().get_permissions()
 
-    def perform_update(self, serializer):
-        check_superuser_target(self.request.user, serializer.instance)
-        super().perform_update(serializer)
+    def update(self, request, *args, **kwargs):
+        # Abans de validar les dades: si no pot tocar el superusuari, 403 (no errors de contrasenya)
+        check_superuser_target(request.user, self.get_object())
+        return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         if instance.username == CANONICAL_SUPERUSER_USERNAME:
@@ -100,7 +110,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if (
                 not user_permissions['can_view']
                 or not user_permissions['can_change']
@@ -112,7 +122,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 return Response( None, status=status.HTTP_404_NOT_FOUND )
             group_permissions = PermissionManager.get_model_group_permissions(group, 'user')
             return Response(group_permissions, status=status.HTTP_200_OK)
-        permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'user')
+        permissions = PermissionManager.get_model_permissions(request.user, 'user', 'auth')
         return Response(permissions, status=status.HTTP_200_OK)
 
 
@@ -147,7 +157,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if (
                 not user_permissions['can_view']
                 or not user_permissions['can_change']
@@ -159,7 +169,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                 return Response( None, status=status.HTTP_404_NOT_FOUND )
             group_permissions = PermissionManager.get_model_group_permissions(group, 'group')
             return Response(group_permissions, status=status.HTTP_200_OK)
-        permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+        permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
         return Response(permissions, status=status.HTTP_200_OK)
 
 
@@ -194,7 +204,7 @@ class UserPermissionsView(viewsets.ViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if (
                 not user_permissions['can_view']
                 or not user_permissions['can_change']
@@ -206,7 +216,7 @@ class UserPermissionsView(viewsets.ViewSet):
                 return Response( None, status=status.HTTP_404_NOT_FOUND )
             group_permissions = PermissionManager.get_model_group_permissions(group, 'permission')
             return Response(group_permissions, status=status.HTTP_200_OK)
-        permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'permission')
+        permissions = PermissionManager.get_model_permissions(request.user, 'permission', 'auth')
         return Response(permissions, status=status.HTTP_200_OK)
     
     def get_permissions(self):

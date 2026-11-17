@@ -65,6 +65,12 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    // Exemples del concepte del rebut amb la configuració actual (pagaments d'aquesta remesa).
+    const getConceptPreview = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/concept-preview/`;
+      return await $apiManager.fetch(apiUrl, 'GET');
+    }
+
     const getPayments = async (id, searchQuery = '', filters = [], page = 1, sort = null, desc = false, pay_type = []) => {
       let apiUrl = `${apiHost}${entity}${id}/payments/?search=${encodeURIComponent(searchQuery)}&page=${page}`;
 
@@ -245,6 +251,7 @@ export default defineNuxtPlugin(nuxtApp => {
       exportData,
       getDetail,
       getPayments,
+      getConceptPreview,
       exportPaymentsCSV,
       save,
       sendRemittance,

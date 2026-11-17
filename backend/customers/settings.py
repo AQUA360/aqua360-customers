@@ -52,9 +52,15 @@ ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_str.split(",")]
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="http://").split(",")
 
 
-FTP_HOST = config("FTP_HOST", default="")
-FTP_USER = config("FTP_USER", default="")
-FTP_PASSWORD = config("FTP_PASSWORD", default="")
+# Gestor de documents per SFTP (servei "sftp"). La clau del servidor ha de ser a SFTP_KNOWN_HOSTS:
+# sense ella es rebutja la connexió.
+SFTP_HOST = config("SFTP_HOST", default="")
+SFTP_PORT = config("SFTP_PORT", default=22, cast=int)
+SFTP_USER = config("SFTP_USER", default="")
+SFTP_PASSWORD = config("SFTP_PASSWORD", default="")
+SFTP_KEY_FILE = config("SFTP_KEY_FILE", default="")
+SFTP_KNOWN_HOSTS = config("SFTP_KNOWN_HOSTS", default="")
+SFTP_TIMEOUT = 30  # segons
 
 PFX_PASS = config("PFX_PASS", default="")
 PFX_PATH = config("PFX_PATH", default="")

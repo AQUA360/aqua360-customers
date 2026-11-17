@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -62,6 +63,9 @@ class InvoiceManageMassivelyPaidTests(TestCase):
         cls.other_exploitation = Exploitation.objects.create(name='Explotació B')
         cls.billing = Billing.objects.create(token='FAC-MASS')
         cls.user = get_user_model().objects.create_user(username='bulk-pay', password='x')
+        cls.user.user_permissions.add(
+            Permission.objects.get(content_type__app_label='billing', codename='add_payment'))
+        cls.user_without_permission = get_user_model().objects.create_user(username='bulk-pay-no-perm', password='x')
 
     def setUp(self):
         self.client = APIClient()
@@ -94,6 +98,19 @@ class InvoiceManageMassivelyPaidTests(TestCase):
             {'exploitation': self.exploitation.id, 'saving': True, 'invoice_ids': invoice_ids, **data},
             format='json',
         )
+
+    def test_requires_permission_to_mark_payments_as_paid(self):
+        invoice = self.invoice('T1')
+        self.client.force_authenticate(self.user_without_permission)
+
+        preview = self.client.post(self.url, {'saving': False}, format='json')
+        response = self.save([invoice.id])
+
+        self.assertEqual(preview.status_code, 403)
+        self.assertEqual(response.status_code, 403)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, self.invoice_status['invoice_status_expired_token'])
+        self.assertFalse(PaymentMovement.objects.exists())
 
     def test_summary_lists_payable_invoices_and_why_others_are_left_out(self):
         payable = self.invoice('T1', left_to_pay=Decimal('40.00'))

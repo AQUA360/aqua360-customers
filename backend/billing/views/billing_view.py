@@ -24,6 +24,7 @@ from service.utils.route_scope import effective_route, effective_route_q, effect
 from django.contrib.auth.models import Group
 from billing.tasks import create_billings
 from billing.utils.biller_period_service import cycle_dates, previous_cycle
+from billing.utils.billing_creation_service import create_billings_for_biller, planned_tokens, split_companies_for_biller
 from pricing.models import ProductOrigin
 
 from billing.filter.billing_batch_filter import BillingBatchFilter
@@ -65,7 +66,7 @@ class BillingViewSet(viewsets.ModelViewSet):
         send_at__isnull=False
     ).order_by('send_at').values('send_at')[:1]
     
-    return Billing.objects.filter(is_active=True).annotate(
+    return Billing.objects.filter(is_active=True).select_related('company').annotate(
         effective_send_at=Coalesce('send_at', Subquery(invoices_send_at))
     )
 
@@ -246,6 +247,11 @@ class BillingViewSet(viewsets.ModelViewSet):
         ).filter(billable_status_filter).distinct()
       else:
         exploitation_contracts = Contract.objects.none()
+
+      # Facturació d'una empresa (facturador separat per empresa): només els seus contractes
+      if billing.company_id:
+        route_contracts = route_contracts.filter(company_id=billing.company_id)
+        exploitation_contracts = exploitation_contracts.filter(company_id=billing.company_id)
 
       candidate_contract_ids = Contract.objects.filter(
         Q(id__in=route_contracts.values('id')) |
@@ -612,7 +618,7 @@ class BillingViewSet(viewsets.ModelViewSet):
   def permissions(self, request):
       pk = request.query_params.get('id')
       if pk:
-          user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+          user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
           if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
               return Response( None, status=status.HTTP_403_FORBIDDEN )
           group = Group.objects.filter(id=pk).first()
@@ -728,6 +734,12 @@ class BillingViewSet(viewsets.ModelViewSet):
           contract = Contract.objects.get(id=contract_id)
       except Contract.DoesNotExist:
           return Response({"error": "Contract not found."}, status=status.HTTP_404_NOT_FOUND)
+
+      if billing.company_id and contract.company_id != billing.company_id:
+          return Response(
+              {"error": "El contracte és d'una altra empresa que la de la facturació."},
+              status=status.HTTP_400_BAD_REQUEST,
+          )
 
       # Determine dates and batch
       PERIOD_MONTHS_MAP = {
@@ -1125,22 +1137,17 @@ class StartBillingView(views.APIView):
         token = custom_token or f"{biller.token}-{current_month}{current_year}"
         name = custom_name or f"Fact. {biller.name} - {current_month}{current_year}"
 
-        if Billing.objects.filter(token=token, is_active=True).exists():
-          return Response(
-            {"error": f"Ja existeix una facturació amb el codi '{token}'."},
-            status=status.HTTP_400_BAD_REQUEST
-          )
+        for planned_token, _planned_name in planned_tokens(biller, token, name):
+          if Billing.objects.filter(token=planned_token, is_active=True).exists():
+            return Response(
+              {"error": f"Ja existeix una facturació amb el codi '{planned_token}'."},
+              status=status.HTTP_400_BAD_REQUEST
+            )
+        dedupe = False
       else:
-        base_token = f"{biller.token}-{current_month}{current_year}"
-        base_name = f"Fact. {biller.name} - {current_month}{current_year}"
-
-        token = base_token
-        name = base_name
-        counter = 1
-        while Billing.objects.filter(token=token, is_active=True).exists():
-          token = f"{base_token}/{counter}"
-          name = f"{base_name}/{counter}"
-          counter += 1
+        token = f"{biller.token}-{current_month}{current_year}"
+        name = f"Fact. {biller.name} - {current_month}{current_year}"
+        dedupe = True
 
       # Període a facturar: opcional; per defecte, l'últim cicle tancat del facturador.
       raw_start = (request.query_params.get('period_start') or '').strip()
@@ -1162,25 +1169,22 @@ class StartBillingView(views.APIView):
       else:
         period_start, period_end = cycle_dates(previous_cycle(timezone.localdate(), biller))
 
-      billing = Billing.objects.create(
-        status = default_status,
-        name = name,
-        token = token,
-        biller=biller,
-        period_start=period_start,
-        period_end=period_end,
-        is_active=True)
+      if biller.split_by_company and not split_companies_for_biller(biller):
+        return Response(
+          {"error": "El facturador separa per empresa però l'explotació no té cap empresa proveïdora d'aigua."},
+          status=status.HTTP_400_BAD_REQUEST
+        )
 
-      if biller.routes.exists():
-        routes = biller.routes.all()
-        billing.routes.set(routes)
-      else:
-        from billing.utils.exploitation_scope import routes_for_exploitation
-        routes = routes_for_exploitation(biller.exploitation_id)
-        billing.routes.set(routes)
-      billing.save()
+      with transaction.atomic():
+        billings = create_billings_for_biller(
+          biller, token, name, period_start, period_end, status=default_status, dedupe=dedupe,
+        )
 
-      return Response({"message": "Billing process started.", "id": billing.id}, status=status.HTTP_200_OK)
+      return Response({
+        "message": "Billing process started.",
+        "id": billings[0].id,
+        "ids": [billing.id for billing in billings],
+      }, status=status.HTTP_200_OK)
 
     except Exception as e:
       logger.exception("Error inesperat")

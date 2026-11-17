@@ -43,6 +43,26 @@ const groupSelectDisabled = computed(() => {
   return !canManageUsers.value || userRole.value === 'superuser' || userRole.value === 'admin';
 });
 
+// Requisits de la contrasenya (el backend també els valida): mínim 8 caràcters i un número
+// per a tothom i, per als superusuaris, també una lletra i un caràcter especial
+const passwordRules = computed(() => {
+  const pwd = password.value || '';
+  const rules = [
+    { key: 'min_length', ok: pwd.length >= 8 },
+    { key: 'number', ok: /\p{N}/u.test(pwd) },
+  ];
+  if (userRole.value === 'superuser') {
+    rules.push(
+      { key: 'letter', ok: /\p{L}/u.test(pwd) },
+      { key: 'special', ok: /[^\p{L}\p{N}\s]/u.test(pwd) },
+    );
+  }
+  return rules;
+});
+
+// En crear sempre s'ha de posar contrasenya; en editar, només si es canvia
+const showPasswordRules = computed(() => !props.id || !!password.value);
+
 const getGroups = async () => {
   try {
     const response = await $GroupApiService.getAll();
@@ -103,6 +123,9 @@ const save = async () => {
     if (password.value == null || password.value == '') {
       if(!confirm(t('confirmation_text_block.confirm_create_user_no_password'))) return;
     }
+    if (userRole.value === 'superuser') {
+      if(!confirm(t('confirmation_text_block.confirm_create_superuser'))) return;
+    }
   }
 
   saving.value = true;
@@ -152,6 +175,10 @@ const deleteItem = async () => {
 }
 
 const isValid = () => {
+  if (showPasswordRules.value && passwordRules.value.some(rule => !rule.ok)) {
+    toast.warning(t('user_group.password_rules_not_met'));
+    return false;
+  }
   if (password.value != null && password.value != ''){
     if (password.value != repeatPassword.value){
       toast.warning(t('user_group.password_not_match'));
@@ -266,7 +293,18 @@ const handleSubRegionEvent = (value) => {
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ props.id? 
           `${t('common.change')} ${t('common.password')}` : t('common.password') }}</label>
-          <input type="password" v-model="password" class="input" :disabled="!canManageUsers" :class="{ 'opacity-50 cursor-not-allowed': !canManageUsers }"/>
+          <input type="password" v-model="password" class="input" :disabled="!canManageUsers"
+            :class="{
+              'invalid': attemptedSave && showPasswordRules && passwordRules.some(rule => !rule.ok),
+              'opacity-50 cursor-not-allowed': !canManageUsers,
+            }" />
+          <ul v-if="showPasswordRules" class="mt-2 text-sm flex flex-wrap gap-x-4 gap-y-1">
+            <li v-for="rule in passwordRules" :key="rule.key" class="flex items-center gap-x-2"
+              :class="rule.ok ? 'text-green-600' : 'text-red-600'">
+              <Icon :name="rule.ok ? 'fa6-solid:circle-check' : 'fa6-solid:circle-xmark'" />
+              {{ t(`user_group.password_rule.${rule.key}`) }}
+            </li>
+          </ul>
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('user_group.repeat_password') }}</label>

@@ -4346,3 +4346,24 @@ msgstr "This remittance has already been sent and can no longer be modified."
 #: billing/views/invoice_view.py
 msgid "La factura no té lectures"
 msgstr "The invoice has no readings"
+
+#: auth/validators.py
+#, python-format
+msgid "The password must have at least %(min_length)d characters."
+msgstr "The password must have at least %(min_length)d characters."
+
+#: auth/validators.py
+msgid "The password must contain at least one letter."
+msgstr "The password must contain at least one letter."
+
+#: auth/validators.py
+msgid "The password must contain at least one number."
+msgstr "The password must contain at least one number."
+
+#: auth/validators.py
+msgid "The password must contain at least one special character."
+msgstr "The password must contain at least one special character."
+
+#: auth/serializers.py
+msgid "Invalid permission data."
+msgstr "Invalid permission data."

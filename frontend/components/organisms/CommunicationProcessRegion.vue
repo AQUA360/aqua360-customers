@@ -174,9 +174,10 @@ const openDownloadPanel = () => {
   return navigateTo('/billing/document-downloads/add?process=' + props.id);
 }
 
+// ids: documents triats al modal (ja filtrats i sense els XML de factura electrònica).
 // channel: 'all' | 'postal' | 'email'. markSent: marcar les cartes com a enviades un cop
 // descarregades (només amb el canal postal).
-const downloadDocuments = async ({ channel = 'all', includeInvoices = true, markSent = false } = {}) => {
+const downloadDocuments = async ({ ids = [], channel = 'all', markSent = false } = {}) => {
   const postal = channel === 'postal';
   const email = channel === 'email';
   try {
@@ -189,12 +190,6 @@ const downloadDocuments = async ({ channel = 'all', includeInvoices = true, mark
     // El procés que es descarrega, encara que mentrestant se n'obri un altre
     const processId = data.value.id;
 
-    //GET IDS
-    const ids = data.value.com_files
-      .filter(item => !postal || item.is_postal)
-      .filter(item => !email || item.is_email)
-      .filter(item => includeInvoices || !item.has_invoice)
-      .map(item => item.id)
     if (ids.length === 0) {
       toast.warning(t('warning_block.warning_no_docs_download'));
       return;

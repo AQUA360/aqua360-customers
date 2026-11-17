@@ -158,12 +158,12 @@ class UserManagementPermissionTest(TestCase):
         self.client.force_authenticate(self.superuser)
         response = self.client.patch(
             f"/auth/user/{self.plain.id}/",
-            {"new_pwd": "new-pwd", "first_name": "Nou", "group_id": self.group.id},
+            {"new_pwd": "riu-blau-2026", "first_name": "Nou", "group_id": self.group.id},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
         self.plain.refresh_from_db()
-        self.assertTrue(self.plain.check_password("new-pwd"))
+        self.assertTrue(self.plain.check_password("riu-blau-2026"))
         self.assertEqual(self.plain.first_name, "Nou")
         self.assertTrue(self.plain.groups.filter(id=self.group.id).exists())
 
@@ -402,3 +402,128 @@ class LoginBruteForceProtectionTest(TestCase):
             self.client.post(admin_url, {'username': 'victima', 'password': 'mala'}, REMOTE_ADDR='10.0.0.3')
         resp = self.client.post(admin_url, {'username': 'victima', 'password': 'correcta'}, REMOTE_ADDR='10.0.0.3')
         self.assertEqual(resp.status_code, 429)
+
+
+class PasswordValidationTest(TestCase):
+    """Les contrasenyes creades o canviades per l'API passen els validadors; els superusuaris, a més, la regla forta."""
+
+    def setUp(self):
+        MainPermission.objects.get_or_create(
+            name="users",
+            defaults={"view_key": "view_user", "change_key": "change_user",
+                      "affected_models": "auth.user,auth.group,auth.permission"},
+        )
+        self.client = APIClient()
+        self.superuser = User.objects.create_superuser("customers", "customers@example.com", "customers-pwd")
+        self.plain = User.objects.create_user("plain", "plain@example.com", "plain-pwd")
+        self.client.force_authenticate(self.superuser)
+
+    def create_user(self, password, role="none"):
+        return self.client.post("/auth/user/", {
+            "username": "nou", "email": "nou@example.com",
+            "new_pwd": password, "role": role,
+        }, format="json")
+
+    def test_weak_password_rejected_on_create(self):
+        for password in ("a", "12345678", "password"):
+            response = self.create_user(password)
+            self.assertEqual(response.status_code, 400, password)
+            self.assertIn("new_pwd", response.data)
+        self.assertFalse(User.objects.filter(username="nou").exists())
+
+    def test_weak_password_rejected_on_update(self):
+        response = self.client.patch(f"/auth/user/{self.plain.id}/", {"new_pwd": "1"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.plain.refresh_from_db()
+        self.assertTrue(self.plain.check_password("plain-pwd"))
+
+    def test_regular_user_needs_a_number_but_not_special_character(self):
+        response = self.create_user("riublaucel")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("new_pwd", response.data)
+        self.assertEqual(self.create_user("riublau2026").status_code, 201)
+
+    def test_superuser_needs_letters_numbers_and_special_character(self):
+        # Només `customers` pot ser superuser; es valida amb un canvi de contrasenya seu.
+        for password in ("riublau2026", "riu-blau-cel", "2026-2027-28"):
+            response = self.client.patch(
+                f"/auth/user/{self.superuser.id}/", {"new_pwd": password}, format="json")
+            self.assertEqual(response.status_code, 400, password)
+        response = self.client.patch(
+            f"/auth/user/{self.superuser.id}/", {"new_pwd": "riu-blau-2026"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.superuser.refresh_from_db()
+        self.assertTrue(self.superuser.check_password("riu-blau-2026"))
+
+    def test_promoting_to_superuser_is_forbidden_for_non_customers(self):
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"role": "superuser", "new_pwd": "riu-blau-2026"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.plain.refresh_from_db()
+        self.assertFalse(self.plain.is_superuser)
+        self.assertTrue(self.plain.check_password("plain-pwd"))
+
+    def test_existing_superuser_not_affected_without_password_change(self):
+        response = self.client.patch(
+            f"/auth/user/{self.superuser.id}/", {"first_name": "Nou"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.superuser.refresh_from_db()
+        self.assertTrue(self.superuser.check_password("customers-pwd"))
+        self.assertEqual(self.superuser.first_name, "Nou")
+
+
+class GroupPermissionsTest(TestCase):
+    """Comprovacions de permisos de grups amb els arguments en l'ordre correcte i permissions_data validades."""
+
+    def setUp(self):
+        MainPermission.objects.get_or_create(
+            name="users",
+            defaults={
+                "view_key": "view_user",
+                "change_key": "change_user",
+                "affected_models": "auth.user,auth.group,auth.permission",
+                "is_default": True,
+            },
+        )
+        self.client = APIClient()
+        self.superuser = User.objects.create_superuser("customers", "customers@example.com", "customers-pwd")
+        self.manager = User.objects.create_user("manager", "manager@example.com", "manager-pwd")
+        self.manager.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="auth", codename__in=["view_user", "change_user", "view_group", "change_group", "add_group"]))
+
+    def test_model_permissions_use_model_then_app(self):
+        from auth.permissions import PermissionManager
+        permissions = PermissionManager.get_model_permissions(self.manager, "group", "auth")
+        self.assertTrue(permissions["can_view"])
+        self.assertTrue(permissions["can_change"])
+        self.assertFalse(permissions["can_delete"])
+
+    def test_group_create_still_requires_superuser(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.post("/auth/group/", {"name": "g", "user_ids": [], "permissions_data": []}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post("/auth/group/", {"name": "g", "user_ids": [], "permissions_data": []}, format="json")
+        self.assertEqual(response.status_code, 201)
+
+    def test_malformed_permissions_data_returns_400(self):
+        self.client.force_authenticate(self.superuser)
+        for permissions_data in (["x"], [{"hasView": True}], [{"viewKey": "does_not_exist"}],
+                                 [{"viewKey": "view_user", "affected_data": "x"}]):
+            response = self.client.post(
+                "/auth/group/", {"name": "g", "user_ids": [], "permissions_data": permissions_data}, format="json")
+            self.assertEqual(response.status_code, 400, permissions_data)
+        self.assertFalse(Group.objects.filter(name="g").exists())
+
+    def test_valid_permissions_data_is_applied(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post("/auth/group/", {
+            "name": "g", "user_ids": [],
+            "permissions_data": [{"viewKey": "view_user", "hasView": True, "hasChange": False}],
+        }, format="json")
+        self.assertEqual(response.status_code, 201)
+        group = Group.objects.get(name="g")
+        self.assertTrue(group.permissions.filter(codename="view_user").exists())

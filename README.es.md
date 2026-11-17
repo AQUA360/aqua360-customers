@@ -16,7 +16,7 @@ cd /path/al/projecte/aqua360-customers
 
 ### 2. Variables de entorno (`.env`)
 
-El `docker-compose.yml` carga el archivo `.env` (`env_file`) en los servicios `backend`, `celery-worker`, `celery-beat`, `gmao-consumer` y `frontend`, así que **debe existir** en la raíz del proyecto:
+El `docker-compose.yml` carga el archivo `.env` (`env_file`) en los servicios `backend`, `celery-worker`, `celery-beat` y `gmao-consumer`, así que **debe existir** en la raíz del proyecto:
 
 ```bash
 cp env.docker.example .env
@@ -24,9 +24,16 @@ cp env.docker.example .env
 
 Edita `.env` si es necesario. Por ejemplo, si el puerto **5432** ya lo utiliza un PostgreSQL del sistema, define `POSTGRES_PORT=5433` (solo el puerto en la máquina host).
 
-Cualquier variable del `.env` (p. ej. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) llega a los contenedores. Las variables de conexión a la BD y a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) las fija el propio compose, y el resto tienen valor por defecto en `docker-compose.yml`. `ENV` y `LANGUAGE` se aplican al build y a la ejecución del frontend.
+Cualquier variable del `.env` (p. ej. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) llega a los contenedores. Las variables de conexión a la BD y a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) las fija el propio compose, y el resto tienen valor por defecto en `docker-compose.yml`. `ENV` y `LANGUAGE` se aplican al build y a la ejecución del frontend. El `frontend` no carga el `.env` entero (no debe recibir los secretos del backend): solo recibe las variables que lista su bloque `environment` del `docker-compose.yml`, y una variable nueva que lea al arrancar se debe añadir allí.
 
 ### 3. Construir y arrancar todos los servicios
+
+Antes de arrancar Compose, tanto en un servidor nuevo como en una instalación existente, prepara los volúmenes desde el directorio del proyecto. Ejecuta estas órdenes como root (o con `sudo`); el backend se ejecuta con UID/GID `1001:1001`. El cambio recursivo de propietario también cubre archivos y subdirectorios creados por los contenedores antiguos que se ejecutaban como root.
+
+```bash
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
+```
 
 Primera vez o después de cambios en los Dockerfiles o dependencias:
 
@@ -124,6 +131,8 @@ docker compose down -v
 
 ```bash
 git pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -140,6 +149,8 @@ Para usar una versión sin construir nada en el servidor, ponerla en el `.env` y
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose up -d
 ```
 
