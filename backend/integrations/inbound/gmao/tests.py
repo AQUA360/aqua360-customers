@@ -105,3 +105,60 @@ class GMAOPropertySearchAccessTest(TestCase):
             self.url, {"search": "Finca"}, HTTP_AUTHORIZATION=f"Token {token}"
         )
         self.assertEqual(resp.status_code, 200)
+
+
+class GetOrCreateGMAOUserCommandTest(TestCase):
+    """L'ordre crea l'usuari GMAO i no reaprofita usuaris que quedarien mal limitats."""
+
+    ENV = {
+        "GMAO_USER_USERNAME": "gmao",
+        "GMAO_USER_PASSWORD": "secret",
+        "GMAO_USER_EMAIL": "gmao@example.com",
+    }
+
+    def _call(self, env):
+        from io import StringIO
+        from unittest import mock
+
+        from decouple import UndefinedValueError
+        from django.core.management import call_command
+
+        def fake_config(key, *args, **kwargs):
+            if key not in env:
+                raise UndefinedValueError(key)
+            return env[key]
+
+        with mock.patch(
+            "integrations.management.commands.get_or_create_gmao_user.config",
+            side_effect=fake_config,
+        ):
+            call_command("get_or_create_gmao_user", stdout=StringIO())
+
+    def test_creates_user_in_group_with_token(self):
+        self._call(self.ENV)
+        user = User.objects.get(username="gmao")
+        self.assertTrue(user.check_password("secret"))
+        self.assertTrue(user.groups.filter(name=GMAO_GROUP).exists())
+        self.assertFalse(user.is_staff or user.is_superuser)
+        self.assertTrue(Token.objects.filter(user=user).exists())
+
+    def test_rerun_without_password_keeps_user(self):
+        self._call(self.ENV)
+        self._call({"GMAO_USER_USERNAME": "gmao"})
+        self.assertTrue(User.objects.get(username="gmao").check_password("secret"))
+
+    def test_refuses_user_from_other_restricted_group(self):
+        from django.core.management.base import CommandError
+
+        user = User.objects.create_user(username="gmao", password="x")
+        user.groups.add(Group.objects.create(name="ov"))
+        with self.assertRaises(CommandError):
+            self._call(self.ENV)
+        self.assertFalse(user.groups.filter(name=GMAO_GROUP).exists())
+
+    def test_refuses_admin_user(self):
+        from django.core.management.base import CommandError
+
+        User.objects.create_superuser(username="gmao", password="x")
+        with self.assertRaises(CommandError):
+            self._call(self.ENV)

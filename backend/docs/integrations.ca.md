@@ -491,7 +491,9 @@ docker compose exec backend python manage.py get_or_create_gmao_user
 
 L'ordre crea el grup `gmao` i l'usuari, l'afegeix al grup i mostra el token. Si l'usuari ja
 existeix no el modifica (canviar la contrasenya al `.env` no actualitza l'usuari existent).
-Un cop creat, la contrasenya es pot treure del `.env`. Les credencials es lliuren al GMAO
+Un cop creat, la contrasenya es pot treure del `.env`. L'ordre no reaprofita un usuari
+existent que sigui administrador o d'un altre grup restringit (`ov`, `giswater`,
+`smartmetering`): cal un usuari dedicat al GMAO. Les credencials es lliuren al GMAO
 per un canal segur.
 
 2. Obtenir el token amb el login del GMAO:

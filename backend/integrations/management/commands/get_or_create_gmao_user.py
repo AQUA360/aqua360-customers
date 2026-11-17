@@ -1,8 +1,12 @@
-from django.core.management.base import BaseCommand
-from django.contrib.auth.models import Group
 from django.contrib.auth import get_user_model
-from rest_framework.authtoken.models import Token
+from django.contrib.auth.models import Group
+from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 from decouple import config
+from rest_framework.authtoken.models import Token
+
+from integrations.inbound.gmao.permissions import GMAO_GROUP
+from ov.middleware import RestrictOVUserMiddleware
 
 
 class Command(BaseCommand):
@@ -11,35 +15,59 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write("⚙️  Setting GMAO user up...")
 
-        gmao_group, group_created = Group.objects.get_or_create(name="gmao")
-        self._notify(group_created, "GMAO group")
-
         User = get_user_model()
         username = config("GMAO_USER_USERNAME")
-        password = config("GMAO_USER_PASSWORD")
-        email = config("GMAO_USER_EMAIL")
 
-        user, user_created = User.objects.get_or_create(
-            username=username,
-            defaults={"email": email},
-        )
+        with transaction.atomic():
+            gmao_group, group_created = Group.objects.get_or_create(name=GMAO_GROUP)
+            self._notify(group_created, "GMAO group")
 
-        if user_created:
-            user.set_password(password)
-            user.is_superuser = False
-            user.is_staff = False
-            user.save()
-        self._notify(user_created, "GMAO user")
+            user = User.objects.filter(username=username).first()
+            user_created = user is None
+            if user_created:
+                # La contrasenya només cal en crear l'usuari; després es pot treure del .env
+                user = User(
+                    username=username,
+                    email=config("GMAO_USER_EMAIL"),
+                    is_superuser=False,
+                    is_staff=False,
+                )
+                user.set_password(config("GMAO_USER_PASSWORD"))
+                user.save()
+            else:
+                self._check_reusable(user)
+            self._notify(user_created, "GMAO user")
 
-        if not user.groups.filter(name="gmao").exists():
-            user.groups.add(gmao_group)
-            self.stdout.write(self.style.SUCCESS("✅ GMAO user added to gmao group"))
+            if not user.groups.filter(name=GMAO_GROUP).exists():
+                user.groups.add(gmao_group)
+                self.stdout.write(self.style.SUCCESS("✅ GMAO user added to gmao group"))
+
+            token, token_created = Token.objects.get_or_create(user=user)
 
         self.stdout.write(self.style.SUCCESS("🎉 GMAO user setup complete!"))
-
-        token, token_created = Token.objects.get_or_create(user=user)
         self._notify(token_created, "Token")
         self.stdout.write(self.style.SUCCESS(f"🔑 Token: {token.key}"))
+
+    def _check_reusable(self, user):
+        """Un usuari existent només es reaprofita si pot quedar limitat a /gmao/.
+
+        Un administrador perdria l'accés a la resta de l'API, i un usuari d'un altre
+        grup restringit (ov, giswater...) quedaria limitat a les rutes d'aquell grup.
+        """
+        if user.is_superuser or user.is_staff:
+            raise CommandError(
+                f"User '{user.username}' is an administrator; use a dedicated GMAO user."
+            )
+        other_groups = set(
+            user.groups.filter(name__in=RestrictOVUserMiddleware.RESTRICTED_GROUPS)
+            .exclude(name=GMAO_GROUP)
+            .values_list("name", flat=True)
+        )
+        if other_groups:
+            raise CommandError(
+                f"User '{user.username}' already belongs to restricted group(s) "
+                f"{', '.join(sorted(other_groups))}; use a dedicated GMAO user."
+            )
 
     def _notify(self, created: bool, item: str):
         if created:
