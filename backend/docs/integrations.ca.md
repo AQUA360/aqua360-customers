@@ -17,6 +17,7 @@ La documentació detallada per integració viu a [`docs/integrations/`](integrat
 | Aqua360 Sign | Outbound + Inbound | `integrations/outbound/signing/`, `integrations/inbound/signing/` | [`docs/integrations/signing/`](integrations/signing/data-contract.md) |
 | Odoo (ERP Comptabilitat) | Outbound | `integrations/outbound/odoo/` | [`docs/integrations/odoo/`](integrations/odoo/data-contract.md) · [`openapi.yaml`](integrations/odoo/openapi.yaml) · [`integrations/outbound/odoo/README.md`](../integrations/outbound/odoo/README.md) |
 | Smartmetering | Inbound | `integrations/inbound/smartmetering/` | [`docs/integrations/smartmetering/`](integrations/smartmetering/data-contract.md) · aquest document (secció Smartmetering) |
+| GMAO | Inbound | `integrations/inbound/gmao/` | aquest document (secció GMAO) |
 
 ---
 
@@ -454,6 +455,94 @@ Fa `GET` d'una sessió inexistent. Un `404` JSON vol dir que Sign ha acceptat `S
 
 ```bash
 python manage.py test integrations.outbound.signing.tests integrations.inbound.signing.tests
+```
+
+---
+
+## GMAO
+
+Codi: `integrations/inbound/gmao/`
+
+Rutes inbound per al GMAO, versionades sota `/gmao/v1/`. Si el desplegament té
+`API_URL_PREFIX=True`, cal afegir el prefix `/api` (p. ex. `/api/gmao/v1/auth/login/`).
+
+### Autenticació
+
+Autenticació per token de Django REST Framework, amb un login propi del GMAO.
+
+L'usuari ha de pertànyer al grup Django `gmao`. Només aquest grup pot fer login a
+`/gmao/v1/auth/login/` i consultar les rutes `/gmao/`; el middleware restringeix el seu
+token a rutes sota `/gmao/` (qualsevol altra ruta retorna `403 Forbidden`).
+
+1. Crear l'usuari i el grup (un cop a cada servidor on s'integri el GMAO). Afegir al
+   `.env` del backend:
+
+```
+GMAO_USER_USERNAME=gmao
+GMAO_USER_PASSWORD=<contrasenya llarga i aleatòria>
+GMAO_USER_EMAIL=<correu tècnic>
+```
+
+I executar:
+
+```
+docker compose exec backend python manage.py get_or_create_gmao_user
+```
+
+L'ordre crea el grup `gmao` i l'usuari, l'afegeix al grup i mostra el token. Si l'usuari ja
+existeix no el modifica (canviar la contrasenya al `.env` no actualitza l'usuari existent).
+Un cop creat, la contrasenya es pot treure del `.env`. Les credencials es lliuren al GMAO
+per un canal segur.
+
+2. Obtenir el token amb el login del GMAO:
+
+```
+POST /gmao/v1/auth/login/
+```
+
+```json
+{
+  "username": "gmao",
+  "password": "…"
+}
+```
+
+Resposta `200`:
+
+```json
+{
+  "username": "gmao",
+  "token": "<token>"
+}
+```
+
+- Credencials incorrectes o usuari que no és del grup `gmao`: `400` amb
+  `{"non_field_errors": ["Unable to log in with provided credentials."]}` (la mateixa
+  resposta en els dos casos).
+- Massa intents: `429`. Té les mateixes proteccions que el login general (límit
+  d'intents per IP i bloqueig temporal de l'usuari després d'intents fallits).
+- El token és sempre el mateix per a l'usuari; no cal fer login a cada crida.
+
+3. Incloure el token a cada crida:
+
+```
+Authorization: Token <token>
+```
+
+### Cerca d'immobles i adreces
+
+```
+GET /gmao/v1/properties/?search=<text>[&page=<n>&limit=<n>]
+```
+
+`search` és obligatori (mínim 3 caràcters). Cada paraula ha de coincidir amb el carrer,
+el número, la ciutat, el codi postal, el nom o la referència cadastral de l'immoble.
+Resposta paginada: `{count, page, limit, total_pages, results}`.
+
+### Tests
+
+```bash
+python manage.py test integrations.inbound.gmao
 ```
 
 ---
