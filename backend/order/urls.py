@@ -40,5 +40,5 @@ urlpatterns = [
     path('order/<int:order_id>/complete', CompleteOrderView.as_view(http_method_names=['put']), name='complete-order'),
     path('claim-request-order/<str:type_token>/', ClaimRequestOrderView.as_view(http_method_names=['post']), name='claim-request-order'),
     path('invalidate-order/<int:order_id>/', InvalidateOrderView.as_view(http_method_names=['put']), name='invalidate-order'),
-    path('download-order/<int:id>/', OrderReportPDFDownloadViewSet.as_view(http_method_names=['get']), name='download-order-pdf'),
+    path('download-order/<int:id>/', OrderReportPDFDownloadViewSet.as_view(http_method_names=['post']), name='download-order-pdf'),
 ]
