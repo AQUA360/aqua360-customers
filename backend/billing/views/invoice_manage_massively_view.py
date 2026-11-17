@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from billing.filter.invoice_filter import InvoiceFilter
 from billing.models import Invoice, Payment, PaymentStatus
+from billing.permissions import PaymentPermission
 from billing.utils.invoice_service import get_invoice_status
 from billing.utils.payment_service import (
     check_claim_payments_for_paid_invoice,
@@ -139,7 +140,8 @@ def _preview_row(invoice):
 
 
 class InvoiceManageMassivelyViewSet(APIView):
-    permission_classes = [IsAuthenticated]
+    # Mateix permís que pagar un cobrament a mà (POST → add_payment)
+    permission_classes = [IsAuthenticated, PaymentPermission]
 
     def post(self, request, *args, **kwargs):
         filtered, errors = _filtered_invoices(request.data)
