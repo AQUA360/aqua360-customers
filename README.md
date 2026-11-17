@@ -16,7 +16,7 @@ cd /path/al/projecte/aqua360-customers
 
 ### 2. Environment Variables (`.env`)
 
-`docker-compose.yml` loads the `.env` file (`env_file`) in the `backend`, `celery-worker`, `celery-beat`, `gmao-consumer` and `frontend` services, so it **must exist** at the project root:
+`docker-compose.yml` loads the `.env` file (`env_file`) in the `backend`, `celery-worker`, `celery-beat` and `gmao-consumer` services, so it **must exist** at the project root:
 
 ```bash
 cp env.docker.example .env
@@ -24,7 +24,7 @@ cp env.docker.example .env
 
 Edit `.env` if needed. For example, if port **5432** is already used by a system PostgreSQL instance, set `POSTGRES_PORT=5433` (only the port on the host machine).
 
-Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) reaches the containers. The DB and Redis connection variables (`DATABASE_*`, `CELERY_BROKER_URL`) are set by the compose file itself, and the rest have defaults in `docker-compose.yml`. `ENV` and `LANGUAGE` apply to the frontend build and runtime.
+Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) reaches the containers. The DB and Redis connection variables (`DATABASE_*`, `CELERY_BROKER_URL`) are set by the compose file itself, and the rest have defaults in `docker-compose.yml`. `ENV` and `LANGUAGE` apply to the frontend build and runtime. The `frontend` service does not load the whole `.env` (it must not receive the backend secrets): it only gets the variables listed in its `environment` block in `docker-compose.yml`, and any new variable it reads at startup must be added there.
 
 ### 3. Build and Start All Services
 
