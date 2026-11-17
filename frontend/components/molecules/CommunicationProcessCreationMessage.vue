@@ -16,9 +16,43 @@ const props = defineProps({
         type: String,
         default: null,
     },
+    // Documents adjunts del procés (carta, factures, lectures, mode d'enviament de les factures).
+    attachments: {
+        type: Object,
+        default: () => ({}),
+    },
+    // 'billing_fixed': procés d'una facturació (les factures van sempre);
+    // 'billing': cerca per factures (es pot triar); null: sense factures.
+    invoicesContext: {
+        type: String,
+        default: null,
+    },
+    hasReadings: {
+        type: Boolean,
+        default: false,
+    },
 })
 
-const emit = defineEmits(['change', 'load'])
+const emit = defineEmits(['change', 'load', 'change-attachments'])
+
+const invoiceEmailDeliveryOptions = [
+    { value: '', label: 'service_block.invoice_email_delivery_company' },
+    { value: 'attachment', label: 'service_block.invoice_email_delivery_attachment' },
+    { value: 'ov_link', label: 'service_block.invoice_email_delivery_ov_link' },
+    { value: 'both', label: 'service_block.invoice_email_delivery_both' },
+]
+
+const invoicesAttached = computed(() =>
+    props.invoicesContext === 'billing_fixed' || (props.invoicesContext === 'billing' && !!props.attachments?.attach_invoices))
+const showInvoiceEmailDelivery = computed(() =>
+    invoicesAttached.value || (props.hasReadings && !!props.attachments?.attach_reading_invoices))
+
+const updateAttachment = (key, value) => {
+    const next = { ...props.attachments, [key]: value }
+    // Les lectures només es vinculen amb les factures
+    if (key === 'attach_invoices' && !value) next.attach_readings = false
+    emit('change-attachments', next)
+}
 const { t } = useI18n();
 const { $ConfiglistApiService, $CommunicationProcessApiService, $MessageTemplateApiService } = useNuxtApp();
 const toast = useToast();
@@ -286,14 +320,83 @@ onMounted(async () => {
             </div>
         </div>
 
-        <div v-if="isClaimContext && selectedTemplate" class="mb-3 p-3 border border-slate-200 rounded bg-white">
-            <label class="flex items-center gap-2 cursor-pointer">
-                <abbr class="flex items-center" :title="t('informative_block.info_attach_claim_documents')">
-                    <Icon name="fa6-solid:circle-info" class="text-slate-500" />
-                </abbr>
-                <span>{{ t('common.attach_claim_documents_to_email') }}</span>
-                <input type="checkbox" v-model="attachClaimDocuments" @change="onAttachClaimDocumentsChange" />
-            </label>
+        <!-- DOCUMENTS ADJUNTS -->
+        <div v-if="selectedTemplate" class="mb-3 rounded-lg border border-slate-200 bg-white p-3">
+            <p class="text-sm font-medium text-slate-600">{{ t('customer_service_block.attached_documents') }}</p>
+            <p class="mb-3 text-xs text-slate-500">{{ t('customer_service_block.attached_documents_help') }}</p>
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <label class="flex cursor-pointer items-start gap-3 rounded-md border p-2"
+                    :class="attachments?.attach_letter ? 'border-sky-500 bg-sky-50/60' : 'border-slate-200 hover:bg-slate-50'">
+                    <input type="checkbox" class="mt-1" :checked="!!attachments?.attach_letter"
+                        @change="updateAttachment('attach_letter', $event.target.checked)" />
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-sm text-slate-700">
+                            <Icon name="fa6-solid:file-pdf" class="mr-1 text-slate-500" />
+                            {{ t('common.attach_letter_to_email') }}
+                        </span>
+                        <span class="block text-xs text-slate-500">{{ t('informative_block.info_always_attach') }}</span>
+                    </span>
+                </label>
+
+                <div v-if="invoicesContext" class="rounded-md border p-2"
+                    :class="invoicesAttached ? 'border-sky-500 bg-sky-50/60' : 'border-slate-200'">
+                    <label class="flex items-start gap-3" :class="invoicesContext === 'billing_fixed' ? 'cursor-default' : 'cursor-pointer'">
+                        <input type="checkbox" class="mt-1" :checked="invoicesAttached"
+                            :disabled="invoicesContext === 'billing_fixed'"
+                            @change="updateAttachment('attach_invoices', $event.target.checked)" />
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-sm text-slate-700">
+                                <Icon name="fa6-solid:file-invoice" class="mr-1 text-slate-500" />
+                                {{ t('customer_service_block.attach_invoices') }}
+                            </span>
+                            <span v-if="invoicesContext === 'billing_fixed'" class="block text-xs text-slate-500">
+                                {{ t('customer_service_block.billing_invoices_always') }}
+                            </span>
+                        </span>
+                    </label>
+                    <label class="ml-7 mt-2 flex items-center gap-2 text-sm"
+                        :class="invoicesAttached ? 'cursor-pointer text-slate-700' : 'cursor-not-allowed text-slate-400'">
+                        <input type="checkbox" :checked="!!attachments?.attach_readings" :disabled="!invoicesAttached"
+                            @change="updateAttachment('attach_readings', $event.target.checked)" />
+                        {{ t('customer_service_block.attach_readings') }}
+                    </label>
+                </div>
+
+                <label v-if="hasReadings" class="flex cursor-pointer items-start gap-3 rounded-md border p-2"
+                    :class="attachments?.attach_reading_invoices ? 'border-sky-500 bg-sky-50/60' : 'border-slate-200 hover:bg-slate-50'">
+                    <input type="checkbox" class="mt-1" :checked="!!attachments?.attach_reading_invoices"
+                        @change="updateAttachment('attach_reading_invoices', $event.target.checked)" />
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-sm text-slate-700">
+                            <Icon name="fa6-solid:file-invoice" class="mr-1 text-slate-500" />
+                            {{ t('customer_service_block.attach_reading_invoices') }}
+                        </span>
+                        <span class="block text-xs text-slate-500">{{ t('informative_block.info_attach_only_existing_invoices') }}</span>
+                    </span>
+                </label>
+
+                <label v-if="isClaimContext" class="flex cursor-pointer items-start gap-3 rounded-md border p-2"
+                    :class="attachClaimDocuments ? 'border-sky-500 bg-sky-50/60' : 'border-slate-200 hover:bg-slate-50'">
+                    <input type="checkbox" class="mt-1" v-model="attachClaimDocuments" @change="onAttachClaimDocumentsChange" />
+                    <span class="min-w-0 flex-1">
+                        <span class="block text-sm text-slate-700">
+                            <Icon name="fa6-solid:file-lines" class="mr-1 text-slate-500" />
+                            {{ t('common.attach_claim_documents_to_email') }}
+                        </span>
+                        <span class="block text-xs text-slate-500">{{ t('informative_block.info_attach_claim_documents') }}</span>
+                    </span>
+                </label>
+            </div>
+
+            <div v-if="showInvoiceEmailDelivery" class="mt-3">
+                <label class="mb-1 block text-sm font-medium text-slate-600">{{ t('service_block.invoice_email_delivery') }}</label>
+                <select class="input w-full" :value="attachments?.invoice_email_delivery || ''"
+                    @change="updateAttachment('invoice_email_delivery', $event.target.value || null)">
+                    <option v-for="option in invoiceEmailDeliveryOptions" :key="option.value" :value="option.value">
+                        {{ t(option.label) }}
+                    </option>
+                </select>
+            </div>
         </div>
 
         <hr class="my-2">
