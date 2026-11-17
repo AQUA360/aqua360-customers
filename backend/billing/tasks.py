@@ -2740,25 +2740,13 @@ def create_billings():
           period_start, period_end = cycle_dates(
             previous_cycle(timezone.localdate(), biller)
           )
-          billing = Billing.objects.create(
-            status = default_status,
-            name = name,
-            token = token,
-            biller=biller,
-            period_start=period_start,
-            period_end=period_end,
-            is_active=True)
-
-          pending_status_token = ConfigProject.objects.get(token='billing_batch_pending').value
-          pending_status = BillingBatchStatus.objects.get(token=pending_status_token)
-          if biller.routes.exists():
-            routes = biller.routes.all()
-            billing.routes.set(routes)
-          else:
-            from billing.utils.exploitation_scope import routes_for_exploitation
-            routes = routes_for_exploitation(biller.exploitation_id)
-            billing.routes.set(routes)
-          billing.save()
+          # Una facturació, o una per empresa proveïdora si el facturador separa per empresa
+          from billing.utils.billing_creation_service import create_billings_for_biller
+          billings = create_billings_for_biller(
+            biller, token, name, period_start, period_end, status=default_status,
+          )
+          if not billings:
+            print(f"Biller {biller.id} splits by company but has no water supplier companies")
           
 @shared_task(bind=True)
 def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date, end_date, send_at, queue_item_id=None):
@@ -2960,10 +2948,13 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
   )
   billing.save()
   
-  batches = ReadingBatch.objects.filter(
-            readings__billing=billing,
-            is_active=True
-        ).distinct()
+  # Un lot pot tenir lectures a diverses facturacions (p. ex. facturador separat per
+  # empresa): només passa a facturat quan totes les seves facturacions estan processades.
+  from billing.utils.reading_batch_billing_service import fully_billed_batches
+  batches = fully_billed_batches(
+    ReadingBatch.objects.filter(readings__billing=billing, is_active=True).distinct(),
+    processed_status_token,
+  )
   batches.update(status=reading_batch_billed)
   # update() no dispara post_save: fixar els comptadors dels lots que encara no en tenen
   from billing.utils.metrics_snapshot_service import reading_batch_closed_status_tokens, sync_reading_batch_snapshot

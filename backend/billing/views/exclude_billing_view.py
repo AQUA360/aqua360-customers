@@ -50,6 +50,7 @@ class ExcludeBillingView(views.APIView):
                     token = f"EXR-{billing.token}",
                     excluded_from = billing,
                     biller = billing.biller,
+                    company = billing.company,
                     is_excluded = True,
                     is_active= True
                 )
