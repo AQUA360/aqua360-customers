@@ -22,6 +22,9 @@ from service.utils.supply_cut_service import closed_status_tokens
 # La vista vw_contract_debt també exclou els pagaments cobrats en saldo ('5').
 NON_DEBT_STATUS_TOKENS = {*CONTRACT_DEBT_EXCLUDED_STATUS_TOKENS, '5'}
 
+# Ubicació del punt de subministrament en bateria de comptadors (token o nom).
+BATTERY_PLACEMENT = 'BATERIA'
+
 
 def claim_payment_pending_amount(payment):
     """
@@ -110,6 +113,7 @@ def claim_contracts_export_queryset():
         'supply_point_default__status',
         'supply_point_default__meter',
         'supply_point_default__placement',
+        'supply_point_default__cluster_nozzle',
         'supply_point_default__address__street__type',
         'supply_point_default__address__street_number__number_type',
         'supply_point_default__address__city',
@@ -142,6 +146,17 @@ def claim_contracts_export_columns(contract_ids, contract_payments=()):
         supply_point = contract.supply_point_default
         return supply_point.placement.name or '' if supply_point and supply_point.placement else ''
 
+    def cluster_nozzle_position(contract):
+        """Posició del broc de la bateria, només si el punt està ubicat en bateria."""
+        supply_point = contract.supply_point_default
+        placement = supply_point.placement if supply_point else None
+        if not placement or BATTERY_PLACEMENT not in (
+            (placement.token or '').strip().upper(), (placement.name or '').strip().upper()
+        ):
+            return ''
+        nozzle = supply_point.cluster_nozzle
+        return nozzle.position if nozzle and nozzle.position is not None else ''
+
     return [
         ('token', _('Contracte'), lambda c: c.token or ''),
         ('holder', _('Titular'), lambda c: _person_label(c.holder)),
@@ -154,6 +169,7 @@ def claim_contracts_export_columns(contract_ids, contract_payments=()):
         ('meter', _('Comptador'), meter_code),
         ('meter_general', _('Comptador general'), meter_is_general),
         ('placement', _('Ubicació'), supply_point_placement),
+        ('cluster_nozzle_position', _('Posició'), cluster_nozzle_position),
         ('status', _('Estat contracte'), lambda c: c.status.name if c.status else ''),
         ('supply_point_status', _('Estat punt de subministrament'), supply_point_status),
         ('supply_cut_date', _('Data de tall'), _supply_cut_date),
