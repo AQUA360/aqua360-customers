@@ -89,6 +89,7 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
             type_tokens = (communication.type_tokens or '').split(',')
             comm_is_postal = postal_token in type_tokens
             comm_is_email = email_token in type_tokens
+            comm_is_einvoice = 'electronic_inv' in type_tokens
             comm_files = communication.files.filter(is_active=True).annotate(
                 is_communication_document=is_communication_document,
             ).order_by('-is_letter', '-is_communication_document', 'id')
@@ -104,7 +105,11 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
                         'id': comm_file.file.id,
                         'is_postal': is_postal,
                         'is_email': is_email,
-                        'has_invoice': comm_file.file.entity == 'FACTURES' and comm_file.file.field == 'FACTURA'
+                        'has_invoice': comm_file.file.entity == 'FACTURES' and comm_file.file.field == 'FACTURA',
+                        # L'XML de la factura electrònica no es pot ajuntar al PDF de documents
+                        'is_einvoice_xml': comm_file.file.is_einvoice_xml,
+                        # Comunicació d'un titular amb factura electrònica (per filtrar-ne els documents)
+                        'is_einvoice_communication': comm_is_einvoice,
                         })
         return files
 

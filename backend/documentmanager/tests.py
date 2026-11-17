@@ -486,6 +486,40 @@ class DocumentOrderTest(TestCase):
         merged = [call.args[0] for call in download_document.call_args_list]
         self.assertEqual(merged, [self.third, self.first, self.second])
 
+    @patch("documentmanager.views.sign_pdf", side_effect=lambda buffer, *args: buffer)
+    @patch("documentmanager.views.CompanySerializer")
+    @patch("documentmanager.views.Exploitation")
+    @patch("documentmanager.views.download_document")
+    def test_single_pdf_skips_einvoice_xml(self, download_document, *mocks):
+        download_document.side_effect = lambda document: _blank_pdf()
+        xml = Document.objects.create(entity_id=1, service="hdd", field="EFACTURA", document_name="F_1.xml")
+
+        response = self.client.post(
+            reverse("download_single_pdf_document"),
+            {"doc_ids": [self.first.id, xml.id, self.second.id]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        merged = [call.args[0] for call in download_document.call_args_list]
+        self.assertEqual(merged, [self.first, self.second])
+
+    @patch("documentmanager.views.download_document")
+    def test_single_pdf_only_einvoice_xml_is_bad_request(self, download_document):
+        xml = Document.objects.create(entity_id=1, service="hdd", field="EFACTURA", document_name="F_1.xml")
+
+        response = self.client.post(
+            reverse("download_single_pdf_document"), {"doc_ids": [xml.id]}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        download_document.assert_not_called()
+
+    def test_is_einvoice_xml(self):
+        self.assertFalse(self.first.is_einvoice_xml)
+        self.assertTrue(Document(field="EFACTURA", document_name="F_1").is_einvoice_xml)
+        self.assertTrue(Document(document_name="F_1.XML").is_einvoice_xml)
+
 
 class GenericExportXlsxTest(TestCase):
     """Les cadenes de les exportacions XLSX es desen sempre com a text."""
