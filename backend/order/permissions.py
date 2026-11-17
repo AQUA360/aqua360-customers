@@ -10,8 +10,13 @@ class OrderPermission(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             raise exceptions.MethodNotAllowed(request.method)
         
+        # OPTIONS (metadades) per a qualsevol usuari autenticat, com DjangoModelPermissions
+        if request.method == 'OPTIONS':
+            return True
+
         method_permissions = {
             'GET': 'view_order',
+            'HEAD': 'view_order',
             'POST': 'add_order',
             'PUT': 'change_order',
             'PATCH': 'change_order',
@@ -30,8 +35,13 @@ class OperatorPermission(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             raise exceptions.MethodNotAllowed(request.method)
         
+        # OPTIONS (metadades) per a qualsevol usuari autenticat, com DjangoModelPermissions
+        if request.method == 'OPTIONS':
+            return True
+
         method_permissions = {
             'GET': 'view_operator',
+            'HEAD': 'view_operator',
             'POST': 'add_operator',
             'PUT': 'change_operator',
             'PATCH': 'change_operator',
@@ -139,7 +149,7 @@ class OrderViewSetPermission(OrderPermission):
     def has_permission(self, request, view):
         if super().has_permission(request, view):
             return True
-        if request.method != 'GET':
+        if request.method not in ('GET', 'HEAD'):
             return False
         action = getattr(view, 'action', None)
         if action == 'list':
@@ -149,9 +159,20 @@ class OrderViewSetPermission(OrderPermission):
         return False
 
     def has_object_permission(self, request, view, obj):
-        if request.user.has_perm('order.view_order') or request.method != 'GET':
+        if request.user.has_perm('order.view_order') or request.method not in ('GET', 'HEAD'):
             return True
-        return any(
+        if any(
             getattr(obj, f'{field}_id') is not None and request.user.has_perm(perm)
             for field, perm in RELATED_ORDER_FIELDS
+        ):
+            return True
+        # Mateix criteri que el filtre `contract` del llistat: l'ordre també és
+        # del contracte si ho és el seu punt de subministrament.
+        return bool(
+            obj.supply_point_id
+            and request.user.has_perm('contract.view_contract')
+            and type(obj).objects.filter(pk=obj.pk).filter(
+                Q(supply_point__contracts__isnull=False)
+                | Q(supply_point__default_contracts__isnull=False)
+            ).exists()
         )
