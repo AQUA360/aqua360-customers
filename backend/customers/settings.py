@@ -24,11 +24,40 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config("SECRET_KEY", default="Unsafe-default-key")
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", default=True, cast=bool)
+DEBUG = config("DEBUG", default=False, cast=bool)
+
+# Claus conegudes (antics valors per defecte i les dels fitxers d'exemple): no es poden fer
+# servir fora de desenvolupament, perquè permetrien falsificar sessions i dades signades.
+INSECURE_SECRET_KEYS = {
+    "Unsafe-default-key",
+    "dev-insecure-change-me",
+    "change-me-use-a-long-random-string",
+}
+DEV_SECRET_KEY = "dev-insecure-change-me"
+
+
+def _resolve_secret_key(secret_key, debug):
+    """Retorna la SECRET_KEY a fer servir o atura l'arrencada si és insegura.
+
+    Amb DEBUG=True (desenvolupament local) es tolera que falti i es fa servir una clau de
+    desenvolupament; amb DEBUG=False ha de ser definida i no pot ser una clau coneguda.
+    """
+    secret_key = (secret_key or "").strip()
+    if debug:
+        return secret_key or DEV_SECRET_KEY
+    if not secret_key or secret_key in INSECURE_SECRET_KEYS:
+        raise ImproperlyConfigured(
+            "Cal definir SECRET_KEY al .env amb una clau llarga i aleatòria (no la de l'exemple) "
+            "quan DEBUG=False. Es pot generar amb: "
+            "python -c \"from django.core.management.utils import get_random_secret_key; "
+            "print(get_random_secret_key())\""
+        )
+    return secret_key
+
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = _resolve_secret_key(config("SECRET_KEY", default=""), DEBUG)
 
 # SECURITY WARNING: update this when you have the production host
 

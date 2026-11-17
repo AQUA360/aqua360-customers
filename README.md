@@ -22,6 +22,8 @@ cd /path/al/projecte/aqua360-customers
 cp env.docker.example .env
 ```
 
+Replace `SECRET_KEY` with a long random key (you can generate one with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`): it is required and `docker compose` will not start without it; with `DEBUG=False` the backend will not start with the example key either. `DEBUG` defaults to `False`; set `DEBUG=True` only for development.
+
 Edit `.env` if needed. For example, if port **5432** is already used by a system PostgreSQL instance, set `POSTGRES_PORT=5433` (only the port on the host machine).
 
 Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) reaches the containers. The DB and Redis connection variables (`DATABASE_*`, `CELERY_BROKER_URL`) are set by the compose file itself, and the rest have defaults in `docker-compose.yml`. `ENV` and `LANGUAGE` apply to the frontend build and runtime. The `frontend` service does not load the whole `.env` (it must not receive the backend secrets): it only gets the variables listed in its `environment` block in `docker-compose.yml`, and any new variable it reads at startup must be added there.
