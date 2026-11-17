@@ -1,6 +1,5 @@
 #sign_certificate_service
 import tempfile
-from PyPDF2 import PdfReader
 from django.conf import settings
 from urllib.request import urlopen
 from cryptography.hazmat.primitives import hashes

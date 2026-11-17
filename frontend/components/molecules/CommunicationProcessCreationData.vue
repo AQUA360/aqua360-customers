@@ -28,8 +28,6 @@ const description = ref('')
 const selectedCompanyConfigEmail = ref(null)
 const selectedCompanyConf = ref(null)
 const companiesConf = ref([])
-const attachLetter = ref(false)
-const attachInvoices = ref(false)
 
 const useTypes = ref([])
 const selectedUseType = ref(null)
@@ -49,7 +47,6 @@ const loadData = async () => {
         if (props.data.company_config_email) {
             selectedCompanyConfigEmail.value = props.data.company_config_email
         }
-        attachLetter.value = props.data.attach_letter || false
         emitChange()
     }
 }
@@ -61,8 +58,6 @@ const emitChange = () => {
         due_date: due_date.value,
         description: description.value,
         messages_data: props?.data?.messages_data?.length > 0 ? props?.data?.messages_data : [],
-        attach_letter: attachLetter.value,
-        attach_invoices: attachInvoices.value,
         use_type: selectedUseType.value,
     }
     emit('change', finalData.value)
@@ -197,50 +192,6 @@ onMounted(async () => {
                     $t('customer_service_block.process_description') }} *</p>
                 <textarea id="messageTextarea" v-model="description" class="input w-full h-[180px]"
                     :label="$t('common.description')" :required="true" @input="debouncedEmitChange" />
-            </div>
-        </div>
-
-        <hr class="my-4">
-        <div>
-            <p class="block text-sm font-medium text-slate-600 mb-2">{{ $t('common.actions') }}</p>
-            <div class="grid grid-cols-2 gap-4">
-                <label
-                    class="flex cursor-pointer items-start gap-3 rounded-lg border bg-white p-3 transition-colors"
-                    :class="attachLetter ? 'border-sky-500 bg-sky-50/60' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'">
-                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors"
-                        :class="attachLetter ? 'bg-sky-100 text-sky-600' : 'bg-slate-100 text-slate-500'">
-                        <Icon name="fa6-solid:file-pdf" />
-                    </span>
-                    <span class="min-w-0 flex-1">
-                        <span class="block text-sm font-medium text-slate-700">
-                            {{ t('common.attach_letter_to_email') }}
-                        </span>
-                        <span class="mt-0.5 block text-xs leading-snug text-slate-500">
-                            {{ t('informative_block.info_always_attach') }}
-                        </span>
-                    </span>
-                    <input type="checkbox" v-model="attachLetter" @change="debouncedEmitChange"
-                        class="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
-                </label>
-
-                <label v-if="props.hasReadings"
-                    class="flex cursor-pointer items-start gap-3 rounded-lg border bg-white p-3 transition-colors"
-                    :class="attachInvoices ? 'border-sky-500 bg-sky-50/60' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'">
-                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors"
-                        :class="attachInvoices ? 'bg-sky-100 text-sky-600' : 'bg-slate-100 text-slate-500'">
-                        <Icon name="fa6-solid:file-invoice" />
-                    </span>
-                    <span class="min-w-0 flex-1">
-                        <span class="block text-sm font-medium text-slate-700">
-                            {{ t('customer_service_block.select_attach_invoices') }}
-                        </span>
-                        <span class="mt-0.5 block text-xs leading-snug text-slate-500">
-                            {{ t('informative_block.info_attach_only_existing_invoices') }}
-                        </span>
-                    </span>
-                    <input type="checkbox" v-model="attachInvoices" @change="debouncedEmitChange"
-                        class="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
-                </label>
             </div>
         </div>
 

@@ -27,7 +27,7 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import threading
 
-from PyPDF2 import PdfMerger
+from pypdf import PdfWriter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -187,7 +187,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
             
-            merger = PdfMerger()
+            merger = PdfWriter()
             
             all_cloud = all(document.service in ['aws', 'azure'] for document in documents)
             if all_cloud:

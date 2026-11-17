@@ -3580,8 +3580,8 @@ def generate_massive_invoice_download(self, invoice_ids, base_url, in_zip=True):
     file_name = f"invoices_{now_date.strftime('%Y%m%d%H%M%S')}.zip"
     file_content_wrapper = ContentFile(buffer.getvalue(), name=file_name)
   else:
-    from PyPDF2 import PdfMerger
-    merger = PdfMerger()
+    from pypdf import PdfWriter
+    merger = PdfWriter()
     for _filename, file_content in iter_document_contents():
       merger.append(BytesIO(file_content))
     merged_buffer = BytesIO()

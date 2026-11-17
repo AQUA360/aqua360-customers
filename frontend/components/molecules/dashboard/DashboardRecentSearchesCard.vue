@@ -162,7 +162,7 @@ onBeforeUnmount(() => {
               <span class="truncate capitalize">{{ result.app }} / {{ result.entity.replace(/-/g, ' ') }}</span>
             </span>
             <span class="text-xs font-semibold text-slate-500 truncate">{{ getItemTranslation(result.found_field) }}</span>
-            <span class="text-sm font-medium text-slate-700 line-clamp-2 break-words" v-html="result.found"></span>
+            <span class="text-sm font-medium text-slate-700 line-clamp-2 break-words">{{ result.found }}</span>
             <span class="mt-auto text-xs text-slate-400 text-right">
               <TimeRelative :datetime="result.searched_at" />
             </span>
