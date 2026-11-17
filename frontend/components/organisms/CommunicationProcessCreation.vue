@@ -86,10 +86,28 @@ const persons = shallowRef([]) // Use shallowRef for large arrays
 // mostren al pas 2 i es desen al procés per poder-les avisar per una altra via.
 const unreachablePersons = shallowRef([])
 const setupType = ref(null)
-const attachInvoices = ref(false)
-const attachReadings = ref(false)
-// Mode d'enviament de les factures per correu triat al filtre de facturació (null = el de l'empresa).
-const invoiceEmailDelivery = ref(null)
+// Documents adjunts de cada comunicació, triats al pas 4 i desats al procés.
+// invoice_email_delivery: com van les factures per correu (null = el de la plantilla o l'empresa).
+const emptyAttachments = () => ({
+  attach_letter: false,
+  attach_invoices: false,
+  attach_readings: false,
+  attach_reading_invoices: false,
+  invoice_email_delivery: null,
+})
+const attachments = ref(emptyAttachments())
+// Un esborrany reobert recupera la tria desada al procés (els processos antics no en tenen).
+const attachmentsFromRequest = () => {
+  const request = props.request
+  if (!request || request.attach_letter === null || request.attach_letter === undefined) return null
+  return {
+    attach_letter: !!request.attach_letter,
+    attach_invoices: !!request.attach_invoices,
+    attach_readings: !!request.attach_readings,
+    attach_reading_invoices: !!request.attach_reading_invoices,
+    invoice_email_delivery: request.invoice_email_delivery || null,
+  }
+}
 const excludedPersons = ref([])
 const messageData = ref({})
 const finalData = ref({})
@@ -154,11 +172,21 @@ const isObjectFixed = ref(false)
 const supplyCutIds = ref([])
 
 const isClaimRequest = computed(() => objectSearchData.value?.entity === 'claimrequest')
+// Factures del procés: d'una facturació fixada van sempre; a la cerca per factures es poden triar.
+const invoicesContext = computed(() => {
+  if (objectSearchData.value?.entity === 'billing') return 'billing_fixed'
+  if (!objectSearchData.value?.entity && setupType.value === 'BILLING') return 'billing'
+  return null
+})
+const invoicesAttached = computed(() =>
+  invoicesContext.value === 'billing_fixed' || (invoicesContext.value === 'billing' && attachments.value.attach_invoices))
+const hasReadings = computed(() => props.request?.readings?.length > 0)
 // Amb l'enllaç a l'oficina virtual triat al procés o a la plantilla, el correu ha de portar la variable de l'enllaç.
 const missingOvUrlVariable = computed(() => {
   // Valor del procés; si no n'hi ha, el de la plantilla (el de l'empresa no es coneix aquí)
-  const delivery = invoiceEmailDelivery.value || messageData.value?.invoice_email_delivery
-  if (!attachInvoices.value || !['ov_link', 'both'].includes(delivery)) return false
+  const delivery = attachments.value.invoice_email_delivery || messageData.value?.invoice_email_delivery
+  const withInvoices = invoicesAttached.value || (hasReadings.value && attachments.value.attach_reading_invoices)
+  if (!withInvoices || !['ov_link', 'both'].includes(delivery)) return false
   const emailMessage = (finalData.value?.messages_data || []).find(message => message?.type?.token === 'email')
   return !!emailMessage && !(emailMessage.msg_data?.body || '').includes('%company.ov_url')
 })
@@ -501,8 +529,8 @@ const save = async () => {
         description: personChunks.length > 1 ? `${rawFinalData.description} - ${t('common.batch')} ${i + 1}/${personChunks.length}` : rawFinalData.description,
         due_date: rawFinalData.due_date,
         messages_data: rawFinalData.messages_data ? JSON.parse(JSON.stringify(toRaw(rawFinalData.messages_data))) : null,
-        attach_letter: rawFinalData.attach_letter,
-        attach_reading_invoices: rawFinalData.attach_invoices,
+        attach_letter: attachments.value.attach_letter,
+        attach_reading_invoices: hasReadings.value && attachments.value.attach_reading_invoices,
         // Gestió d'impagats: el checkbox del pas 4 (valor de la plantilla si no s'ha tocat)
         attach_claim_documents: isClaimRequest.value ? (rawMessageData.attach_claim_documents ?? null) : null,
         company_id: rawCompany?.id,
@@ -513,9 +541,9 @@ const save = async () => {
         fixed_data: rawObjectSearchData?.entity ? rawObjectSearchData.entity : null,
         fixed_data_id: rawObjectSearchData?.id ? rawObjectSearchData.id : null,
         batch_number: i + 1,
-        attach_invoices: attachInvoices.value,
-        attach_readings: attachReadings.value,
-        invoice_email_delivery: attachInvoices.value ? invoiceEmailDelivery.value : null,
+        attach_invoices: invoicesContext.value === 'billing' && attachments.value.attach_invoices,
+        attach_readings: invoicesAttached.value && attachments.value.attach_readings,
+        invoice_email_delivery: attachments.value.invoice_email_delivery || null,
         total_batches: personChunks.length,
         use_type_id: rawFinalData.use_type?.value || null,
         run_token: runToken,
@@ -573,14 +601,34 @@ const onUnreachableChange = (value) => {
   unreachablePersons.value = [...(value || [])]
 }
 
-const onPersonsChange = (value, type = null, attach_invoices = false, attach_readings = false, invoice_email_delivery = null) => {
+// Els documents adjunts es trien al pas 4 (onAttachmentsChange), no a la cerca.
+const onPersonsChange = (value, type = null) => {
   persons.value = [...value]
   request.value.persons = value
   setupType.value = type
-  attachInvoices.value = attach_invoices || false
-  attachReadings.value = attach_readings || false
-  invoiceEmailDelivery.value = invoice_email_delivery || null
 }
+
+const onAttachmentsChange = (value) => {
+  attachments.value = { ...emptyAttachments(), ...value }
+}
+
+// Valors per defecte segons d'on surten les factures: la cerca per factures les adjunta
+// (amb les lectures) i una facturació fixada només les factures. Un esborrany reobert
+// conserva la tria desada fins que no es canvia l'origen.
+let keepRequestAttachments = !!attachmentsFromRequest()
+if (keepRequestAttachments) attachments.value = attachmentsFromRequest()
+watch(invoicesContext, (context) => {
+  if (keepRequestAttachments) {
+    keepRequestAttachments = false
+    if (context) return
+  }
+  attachments.value = {
+    ...attachments.value,
+    attach_invoices: context === 'billing',
+    attach_readings: context === 'billing',
+    invoice_email_delivery: context ? attachments.value.invoice_email_delivery : null,
+  }
+})
 
 const onProcessInfoChange = (values) => {
   company.value = values.company
@@ -726,14 +774,16 @@ onMounted(async () => {
 
         <!-- Pas 3: Informació del procés -->
         <div v-if="currentStep === 2" class="space-y-4">
-          <CommunicationProcessCreationData :data="finalData" :has-readings="props.request?.readings?.length > 0"
+          <CommunicationProcessCreationData :data="finalData" :has-readings="hasReadings"
             :default-use-type-token="contextToken" :default-company-id="filterCompany?.id" @change="onProcessInfoChange" />
         </div>
 
         <!-- Pas 4: Selecció de missatge -->
         <div v-if="currentStep === 3" class="space-y-4">
           <CommunicationProcessCreationMessage :message="messageData" :persons="persons"
-            :default-origin-token="contextToken" @change="onMessageChange"/>
+            :default-origin-token="contextToken" @change="onMessageChange"
+            :attachments="attachments" :invoices-context="invoicesContext" :has-readings="hasReadings"
+            @change-attachments="onAttachmentsChange"/>
         </div>
 
         <!-- Pas 5: Confirmació de missatge -->

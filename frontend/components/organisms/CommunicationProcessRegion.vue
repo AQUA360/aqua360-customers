@@ -8,6 +8,7 @@ import InvoiceRegion from './InvoiceRegion.vue';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import PaymentRegion from './PaymentRegion.vue';
 import CommunicationProcessDetail from '../molecules/CommunicationProcessDetail.vue';
+import CommunicationProcessDownloadModal from '../molecules/CommunicationProcessDownloadModal.vue';
 import CommunicationMiniDetail from '../molecules/CommunicationMiniDetail.vue';
 import CommunicationRegion from './CommunicationRegion.vue';
 import CommunicationMessageEdit from '../molecules/CommunicationMessageEdit.vue';
@@ -33,6 +34,7 @@ const router = useRouter();
 const { $apiManager, $CommunicationProcessApiService, $CommunicationApiService, $DocumentManagerApiService, $ConfigProjectApiService } = useNuxtApp();
 const pending = ref(true);
 const downloading = ref(false)
+const showDownloadModal = ref(false)
 const error = ref(null);
 const data = ref(null);
 const activeTab = ref('communications');
@@ -172,7 +174,11 @@ const openDownloadPanel = () => {
   return navigateTo('/billing/document-downloads/add?process=' + props.id);
 }
 
-const downloadLetters = async (postal = false, email = false, no_invoices = false) => {
+// channel: 'all' | 'postal' | 'email'. markSent: marcar les cartes com a enviades un cop
+// descarregades (només amb el canal postal).
+const downloadDocuments = async ({ channel = 'all', includeInvoices = true, markSent = false } = {}) => {
+  const postal = channel === 'postal';
+  const email = channel === 'email';
   try {
     downloading.value = true;
     if (!data.value.com_files || data.value.com_files.length === 0) {
@@ -180,16 +186,15 @@ const downloadLetters = async (postal = false, email = false, no_invoices = fals
       return;
     }
 
+    // El procés que es descarrega, encara que mentrestant se n'obri un altre
+    const processId = data.value.id;
+
     //GET IDS
-    let ids = data.value.com_files.map(item => item.id)
-    if (postal) {
-      ids = data.value.com_files.filter(item => item.is_postal).map(item => item.id)
-    } else if (email) {
-      ids = data.value.com_files.filter(item => item.is_email).map(item => item.id)
-    }
-    if (no_invoices) {
-      ids = data.value.com_files.filter(item => !item.has_invoice).map(item => item.id)
-    }
+    const ids = data.value.com_files
+      .filter(item => !postal || item.is_postal)
+      .filter(item => !email || item.is_email)
+      .filter(item => includeInvoices || !item.has_invoice)
+      .map(item => item.id)
     if (ids.length === 0) {
       toast.warning(t('warning_block.warning_no_docs_download'));
       return;
@@ -197,16 +202,6 @@ const downloadLetters = async (postal = false, email = false, no_invoices = fals
 
     let save_data = {
       doc_ids: ids
-    }
-
-    //MARK AS SENT
-    if (postal) {
-      if (confirm(t("confirmation_text_block.confirm_sent_postal"))) {
-        let save_post_data = {
-          process_id: props.id
-        }
-        await $CommunicationApiService.markAsSent(save_post_data);
-      }
     }
 
     //DOWNLOAD
@@ -243,9 +238,16 @@ const downloadLetters = async (postal = false, email = false, no_invoices = fals
         }, 250);
       }
     }
+
+    // MARK AS SENT: només si la descàrrega ha anat bé
+    if (postal && markSent) {
+      await $CommunicationApiService.markAsSent({ process_id: processId });
+    }
+    showDownloadModal.value = false;
     await getData(false);
   } catch (error) {
     console.error(error);
+    toast.error(t('common.error_download'));
   } finally {
     downloading.value = false;
   }
@@ -301,8 +303,10 @@ const downloadEinvoices = async () => {
         downloadEinvoicesTaskId.value = response.task_id;
       }
     }
+    showDownloadModal.value = false;
   } catch (error) {
     console.error(error);
+    toast.error(t('common.error_download'));
   }
 }
 
@@ -438,34 +442,9 @@ onMounted(async () => {
             {{ t('common.generate') }} {{ t('customer_service_block.letters') }}
           </DropdownOption> -->
           <hr class="my-2" />
-          <DropdownOption @click="openDownloadPanel()">
-            <Icon name="fa6-solid:sliders" class="display-inline mr-2" />
-            {{ t('billing_block.download_new') }}
-          </DropdownOption>
-          <DropdownOption :disabled="!data.com_files || data.com_files.length === 0 || downloadEinvoicesTaskId"
-            @click="downloadLetters()">
+          <DropdownOption :disabled="downloading" @click="showDownloadModal = true">
             <Icon name="fa6-solid:download" class="display-inline mr-2" />
-            {{ t('common.download') }} {{ t('common.docs') }} ({{ t('common.all') }})
-          </DropdownOption>
-          <DropdownOption :disabled="!data.com_files || data.com_files.length === 0 || downloadEinvoicesTaskId || !data.has_invoices"
-            @click="downloadLetters(false, false, true)">
-            <Icon name="fa6-solid:download" class="display-inline mr-2" />
-            {{ t('common.download') }} {{ t('common.docs') }} ({{ t('common.no_invoice') }})
-          </DropdownOption>
-          <DropdownOption :disabled="!data.has_letters || downloadEinvoicesTaskId || downloading"
-            @click="downloadLetters(true)">
-            <Icon name="fa6-solid:download" class="display-inline mr-2" />
-            {{ t('common.download') }} {{ t('common.docs') }} ({{ t('customer_service_block.letters') }})
-          </DropdownOption>
-          <DropdownOption :disabled="!data.has_email || downloadEinvoicesTaskId || downloading"
-            @click="downloadLetters(false, true)">
-            <Icon name="fa6-solid:download" class="display-inline mr-2" />
-            {{ t('common.download') }} {{ t('common.docs') }} ({{ t('common.email_long') }})
-          </DropdownOption>
-          <DropdownOption :disabled="!data.has_electronic_invoices || downloadEinvoicesTaskId || downloading"
-            @click="downloadEinvoices()">
-            <Icon name="fa6-solid:download" class="display-inline mr-2" />
-            {{ t('common.download') }} {{ t('common.docs') }} ({{ t('billing_block.einvoices') }})
+            {{ t('customer_service_block.download_docs') }}
           </DropdownOption>
           <hr v-if="['0', '1'].includes(data?.status?.token) || (data?.status?.token === '-1' && objectPermissions?.can_delete)" class="my-2" />
           <DropdownOption v-if="['0', '1'].includes(data?.status?.token)" :name="`${t('common.cancel')} ${t('common.comms_process_detail').toLowerCase()}`" @click="cancelProcess()">
@@ -477,6 +456,11 @@ onMounted(async () => {
           </DropdownOption>
         </OptionsDropdown>
       </div>
+
+      <CommunicationProcessDownloadModal :show="showDownloadModal" :data="data" :downloading="downloading"
+        :einvoices-running="!!downloadEinvoicesTaskId" @close="showDownloadModal = false"
+        @download-documents="downloadDocuments" @download-einvoices="downloadEinvoices"
+        @open-advanced="openDownloadPanel()" />
 
       <div v-if="data" id="item_data" :data-rel=id>
         <CommunicationProcessDetail :id="props.id" :data="data" @show-detail="showDetail" :isSubRegion="isSubRegion"

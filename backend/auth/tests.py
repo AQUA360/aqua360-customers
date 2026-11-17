@@ -187,6 +187,25 @@ class LoginBruteForceProtectionTest(TestCase):
         # Amb i sense token comparteixen la mateixa quota per IP
         self.assertEqual(codes[3], 429)
 
+    def test_ip_taken_from_forwarded_for_behind_cloudflare_and_nginx(self):
+        """Amb Cloudflare + nginx, X-Forwarded-For és «client, cloudflare»: el límit és per client."""
+        from unittest import mock
+        from rest_framework.throttling import ScopedRateThrottle
+
+        def login(forwarded):
+            return self.client.post(
+                self.url, {'username': 'x', 'password': 'x'},
+                REMOTE_ADDR='172.16.0.1', HTTP_X_FORWARDED_FOR=forwarded,
+            ).status_code
+
+        with mock.patch.object(ScopedRateThrottle, 'THROTTLE_RATES', {'login': '2/min'}):
+            self.assertEqual(login('203.0.113.1, 198.51.100.7'), 400)
+            # Un valor inventat pel client davant de la cadena no li canvia la quota
+            self.assertEqual(login('192.0.2.99, 203.0.113.1, 198.51.100.7'), 400)
+            self.assertEqual(login('203.0.113.1, 198.51.100.7'), 429)
+            # Un altre client per la mateixa porta de Cloudflare no queda afectat
+            self.assertEqual(login('203.0.113.2, 198.51.100.7'), 400)
+
     def test_successful_login_is_not_blocked(self):
         resp = self._login('victima', 'correcta')
         self.assertEqual(resp.status_code, 200)

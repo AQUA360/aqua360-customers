@@ -1,6 +1,8 @@
 from decimal import Decimal
 from datetime import datetime, timedelta, date
 import uuid
+# nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+# Generation only (Element/SubElement/tostring); no untrusted XML is parsed here.
 import xml.etree.ElementTree as ET
 from decouple import config
 from django.utils import timezone

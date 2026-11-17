@@ -192,16 +192,21 @@ const requestDownload = async () => {
   if (submitting.value || !batchReady.value || !hasSelection.value || previewCount.value === 0) return;
   submitting.value = true;
   try {
-    if (source.value === 'process' && delivery.value === 'postal') {
-      if (confirm(t('confirmation_text_block.confirm_sent_postal'))) {
-        for (const process of selectedProcesses.value) {
-          await $CommunicationApiService.markAsSent({ process_id: process.value });
-        }
-      }
+    const markSent = source.value === 'process' && delivery.value === 'postal'
+      && confirm(t('confirmation_text_block.confirm_sent_postal'));
+    // Es marquen els processos de la petició, encara que mentrestant es canviï la selecció
+    const requestPayload = payload();
+    const response = await $BillingApiService.requestDocumentDownload(requestPayload);
+    if (!response?.export_job_id) {
+      toast.error(t('common.error_download'));
+      return;
     }
-    const response = await $BillingApiService.requestDocumentDownload(payload());
-    if (response?.export_job_id) {
-      useExportJobsStore().track(response.export_job_id, t('billing_block.download_new'));
+    useExportJobsStore().track(response.export_job_id, t('billing_block.download_new'));
+    // Les cartes es marquen com a enviades només si la descàrrega s'ha pogut demanar
+    if (markSent) {
+      for (const processId of requestPayload.communication_process_ids) {
+        await $CommunicationApiService.markAsSent({ process_id: processId });
+      }
     }
     return navigateTo('/billing/document-downloads/');
   } catch (err) {

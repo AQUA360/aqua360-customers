@@ -12,6 +12,8 @@ from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.utils.translation import gettext as _
 import openpyxl
+# nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+# Generation only (Element/SubElement/tostring); no untrusted XML is parsed here.
 import xml.etree.ElementTree as ET
 from io import BytesIO
 from openpyxl.styles import Alignment, PatternFill
