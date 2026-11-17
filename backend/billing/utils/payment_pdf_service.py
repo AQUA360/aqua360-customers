@@ -2,6 +2,7 @@
 import os
 import base64
 import re
+from decimal import Decimal
 from io import BytesIO
 from django.conf import settings
 from billing.utils.barcode_service import generate_barcode
@@ -62,11 +63,43 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
         payment_type_token = payment.payment_type_token
         company_bank = get_payment_company_bank(company, payment)
 
+        # Despeses de devolució per impagament: només s'apliquen quan el pagament consta
+        # retornat. El ConfigProject només indica l'identificador (token) de la PriceRate a
+        # utilitzar; per defecte és null i, en aquest cas, no es mostra la dada a la plantilla.
+        # Mateix criteri que a claimrequest/tasks.py (gestió d'impagats).
+        return_fee_amount = None
+        is_returned = False
+        try:
+            returned_status_token = ConfigProject.objects.filter(token='payment_status_returned_token').first()
+            is_returned = bool(
+                returned_status_token
+                and payment.status
+                and payment.status.token == returned_status_token.value
+            )
+            if is_returned:
+                from pricing.models import PriceRate
+                return_fee_config = ConfigProject.objects.filter(token='claim_letter_return_fee_price_rate_token').first()
+                price_rate_token = return_fee_config.value if return_fee_config else None
+                if price_rate_token:
+                    price_rate = PriceRate.objects.filter(token=price_rate_token, is_active=True).first()
+                    billing_range = price_rate.billing_range_active if price_rate else None
+                    line_item = billing_range.line_item_types.filter(is_active=True).order_by('id').first() if billing_range else None
+                    if line_item and line_item.price is not None:
+                        return_fee_amount = line_item.price
+        except Exception:
+            return_fee_amount = None
+
+        # Total a pagar: l'import del rebut més les despeses de devolució, si n'hi ha. És el que
+        # ensenya la carta i el que cobra el codi de barres. El preu de la tarifa és un float.
+        total_with_fees = payment.amount
+        if return_fee_amount and payment.amount is not None:
+            total_with_fees = payment.amount + Decimal(str(return_fee_amount))
+
         # Amb limit_date no cal due_date, que pot ser buit
         ident = (limit_date or payment.due_date).strftime("%d%m%y")
         barcode_data = {
             'reference': payment.token if len(payment.token) == 11 else payment.token[:-2],
-            'total_final': payment.amount,
+            'total_final': total_with_fees,
             'company': company,
             'company_bank': company_bank,
             'ident': ident,
@@ -130,30 +163,6 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
         from service.serializers.company_bank_serializer import CompanyBankSerializer
         company_bank_data = CompanyBankSerializer(company_bank).data if company_bank else None
 
-        # Despeses de devolució per impagament: només s'apliquen quan el pagament consta
-        # retornat. El ConfigProject només indica l'identificador (token) de la PriceRate a
-        # utilitzar; per defecte és null i, en aquest cas, no es mostra la dada a la plantilla.
-        # Mateix criteri que a claimrequest/tasks.py (gestió d'impagats).
-        return_fee_amount = None
-        try:
-            returned_status_token = ConfigProject.objects.filter(token='payment_status_returned_token').first()
-            is_returned = bool(
-                returned_status_token
-                and payment.status
-                and payment.status.token == returned_status_token.value
-            )
-            if is_returned:
-                from pricing.models import PriceRate
-                return_fee_config = ConfigProject.objects.filter(token='claim_letter_return_fee_price_rate_token').first()
-                price_rate_token = return_fee_config.value if return_fee_config else None
-                if price_rate_token:
-                    price_rate = PriceRate.objects.filter(token=price_rate_token, is_active=True).first()
-                    billing_range = price_rate.billing_range_active if price_rate else None
-                    line_item = billing_range.line_item_types.filter(is_active=True).order_by('id').first() if billing_range else None
-                    if line_item and line_item.price is not None:
-                        return_fee_amount = line_item.price
-        except Exception:
-            return_fee_amount = None
 
         context = {
             'invoice': payment_object,
@@ -185,6 +194,7 @@ def generate_report_payment_pdf(payment, request = None, limit_date = None):
             'client_iban': client_iban,
             'return_fee_amount': return_fee_amount,
             'is_returned': is_returned,
+            'total_with_fees': total_with_fees,
         }
         
         html_rendered = render_to_string(file_template, context)

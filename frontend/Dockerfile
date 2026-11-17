@@ -94,6 +94,12 @@ COPY --from=builder /app/.output ./.output
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# El servidor no s'executa com a root: fa servir l'usuari `node` (uid 1000) que ja porta la imatge.
+# En temps d'execució no escriu res al disc (ni l'entrypoint, que només exporta variables, ni Nitro,
+# que no té cap memòria cau en fitxers), així que `.output` queda de root i només de lectura per a
+# ell.
+USER node
+
 EXPOSE 3000
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

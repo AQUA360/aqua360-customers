@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+/app/docker-check-writable.sh /app/media /app/staticfiles
+
 host="${DATABASE_HOST:-db}"
 port="${DATABASE_PORT:-5432}"
 user="${DATABASE_USER:-postgres}"
