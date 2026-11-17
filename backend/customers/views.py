@@ -3,7 +3,8 @@ import os
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden
-from rest_framework.authtoken.models import Token
+
+from coredata.authentication import get_user_from_token_key
 
 
 def root_view(request):
@@ -26,22 +27,11 @@ def protected_media_view(request, path):
     # 1. Try Authorization header
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
     if auth_header.startswith('Token '):
-        raw_token = auth_header.split(' ', 1)[1].strip()
-        try:
-            token_obj = Token.objects.select_related('user').get(key=raw_token)
-            user = token_obj.user
-        except Token.DoesNotExist:
-            pass
+        user = get_user_from_token_key(auth_header.split(' ', 1)[1].strip())
 
     # 2. Fall back to ?token= query param (browser direct navigation)
     if user is None:
-        raw_token = request.GET.get('token', '').strip()
-        if raw_token:
-            try:
-                token_obj = Token.objects.select_related('user').get(key=raw_token)
-                user = token_obj.user
-            except Token.DoesNotExist:
-                pass
+        user = get_user_from_token_key(request.GET.get('token', '').strip())
 
     # 3. Fall back to Django session (admin / browsable API)
     if user is None and request.user.is_authenticated:

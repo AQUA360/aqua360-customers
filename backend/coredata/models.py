@@ -1,4 +1,7 @@
 # coredata/models.py
+import secrets
+from datetime import timedelta
+
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -627,3 +630,55 @@ class DeployRecord(models.Model):
 
     def __str__(self):
         return f"{self.component} {self.release or self.commit} ({self.deployed_at:%Y-%m-%d %H:%M})"
+
+
+class AuthSessionToken(models.Model):
+    """Token d'accés d'una sessió: se'n crea un a cada login d'una persona.
+
+    Caduca per inactivitat (AUTH_TOKEN_IDLE_HOURS) o per antiguitat
+    (AUTH_TOKEN_MAX_AGE_DAYS). Els usuaris d'integració no en fan servir:
+    conserven el token permanent de DRF.
+    """
+
+    key = models.CharField(max_length=40, unique=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="auth_session_tokens")
+    created = models.DateTimeField(auto_now_add=True)
+    last_used = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Auth session token"
+        verbose_name_plural = "Auth session tokens"
+
+    def __str__(self):
+        return f"Session token for {self.user}"
+
+    @staticmethod
+    def generate_key():
+        return secrets.token_hex(20)
+
+    @classmethod
+    def create_for(cls, user):
+        return cls.objects.create(user=user, key=cls.generate_key())
+
+    @staticmethod
+    def expiration_limits(now=None):
+        """Retorna (límit d'inactivitat, límit d'antiguitat): abans d'aquestes dates, caducat."""
+        from django.conf import settings
+        now = now or timezone.now()
+        return (
+            now - timedelta(hours=settings.AUTH_TOKEN_IDLE_HOURS),
+            now - timedelta(days=settings.AUTH_TOKEN_MAX_AGE_DAYS),
+        )
+
+    def is_expired(self, now=None):
+        idle_limit, age_limit = self.expiration_limits(now)
+        return self.last_used < idle_limit or self.created < age_limit
+
+    @classmethod
+    def purge_expired(cls, user=None):
+        """Esborra els tokens caducats (d'un usuari o de tots)."""
+        idle_limit, age_limit = cls.expiration_limits()
+        queryset = cls.objects.filter(models.Q(last_used__lt=idle_limit) | models.Q(created__lt=age_limit))
+        if user is not None:
+            queryset = queryset.filter(user=user)
+        return queryset.delete()

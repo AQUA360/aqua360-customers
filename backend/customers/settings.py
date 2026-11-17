@@ -411,7 +411,7 @@ REST_FRAMEWORK = {
     # NotFound). Renderer selection keeps working via Accept headers/suffixes.
     "URL_FORMAT_OVERRIDE": None,
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.TokenAuthentication",
+        "coredata.authentication.ExpiringTokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
@@ -430,10 +430,28 @@ REST_FRAMEWORK = {
 REST_FRAMEWORK.update(
     {
         "DEFAULT_AUTHENTICATION_CLASSES": (
-            "rest_framework.authentication.TokenAuthentication",
+            "coredata.authentication.ExpiringTokenAuthentication",
         ),
     }
 )
+
+# Tokens d'accés: cada login d'una persona crea un token de sessió que caduca
+# per inactivitat o per antiguitat, el que arribi primer.
+AUTH_TOKEN_IDLE_HOURS = config("AUTH_TOKEN_IDLE_HOURS", default=24, cast=int)
+AUTH_TOKEN_MAX_AGE_DAYS = config("AUTH_TOKEN_MAX_AGE_DAYS", default=7, cast=int)
+# Usuaris d'integració amb token permanent: els de les variables que ja creen
+# aquests usuaris, els de AUTH_TOKEN_NON_EXPIRING_USERS i els dels grups indicats.
+AUTH_TOKEN_NON_EXPIRING_USERS = sorted({
+    username
+    for username in (
+        config("OV_USER_USERNAME", default=""),
+        config("GISWATER_USER_USERNAME", default=""),
+        config("SMARTMETERING_USER_USERNAME", default=""),
+        *config("AUTH_TOKEN_NON_EXPIRING_USERS", default="", cast=Csv()),
+    )
+    if username
+})
+AUTH_TOKEN_NON_EXPIRING_GROUPS = ("ov", "giswater", "smartmetering")
 
 # django-axes: bloqueig per nom d'usuari després de N intents fallits (login API i /admin/).
 # Els intents es guarden a la base de dades, així que es comparteixen entre workers.

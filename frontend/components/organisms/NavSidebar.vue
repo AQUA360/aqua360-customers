@@ -90,7 +90,19 @@ if (upperEnv === 'LOCAL') {
 
 const verifactuEnabled = config.public.verifactuEnabled;
 
-const logout = () => {
+const logout = async () => {
+  // Revoca el token al servidor; si falla (p. ex. ja havia caducat), se surt igualment.
+  const authToken = localStorage.getItem('auth_token');
+  if (authToken) {
+    try {
+      await $fetch(config.public.apiHost + '/auth/logout/', {
+        method: 'POST',
+        headers: { Authorization: `Token ${authToken}` },
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
   localStorage.removeItem('auth_token');
   localStorage.removeItem('user_username');
   localStorage.removeItem('exploitation');
