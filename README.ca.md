@@ -16,7 +16,7 @@ cd /path/al/projecte/aqua360-customers
 
 ### 2. Variables d’entorn (`.env`)
 
-El `docker-compose.yml` carrega el fitxer `.env` (`env_file`) als serveis `backend`, `celery-worker`, `celery-beat`, `gmao-consumer` i `frontend`, així que **ha d’existir** a l’arrel del projecte:
+El `docker-compose.yml` carrega el fitxer `.env` (`env_file`) als serveis `backend`, `celery-worker`, `celery-beat` i `gmao-consumer`, així que **ha d’existir** a l’arrel del projecte:
 
 ```bash
 cp env.docker.example .env
@@ -24,7 +24,7 @@ cp env.docker.example .env
 
 Edita `.env` si cal. Per exemple, si el port **5432** ja el fa servir un PostgreSQL del sistema, defineix `POSTGRES_PORT=5433` (només el port a la màquina host).
 
-Qualsevol variable del `.env` (p. ex. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) arriba als contenidors. Les variables de connexió a la BD i a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) les fixa el propi compose, i la resta tenen valor per defecte a `docker-compose.yml`. `ENV` i `LANGUAGE` s’apliquen al build i a l’execució del frontend.
+Qualsevol variable del `.env` (p. ex. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) arriba als contenidors. Les variables de connexió a la BD i a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) les fixa el propi compose, i la resta tenen valor per defecte a `docker-compose.yml`. `ENV` i `LANGUAGE` s’apliquen al build i a l’execució del frontend. El `frontend` no carrega el `.env` sencer (no ha de rebre els secrets del backend): només rep les variables que llista el seu bloc `environment` del `docker-compose.yml`, i una variable nova que llegeixi en engegar s’hi ha d’afegir.
 
 ### 3. Construir i arrencar tots els serveis
 
