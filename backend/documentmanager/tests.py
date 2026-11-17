@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -567,3 +567,93 @@ class CsvSafetyTest(TestCase):
             self.assertEqual(csv_unescape_value(csv_safe_value(value)), value)
         # Una `'` que no protegeix cap fórmula es conserva.
         self.assertEqual(csv_unescape_value("'text normal"), "'text normal")
+
+
+@override_settings(FTP_HOST="ftp.example.com", FTP_USER="user", FTP_PASSWORD="secret")
+class FtpServiceTlsTest(SimpleTestCase):
+    """El servei FTP sempre connecta per FTPS amb el certificat verificat i les dades xifrades."""
+
+    def _patch_ftp(self):
+        patcher = patch("documentmanager.utils.ftp_service.ftplib.FTP_TLS")
+        ftp_tls = patcher.start()
+        self.addCleanup(patcher.stop)
+        plain = patch("documentmanager.utils.ftp_service.ftplib.FTP", side_effect=AssertionError("FTP en clar"))
+        plain.start()
+        self.addCleanup(plain.stop)
+        return ftp_tls, ftp_tls.return_value
+
+    def _assert_secure_session(self, ftp_tls, ftp):
+        import ssl
+
+        context = ftp_tls.call_args.kwargs["context"]
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        ftp.connect.assert_called_once_with("ftp.example.com")
+        ftp.login.assert_called_once_with("user", "secret")
+        ftp.prot_p.assert_called_once_with()
+        names = [name for name, _, _ in ftp.mock_calls]
+        self.assertLess(names.index("login"), names.index("prot_p"))
+        ftp.quit.assert_called_once_with()
+
+    def test_upload_uses_tls_and_keeps_location_format(self):
+        from documentmanager.utils.ftp_service import upload_to_ftp
+
+        ftp_tls, ftp = self._patch_ftp()
+        document = Mock()
+        upload_to_ftp(io.BytesIO(b"doc"), "CONTRACT", "SEPA", 1, "TOKEN", None, "doc.pdf", document)
+
+        self._assert_secure_session(ftp_tls, ftp)
+        self.assertEqual(ftp.storbinary.call_args.args[0], "STOR doc.pdf")
+        self.assertTrue(document.location_url.startswith("ftp://ftp.example.com/SEPA/CONTRACT/"))
+        self.assertTrue(document.location_url.endswith("/TOKEN/doc.pdf"))
+        document.save.assert_called_once_with()
+
+    def test_download_uses_tls(self):
+        from documentmanager.utils.ftp_service import download_document_from_ftp
+
+        ftp_tls, ftp = self._patch_ftp()
+        ftp.retrbinary.side_effect = lambda command, callback: callback(b"content")
+        document = Mock(location_url="ftp://ftp.example.com/SEPA/CONTRACT/2026/X/TOKEN/doc.pdf",
+                        document_name="doc.pdf")
+
+        response = download_document_from_ftp(document)
+
+        self._assert_secure_session(ftp_tls, ftp)
+        ftp.cwd.assert_called_once_with("SEPA/CONTRACT/2026/X/TOKEN")
+        self.assertEqual(response.content, b"content")
+
+    def test_download_error_does_not_expose_details(self):
+        import ftplib
+
+        from django.http import Http404
+
+        from documentmanager.utils.ftp_service import download_document_from_ftp
+
+        _, ftp = self._patch_ftp()
+        ftp.cwd.side_effect = ftplib.error_perm("550 /SEPA/private/path not found")
+        document = Mock(id=7, location_url="ftp://ftp.example.com/SEPA/private/doc.pdf",
+                        document_name="doc.pdf")
+
+        with self.assertLogs("documentmanager.utils.ftp_service", level="WARNING") as logs, \
+                self.assertRaises(Http404) as raised:
+            download_document_from_ftp(document)
+
+        self.assertNotIn("private", str(raised.exception))
+        self.assertNotIn("private", "\n".join(logs.output))
+        ftp.quit.assert_called_once_with()
+
+    def test_failed_tls_handshake_closes_connection_and_does_not_save(self):
+        import ssl
+
+        from documentmanager.utils.ftp_service import upload_to_ftp
+
+        _, ftp = self._patch_ftp()
+        ftp.login.side_effect = ssl.SSLCertVerificationError("certificate verify failed")
+        document = Mock()
+
+        with self.assertRaises(ssl.SSLError):
+            upload_to_ftp(io.BytesIO(b"doc"), "CONTRACT", "SEPA", 1, "TOKEN", None, "doc.pdf", document)
+
+        ftp.close.assert_called_once_with()
+        ftp.storbinary.assert_not_called()
+        document.save.assert_not_called()

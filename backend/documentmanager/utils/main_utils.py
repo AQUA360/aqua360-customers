@@ -2,7 +2,6 @@ import boto3
 import logging
 from datetime import datetime
 import os
-import ftplib
 from botocore.exceptions import ClientError
 from django.core.exceptions import ValidationError
 from django.conf import settings
