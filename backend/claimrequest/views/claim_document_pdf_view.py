@@ -4,7 +4,7 @@ from django.http import HttpResponse, JsonResponse
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.views import APIView
 
-from PyPDF2 import PdfMerger
+from pypdf import PdfWriter
 
 from billing.models import Invoice
 from claimrequest.models import ClaimRequest, ClaimRequestPayment
@@ -46,7 +46,7 @@ class ClaimDocumentPDFDownloadViewSet(APIView):
                 
                 print(f"Error getting task result: {e}")
         
-        merger = PdfMerger()
+        merger = PdfWriter()
         for pdf_buffer in pdf_buffers:
             merger.append(pdf_buffer)
 

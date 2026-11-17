@@ -5,8 +5,7 @@ import { useSidebarStore } from '~/stores/useNavSideBar';
 import debounce from 'lodash.debounce';
 import { formatDate, formatDateTime } from '~/utils/date';
 import Skeleton from '../atoms/Skeleton.vue';
-import { searchValues, foundItemTranslation } from '~/utils/search';
-import { escapeHtmlForPreview, escapeRegExp } from '~/utils/messages';
+import { searchValues, foundItemTranslation, highlightSearchMatch } from '~/utils/search';
 import TimeRelative from '~/components/atoms/TimeRelative.vue';
 import { format } from 'date-fns';
 
@@ -44,12 +43,30 @@ const scrollContainer = ref(null); // Reference to the scrollable container
 
 const { $SearchApiService } = useNuxtApp();
 
+const buildSearchOptions = (entities = []) => {
+  const known = new Set(Object.keys(searchValues));
+  const options = entities
+    .filter((entity) => known.has(entity))
+    .map((entity) => ({
+      id: entity,
+      name: ('sidebar_search_block.' + entity.toLowerCase().replace(/-/g, '_')),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  options.unshift({ id: '-', name: ('common.no_filter') });
+  searchOptions.value = options;
+};
+
 const getData = debounce(async (load = true) => {
   isSearching.value = true
   loading.value = load;
   loadingMore.value = true;
   try {
     const data = await $SearchApiService.getSearch(searchTerm.value, entityFilter.value[0], page.value);
+
+    if (page.value === 1 && Array.isArray(data.matching_entities)) {
+      // Chips de filtre a partir de totes les entitats amb match (no només la pàgina actual)
+      buildSearchOptions(data.matching_entities);
+    }
 
     if (data.results && data.results.length > 0) {
       if (!data.has_next) {
@@ -58,43 +75,29 @@ const getData = debounce(async (load = true) => {
 
       if (page.value === 1) {
         searchResults.value = data.results;
-        
-        const foundEntities = new Set(data.results.map(result => result.entity));
-        searchOptions.value = Object.keys(searchValues)
-          .filter(key => foundEntities.has(key))
-          .map(key => ({
-            id: key,
-            name: ('sidebar_search_block.' + key.toLowerCase().replace(/-/g, '_')),
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-        searchOptions.value.unshift({ id: '-', name: ("common.no_filter") });
+        isFound.value = true;
+
+        // Fallback si l'API antiga no envia matching_entities
+        if (!Array.isArray(data.matching_entities)) {
+          const foundEntities = [...new Set(data.results.map(result => result.entity))];
+          buildSearchOptions(foundEntities);
+        }
       } else {
         searchResults.value = searchResults.value.concat(data.results);
-        
-        const currentEntities = new Set(searchOptions.value.map(opt => opt.id));
-        const newEntities = data.results
-          .filter(result => !currentEntities.has(result.entity))
-          .map(result => result.entity);
-        
-        if (newEntities.length > 0) {
-          const newOptions = newEntities.map(entity => ({
-            id: entity,
-            name: ('sidebar_search_block.' + entity.toLowerCase().replace(/-/g, '_')),
-          }));
-          searchOptions.value = [...searchOptions.value, ...newOptions]
-            .sort((a, b) => a.name.localeCompare(b.name));
-        }
       }
 
-      if (data.results.length < pageSize || !hasNextPage.value) {
+      if (data.results.length < pageSize || !data.has_next) {
         allDataLoaded.value = true;
       }
-      
-      page.value++; 
+
+      page.value++;
     } else {
       if (page.value === 1) {
         searchResults.value = [];
         isFound.value = false;
+        if (!Array.isArray(data.matching_entities)) {
+          buildSearchOptions([]);
+        }
       }
       allDataLoaded.value = true;
     }
@@ -104,7 +107,8 @@ const getData = debounce(async (load = true) => {
   } finally {
     loading.value = false;
     loadingMore.value = false;
-    isSearching.value = false;
+    // Manté el mode cerca (i els chips de filtre) mentre hi hagi query activa
+    isSearching.value = searchTerm.value.length > 2;
     nextTick(() => {
       if (scrollContainer.value) {
         scrollContainer.value.scrollTop = scrollPosition.value;
@@ -180,19 +184,7 @@ const getItemTranslation = (item) => {
 };
 
 
-/** HTML segur del resultat amb el terme cercat ressaltat: el text ve de l'usuari i s'escapa. */
-const highlightedResult = (result) => {
-  const text = String(result ?? '');
-  const term = searchTerm.value?.trim();
-  if (!term) return escapeHtmlForPreview(text);
-  // Amb el grup de captura, `split` deixa les coincidències a les posicions senars
-  return text
-    .split(new RegExp(`(${escapeRegExp(term)})`, 'gi'))
-    .map((part, index) => index % 2
-      ? `<span class="font-extrabold italic">${escapeHtmlForPreview(part)}</span>`
-      : escapeHtmlForPreview(part))
-    .join('');
-};
+const highlightedResult = (result) => highlightSearchMatch(result, searchTerm.value);
 
 
 /* const handleHover = debounce(async (event) => {
