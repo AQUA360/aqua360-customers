@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -567,3 +567,131 @@ class CsvSafetyTest(TestCase):
             self.assertEqual(csv_unescape_value(csv_safe_value(value)), value)
         # Una `'` que no protegeix cap fórmula es conserva.
         self.assertEqual(csv_unescape_value("'text normal"), "'text normal")
+
+
+@override_settings(
+    SFTP_HOST="sftp.example.com", SFTP_PORT=2222, SFTP_USER="user", SFTP_PASSWORD="secret",
+    SFTP_KEY_FILE="", SFTP_KNOWN_HOSTS="/config/known_hosts", SFTP_TIMEOUT=30,
+)
+class SftpServiceTest(SimpleTestCase):
+    """El servei de documents per SFTP només connecta amb servidors coneguts i no exposa rutes."""
+
+    def setUp(self):
+        patcher = patch("documentmanager.utils.sftp_service.paramiko.SSHClient")
+        self.ssh_class = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.ssh = self.ssh_class.return_value
+        self.sftp = self.ssh.open_sftp.return_value
+
+    def _assert_secure_connection(self):
+        import paramiko
+
+        self.ssh.load_host_keys.assert_called_once_with("/config/known_hosts")
+        self.ssh.load_system_host_keys.assert_not_called()
+        policy = self.ssh.set_missing_host_key_policy.call_args.args[0]
+        self.assertIsInstance(policy, paramiko.RejectPolicy)
+        kwargs = self.ssh.connect.call_args.kwargs
+        self.assertEqual(self.ssh.connect.call_args.args, ("sftp.example.com",))
+        self.assertEqual((kwargs["port"], kwargs["username"], kwargs["password"]), (2222, "user", "secret"))
+        self.assertIsNone(kwargs["key_filename"])
+        self.assertFalse(kwargs["allow_agent"])
+        self.assertFalse(kwargs["look_for_keys"])
+        self.assertEqual(kwargs["timeout"], 30)
+        self.sftp.close.assert_called_once_with()
+        self.ssh.close.assert_called_once_with()
+
+    def test_upload_creates_missing_folders_and_saves_location(self):
+        from documentmanager.utils.sftp_service import upload_to_sftp
+
+        existing = {"SEPA", "SEPA/CONTRACT"}
+        self.sftp.stat.side_effect = lambda path: None if path in existing else (_ for _ in ()).throw(
+            FileNotFoundError(path)
+        )
+        document = Mock()
+        content = io.BytesIO(b"doc")
+
+        upload_to_sftp(content, "CONTRACT", "SEPA", 1, "TOKEN", None, "doc.pdf", document)
+
+        self._assert_secure_connection()
+        remote_path = self.sftp.putfo.call_args.args[1]
+        self.assertIs(self.sftp.putfo.call_args.args[0], content)
+        parts = remote_path.split("/")
+        self.assertEqual(parts[:2] + parts[-2:], ["SEPA", "CONTRACT", "TOKEN", "doc.pdf"])
+        # Només es creen les carpetes que falten, de la més externa a la més interna.
+        created = [call.args[0] for call in self.sftp.mkdir.call_args_list]
+        self.assertEqual(created, ["/".join(parts[:i]) for i in range(3, len(parts))])
+        self.assertEqual(document.location_url, "sftp://sftp.example.com/" + remote_path)
+        document.save.assert_called_once_with()
+
+    def test_download_returns_content(self):
+        from documentmanager.utils.sftp_service import download_document_from_sftp
+
+        self.sftp.getfo.side_effect = lambda path, buffer: buffer.write(b"content")
+        document = Mock(id=7, location_url="sftp://sftp.example.com/SEPA/CONTRACT/2026/X/TOKEN/doc.pdf",
+                        document_name="doc.pdf")
+
+        response = download_document_from_sftp(document)
+
+        self._assert_secure_connection()
+        self.assertEqual(self.sftp.getfo.call_args.args[0], "SEPA/CONTRACT/2026/X/TOKEN/doc.pdf")
+        self.assertEqual(response.content, b"content")
+        self.assertIn('filename="doc.pdf"', response["Content-Disposition"])
+
+    def test_download_error_does_not_expose_paths(self):
+        from django.http import Http404
+
+        from documentmanager.utils.sftp_service import download_document_from_sftp
+
+        self.sftp.getfo.side_effect = OSError("No such file: SEPA/private/doc.pdf")
+        document = Mock(id=7, location_url="sftp://sftp.example.com/SEPA/private/doc.pdf",
+                        document_name="doc.pdf")
+
+        with self.assertLogs("documentmanager.utils.sftp_service", level="ERROR") as logs, \
+                self.assertRaises(Http404) as raised:
+            download_document_from_sftp(document)
+
+        self.assertNotIn("private", str(raised.exception))
+        output = "\n".join(logs.output)
+        self.assertNotIn("private", output)
+        self.assertNotIn("Traceback", output)
+        self.ssh.close.assert_called_once_with()
+
+    def test_unknown_host_key_is_rejected_and_nothing_is_saved(self):
+        import paramiko
+
+        from documentmanager.utils.sftp_service import upload_to_sftp
+
+        self.ssh.connect.side_effect = paramiko.SSHException("Server not found in known_hosts")
+        document = Mock()
+
+        with self.assertRaises(paramiko.SSHException):
+            upload_to_sftp(io.BytesIO(b"doc"), "CONTRACT", "SEPA", 1, "TOKEN", None, "doc.pdf", document)
+
+        self.ssh.close.assert_called_once_with()
+        self.ssh.open_sftp.assert_not_called()
+        document.save.assert_not_called()
+
+    def test_failed_upload_closes_connection_and_does_not_save(self):
+        from documentmanager.utils.sftp_service import upload_to_sftp
+
+        self.sftp.putfo.side_effect = OSError("write failed")
+        document = Mock()
+
+        with self.assertRaises(OSError):
+            upload_to_sftp(io.BytesIO(b"doc"), "CONTRACT", "SEPA", 1, "TOKEN", None, "doc.pdf", document)
+
+        self.sftp.close.assert_called_once_with()
+        self.ssh.close.assert_called_once_with()
+        document.save.assert_not_called()
+
+    @override_settings(SFTP_PASSWORD="", SFTP_KEY_FILE="/config/id_ed25519")
+    def test_private_key_authentication(self):
+        from documentmanager.utils.sftp_service import download_document_from_sftp
+
+        document = Mock(id=7, location_url="sftp://sftp.example.com/a/doc.pdf", document_name="doc.pdf")
+        download_document_from_sftp(document)
+
+        kwargs = self.ssh.connect.call_args.kwargs
+        self.assertIsNone(kwargs["password"])
+        self.assertEqual(kwargs["key_filename"], "/config/id_ed25519")
+        self.assertFalse(kwargs["look_for_keys"])

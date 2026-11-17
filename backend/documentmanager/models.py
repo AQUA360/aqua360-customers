@@ -22,7 +22,7 @@ class Document(models.Model):
         ('hdd', 'HDD'),
         ('azure', 'Azure'),
         ('cloud', 'Cloud'),
-        ('ftp', 'FTP'),
+        ('sftp', 'SFTP'),
         ('aws', 'AWS'),
         ('alfresco', 'Alfresco'),
     ]
@@ -30,7 +30,7 @@ class Document(models.Model):
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
-        supported_services = ['hdd', 'ftp', 'aws', 'alfresco', 'azure', 'cloud']
+        supported_services = ['hdd', 'sftp', 'aws', 'alfresco', 'azure', 'cloud']
         if self.service not in supported_services:
             raise ValidationError(f"Unsupported service: {self.service}")
         super().save(*args, **kwargs)

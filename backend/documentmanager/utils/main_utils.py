@@ -2,7 +2,6 @@ import boto3
 import logging
 from datetime import datetime
 import os
-import ftplib
 from botocore.exceptions import ClientError
 from django.core.exceptions import ValidationError
 from django.conf import settings
@@ -10,7 +9,7 @@ from django.http import Http404, HttpResponse
 
 from documentmanager.utils.alfresco_service import *
 from documentmanager.utils.aws_service import *
-from documentmanager.utils.ftp_service import download_document_from_ftp, upload_to_ftp
+from documentmanager.utils.sftp_service import download_document_from_sftp, upload_to_sftp
 from documentmanager.utils.hdd_service import delete_document_from_hdd, download_document_from_hdd, upload_to_hdd
 from documentmanager.utils.sign_certificate_service import *
 from documentmanager.utils.azure_service import *
@@ -42,8 +41,8 @@ def delete_document(document):
 def download_document(document):
     if document.service == 'hdd':
         return download_document_from_hdd(document)
-    elif document.service == 'ftp':
-        return download_document_from_ftp(document)
+    elif document.service == 'sftp':
+        return download_document_from_sftp(document)
     elif document.service == 'azure':
         return download_document_from_azure(document)
     elif document.service == 'cloud':
@@ -112,8 +111,8 @@ def upload_document(file, entity, field, entity_id, entity_token, folder, servic
     
     if service == 'hdd':
         document = upload_to_hdd(file, entity, field, entity_id, entity_token, folder, versioned_name, document, date, subfolder=hdd_subfolder)
-    elif service == 'ftp':
-        document = upload_to_ftp(file, entity, field, entity_id, entity_token, folder, versioned_name, document, date)
+    elif service == 'sftp':
+        document = upload_to_sftp(file, entity, field, entity_id, entity_token, folder, versioned_name, document, date)
     elif service == 'azure':
         document = upload_to_azure(file, entity, field, entity_id, entity_token, folder, versioned_name, document, date)
     elif service == 'cloud':
