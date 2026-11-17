@@ -27,7 +27,9 @@ class MainPermission(models.Model):
     all_recommended = models.BooleanField(default=False)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    
+    # Si True, el change_key només el té el superusuari (no es pot donar a grups).
+    change_requires_superuser = models.BooleanField(default=False)
+
     def __str__(self):
         return self.name
 

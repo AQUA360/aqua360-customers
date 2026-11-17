@@ -95,7 +95,8 @@
       "view_key": "view_user",
       "change_key": "change_user",
       "affected_models": "auth.user,auth.group,auth.permission",
-      "all_recommended": true
+      "all_recommended": true,
+      "change_requires_superuser": true
     }
   },
   {

@@ -14,6 +14,7 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group, User, Permission
 
 from auth.filters import UserFilter, GroupFilter
+from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser
 from auth.serializers import GroupSerializer, UserSerializer, PermissionSerializer
 from auth.permissions import PermissionManager
 from coredata.permissions import can_edit_config_project
@@ -23,16 +24,17 @@ WRITE_ACTIONS = ('create', 'update', 'partial_update', 'destroy')
 
 
 def check_user_management_permission(request, action, resource):
-    """Usuaris i grups: llegir requereix `view_user` i escriure `change_user`."""
-    if not PermissionManager.has_permission(request.user, 'view_user'):
-        raise PermissionDenied(f"You don't have permission to view {resource}.")
-    if action in WRITE_ACTIONS and not PermissionManager.has_permission(request.user, 'change_user'):
-        raise PermissionDenied(f"You don't have permission to modify {resource}.")
+    """Usuaris i grups: GET obert a autenticats (selecció); escriptura només superusuari.
+
+    La UI de gestió (settings) segueix gated per `view_user` al front.
+    """
+    if action in WRITE_ACTIONS and not is_canonical_superuser(request.user):
+        raise PermissionDenied(f"Only a superuser can modify {resource}.")
 
 
 def check_superuser_target(user, target):
-    """Només un superusuari pot modificar o eliminar un altre superusuari."""
-    if target.is_superuser and not user.is_superuser:
+    """Només el superusuari canònic pot modificar o eliminar un altre superusuari."""
+    if target.is_superuser and not is_canonical_superuser(user):
         raise PermissionDenied("You are not allowed to modify a superuser")
 
 
@@ -97,6 +99,10 @@ class UserViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
+        if instance.username == CANONICAL_SUPERUSER_USERNAME:
+            raise PermissionDenied(
+                f"The '{CANONICAL_SUPERUSER_USERNAME}' account cannot be deleted"
+            )
         check_superuser_target(self.request.user, instance)
         super().perform_destroy(instance)
 
@@ -105,7 +111,11 @@ class UserViewSet(viewsets.ModelViewSet):
         pk = request.query_params.get('id')
         if pk:
             user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
-            if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
+            if (
+                not user_permissions['can_view']
+                or not user_permissions['can_change']
+                or not is_canonical_superuser(request.user)
+            ):
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
             if not group:
@@ -134,7 +144,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         # Mateix criteri que create/update del GroupSerializer.
         user = self.request.user
-        if not user.is_superuser or not user.has_perm('auth.delete_group'):
+        if not is_canonical_superuser(user) or not user.has_perm('auth.delete_group'):
             raise PermissionDenied("You are not allowed to delete this group")
         super().perform_destroy(instance)
 
@@ -148,7 +158,11 @@ class GroupViewSet(viewsets.ModelViewSet):
         pk = request.query_params.get('id')
         if pk:
             user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
-            if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
+            if (
+                not user_permissions['can_view']
+                or not user_permissions['can_change']
+                or not is_canonical_superuser(request.user)
+            ):
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
             if not group:
@@ -175,6 +189,9 @@ class UserPermissionsView(viewsets.ViewSet):
                 'first_name': request.user.first_name,
                 'last_name': request.user.last_name,
                 'email': request.user.email,
+                'is_superuser': request.user.is_superuser,
+                'is_staff': request.user.is_staff,
+                'role': get_user_role(request.user),
             },
             'permissions': user_permissions,
             'groups': list(request.user.groups.values_list('name', flat=True)),
@@ -188,7 +205,11 @@ class UserPermissionsView(viewsets.ViewSet):
         pk = request.query_params.get('id')
         if pk:
             user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
-            if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
+            if (
+                not user_permissions['can_view']
+                or not user_permissions['can_change']
+                or not is_canonical_superuser(request.user)
+            ):
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
             if not group:

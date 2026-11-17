@@ -474,6 +474,8 @@ REST_FRAMEWORK.update(
 # Els intents es guarden a la base de dades, així que es comparteixen entre workers.
 AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesStandaloneBackend",
+    # Rol admin (is_staff): tots els has_perm de negoci excepte escriptura auth.user/group.
+    "auth.backends.AdminRoleBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
 AXES_FAILURE_LIMIT = 5

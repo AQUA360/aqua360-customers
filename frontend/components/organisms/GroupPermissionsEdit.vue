@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import _ from 'lodash';
 import { useToast } from 'vue-toastification';
@@ -30,12 +30,14 @@ const save = async () => {
 }
 
 const getData = () => {
-  localPermissions.value = props.permissions;
+  localPermissions.value = (props.permissions || []).map((permission) => {
+    const mainPerm = props.mainPermissions.find(perm => perm.change_key == permission.changeKey);
+    if (mainPerm?.change_requires_superuser) {
+      return { ...permission, hasChange: false, hasAny: Boolean(permission.hasView) };
+    }
+    return permission;
+  });
   defaultPermission.value = props.mainPermissions.find(perm => perm.is_default);
-  /* for (let permission of localPermissions.value) {
-    let affectedData = props.mainPermissions.find(perm => perm.change_key == permission.changeKey).affected_data;
-    permission.affected_data = affectedData;
-  } */
 }
 
 const openChangePermissions = async (changeKey) => {
@@ -162,8 +164,9 @@ watch(() => props.permissions, (newVal) => {
                   {{ t('common.check') }}
                 </span>
               </label>
-              <label class="flex items-center gap-2 cursor-pointer">
+              <label class="flex items-center gap-2" :class="permission.change_requires_superuser ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'">
                 <input type="checkbox"
+                  :disabled="permission.change_requires_superuser"
                   @change="checkChange(localPermissions.find(perm => perm.changeKey == permission.change_key))"
                   v-model="localPermissions.find(perm => perm.changeKey == permission.change_key).hasChange"
                   class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded" />

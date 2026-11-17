@@ -1,6 +1,7 @@
 <script setup>
 import FieldDetail from '../atoms/FieldDetail.vue';
 import { useI18n } from 'vue-i18n';
+import { getUserRole } from '~/utils/roles';
 
 const props = defineProps({
     id: Number,
@@ -73,7 +74,8 @@ watch(() => props.id, () => {
                 <FieldDetail :label='$t("common.email")' :value="localData?.email ? localData?.email : t('common.no_email')" />
                 <FieldDetail :label='$t("group")'>
                     <div v-if="localData?.group_name == null">
-                        <span v-if="localData.is_superuser">{{ t('common.admin') }}</span>
+                        <span v-if="getUserRole(localData) === 'superuser'">{{ t('common.superuser') }}</span>
+                        <span v-else-if="getUserRole(localData) === 'admin'">{{ t('common.admin') }}</span>
                         <span v-else>{{ t('user_group.no_group') }}</span>
                     </div>
                     <div v-else>
