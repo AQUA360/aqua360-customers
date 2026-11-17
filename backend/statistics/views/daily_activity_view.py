@@ -31,9 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def _can_view_other_users(user):
-    """Mateix criteri que el llistat d'usuaris (`UserViewSet`): `view_user`."""
-    if user.is_superuser:
-        return True
+    """Mateix criteri que el llistat d'usuaris: flag `view_user` (admin i superuser el tenen)."""
     try:
         return bool(PermissionManager.has_permission(user, 'view_user'))
     except Exception:

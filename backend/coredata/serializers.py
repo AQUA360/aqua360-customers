@@ -1660,7 +1660,10 @@ class MainPermissionSerializer(serializers.ModelSerializer):
     affected_data = serializers.SerializerMethodField()
     class Meta:
         model = MainPermission
-        fields = ['id', 'name', 'view_key', 'change_key', 'affected_data', 'is_default', 'all_recommended']
+        fields = [
+            'id', 'name', 'view_key', 'change_key', 'affected_data',
+            'is_default', 'all_recommended', 'change_requires_superuser',
+        ]
     
     def get_affected_data(self, instance):
         affected_models = instance.affected_models.split(',')
