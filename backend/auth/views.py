@@ -5,11 +5,12 @@ from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.throttling import ScopedRateThrottle
 from axes.handlers.proxy import AxesProxyHandler
 
 from django.shortcuts import render
+from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group, User, Permission
 
 from auth.filters import UserFilter, GroupFilter
@@ -46,6 +47,8 @@ class CustomAuthToken(ObtainAuthToken):
     # Límit d'intents per IP (scope "login"); el bloqueig per usuari el fa django-axes
     throttle_classes = [LoginIPThrottle]
     throttle_scope = 'login'
+    # Si s'informa, només els usuaris d'aquest grup obtenen token (logins d'integracions)
+    required_group = None
 
     def post(self, request, *args, **kwargs):
         # Usuari bloquejat per massa intents fallits: 429 explícit (sense validar la contrasenya)
@@ -59,6 +62,12 @@ class CustomAuthToken(ObtainAuthToken):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data['user']
+        if self.required_group and not user.groups.filter(name=self.required_group).exists():
+            # Mateixa resposta que amb credencials incorrectes: no revela si l'usuari existeix
+            raise ValidationError(
+                {'non_field_errors': [_('Unable to log in with provided credentials.')]},
+                code='authorization',
+            )
         token, created = Token.objects.get_or_create(user=user)
 
         return Response({
