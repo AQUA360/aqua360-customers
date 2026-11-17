@@ -374,7 +374,7 @@ class DocumentSignApiTest(TestCase):
 
 
 def _blank_pdf():
-    from PyPDF2 import PdfWriter
+    from pypdf import PdfWriter
 
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)

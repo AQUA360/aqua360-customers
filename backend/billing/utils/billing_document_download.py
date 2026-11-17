@@ -411,11 +411,11 @@ def render_documents_pdf(documents):
     """Ajunta els PDF de documents de comunicació, en l'ordre rebut."""
     from io import BytesIO
 
-    from PyPDF2 import PdfMerger
+    from pypdf import PdfWriter
 
     from documentmanager.utils.main_utils import download_document
 
-    merger = PdfMerger()
+    merger = PdfWriter()
     try:
         for document in documents:
             content = download_document(document)
