@@ -3387,6 +3387,13 @@ export default {
     info_tip: 'Se recomienda dar permisos de visualización a todos los bloques (a excepción del de usuarios) si se dan permisos de modificación a contratación.',
     info_group_users: 'Los usuarios con grupo asignado que se asignan a otro grupo perderán todos los permisos del grupo anterior.',
     password_not_match: 'Las contraseñas no coinciden',
+    password_rules_not_met: 'La contraseña no cumple los requisitos',
+    password_rule: {
+      min_length: 'Mínimo 8 caracteres',
+      letter: 'Debe incluir mínimo una letra',
+      number: 'Debe incluir mínimo un número',
+      special: 'Debe incluir mínimo un carácter especial (!, #, -, _...)',
+    },
     admin_permissions: 'Los administradores obtienen todos los permisos sin necesidad de estar en un grupo'
   },
   settings_block:   {

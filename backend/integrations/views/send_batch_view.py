@@ -140,7 +140,7 @@ class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
         pk = request.query_params.get("id")
         if pk:
             user_permissions = PermissionManager.get_model_permissions(
-                request.user, "auth", "group"
+                request.user, "group", "auth"
             )
             if (
                 not user_permissions["can_view"]

@@ -82,9 +82,10 @@ class UserViewSet(viewsets.ModelViewSet):
         check_user_management_permission(self.request, self.action, "users")
         return super().get_permissions()
 
-    def perform_update(self, serializer):
-        check_superuser_target(self.request.user, serializer.instance)
-        super().perform_update(serializer)
+    def update(self, request, *args, **kwargs):
+        # Abans de validar les dades: si no pot tocar el superusuari, 403 (no errors de contrasenya)
+        check_superuser_target(request.user, self.get_object())
+        return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         check_superuser_target(self.request.user, instance)
@@ -94,7 +95,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
@@ -102,7 +103,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 return Response( None, status=status.HTTP_404_NOT_FOUND )
             group_permissions = PermissionManager.get_model_group_permissions(group, 'user')
             return Response(group_permissions, status=status.HTTP_200_OK)
-        permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'user')
+        permissions = PermissionManager.get_model_permissions(request.user, 'user', 'auth')
         return Response(permissions, status=status.HTTP_200_OK)
 
 
@@ -137,7 +138,7 @@ class GroupViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
@@ -145,7 +146,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                 return Response( None, status=status.HTTP_404_NOT_FOUND )
             group_permissions = PermissionManager.get_model_group_permissions(group, 'group')
             return Response(group_permissions, status=status.HTTP_200_OK)
-        permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+        permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
         return Response(permissions, status=status.HTTP_200_OK)
 
 
@@ -177,7 +178,7 @@ class UserPermissionsView(viewsets.ViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
@@ -185,7 +186,7 @@ class UserPermissionsView(viewsets.ViewSet):
                 return Response( None, status=status.HTTP_404_NOT_FOUND )
             group_permissions = PermissionManager.get_model_group_permissions(group, 'permission')
             return Response(group_permissions, status=status.HTTP_200_OK)
-        permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'permission')
+        permissions = PermissionManager.get_model_permissions(request.user, 'permission', 'auth')
         return Response(permissions, status=status.HTTP_200_OK)
     
     def get_permissions(self):

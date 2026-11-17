@@ -3387,6 +3387,13 @@ export default {
     info_tip: 'Es recomana donar permisos de visualització a tots els blocs (excepte el de usuaris) si es dona permisos de modificació a contractació.',
     info_group_users: 'Els usuaris amb grup assignat que s\'assignen a un altre grup perdran tots els permisos del grup anterior.',
     password_not_match: 'Les contrasenyes no coincideixen',
+    password_rules_not_met: 'La contrasenya no compleix els requisits',
+    password_rule: {
+      min_length: 'Mínim 8 caràcters',
+      letter: 'Ha d\'incloure mínim una lletra',
+      number: 'Ha d\'incloure mínim un número',
+      special: 'Ha d\'incloure mínim un caràcter especial (!, #, -, _...)',
+    },
     admin_permissions: 'Els administradors obtenen tots els permisos sense necessitat de estar a dins un grup'
   },
   settings_block:   {

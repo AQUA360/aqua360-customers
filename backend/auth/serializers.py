@@ -4,7 +4,11 @@ from rest_framework import serializers
 from auth.utils import manage_group_permissions
 from .permissions import PermissionManager
 from django.contrib.auth.hashers import make_password
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.utils.translation import gettext
+
+from auth.validators import validate_user_password
+from coredata.models import MainPermission
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -34,7 +38,20 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         representation = super().to_representation(instance)
         representation['group_id'] = instance.groups.first().id if instance.groups.first() else None
         return representation
-    
+
+    def validate(self, attrs):
+        new_pwd = attrs.get('new_pwd')
+        if new_pwd:
+            # Usuari sense desar amb les dades finals, per comparar la contrasenya amb el nom, el correu...
+            fields = ('username', 'email', 'first_name', 'last_name')
+            user = User(**{f: attrs.get(f) or (getattr(self.instance, f) if self.instance else '') for f in fields})
+            is_superuser = attrs.get('is_superuser', self.instance.is_superuser if self.instance else False)
+            try:
+                validate_user_password(new_pwd, user, is_superuser)
+            except DjangoValidationError as error:
+                raise serializers.ValidationError({'new_pwd': list(error.messages)})
+        return attrs
+
     def create(self, validated_data):
         user_request = self.context.get('request').user
         username = validated_data.pop('username')
@@ -161,10 +178,21 @@ class GroupSerializer(serializers.HyperlinkedModelSerializer):
             )
         
         return permissions
-    
+
+    def validate_permissions_data(self, value):
+        # Cada element ha de ser un objecte amb un viewKey existent; si no, 400 (abans donava 500)
+        view_keys = set(MainPermission.objects.exclude(view_key__isnull=True).values_list('view_key', flat=True))
+        for permission in value:
+            if not isinstance(permission, dict) or permission.get('viewKey') not in view_keys:
+                raise serializers.ValidationError(gettext("Invalid permission data."))
+            affected_data = permission.get('affected_data') or []
+            if not isinstance(affected_data, list) or not all(isinstance(item, dict) for item in affected_data):
+                raise serializers.ValidationError(gettext("Invalid permission data."))
+        return value
+
     def create(self, validated_data):
         user = self.context.get('request').user
-        user_permissions = PermissionManager.get_model_permissions(user, 'auth', 'group')
+        user_permissions = PermissionManager.get_model_permissions(user, 'group', 'auth')
         if not user.is_superuser or not user_permissions['can_add']:
             raise PermissionDenied("You are not allowed to create this group")
         
@@ -182,7 +210,7 @@ class GroupSerializer(serializers.HyperlinkedModelSerializer):
     
     def update(self, instance, validated_data):
         user = self.context.get('request').user
-        user_permissions = PermissionManager.get_model_permissions(user, 'auth', 'group')
+        user_permissions = PermissionManager.get_model_permissions(user, 'group', 'auth')
         if not user.is_superuser or not user_permissions['can_change']:
             raise PermissionDenied("You are not allowed to update this group")
         permissions = validated_data.pop('permissions_data', None)
