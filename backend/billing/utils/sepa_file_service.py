@@ -9,6 +9,7 @@ from django.utils import timezone
 import re
 from django.utils.translation import gettext as _
 from coredata.models import Bank, ConfigProject
+from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.iban_validator_utils import get_spanish_bic
 from pricing.models import ProductOrigin
 from service.models import Exploitation
@@ -64,6 +65,226 @@ def build_sepa_concept(prefix, invoice_numbers, invoice_label="FRA"):
             return f"{concept[:SEPA_USTRD_MAX_LENGTH - len(suffix)]}{suffix}"
         concept = candidate
     return concept
+
+# Camps que es poden mostrar al concepte del rebut (l'usuari tria quins; per defecte, tots).
+SEPA_CONCEPT_FIELDS = ("contract", "invoice", "amount", "consumption", "supply_point")
+
+SEPA_CONCEPT_FIELDS_CONFIG_TOKEN = "sepa_concept_fields"
+
+def get_saved_concept_fields():
+    """
+    Camps del concepte que l'usuari ha desat (configuració global, per a tots els usuaris).
+    None = encara no s'ha desat res: es mostren tots.
+    """
+    config_row = ConfigProject.objects.filter(token=SEPA_CONCEPT_FIELDS_CONFIG_TOKEN).first()
+    if config_row is None or config_row.value is None:
+        return None
+    return [field.strip() for field in config_row.value.split(",") if field.strip()]
+
+def save_concept_fields(fields):
+    """Desa la configuració global; retorna els camps normalitzats (en l'ordre del concepte)."""
+    selected = normalize_concept_fields(fields)
+    ordered = [field for field in SEPA_CONCEPT_FIELDS if field in selected]
+    ConfigProject.objects.update_or_create(
+        token=SEPA_CONCEPT_FIELDS_CONFIG_TOKEN,
+        defaults={
+            "name": "Camps del concepte del rebut bancari SEPA (separats per comes)",
+            "value": ",".join(ordered),
+        },
+    )
+    return ordered
+
+def normalize_concept_fields(fields):
+    """None (sense configurar) = tots els camps. Ignora valors desconeguts."""
+    if fields is None:
+        return set(SEPA_CONCEPT_FIELDS)
+    return {field for field in fields if field in SEPA_CONCEPT_FIELDS}
+
+_SEPA_DETAIL_LABELS = {
+    "ca": ("IMPORT", "CONSUM", "PUNT SUBM."),
+    "es": ("IMPORTE", "CONSUMO", "PUNTO SUM."),
+}
+_SEPA_DETAIL_LABELS_DEFAULT = ("AMOUNT", "CONSUMPTION", "SUPPLY POINT")
+SEPA_ELLIPSIS = "..."
+
+def _fit_supply_point(address, fallback_name, budget):
+    """
+    Punt de subministrament dins de `budget` caràcters, sense municipi. Per ordre de prioritat:
+    1. Adreça sencera + codi postal.
+    2. Adreça sencera (el codi postal es treu sencer, mai a mitges).
+    3. Carrer retallat amb "..." però conservant sempre el número (per saber on cal trucar).
+    """
+    if budget <= 0:
+        return ""
+    if not address:
+        name = fallback_name or ""
+        return name if len(name) <= budget else name[:max(budget - len(SEPA_ELLIPSIS), 0)].rstrip() + SEPA_ELLIPSIS
+
+    # Col·lapsa els espais dobles que deixen els camps buits (edifici, escala...).
+    full = " ".join(get_address_complete_without_city(address, include_extra=False).split()).rstrip(", ")
+    postal_code = address.postal_code
+    if postal_code and len(full) + 1 + len(postal_code) <= budget:
+        return f"{full} {postal_code}"
+    if len(full) <= budget:
+        return full
+
+    # Mateixa normalització d'espais que `full`, si no `full.startswith(street)` falla amb espais dobles.
+    street = " ".join(str(address.street).split())
+    tail = full[len(street):] if full.startswith(street) else ""
+    # Si ni amb el carrer mínim hi cap tota la cua (escala, pis...), es queda només el número.
+    for candidate_tail in (tail, f", {address.street_number}" if address.street_number else ""):
+        room = budget - len(candidate_tail) - len(SEPA_ELLIPSIS)
+        if room > 0:
+            return f"{street[:room].rstrip()}{SEPA_ELLIPSIS}{candidate_tail}"
+    return full[:max(budget - len(SEPA_ELLIPSIS), 0)].rstrip() + SEPA_ELLIPSIS
+
+def _invoice_supply_points(invoice):
+    """
+    Punts de subministrament que cobreix la factura (els de les seves lectures, sense repetits).
+    Si no en té, el punt per defecte del contracte.
+    """
+    points = {}
+    readings = invoice.readings.all() if getattr(invoice, "readings", None) is not None else []
+    if hasattr(readings, "select_related"):
+        readings = readings.select_related("supply_point__address__street", "supply_point__address__street_number")
+    for reading in readings:
+        point = reading.supply_point
+        if point is not None:
+            points.setdefault(point.pk if point.pk is not None else id(point), point)
+    if points:
+        return [points[key] for key in sorted(points, key=lambda k: (not isinstance(k, int), k if isinstance(k, int) else 0))]
+    default = invoice.contract.supply_point_default if invoice.contract else None
+    return [default] if default else []
+
+def _natural_key(value):
+    digits = "".join(ch for ch in value if ch.isdigit())
+    return (int(digits) if digits else 0, value)
+
+def _render_supply_point_group(entries, with_units):
+    """
+    entries: [(carrer, número, [unitats])]. Un sol cop el carrer, els números separats per comes, i les unitats (escala/pis/porta) entre parèntesis darrere del seu número.
+    """
+    streets = {}
+    for street, number, units in entries:
+        streets.setdefault(street, {}).setdefault(number, []).extend(units)
+    texts = []
+    for street, numbers in streets.items():
+        labels = []
+        for number in sorted(numbers, key=_natural_key):
+            units = sorted(set(numbers[number]), key=_natural_key) if with_units else []
+            if units:
+                labels.append(f"{number} ({','.join(units)})".strip() if number else ",".join(units))
+            elif number:
+                labels.append(number)
+        texts.append(f"{street} {', '.join(labels)}".strip())
+    return "; ".join(texts)
+
+def _fit_supply_points(supply_points, budget):
+    """
+    Diversos punts de subministrament (p. ex. una comunitat de veïns) en poc espai:
+    "AV PAISOS CATALANS 1 (1B,2B), 24, 26". Si no hi caben, per ordre: es treuen les unitats,
+    es treu el codi postal i, per últim, es llisten només els primers amb "(+N)" al final.
+    Els punts sense adreça hi surten pel seu nom (o token), perquè cap punt no desaparegui.
+    """
+    entries = []
+    addresses = []
+    for point in supply_points:
+        address = point.address
+        if not address:
+            name = " ".join(str(point.name or point.token or "").split())
+            if name:
+                entries.append((name, "", []))
+            continue
+        addresses.append(address)
+        unit = " ".join(filter(None, [
+            address.building, address.stair, "-".join(filter(None, [address.floor, address.door])),
+        ]))
+        number = str(address.street_number) if address.street_number else ""
+        entries.append((" ".join(str(address.street).split()), number, [unit] if unit else []))
+    entries.sort(key=lambda e: (e[0], _natural_key(e[1])))
+    postal_codes = {a.postal_code for a in addresses if a.postal_code}
+    postal_code = next(iter(postal_codes)) if len(postal_codes) == 1 else None
+
+    for with_units in (True, False):
+        text = _render_supply_point_group(entries, with_units)
+        if postal_code and len(text) + 1 + len(postal_code) <= budget:
+            return f"{text} {postal_code}"
+        if len(text) <= budget:
+            return text
+    for shown in range(len(entries) - 1, 0, -1):
+        text = f"{_render_supply_point_group(entries[:shown], False)} (+{len(entries) - shown})"
+        if len(text) <= budget:
+            return text
+    text = _render_supply_point_group(entries, False)
+    return text[:max(budget - len(SEPA_ELLIPSIS), 0)].rstrip() + SEPA_ELLIPSIS
+
+def append_sepa_invoice_detail(concept, invoice, language="ca", concept_fields=None):
+    """
+    Afegeix al concepte el detall de la factura: import, consum i punt de subministrament.
+    (El número de contracte i el de factura ja hi són al prefix.) Els camps buits s'ometen.
+    El punt de subministrament té prioritat sobre el codi postal i s'adapta al que queda dels
+    140 caràcters de l'esquema SEPA (vegeu `_fit_supply_point`).
+    """
+    amount_label, consumption_label, supply_point_label = _SEPA_DETAIL_LABELS.get(
+        language, _SEPA_DETAIL_LABELS_DEFAULT
+    )
+    fields = normalize_concept_fields(concept_fields)
+    parts = [concept]
+    if "amount" in fields and invoice.total_final is not None:
+        parts.append(f"{amount_label} {invoice.total_final:.2f}EUR")
+    consumption = invoice.consumption if invoice.consumption is not None else invoice.real_consumption
+    if "consumption" in fields and consumption is not None:
+        parts.append(f"{consumption_label} {consumption:g}m3")
+    head = " ".join(parts)
+
+    supply_points = _invoice_supply_points(invoice) if "supply_point" in fields else []
+    if supply_points:
+        prefix = f"{head} {supply_point_label} "
+        budget = SEPA_USTRD_MAX_LENGTH - len(prefix)
+        if len(supply_points) > 1:
+            detail = _fit_supply_points(supply_points, budget)
+        else:
+            supply_point = supply_points[0]
+            detail = _fit_supply_point(supply_point.address, supply_point.name or supply_point.token, budget)
+        if detail:
+            head = prefix + detail
+    return head[:SEPA_USTRD_MAX_LENGTH].rstrip()
+
+def build_payment_sepa_concept(payment, language, origin_water, is_return=False, concept_fields=None):
+    """
+    Concepte (RmtInf/Ustrd) del rebut d'un pagament. El fa servir tant la generació del fitxer
+    com la previsualització, perquè mostrin exactament el mateix.
+    """
+    # Sense factura ni compromís, el concepte no es pot quedar amb el del pagament anterior.
+    title = payment.token or ""
+    invoice_label = "FRA" if language in ("ca", "es") else "INV"
+    if payment.commitment_deposit:
+        if language == "ca":
+            title = f"COMPROMÍS DE PAGAMENT {payment.commitment_deposit.token}"
+        elif language == "es":
+            title = f"COMPROMISO DE PAGAMENTO {payment.commitment_deposit.token}"
+        else:
+            title = f"PAYMENT COMMITMENT {payment.commitment_deposit.token}"
+        # Pagament agrupat: el compromís cobra diverses factures alhora.
+        commitment_invoice_numbers = payment.commitment_deposit.invoices.exclude(
+            serie_final__isnull=True
+        ).order_by("serie_final").values_list("serie_final", flat=True)
+        title = build_sepa_concept(title, list(commitment_invoice_numbers), invoice_label)
+    if payment.invoice:
+        title = payment.invoice.serie_final or title
+        if payment.invoice.contract and origin_water is not None and payment.invoice.origin == origin_water:
+            fields = normalize_concept_fields(concept_fields)
+            water = {"ca": "AIGUA", "es": "AGUA"}.get(language, "WATER")
+            contract_word = {"ca": "CONTRACTE", "es": "CONTRATO"}.get(language, "CONTRACT")
+            title = f"{water} {contract_word} {payment.invoice.contract.token}" if "contract" in fields else water
+            if "invoice" in fields:
+                title = build_sepa_concept(title, [payment.invoice.serie_final], invoice_label)
+            title = append_sepa_invoice_detail(title, payment.invoice, language, concept_fields)
+    if is_return:
+        title = f"{_('Return xml msg')} {payment.contract.token if payment.contract else payment.person.token if payment.person else payment.token}"
+        if payment.invoice:
+            title = build_sepa_concept(title, [payment.invoice.serie_final], invoice_label)
+    return title
 
 def get_sepa_signature_date(payment):
     """
@@ -265,7 +486,10 @@ def generate_xml(self, document, document_data, bank_instance):
         return xml_string
     
 
-def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
+def generate_xml_payments(payments, bank_instance, send_date, is_return=False, concept_fields=None):
+        if concept_fields is None:
+            concept_fields = get_saved_concept_fields()
+
         def to_local_date(value):
             if not value:
                 return None
@@ -497,35 +721,7 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False):
             # PAYMENT SEND DATE IS NOT USED TO SEND PAYMENTS, BUT TO DECLARE WHEN SEPA IS SIGNED (WHOOPS)
             payment_send_date = send_date_strf
             
-            # Sense factura ni compromís, el concepte no es pot quedar amb el del pagament anterior.
-            title = payment.token or ""
-            invoice_label = "FRA" if language in ("ca", "es") else "INV"
-            if payment.commitment_deposit:
-                if language == "ca":
-                    title = f"COMPROMÍS DE PAGAMENT {payment.commitment_deposit.token}"
-                elif language == "es":
-                    title = f"COMPROMISO DE PAGAMENTO {payment.commitment_deposit.token}"
-                else:
-                    title = f"PAYMENT COMMITMENT {payment.commitment_deposit.token}"
-                # Pagament agrupat: el compromís cobra diverses factures alhora.
-                commitment_invoice_numbers = payment.commitment_deposit.invoices.exclude(
-                    serie_final__isnull=True
-                ).order_by("serie_final").values_list("serie_final", flat=True)
-                title = build_sepa_concept(title, list(commitment_invoice_numbers), invoice_label)
-            if payment.invoice:
-                title = payment.invoice.serie_final or title
-                if payment.invoice.contract and payment.invoice.origin == origin_water:
-                    if language == "ca":
-                        title = f"AIGUA CONTRACTE {payment.invoice.contract.token}"
-                    elif language == "es":
-                        title = f"AGUA CONTRATO {payment.invoice.contract.token}"
-                    else:
-                        title = f"WATER CONTRACT {payment.invoice.contract.token}"
-                    title = build_sepa_concept(title, [payment.invoice.serie_final], invoice_label)
-            if is_return:
-                title = f"{_('Return xml msg')} {payment.contract.token if payment.contract else payment.person.token if payment.person else payment.token}"
-                if payment.invoice:
-                    title = build_sepa_concept(title, [payment.invoice.serie_final], invoice_label)
+            title = build_payment_sepa_concept(payment, language, origin_water, is_return, concept_fields)
             
             if not bank_swift or len(bank_swift) == 0:
                 inv_com = payment.invoice if payment.invoice else payment.commitment_deposit if payment.commitment_deposit else None

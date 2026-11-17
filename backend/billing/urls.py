@@ -73,7 +73,7 @@ from .views.invoice_contract_generate_view import InvoiceContractGenerateView
 from .views.invoice_connection_generate_view import InvoiceConnectionGenerateView
 from .views.manage_new_budget_line_view import ManageNewBudgetLineView
 from .views.generate_invoice_budget_view import GenerateInvoiceBudgetView
-from .views.sepa_payment_document_generate_view import SEPAPaymentDocumentGenerateViewSet, SEPAPaymentInvoicesViewSet, SEPAPaymentAnomaliesViewSet, SEPAPaymentFilesPreviewViewSet
+from .views.sepa_payment_document_generate_view import SEPAPaymentDocumentGenerateViewSet, SEPAPaymentInvoicesViewSet, SEPAPaymentAnomaliesViewSet, SEPAPaymentFilesPreviewViewSet, SEPAConceptPreviewViewSet, SEPAConceptConfigViewSet
 from .views.payment_remittance_regenerate_sepa_view import PaymentRemittanceRegenerateSepaView
 from .views.epayment_document_generate_view import EPaymentDocumentGenerateViewSet
 from .views.detailed_billing_document_generate_view import DetailedBillingDocumentGenerateView
@@ -220,6 +220,8 @@ urlpatterns = [
     path('sepa-document-generate/', SEPAPaymentDocumentGenerateViewSet.as_view(http_method_names=['put']), name='sepa-document-generate'),
     path('sepa-document-generate/invoices/', SEPAPaymentInvoicesViewSet.as_view(http_method_names=['put', 'post']), name='sepa-document-generate-invoices'),
     path('sepa-document-generate/anomalies/', SEPAPaymentAnomaliesViewSet.as_view(http_method_names=['put']), name='sepa-document-generate-anomalies'),
+    path('sepa-concept-config/', SEPAConceptConfigViewSet.as_view(http_method_names=['get', 'put']), name='sepa-concept-config'),
+    path('sepa-concept-preview/', SEPAConceptPreviewViewSet.as_view(http_method_names=['put']), name='sepa-concept-preview'),
     path('sepa-document-generate/files/', SEPAPaymentFilesPreviewViewSet.as_view(http_method_names=['put']), name='sepa-document-generate-files'),
     path('payment-remittance/<int:id>/sepa-document-generate/', PaymentRemittanceRegenerateSepaView.as_view(http_method_names=['post']), name='payment-remittance-regenerate-sepa'),
     path('sepa/download/<int:id>/', SepaPDFDownloadViewSet.as_view(), name='download-sepa-pdf'),
