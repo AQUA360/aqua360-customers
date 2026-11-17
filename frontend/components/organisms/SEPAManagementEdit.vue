@@ -161,6 +161,72 @@ const taskId = ref(null);
 const loadingTask = ref(false);
 
 /* ---- NOU: mesura dinàmica de l'alçada del footer fix ---- */
+// Configuració del concepte del rebut bancari (només aquesta remesa, no es desa).
+const ALL_CONCEPT_FIELDS = ['contract', 'invoice', 'amount', 'consumption', 'supply_point']
+const conceptFields = ref([...ALL_CONCEPT_FIELDS])
+// Configuració desada (global, per a tots els usuaris): és la que fan servir les remeses.
+const savedConceptFields = ref([...ALL_CONCEPT_FIELDS])
+const savingConceptFields = ref(false)
+const conceptFieldsDirty = computed(() =>
+  [...conceptFields.value].sort().join(',') !== [...savedConceptFields.value].sort().join(',')
+)
+
+const loadConceptConfig = async () => {
+  try {
+    const response = await $PaymentApiService.getSEPAConceptConfig()
+    if (response?.concept_fields) {
+      savedConceptFields.value = [...response.concept_fields]
+      conceptFields.value = [...response.concept_fields]
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const saveConceptConfig = async () => {
+  savingConceptFields.value = true
+  try {
+    const response = await $PaymentApiService.saveSEPAConceptConfig(conceptFields.value)
+    if (response?.concept_fields) {
+      savedConceptFields.value = [...response.concept_fields]
+      conceptFields.value = [...response.concept_fields]
+      toast.success(t('billing_block.sepa_concept_saved'))
+    }
+  } catch (error) {
+    console.error(error)
+    toast.error(t('common.error'))
+  } finally {
+    savingConceptFields.value = false
+  }
+}
+const conceptFieldOptions = computed(() => ALL_CONCEPT_FIELDS.map(key => ({
+  key,
+  label: t(`billing_block.sepa_concept_field_${key}`),
+})))
+const conceptExamples = ref([])
+let conceptExamplesTimer = null
+
+const loadConceptExamples = async () => {
+  if (!props.onlySEPA) return
+  try {
+    // Sense cerca encara no hi ha pagaments reals: el backend torna exemples inventats.
+    const base = lastSearchData.value || { samples_only: true }
+    const response = await $PaymentApiService.getSEPAConceptPreview({
+      ...base,
+      concept_fields: conceptFields.value,
+    })
+    conceptExamples.value = response?.examples || []
+  } catch (error) {
+    console.error(error)
+    conceptExamples.value = []
+  }
+}
+
+watch([conceptFields, lastSearchData], () => {
+  clearTimeout(conceptExamplesTimer)
+  conceptExamplesTimer = setTimeout(loadConceptExamples, 300)
+}, { deep: true, immediate: true })
+
 const footerRef = ref(null)
 const footerHeight = ref(96) // valor per defecte raonable mentre no s'ha mesurat encara
 let footerResizeObserver = null
@@ -724,6 +790,7 @@ const resetFilters = (reset_all = true) => {
   excludeContractsWithPendingInvoices.value = false;
   onlyMarkedForRemittance.value = false;
   rejectMotivesMode.value = 'include';
+  conceptFields.value = [...savedConceptFields.value];
   selectedRejectMotives.value = [];
   paymentsListTab.value = 'included';
   selectedInvoiceStatuses.value = [];
@@ -738,6 +805,7 @@ const resetFilters = (reset_all = true) => {
 
 onMounted(async () => {
   objectPermissions.value = await checkPermission($PaymentApiService);
+  loadConceptConfig();
   if (!objectPermissions.value.can_change) {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
@@ -1273,7 +1341,7 @@ watch(selectedContracts, () => {
                       <SelectorType v-model="rejectMotivesMode" :options="rejectMotivesModeOptions" />
                       <v-select
                         multiple
-                        class="block flex-1 min-w-[14rem] custom-select custom-select-small"
+                        class="block flex-1 min-w-[14rem] custom-select custom-select-small custom-select-motives"
                         v-model="selectedRejectMotives"
                         :options="rejectMotives"
                         :loading="loadingRejectMotives"
@@ -1285,6 +1353,39 @@ watch(selectedContracts, () => {
               
               </div>
             </Transition>
+        </div>
+
+        <!-- Configurar el concepte del rebut bancari: esquerra tries els camps, dreta veus com queda. -->
+        <div v-if="onlySEPA" class="pt-3 mt-3 border-t border-gray-200">
+          <h4 class="px-2 py-2 text-sm font-semibold text-slate-700">
+            {{ $t('billing_block.sepa_concept_config') }}
+            <abbr :title="$t('billing_block.sepa_concept_config_info')">
+              <Icon name="fa6-solid:info" class="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
+            </abbr>
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 px-2 pb-2">
+            <div>
+              <label v-for="option in conceptFieldOptions" :key="option.key"
+                class="flex items-center gap-2 py-1 text-sm text-slate-700 cursor-pointer">
+                <input type="checkbox" :value="option.key" v-model="conceptFields" class="rounded border-gray-300" />
+                {{ option.label }}
+              </label>
+              <div class="flex items-center gap-3 mt-3">
+                <button type="button" class="button-primary" :disabled="!conceptFieldsDirty || savingConceptFields"
+                  @click="saveConceptConfig">
+                  {{ $t('billing_block.sepa_concept_save') }}
+                </button>
+                <span v-if="conceptFieldsDirty" class="text-xs text-amber-600">{{ $t('billing_block.sepa_concept_unsaved') }}</span>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-slate-600 mb-1">{{ $t('billing_block.sepa_concept_preview_title') }}</p>
+              <div v-for="(example, index) in conceptExamples" :key="index"
+                class="mb-2 px-3 py-2 rounded border border-slate-200 bg-slate-50">
+                <p class="text-sm font-mono break-words text-slate-800">{{ example.concept }}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1508,6 +1609,10 @@ watch(selectedContracts, () => {
 
 :deep(.custom-select-small .vs__dropdown-menu) {
   max-height: 100px !important;
+}
+
+:deep(.custom-select-small.custom-select-motives .vs__dropdown-menu) {
+  max-height: 240px !important;
 }
 
 :deep(.custom-select-billing .vs__dropdown-menu) {

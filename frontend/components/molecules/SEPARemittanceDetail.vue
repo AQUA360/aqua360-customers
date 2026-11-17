@@ -200,11 +200,25 @@ const getFilterPaymentType = async () => {
   }
 }
 
+// Previsualització del concepte del rebut amb la configuració actual (no bloqueja la pantalla si falla).
+const conceptExamples = ref([]);
+const showConceptPreview = ref(true);
+const loadConceptPreview = async () => {
+  try {
+    const response = await $SepaRemittanceApiService.getConceptPreview(props.remittance_id);
+    conceptExamples.value = response?.examples || [];
+  } catch (err) {
+    console.error('Error obtenint la previsualització del concepte:', err);
+    conceptExamples.value = [];
+  }
+}
+
 // Obtenir detalls de la remesa
 const getRemittanceDetails = async () => {
   try {
     const data = await $SepaRemittanceApiService.getDetail(props.remittance_id);
     remittanceDetails.value = data;
+    loadConceptPreview();
     regenerated.value = !(data.has_paid_payments || data.has_non_direct_debit_payments || data.pending_changes) || data.sent_at
     if (data.send_at) {
       const formattedDate = data.send_at.split('T')[0];
@@ -528,32 +542,44 @@ watch([searchInput], () => {
 
         <fieldset class="border border-gray-200 rounded-lg p-4 mb-4">
           <legend>{{ isReturn ? $t('billing_block.trf_doc') : $t('billing_block.sepa_doc') }}</legend>
-          <div class="grid grid-cols-3 gap-6 items-center">
+          <!-- Amb el panell lateral obert la finestra s'estreny: tot en una sola columna perquè els
+               botons no se superposin al selector de data. -->
+          <div class="grid gap-6 items-center" :class="showRegion ? 'grid-cols-1' : 'grid-cols-3'">
             <div class="flex flex-col gap-2 mb-4">
               <FieldDetail :label="$t('common.creation_date')"
                 :value="remittanceDetails.created_at ? formatDate(remittanceDetails.created_at) : '-'" class="mb-0" />
-                <div class="mb-2 grid grid-cols-[0.7fr,120px]">
-                  <label class="inline-block" :class="'text-slate-400'">{{ $t('common.send_date_expected') }}:</label>
-                  <slot><span class="text-black-900">{{ remittanceDetails.desired_send_at ?
-                  formatDate(remittanceDetails.desired_send_at) : '-' }}</span></slot>
-              </div>
               <FieldDetail :label="$t('billing_block.total_amount')"
                 :value="formatMoneyWithCurrency(remittanceDetails.total_amount)" class="mb-0" />
-              <FieldDetail :label="$t('common.iban')"
+              <!-- Pendent d'enviar, l'IBAN es queda aquí; enviada, passa a la columna del mig. -->
+              <FieldDetail v-if="!isSent" :label="$t('common.iban')"
                 :value="remittanceDetails.company_bank_iban ? formatIban(remittanceDetails.company_bank_iban) : '-'" class="mb-0" />
-              
             </div>
-            <AtomsInputDate v-if="!isSent" v-model="desired_send_at"
-              :label="$t('common.select') + ' ' + $t('common.send_date_expected').toLowerCase()" />
-            <div v-else></div>
-            <div v-if="objectPermissions?.can_change" class="flex gap-2 mt-2 whitespace-nowrap justify-end">
+            <!-- Columna del mig: la data de cobrament a sobre del selector (pendent d'enviar) o,
+                 si ja s'ha enviat, la data de cobrament i l'IBAN, per no deixar-hi espai buit. -->
+            <div class="flex flex-col gap-2 mb-4"
+              :class="isSent ? 'w-fit' : { 'max-w-[220px]': showRegion }">
+              <!-- Enviada: etiqueta a l'esquerra i valor a la dreta, així l'últim dígit de l'IBAN queda
+                   alineat amb l'últim de la data (les dues files fan l'amplada de la més ampla). -->
+              <div class="flex flex-wrap gap-x-3" :class="{ 'justify-between flex-nowrap': isSent }">
+                <label class="inline-block text-slate-400">{{ $t('common.send_date_expected') }}:</label>
+                <span class="text-black-900">{{ remittanceDetails.desired_send_at ?
+                  formatDate(remittanceDetails.desired_send_at) : '-' }}</span>
+              </div>
+              <div v-if="isSent" class="flex justify-between gap-x-3">
+                <label class="inline-block text-slate-600">{{ $t('common.iban') }}</label>
+                <span class="text-black-900 whitespace-nowrap">{{ remittanceDetails.company_bank_iban ? formatIban(remittanceDetails.company_bank_iban) : '-' }}</span>
+              </div>
+              <AtomsInputDate v-else v-model="desired_send_at"
+                :label="$t('common.select') + ' ' + $t('common.send_date_expected').toLowerCase()" />
+            </div>
+            <div v-if="objectPermissions?.can_change" class="flex flex-wrap gap-2 mt-2 justify-end" :class="{ '!justify-start': showRegion }">
               <button v-if="remittanceDetails.document_url" :disabled="!regenerated" @click="downloadXMLDocument"
-                class="button-default" :title="$t('billing_block.download_xml_document')">
+                class="button-default whitespace-nowrap" :title="$t('billing_block.download_xml_document')">
                 <Icon name="fa6-solid:download" class="w-4 h-4" />
                 {{ $t('billing_block.download_document') }}
               </button>
               <button v-if="!regeneratingDocument && !isSent" @click="regenerateSepaDocument"
-                class="button-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="button-primary flex items-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="regeneratingDocument || remittanceDetails.has_paid_payments || remittanceDetails.has_non_direct_debit_payments"
                 :title="$t('billing_block.regenerate_sepa_document')">
                 <Icon name="fa6-solid:rotate-right" class="w-4 h-4" />
@@ -617,6 +643,24 @@ watch([searchInput], () => {
               </div>
             </div>
           </template>
+        </fieldset>
+
+        <!-- Previsualització del concepte del rebut amb el format seleccionat -->
+        <fieldset v-if="conceptExamples.length" class="border border-gray-200 rounded-lg px-4 py-2 mb-4">
+          <legend class="px-1">
+            <button type="button" class="flex items-center gap-2 select-none focus:outline-none"
+              :aria-expanded="showConceptPreview ? 'true' : 'false'" @click="showConceptPreview = !showConceptPreview">
+              {{ $t('billing_block.sepa_concept_remittance_preview') }}
+              <Icon name="fa6-solid:chevron-down" class="w-3 h-3 text-slate-500 transition-transform duration-200"
+                :class="{ 'rotate-180': showConceptPreview }" />
+            </button>
+          </legend>
+          <div v-show="showConceptPreview" class="pt-2">
+            <div v-for="example in conceptExamples" :key="example.payment_id"
+              class="mb-2 last:mb-0 px-3 py-2 rounded border border-slate-200 bg-slate-50">
+              <p class="text-sm font-mono break-words text-slate-800">{{ example.concept }}</p>
+            </div>
+          </div>
         </fieldset>
 
         <!-- Secció de pagaments -->
