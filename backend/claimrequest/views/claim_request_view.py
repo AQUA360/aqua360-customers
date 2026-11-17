@@ -48,11 +48,17 @@ class ClaimRequestViewSet(viewsets.ModelViewSet):
     
     if self.action in ['list', 'retrieve']:
         # Anotem el total de pagaments i contractes, i la suma dels amounts
-        queryset = queryset.annotate(
-            total_payments=Count('payments', distinct=True),
-            total_contracts=Count('payments__contract', distinct=True),
-            amount=Sum('payments__payment__amount', filter=Q(payments__is_excluded=False))
-        ).select_related(
+        annotations = {
+            'total_payments': Count('payments', distinct=True),
+            'total_contracts': Count('payments__contract', distinct=True),
+            'amount': Sum('payments__payment__amount', filter=Q(payments__is_excluded=False)),
+        }
+        if self.action == 'retrieve':
+            # Factures amb el mateix criteri que l'import: només dels pagaments no exclosos
+            annotations['total_invoices'] = Count(
+                'payments__payment__invoice', distinct=True, filter=Q(payments__is_excluded=False)
+            )
+        queryset = queryset.annotate(**annotations).select_related(
             'status',
             'current_step'
         ).prefetch_related(

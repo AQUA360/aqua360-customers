@@ -14,7 +14,6 @@ import ContractRequestRegion from './ContractRequestRegion.vue';
 import SupplyPointRegion from './SupplyPointRegion.vue';
 import PersonRegion from './PersonRegion.vue';
 import ContractMiniDetail from '../molecules/ContractMiniDetail.vue';
-import InvoiceMiniDetail from '../molecules/InvoiceMiniDetail.vue';
 import ClaimRequestContractChange from '../atoms/ClaimRequestContractChange.vue';
 import ClaimStepRegion from './ClaimStepRegion.vue';
 
@@ -219,14 +218,6 @@ const setActiveTab = (tab) => {
           </li>
 
           <li class="me-2">
-            <a href="#tab_invoices" @click.prevent="setActiveTab('invoices')"
-              :class="{ 'text-sky-600 border-sky-600': activeTab === 'invoices', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'invoices' }">
-              <Icon name="fa6-solid:file-invoice" class="display-inline mr-2" />
-              {{ $t("invoices") }}
-            </a>
-          </li>
-
-          <li class="me-2">
             <a href="#tab_contract_change" @click.prevent="setActiveTab('contract_change')"
               :class="{ 'text-sky-600 border-sky-600': activeTab === 'contract_change', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'contract_change' }">
               <Icon name="fa6-regular:square-minus" class="display-inline mr-2" />
@@ -249,18 +240,6 @@ const setActiveTab = (tab) => {
               <ContractMiniDetail :item="data.contract_requests" @show-detail="showDetail" :is_request="true" />
             </div>
             <div v-if="data.contracts.length == 0 && data.contract_requests.length == 0">
-              <span class="text-gray-700 mt-1 font-medium italic text-sm bg-yellow-100 rounded-md px-2 py-1">
-                {{ t('common.no_data_found') }}
-              </span>
-            </div>
-          </section>
-
-          <section v-show="activeTab === 'invoices'" role="tabpanel" id="tab_invoices"
-            class="bg-white antialiased py-3 h-[50vh] overflow-y-auto border-b rounded">
-            <div v-if="data.invoices.length > 0">
-              <InvoiceMiniDetail :item="data.invoices" @show-detail="showDetail" />
-            </div>
-            <div v-else>
               <span class="text-gray-700 mt-1 font-medium italic text-sm bg-yellow-100 rounded-md px-2 py-1">
                 {{ t('common.no_data_found') }}
               </span>
