@@ -102,7 +102,7 @@ watch(() => props.id, (newValue) => async () => {
       <FieldDetail :label='$t("billing_block.due_step")' :value="localData.current_step_due_date ? formatDate(localData.current_step_due_date) : '-'">
       </FieldDetail>
       <FieldDetail :label='$t("contract_block.total_contracts")' :value="(localData.total_contracts).toString()"></FieldDetail>
-      <FieldDetail :label='$t("billing_block.total_invoice")' :value="(localData.invoices.length).toString()"></FieldDetail>
+      <FieldDetail :label='$t("billing_block.total_invoice")' :value="(localData.total_invoices ?? 0).toString()"></FieldDetail>
       <FieldDetail :label='$t("common.total")' :value=formatMoneyWithCurrency(localData.amount)></FieldDetail>
     </div>
   </div>

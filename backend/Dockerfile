@@ -58,6 +58,8 @@ RUN chmod +x /app/docker-entrypoint.sh \
 # Informació del deploy (versió, commit i data del build) per al NavSidebar. La passa
 # .github/workflows/imatges.yml; el context del build no porta .git ni la imatge té git.
 # Sense args (build al servidor), la versió i el commit surten de l'etapa `gitinfo`.
+# Aquest pas carrega els settings sense .env: DEBUG=True només per a aquesta ordre, perquè
+# no exigeixi una SECRET_KEY real (no queda a la imatge; en execució mana el .env).
 ARG APP_VERSION=
 ARG GIT_COMMIT=
 ARG GIT_COMMIT_DATE=
@@ -65,7 +67,7 @@ ARG GIT_BRANCH=
 ARG BUILD_DATE=
 RUN --mount=type=bind,from=gitinfo,source=/deploy-git.env,target=/tmp/deploy-git.env \
     APP_VERSION="$APP_VERSION" GIT_COMMIT="$GIT_COMMIT" GIT_COMMIT_DATE="$GIT_COMMIT_DATE" \
-    GIT_BRANCH="$GIT_BRANCH" BUILD_DATE="$BUILD_DATE" \
+    GIT_BRANCH="$GIT_BRANCH" BUILD_DATE="$BUILD_DATE" DEBUG=True \
     python -m customers.deploy_info /app/deploy_info.json /tmp/deploy-git.env
 
 # El procés no s'executa com a root. L'usuari `app` (uid/gid 1001, fix perquè els volums del
