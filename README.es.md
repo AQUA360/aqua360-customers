@@ -22,6 +22,8 @@ El `docker-compose.yml` carga el archivo `.env` (`env_file`) en los servicios `b
 cp env.docker.example .env
 ```
 
+Cambia `SECRET_KEY` por una clave larga y aleatoria (se puede generar con `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`): es obligatoria y `docker compose` no arranca sin ella; con `DEBUG=False` el backend tampoco arranca con la clave del ejemplo. `DEBUG` es `False` por defecto; pon `DEBUG=True` solo para desarrollar.
+
 Edita `.env` si es necesario. Por ejemplo, si el puerto **5432** ya lo utiliza un PostgreSQL del sistema, define `POSTGRES_PORT=5433` (solo el puerto en la máquina host).
 
 Cualquier variable del `.env` (p. ej. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) llega a los contenedores. Las variables de conexión a la BD y a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) las fija el propio compose, y el resto tienen valor por defecto en `docker-compose.yml`. `ENV` y `LANGUAGE` se aplican al build y a la ejecución del frontend. El `frontend` no carga el `.env` entero (no debe recibir los secretos del backend): solo recibe las variables que lista su bloque `environment` del `docker-compose.yml`, y una variable nueva que lea al arrancar se debe añadir allí.

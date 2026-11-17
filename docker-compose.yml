@@ -1,7 +1,7 @@
 x-django-env: &django-env
   DJANGO_SETTINGS_MODULE: customers.settings
-  SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
-  DEBUG: ${DEBUG:-True}
+  SECRET_KEY: ${SECRET_KEY:?Cal definir SECRET_KEY al .env (una clau llarga i aleatòria)}
+  DEBUG: ${DEBUG:-False}
   ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
   DATABASE_NAME: ${POSTGRES_DB:-avsis_customers}
   DATABASE_USER: ${POSTGRES_USER:-postgres}
