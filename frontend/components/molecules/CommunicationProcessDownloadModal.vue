@@ -17,6 +17,8 @@ const emit = defineEmits(['close', 'download-documents', 'download-einvoices', '
 const kind = ref('documents');
 const channel = ref('all');
 const includeInvoices = ref(true);
+// Comunicacions segons la factura electrònica: 'all' | 'without' | 'only'
+const einvoiceFilter = ref('all');
 const markSent = ref(true);
 
 const comFiles = computed(() => props.data?.com_files || []);
@@ -24,18 +26,30 @@ const hasDocuments = computed(() => comFiles.value.length > 0);
 const documentsDisabled = computed(() => !hasDocuments.value || props.einvoicesRunning);
 const einvoicesDisabled = computed(() => !props.data?.has_electronic_invoices || props.einvoicesRunning);
 
+const einvoiceFilterOptions = computed(() => [
+  { value: 'all', label: t('customer_service_block.download_docs_einvoice_all') },
+  { value: 'without', label: t('customer_service_block.download_docs_einvoice_without') },
+  { value: 'only', label: t('customer_service_block.download_docs_einvoice_only') },
+]);
+
 const channelOptions = computed(() => [
   { value: 'all', label: t('customer_service_block.download_docs_all_channels'), disabled: !hasDocuments.value },
   { value: 'postal', label: t('customer_service_block.download_docs_postal'), disabled: !props.data?.has_letters },
   { value: 'email', label: t('customer_service_block.download_docs_email'), disabled: !props.data?.has_email },
 ]);
 
-// Mateix criteri que fa servir la descàrrega (CommunicationProcessRegion.downloadDocuments)
-const documentCount = computed(() => comFiles.value
+// Documents que compleixen els filtres, inclosos els XML de factura electrònica
+const matchingFiles = computed(() => comFiles.value
   .filter(item => channel.value !== 'postal' || item.is_postal)
   .filter(item => channel.value !== 'email' || item.is_email)
-  .filter(item => includeInvoices.value || !item.has_invoice)
-  .length);
+  .filter(item => includeInvoices.value || (!item.has_invoice && !item.is_einvoice_xml))
+  .filter(item => einvoiceFilter.value !== 'without' || !item.is_einvoice_communication)
+  .filter(item => einvoiceFilter.value !== 'only' || item.is_einvoice_communication));
+
+// Els XML no es poden ajuntar al PDF amb la resta: es deixen fora i s'avisa
+const selectedFiles = computed(() => matchingFiles.value.filter(item => !item.is_einvoice_xml));
+const skippedEinvoiceCount = computed(() => matchingFiles.value.length - selectedFiles.value.length);
+const documentCount = computed(() => selectedFiles.value.length);
 
 const canDownload = computed(() => {
   if (props.downloading) return false;
@@ -49,6 +63,7 @@ watch(() => props.show, (isOpen) => {
   kind.value = documentsDisabled.value && !einvoicesDisabled.value ? 'einvoices' : 'documents';
   channel.value = channelOptions.value.find(option => !option.disabled)?.value || 'all';
   includeInvoices.value = true;
+  einvoiceFilter.value = 'all';
   markSent.value = true;
 });
 
@@ -64,8 +79,8 @@ const download = () => {
     return;
   }
   emit('download-documents', {
+    ids: selectedFiles.value.map(item => item.id),
     channel: channel.value,
-    includeInvoices: includeInvoices.value,
     markSent: channel.value === 'postal' && markSent.value,
   });
 };
@@ -121,6 +136,18 @@ const download = () => {
               <input type="checkbox" v-model="includeInvoices" :disabled="!data?.has_invoices" />
               {{ t('customer_service_block.download_docs_include_invoices') }}
             </label>
+            <template v-if="data?.has_electronic_invoices">
+              <p class="text-sm font-semibold text-slate-500 uppercase tracking-wide pt-3">
+                {{ t('customer_service_block.download_docs_einvoice_filter') }}
+              </p>
+              <div class="flex flex-wrap gap-x-5 gap-y-2">
+                <label v-for="option in einvoiceFilterOptions" :key="option.value"
+                  class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input type="radio" :value="option.value" v-model="einvoiceFilter" />
+                  {{ option.label }}
+                </label>
+              </div>
+            </template>
             <label v-if="channel === 'postal'" class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" v-model="markSent" />
               {{ t('customer_service_block.download_docs_mark_sent') }}
@@ -130,6 +157,12 @@ const download = () => {
           <p class="text-sm text-slate-600 mb-5">
             {{ t('customer_service_block.download_docs_count', { count: documentCount }) }}
           </p>
+
+          <div v-if="skippedEinvoiceCount > 0" role="status"
+            class="flex gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-3 mb-5">
+            <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0" />
+            <span>{{ t('customer_service_block.download_docs_einvoice_warning', { count: skippedEinvoiceCount }) }}</span>
+          </div>
         </template>
 
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">

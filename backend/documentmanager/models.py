@@ -45,6 +45,11 @@ class Document(models.Model):
                 documents.append(by_id[document_id])
         return documents
 
+    @property
+    def is_einvoice_xml(self):
+        """XML de factura electrònica: no és un PDF i no es pot ajuntar amb altres PDF."""
+        return self.field == 'EFACTURA' or (self.document_name or '').lower().endswith('.xml')
+
     def __str__(self):
         return self.document_name
 
