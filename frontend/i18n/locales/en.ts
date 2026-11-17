@@ -3274,6 +3274,13 @@ export default {
     info_tip: 'It is recommended to grant view permissions to all blocks (except the users block) if edit permissions are granted for contracting.',
     info_group_users: 'Users with an assigned group who are assigned to another group will lose all permissions from the previous group.',
     password_not_match: 'Passwords do not match',
+    password_rules_not_met: 'The password does not meet the requirements',
+    password_rule: {
+      min_length: 'At least 8 characters',
+      letter: 'Must include at least one letter',
+      number: 'Must include at least one number',
+      special: 'Must include at least one special character (!, #, -, _...)',
+    },
     admin_permissions: 'Administrators get all permissions without needing to belong to a group'
   },
   settings_block:   {

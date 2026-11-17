@@ -6322,3 +6322,24 @@ msgstr "Aquesta remesa ja s'ha enviat i no es pot modificar."
 #: billing/views/invoice_view.py
 msgid "La factura no té lectures"
 msgstr "La factura no té lectures"
+
+#: auth/validators.py
+#, python-format
+msgid "The password must have at least %(min_length)d characters."
+msgstr "La contrasenya ha de tenir com a mínim %(min_length)d caràcters."
+
+#: auth/validators.py
+msgid "The password must contain at least one letter."
+msgstr "La contrasenya ha de contenir com a mínim una lletra."
+
+#: auth/validators.py
+msgid "The password must contain at least one number."
+msgstr "La contrasenya ha de contenir com a mínim un número."
+
+#: auth/validators.py
+msgid "The password must contain at least one special character."
+msgstr "La contrasenya ha de contenir com a mínim un caràcter especial."
+
+#: auth/serializers.py
+msgid "Invalid permission data."
+msgstr "Les dades de permisos no són vàlides."

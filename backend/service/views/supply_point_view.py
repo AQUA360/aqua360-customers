@@ -431,7 +431,7 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         pk = request.query_params.get('id')
         if pk:
             from django.contrib.auth.models import Group
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()

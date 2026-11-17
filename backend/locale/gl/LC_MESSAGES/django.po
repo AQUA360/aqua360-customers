@@ -4926,3 +4926,24 @@ msgstr "Esta remesa xa se enviou e non se pode modificar."
 #: billing/views/invoice_view.py
 msgid "La factura no té lectures"
 msgstr "A factura non ten lecturas"
+
+#: auth/validators.py
+#, python-format
+msgid "The password must have at least %(min_length)d characters."
+msgstr "O contrasinal debe ter como mínimo %(min_length)d caracteres."
+
+#: auth/validators.py
+msgid "The password must contain at least one letter."
+msgstr "O contrasinal debe conter como mínimo unha letra."
+
+#: auth/validators.py
+msgid "The password must contain at least one number."
+msgstr "O contrasinal debe conter como mínimo un número."
+
+#: auth/validators.py
+msgid "The password must contain at least one special character."
+msgstr "O contrasinal debe conter como mínimo un carácter especial."
+
+#: auth/serializers.py
+msgid "Invalid permission data."
+msgstr "Os datos de permisos non son válidos."
