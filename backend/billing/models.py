@@ -274,6 +274,9 @@ class Biller(models.Model):
     initial_month = models.CharField(choices=MONTH_CHOICES, default='jan')
     # Una facturació és una execució d'aquest facturador: l'explotació es filtra des d'aquí.
     exploitation = models.ForeignKey(Exploitation, on_delete=models.SET_NULL, null=True, blank=True, related_name='billers')
+    # Si està actiu, cada execució crea una facturació per a cada empresa proveïdora
+    # d'aigua de l'explotació, i cada facturació només agafa lectures dels seus contractes.
+    split_by_company = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
 class ReadingBatchTemplate(models.Model):
@@ -322,6 +325,8 @@ class Billing(models.Model):
     token = models.CharField(max_length=255, null=True, blank=True)
     name = models.CharField(max_length=255, null=True, blank=True)
     biller = models.ForeignKey(Biller, on_delete=models.SET_NULL, null=True, blank=True)
+    # Empresa de la facturació quan el facturador separa per empresa; null = totes.
+    company = models.ForeignKey('service.Company', on_delete=models.SET_NULL, null=True, blank=True, related_name='billings')
     task_id = models.CharField(max_length=255, null=True, blank=True)
     status = models.ForeignKey(BillingStatus, on_delete=models.SET_NULL, null=True, blank=True)
     communication_process = models.ForeignKey('communication.CommunicationProcess', on_delete=models.SET_NULL, null=True, blank=True)

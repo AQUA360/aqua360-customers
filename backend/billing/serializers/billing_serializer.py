@@ -18,6 +18,13 @@ def pop_metrics_snapshot(representation):
     return representation
 
 
+def add_company_name(instance, representation):
+    """Nom de l'empresa quan la facturació és d'un facturador separat per empresa."""
+    company = instance.company if instance.company_id else None
+    representation['company_name'] = (company.alias or company.name) if company else None
+    return representation
+
+
 class BillingListSerializer(serializers.ModelSerializer):
     status = BillingStatusSerializer(read_only=True, required=False, allow_null=True)
     send_at = serializers.SerializerMethodField()
@@ -28,7 +35,7 @@ class BillingListSerializer(serializers.ModelSerializer):
         read_only_fields = ['metrics_snapshot', 'process_errors']
 
     def to_representation(self, instance):
-        return pop_metrics_snapshot(super().to_representation(instance))
+        return add_company_name(instance, pop_metrics_snapshot(super().to_representation(instance)))
         
     def get_send_at(self, obj):
         if hasattr(obj, 'effective_send_at'):
@@ -93,7 +100,7 @@ class BillingSerializer(serializers.ModelSerializer):
         return attrs
 
     def to_representation(self, instance):
-        representation = pop_metrics_snapshot(super().to_representation(instance))
+        representation = add_company_name(instance, pop_metrics_snapshot(super().to_representation(instance)))
         representation['missing_batch'] = ReadingBatchMinimalSerializer(instance.missing_batch.all(), many=True).data if instance.missing_batch.all() else None
         return representation
     
