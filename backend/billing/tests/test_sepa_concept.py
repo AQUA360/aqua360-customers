@@ -110,6 +110,12 @@ class AppendSepaInvoiceDetailTests(SimpleTestCase):
         self.assertTrue(concept.endswith("..., 7"))
         self.assertNotIn("25001", concept)
 
+    def test_street_with_double_spaces_keeps_the_number_when_cut(self):
+        invoice = self._invoice(street="Y" * 60 + "  " + "Z" * 140, number=7)
+        concept = append_sepa_invoice_detail(self.PREFIX, invoice, "ca")
+        self.assertLessEqual(len(concept), SEPA_USTRD_MAX_LENGTH)
+        self.assertTrue(concept.endswith("..., 7"))
+
     def test_supply_point_without_address_falls_back_to_name(self):
         invoice = self._invoice()
         invoice.contract.supply_point_default.address = None
@@ -170,6 +176,12 @@ class MultipleSupplyPointsTests(SimpleTestCase):
             self._point("AV X", 1, 2, stair="B", floor="2", door="1"),
         ]
         self.assertEqual(self._detail(*points), "AV X 1 (B 1-1,B 2-1) 25001")
+
+    def test_point_without_address_is_not_dropped(self):
+        with_address = self._point("AV X", 24, 1)
+        no_address = SimpleNamespace(pk=2, name="LOCAL SOCIAL", token="PS2", address=None)
+        self.assertEqual(self._detail(with_address, no_address), "AV X 24; LOCAL SOCIAL 25001")
+        self.assertEqual(self._detail(no_address, with_address), "AV X 24; LOCAL SOCIAL 25001")
 
     def test_duplicated_points_count_once(self):
         point = self._point("AV X", 5, 1)

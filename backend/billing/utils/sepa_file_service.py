@@ -128,7 +128,8 @@ def _fit_supply_point(address, fallback_name, budget):
     if len(full) <= budget:
         return full
 
-    street = str(address.street)
+    # Mateixa normalització d'espais que `full`, si no `full.startswith(street)` falla amb espais dobles.
+    street = " ".join(str(address.street).split())
     tail = full[len(street):] if full.startswith(street) else ""
     # Si ni amb el carrer mínim hi cap tota la cua (escala, pis...), es queda només el número.
     for candidate_tail in (tail, f", {address.street_number}" if address.street_number else ""):
@@ -178,14 +179,23 @@ def _render_supply_point_group(entries, with_units):
         texts.append(f"{street} {', '.join(labels)}".strip())
     return "; ".join(texts)
 
-def _fit_supply_points(addresses, budget):
+def _fit_supply_points(supply_points, budget):
     """
     Diversos punts de subministrament (p. ex. una comunitat de veïns) en poc espai:
-    "AV PAISOS CATALANS 1 (1B,2B), 24, 26". Si no hi cap, per ordre: es treuen les unitats,
-    es treu el codi postal i, per últim, es llisten només els primers números amb "(+N)".
+    "AV PAISOS CATALANS 1 (1B,2B), 24, 26". Si no hi caben, per ordre: es treuen les unitats,
+    es treu el codi postal i, per últim, es llisten només els primers amb "(+N)" al final.
+    Els punts sense adreça hi surten pel seu nom (o token), perquè cap punt no desaparegui.
     """
     entries = []
-    for address in addresses:
+    addresses = []
+    for point in supply_points:
+        address = point.address
+        if not address:
+            name = " ".join(str(point.name or point.token or "").split())
+            if name:
+                entries.append((name, "", []))
+            continue
+        addresses.append(address)
         unit = " ".join(filter(None, [
             address.building, address.stair, "-".join(filter(None, [address.floor, address.door])),
         ]))
@@ -231,9 +241,8 @@ def append_sepa_invoice_detail(concept, invoice, language="ca", concept_fields=N
     if supply_points:
         prefix = f"{head} {supply_point_label} "
         budget = SEPA_USTRD_MAX_LENGTH - len(prefix)
-        addresses = [sp.address for sp in supply_points if sp.address]
-        if len(supply_points) > 1 and len(addresses) == len(supply_points):
-            detail = _fit_supply_points(addresses, budget)
+        if len(supply_points) > 1:
+            detail = _fit_supply_points(supply_points, budget)
         else:
             supply_point = supply_points[0]
             detail = _fit_supply_point(supply_point.address, supply_point.name or supply_point.token, budget)

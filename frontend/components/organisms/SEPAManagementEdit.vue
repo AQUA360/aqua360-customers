@@ -171,12 +171,18 @@ const conceptFieldsDirty = computed(() =>
   [...conceptFields.value].sort().join(',') !== [...savedConceptFields.value].sort().join(',')
 )
 
+const sameFields = (a, b) => [...a].sort().join(',') === [...b].sort().join(',')
+
 const loadConceptConfig = async () => {
+  const before = [...conceptFields.value]
   try {
     const response = await $PaymentApiService.getSEPAConceptConfig()
     if (response?.concept_fields) {
       savedConceptFields.value = [...response.concept_fields]
-      conceptFields.value = [...response.concept_fields]
+      // Només es pinten les caselles si l'usuari no les ha tocat mentre es carregava.
+      if (sameFields(conceptFields.value, before)) {
+        conceptFields.value = [...response.concept_fields]
+      }
     }
   } catch (error) {
     console.error(error)
@@ -185,11 +191,15 @@ const loadConceptConfig = async () => {
 
 const saveConceptConfig = async () => {
   savingConceptFields.value = true
+  const sent = [...conceptFields.value]
   try {
-    const response = await $PaymentApiService.saveSEPAConceptConfig(conceptFields.value)
+    const response = await $PaymentApiService.saveSEPAConceptConfig(sent)
     if (response?.concept_fields) {
       savedConceptFields.value = [...response.concept_fields]
-      conceptFields.value = [...response.concept_fields]
+      // Si l'usuari ha tocat les caselles mentre es desava, es respecten (i queden com a «sense guardar»).
+      if (sameFields(conceptFields.value, sent)) {
+        conceptFields.value = [...response.concept_fields]
+      }
       toast.success(t('billing_block.sepa_concept_saved'))
     }
   } catch (error) {
@@ -206,8 +216,13 @@ const conceptFieldOptions = computed(() => ALL_CONCEPT_FIELDS.map(key => ({
 const conceptExamples = ref([])
 let conceptExamplesTimer = null
 
+// Identificador de la darrera petició d'exemples: les respostes (o errors) d'una petició
+// anterior s'ignoren, perquè no trepitgin els exemples de la selecció vigent.
+let conceptExamplesRequestId = 0
+
 const loadConceptExamples = async () => {
   if (!props.onlySEPA) return
+  const requestId = ++conceptExamplesRequestId
   try {
     // Sense cerca encara no hi ha pagaments reals: el backend torna exemples inventats.
     const base = lastSearchData.value || { samples_only: true }
@@ -215,14 +230,20 @@ const loadConceptExamples = async () => {
       ...base,
       concept_fields: conceptFields.value,
     })
-    conceptExamples.value = response?.examples || []
+    if (requestId === conceptExamplesRequestId) {
+      conceptExamples.value = response?.examples || []
+    }
   } catch (error) {
     console.error(error)
-    conceptExamples.value = []
+    if (requestId === conceptExamplesRequestId) {
+      conceptExamples.value = []
+    }
   }
 }
 
 watch([conceptFields, lastSearchData], () => {
+  // Invalida de seguida la petició en curs: ja no correspon a la selecció actual.
+  conceptExamplesRequestId++
   clearTimeout(conceptExamplesTimer)
   conceptExamplesTimer = setTimeout(loadConceptExamples, 300)
 }, { deep: true, immediate: true })

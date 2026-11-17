@@ -203,13 +203,21 @@ const getFilterPaymentType = async () => {
 // Previsualització del concepte del rebut amb la configuració actual (no bloqueja la pantalla si falla).
 const conceptExamples = ref([]);
 const showConceptPreview = ref(true);
+// Identificador de la darrera petició: una resposta (o error) antiga no ha de sobreescriure els
+// exemples actuals, p. ex. si s'ha eliminat un pagament i la remesa s'ha tornat a carregar.
+let conceptPreviewRequestId = 0
 const loadConceptPreview = async () => {
+  const requestId = ++conceptPreviewRequestId
   try {
     const response = await $SepaRemittanceApiService.getConceptPreview(props.remittance_id);
-    conceptExamples.value = response?.examples || [];
+    if (requestId === conceptPreviewRequestId) {
+      conceptExamples.value = response?.examples || [];
+    }
   } catch (err) {
     console.error('Error obtenint la previsualització del concepte:', err);
-    conceptExamples.value = [];
+    if (requestId === conceptPreviewRequestId) {
+      conceptExamples.value = [];
+    }
   }
 }
 
