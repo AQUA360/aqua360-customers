@@ -175,7 +175,7 @@ def _render_supply_point_group(entries, with_units):
                 labels.append(f"{number} ({','.join(units)})".strip() if number else ",".join(units))
             elif number:
                 labels.append(number)
-        texts.append(f"{street} {", ".join(labels)}".strip())
+        texts.append(f"{street} {', '.join(labels)}".strip())
     return "; ".join(texts)
 
 def _fit_supply_points(addresses, budget):
