@@ -53,7 +53,7 @@ RUN pip install --upgrade pip && pip install -r /app/requirements.txt
 COPY . /app/
 
 RUN chmod +x /app/docker-entrypoint.sh \
-    && chmod +x /app/docker-celery-worker.sh /app/docker-celery-beat.sh
+    && chmod +x /app/docker-celery-worker.sh /app/docker-celery-beat.sh /app/docker-check-writable.sh
 
 # Informació del deploy (versió, commit i data del build) per al NavSidebar. La passa
 # .github/workflows/imatges.yml; el context del build no porta .git ni la imatge té git.
@@ -67,6 +67,21 @@ RUN --mount=type=bind,from=gitinfo,source=/deploy-git.env,target=/tmp/deploy-git
     APP_VERSION="$APP_VERSION" GIT_COMMIT="$GIT_COMMIT" GIT_COMMIT_DATE="$GIT_COMMIT_DATE" \
     GIT_BRANCH="$GIT_BRANCH" BUILD_DATE="$BUILD_DATE" \
     python -m customers.deploy_info /app/deploy_info.json /tmp/deploy-git.env
+
+# El procés no s'executa com a root. L'usuari `app` (uid/gid 1001, fix perquè els volums del
+# host hi puguin casar) només és propietari d'on l'aplicació escriu: media i staticfiles (volums
+# del compose), logs (el crea settings.py en arrencar), locale (compilemessages de l'entrypoint)
+# i /var/lib/celery (estat del celery-beat). El codi queda de root i només de lectura.
+# Els volums muntats d'un servidor que ja funcionava com a root s'han de passar a l'usuari 1001
+# abans d'arrencar aquesta imatge: `chown -R 1001 docker-data/media docker-data/static`
+# (docker-check-writable.sh atura l'arrencada amb aquesta ordre si no s'ha fet).
+RUN groupadd --system --gid 1001 app \
+    && useradd --system --uid 1001 --gid app --home-dir /home/app --create-home \
+       --shell /usr/sbin/nologin app \
+    && mkdir -p /app/media /app/staticfiles /app/logs /var/lib/celery \
+    && chown -R app:app /app/media /app/staticfiles /app/logs /app/locale /var/lib/celery
+
+USER app
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 

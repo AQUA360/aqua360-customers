@@ -28,6 +28,13 @@ Cualquier variable del `.env` (p. ej. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `C
 
 ### 3. Construir y arrancar todos los servicios
 
+Antes de arrancar Compose, tanto en un servidor nuevo como en una instalación existente, prepara los volúmenes desde el directorio del proyecto. Ejecuta estas órdenes como root (o con `sudo`); el backend se ejecuta con UID/GID `1001:1001`. El cambio recursivo de propietario también cubre archivos y subdirectorios creados por los contenedores antiguos que se ejecutaban como root.
+
+```bash
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
+```
+
 Primera vez o después de cambios en los Dockerfiles o dependencias:
 
 ```bash
@@ -124,6 +131,8 @@ docker compose down -v
 
 ```bash
 git pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -140,6 +149,8 @@ Para usar una versión sin construir nada en el servidor, ponerla en el `.env` y
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose up -d
 ```
 

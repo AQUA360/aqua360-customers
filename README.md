@@ -28,6 +28,13 @@ Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUST
 
 ### 3. Build and Start All Services
 
+Before starting Compose, on both a fresh server and an existing installation, prepare the bind mounts from the project directory. Run these commands as root (or with `sudo`); the backend runs as UID/GID `1001:1001`. The recursive ownership change also covers files and subdirectories created by older containers running as root.
+
+```bash
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
+```
+
 The first time, or after changes to Dockerfiles or dependencies:
 
 ```bash
@@ -124,6 +131,8 @@ docker compose down -v
 
 ```bash
 git pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -140,6 +149,8 @@ To run a version without building anything on the server, set it in `.env` and:
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
+sudo mkdir -p docker-data/media docker-data/static
+sudo chown -R 1001 docker-data/media docker-data/static
 docker compose up -d
 ```
 
