@@ -155,7 +155,7 @@ export const escapeHtmlForPreview = (text: string) => text
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+export const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** Converts known `**TAG**...**TAG**` markers to styled spans. Input must already be HTML-escaped. */
 export const applyMessageFormatTagsForPreview = (escapedText: string) => {
