@@ -243,6 +243,28 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Configuració global (per a tots els usuaris) dels camps del concepte del rebut bancari.
+  const getSEPAConceptConfig = async () => {
+    const apiUrl = `${apiHost}/billing/sepa-concept-config/`;
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
+
+  const saveSEPAConceptConfig = async (conceptFields) => {
+    const apiUrl = `${apiHost}/billing/sepa-concept-config/`;
+    return await $apiManager.fetch(apiUrl, 'PUT', { concept_fields: conceptFields }, { 'Content-Type': 'application/json' });
+  }
+
+  // Exemples del concepte del rebut bancari segons els camps triats (concept_fields).
+  const getSEPAConceptPreview = async (filters) => {
+    const apiUrl = `${apiHost}/billing/sepa-concept-preview/`;
+    try {
+      return await $apiManager.fetch(apiUrl, 'PUT', filters, { 'Content-Type': 'application/json' });
+    } catch (error) {
+      console.error('Error fetching SEPA concept preview:', error);
+      throw error;
+    }
+  }
+
   const getSEPAFiles = async (filters) => {
     const apiUrl = `${apiHost}/billing/sepa-document-generate/files/`;
     try {
@@ -498,6 +520,9 @@ export default defineNuxtPlugin(nuxtApp => {
     bulkExcludeSEPAInvoices,
     getSEPAAnomalies,
     getSEPAFiles,
+    getSEPAConceptPreview,
+    getSEPAConceptConfig,
+    saveSEPAConceptConfig,
     getEInvoiceDocData,
     getDocumentSEPA,
 

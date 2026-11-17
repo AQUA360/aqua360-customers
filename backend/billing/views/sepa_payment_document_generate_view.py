@@ -16,7 +16,12 @@ from billing.serializers.payment_serializer import PaymentSEPASerializer, Paymen
 from billing.utils.payment_service import get_payment_SEPA_data, log_payment_status
 from django.db.models import Sum
 from django.core.files.base import ContentFile
-from billing.utils.sepa_file_service import generate_xml, generate_xml_payments
+from decouple import config
+from pricing.models import ProductOrigin
+from billing.utils.sepa_file_service import (
+    build_payment_sepa_concept, generate_xml, generate_xml_payments, get_saved_concept_fields, normalize_concept_fields,
+    save_concept_fields, SEPA_CONCEPT_FIELDS,
+)
 from coredata.models import Bank, ConfigProject
 from coredata.utils.iban_validator_utils import validate_iban
 from coredata.utils.validators_utils import validate_nif
@@ -112,7 +117,7 @@ def get_remittance_amount(payment, is_return=False):
     return abs(amount) if is_return else amount
 
 
-def get_preview_line(payment, amount):
+def get_preview_line(payment, amount, concept=None):
     """
     Línia de la previsualització dels fitxers de remesa.
 
@@ -142,6 +147,7 @@ def get_preview_line(payment, amount):
         'customer_token_final': payment.customer_token_final or (invoice.customer_token_final if invoice else None),
         'iban': payment.payment_bank,
         'amount': amount,
+        'concept': concept,
     }
 
 
@@ -832,6 +838,9 @@ class SEPAPaymentFilesPreviewViewSet(APIView):
         }
 
         sepa_files_preview = []
+        language = config('LANGUAGE', default="ca")
+        origin_water = ProductOrigin.objects.filter(token='aigua').first()
+        concept_fields = get_saved_concept_fields()
         # Un fitxer per lot i per banc: aixi la previsualitzacio ensenya
         # exactament els fitxers que generara la remesa.
         for bank_id, bank_data in distribution:
@@ -843,7 +852,8 @@ class SEPAPaymentFilesPreviewViewSet(APIView):
                 for payment in batch_payments:
                     amount = get_remittance_amount(payment, is_return)
                     batch_total += amount
-                    batch_invoices.append(get_preview_line(payment, amount))
+                    concept = build_payment_sepa_concept(payment, language, origin_water, is_return, concept_fields)
+                    batch_invoices.append(get_preview_line(payment, amount, concept))
                 sepa_files_preview.append({
                     'remittance_date': d_str if d_str else datetime.now().strftime("%Y-%m-%d"),
                     'total_amount': batch_total,
@@ -855,3 +865,93 @@ class SEPAPaymentFilesPreviewViewSet(APIView):
                     'company_name': company_bank.company.alias if company_bank and company_bank.company else None,
                 })
         return JsonResponse({"sepa_files_preview": sepa_files_preview})
+
+
+class SEPAConceptPreviewViewSet(APIView):
+    """
+    Exemples del concepte del rebut bancari (RmtInf/Ustrd) segons els camps triats a `concept_fields`.
+    Fa servir els pagaments reals de la selecció (fins a 3 d'aigua) i, si no n'hi ha, exemples
+    inventats. Es calcula amb la mateixa funció que genera el fitxer, així no pot divergir.
+    """
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    queryset = Payment.objects.all()
+    MAX_REAL_EXAMPLES = 3
+
+    def put(self, request, *args, **kwargs):
+        # Amb `concept_fields` s'ensenya la selecció encara sense desar; si no, la desada.
+        concept_fields = request.data['concept_fields'] if 'concept_fields' in request.data else get_saved_concept_fields()
+        language = config('LANGUAGE', default="ca")
+        origin_water = ProductOrigin.objects.filter(token='aigua').first()
+
+        examples = []
+        # Sense cerca encara (`samples_only`) no es consulten pagaments: només exemples inventats.
+        payments, is_return = [], False
+        if not request.data.get('samples_only'):
+            payments, _, is_return = get_sepa_payments_and_batches(request)
+        if origin_water is not None and not is_return:
+            for payment in payments[:200]:
+                invoice = payment.invoice
+                if not (invoice and invoice.contract and invoice.origin_id == origin_water.id):
+                    continue
+                examples.append({
+                    'real': True,
+                    'concept': build_payment_sepa_concept(payment, language, origin_water, is_return, concept_fields),
+                })
+                if len(examples) >= self.MAX_REAL_EXAMPLES:
+                    break
+
+        if not examples:
+            for payment in get_sample_payments(origin_water):
+                examples.append({
+                    'real': False,
+                    'concept': build_payment_sepa_concept(payment, language, origin_water, False, concept_fields),
+                })
+        for example in examples:
+            example['length'] = len(example['concept'])
+        return JsonResponse({"examples": examples})
+
+
+class SEPAConceptConfigViewSet(APIView):
+    """
+    Configuració global del concepte del rebut bancari: quins camps hi surten. La desa per a tots els
+    usuaris i la fan servir totes les remeses (GET: consultar; PUT: desar, requereix permís de canvi).
+    """
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    queryset = ConfigProject.objects.all()
+
+    def get(self, request, *args, **kwargs):
+        saved = get_saved_concept_fields()
+        selected = normalize_concept_fields(saved)
+        return JsonResponse({"concept_fields": [field for field in SEPA_CONCEPT_FIELDS if field in selected]})
+
+    def put(self, request, *args, **kwargs):
+        fields = request.data.get('concept_fields')
+        if not isinstance(fields, list):
+            return Response({"error": "concept_fields must be a list"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({"concept_fields": save_concept_fields(fields)})
+
+
+def get_sample_payments(origin_water):
+    """Pagaments inventats (un punt de subministrament i una comunitat amb tres) per a l'exemple."""
+    from types import SimpleNamespace
+
+    def point(pk, street, number, **unit):
+        address = SimpleNamespace(
+            street=street, street_number=number, postal_code="25001", building=None,
+            floor=unit.get("floor"), door=unit.get("door"), stair=unit.get("stair"),
+        )
+        return SimpleNamespace(pk=pk, name=f"PS{pk}", token=f"PS{pk}", address=address)
+
+    def payment(token, serie, total, consumption, points):
+        readings = [SimpleNamespace(supply_point=p) for p in points]
+        invoice = SimpleNamespace(
+            serie_final=serie, origin=origin_water, total_final=total, consumption=consumption,
+            real_consumption=None, readings=SimpleNamespace(all=lambda: readings),
+            contract=SimpleNamespace(token=token, supply_point_default=points[0]),
+        )
+        return SimpleNamespace(token=token, commitment_deposit=None, invoice=invoice)
+
+    return [
+        payment("C-000123", "FC/0001/0123", 53.14, 19.0, [point(1, "CARRER MAJOR", 12, stair="B", floor="2", door="1")]),
+        payment("C-000456", "FC/0001/0456", 312.40, 210.0, [point(i, "AV PAISOS CATALANS", n) for i, n in enumerate((24, 26, 28), 1)]),
+    ]
