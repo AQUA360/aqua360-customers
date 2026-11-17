@@ -99,16 +99,19 @@ const pagination = ref({
 
 const getPermissions = async () => {
   error.value = null;
-  try {
-    const [data, paymentData] = await Promise.all([
-      $InvoiceApiService.getPermissions(),
-      $PaymentApiService.getPermissions(),
-    ]);
-    permissions.value = data;
-    paymentPermissions.value = paymentData;
-  } catch (err) {
-    error.value = err;
+  const [invoiceResult, paymentResult] = await Promise.allSettled([
+    $InvoiceApiService.getPermissions(),
+    $PaymentApiService.getPermissions(),
+  ]);
+  if (invoiceResult.status === 'fulfilled') {
+    permissions.value = invoiceResult.value;
+  } else {
+    permissions.value = null;
+    error.value = invoiceResult.reason;
   }
+  paymentPermissions.value = paymentResult.status === 'fulfilled'
+    ? paymentResult.value
+    : null;
 }
 
 const getData = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, contract = null, is_invoice = true, origin = null, billing = null, issue_date = null, due_date = null, serie = [], total_query = '', payment_types = [], line_item = '') => {
