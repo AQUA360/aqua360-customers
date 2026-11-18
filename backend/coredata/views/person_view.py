@@ -58,6 +58,15 @@ class PersonViewSet(viewsets.ModelViewSet):
         ).order_by('token')
         return queryset
     
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        # Qui només llegeix des d'un altre mòdul no veu els comptes bancaris,
+        # igual que l'endpoint de comptes, que demana `view_person`.
+        if not request.user.has_perm('coredata.view_person'):
+            # Llista buida (no s'elimina el camp): el frontend hi fa `.find()`.
+            response.data['banks'] = []
+        return response
+
     def get_serializer_class(self):
         if self.action == 'list':  # Corresponds to GET / (list view)
             return PersonMinimalSerializer

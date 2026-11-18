@@ -1,4 +1,5 @@
 import threading
+import uuid
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -60,7 +61,8 @@ class ReportPDFDownloadViewSet(APIView):
                 contract_request.contract_file_template.url
             )
         else:
-            temp_rel_path = f"tmp/contract_docs/{pdf_filename}"
+            # Carpeta aleatòria: /media/ només demana sessió i el nom no s'ha de poder endevinar.
+            temp_rel_path = f"tmp/contract_docs/{uuid.uuid4().hex}/{pdf_filename}"
             saved_path = default_storage.save(
                 temp_rel_path, ContentFile(pdf_bytes)
             )

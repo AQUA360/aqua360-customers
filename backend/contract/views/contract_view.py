@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from decimal import Decimal
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -497,7 +498,8 @@ class ContractViewSet(viewsets.ModelViewSet):
             contract_id, use_type_id, contract_type_id, request
         )
         
-        temp_rel_path = f"tmp/contract_docs/{filename}"
+        # Carpeta aleatòria: /media/ només demana sessió i el nom no s'ha de poder endevinar.
+        temp_rel_path = f"tmp/contract_docs/{uuid.uuid4().hex}/{filename}"
         saved_path = default_storage.save(
             temp_rel_path, ContentFile(pdf_bytes)
         )

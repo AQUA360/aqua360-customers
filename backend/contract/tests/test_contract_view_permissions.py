@@ -346,6 +346,12 @@ class ContractPdfDownloadTestCase(TestCase):
         cls.invoice_viewer = _user('invoice-viewer-pdf-2646', 'billing.view_invoice')
         cls.factory = APIRequestFactory()
 
+    def setUp(self):
+        # Sense neteja real en segon pla: el temporitzador no ha d'esborrar res.
+        timer = patch('contract.views.contract_pdf_view.threading.Timer')
+        timer.start()
+        self.addCleanup(timer.stop)
+
     def _get(self, user):
         request = self.factory.get('/contract/download/1/')
         force_authenticate(request, user=User.objects.get(pk=user.pk))
@@ -368,3 +374,6 @@ class ContractPdfDownloadTestCase(TestCase):
                 with self.subTest(user=user.username):
                     self.assertEqual(self._get(user).status_code, 200)
         field_save.assert_not_called()
+        # El fitxer temporal va a una carpeta aleatòria: el nom no es pot endevinar.
+        saved_path = storage.save.call_args[0][0]
+        self.assertRegex(saved_path, r'^tmp/contract_docs/[0-9a-f]{32}/doc\.pdf$')

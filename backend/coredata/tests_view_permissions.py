@@ -69,6 +69,33 @@ class ViewPermissionsTestCase(TestCase):
         create_view = PersonViewSet.as_view({'post': 'create'})
         self.assertEqual(self._call(create_view, 'post', '/coredata/person/', invoice_viewer).status_code, 403)
 
+    def test_person_detail_hides_banks_for_related_reader(self):
+        from coredata.models import Person
+        person = Person.objects.create(token='PERSON-BANKS-2654', name='Prova')
+        invoice_viewer = User.objects.create_user('invoice-banks-2654', 'invoice-banks-2654@example.com', 'x')
+        invoice_viewer.user_permissions.add(_perm('billing.view_invoice'))
+        from unittest.mock import patch
+        from rest_framework import serializers
+
+        # El PersonSerializer complet depèn de ConfigProject; aquí només interessa
+        # que el camp `banks` es retiri o no segons el permís.
+        class _PersonBanksSerializer(serializers.Serializer):
+            id = serializers.IntegerField()
+            banks = serializers.ListField(default=list)
+
+            def to_representation(self, instance):
+                return {'id': instance.pk, 'banks': [{'iban': 'ES00'}]}
+
+        detail_view = PersonViewSet.as_view({'get': 'retrieve'})
+        path = f'/coredata/person/{person.pk}/'
+        with patch.object(PersonViewSet, 'get_serializer_class', return_value=_PersonBanksSerializer):
+            response = self._call(detail_view, 'get', path, invoice_viewer, pk=person.pk)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data['banks'], [])
+            response = self._call(detail_view, 'get', path, self.person_viewer, pk=person.pk)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data['banks'], [{'iban': 'ES00'}])
+
     def test_person_write_requires_write_permissions(self):
         create_view = PersonViewSet.as_view({'post': 'create'})
         for user in (self.no_perms, self.person_viewer):
