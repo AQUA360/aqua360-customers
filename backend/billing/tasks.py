@@ -2872,7 +2872,7 @@ def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_pro
       subtasks[subtask_id] = chunk
     except Exception:
       # p. ex. el broker no respon: aquest tros el fa la tasca principal
-      logger.exception("No s'ha pogut encuar la subtasca de PDF %s", subtask_id)
+      logger.exception("No s'ha pogut encuar una subtasca de PDF (%s factures)", len(chunk))
       local_chunks.append(chunk)
 
   local_done = 0
@@ -2917,8 +2917,8 @@ def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_pro
           revoke_queue_task(subtask_id)
         except Exception:
           continue
-        logger.warning("La subtasca de PDF %s no ha arrencat: la fa la tasca principal", subtask_id)
         chunk = subtasks.pop(subtask_id)
+        logger.warning("Una subtasca de PDF no ha arrencat (%s factures): la fa la tasca principal", len(chunk))
         _run_locally(chunk, done)
       continue
     time.sleep(BILLING_PDF_POLL_SECONDS)
