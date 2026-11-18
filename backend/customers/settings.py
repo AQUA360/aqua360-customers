@@ -56,6 +56,21 @@ def _resolve_secret_key(secret_key, debug):
     return secret_key
 
 
+SUPPORTED_LANGUAGE_CODES = ("ca", "es", "gl", "en")
+DEFAULT_LANGUAGE_CODE = "ca"
+
+
+def _resolve_language(value):
+    """Codi d'idioma suportat a partir de `value`; si no ho és, `ca`.
+
+    `LANGUAGE` també és una variable del locale del sistema (GNU gettext, p. ex. `ast` o
+    `es_ES:es`) i python-decouple prioritza l'entorn sobre el `.env`: sense aquesta
+    comprovació, un codi no suportat acabaria als camps d'idioma de 2 caràcters.
+    """
+    code = (value or "").strip().split(":")[0].replace("-", "_").split("_")[0].lower()
+    return code if code in SUPPORTED_LANGUAGE_CODES else DEFAULT_LANGUAGE_CODE
+
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = _resolve_secret_key(config("SECRET_KEY", default=""), DEBUG)
 
@@ -119,7 +134,7 @@ AZURE_CONTAINER_NAME = config("AZURE_CONTAINER_NAME", default="")
 CLOUD_BUCKET_NAME = config("CLOUD_BUCKET_NAME", default="")
 
 ENV = config("ENV", default="")
-LANGUAGE = config("LANGUAGE", default="ca")
+LANGUAGE = _resolve_language(config("LANGUAGE", default=DEFAULT_LANGUAGE_CODE))
 
 VERIFACTU_ENABLED = config("VERIFACTU_ENABLED", default=False, cast=bool)
 # Verifactu SOAP Configuration
@@ -395,7 +410,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
-LANGUAGE_CODE = config("LANGUAGE_CODE", default=config("LANGUAGE", default="ca"))  # Fallback to LANGUAGE if set
+LANGUAGE_CODE = _resolve_language(config("LANGUAGE_CODE", default=LANGUAGE))  # Si no hi és, el de LANGUAGE
 
 LANGUAGES = [
     ('ca', 'Català'),
