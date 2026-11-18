@@ -1,5 +1,7 @@
-from django.core.management.base import BaseCommand
+from django.core.exceptions import ValidationError
+from django.core.management.base import BaseCommand, CommandError
 from lecturapp.models import ReadingOperator
+from lecturapp.validators import validate_operator_password
 
 class Command(BaseCommand):
     help = 'Create a super operator for lecturapp'
@@ -22,6 +24,11 @@ class Command(BaseCommand):
                 self.style.ERROR(f'Operator with username "{username}" already exists.')
             )
             return
+
+        try:
+            validate_operator_password(password, username=username, name=name, surname=surname)
+        except ValidationError as error:
+            raise CommandError(' '.join(error.messages))
 
         # Create the operator
         operator = ReadingOperator.objects.create(
