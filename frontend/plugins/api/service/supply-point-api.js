@@ -398,6 +398,12 @@ export default defineNuxtPlugin(nuxtApp => {
     return await $apiManager.fetch(apiUrl, 'POST', JSON.stringify(data), { 'Content-Type': 'application/json' });
   }
 
+  // Historial de canvis de comptador del punt: { count, results }
+  const getMeterHistory = async (id) => {
+    const apiUrl = `${apiHost}${entity}${id}/meter-history/`;
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
+
   const apiService = {
     getData,
     getList,
@@ -417,7 +423,8 @@ export default defineNuxtPlugin(nuxtApp => {
     saveMeterChange,
     getPermissions,
     bulkUpdateProperty,
-    setRoute
+    setRoute,
+    getMeterHistory
   };
 
   nuxtApp.provide(provideName, apiService);
