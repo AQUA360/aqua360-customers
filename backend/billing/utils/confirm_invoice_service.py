@@ -296,6 +296,12 @@ def confirm_invoice(instance, generate_verifactu = False, skip_gen_pdf = False, 
                     create_verifactu_invoice(instance, single_batch=single_batch)
 
                 instance.save()
+
+            # Avís al sistema extern (webhook) ara que la factura té número legal. Les
+            # de la facturació massiva (_bulk_batch) s'avisen agrupades en acabar-la.
+            if not getattr(instance, '_bulk_batch', False):
+                from integrations.outbound.webhooks.events import emit_invoice_issued
+                emit_invoice_issued(instance)
         else:
             instance.save()
 

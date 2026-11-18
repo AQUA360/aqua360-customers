@@ -6,9 +6,10 @@ from rest_framework.permissions import IsAuthenticated
 from datetime import datetime
 
 from billing.models import Invoice
-from contract.models import Contract, ContractStatus, ContractTerminationRequest, ContractTerminationStatus
+from contract.models import Contract, ContractTerminationRequest, ContractTerminationStatus
 from contract.permissions import ContractTerminationRequestPermission
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestSerializer
+from contract.utils.contract_termination_service import mark_contract_terminated
 from coredata.models import ConfigProject
 from order.models import Order
 from service.models import SupplyPointStatus
@@ -17,7 +18,6 @@ class CloseContractTerminationRequestViewSet(APIView):
   queryset = ContractTerminationRequest.objects.all()
   permission_classes = [IsAuthenticated, ContractTerminationRequestPermission]
   def put(self, request, *args, **kwargs):
-    contract_terminated_token = 'contract_terminated_status'
     # Extract data for each child model from the request
     id = self.kwargs.get('id')
     status_data = request.data.get('status')
@@ -28,11 +28,6 @@ class CloseContractTerminationRequestViewSet(APIView):
     termination_completed_token = ConfigProject.objects.get(token = 'contract_termination_completed_token').value
     contract = Contract.objects.get(id = termination_request.contract.id)
     
-    token = ConfigProject.objects.get(token = contract_terminated_token).value
-    
-    contract_status = ContractStatus.objects.get(token = token)
-    contract.status = contract_status
-    contract.termination_date = datetime.now().date()
     termination_request.approved_at = datetime.now()
     # Des de l'alta (canvi de nom) es finalitza "sense factura", tret que ja es factura
     # (factura o pressupost existent, o lectura de tall cobrada a l'alta). Després se'n pot
@@ -52,7 +47,8 @@ class CloseContractTerminationRequestViewSet(APIView):
     else:
       termination_request.status = ContractTerminationStatus.objects.get(token=termination_completed_token)
       termination_request.save()
-    contract.save()
+    # El contracte queda de baixa ara, encara que quedin ordres obertes
+    mark_contract_terminated(contract, termination_request, datetime.now().date())
     
     # Donar de baixa el punt i el comptador si és necessari
     from contract.utils.contract_request_service import check_and_deactivate_supply_point_and_meter

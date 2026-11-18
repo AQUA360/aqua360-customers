@@ -668,6 +668,23 @@ OV_SYNC_ENABLED = config("OV_SYNC_ENABLED", default=False, cast=bool)
 OV_SYNC_HOUR = config("OV_SYNC_HOUR", default=4, cast=int)
 OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
 
+# Webhooks de sortida: avisen un sistema extern (POST) quan es crea un contracte,
+# es dona de baixa, s'anul·la una baixa o s'emeten factures. Vegeu
+# integrations/outbound/webhooks/. Desactivats per defecte: només s'activen a la
+# instal·lació que en té (variables d'entorn pròpies). Activat però sense URL, els
+# avisos es desen com a "disabled" i no s'envien. Sense WEBHOOKS_SECRET tampoc: mai s'envien sense signar.
+WEBHOOKS_ENABLED = config("WEBHOOKS_ENABLED", default=False, cast=bool)
+WEBHOOKS_URL = config("WEBHOOKS_URL", default="").strip()
+WEBHOOKS_SECRET = config("WEBHOOKS_SECRET", default="")
+# Valors fixos (iguals a totes les instal·lacions)
+WEBHOOKS_TIMEOUT = 10  # segons per petició
+# Espera abans de cada reintent (segons): 1 min, 5 min, 15 min, 1 h, 3 h, 6 h, 12 h.
+# Exhaurits, l'avís queda com a "failed" i es pot reenviar amb `resend_webhooks`.
+WEBHOOKS_RETRY_DELAYS = [60, 300, 900, 3600, 3 * 3600, 6 * 3600, 12 * 3600]
+WEBHOOKS_SEND_INTERVAL = 0.2  # segons entre enviaments: no saturar el receptor
+WEBHOOKS_SEND_BATCH = 100  # avisos per execució de la tasca; si en queden, es torna a encuar
+WEBHOOKS_BILLING_CHUNK_SIZE = 500  # factures per avís de facturació massiva
+
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")
 SIGNING_CALLBACK_URL = config("SIGNING_CALLBACK_URL", default="")
