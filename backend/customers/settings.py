@@ -14,6 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 import re
+from urllib.parse import unquote, urlsplit
 from decouple import config, Csv
 from django.core.exceptions import ImproperlyConfigured
 
@@ -574,7 +575,42 @@ INVOICE_LANGUAGE = os.getenv("INVOICE_LANGUAGE", "ca")  # Default to 'ca' if not
 
 # RabbitMQ Configuration
 RABBITMQ_ENABLED = config("RABBITMQ_ENABLED", default=False, cast=bool)
-RABBITMQ_URL = config("RABBITMQ_URL", default="amqp://guest:guest@localhost:5672//")
+# Credencials conegudes (les de fàbrica de RabbitMQ i les del .env.example): no es poden fer
+# servir fora de desenvolupament. Sense usuari a la URL, pika també es connecta com a guest.
+INSECURE_RABBITMQ_CREDENTIALS = {("guest", "guest"), ("user", "password")}
+
+
+def _resolve_rabbitmq_url(url, enabled, debug):
+    """Retorna la RABBITMQ_URL a fer servir o atura l'arrencada si falta o és insegura.
+
+    Sense RabbitMQ activat no cal URL. Activat, ha de ser definida; i amb DEBUG=False no pot
+    portar credencials conegudes. Els missatges no inclouen la URL, perquè porta la contrasenya.
+    """
+    url = (url or "").strip()
+    if not enabled:
+        return url
+    if not url:
+        raise ImproperlyConfigured(
+            "RABBITMQ_ENABLED=True però falta RABBITMQ_URL al .env "
+            "(amqps://<usuari>:<contrasenya>@<host>:5671/<vhost>)."
+        )
+    if debug:
+        return url
+    try:
+        parts = urlsplit(url)
+        credentials = (unquote(parts.username or "guest"), unquote(parts.password or "guest"))
+    except ValueError:
+        raise ImproperlyConfigured("RABBITMQ_URL no és una URL vàlida.") from None
+    if credentials in INSECURE_RABBITMQ_CREDENTIALS:
+        raise ImproperlyConfigured(
+            "RABBITMQ_URL fa servir unes credencials conegudes (guest/guest o les de l'exemple, "
+            "o no porta usuari) i DEBUG=False: cal un usuari propi de la instal·lació amb una "
+            "contrasenya llarga i aleatòria."
+        )
+    return url
+
+
+RABBITMQ_URL = _resolve_rabbitmq_url(config("RABBITMQ_URL", default=""), RABBITMQ_ENABLED, DEBUG)
 
 # Optional: when empty, the GMAO integration keeps the legacy single-queue behaviour
 INSTANCE_UID = config("INSTANCE_UID", default="").strip()

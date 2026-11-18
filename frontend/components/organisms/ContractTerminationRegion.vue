@@ -18,6 +18,7 @@ import { usePermissions } from '~/middleware/permission';
 import OrderRegion from './OrderRegion.vue';
 import ContractRegion from './ContractRegion.vue';
 import SupplyPointRegion from './SupplyPointRegion.vue';
+import PiggyBankRegion from './PiggyBankRegion.vue';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -326,6 +327,8 @@ const setActiveTab = (tab) => {
           :service="$ContractTerminationApiService" :entity="'contract_termination_request'"
           :persons="[data.person]" @change="onBudgetChange" :isSubRegion="true" :bill_termination_requester="true" />
         <InvoiceView v-if="showRegionDetailComponent == 'InvoiceView'" :id="regionDetailId" />
+        <PiggyBankRegion v-if="showRegionDetailComponent === 'PiggyBankRegion'" :id="Number(regionDetailId)"
+          :isSubRegion="true" />
       </div>
     </div>
   </div>

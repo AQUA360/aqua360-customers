@@ -1,6 +1,9 @@
 # services/utils/supply_point_service.py
+import datetime
+from decimal import Decimal, InvalidOperation
+
 from logger.models import LogSupplyPointChange
-from ..models import SupplyPoint,SupplyPointStatus
+from ..models import SupplyPoint, SupplyPointMeterHistory, SupplyPointStatus
 from coredata.models import ConfigProject
 
 def supply_point_activate(user, supply_point_id):
@@ -57,9 +60,28 @@ def supply_point_deactivate(user, supply_point_id, date, reason):
     return supply_point
 
 
-def supply_point_change_meter(user, supply_point_id, previous_meter, current_meter):
+def _to_reading_value(value):
+    if value in (None, ''):
+        return None
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    # NaN/Infinity no es poden desar en un DecimalField
+    return number if number.is_finite() else None
+
+
+def supply_point_change_meter(user, supply_point_id, previous_meter, current_meter,
+                              change_date=None, old_reading=None, new_reading=None,
+                              source='other', order=None, observation=None):
+    """
+    Deixa constància d'un canvi de comptador d'un punt: al log genèric
+    (LogSupplyPointChange) i a l'historial de comptadors (SupplyPointMeterHistory).
+    """
     supply_point = SupplyPoint.objects.get(id=supply_point_id)
-    
+    if user is not None and getattr(user, 'is_anonymous', False):
+        user = None
+
     # logger
     LogSupplyPointChange.objects.create(
         supply_point=supply_point,
@@ -70,7 +92,23 @@ def supply_point_change_meter(user, supply_point_id, previous_meter, current_met
         current_value=current_meter.code if current_meter else None,
         previous_related_id=previous_meter.id if previous_meter else None,
         current_related_id=current_meter.id if current_meter else None,
-        observation=None
+        observation=observation
+    )
+
+    if not isinstance(change_date, datetime.date):
+        change_date = datetime.date.today()
+
+    SupplyPointMeterHistory.objects.create(
+        supply_point=supply_point,
+        old_meter=previous_meter,
+        new_meter=current_meter,
+        change_date=change_date,
+        old_reading=_to_reading_value(old_reading),
+        new_reading=_to_reading_value(new_reading),
+        source=source,
+        order=order,
+        user=user,
+        observation=observation,
     )
 
     return supply_point
