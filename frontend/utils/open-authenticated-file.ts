@@ -9,7 +9,9 @@ class FileNotFoundError extends Error {
 
 function openBlobInNewTab(blob: Blob): void {
   // Les imatges (p. ex. un plànol en JPG) es mostren amb el seu tipus; la resta, com a PDF.
-  const typedBlob = blob.type === 'application/pdf' || blob.type.startsWith('image/')
+  // Un SVG no: pot portar scripts, i la URL blob: té l'origen del frontend (i el token).
+  const isRasterImage = blob.type.startsWith('image/') && blob.type !== 'image/svg+xml';
+  const typedBlob = blob.type === 'application/pdf' || isRasterImage
     ? blob
     : new Blob([blob], { type: 'application/pdf' });
   const objectUrl = URL.createObjectURL(typedBlob);
