@@ -178,7 +178,7 @@ class OrderChangeMeterValidationService:
 
         prev_meter = supply_point.meter
 
-        service = MeterChangeService(user=user)
+        service = MeterChangeService(user=user, source='order', order=self.order)
         service.apply(
             supply_point_id=supply_point.id,
             prev_meter_id=prev_meter.id if prev_meter else None,

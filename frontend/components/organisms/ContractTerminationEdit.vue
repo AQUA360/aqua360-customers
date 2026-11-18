@@ -19,6 +19,7 @@ import OrderTypeDetail from '~/components/molecules/OrderTypeDetail.vue';
 import OrderRegion from './OrderRegion.vue';
 import AddInvoiceBudget from '../molecules/AddInvoiceBudget.vue';
 import InvoiceView from './InvoiceView.vue';
+import PiggyBankRegion from './PiggyBankRegion.vue';
 import ReadingDetail from '../molecules/ReadingDetail.vue';
 import NewerControlReadingsNotice from '~/components/atoms/NewerControlReadingsNotice.vue';
 import { fetchLastReading } from '~/utils/last-reading';
@@ -911,6 +912,8 @@ watch(() => props.request, async () => {
           module="contract" @changed="handleStatusChanged" />
         <PersonSearch v-if="editingPerson" @saved="fetchPerson" />
         <InvoiceView v-if="showRegionDetailComponent == 'InvoiceView'" :id="regionDetailId" />
+        <PiggyBankRegion v-if="showRegionDetailComponent === 'PiggyBankRegion'" :id="Number(regionDetailId)"
+          :isSubRegion="true" />
         <ReadingDetail v-if="showRegionDetailComponent == 'ReadingDetail'" :supply_point_id="regionDetailId"
           :show-control="newer_control_readings[regionDetailId]?.length > 0" :isSubRegion="true" class="mt-10" />
         <OrderRegion v-if="showRegionDetailComponent === 'OrderRegion'" :id="regionDetailId"

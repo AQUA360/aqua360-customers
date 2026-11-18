@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 from django.db import close_old_connections
 from order.services.consumer import process_message
+from order.services.rabbit import mask_url_password
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class Command(BaseCommand):
             connection = None
             try:
                 self.stdout.write(self.style.SUCCESS("Connecting to RabbitMQ..."))
-                self.stdout.write(f"  URL: {settings.RABBITMQ_URL}")
+                self.stdout.write(f"  URL: {mask_url_password(settings.RABBITMQ_URL)}")
                 self.stdout.write(f"  Instance UID: {settings.INSTANCE_UID or '(not set)'}")
                 self.stdout.write(f"  Exchange: {settings.RABBIT_IN_EXCHANGE}")
                 self.stdout.write(f"  Queue: {settings.RABBIT_IN_QUEUE}")
