@@ -177,6 +177,9 @@ class ContractPdfPermission(permissions.BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
+        # OPTIONS (metadades) per a qualsevol usuari autenticat, com DjangoModelPermissions
+        if request.method == 'OPTIONS':
+            return True
         is_contract = request.query_params.get('is_contract', 'false').lower() == 'true'
         perm = 'contract.view_contract' if is_contract else 'contract.view_contractrequest'
         # Si la sol·licitud ja té contracte, la vista en genera el del contracte:

@@ -1,7 +1,9 @@
 """Permisos de les vistes de persones (#2654) i del catàleg MainPermission (#2646).
 
 - Persones: GET requereix `view_person` (abans `DjangoModelPermissions` no
-  exigia res per GET) i l'escriptura, add/change/delete.
+  exigia res per GET) i l'escriptura, add/change/delete. Qui pot llegir un
+  mòdul relacionat (p. ex. `billing.view_invoice`) també pot consultar el
+  llistat i el detall, però no els logs ni escriure.
 - MainPermission: el llegeix qualsevol usuari autenticat (pantalles de grups),
   però només el superusuari canònic el pot modificar.
 """

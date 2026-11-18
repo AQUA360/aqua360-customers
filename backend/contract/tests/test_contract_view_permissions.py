@@ -121,6 +121,10 @@ class ContractViewPermissionsTestCase(TestCase):
             self._call(view, 'get', f'{path}?is_contract=true', self.request_viewer, id=1).status_code, 403,
         )
 
+    def test_contract_pdf_options_for_authenticated(self):
+        view = ReportPDFDownloadViewSet.as_view()
+        self.assertEqual(self._call(view, 'options', '/contract/download/1/', self.no_perms, id=1).status_code, 200)
+
     def test_contract_ov_view_requires_view_contract(self):
         view = ContractOVView.as_view()
         path = '/contract/contract-ov/X/'
