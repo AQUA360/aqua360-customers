@@ -1,9 +1,10 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 
 from contract.models import Bail
+from contract.permissions import BailPermission
 from contract.serializers.bail_serializer import BailSerializer
 from contract.utils.bail_service import return_bail
 import logging
@@ -11,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class BailReturnViewSet(APIView):
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, BailPermission]
   queryset = Bail.objects.all()
   def put(self, request, *args, **kwargs):
     bail_id = self.kwargs.get('id')

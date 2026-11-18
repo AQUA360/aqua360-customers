@@ -9,11 +9,12 @@ from coredata.models import ConfigProject
 from order.models import OrderStatus
 from ..utils.contract_service import contract_create
 from contract.serializers.contract_serializer import ContractSerializer
-from contract.permissions import ContractRequestPermission
+from contract.permissions import ContractRequestPermission, required_permission_class
 from contract.utils.contract_request_service import contract_request_change_status
 
 class ContractCreateView(views.APIView):
-    permission_classes = [IsAuthenticated, ContractRequestPermission]
+    # Modifica la sol·licitud i en crea el contracte: cal poder fer totes dues coses.
+    permission_classes = [IsAuthenticated, ContractRequestPermission, required_permission_class('contract.add_contract')]
     def get_queryset(self):
         return Contract.objects.all()
     
