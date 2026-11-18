@@ -19,8 +19,13 @@ def webhooks_enabled():
 
 
 def webhooks_configured():
-    """Activat i amb URL: els avisos es poden enviar."""
-    return webhooks_enabled() and bool(getattr(settings, "WEBHOOKS_URL", ""))
+    """Activat, amb URL i amb secret: els avisos es poden enviar. Sense secret no
+    s'envien sense signar: es desen com a "disabled" i es poden reenviar després."""
+    return (
+        webhooks_enabled()
+        and bool(getattr(settings, "WEBHOOKS_URL", ""))
+        and bool(getattr(settings, "WEBHOOKS_SECRET", ""))
+    )
 
 
 def build_envelope(event_id, event_type, occurred_at, data):
@@ -64,24 +69,40 @@ def emit(event_type, object_type, object_id, build_data, dedupe_key=None, schedu
     configured = webhooks_configured()
     event_id = uuid.uuid4()
     now = timezone.now()
+    key = dedupe_key or f"{event_type}:{event_id}"
+    # Sense dades de l'objecte als logs: poden ser personals
+    if dedupe_key and WebhookEvent.objects.filter(dedupe_key=key).exists():
+        logger.info("Webhook ja desat: no es repeteix")
+        return None
+
     try:
         with transaction.atomic():
             payload = build_envelope(event_id, event_type, now, build_data())
+    except Exception:
+        logger.exception("No s'han pogut construir les dades d'un webhook")
+        return None
+
+    try:
+        with transaction.atomic():
             event = WebhookEvent.objects.create(
                 event_id=event_id,
                 event_type=event_type,
                 object_type=object_type,
                 object_id=str(object_id),
-                dedupe_key=dedupe_key or f"{event_type}:{event_id}",
+                dedupe_key=key,
                 payload=payload,
                 status=WebhookEvent.STATUS_PENDING if configured else WebhookEvent.STATUS_DISABLED,
                 next_attempt_at=now if configured else None,
             )
     except IntegrityError:
-        logger.info("Webhook %s ja desat (%s): no es repeteix", event_type, dedupe_key)
+        # Només és un duplicat si la clau ja hi és (p. ex. dues peticions alhora)
+        if WebhookEvent.objects.filter(dedupe_key=key).exists():
+            logger.info("Webhook ja desat: no es repeteix")
+        else:
+            logger.exception("No s'ha pogut desar un webhook")
         return None
     except Exception:
-        logger.exception("No s'ha pogut desar el webhook %s de %s %s", event_type, object_type, object_id)
+        logger.exception("No s'ha pogut desar un webhook")
         return None
 
     if configured and schedule:

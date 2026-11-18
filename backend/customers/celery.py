@@ -187,8 +187,9 @@ if getattr(settings, "WEBHOOKS_ENABLED", False):
     # reintents i els que s'hagin perdut (p. ex. si el broker no responia).
     beat_schedule["send-pending-webhooks"] = {
         "task": "integrations.outbound.webhooks.tasks.send_pending_webhooks",
+        # Sense "expires": amb la cua endarrerida també ha d'arribar (els reintents en
+        # depenen) i el bloqueig d'enviador únic evita duplicats.
         "schedule": crontab(minute="*"),
-        "options": {"expires": 50},
     }
 
 app.conf.beat_schedule = beat_schedule

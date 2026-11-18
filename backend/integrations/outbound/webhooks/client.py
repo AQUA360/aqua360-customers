@@ -2,16 +2,22 @@
 import hashlib
 import hmac
 import json
+import logging
 import time
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 
 from integrations.models import IntegrationRequestLog
 
+logger = logging.getLogger(__name__)
+
 PROVIDER = "webhooks"
+RESPONSE_READ_LIMIT = 2000  # bytes de la resposta que es desen per al diagnòstic
 USER_AGENT = "aqua360-customers-webhooks/1.0"
 # Respostes que poden anar bé més endavant: es reintenten
 RETRYABLE_STATUS = {408, 429}
@@ -48,8 +54,56 @@ def build_headers(event_type, event_id, timestamp, body, secret):
     return headers
 
 
+def safe_url(url):
+    """URL sense query, fragment ni usuari/contrasenya: per als logs i la sortida
+    de les ordres (hi podria haver un token)."""
+    parts = urlsplit(url or "")
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+
+
+def _read_limited(response, limit=RESPONSE_READ_LIMIT):
+    """Llegeix com a molt `limit` bytes de la resposta: n'hi ha prou per al
+    diagnòstic i un receptor lent no reté l'enviador."""
+    try:
+        chunk = response.raw.read(limit, decode_content=True) or b""
+    except Exception:
+        return ""
+    finally:
+        response.close()
+    return chunk.decode("utf-8", errors="replace").replace("\x00", "")
+
+
+def _log_request(event, url, status_code, success, error, response_text):
+    """El registre no ha de fer perdre el resultat de l'enviament."""
+    try:
+        with transaction.atomic():
+            # El contingut de l'avís ja és a WebhookEvent: aquí només la referència
+            IntegrationRequestLog.objects.create(
+                provider=PROVIDER,
+                direction=IntegrationRequestLog.DIRECTION_OUTBOUND,
+                method="POST",
+                endpoint=safe_url(url)[:255],
+                request_payload={"event_id": str(event.event_id), "event_type": event.event_type},
+                response_payload={"body": response_text} if response_text else None,
+                status_code=status_code,
+                success=success,
+                error_message=error,
+                object_type=event.event_type,
+                object_id=str(event.event_id),
+            )
+    except Exception:
+        logger.exception("No s'ha pogut registrar l'enviament d'un webhook")
+
+
 def deliver(event):
-    """Fa el POST de l'avís. No toca l'estat de l'avís: ho fa qui el crida."""
+    """Fa el POST de l'avís. No toca l'estat de l'avís: ho fa qui el crida.
+
+    Sense redireccions: un 3xx no és una entrega (requests convertiria el POST en
+    un GET sense cos) i queda com a error definitiu.
+    """
     url = settings.WEBHOOKS_URL
     body = serialize_payload(event.payload)
     timestamp = str(int(time.time()))
@@ -58,29 +112,20 @@ def deliver(event):
     status_code = None
     response_text = ""
     try:
-        response = requests.post(url, data=body, headers=headers, timeout=settings.WEBHOOKS_TIMEOUT)
+        response = requests.post(
+            url, data=body, headers=headers, timeout=settings.WEBHOOKS_TIMEOUT,
+            allow_redirects=False, stream=True,
+        )
         status_code = response.status_code
-        response_text = (response.text or "")[:2000]
+        response_text = _read_limited(response)
         success = 200 <= status_code < 300
         retryable = not success and (status_code >= 500 or status_code in RETRYABLE_STATUS)
         error = "" if success else f"HTTP {status_code}"
     except requests.RequestException as exc:
         success = False
         retryable = True
-        error = f"{type(exc).__name__}: {exc}"[:1000]
+        # Només el tipus: el missatge pot portar la URL sencera
+        error = type(exc).__name__
 
-    # El contingut de l'avís ja és a WebhookEvent: aquí només la referència
-    IntegrationRequestLog.objects.create(
-        provider=PROVIDER,
-        direction=IntegrationRequestLog.DIRECTION_OUTBOUND,
-        method="POST",
-        endpoint=url[:255],
-        request_payload={"event_id": str(event.event_id), "event_type": event.event_type},
-        response_payload={"body": response_text} if response_text else None,
-        status_code=status_code,
-        success=success,
-        error_message=error,
-        object_type=event.event_type,
-        object_id=str(event.event_id),
-    )
+    _log_request(event, url, status_code, success, error, response_text)
     return DeliveryResult(success=success, retryable=retryable, status_code=status_code, error=error)

@@ -180,3 +180,10 @@ class WebhookEventAdmin(admin.ModelAdmin):
     list_filter = ["event_type", "status", "created_at"]
     search_fields = ["event_id", "object_id", "dedupe_key", "last_error"]
     readonly_fields = [field.name for field in WebhookEvent._meta.fields]
+
+    # Només consulta: un avís pendent esborrat ja no es podria enviar
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

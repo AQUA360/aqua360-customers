@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from unittest import mock
 
 import requests
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from django.db import transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -38,7 +38,7 @@ ACTIVE = override_settings(WEBHOOKS_ENABLED=True, WEBHOOKS_URL=URL, WEBHOOKS_SEC
 def http_response(status_code, text="ok"):
     response = mock.Mock()
     response.status_code = status_code
-    response.text = text
+    response.raw.read.return_value = text.encode()
     return response
 
 
@@ -56,6 +56,11 @@ class DispatcherTest(TestCase):
             event = emit("contract.created", "contract", 1, lambda: {"a": 1})
         self.assertEqual(event.status, WebhookEvent.STATUS_DISABLED)
         self.assertEqual(callbacks, [])
+
+    @override_settings(WEBHOOKS_ENABLED=True, WEBHOOKS_URL=URL, WEBHOOKS_SECRET="")
+    def test_without_secret_is_never_sent_unsigned(self):
+        event = emit("contract.created", "contract", 1, lambda: {})
+        self.assertEqual(event.status, WebhookEvent.STATUS_DISABLED)
 
     @ACTIVE
     @override_settings(INSTANCE_UID="instancia-test")
@@ -169,6 +174,43 @@ class SendTest(TestCase):
         self.assertIn("ConnectionError", event.last_error)
 
     @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    def test_redirect_is_not_a_delivery(self, post):
+        post.return_value = http_response(302)
+        event = self._pending()
+
+        send_pending_webhooks()
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, WebhookEvent.STATUS_FAILED)
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
+
+    @override_settings(WEBHOOKS_URL="https://user:pwd@receiver.example/hooks?token=abc#x")
+    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    def test_logs_do_not_keep_url_credentials(self, post):
+        post.side_effect = requests.ConnectionError("https://user:pwd@receiver.example/hooks?token=abc")
+        event = self._pending()
+
+        send_pending_webhooks()
+
+        event.refresh_from_db()
+        log = IntegrationRequestLog.objects.get(provider="webhooks")
+        self.assertEqual(log.endpoint, "https://receiver.example/hooks")
+        for text in (log.error_message, event.last_error):
+            self.assertNotIn("token", text)
+            self.assertNotIn("pwd", text)
+
+    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    def test_log_failure_keeps_delivery_result(self, post):
+        post.return_value = http_response(200)
+        event = self._pending()
+
+        with mock.patch.object(IntegrationRequestLog.objects, "create", side_effect=ValueError("log")):
+            send_pending_webhooks()
+
+        event.refresh_from_db()
+        self.assertEqual(event.status, WebhookEvent.STATUS_SENT)
+
+    @mock.patch("integrations.outbound.webhooks.client.requests.post")
     def test_4xx_fails_without_retry(self, post):
         post.return_value = http_response(400, "bad")
         event = self._pending()
@@ -194,7 +236,7 @@ class SendTest(TestCase):
         post.return_value = http_response(200)
         event = self._pending(status=WebhookEvent.STATUS_FAILED, attempts=3)
 
-        with mock.patch("integrations.outbound.webhooks.dispatcher.schedule_send") as schedule:
+        with mock.patch("integrations.management.commands.resend_webhooks.schedule_send") as schedule:
             call_command("resend_webhooks", stdout=io.StringIO())
             schedule.assert_called_once()
 
@@ -221,6 +263,12 @@ class SendTest(TestCase):
         with mock.patch("integrations.outbound.webhooks.tasks.single_sender", busy):
             self.assertEqual(send_pending_webhooks(), {"status": "busy"})
         post.assert_not_called()
+
+    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    def test_send_test_webhook_fails_with_error_code(self, post):
+        post.return_value = http_response(401)
+        with self.assertRaises(CommandError):
+            call_command("send_test_webhook", stdout=io.StringIO())
 
     @override_settings(WEBHOOKS_URL="")
     def test_task_skips_without_url(self):
@@ -299,6 +347,14 @@ class ContractEventsTest(TestCase):
         self.assertEqual(data["termination_request"]["code"], "B-2")
         self.assertFalse(data["termination_request"]["is_change_of_name"])
         self.assertEqual(data["holder"]["tax_id"], "00000000T")
+
+    def test_repeated_termination_keeps_notified_date(self, _schedule):
+        contract = self._contract("C-5")
+        mark_contract_terminated(contract, None, datetime.date(2026, 11, 18))
+        mark_contract_terminated(contract, None, datetime.date(2026, 11, 19))
+        contract.refresh_from_db()
+        self.assertEqual(contract.termination_date, datetime.date(2026, 11, 18))
+        self.assertEqual(WebhookEvent.objects.filter(event_type="contract_termination.confirmed").count(), 1)
 
     def test_termination_keeps_existing_date(self, _schedule):
         contract = self._contract("C-3", termination_date=datetime.date(2026, 10, 1))

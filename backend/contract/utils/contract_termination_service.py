@@ -137,30 +137,39 @@ def mark_contract_terminated(contract, termination_request, termination_date=Non
     """Posa el contracte de baixa. És l'únic lloc on es fa, per a tots els camins de
     baixa (tancar la sol·licitud, completar-ne les ordres, canvi de titular...).
 
-    Si no es passa `termination_date`, es conserva la que tingui o, si no en té, la
-    d'avui: un contracte de baixa sempre té data de baixa. Només quan el contracte
-    passa realment a baixa (no ho estava) s'avisa el sistema extern (webhook).
-    Torna True si el contracte ha passat a baixa ara.
+    Data de baixa: si el contracte passa a baixa ara, la que es passi o, si no, la
+    que tingui o la d'avui; un contracte de baixa sempre en té. Si ja era de baixa,
+    es conserva la que té (és la que s'ha notificat) i només s'omple si no en tenia.
+    Només quan el contracte passa realment a baixa s'avisa el sistema extern
+    (webhook), dins la mateixa transacció que el desa. Torna True si ha passat a
+    baixa ara.
     """
-    from contract.models import ContractStatus
+    from django.db import transaction
+    from contract.models import Contract, ContractStatus
     from integrations.outbound.webhooks.events import emit_contract_termination_confirmed
 
     terminated_token = ConfigProject.objects.get(token='contract_terminated_status').value
-    was_terminated = bool(contract.status_id) and contract.status.token == terminated_token
-    contract.status = ContractStatus.objects.get(token=terminated_token)
-    if termination_date:
-        contract.termination_date = termination_date
-    elif not contract.termination_date:
-        contract.termination_date = datetime.date.today()
-    contract.save()
+    with transaction.atomic():
+        # Bloqueja la fila: dos camins de baixa alhora no avisen dues vegades
+        locked = Contract.objects.select_for_update(of=("self",)).select_related("status").get(pk=contract.pk)
+        was_terminated = bool(locked.status_id) and locked.status.token == terminated_token
+        contract.status = ContractStatus.objects.get(token=terminated_token)
+        if was_terminated:
+            contract.termination_date = locked.termination_date or termination_date or datetime.date.today()
+        elif termination_date:
+            contract.termination_date = termination_date
+        elif not contract.termination_date:
+            contract.termination_date = datetime.date.today()
+        contract.save()
 
-    if not was_terminated:
-        emit_contract_termination_confirmed(contract, termination_request)
+        if not was_terminated:
+            emit_contract_termination_confirmed(contract, termination_request)
     return not was_terminated
 
 
 def cancel_contract_termination(instance, user):
-    from contract.models import ContractStatus, ContractTerminationStatus
+    from django.db import transaction
+    from contract.models import Contract, ContractStatus, ContractTerminationStatus
     from integrations.outbound.webhooks.events import emit_contract_termination_cancelled
 
     cancel_status = ContractTerminationStatus.objects.get(
@@ -172,13 +181,16 @@ def cancel_contract_termination(instance, user):
     readings.update(is_control=True)
     contract = instance.contract
     terminated_token = ConfigProject.objects.get(token='contract_terminated_status').value
-    was_terminated = bool(contract.status_id) and contract.status.token == terminated_token
-    contract.status = ContractStatus.objects.get(token=ConfigProject.objects.get(token='contract_active_token').value)
-    contract.termination_date = None
-    contract.save()
-    # Només si ja s'havia avisat de la baixa (el contracte era de baixa)
-    if was_terminated:
-        emit_contract_termination_cancelled(contract, instance)
+    # La reactivació i l'avís es desen junts
+    with transaction.atomic():
+        locked = Contract.objects.select_for_update(of=("self",)).select_related("status").get(pk=contract.pk)
+        was_terminated = bool(locked.status_id) and locked.status.token == terminated_token
+        contract.status = ContractStatus.objects.get(token=ConfigProject.objects.get(token='contract_active_token').value)
+        contract.termination_date = None
+        contract.save()
+        # Només si ja s'havia avisat de la baixa (el contracte era de baixa)
+        if was_terminated:
+            emit_contract_termination_cancelled(contract, instance)
 
     # reset bails status back to "No Retornat" if the termination is cancelled
     from contract.models import Bail, BailStatus

@@ -672,7 +672,7 @@ OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
 # es dona de baixa, s'anul·la una baixa o s'emeten factures. Vegeu
 # integrations/outbound/webhooks/. Desactivats per defecte: només s'activen a la
 # instal·lació que en té (variables d'entorn pròpies). Activat però sense URL, els
-# avisos es desen com a "disabled" i no s'envien.
+# avisos es desen com a "disabled" i no s'envien. Sense WEBHOOKS_SECRET tampoc: mai s'envien sense signar.
 WEBHOOKS_ENABLED = config("WEBHOOKS_ENABLED", default=False, cast=bool)
 WEBHOOKS_URL = config("WEBHOOKS_URL", default="").strip()
 WEBHOOKS_SECRET = config("WEBHOOKS_SECRET", default="")
