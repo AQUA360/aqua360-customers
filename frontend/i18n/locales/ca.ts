@@ -3987,6 +3987,7 @@ export default {
     no_termination_reason_warning: 'Si us plau, indique el motiu de la baixa',
     nothing_selected_warning: 'Seleccioni una facturació o una data',
     warning_valid_img: 'Si us plau, seleccioni un arxiu d\'imatge vàlid (.jpeg, .jpg, .png).',
+    warning_img_too_large: 'Si us plau, seleccioni una imatge de 10 MB com a màxim.',
     warning_before_save_doc_date: 'Si us plau, abans de guardar un document, seleccioni una data d\'informe.',
     warning_select_contract_invoice: 'Si us plau, seleccioni un contracte i/o una factura',
     warning_date_range: 'Rang de dates anòmal (fora del 25% de la mediana)',

@@ -3857,6 +3857,7 @@ export default {
     no_termination_reason_warning: 'Please enter the termination reason',
     nothing_selected_warning: 'Select a billing or a date',
     warning_valid_img: 'Please select a valid image file (.jpeg, .jpg, .png).',
+    warning_img_too_large: 'Please select an image of 10 MB at most.',
     warning_before_save_doc_date: 'Please select a report date before saving a document.',
     warning_select_contract_invoice: 'Please select a contract and/or an invoice',
     warning_date_range: 'Anomalous date range (outside 25% of the median)',
