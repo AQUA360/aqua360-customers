@@ -483,6 +483,15 @@ def mask_iban(value):
     return '-'.join(groups)
 
 @register.filter
+def qr_base64(value):
+    """Codi QR del valor com a imatge PNG en data URI, per posar-lo a l'`src` d'un
+    `<img>` de la plantilla (p. ex. `{{ contract.token|qr_base64 }}`). Buit si no hi ha valor."""
+    if value is None or str(value).strip() == "":
+        return ""
+    from verifactu.utils.qr_service import generate_qr_base64
+    return f"data:image/png;base64,{generate_qr_base64(str(value))}"
+
+@register.filter
 def with_return_fee_invoices(invoices):
     """Files per a les cartes de reclamació: cada factura reclamada seguida de les
     factures de despeses de devolució pendents que en pengen (invoice_return_charge(),
