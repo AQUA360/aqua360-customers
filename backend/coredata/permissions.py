@@ -1,9 +1,10 @@
 from rest_framework import permissions
 from rest_framework import exceptions
 
+from auth.roles import is_canonical_superuser
 from billing.permissions import InvoicePermission
 from claimrequest.permissions import ClaimRequestPermission
-from contract.permissions import ContractPermission
+from contract.permissions import ContractPermission, RelatedModuleReadMixin
 from service.permissions import SupplyPointPermission
 
 # Els valors de ConfigProject governen el comportament de tota la instal·lació: els pot
@@ -26,14 +27,31 @@ class ConfigProjectPermission(permissions.BasePermission):
             return True
         return can_edit_config_project(request.user)
 
+class MainPermissionPermission(permissions.BasePermission):
+    """Catàleg de permisos per rol (MainPermission): el llegeixen les pantalles de
+    grups de qualsevol usuari autenticat, però només el pot modificar el
+    superusuari canònic, com la gestió d'usuaris i grups."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return is_canonical_superuser(request.user)
+
 class PersonPermission(permissions.BasePermission):
     
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             raise exceptions.MethodNotAllowed(request.method)
         
+        # OPTIONS (metadades) per a qualsevol usuari autenticat, com DjangoModelPermissions
+        if request.method == 'OPTIONS':
+            return True
+
         method_permissions = {
             'GET': 'view_person',
+            'HEAD': 'view_person',
             'POST': 'add_person',
             'PUT': 'change_person',
             'PATCH': 'change_person',
@@ -45,6 +63,10 @@ class PersonPermission(permissions.BasePermission):
             raise exceptions.MethodNotAllowed(request.method)
         
         return request.user.has_perm(f'coredata.{required_permission}')
+
+class PersonReadPermission(RelatedModuleReadMixin, PersonPermission):
+    """PersonPermission, i lectura per als usuaris d'un mòdul relacionat."""
+
 
 class AddressPermission(permissions.BasePermission):
     

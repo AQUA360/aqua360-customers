@@ -12,15 +12,18 @@ from billing.models import Invoice
 from verifactu.models import VerifactuNotification, VerifactuNotificationLog, VerifactuBatch
 from verifactu.serializers.verifactu_serializer import VerifactuBatchSerializer, VerifactuNotificationLogSerializer, VerifactuNotificationSerializer
 from verifactu.filters.verifactu_notification_filter import VerifactuNotificationFilter
+from verifactu.permissions import VerifactuPermission
 from verifactu.utils.save_verifactu_info import create_verifactu_invoice
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class VerifactuNotificationViewSet(viewsets.ModelViewSet):
+# Els registres de Verifactu són la traça del que s'ha enviat a l'AEAT: per l'API
+# només es consulten; les altes es fan des de la factura (`notify-verifactu`).
+class VerifactuNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = VerifactuNotification.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, VerifactuPermission]
     serializer_class = VerifactuNotificationSerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = VerifactuNotificationFilter
@@ -102,9 +105,9 @@ class VerifactuNotificationViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return super().get_permissions()
 
-class VerifactuBatchViewSet(viewsets.ModelViewSet):
+class VerifactuBatchViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = VerifactuBatch.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, VerifactuPermission]
     serializer_class = VerifactuBatchSerializer
     
     def get_serializer_context(self):

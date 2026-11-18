@@ -3,7 +3,7 @@ import datetime
 from django.http import Http404
 from rest_framework.decorators import action
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
@@ -20,7 +20,7 @@ from coredata.models import ConfigProject, Person, PersonAddress, PersonContact,
 from coredata.serializers import PersonCommunicationSerializer, PersonSerializer, PersonAddressSerializer, AddressSerializer, PersonMinimalSerializer
 from coredata.filters.person_filter import PersonFilter
 from coredata.filters.address_filter import AddressFilter, PersonAddressFilter
-from coredata.permissions import PersonPermission
+from coredata.permissions import PersonPermission, PersonReadPermission
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.name_utils import generate_token
 
@@ -29,7 +29,7 @@ class PersonViewSet(viewsets.ModelViewSet):
     API endpoint that allows Person to be viewed or edited.
     """
     queryset = Person.objects.all()
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, PersonReadPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = PersonFilter
     search_fields = ['token', 'name', 'surname']

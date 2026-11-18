@@ -4,7 +4,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from rest_framework.permissions import DjangoModelPermissions, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from contract.utils.contract_pdf_service import (
@@ -14,10 +14,11 @@ from contract.utils.contract_pdf_service import (
 )
 
 from ..models import Contract, ContractRequest
+from ..permissions import ContractPdfPermission
 
 
 class ReportPDFDownloadViewSet(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ContractPdfPermission]
     queryset = ContractRequest.objects.all().order_by("-created_at")
 
     def get(self, request, id, *args, **kwargs):

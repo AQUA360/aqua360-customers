@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -16,6 +16,7 @@ from django.utils.translation import gettext as _
 
 from contract.filters.contract_request_filter import ContractRequestFilter
 from contract.middleware import set_current_user
+from contract.permissions import ContractRequestReadPermission
 from contract.models import (ContractRequest, ContractDocumentationType, ContractRequestDocumentation)
 from contract.serializers.contract_request_serializer import (ContractRequestSerializer, ContractRequestSaveSerializer, ContractRequestListSerializer)
 from contract.utils.contract_service import contract_create
@@ -37,7 +38,7 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
     API endpoint that allows ContractRequest to be viewed or edited.
     """
     queryset = ContractRequest.objects.filter(is_active=True).all().order_by('created_at')
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ContractRequestReadPermission]
     required_module = 'contract'
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = ContractRequestFilter
@@ -282,7 +283,7 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
     
 class ContractRequestCreateContractView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ContractRequestReadPermission]
     queryset = ContractRequest.objects.all()
     
     def put(self, request, id):

@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from django.db.models import Q, Count, Subquery, OuterRef, Exists
 
 from auth.permissions import PermissionManager
+from contract.permissions import ContractReadPermission
 from billing.models import Reading, Invoice
 from coredata.models import ConfigProject
 from coredata.utils.fire_usage_utils import get_fire_usage_tokens
@@ -318,7 +319,7 @@ def _get_duplicate_readings_items(search, exploitation_id, only_after_billing=Fa
 
 
 class ConsumptionManagementViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ContractReadPermission]
 
     def list(self, request):
         search = request.query_params.get('search', '').strip()
@@ -380,3 +381,8 @@ class ConsumptionManagementViewSet(viewsets.ViewSet):
                 'view_consumptionmanagement': perms['can_view'],
             },
         })
+
+    def get_permissions(self):
+        if self.action == 'permissions':
+            return [IsAuthenticated()]
+        return super().get_permissions()

@@ -2,9 +2,10 @@
 
 from rest_framework import status, views
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 
 from contract.models import ContractRequest, ContractRequestStatus
+from contract.permissions import ContractRequestPermission
 from coredata.models import ConfigProject
 from order.models import OrderStatus
 from contract.utils.contract_request_service import contract_request_finalize_in_place
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class FinalizeContractRequestInPlaceView(views.APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ContractRequestPermission]
     queryset = ContractRequest.objects.all().order_by('-created_at')
 
     def put(self, request, contract_request_id):

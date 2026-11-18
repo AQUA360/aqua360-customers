@@ -6,7 +6,7 @@ from django.http import HttpResponse
 
 from rest_framework.decorators import action
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -34,6 +34,7 @@ from contract.utils.contract_list_queryset import (
     contract_list_page_queryset,
     default_contract_list_queryset,
 )
+from contract.permissions import ContractReadPermission
 from contract.models import Contract, ContractDataChange, ContractLog, ContractPriceRate, ContractRequestDocumentation, ContractDocumentationType, PaymentType, PiggyBankMovement
 from contract.serializers.contract_serializer import ContractSerializer, ContractListSerializer
 from contract.serializers.contract_data_change_edit_serializer import ContractDataChangeEditSerializer
@@ -69,7 +70,7 @@ class ContractOrderingFilter(OrderingFilter):
 
 class ContractViewSet(viewsets.ModelViewSet):
     serializer_class = ContractSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ContractReadPermission]
     filterset_class = ContractFilter
     filter_backends = [DjangoFilterBackend, ContractOrderingFilter]
     search_fields = [

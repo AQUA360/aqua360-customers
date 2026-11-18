@@ -1,12 +1,13 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 
 from datetime import datetime
 
 from billing.models import Invoice
 from contract.models import Contract, ContractStatus, ContractTerminationRequest, ContractTerminationStatus
+from contract.permissions import ContractTerminationRequestPermission
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestSerializer
 from coredata.models import ConfigProject
 from order.models import Order
@@ -14,7 +15,7 @@ from service.models import SupplyPointStatus
 
 class CloseContractTerminationRequestViewSet(APIView):
   queryset = ContractTerminationRequest.objects.all()
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, ContractTerminationRequestPermission]
   def put(self, request, *args, **kwargs):
     contract_terminated_token = 'contract_terminated_status'
     # Extract data for each child model from the request
