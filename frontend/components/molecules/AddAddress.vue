@@ -492,13 +492,38 @@ const onStreetSelected = (street) => {
 
 // saving
 
+// StreetPicker / v-select can leave type as an option object, a free-text string (taggable),
+// or an option whose abbreviation/label are empty. Never fall through to the object itself
+// (`|| street_type.value`) — that becomes "[object Object]" / a nested dict and 500s the API.
+const resolveTypeAbbreviation = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim();
+  const abbreviation = value.abbreviation ?? value.aca_abbreviation;
+  if (typeof abbreviation === 'string' && abbreviation.trim()) return abbreviation.trim();
+  if (typeof value.label === 'string' && value.label.trim()) {
+    // Dropdown labels are "ABBR - Name"; free-tagged text is the whole label.
+    if (value.name && value.label.includes(' - ')) {
+      return value.label.split(' - ')[0].trim();
+    }
+    return value.label.trim();
+  }
+  return '';
+};
+
 const save = async () => {
   if (isValid()) {
 
     saving.value = true;
 
-    const abbreviation = street_type.value?.abbreviation || street_type.value?.label || street_type.value;
+    const abbreviation = resolveTypeAbbreviation(street_type.value)
+      || resolveTypeAbbreviation(selectedStreet.value?.type);
+    const streetTypeName = (typeof street_type.value === 'object' && street_type.value?.name)
+      || selectedStreet.value?.type?.name
+      || null;
     const streetName = creating_street.value ? street_name.value : selectedStreet.value.name;
+    const numberLabel = streetNumberType.value === 'SN' ? 'S/N' : streetNumberNumber.value;
+    const addressComplete = [abbreviation, streetName].filter(Boolean).join(' ')
+      + (numberLabel ? `, ${numberLabel}` : '');
 
     const selectedOptions = {
       // id: props.selectedAddress?.id || null,
@@ -522,28 +547,25 @@ const save = async () => {
       stair: stair.value,
       building: building.value,
       address_extra: address_extra.value,
-      address_complete: `${abbreviation} ${streetName}, ${streetNumberType.value === 'SN' ? 'S/N' : streetNumberNumber.value}`
+      address_complete: addressComplete
     };
 
     if (creating_street.value) {
       selectedOptions.street = {
         type: {
-          abbreviation: abbreviation
+          abbreviation: abbreviation || null,
+          ...(streetTypeName ? { name: streetTypeName } : {})
         },
-        type_abbreviation: abbreviation,
+        type_abbreviation: abbreviation || null,
         name: street_name.value,
         city: !isManualCity.value ? city.value.code : null
       };
     }
     else {
-      selectedOptions.street = {
-        type: {
-          abbreviation: abbreviation
-        },
-        type_abbreviation: abbreviation,
-        name: selectedStreet.value.name,
-        street_id: selectedStreetId.value
-      };
+      // Existing street: send the id so the backend reuses the Street row
+      // (StreetSerializer.to_internal_value accepts an int). Avoid re-posting a
+      // nested type object that can be empty/malformed from the picker.
+      selectedOptions.street = selectedStreetId.value;
     }
 
     if (streetNumberType.value != 'SN') {
