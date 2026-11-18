@@ -34,7 +34,7 @@ from contract.utils.contract_list_queryset import (
     contract_list_page_queryset,
     default_contract_list_queryset,
 )
-from contract.permissions import ContractReadPermission
+from contract.permissions import ContractReadPermission, can_read_from_related_module, required_permission_class
 from contract.models import Contract, ContractDataChange, ContractLog, ContractPriceRate, ContractRequestDocumentation, ContractDocumentationType, PaymentType, PiggyBankMovement
 from contract.serializers.contract_serializer import ContractSerializer, ContractListSerializer
 from contract.serializers.contract_data_change_edit_serializer import ContractDataChangeEditSerializer
@@ -601,6 +601,8 @@ class ContractViewSet(viewsets.ModelViewSet):
             group_permissions = PermissionManager.get_model_group_permissions(group, 'contract')
             return Response(group_permissions, status=status.HTTP_200_OK)
         permissions = PermissionManager.get_model_permissions(request.user, 'contract', 'contract')
+        # Mateix criteri que ContractReadPermission (també llegeixen els mòduls relacionats)
+        permissions['can_view'] = permissions['can_view'] or can_read_from_related_module(request.user)
         return Response(permissions, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'], url_path='export/excel')
@@ -627,6 +629,9 @@ class ContractViewSet(viewsets.ModelViewSet):
             )
 
     def get_permissions(self):
+        if self.action in ('update_contract_bank_accounts', 'save_documentation'):
+            # Són POST, però modifiquen contractes existents: exigim `change_contract`.
+            return [IsAuthenticated(), required_permission_class('contract.change_contract')()]
         if self.action == 'permissions':
             return [IsAuthenticated()]
         return super().get_permissions()

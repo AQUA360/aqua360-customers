@@ -20,6 +20,7 @@ from coredata.models import ConfigProject, Person, PersonAddress, PersonContact,
 from coredata.serializers import PersonCommunicationSerializer, PersonSerializer, PersonAddressSerializer, AddressSerializer, PersonMinimalSerializer
 from coredata.filters.person_filter import PersonFilter
 from coredata.filters.address_filter import AddressFilter, PersonAddressFilter
+from contract.permissions import can_read_from_related_module
 from coredata.permissions import PersonPermission, PersonReadPermission
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.name_utils import generate_token
@@ -267,6 +268,8 @@ class PersonViewSet(viewsets.ModelViewSet):
             group_permissions = PermissionManager.get_model_group_permissions(group, 'person')
             return Response(group_permissions, status=status.HTTP_200_OK)
         permissions = PermissionManager.get_model_permissions(request.user, 'person', 'coredata')
+        # Mateix criteri que PersonReadPermission (també llegeixen els mòduls relacionats)
+        permissions['can_view'] = permissions['can_view'] or can_read_from_related_module(request.user)
         return Response(permissions, status=status.HTTP_200_OK)
     
     def get_permissions(self):

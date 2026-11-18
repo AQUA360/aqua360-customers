@@ -16,7 +16,7 @@ from django.utils.translation import gettext as _
 
 from contract.filters.contract_request_filter import ContractRequestFilter
 from contract.middleware import set_current_user
-from contract.permissions import ContractRequestReadPermission
+from contract.permissions import ContractRequestPermission, ContractRequestReadPermission, required_permission_class
 from contract.models import (ContractRequest, ContractDocumentationType, ContractRequestDocumentation)
 from contract.serializers.contract_request_serializer import (ContractRequestSerializer, ContractRequestSaveSerializer, ContractRequestListSerializer)
 from contract.utils.contract_service import contract_create
@@ -283,7 +283,8 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
     
 class ContractRequestCreateContractView(APIView):
-    permission_classes = [IsAuthenticated, ContractRequestReadPermission]
+    # Modifica la sol·licitud i en crea el contracte: cal poder fer totes dues coses.
+    permission_classes = [IsAuthenticated, ContractRequestPermission, required_permission_class('contract.add_contract')]
     queryset = ContractRequest.objects.all()
     
     def put(self, request, id):

@@ -6,10 +6,14 @@ notificacions i lots de Verifactu. Ara es governen amb els permisos de factura
 `view_invoice` i notificar una factura, `change_invoice`. Les notificacions i
 els lots no es poden crear, modificar ni eliminar per l'API.
 """
+from types import SimpleNamespace
+
 from django.contrib.auth.models import Permission, User
 from django.test import TestCase
-from rest_framework.test import APIRequestFactory, force_authenticate
+from django.urls import reverse
+from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
+from documentmanager.utils.export_registry import get_export_config
 from verifactu.views import VerifactuBatchViewSet, VerifactuNotificationViewSet
 
 
@@ -64,6 +68,29 @@ class VerifactuViewPermissionsTestCase(TestCase):
         self.assertEqual(self._call(view, 'put', path, self.invoice_viewer, invoice_id='0').status_code, 403)
         # Amb permís passa la comprovació i respon que la factura no existeix.
         self.assertEqual(self._call(view, 'put', path, self.invoice_editor, invoice_id='0').status_code, 404)
+
+    def test_notify_through_router(self):
+        client = APIClient()
+        url = reverse('verifactunotification-notify-verifactu', kwargs={'invoice_id': '0'})
+        client.force_authenticate(self.invoice_viewer)
+        self.assertEqual(client.put(url).status_code, 403)
+        client.force_authenticate(self.invoice_editor)
+        self.assertEqual(client.put(url).status_code, 404)
+        # Les metadades no busquen cap notificació per `pk` (abans, 500).
+        self.assertEqual(client.options(url).status_code, 200)
+
+    def test_export_uses_invoice_read_permission(self):
+        config = get_export_config('verifactu_invoice')
+        notification_viewer = User.objects.create_user('notification-viewer-2661', 'nv-2661@example.com', 'x')
+        notification_viewer.user_permissions.add(_perm('verifactu.view_verifactunotification'))
+
+        def allowed(user):
+            request = SimpleNamespace(user=User.objects.get(pk=user.pk), method='POST')
+            return all(p().has_permission(request, None) for p in config.permission_classes)
+
+        self.assertTrue(allowed(self.invoice_viewer))
+        self.assertFalse(allowed(notification_viewer))
+        self.assertFalse(allowed(self.no_perms))
 
     def test_permissions_action_open(self):
         view = VerifactuNotificationViewSet.as_view({'get': 'permissions'})

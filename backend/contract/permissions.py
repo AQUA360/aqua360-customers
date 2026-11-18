@@ -119,17 +119,51 @@ def can_read_from_related_module(user):
     return any(user.has_perm(perm) for perm in RELATED_MODULE_READ_PERMS)
 
 
+def can_read(user, perm):
+    """Si l'usuari té el permís de lectura `perm` o el pot llegir per un mòdul relacionat."""
+    return user.has_perm(perm) or can_read_from_related_module(user)
+
+
 class RelatedModuleReadMixin:
-    """Afegeix la lectura (GET/HEAD) per als usuaris d'un mòdul relacionat."""
+    """Afegeix la lectura (GET/HEAD) per als usuaris d'un mòdul relacionat.
+    En un ViewSet només val per a les accions de `related_read_actions` (llistat
+    i detall): la resta (historial, exportacions...) demanen el permís del model."""
+
+    related_read_actions = ('list', 'retrieve')
 
     def has_permission(self, request, view):
         if super().has_permission(request, view):
             return True
-        return request.method in ('GET', 'HEAD') and can_read_from_related_module(request.user)
+        if request.method not in ('GET', 'HEAD'):
+            return False
+        action = getattr(view, 'action', None)
+        if action is not None and action not in self.related_read_actions:
+            return False
+        return can_read_from_related_module(request.user)
+
+
+def required_permission_class(perm, related_read=False):
+    """Permís fix per a una vista o acció que no encaixa amb el mètode HTTP: un POST
+    que modifica registres existents (`change_*`) o que només consulta (`view_*`).
+    Amb `related_read`, també hi accedeixen els usuaris d'un mòdul relacionat."""
+
+    class _RequiredPermission(permissions.BasePermission):
+        def has_permission(self, request, view):
+            if not request.user or not request.user.is_authenticated:
+                return False
+            if request.method == 'OPTIONS':
+                return True
+            if related_read:
+                return can_read(request.user, perm)
+            return request.user.has_perm(perm)
+
+    _RequiredPermission.__name__ = f"Required{perm.split('.')[-1].title().replace('_', '')}Permission"
+    return _RequiredPermission
 
 
 class ContractReadPermission(RelatedModuleReadMixin, ContractPermission):
-    pass
+    # `minimal`: dades bàsiques del contracte per a les comunicacions.
+    related_read_actions = ('list', 'retrieve', 'get_minimal')
 
 
 class ContractRequestReadPermission(RelatedModuleReadMixin, ContractRequestPermission):
@@ -145,4 +179,6 @@ class ContractPdfPermission(permissions.BasePermission):
             return False
         is_contract = request.query_params.get('is_contract', 'false').lower() == 'true'
         perm = 'contract.view_contract' if is_contract else 'contract.view_contractrequest'
-        return request.user.has_perm(perm) or can_read_from_related_module(request.user)
+        # Si la sol·licitud ja té contracte, la vista en genera el del contracte:
+        # la vista ho torna a comprovar amb `can_read(user, 'contract.view_contract')`.
+        return can_read(request.user, perm)

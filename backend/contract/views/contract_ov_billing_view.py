@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from billing.models import GeneralPayment
 from contract.models import Contract, PaymentType
-from contract.permissions import ContractPermission
+from contract.permissions import required_permission_class
 from contract.serializers.contract_ov_serializer import ContractSerializer
 from rest_framework.permissions import IsAuthenticated
 
@@ -12,7 +12,8 @@ from coredata.utils.iban_validator_utils import get_spanish_bank_code_candidates
 
 class ContractOVBillingView(APIView):
     queryset = Contract.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated, ContractPermission]
+    # Només POST, però modifica contractes existents: exigim `change_contract`.
+    permission_classes = [IsAuthenticated, required_permission_class('contract.change_contract')]
     
     def post(self, request, contract_token):
         if not contract_token:

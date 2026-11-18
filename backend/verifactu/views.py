@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.filters import OrderingFilter
+from rest_framework.metadata import SimpleMetadata
 from django_filters.rest_framework import DjangoFilterBackend
 
 from django.contrib.auth.models import Group
@@ -17,6 +18,14 @@ from verifactu.utils.save_verifactu_info import create_verifactu_invoice
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class NotifyVerifactuMetadata(SimpleMetadata):
+    """`notify-verifactu` rep l'id de la factura, no el de la notificació: les
+    metadades (OPTIONS) no descriuen el PUT, perquè `get_object()` fallaria (500)."""
+
+    def determine_actions(self, request, view):
+        return {}
 
 
 # Els registres de Verifactu són la traça del que s'ha enviat a l'AEAT: per l'API
@@ -34,7 +43,8 @@ class VerifactuNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         context['request'] = self.request
         return context
     
-    @action(detail=False, methods=['put'], url_path='(?P<invoice_id>[^/.]+)/notify-verifactu')
+    @action(detail=False, methods=['put'], url_path='(?P<invoice_id>[^/.]+)/notify-verifactu',
+            metadata_class=NotifyVerifactuMetadata)
     def notify_verifactu(self, request, invoice_id=None):
         if not invoice_id:
             return Response(

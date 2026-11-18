@@ -77,6 +77,31 @@ class ViewPermissionsTestCase(TestCase):
             self._call(update_view, 'patch', '/coredata/person/1/', self.person_viewer, pk=1).status_code, 403,
         )
 
+    def test_person_head_like_get(self):
+        invoice_viewer = User.objects.create_user('invoice-viewer-head-2654', 'invoice-viewer-head-2654@example.com', 'x')
+        invoice_viewer.user_permissions.add(_perm('billing.view_invoice'))
+        list_view = PersonViewSet.as_view({'get': 'list'})
+        self.assertEqual(self._call(list_view, 'head', '/coredata/person/', self.no_perms).status_code, 403)
+        for user in (self.person_viewer, invoice_viewer):
+            with self.subTest(user=user.username):
+                self.assertEqual(self._call(list_view, 'head', '/coredata/person/', user).status_code, 200)
+
+    def test_person_logs_not_readable_from_related_module(self):
+        invoice_viewer = User.objects.create_user('invoice-viewer-logs-2654', 'invoice-viewer-logs-2654@example.com', 'x')
+        invoice_viewer.user_permissions.add(_perm('billing.view_invoice'))
+        logs_view = PersonViewSet.as_view({'get': 'logs'})
+        self.assertEqual(self._call(logs_view, 'get', '/coredata/person/1/logs/', invoice_viewer, pk=1).status_code, 403)
+
+    def test_person_permissions_action_reports_related_read(self):
+        invoice_viewer = User.objects.create_user('invoice-viewer-perms-2654', 'invoice-viewer-perms-2654@example.com', 'x')
+        invoice_viewer.user_permissions.add(_perm('billing.view_invoice'))
+        view = PersonViewSet.as_view({'get': 'permissions'})
+        path = '/coredata/person/permissions/'
+        data = self._call(view, 'get', path, invoice_viewer).data
+        self.assertTrue(data['can_view'])
+        self.assertFalse(data['can_change'])
+        self.assertFalse(self._call(view, 'get', path, self.no_perms).data['can_view'])
+
     def test_person_permissions_action_open(self):
         view = PersonViewSet.as_view({'get': 'permissions'})
         self.assertEqual(self._call(view, 'get', '/coredata/person/permissions/', self.no_perms).status_code, 200)

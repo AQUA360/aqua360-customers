@@ -19,7 +19,7 @@ from rest_framework.filters import OrderingFilter
 from django.db.models import Q
 
 from contract.models import (Bail, BailStatus, Contract)
-from contract.permissions import BailPermission
+from contract.permissions import BailPermission, required_permission_class
 from contract.serializers.bail_serializer import (BailSerializer, BailListSerializer)
 
 from logger.models import LogBailStatus
@@ -130,4 +130,7 @@ class BailViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
+        if self.action in ('liquidate_bail', 'return_bail_immediately', 'cancel_bail'):
+            # Són POST, però actuen sobre fiances existents: exigim `change_bail`.
+            return [IsAuthenticated(), required_permission_class('contract.change_bail')()]
         return super().get_permissions()

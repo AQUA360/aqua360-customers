@@ -4,6 +4,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
@@ -14,7 +15,7 @@ from contract.utils.contract_pdf_service import (
 )
 
 from ..models import Contract, ContractRequest
-from ..permissions import ContractPdfPermission
+from ..permissions import ContractPdfPermission, can_read
 
 
 class ReportPDFDownloadViewSet(APIView):
@@ -31,6 +32,9 @@ class ReportPDFDownloadViewSet(APIView):
                 contract_request = Contract.objects.get(contract_request=og_instance)
             except Contract.DoesNotExist:
                 contract_request = og_instance
+            # Es descarrega el contracte: cal poder-lo veure, no només la sol·licitud.
+            if isinstance(contract_request, Contract) and not can_read(request.user, "contract.view_contract"):
+                raise PermissionDenied()
 
         try:
             pdf_bytes = generate_contract_pdf_bytes(
@@ -42,7 +46,13 @@ class ReportPDFDownloadViewSet(APIView):
             return JsonResponse({"error": "PDF generation failed"}, status=500)
 
         pdf_filename = get_contract_pdf_filename(contract_request)
-        if not is_contract and isinstance(contract_request, ContractRequest):
+        # El PDF generat queda desat a la sol·licitud (l'assistent el fa servir per
+        # avançar de pas): només si l'usuari la pot modificar. Si no, fitxer temporal.
+        if (
+            not is_contract
+            and isinstance(contract_request, ContractRequest)
+            and request.user.has_perm("contract.change_contractrequest")
+        ):
             contract_request.contract_file_template.save(
                 pdf_filename, ContentFile(pdf_bytes)
             )
