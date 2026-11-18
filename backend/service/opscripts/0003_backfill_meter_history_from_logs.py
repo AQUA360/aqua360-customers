@@ -33,18 +33,25 @@ ORIGIN_SOURCE = {
 SAME_CHANGE_WINDOW = datetime.timedelta(minutes=1)
 
 
-def _already_recorded(log):
-    return SupplyPointMeterHistory.objects.filter(
-        supply_point_id=log.supply_point_id,
-        old_meter_id=log.previous_related_id,
-        new_meter_id=log.current_related_id,
-        created_at__gte=log.timestamp - SAME_CHANGE_WINDOW,
-        created_at__lte=log.timestamp + SAME_CHANGE_WINDOW,
-    ).exists()
+def _pop_recorded(log, recorded):
+    """
+    Si el codi nou ja ha creat la fila d'aquest log, la retira de `recorded`
+    (cada fila només pot casar amb un log) i retorna True.
+    """
+    key = (log.supply_point_id, log.previous_related_id, log.current_related_id)
+    for index, created_at in enumerate(recorded.get(key, [])):
+        if abs(created_at - log.timestamp) <= SAME_CHANGE_WINDOW:
+            del recorded[key][index]
+            return True
+    return False
 
 
-def _change_reading(supply_point_id, meter_id, is_close, until_date, on_date=None):
-    """Lectura de canvi de comptador més recent d'aquell comptador al punt."""
+def _change_reading(supply_point_id, meter_id, is_close, until_date, after_date=None, on_date=None):
+    """
+    Lectura de canvi de comptador més recent d'aquell comptador al punt.
+    `after_date` (data del canvi anterior del punt) evita agafar lectures
+    d'una instal·lació anterior del mateix comptador.
+    """
     if not meter_id:
         return None
     readings = Reading.objects.filter(
@@ -57,6 +64,8 @@ def _change_reading(supply_point_id, meter_id, is_close, until_date, on_date=Non
         readings = readings.filter(reading_date=on_date)
     else:
         readings = readings.filter(reading_date__lte=until_date)
+        if after_date:
+            readings = readings.filter(reading_date__gte=after_date)
     return readings.order_by('-reading_date', '-id').first()
 
 
@@ -67,19 +76,27 @@ def run():
         .order_by('timestamp', 'id')
     )
     existing_meter_ids = set(Meter.objects.values_list('id', flat=True))
+    recorded = {}
+    for row in SupplyPointMeterHistory.objects.values('supply_point_id', 'old_meter_id', 'new_meter_id', 'created_at'):
+        key = (row['supply_point_id'], row['old_meter_id'], row['new_meter_id'])
+        recorded.setdefault(key, []).append(row['created_at'])
 
     to_create = []
     skipped = 0
+    last_change_date = {}  # supply_point_id -> data de l'últim canvi processat
     for log in logs:
-        if _already_recorded(log):
+        if _pop_recorded(log, recorded):
             skipped += 1
             continue
 
         log_date = log.timestamp.date()
+        previous_change_date = last_change_date.get(log.supply_point_id)
         old_meter_id = log.previous_related_id if log.previous_related_id in existing_meter_ids else None
         new_meter_id = log.current_related_id if log.current_related_id in existing_meter_ids else None
 
-        new_reading = _change_reading(log.supply_point_id, new_meter_id, False, log_date)
+        new_reading = _change_reading(
+            log.supply_point_id, new_meter_id, False, log_date, after_date=previous_change_date,
+        )
         change_date = new_reading.reading_date if new_reading else None
         old_reading = _change_reading(
             log.supply_point_id, old_meter_id, True, log_date, on_date=change_date,
@@ -101,11 +118,14 @@ def run():
         if missing:
             observation = '; '.join(filter(None, [observation, *missing]))
 
+        change_date = change_date or log_date
+        last_change_date[log.supply_point_id] = change_date
+
         to_create.append(SupplyPointMeterHistory(
             supply_point_id=log.supply_point_id,
             old_meter_id=old_meter_id,
             new_meter_id=new_meter_id,
-            change_date=change_date or log_date,
+            change_date=change_date,
             old_reading=old_reading.reading_value if old_reading else None,
             new_reading=new_reading.reading_value if new_reading else None,
             source=ORIGIN_SOURCE.get(origin, 'other'),

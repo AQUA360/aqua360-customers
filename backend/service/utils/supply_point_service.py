@@ -64,9 +64,11 @@ def _to_reading_value(value):
     if value in (None, ''):
         return None
     try:
-        return Decimal(str(value))
+        number = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+    # NaN/Infinity no es poden desar en un DecimalField
+    return number if number.is_finite() else None
 
 
 def supply_point_change_meter(user, supply_point_id, previous_meter, current_meter,
