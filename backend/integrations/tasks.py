@@ -5,6 +5,7 @@ from integrations.outbound.giswater.tasks import (
 )
 from integrations.outbound.ov.tasks import sync_virtual_office_contracts_task
 from integrations.outbound.signing.tasks import poll_signing_sessions_task
+from integrations.outbound.webhooks.tasks import send_pending_webhooks
 
 __all__ = [
     "fetch_giswater_connecs_task", 
@@ -12,4 +13,5 @@ __all__ = [
     "sync_giswater_suply_cuts_task",
     "poll_signing_sessions_task",
     "sync_virtual_office_contracts_task",
+    "send_pending_webhooks",
 ]

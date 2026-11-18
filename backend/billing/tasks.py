@@ -2939,6 +2939,12 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
   reading_batch_billed_token = config_cache.get('reading_batch_billed_token')
   reading_batch_billed = ReadingBatchStatus.objects.get(token=reading_batch_billed_token)
   
+  # Avís al sistema extern (webhook): les factures confirmades en aquesta execució,
+  # agrupades en paquets (no un avís per factura)
+  if confirmed_invoice_ids:
+    from integrations.outbound.webhooks.events import emit_billing_issued
+    emit_billing_issued(billing, confirmed_invoice_ids)
+
   billing.status = processed_status
   billing.send_at = send_at_aware
   billing.billing_batches.update(
