@@ -110,37 +110,48 @@ const saveDocument = async (file) => {
     }
 }
 
+const resetImageInput = () => {
+    // Buidem el selector perquè es pugui tornar a triar el mateix fitxer
+    const input = document.getElementById('fraudImageFile');
+    if (input) input.value = '';
+}
+
 const saveImage = async (file) => {
     //check if file is a .pgn, .jpeg or other image file
     const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (!file || !allowedTypes.includes(file.type)) {
         toast.warning(t('warning_block.warning_valid_img'));
+        resetImageInput();
         return;
     }
     // Mateix límit que el backend (10 MiB)
     if (file.size > MAX_IMAGE_BYTES) {
         toast.warning(t('warning_block.warning_img_too_large'));
+        resetImageInput();
         return;
     }
-    
-    if (report_date.value == null || report_date.value == '') toast.error(t("warning_block.warning_before_save_doc_date"))
+    if (report_date.value == null || report_date.value == '') {
+        toast.error(t("warning_block.warning_before_save_doc_date"));
+        resetImageInput();
+        return;
+    }
+
+    // El selector queda desactivat mentre loading_image és cert: una sola pujada alhora
     loading_image.value = true;
-    await save(false)
-    let save_data = {
-        id: report.value.id,
-        file: file,
-    }
-    let response
     try {
-        response = await $FraudReportApiService.saveImage(save_data)
+        await save(false)
+        if (!report.value?.id) return;
+        const response = await $FraudReportApiService.saveImage({ id: report.value.id, file: file })
+        if (response) {
+            await getData()
+            emit('changed', false)
+        }
     } catch (error) {
-        // L'error ja es mostra amb un avís; no deixem el carregador girant
+        // L'error ja es mostra amb un avís
+        console.error(error)
+    } finally {
         loading_image.value = false;
-        return;
-    }
-    if (response) {
-        getData()
-        emit('changed', false)
+        resetImageInput();
     }
 }
 
@@ -218,7 +229,7 @@ watch(() => props.fraud_id, (newValue, oldValue) => {
             <div v-if="!canChange && images.length == 0">
                 <p class="text-slate-500 px-3">{{ $t('common.no_imgs') }}</p>
             </div>
-            <AtomsInputFile v-if="canChange" @update="saveImage" :name="'fraudImageFile'" :uploaded="null" :fullWidth="true"
+            <AtomsInputFile v-if="canChange" @update="saveImage" :name="'fraudImageFile'" :uploaded="null" :fullWidth="true" :disabled="loading_image"
                 class="w-full" />
         </details>
 

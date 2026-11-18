@@ -1,4 +1,5 @@
 import io
+import os
 import shutil
 import tempfile
 from unittest import mock
@@ -75,6 +76,27 @@ class FraudImageUploadTests(TestCase):
         fake = SimpleUploadedFile('foto.jpg', b'%PDF-1.4 no soc una imatge', content_type='image/jpeg')
         response = self._upload({'id': self.report.id, 'file': fake})
         self.assertEqual(response.status_code, 400)
+
+    def test_id_amb_digits_no_convertibles_retorna_400(self):
+        response = self._upload({'id': '²', 'file': image_file()})
+        self.assertEqual(response.status_code, 400)
+
+    def test_jpeg_truncat_retorna_400(self):
+        # Capçalera completa (Pillow la identifica i verify() l'accepta) però sense part dels píxels
+        buffer = io.BytesIO()
+        Image.frombytes('RGB', (200, 200), os.urandom(200 * 200 * 3)).save(buffer, 'JPEG')
+        complete = buffer.getvalue()
+        truncated = SimpleUploadedFile('foto.jpg', complete[: int(len(complete) * 0.7)], content_type='image/jpeg')
+        response = self._upload({'id': self.report.id, 'file': truncated})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(FraudImage.objects.exists())
+
+    def test_bomba_de_descompressio_retorna_400(self):
+        # Imatge petita en bytes però amb més píxels del doble del límit de Pillow
+        with mock.patch.object(Image, 'MAX_IMAGE_PIXELS', 100):
+            response = self._upload({'id': self.report.id, 'file': image_file('PNG', 'foto.png')})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(FraudImage.objects.exists())
 
     def test_format_no_permes_retorna_400(self):
         response = self._upload({'id': self.report.id, 'file': image_file('GIF', 'foto.jpg')})

@@ -25,17 +25,23 @@ ALLOWED_FRAUD_IMAGE_FORMATS = {'JPEG', 'PNG'}
 
 
 def _is_valid_image(file):
-    """Cert si el fitxer és realment una imatge JPEG o PNG llegible."""
+    """Cert si el fitxer és realment una imatge JPEG o PNG que es pot descodificar sencera."""
     try:
         file.seek(0)
         with Image.open(file) as image:
-            image_format = image.format
+            if image.format not in ALLOWED_FRAUD_IMAGE_FORMATS:
+                return False
             image.verify()
-    except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
+        # verify() no descodifica els píxels: cal tornar a obrir el fitxer i carregar-lo per
+        # rebutjar imatges truncades. El límit de píxels de Pillow evita les bombes de descompressió.
+        file.seek(0)
+        with Image.open(file) as image:
+            image.load()
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError, ValueError):
         return False
     finally:
         file.seek(0)
-    return image_format in ALLOWED_FRAUD_IMAGE_FORMATS
+    return True
 
 
 class FraudImageViewSet(viewsets.ModelViewSet):
@@ -57,10 +63,11 @@ class FraudImageViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         
-        report_id = request.data.get('id')
-        if not str(report_id or '').isdigit():
+        try:
+            report_id = int(request.data.get('id'))
+        except (TypeError, ValueError):
             return Response({'detail': 'Invalid fraud report id'}, status=status.HTTP_400_BAD_REQUEST)
-        fraud_report = FraudReport.objects.filter(id=int(report_id), fraud__isnull=False).select_related('fraud').first()
+        fraud_report = FraudReport.objects.filter(id=report_id, fraud__isnull=False).select_related('fraud').first()
         if fraud_report is None:
             return Response({'detail': 'Fraud report not found'}, status=status.HTTP_404_NOT_FOUND)
 
