@@ -482,7 +482,7 @@ def apply_changes(uploaded, user):
                     )
                     new_meter_id = new_meter.id
 
-                MeterChangeService(user=user).apply(
+                MeterChangeService(user=user, source='bulk').apply(
                     supply_point_id=item['supply_point_id'],
                     prev_meter_id=item['old_meter_id'],
                     new_meter_id=new_meter_id,
