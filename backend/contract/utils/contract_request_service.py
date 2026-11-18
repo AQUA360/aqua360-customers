@@ -459,13 +459,14 @@ def contract_termination_check_orders(user, contract_termination_id):
             if all_finalized and contract_termination.status.token == pending_token:
                 logger.info(f"ContractTerminationRequest: Totes les `Orders` finalitzades")
                 # 4. Actualitzar l'estat del ContractRequest
-                contract_cancel_token_config = ConfigProject.objects.get(token='contract_terminated_status')
                 contract_termination_request_finalize_token_config = ConfigProject.objects.get(token='contract_termination_completed_token')
                 contract_termination_request_change_status(user, contract_termination, contract_termination_request_finalize_token_config.value)
                 contract_termination.approved_at = datetime.datetime.now()
-                contract_termination.contract.status = ContractStatus.objects.get(token=contract_cancel_token_config.value)
-                contract_termination.contract.save()
                 contract_termination.save()
+                # Si el contracte encara no era de baixa (p. ex. baixa massiva per impagament),
+                # hi passa ara amb data de baixa i se n'avisa el sistema extern
+                from contract.utils.contract_termination_service import mark_contract_terminated
+                mark_contract_terminated(contract_termination.contract, contract_termination)
 
                 # Donar de baixa el punt i el comptador si hi ha una lectura de baixa i no hi ha altres contractes/sol·licituds
                 check_and_deactivate_supply_point_and_meter(contract_termination)

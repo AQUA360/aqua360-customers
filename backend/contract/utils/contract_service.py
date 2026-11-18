@@ -383,6 +383,11 @@ def _contract_create_locked(user, contract_request):
     
     check_contract_terminations(contract, contract_request)
 
+    # Avís al sistema extern (webhook): es desa dins la transacció de contract_create
+    # i només s'envia si es confirma. Inclou les dades de la sol·licitud d'alta.
+    from integrations.outbound.webhooks.events import emit_contract_created
+    emit_contract_created(contract)
+
     return contract
 
 def get_connection_diameter(contract):
