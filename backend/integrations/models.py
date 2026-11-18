@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 
@@ -251,3 +253,50 @@ class ContractSigningSession(models.Model):
 
     def __str__(self):
         return f"Signing {self.session_id} ({self.status})"
+
+
+class WebhookEvent(models.Model):
+    """Avís de sortida (webhook) pendent o enviat: fa de bústia (outbox).
+
+    Es desa dins la mateixa transacció que l'acció de negoci que el genera, de
+    manera que si l'acció es desfà no queda cap avís, i si el receptor o el worker
+    cauen no se'n perd cap: es reintenta fins que s'entrega o s'esgoten els intents.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+    STATUS_DISABLED = "disabled"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_SENT, "Sent"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_DISABLED, "Disabled"),
+    ]
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    event_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    event_type = models.CharField(max_length=100)
+    object_type = models.CharField(max_length=100, blank=True)
+    object_id = models.CharField(max_length=100, blank=True)
+    # Evita avisar dues vegades del mateix fet (p. ex. la mateixa factura emesa)
+    dedupe_key = models.CharField(max_length=255, unique=True)
+    payload = models.JSONField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_status_code = models.IntegerField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"]),
+            models.Index(fields=["object_type", "object_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.event_type} {self.object_type}:{self.object_id} ({self.status})"
