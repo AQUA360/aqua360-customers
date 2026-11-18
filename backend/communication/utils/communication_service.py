@@ -34,6 +34,10 @@ from contract.serializers.contract_serializer import ContractSerializer
 from coredata.models import ConfigProject, Person
 from coredata.serializers import AddressSerializer, PersonAddressSerializer, PersonContractMinimalSerializer, PersonSerializer
 from coredata.utils.name_utils import generate_token
+from communication.utils.send_errors import (
+  EmailPreparationError, email_no_company_config_error, email_no_recipient_error, email_no_sender_error,
+  email_preparation_error, email_rejection_reason, sms_rejection_reason,
+)
 from documentmanager.utils.sign_certificate_service import sign_pdf
 
 from documentmanager.utils.main_utils import upload_document
@@ -661,7 +665,10 @@ def send_sms(comm):
     if not message and comm.process:
       message = comm.process.messages.filter(type__token=sms_token).first()
     if not message or not message.body:
-      raise BroadcasterError("No SMS message found")
+      raise BroadcasterError(
+        "No SMS message found",
+        user_message=_("The SMS could not be sent: the communication has no SMS message."),
+      )
 
     companies = comm.company_config.company_configs.all() if comm.company_config else []
     company_ins = companies.first() if companies else None
@@ -679,8 +686,8 @@ def send_sms(comm):
       object_id=str(comm.pk),
     )
   except Exception as e:
-    logger.warning("Error enviant la comunicació %s per SMS: %s", comm.pk, e)
-    return f"Error sending SMS: {str(e)}"
+    # Al motiu, un missatge llegible; el detall de l'error només al log.
+    return sms_rejection_reason(e, comm.pk)
 
   comm.sms_sent_at = timezone.now()
   comm.save(update_fields=['sms_sent_at'])
@@ -747,7 +754,7 @@ def send_electronic_mail(comm):
     subject = refactor_text(subject, get_com_values(person, comm, company))
 
     if not comm_config:
-      raise Exception("No company configuration found")
+      raise EmailPreparationError(email_no_company_config_error())
 
     if comm.company_config_email and comm.company_config_email.mail_send_user:
       from_email = comm.company_config_email.mail_send_user
@@ -763,13 +770,17 @@ def send_electronic_mail(comm):
         print(f"Error getting from email: {str(e)}")
 
     if not comm_email:
-      raise Exception("No receiver email address found")
+      raise EmailPreparationError(email_no_recipient_error())
     if not from_email:
-      raise Exception("No sender email address found")
+      raise EmailPreparationError(email_no_sender_error())
   except Exception as e:
-    error_msg = f"Error preparing email: {str(e)}"
-    print(error_msg)
-    comm.rejection_reason = error_msg
+    if isinstance(e, EmailPreparationError):
+      logger.warning("No s'ha pogut preparar el correu de la comunicació %s: %s", comm.pk, e)
+      comm.rejection_reason = str(e)
+    else:
+      # El detall de l'error només al log: pot portar dades internes.
+      logger.exception("Error preparant el correu de la comunicació %s", comm.pk)
+      comm.rejection_reason = email_preparation_error()
     comm.status = status_rejected
     comm.save()
     return
@@ -808,12 +819,10 @@ def send_electronic_mail(comm):
     logger.info("Comunicació %s enviada per correu", comm.pk)
 
   except Exception as e:
-    error_msg = f"Error sending email: {str(e)}"
-    logger.warning(
-      "Error enviant la comunicació %s (%s destinataris, %s adjunts): %s",
-      comm.pk, len(comm_emails), len(document_files or []), e,
+    # Al motiu, un missatge llegible; el detall de l'error (codi SMTP, resposta de Graph...) només al log.
+    comm.rejection_reason = email_rejection_reason(
+      e, comm.pk, f"{len(comm_emails)} destinataris, {len(document_files or [])} adjunts",
     )
-    comm.rejection_reason = error_msg
     comm.status = status_rejected
     comm.save()
     
