@@ -218,7 +218,11 @@ def _describe_smtp(exc):
     return _too_large()
   if "5.4.5" in text or "sending quota" in text or "sending limit" in text:
     return _throttled()
-  if "5.2.2" in text or "full" in text or "quota" in text or "insufficient storage" in text:
+  mailbox_full = "5.2.2" in text or "full" in text or "quota" in text or "insufficient storage" in text
+  if mailbox_full and isinstance(exc, smtplib.SMTPSenderRefused):
+    # El rebuig és del remitent: la bústia plena és la seva, no la del destinatari.
+    return _sender_quota()
+  if mailbox_full:
     return _mailbox_full()
   if code in (421, 450, 451, 452) and ("rate" in text or "too many" in text or "limit" in text or "4.7.0" in text):
     return _throttled()
@@ -245,7 +249,10 @@ def _describe_graph(exc):
     return None
   status, code, _message, url = info
   if urllib.parse.urlsplit(url or "").hostname == "login.microsoftonline.com":
-    # Error en demanar el token: credencials (tenant, client id o secret) incorrectes.
+    # Error en demanar el token: credencials (tenant, client id o secret) incorrectes,
+    # tret que el servidor de tokens limiti les peticions (429) o no estigui disponible.
+    if status == 429:
+      return _throttled()
     return _auth_failed() if status and status < 500 else _temporarily_unavailable()
   if code in _GRAPH_CODES:
     return _GRAPH_CODES[code]()

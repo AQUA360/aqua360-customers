@@ -759,9 +759,11 @@ def send_electronic_mail(comm):
     if comm.company_config_email and comm.company_config_email.mail_send_user:
       from_email = comm.company_config_email.mail_send_user
     else:
-      from_email = comm_config.company_config_emails.filter(is_default=True).first().mail_send_user
+      default_email = comm_config.company_config_emails.filter(is_default=True).first()
+      from_email = default_email.mail_send_user if default_email else None
       if not from_email:
-        from_email = comm_config.company_config_emails.first().mail_send_user
+        first_email = comm_config.company_config_emails.first()
+        from_email = first_email.mail_send_user if first_email else None
 
     if not from_email:
       try:

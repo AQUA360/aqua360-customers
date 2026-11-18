@@ -1,5 +1,8 @@
 """Motius de rebuig llegibles dels enviaments (correu i SMS) i compatibilitat de django-msgraphbackend."""
 import io
+import os
+import subprocess
+import sys
 import json
 import smtplib
 import socket
@@ -7,6 +10,7 @@ import ssl
 import urllib.error
 from unittest.mock import MagicMock, patch
 
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, override_settings
 from django.utils import translation
@@ -49,8 +53,19 @@ def msgraph_send(error):
 
 class HttpErrorAddNoteTests(SimpleTestCase):
   def test_patch_is_applied_at_startup(self):
-    # CommunicationConfig.ready() l'aplica; a Python 3.11+ ja hi és de sèrie.
-    self.assertTrue(hasattr(urllib.error.HTTPError, "add_note") or hasattr(Exception, "add_note"))
+    # En un procés nou, perquè cap altre test l'hagi aplicat abans: només
+    # CommunicationConfig.ready() (via django.setup()) l'ha d'haver instal·lat.
+    code = (
+      "import django, urllib.error; django.setup(); "
+      "print('add_note' in urllib.error.HTTPError.__dict__ or hasattr(Exception, 'add_note'))"
+    )
+    result = subprocess.run(
+      [sys.executable, "-c", code],
+      cwd=settings.BASE_DIR, capture_output=True, text=True, timeout=120,
+      env={**os.environ, "DJANGO_SETTINGS_MODULE": os.environ.get("DJANGO_SETTINGS_MODULE", "customers.settings")},
+    )
+    self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+    self.assertEqual(result.stdout.strip().splitlines()[-1], "True")
 
   def test_add_note_keeps_the_note(self):
     patch_httperror_add_note()
@@ -85,6 +100,7 @@ class EmailRejectionReasonTests(SimpleTestCase):
     ("smtp relay denied", smtplib.SMTPRecipientsRefused({"a@example.com": (550, b"5.7.1 Relaying denied")}), "_policy_rejected"),
     ("smtp auth", smtplib.SMTPAuthenticationError(535, b"5.7.8 Authentication credentials invalid"), "_auth_failed"),
     ("smtp sender", smtplib.SMTPSenderRefused(553, b"5.7.1 Sender address rejected", "s@example.com"), "_sender_rejected"),
+    ("smtp sender mailbox full", smtplib.SMTPSenderRefused(552, b"5.2.2 Mailbox full", "s@example.com"), "_sender_quota"),
     ("smtp too large", smtplib.SMTPDataError(552, b"5.3.4 Message size exceeds fixed limit"), "_too_large"),
     ("smtp spam", smtplib.SMTPDataError(554, b"5.7.1 Message rejected as spam"), "_policy_rejected"),
     ("smtp rate limit", smtplib.SMTPDataError(421, b"4.7.0 Too many messages, rate limited"), "_throttled"),
@@ -112,6 +128,7 @@ class EmailRejectionReasonTests(SimpleTestCase):
     ("graph 429", 429, "_throttled"),
     ("graph 503", 503, "_temporarily_unavailable"),
     ("graph token", "token", "_auth_failed"),
+    ("graph token throttled", "token429", "_throttled"),
     ("graph settings", ImproperlyConfigured("The MSGRAPH_TENANT_ID setting must be set."), "_service_misconfigured"),
     ("graph sender user", ValueError("No user found in Entra ID with the smtp address 's@example.com'."), "_sender_mailbox"),
     ("django address", ValueError('Invalid address "a@b@c"'), "_invalid_recipient"),
@@ -120,6 +137,8 @@ class EmailRejectionReasonTests(SimpleTestCase):
   def build(self, error):
     if error == "token":
       return graph_http_error(401, url=GRAPH_TOKEN_URL)
+    if error == "token429":
+      return graph_http_error(429, url=GRAPH_TOKEN_URL)
     if isinstance(error, int):
       return graph_http_error(error)
     if isinstance(error, str):

@@ -1323,6 +1323,34 @@ class SmsSendingTests(TestCase):
         self.assertEqual(comm.rejection_reason, describe_email_error(error))
         self.assertNotIn('ErrorInvalidRecipients', comm.rejection_reason)
 
+    def test_sender_without_default_email_uses_first(self):
+        from unittest.mock import patch
+        from communication.utils.send_errors import email_no_sender_error
+
+        # Sense adreça predeterminada: es fa servir la primera adreça de l'empresa.
+        comm = self.make_email_comm('email')
+        config_email = comm.company_config_email
+        config_email.is_default = False
+        config_email.save()
+        Communication.objects.filter(id=comm.id).update(company_config_email=None)
+        comm.refresh_from_db()
+        with patch('communication.utils.communication_service._send_via_smtp') as send:
+            self.handle(comm)
+        self.assertTrue(send.called)
+        self.assertNotEqual(comm.rejection_reason, email_no_sender_error())
+
+    def test_no_sender_email_stores_readable_reason(self):
+        from communication.utils.send_errors import email_no_sender_error
+
+        # Sense cap adreça de remitent: motiu propi, no l'error genèric de preparació.
+        comm = self.make_email_comm('email')
+        Communication.objects.filter(id=comm.id).update(company_config_email=None)
+        comm.refresh_from_db()
+        comm.company_config.company_config_emails.all().delete()
+        self.handle(comm)
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, email_no_sender_error())
+
     def test_missing_recipient_stores_readable_reason(self):
         comm = self.make_email_comm('email')
         Communication.objects.filter(id=comm.id).update(used_email='')
