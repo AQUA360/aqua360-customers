@@ -8,8 +8,11 @@ class FileNotFoundError extends Error {
 }
 
 function openBlobInNewTab(blob: Blob): void {
-  const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
-  const objectUrl = URL.createObjectURL(pdfBlob);
+  // Les imatges (p. ex. un plànol en JPG) es mostren amb el seu tipus; la resta, com a PDF.
+  const typedBlob = blob.type === 'application/pdf' || blob.type.startsWith('image/')
+    ? blob
+    : new Blob([blob], { type: 'application/pdf' });
+  const objectUrl = URL.createObjectURL(typedBlob);
   const newWindow = window.open(objectUrl, '_blank');
 
   if (!newWindow) {

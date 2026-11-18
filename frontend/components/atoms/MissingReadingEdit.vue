@@ -177,13 +177,8 @@ const closePhotoModal = () => {
   showPhotoModal.value = false;
 }
 
-const photoSrc = computed(() => {
-  const photo = props.supply?.photo;
-  if (!photo) return '';
-  if (typeof photo !== 'string') return '';
-  if (photo.startsWith('data:') || photo.startsWith('http')) return photo;
-  return `data:image/jpeg;base64,${photo}`;
-});
+// Les fotos de /media/ exigeixen el token: es carreguen només amb el modal obert.
+const photoSrc = useAuthenticatedImage(() => (showPhotoModal.value ? props.supply?.photo : ''));
 
 const reading_value = ref(0);
 const reading_date = ref(null);

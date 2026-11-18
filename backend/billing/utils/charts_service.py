@@ -1,12 +1,10 @@
-import os
+import base64
 import matplotlib
 matplotlib.use('Agg')  # Set backend before importing pyplot
 import matplotlib.pyplot as plt
 from billing.models import Reading, Invoice
 from django.db.models import Max, Q
 from io import BytesIO
-from django.core.files.base import ContentFile
-from django.conf import settings
 import colorsys
 
 from coredata.models import ConfigProject
@@ -364,42 +362,17 @@ def generate_chart(invoice, title, hide_background_and_logos=False):
     except Exception as e:
         print(f"Warning: Error in tight_layout: {str(e)}")
 
-    # Validate invoice.id and invoice.token
-    if not hasattr(invoice, 'id') or invoice.id is None:
-        print("Error: Invoice must have a valid id")
-        plt.close(fig)
-        return None
-    
-    invoice_token = getattr(invoice, 'token', None) or f'invoice_{invoice.id}'
-    
+    # El gràfic va incrustat al PDF com a data URI: no es desa a MEDIA_ROOT, perquè allà
+    # quedaria accessible per URL (/media/...) amb un camí fàcil d'endevinar.
+    buf = BytesIO()
     try:
-        chart_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', 'billing', 'invoices', str(invoice.id), 'charts')
-        os.makedirs(chart_dir, exist_ok=True)
-    except (OSError, AttributeError) as e:
-        print(f"Error creating chart directory: {str(e)}")
-        plt.close(fig)
-        return None
-
-    file_name = f"{invoice_token}_chart.png"
-    file_path = os.path.join(chart_dir, file_name)
-
-    buf = None
-    try:
-        buf = BytesIO()
         plt.savefig(buf, format='png', dpi=72, transparent=hide_background_and_logos)
-        buf.seek(0)
-        
-        with open(file_path, 'wb') as f:
-            f.write(buf.read())
+        encoded = base64.b64encode(buf.getvalue()).decode('ascii')
     except Exception as e:
-        print(f"Error saving chart: {str(e)}")
-        if buf:
-            buf.close()
-        plt.close(fig)
+        print(f"Error rendering chart: {str(e)}")
         return None
     finally:
-        if buf:
-            buf.close()
+        buf.close()
         plt.close(fig)
 
-    return file_path
+    return f"data:image/png;base64,{encoded}"
