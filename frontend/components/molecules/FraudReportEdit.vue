@@ -29,6 +29,8 @@ const props = defineProps({
 const loading = ref(true);
 const loading_document = ref(true);
 const loading_image = ref(true);
+// Pujada d'imatge en curs: independent de loading_image, que getData() pot apagar abans d'hora
+const uploading_image = ref(false);
 // Mida màxima d'una imatge de frau, la mateixa que valida el backend
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const saving = ref(false);
@@ -136,7 +138,8 @@ const saveImage = async (file) => {
         return;
     }
 
-    // El selector queda desactivat mentre loading_image és cert: una sola pujada alhora
+    // El selector queda desactivat mentre uploading_image és cert: una sola pujada alhora
+    uploading_image.value = true;
     loading_image.value = true;
     try {
         await save(false)
@@ -150,6 +153,7 @@ const saveImage = async (file) => {
         // L'error ja es mostra amb un avís
         console.error(error)
     } finally {
+        uploading_image.value = false;
         loading_image.value = false;
         resetImageInput();
     }
@@ -229,7 +233,7 @@ watch(() => props.fraud_id, (newValue, oldValue) => {
             <div v-if="!canChange && images.length == 0">
                 <p class="text-slate-500 px-3">{{ $t('common.no_imgs') }}</p>
             </div>
-            <AtomsInputFile v-if="canChange" @update="saveImage" :name="'fraudImageFile'" :uploaded="null" :fullWidth="true" :disabled="loading_image"
+            <AtomsInputFile v-if="canChange" @update="saveImage" :name="'fraudImageFile'" :uploaded="null" :fullWidth="true" :disabled="uploading_image"
                 class="w-full" />
         </details>
 
