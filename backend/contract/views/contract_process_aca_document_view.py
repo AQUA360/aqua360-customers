@@ -6,16 +6,17 @@ from django.core.files.base import ContentFile
 from rest_framework.views import APIView, Response
 from io import BytesIO
 from xhtml2pdf import pisa
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 
 from coredata.serializers import AddressSerializer, PersonCardSerializer
 from coredata.utils.template_utils import build_template_candidates
 from documentmanager.utils.sign_certificate_service import sign_pdf
 from service.serializers.company_serializer import CompanySerializer
 from ..models import ContractRequest
+from ..permissions import ContractRequestPermission
 
 class ProcessACADocumentViewSet(APIView):
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, ContractRequestPermission]
   queryset = ContractRequest.objects.all().order_by('-created_at')
   def get(self, request, id, *args, **kwargs):
     contract_request = get_object_or_404(ContractRequest, id=id)

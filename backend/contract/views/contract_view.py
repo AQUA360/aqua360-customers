@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from decimal import Decimal
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -6,7 +7,7 @@ from django.http import HttpResponse
 
 from rest_framework.decorators import action
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -34,6 +35,7 @@ from contract.utils.contract_list_queryset import (
     contract_list_page_queryset,
     default_contract_list_queryset,
 )
+from contract.permissions import ContractReadPermission, can_read_from_related_module, required_permission_class
 from contract.models import Contract, ContractDataChange, ContractLog, ContractPriceRate, ContractRequestDocumentation, ContractDocumentationType, PaymentType, PiggyBankMovement
 from contract.serializers.contract_serializer import ContractSerializer, ContractListSerializer
 from contract.serializers.contract_data_change_edit_serializer import ContractDataChangeEditSerializer
@@ -69,7 +71,7 @@ class ContractOrderingFilter(OrderingFilter):
 
 class ContractViewSet(viewsets.ModelViewSet):
     serializer_class = ContractSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ContractReadPermission]
     filterset_class = ContractFilter
     filter_backends = [DjangoFilterBackend, ContractOrderingFilter]
     search_fields = [
@@ -496,7 +498,8 @@ class ContractViewSet(viewsets.ModelViewSet):
             contract_id, use_type_id, contract_type_id, request
         )
         
-        temp_rel_path = f"tmp/contract_docs/{filename}"
+        # Carpeta aleatòria: /media/ només demana sessió i el nom no s'ha de poder endevinar.
+        temp_rel_path = f"tmp/contract_docs/{uuid.uuid4().hex}/{filename}"
         saved_path = default_storage.save(
             temp_rel_path, ContentFile(pdf_bytes)
         )
@@ -600,6 +603,8 @@ class ContractViewSet(viewsets.ModelViewSet):
             group_permissions = PermissionManager.get_model_group_permissions(group, 'contract')
             return Response(group_permissions, status=status.HTTP_200_OK)
         permissions = PermissionManager.get_model_permissions(request.user, 'contract', 'contract')
+        # Mateix criteri que ContractReadPermission (també llegeixen els mòduls relacionats)
+        permissions['can_view'] = permissions['can_view'] or can_read_from_related_module(request.user)
         return Response(permissions, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'], url_path='export/excel')
@@ -626,6 +631,9 @@ class ContractViewSet(viewsets.ModelViewSet):
             )
 
     def get_permissions(self):
+        if self.action in ('update_contract_bank_accounts', 'save_documentation'):
+            # Són POST, però modifiquen contractes existents: exigim `change_contract`.
+            return [IsAuthenticated(), required_permission_class('contract.change_contract')()]
         if self.action == 'permissions':
             return [IsAuthenticated()]
         return super().get_permissions()
