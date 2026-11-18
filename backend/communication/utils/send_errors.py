@@ -9,6 +9,7 @@ import smtplib
 import socket
 import ssl
 import urllib.error
+import urllib.parse
 
 from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import gettext as _
@@ -243,7 +244,7 @@ def _describe_graph(exc):
   if info is None:
     return None
   status, code, _message, url = info
-  if "login.microsoftonline.com" in url:
+  if urllib.parse.urlsplit(url or "").hostname == "login.microsoftonline.com":
     # Error en demanar el token: credencials (tenant, client id o secret) incorrectes.
     return _auth_failed() if status and status < 500 else _temporarily_unavailable()
   if code in _GRAPH_CODES:
