@@ -1,4 +1,5 @@
 from django.conf import settings
+from PIL import Image, UnidentifiedImageError
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -16,6 +17,26 @@ from fraud.filters.fraud_image_filter import FraudImageFilter
 from fraud.models import FraudImage, FraudReport
 from fraud.serializers.value_objects_serializer import FraudImageSerializer
 from fraud.permissions import FraudPermission
+
+# Mida màxima d'una imatge de frau. Els nginx dels desplegaments accepten 20M, així que talla el backend.
+MAX_FRAUD_IMAGE_BYTES = 10 * 1024 * 1024
+# Formats acceptats, comprovats amb la imatge real (no amb l'extensió ni el content-type del navegador).
+ALLOWED_FRAUD_IMAGE_FORMATS = {'JPEG', 'PNG'}
+
+
+def _is_valid_image(file):
+    """Cert si el fitxer és realment una imatge JPEG o PNG llegible."""
+    try:
+        file.seek(0)
+        with Image.open(file) as image:
+            image_format = image.format
+            image.verify()
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
+        return False
+    finally:
+        file.seek(0)
+    return image_format in ALLOWED_FRAUD_IMAGE_FORMATS
+
 
 class FraudImageViewSet(viewsets.ModelViewSet):
     queryset = FraudImage.objects.all().order_by('id')
@@ -36,14 +57,28 @@ class FraudImageViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         
-        fraud_report = FraudReport.objects.get(id=request.data.get('id'))
-        request.data.pop('id')
-        file = request.data.pop('file')
+        report_id = request.data.get('id')
+        if not str(report_id or '').isdigit():
+            return Response({'detail': 'Invalid fraud report id'}, status=status.HTTP_400_BAD_REQUEST)
+        fraud_report = FraudReport.objects.filter(id=int(report_id), fraud__isnull=False).select_related('fraud').first()
+        if fraud_report is None:
+            return Response({'detail': 'Fraud report not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        file = request.FILES.get('file')
+        if file is None:
+            return Response({'detail': 'Missing image file'}, status=status.HTTP_400_BAD_REQUEST)
+        if file.size > MAX_FRAUD_IMAGE_BYTES:
+            return Response({'detail': 'Image too large'}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        if not _is_valid_image(file):
+            return Response({'detail': 'Invalid image'}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.data.pop('id', None)
+        request.data.pop('file', None)
         
         serializer.is_valid(raise_exception=True)
         
         service = settings.DOCUMENT_MANAGER_SERVICES.get("fraud")
-        document = upload_document(file[0], fraud_report.fraud.token, 'FRAUD', fraud_report.id, fraud_report.token, '', service, file[0].name)
+        document = upload_document(file, fraud_report.fraud.token, 'FRAUD', fraud_report.id, fraud_report.token, '', service, file.name)
         validated_data = serializer.validated_data
         validated_data['fraud_report'] = fraud_report
         validated_data['file'] = document 

@@ -3857,6 +3857,7 @@ export default {
     no_termination_reason_warning: 'Por favor, indique o motivo da baixa',
     nothing_selected_warning: 'Seleccione unha facturación ou unha data',
     warning_valid_img: 'Por favor, seleccione un arquivo de imaxe válido (.jpeg, .jpg, .png).',
+    warning_img_too_large: 'Por favor, seleccione unha imaxe de 10 MB como máximo.',
     warning_before_save_doc_date: 'Por favor, seleccione unha data de informe antes de gardar un documento.',
     warning_select_contract_invoice: 'Por favor, seleccione un contrato e/ou unha factura',
     warning_date_range: 'Rango de datas anómalo (fóra do 25% da mediana)',

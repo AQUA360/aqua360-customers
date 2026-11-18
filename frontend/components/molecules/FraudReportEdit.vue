@@ -29,6 +29,8 @@ const props = defineProps({
 const loading = ref(true);
 const loading_document = ref(true);
 const loading_image = ref(true);
+// Mida màxima d'una imatge de frau, la mateixa que valida el backend
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const saving = ref(false);
 const attemptedSave = ref(false);
 
@@ -115,6 +117,11 @@ const saveImage = async (file) => {
         toast.warning(t('warning_block.warning_valid_img'));
         return;
     }
+    // Mateix límit que el backend (10 MiB)
+    if (file.size > MAX_IMAGE_BYTES) {
+        toast.warning(t('warning_block.warning_img_too_large'));
+        return;
+    }
     
     if (report_date.value == null || report_date.value == '') toast.error(t("warning_block.warning_before_save_doc_date"))
     loading_image.value = true;
@@ -123,7 +130,14 @@ const saveImage = async (file) => {
         id: report.value.id,
         file: file,
     }
-    let response = await $FraudReportApiService.saveImage(save_data)
+    let response
+    try {
+        response = await $FraudReportApiService.saveImage(save_data)
+    } catch (error) {
+        // L'error ja es mostra amb un avís; no deixem el carregador girant
+        loading_image.value = false;
+        return;
+    }
     if (response) {
         getData()
         emit('changed', false)
