@@ -223,11 +223,11 @@ watch(() => props.fraud_id, (newValue, oldValue) => {
                     class="text-gray-500 w-4 h-4 transform transition-transform duration-200 group-open:rotate-180" />
                 {{ t('common.imgs') }}
             </summary>
-            <div v-if="loading_image" class="flex justify-center items-center">
+            <div v-if="loading_image || uploading_image" class="flex justify-center items-center">
                 <Icon name="fa6-solid:spinner" class="animate-spin text-2xl text-slate-500" />
                 <span class="ml-2">{{ $t('common.loading') }}...</span>
             </div>
-            <div v-else-if="!loading_image && images.length > 0" class="my-4 px-4 py-1">
+            <div v-else-if="images.length > 0" class="my-4 px-4 py-1">
                 <ImagesView :images="images" />
             </div>
             <div v-if="!canChange && images.length == 0">
