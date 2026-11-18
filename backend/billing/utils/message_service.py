@@ -30,9 +30,15 @@ def invoice_add_messages(invoice, hide_background_and_logos=False):
             continue
         message_eval_conditions(message, invoice)
     
+    # Només el lligam d'aquesta factura: un missatge pot tenir desenes de milers de factures
+    linked_message_ids = set(
+        Message.invoices.through.objects.filter(
+            invoice_id=invoice.id, message__in=messages,
+        ).values_list('message_id', flat=True)
+    )
     message_data = {}
     for message in messages:
-        if invoice in message.invoices.all():
+        if message.id in linked_message_ids:
             message_data[message.id] = {
                 "title": message.title,
                 "content": message.content,
@@ -53,7 +59,6 @@ def message_eval_conditions(message, invoice):
     
     if not message.conditions.exists():
         message.invoices.add(invoice)
-        message.save()
         return
     
     for condition in message.conditions.all().order_by('position'):
@@ -65,13 +70,11 @@ def message_eval_conditions(message, invoice):
                 if condition.quantity['value'] in variables:
                     if quantity_value is None:
                         message.invoices.add(invoice)
-                        message.save()
                         return
                     
             if condition.operation == 'is_true':
                 if quantity_value:
                     message.invoices.add(invoice)
-                    message.save()
         return
         
 def generate_message_variables(message, invoice, contract):

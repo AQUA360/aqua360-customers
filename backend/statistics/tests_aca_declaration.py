@@ -229,3 +229,72 @@ class AcaVolumeTests(TestCase):
         row = [cell.value for cell in sheet[1]]
         # Com al resum: industrial i el volum facturat una sola vegada, encara que l'ús de la factura sigui domèstic
         self.assertEqual((row[0], row[2], row[3], row[8]), ('FC/I', 7, 7, 'I'))
+
+
+class AcaSummaryReportChunkTests(TestCase):
+    """La Declaració ACA calcula els volums per trossos de factures: el resultat ha de ser el mateix
+    que amb totes les factures de cop."""
+
+    def setUp(self):
+        for token, value in (
+            ('invoice_type_invoice_token', 'F'),
+            ('invoice_status_cancelled_token', '-6'),
+            ('invoice_status_pending_token', '1'),
+            ('invoice_status_payoff_token', '-2'),
+            ('invoice_status_paid_token', '-1'),
+            ('token_product_aca', 'ACA'),
+            ('contract_keeper_use_type_token', 'RAMADER'),
+            ('tarifa_social', 'tarifa_social'),
+        ):
+            ConfigProject.objects.create(token=token, value=value)
+        self.paid = InvoiceStatus.objects.create(token='0', name='Confirmada')
+        self.product = Product.objects.create(token='ACA')
+        self.fixed = LineItemType.objects.create(article=ArticleCode.objects.create(token='part_fixa', name='Part fixa'))
+        self.variable_article = ArticleCode.objects.create(token='part_variable', name='Part variable')
+        self.domestic = LineItemType.objects.create(name='CANON DOMESTIC', article=self.variable_article)
+        self.general = LineItemType.objects.create(name='GRAVAMEN GENERAL INDUSTRIAL', article=self.variable_article)
+        self.exploitation = Exploitation.objects.create(name='MUNICIPI A', code='080001')
+
+    def invoice(self, number, used_aca, consumption, lines):
+        invoice = Invoice.objects.create(
+            serie_final=number, token=number, issue_date=datetime.date(2026, 6, 10), type_final='F',
+            status=self.paid, used_aca=used_aca, real_consumption=consumption, exploitation=self.exploitation,
+        )
+        Payment.objects.create(invoice=invoice, amount=Decimal('1'))
+        InvoiceLineItem.objects.create(invoice=invoice, product=self.product, line_item_type=self.fixed, price=1, units=1)
+        for line_type, units, price_unit, interval in lines:
+            InvoiceLineItem.objects.create(
+                invoice=invoice, product=self.product, line_item_type=line_type, units=units,
+                price_unit=price_unit, price=units * price_unit, interval=interval,
+            )
+
+    def report_cells(self, chunk_size):
+        from io import BytesIO
+        from unittest import mock
+
+        import openpyxl
+
+        from statistics.utils import report_billing_service
+
+        request = SimpleNamespace(data={'date_range': ['2026-06-01T00:00:00.000Z', '2026-06-30T23:59:59.000Z']})
+        with mock.patch.object(report_billing_service, 'ACA_VOLUMES_CHUNK_SIZE', chunk_size), \
+                mock.patch.object(report_billing_service, 'save_report', return_value=None):
+            response, _document_id, _ = report_billing_service.generate_aca_summary_report(request)
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        return {
+            sheet.title: [[cell.value for cell in row] for row in sheet.iter_rows()]
+            for sheet in workbook.worksheets
+        }
+
+    def test_volums_per_trossos_iguals_que_de_cop(self):
+        self.invoice('FC/1', 'D', 30, [(self.domestic, 10, 0.5, 1), (self.domestic, 8, 1.0, 2)])
+        self.invoice('FC/2', 'D', 12, [(self.domestic, 12, 0.5, 1)])
+        self.invoice('FC/3', 'I', 7, [(self.general, 7, 0.1, None)])
+
+        all_at_once = self.report_cells(1000)
+        self.assertEqual(self.report_cells(1), all_at_once)
+        invoices_sheet = list(all_at_once.values())[1]
+        self.assertEqual(sorted(row[0] for row in invoices_sheet[1:]), ['FC/1', 'FC/2', 'FC/3'])
+        # Volums consumits domèstic i industrial del resum
+        summary = {row[0]: row[1:] for row in list(all_at_once.values())[0]}
+        self.assertEqual(summary["Vol. consumit d'ús domèstic"], [42])
