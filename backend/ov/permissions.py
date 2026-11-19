@@ -23,3 +23,15 @@ class RestrictOVUserToOVApp(BasePermission):
 
         # Non-OV users: let other permission classes decide
         return True
+
+
+class IsOVUser(BasePermission):
+    """Només usuaris del grup «ov» (el frontal de l'Oficina Virtual) i
+    superusuaris. Per a les vistes OV noves, que no poden quedar obertes a
+    qualsevol usuari autenticat (tiquets 2652 i 2654)."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        return user.is_superuser or user.groups.filter(name="ov").exists()

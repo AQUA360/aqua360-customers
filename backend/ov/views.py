@@ -1,7 +1,21 @@
 from django.http import FileResponse
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Case, Count, Exists, F, OuterRef, Prefetch, Q, When
+from django.contrib.postgres.aggregates import ArrayAgg
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    F,
+    Min,
+    OuterRef,
+    Prefetch,
+    Q,
+    TextField,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce
 from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
@@ -108,6 +122,7 @@ from ov.serializers import (
     ContractTerminationProcedureResponseSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
+from ov.permissions import IsOVUser
 from ov.throttles import (
     ContractProcedureThrottle,
     ContractTerminationProcedureThrottle,
@@ -1776,6 +1791,58 @@ class PropertiesOVView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
+# Número amb sufix enganxat o amb guió: «21A», «21-A», «21Po1»
+_ADDRESS_NUMBER_WITH_SUFFIX = re.compile(r"^(\d+)-?([^\d-].*)$")
+
+# Camps que es veuen de l'adreça: dues files d'adreça amb els mateixos valors
+# són la mateixa adreça. Els buits i els NULL compten igual.
+_SUPPLY_POINT_ADDRESS_GROUP = {
+    "g_street": F("street_id"),
+    "g_number": F("street_number__number"),
+    "g_number_type": F("street_number__number_type__type"),
+    "g_number_suffix": Coalesce("street_number__number_suffix", Value("")),
+    "g_number_end": F("street_number__number_end"),
+    "g_number_end_suffix": Coalesce("street_number__number_end_suffix", Value("")),
+    "g_stair": Coalesce("stair", Value("")),
+    "g_building": Coalesce("building", Value("")),
+    "g_floor": Coalesce("floor", Value("")),
+    "g_door": Coalesce("door", Value("")),
+    "g_extra": Coalesce("address_extra", Value(""), output_field=TextField()),
+    "g_postal_code": Coalesce("postal_code", Value("")),
+    "g_city": Coalesce("city__name", "city_name", Value("")),
+    "g_country": F("country_id"),
+}
+
+
+def _supply_point_address_filters(token):
+    """Q d'una paraula de cerca: carrer, tipus, número (amb sufix), població,
+    codi postal, escala, pis o porta, sense distingir accents."""
+    filters = Q()
+    for field in (
+        "street__name",
+        "street__name_2",
+        "street__type__abbreviation",
+        "street_number__number_suffix",
+        "city__name",
+        "city_name",
+        "postal_code",
+        "stair",
+        "floor",
+        "door",
+    ):
+        filters |= Q(**{f"{field}__unaccent__icontains": token})
+    if token.isdigit():
+        filters |= Q(street_number__number=int(token))
+    else:
+        match = _ADDRESS_NUMBER_WITH_SUFFIX.match(token)
+        if match:
+            filters |= Q(
+                street_number__number=int(match.group(1)),
+                street_number__number_suffix__unaccent__icontains=match.group(2),
+            )
+    return filters
+
+
 class AddressesOVView(APIView):
     """GET /ov/addresses/?search=<text>[&page=<n>&limit=<n>]
 
@@ -1784,16 +1851,17 @@ class AddressesOVView(APIView):
     `/ov/properties/` no té. Mateixes regles de cerca que `/ov/properties/`:
     `search` obligatori de com a mínim 3 caràcters, la puntuació fa de
     separador i cada paraula ha de coincidir (AND) amb el carrer, el tipus
-    de via, el número, la població, el codi postal, l'escala, el pis o la
-    porta.
+    de via, el número (també amb sufix: `21A`), la població, el codi postal,
+    l'escala, el pis o la porta. No distingeix accents.
 
     No es filtra per l'estat del punt: també surten els de baixa, perquè
     precisament es pot buscar l'adreça per tornar-lo a donar d'alta. Cada
-    adreça surt un sol cop encara que la comparteixin diversos punts; els
+    adreça surt un sol cop encara que la tinguin diversos punts (amb la
+    mateixa fila d'adreça o amb files diferents i els mateixos valors); els
     seus tokens (i el de la finca de cadascun) van a `supply_points`.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOVUser]
     pagination_class = OVLimitPagination
     min_search_length = 3
 
@@ -1818,63 +1886,80 @@ class AddressesOVView(APIView):
 
         filters = Q()
         for token in tokens:
-            token_filters = (
-                Q(street__name__icontains=token)
-                | Q(street__name_2__icontains=token)
-                | Q(street__type__abbreviation__icontains=token)
-                | Q(city__name__icontains=token)
-                | Q(city_name__icontains=token)
-                | Q(postal_code__icontains=token)
-                | Q(stair__icontains=token)
-                | Q(floor__icontains=token)
-                | Q(door__icontains=token)
-            )
-            try:
-                token_filters |= Q(street_number__number=int(token))
-            except ValueError:
-                pass
-            filters &= token_filters
+            filters &= _supply_point_address_filters(token)
 
-        # Exists en lloc d'un join amb els punts: cada adreça surt un sol cop
-        # sense haver de fer DISTINCT.
-        addresses = (
+        # Agrupa per valors: una fila per adreça visible, amb les files
+        # d'adreça que la formen. La primera és la que es mostra.
+        groups = (
             Address.objects.filter(
                 Exists(SupplyPoint.objects.filter(address=OuterRef("pk")))
             )
             .filter(filters)
-            .select_related(
-                "street__type",
-                "street_number__number_type",
-                "city",
-                "country",
-            )
-            .prefetch_related(
-                Prefetch(
-                    "supply_points_address",
-                    queryset=SupplyPoint.objects.select_related(
-                        "property"
-                    ).order_by("token", "id"),
-                )
+            .annotate(**_SUPPLY_POINT_ADDRESS_GROUP)
+            .values(*_SUPPLY_POINT_ADDRESS_GROUP)
+            .annotate(
+                first_id=Min("id"),
+                address_ids=ArrayAgg("id", ordering="id"),
+                street_name_order=Min("street__name"),
             )
             .order_by(
-                "street__name",
-                "street_number__number",
-                "stair",
-                "floor",
-                "door",
-                "id",
+                "street_name_order",
+                "g_street",
+                "g_number",
+                "g_number_suffix",
+                "g_stair",
+                "g_floor",
+                "g_door",
+                "first_id",
             )
         )
 
         paginator = self.pagination_class()
         try:
-            page = paginator.paginate_queryset(addresses, request, view=self)
+            page = paginator.paginate_queryset(groups, request, view=self)
         except NotFound:
             return Response(
                 {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        serializer = SupplyPointAddressItemSerializer(page, many=True)
+        addresses = Address.objects.select_related(
+            "street__type",
+            "street_number__number_type",
+            "city",
+            "country",
+        ).in_bulk([group["first_id"] for group in page])
+        supply_points_by_address = {}
+        for supply_point in (
+            SupplyPoint.objects.filter(
+                address_id__in=[
+                    address_id
+                    for group in page
+                    for address_id in group["address_ids"]
+                ]
+            )
+            .select_related("property")
+            .order_by("token", "id")
+        ):
+            supply_points_by_address.setdefault(
+                supply_point.address_id, []
+            ).append(supply_point)
+
+        items = []
+        for group in page:
+            address = addresses[group["first_id"]]
+            address.grouped_supply_points = sorted(
+                (
+                    supply_point
+                    for address_id in group["address_ids"]
+                    for supply_point in supply_points_by_address.get(
+                        address_id, []
+                    )
+                ),
+                key=lambda supply_point: (supply_point.token or "", supply_point.id),
+            )
+            items.append(address)
+
+        serializer = SupplyPointAddressItemSerializer(items, many=True)
         return paginator.get_paginated_response(serializer.data)
 
 

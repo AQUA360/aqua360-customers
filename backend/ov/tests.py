@@ -10,7 +10,7 @@ from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django.conf import settings
-from django.contrib.auth.models import Permission, User
+from django.contrib.auth.models import Group, Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.db import connection
@@ -46,6 +46,7 @@ from coredata.models import (
     PostalCode,
     Street,
     StreetNumber,
+    StreetNumberType,
     StreetType,
 )
 from contract.models import (
@@ -2436,25 +2437,51 @@ class PropertiesOVTests(TestCase):
 
 class AddressesOVTests(TestCase):
     """`GET /ov/addresses/?search=` — autocompletat d'adreces dels punts de
-    subministrament amb escala, pis i porta, sense duplicats i sense
-    filtrar per l'estat del punt."""
+    subministrament amb escala, pis i porta, sense duplicats, amb el sufix
+    del número, sense distingir accents i sense filtrar per l'estat del
+    punt."""
 
     @classmethod
     def setUpTestData(cls):
         cls.user = User.objects.create_user(
             username="ov-addresses-test", password="not-used"
         )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
         street_type = StreetType.objects.create(
             abbreviation="C", name="Carrer"
         )
+        number_type_n = StreetNumberType.objects.get_or_create(
+            type="N", defaults={"description": "Number"}
+        )[0]
         country = Country.objects.create(name="Espanya", iso_code="ES")
         city = City.objects.create(token="CITY-ADDR-1", name="Vilanova")
         street_major = Street.objects.create(
             name="Major", type=street_type, city=city
         )
         street_petit = Street.objects.create(name="Petit", city=city)
-        number_21 = StreetNumber.objects.create(street=street_major, number=21)
+        street_placa = Street.objects.create(name="Plaça Nova", city=city)
+        number_21 = StreetNumber.objects.create(
+            street=street_major, number=21, number_type=number_type_n
+        )
+        # Mateix valor que number_21 però en una altra fila
+        number_21_bis = StreetNumber.objects.create(
+            street=street_major, number=21, number_type=number_type_n
+        )
+        number_21a = StreetNumber.objects.create(
+            street=street_major,
+            number=21,
+            number_suffix="A",
+            number_type=number_type_n,
+        )
+        number_sn_b = StreetNumber.objects.create(
+            street=street_petit,
+            number_suffix="B",
+            number_type=StreetNumberType.objects.get_or_create(
+                type="SN", defaults={"description": "S/N"}
+            )[0],
+        )
         cls.finca = Property.objects.create(token="PR-ADDR-1", is_active=True)
+        cls.finca_2 = Property.objects.create(token="PR-ADDR-2", is_active=True)
 
         def make_address(street, number, **fields):
             return Address.objects.create(
@@ -2472,27 +2499,43 @@ class AddressesOVTests(TestCase):
         cls.address_1r2a = make_address(
             street_major, number_21, stair="A", floor="1r", door="2a"
         )
+        # Una altra fila amb els mateixos valors (com passa a les dades migrades)
+        cls.address_1r2a_copy = make_address(
+            street_major, number_21_bis, stair="A", floor="1r", door="2a"
+        )
         cls.address_baixa = make_address(
             street_major, number_21, stair="B", floor="3r", door="1a"
         )
         cls.address_without_sp = make_address(
             street_major, number_21, stair="C", floor="4t", door="1a"
         )
+        cls.address_21a = make_address(street_major, number_21a)
         cls.address_petit = make_address(street_petit, None, floor="Baixos")
+        cls.address_placa = make_address(street_placa, None, door="Local")
+        cls.address_sn_b = make_address(street_petit, number_sn_b)
 
         SupplyPoint.objects.create(
             token="SP-ADDR-1", address=cls.address_2n1a, property=cls.finca
         )
-        # Dos punts amb la mateixa adreça: ha de sortir un sol cop
+        # Dos punts a la mateixa fila d'adreça i un tercer en una fila
+        # repetida: ha de sortir un sol cop amb els tres
         SupplyPoint.objects.create(
             token="SP-ADDR-2", address=cls.address_1r2a, property=cls.finca
         )
         SupplyPoint.objects.create(token="SP-ADDR-3", address=cls.address_1r2a)
+        SupplyPoint.objects.create(
+            token="SP-ADDR-5",
+            address=cls.address_1r2a_copy,
+            property=cls.finca_2,
+        )
         # Punt de baixa: l'adreça també ha de sortir
         SupplyPoint.objects.create(
             token="SP-ADDR-OFF", address=cls.address_baixa, is_active=False
         )
         SupplyPoint.objects.create(token="SP-ADDR-4", address=cls.address_petit)
+        SupplyPoint.objects.create(token="SP-ADDR-6", address=cls.address_21a)
+        SupplyPoint.objects.create(token="SP-ADDR-7", address=cls.address_placa)
+        SupplyPoint.objects.create(token="SP-ADDR-8", address=cls.address_sn_b)
 
     def setUp(self):
         self.client = APIClient()
@@ -2518,6 +2561,7 @@ class AddressesOVTests(TestCase):
                     "street_type": "C",
                     "street_name": "Major",
                     "street_number": 21,
+                    "street_number_suffix": None,
                     "stair": "A",
                     "building": None,
                     "floor": "2n",
@@ -2532,7 +2576,7 @@ class AddressesOVTests(TestCase):
             ],
         )
 
-    def test_shared_address_is_returned_once_with_all_supply_points(self):
+    def test_same_address_in_several_rows_is_returned_once(self):
         response = self._search("Major 1r")
 
         self.assertEqual(response.status_code, 200)
@@ -2542,6 +2586,7 @@ class AddressesOVTests(TestCase):
             [
                 {"token": "SP-ADDR-2", "property_token": "PR-ADDR-1"},
                 {"token": "SP-ADDR-3", "property_token": None},
+                {"token": "SP-ADDR-5", "property_token": "PR-ADDR-2"},
             ],
         )
 
@@ -2549,22 +2594,48 @@ class AddressesOVTests(TestCase):
         response = self._search("Major 21")
 
         self.assertEqual(response.status_code, 200)
-        # Ordre: carrer, número, escala, pis, porta
+        # Ordre: carrer, número, sufix, escala, pis, porta
         self.assertEqual(
             self._addresses(response),
             [
                 str(self.address_1r2a),
                 str(self.address_2n1a),
                 str(self.address_baixa),
+                "C. Major, 21-A, Vilanova",
             ],
         )
+
+    def test_number_suffix_is_shown_and_searchable(self):
+        for term in ("Major 21A", "Major 21-A", "Major 21 A"):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("C. Major, 21-A, Vilanova", self._addresses(response))
+        item = self._search("Major 21A").data["results"][0]
+        self.assertEqual(
+            (item["street_number"], item["street_number_suffix"]), (21, "A")
+        )
+        # Cercar «21A» no torna el 21 sense sufix
+        self.assertEqual(self._search("Major 21A").data["count"], 1)
+        # El sufix d'un S/N també es veu
+        self.assertIn(
+            "Petit, S/N-B, Vilanova", self._addresses(self._search("Petit"))
+        )
+
+    def test_search_ignores_accents(self):
+        for term in ("Plaça", "Placa", "PLAÇA", "plaça nova"):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self._addresses(response), [str(self.address_placa)])
 
     def test_search_matches_stair_floor_door_city_and_postal_code(self):
         for term, expected in (
             ("Major 21 B", [str(self.address_baixa)]),
             ("Baixos", [str(self.address_petit)]),
             ("Major 3r 1a", [str(self.address_baixa)]),
-            ("Petit Vilanova 08800", [str(self.address_petit)]),
+            ("Petit Vilanova 08800 Baixos", [str(self.address_petit)]),
+            ("Local", [str(self.address_placa)]),
         ):
             with self.subTest(term=term):
                 response = self._search(term)
@@ -2575,8 +2646,8 @@ class AddressesOVTests(TestCase):
         response = self._search("Vilanova", limit=2, page=2)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["count"], 4)
-        self.assertEqual(response.data["total_pages"], 2)
+        self.assertEqual(response.data["count"], 7)
+        self.assertEqual(response.data["total_pages"], 4)
         self.assertEqual(len(response.data["results"]), 2)
 
     def test_query_count_does_not_grow_with_results(self):
@@ -2589,8 +2660,8 @@ class AddressesOVTests(TestCase):
         one_result, one_queries = count_queries("Major 2n")
         all_results, all_queries = count_queries("Vilanova")
 
-        self.assertEqual((one_result, all_results), (1, 4))
-        # Sense N+1: les mateixes consultes per a 1 adreça que per a 4
+        self.assertEqual((one_result, all_results), (1, 7))
+        # Sense N+1: les mateixes consultes per a 1 adreça que per a 7
         self.assertEqual(one_queries, all_queries)
 
     def test_invalid_search_returns_400(self):
@@ -2610,6 +2681,23 @@ class AddressesOVTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
+
+    def test_requires_ov_group_or_superuser(self):
+        client = APIClient()
+        client.force_authenticate(
+            User.objects.create_user(username="no-ov", password="not-used")
+        )
+        self.assertEqual(
+            client.get(reverse("addresses-ov"), {"search": "Major"}).status_code,
+            403,
+        )
+        client.force_authenticate(
+            User.objects.create_superuser(username="admin-ov", password="not-used")
+        )
+        self.assertEqual(
+            client.get(reverse("addresses-ov"), {"search": "Major"}).status_code,
+            200,
+        )
 
 
 class PersonDataOVTests(TestCase):

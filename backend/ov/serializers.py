@@ -32,6 +32,7 @@ from coredata.models import (
     PersonAddress,
     PersonBank,
     PersonContact,
+    StreetNumberType,
 )
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from django.utils import timezone
@@ -41,6 +42,7 @@ from django.db import transaction
 from django.db.models import Count, Value
 from django.db.models.functions import Replace, Upper
 from django.utils.dateparse import parse_date
+import copy
 import logging
 import re
 from decimal import Decimal
@@ -1910,18 +1912,43 @@ class PropertyItemSerializer(serializers.Serializer):
         return obj.address_city.name if obj.address_city else None
 
 
+def _supply_point_address_text(address):
+    """Adreça formatada (`Address.__str__`) sense perdre el sufix del número.
+
+    Els números de tipus «N» (o sense tipus) i «S/N» no mostren el sufix, i
+    llavors «21» i «21A» (o els portals i escales guardats com a sufix) es
+    veuen iguals. Aquí es formaten com els de tipus «S» (`21-A`, `S/N-A`)
+    sobre una còpia en memòria, sense tocar ni desar l'adreça.
+    """
+    number = address.street_number
+    number_type = number.number_type.type if number and number.number_type else None
+    if not number or not number.number_suffix or number_type not in (None, "N", "SN"):
+        return str(address)
+    number_copy = copy.copy(number)
+    number_copy.number_type = StreetNumberType(type="S")
+    if number_type == "SN":
+        # El tipus «S» sense número mostra només el sufix
+        number_copy.number = None
+        number_copy.number_suffix = f"S/N-{number.number_suffix}"
+    address_copy = copy.copy(address)
+    address_copy.street_number = number_copy
+    return str(address_copy)
+
+
 class SupplyPointAddressItemSerializer(serializers.Serializer):
     """Adreça d'un punt de subministrament per a l'autocompletat de l'OV.
 
-    Retorna l'adreça completa formatada (`Address.__str__`, amb escala, pis
+    Retorna l'adreça completa formatada (amb el sufix del número, escala, pis
     i porta), els seus camps atòmics i els punts que la fan servir, amb el
-    token del punt i el de la seva finca (els que demanen els tràmits).
+    token del punt i el de la seva finca (els que demanen els tràmits). La
+    vista hi deixa els punts a `grouped_supply_points`.
     """
 
     address = serializers.SerializerMethodField()
     street_type = serializers.SerializerMethodField()
     street_name = serializers.SerializerMethodField()
     street_number = serializers.SerializerMethodField()
+    street_number_suffix = serializers.SerializerMethodField()
     stair = serializers.CharField(allow_null=True)
     building = serializers.CharField(allow_null=True)
     floor = serializers.CharField(allow_null=True)
@@ -1932,7 +1959,7 @@ class SupplyPointAddressItemSerializer(serializers.Serializer):
     supply_points = serializers.SerializerMethodField()
 
     def get_address(self, obj):
-        return str(obj)
+        return _supply_point_address_text(obj)
 
     def get_street_type(self, obj):
         return (
@@ -1947,6 +1974,9 @@ class SupplyPointAddressItemSerializer(serializers.Serializer):
     def get_street_number(self, obj):
         return obj.street_number.number if obj.street_number else None
 
+    def get_street_number_suffix(self, obj):
+        return (obj.street_number.number_suffix or None) if obj.street_number else None
+
     def get_city(self, obj):
         return obj.city.name if obj.city else obj.city_name
 
@@ -1960,7 +1990,7 @@ class SupplyPointAddressItemSerializer(serializers.Serializer):
                     else None
                 ),
             }
-            for supply_point in obj.supply_points_address.all()
+            for supply_point in getattr(obj, "grouped_supply_points", [])
         ]
 
 
