@@ -153,7 +153,7 @@ class ContractRequestSerializer(serializers.ModelSerializer):
 
         initial_readings = {}
         readings = Reading.objects.filter(
-            contract_request=instance, is_initial=True
+            contract_request=instance, is_initial=True, is_active=False
         ).select_related('alert').order_by('-id')
         for reading in readings:
             initial_readings.setdefault((reading.supply_point_id, reading.meter_id), reading)

@@ -78,6 +78,16 @@ class ContractRequestInitialReadingTest(TestCase):
 
         self.assertEqual(representation['supply_points'][0]['last_meter_reading']['id'], 0)
 
+    def test_activated_initial_reading_is_ignored(self):
+        # Alta finalitzada: la lectura inicial ja és activa i el punt mostra la darrera activa
+        reading = self._initial_reading(reading_date=date(2026, 9, 1))
+        Reading.objects.filter(id=reading.id).update(is_active=True)
+        representation = self._representation()
+
+        ContractRequestSerializer()._set_initial_readings(self.request, representation)
+
+        self.assertEqual(representation['supply_points'][0]['last_meter_reading']['id'], 0)
+
     def test_initial_reading_of_another_request_is_ignored(self):
         other_request = ContractRequest.objects.create(supply_point_default=self.sp)
         Reading.objects.create(
